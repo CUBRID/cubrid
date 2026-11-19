@@ -43,6 +43,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -108,7 +109,9 @@ public class SymbolStack {
                                     new DeclParamIn(
                                             null,
                                             "p" + i,
+                                            null, // comment
                                             TypeSpec.getBogus(null, paramType),
+                                            false,
                                             null);
                             params.addNode(p);
                             i++;
@@ -123,7 +126,15 @@ public class SymbolStack {
                         // add op
                         DeclFunc op =
                                 new DeclFunc(
-                                        null, name, null, params, TypeSpec.getBogus(null, retType));
+                                        null,
+                                        name,
+                                        null,
+                                        null,
+                                        null,
+                                        true,
+                                        params,
+                                        0,
+                                        TypeSpec.getBogus(null, retType));
                         putOperator(name, op, opAnnot.coercionScheme());
                     }
                 }
@@ -136,7 +147,16 @@ public class SymbolStack {
         DeclProc dp;
 
         // disable
-        dp = new DeclProc(null, "DBMS_OUTPUT$DISABLE", null, new NodeList<DeclParam>());
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$DISABLE",
+                        null,
+                        null,
+                        null,
+                        true,
+                        new NodeList<DeclParam>(),
+                        0);
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$DISABLE", dp);
 
         // enable
@@ -145,13 +165,19 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$ENABLE",
                         null,
+                        null,
+                        null,
+                        true,
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
                                                 null,
                                                 "size",
+                                                null,
                                                 TypeSpec.getBogus(null, Type.INT),
-                                                new ExprUint(null, "20000", Type.INT))));
+                                                true,
+                                                new ExprUint(null, "20000", Type.INT))),
+                        0);
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
 
         // get_line
@@ -160,23 +186,65 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$GET_LINE",
                         null,
+                        null,
+                        null,
+                        true,
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamOut(
                                                 null,
                                                 "line",
+                                                null,
                                                 TypeSpec.getBogus(null, Type.STRING_ANY),
                                                 false))
                                 .addNode(
                                         new DeclParamOut(
                                                 null,
                                                 "status",
+                                                null,
                                                 TypeSpec.getBogus(null, Type.INT),
-                                                true)));
+                                                false)),
+                        0);
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
 
+        // get_lines
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$GET_LINES",
+                        null,
+                        null,
+                        null,
+                        true,
+                        new NodeList<DeclParam>()
+                                .addNode(
+                                        new DeclParamOut(
+                                                null,
+                                                "lines",
+                                                null,
+                                                TypeSpec.getBogus(null, Type.STRING_ANY),
+                                                false))
+                                .addNode(
+                                        new DeclParamOut(
+                                                null,
+                                                "numlines",
+                                                null,
+                                                TypeSpec.getBogus(null, Type.INT),
+                                                true)),
+                        0);
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINES", dp);
+
         // new_line
-        dp = new DeclProc(null, "DBMS_OUTPUT$NEW_LINE", null, new NodeList<DeclParam>());
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$NEW_LINE",
+                        null,
+                        null,
+                        null,
+                        true,
+                        new NodeList<DeclParam>(),
+                        0);
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$NEW_LINE", dp);
 
         // put_line
@@ -185,13 +253,19 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$PUT_LINE",
                         null,
+                        null,
+                        null,
+                        true,
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
                                                 null,
                                                 "s",
+                                                null,
                                                 TypeSpec.getBogus(null, Type.STRING_ANY),
-                                                null)));
+                                                false,
+                                                null)),
+                        0);
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
 
         // put
@@ -200,13 +274,19 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$PUT",
                         null,
+                        null,
+                        null,
+                        true,
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
                                                 null,
                                                 "s",
+                                                null,
                                                 TypeSpec.getBogus(null, Type.STRING_ANY),
-                                                null)));
+                                                false,
+                                                null)),
+                        0);
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
     }
 
@@ -512,7 +592,8 @@ public class SymbolStack {
         for (String s : funcNames) {
             DeclFunc df =
                     new DeclFunc(
-                            null, s, null, null, null); // only name is used for builtin functions
+                            null, s, null, null, null, true, null, 0,
+                            null); // only name is used for builtin functions
             putDeclTo(predefinedSymbols, df.name, df);
         }
     }
@@ -534,7 +615,7 @@ public class SymbolStack {
                         "ZERO_DIVIDE");
 
         for (String s : predefinedExceptions) {
-            DeclException de = new DeclException(null, s);
+            DeclException de = new DeclException(null, s, null);
             putDeclTo(predefinedSymbols, de.name, de);
         }
     }
@@ -570,7 +651,8 @@ public class SymbolStack {
     int pushSymbolTable(String name, Misc.RoutineType routineType) {
 
         int level = symbolTableStack.size();
-        name = name.toLowerCase();
+        // this name came from Misc.getNormalizedText (), so it is case-converted the same way
+        name = name.toLowerCase(Locale.ROOT);
 
         String routine;
         if (routineType == null) {
@@ -583,7 +665,7 @@ public class SymbolStack {
                 routine = currSymbolTable.scope.routine;
             }
         } else {
-            routine = name.toUpperCase();
+            routine = name.toUpperCase(Locale.ROOT);
         }
 
         String block = name + "_" + level;
@@ -636,10 +718,24 @@ public class SymbolStack {
         Map<String, Decl> map = symbolTable.decls;
 
         if (map.containsKey(name)) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(decl.ctx), // s062
-                    name + " has already been declared in the same scope");
+
+            Decl old = map.get(name);
+            if (decl.givesBodyOf(old)) {
+                decl.setScope(symbolTable.scope);
+                old.setBodyDecl(decl);
+                if (old.isPkgItem) {
+                    decl.setPkgItem();
+                    if (old.isPkgPublic) {
+                        decl.setPkgPublic();
+                    }
+                }
+            } else {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(decl.ctx), // s062
+                        name + " has already been declared in the same scope");
+            }
         }
+
         if (symbolTable.scope.level == LEVEL_MAIN && map.size() == 0) {
             // the first symbol added to the level 1 is the top-level procedure/function being
             // created or replaced
@@ -657,7 +753,11 @@ public class SymbolStack {
     }
 
     DeclProc getDeclProc(String name) {
-        Decl d = getDecl(name);
+        return getDeclProc(name, -1);
+    }
+
+    DeclProc getDeclProc(String name, int targetScopeLevel) {
+        Decl d = getDecl(name, targetScopeLevel);
         if (d instanceof DeclProc) {
             return (DeclProc) d;
         } else {
@@ -672,7 +772,11 @@ public class SymbolStack {
     }
 
     DeclFunc getDeclFunc(String name) {
-        Decl d = getDecl(name);
+        return getDeclFunc(name, -1);
+    }
+
+    DeclFunc getDeclFunc(String name, int targetScopeLevel) {
+        Decl d = getDecl(name, targetScopeLevel);
         if (d instanceof DeclFunc) {
             return (DeclFunc) d;
         } else {
@@ -686,8 +790,13 @@ public class SymbolStack {
         }
     }
 
+    // the declaration put to the current symbol table in the previsit, whether it is hidden or not
+    Decl getPrevisitedDecl(String name) {
+        return currSymbolTable.decls.get(name);
+    }
+
     DeclException getDeclException(String name) {
-        Decl d = getDecl(name);
+        Decl d = getDecl(name, -1);
         if (d instanceof DeclException) {
             return (DeclException) d;
         } else {
@@ -716,7 +825,7 @@ public class SymbolStack {
 
     // return DeclId or DeclFunc for an identifier expression
     Decl getDeclForIdExpr(String name) {
-        Decl d = getDecl(name);
+        Decl d = getDecl(name, -1);
         if (d instanceof DeclId || d instanceof DeclFunc) {
             return d;
         } else {
@@ -785,13 +894,18 @@ public class SymbolStack {
         }
     }
 
-    private Decl getDecl(String name) {
+    private Decl getDecl(String name, int targetScopeLevel) {
         assert name != null;
 
         for (SymbolTable t : symbolTableStack) {
 
-            if (t.decls.containsKey(name)) {
-                return t.decls.get(name);
+            if (targetScopeLevel >= 0 && t.scope.level != targetScopeLevel) {
+                continue;
+            }
+
+            Decl d = t.decls.get(name);
+            if (d != null && !d.hidden) {
+                return d;
             }
         }
 

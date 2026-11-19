@@ -31,7 +31,6 @@
 
 package com.cubrid.jsp;
 
-import com.cubrid.jsp.classloader.ClassPathHelper;
 import com.cubrid.jsp.code.CompiledCode;
 import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.jsp.code.SourceCode;
@@ -40,8 +39,8 @@ import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
-import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.jsp.data.CompileRequest;
+import com.cubrid.jsp.data.CompileResponse;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
@@ -67,7 +66,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
@@ -257,17 +258,11 @@ public class ExecuteThread extends Thread {
                                 PlcsqlRuntimeError plcsqlError = (PlcsqlRuntimeError) throwable;
                                 int line = plcsqlError.getLine();
                                 int col = plcsqlError.getColumn();
-                                String errMsg;
-                                if (line == -1 && col == -1) {
-                                    // exception was thrown not in the SP code but in the PL engine
-                                    // code
-                                    errMsg = String.format("\n  %s", plcsqlError.getMessage());
-                                } else {
-                                    errMsg =
-                                            String.format(
-                                                    "\n  (line %d, column %d) %s",
-                                                    line, col, plcsqlError.getMessage());
-                                }
+                                String errMsg = plcsqlError.getMessage();
+
+                                errMsg =
+                                        PlcsqlRuntimeError.prependLocationToErrMsg(
+                                                line, col, errMsg);
                                 sendError(errMsg);
                             } else {
                                 String msg = throwable.getMessage();
@@ -417,66 +412,58 @@ public class ExecuteThread extends Thread {
     }
 
     private void processCompile() throws Exception {
+
         unpacker.setBuffer(inBound.take());
 
         // session parameters
         readSessionParameter(unpacker);
+        CompileResponse response = null;
 
-        CompileRequest request = new CompileRequest(unpacker);
-
-        // TODO: Pass CompileRequest directly to compilePLCSQL ()
-        boolean verbose = false;
-        if (request.mode.contains("v")) {
-            verbose = true;
-        }
-        String inSource = request.code;
-        String owner = request.owner;
-
-        CompileInfo info = null;
         try {
-            info = PlcsqlCompilerMain.compilePLCSQL(inSource, owner, verbose);
-            if (info.errCode == 0) {
-                MemoryJavaCompiler compiler = new MemoryJavaCompiler();
-                SourceCode sCode = new SourceCode(info.className, info.translated);
+            CompileRequest request = new CompileRequest(unpacker);
+            Set<String> referencedClasses = new HashSet<>();
+            response = PlcsqlCompilerMain.compilePLCSQL(request, referencedClasses);
+            if (response.errCode == 0) {
+                switch (response.type) {
+                    case CompileRequest.PLCSQL_COMPILE_TYPE_SP:
+                    case CompileRequest.PLCSQL_COMPILE_TYPE_PKG_SPEC:
+                        MemoryJavaCompiler compiler = new MemoryJavaCompiler();
+                        SourceCode sCode = new SourceCode(response.className, response.translated);
 
-                // dump translated code into $CUBRID_TMP
-                if (Context.getSystemParameterBool(SysParam.STORED_PROCEDURE_DUMP_ICODE)) {
+                        // dump translated code into $CUBRID_TMP
+                        if (Context.getSystemParameterBool(SysParam.STORED_PROCEDURE_DUMP_ICODE)) {
 
-                    Path dirPath = Paths.get(Server.getConfig().getTmpPath() + "/icode");
-                    if (Files.notExists(dirPath)) {
-                        Files.createDirectories(dirPath);
-                    }
+                            Path dirPath = Paths.get(Server.getConfig().getTmpPath() + "/icode");
+                            if (Files.notExists(dirPath)) {
+                                Files.createDirectories(dirPath);
+                            }
 
-                    Path path = dirPath.resolve(info.className + ".java");
-                    Files.write(path, info.translated.getBytes(Context.getSessionCharset()));
+                            Path path = dirPath.resolve(response.className + ".java");
+                            Files.write(
+                                    path,
+                                    response.translated.getBytes(Context.getSessionCharset()));
+                        }
+
+                        CompiledCodeSet codeSet = compiler.compile(sCode, referencedClasses);
+
+                        byte[] data = null;
+
+                        // write to persistent
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        writeJar(codeSet, baos);
+                        data = baos.toByteArray();
+
+                        response.setCompiledCode(Base64.getEncoder().encode(data));
+                        break;
+
+                    case CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY:
+                        // do not compile: the request is just for syntax check
                 }
-
-                CompiledCodeSet codeSet = compiler.compile(sCode);
-
-                int mode = 1; // 0: temp file mode, 1: memory stream mode
-                byte[] data = null;
-
-                // write to persistent
-                if (mode == 0) {
-                    Path jarPath =
-                            ClassPathHelper.getDynamicPath().resolve(info.className + ".jar");
-                    OutputStream jarStream = Files.newOutputStream(jarPath);
-                    writeJar(codeSet, jarStream);
-                    data = Files.readAllBytes(jarPath);
-                    Files.deleteIfExists(jarPath);
-                } else {
-                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                    writeJar(codeSet, baos);
-                    data = baos.toByteArray();
-                }
-
-                info.compiledType = 1; // TODO: always jar
-                info.compiledCode = Base64.getEncoder().encode(data);
             }
         } catch (Exception e) {
             boolean hasExceptionMessage = (e.getMessage() != null && !e.getMessage().isEmpty());
-            info =
-                    new CompileInfo(
+            response =
+                    new CompileResponse(
                             -1,
                             0,
                             0,
@@ -484,13 +471,14 @@ public class ExecuteThread extends Thread {
         } finally {
             CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
 
-            info.pack(packer);
+            response.pack(packer);
             Context.getCurrentExecuteThread().sendCommand(RequestCode.COMPILE, packer.getBuffer());
         }
     }
 
     private StoredProcedure makeStoredProcedure(CUBRIDUnpacker unpacker) throws Exception {
         String methodSig = unpacker.unpackCString();
+        String compileId = unpacker.unpackCString();
         String authUser = unpacker.unpackCString();
         int lang = unpacker.unpackInt();
         int paramCount = unpacker.unpackInt();
@@ -511,7 +499,9 @@ public class ExecuteThread extends Thread {
 
         serverSideSqlForbidden = unpacker.unpackBool();
 
-        storedProcedure = new StoredProcedure(methodSig, lang, authUser, arguments, returnType);
+        storedProcedure =
+                new StoredProcedure(methodSig, compileId, lang, authUser, arguments, returnType);
+
         return storedProcedure;
     }
 

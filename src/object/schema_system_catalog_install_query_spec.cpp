@@ -496,7 +496,7 @@ sm_define_view_index_key_spec (void)
 std::string
 sm_define_view_auth_spec (void)
 {
-  char stmt [4096];
+  char stmt [8192];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof(stmt),
@@ -534,12 +534,33 @@ sm_define_view_auth_spec (void)
 	"WHERE "
           "[a].[object_of] = [s] "
           "AND [a].[object_type] = 5 "
-          "AND " AUTH_CHECK_USER ("[s].[owner].[name], [a].[grantee].[name], [a].[grantor].[name]") " ",
+          "AND " AUTH_CHECK_USER ("[s].[owner].[name], [a].[grantee].[name], [a].[grantor].[name]") " "
+   "UNION ALL "
+        "SELECT "
+	  "[a].[grantor].[name] AS [grantor_name], "
+	  "[a].[grantee].[name] AS [grantee_name], "
+          "'PACKAGE' AS [object_type], "
+          "[p].[pkg_name] AS [object_name], "
+          "[p].[owner].[name] AS [owner_name], "
+          "[a].[auth_type] AS [auth_type], "
+          "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable], "
+          "[a].[created_time] AS [created_time], "
+          "[a].[updated_time] AS [updated_time] "
+        "FROM "
+          /* CT_CLASSAUTH_NAME, CT_PACKAGE_NAME */
+	  "[%s] AS [a], [%s] AS [p] "
+	"WHERE "
+          "[a].[object_of] = [p] "
+          "AND [a].[object_type] = 6 "
+          "AND " AUTH_CHECK_USER ("[p].[owner].[name], [a].[grantee].[name], [a].[grantor].[name]") " ",
 	CT_CLASSAUTH_NAME,
         CT_CLASS_NAME,
 
         CT_CLASSAUTH_NAME,
-        CT_STORED_PROC_NAME
+        CT_STORED_PROC_NAME,
+
+        CT_CLASSAUTH_NAME,
+        CT_PACKAGE_NAME
         );
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
@@ -629,7 +650,7 @@ sm_define_view_stored_procedure_spec (void)
   int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[sp].[sp_name] AS [sp_name], "
-          "[sp].[pkg_name] AS [pkg_name], "
+          "[sp].[pkg_of].[pkg_name] AS [pkg_name], "
 	  "CASE [sp].[sp_type] WHEN 1 THEN 'PROCEDURE' ELSE 'FUNCTION' END AS [sp_type], "
 	  "CASE [sp].[return_type] "
 	    "WHEN 0 THEN 'void' "
@@ -649,7 +670,7 @@ sm_define_view_stored_procedure_spec (void)
 	    "END AS [target], "
 	  "[sp].[owner].[name] AS [owner], "
           "CASE "
-	    "WHEN " AUTH_CHECK_USER ("[sp].[owner].[name]") " THEN [sp_code].[scode] "
+	    "WHEN " AUTH_CHECK_USER ("[sp].[owner].[name]") " THEN [sp].[code].[scode] "
 	    "ELSE NULL "
 	    "END AS [code], "
         "CASE [sp].[sql_data_access] "
@@ -665,15 +686,12 @@ sm_define_view_stored_procedure_spec (void)
 	"FROM "
 	  /* CT_STORED_PROC_NAME */
 	  "[%s] AS [sp] "
-	  /* CT_STORED_PROC_CODE_NAME */
-          "LEFT OUTER JOIN [%s] AS [sp_code] ON [sp].[target_class] = [sp_code].[name] "
         "WHERE "
           "[sp].[is_system_generated] = 0 "
-          "AND " AUTH_CHECK_PRIVILEGE ("[sp].[owner].[name]", "[sp]", "EXECUTE"),
+          "AND " AUTH_CHECK_STORED_PROC ("[sp].[owner].[name]", "[sp]", "[sp].[pkg_of]"),
 	CT_DATATYPE_NAME,
 	SP_DIRECTIVE_PARALLEL_ENABLE,
-	CT_STORED_PROC_NAME,
-        CT_STORED_PROC_CODE_NAME);
+	CT_STORED_PROC_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -683,14 +701,14 @@ sm_define_view_stored_procedure_spec (void)
 std::string
 sm_define_view_stored_procedure_args_spec (void)
 {
-  char stmt [2048];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[sp].[sp_of].[sp_name] AS [sp_name], "
 	  "[sp].[sp_of].[owner].[name] AS [sp_owner_name], "
-          "CAST ([sp].[sp_of].[pkg_name] AS VARCHAR(255)) AS [pkg_name], " /* string -> varchar(255) */
+          "[sp].[sp_of].[pkg_of].[pkg_name] AS [pkg_name], "
 	  "[sp].[index_of] AS [index_of], "
 	  "[sp].[arg_name] AS [arg_name], "
 	  "CASE [sp].[data_type] "
@@ -707,7 +725,7 @@ sm_define_view_stored_procedure_args_spec (void)
 	  "[%s] AS [sp] "
         "WHERE "
           "[sp].[is_system_generated] = 0 "
-          "AND " AUTH_CHECK_PRIVILEGE ("[sp].[sp_of].[owner].[name]", "[sp].[sp_of]", "EXECUTE") " "
+          "AND " AUTH_CHECK_STORED_PROC ("[sp].[sp_of].[owner].[name]", "[sp].[sp_of]", "[sp].[sp_of].[pkg_of]") " "
 	"ORDER BY " /* Is it possible to remove ORDER BY? */
 	  "[sp].[sp_of].[sp_name], "
 	  "[sp].[index_of]",

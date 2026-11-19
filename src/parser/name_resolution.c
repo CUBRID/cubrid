@@ -3469,7 +3469,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	{
 	  method_name = PT_NAME_ORIGINAL (method_name_node);
 	}
-      if (!node->info.method_call.on_call_target && jsp_is_exist_stored_procedure (method_name))
+      if (!node->info.method_call.on_call_target && jsp_is_existing_stored_procedure (method_name))
 	{
 	  method_name_node->info.name.spec_id = (UINTPTR) method_name_node;
 	  node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name);
@@ -3622,20 +3622,32 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    pt_reset_error (parser);
 
 	    /*
-	     * jsp_is_exist_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
+	     * jsp_is_existing_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
 	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
 	     */
 	    char downcase_owner_name[DB_MAX_USER_LENGTH];
 	    downcase_owner_name[0] = '\0';
 	    char *generic_name = NULL;
+	    const char *owner_name = node->info.dot.arg1->info.name.original;
 
-	    sm_downcase_name (node->info.dot.arg1->info.name.original, downcase_owner_name, DB_MAX_USER_LENGTH);
-	    generic_name = pt_append_string (parser, downcase_owner_name, ".");
-	    generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
-	    node->info.dot.arg2->info.function.generic_name = generic_name;
-	    node->info.dot.arg1->info.name.original = generic_name;
+	    /*
+	     * The parser bounds an identifier by DB_MAX_IDENTIFIER_LENGTH, which is far more than
+	     * this buffer holds. sm_downcase_name () asserts that its input fits instead of checking
+	     * it, so a qualifier too long to be a user name must not reach it: a debug build aborts
+	     * and a release build writes past the buffer. Leaving generic_name NULL skips the stored
+	     * procedure reading of the name, which is right because no procedure can be owned by a
+	     * name that cannot be a user name.
+	     */
+	    if (intl_identifier_lower_string_size (owner_name) < DB_MAX_USER_LENGTH)
+	      {
+		sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
+		generic_name = pt_append_string (parser, downcase_owner_name, ".");
+		generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
+		node->info.dot.arg2->info.function.generic_name = generic_name;
+		node->info.dot.arg1->info.name.original = generic_name;
+	      }
 
-	    if (jsp_is_exist_stored_procedure (node->info.dot.arg2->info.function.generic_name))
+	    if (generic_name != NULL && jsp_is_existing_stored_procedure (generic_name))
 	      {
 		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		if (node1 == NULL)
@@ -3708,7 +3720,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	       * nodes PT_FUNCTION.  If so, pt_make_stored_procedure() and pt_make_method_call() will
 	       * translate it into a method_call.
 	       */
-	      sp_mop = jsp_find_stored_procedure (node->info.function.generic_name, DB_AUTH_NONE);
+	      sp_mop = jsp_find_stored_procedure (node->info.function.generic_name);
 	      if (sp_mop != NULL)
 		{
 		  sp_unique_name[0] = '\0';

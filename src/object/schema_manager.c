@@ -2245,10 +2245,6 @@ sm_user_specified_name (const char *name, char *buf, int buf_size)
   /* If the name is already a user-specified name or a system class name, do not recreate it. */
   if (dot != NULL)
     {
-      /* There must be only one dot(.) because dot(.) cannot be used in identifier names
-       * even if the exception rule is used. */
-      assert (strchr (dot + 1, '.') == NULL);
-
       assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
       assert (strlen (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
 
@@ -2425,9 +2421,9 @@ sm_qualifier_name (const char *name, char *buf, int buf_size)
       return NULL;
     }
 
-  /* There must be only one dot(.) because dot(.) cannot be used in identifier names
-   * even if the exception rule is used. */
-  assert (strchr (dot + 1, '.') == NULL);
+  /* There can be one more dot(.) only for a package routine (user_name.package_name.routine_name)
+   * because dot(.) cannot be used in identifier names even if the exception rule is used. */
+  assert (strchr (dot + 1, '.') == NULL || strchr (strchr (dot + 1, '.') + 1, '.') == NULL);
 
   qualifier_name_len = STATIC_CAST (int, dot - name);
 
@@ -2463,9 +2459,10 @@ sm_remove_qualifier_name (const char *name)
 
   dot = strchr (name, '.');
 
-  /* There must be only one dot(.) because dot(.) cannot be used in identifier names
-   * even if the exception rule is used. */
-  assert (dot == NULL || strchr (dot + 1, '.') == NULL);
+  /* There can be one more dot(.) only for a package routine (user_name.package_name.routine_name)
+   * because dot(.) cannot be used in identifier names even if the exception rule is used.
+   * Then package_name.routine_name is returned. */
+  assert (dot == NULL || strchr (dot + 1, '.') == NULL || strchr (strchr (dot + 1, '.') + 1, '.') == NULL);
 
   return dot ? (dot + 1) : name;
 }
@@ -4453,7 +4450,10 @@ sm_update_all_catalog_statistics (bool with_fullscan)
     CT_PARTITION_NAME, CT_SERIAL_NAME, CT_HA_APPLY_INFO_NAME,
     CT_COLLATION_NAME, CT_USER_NAME, CT_TRIGGER_NAME,
     CT_AUTHORIZATION_NAME, CT_CHARSET_NAME, CT_DUAL_NAME,
-    CT_SERVER_NAME, CT_SYNONYM_NAME, CT_HISTOGRAM_NAME, NULL
+    CT_SERVER_NAME, CT_SYNONYM_NAME, CT_HISTOGRAM_NAME, CT_PACKAGE_NAME,
+    CT_PACKAGE_CODE_NAME, CT_PACKAGE_VAR_NAME, CT_PACKAGE_EXCEPTION_NAME,
+    CT_PACKAGE_CURSOR_NAME, CT_PACKAGE_RECORD_TYPE_NAME,
+    NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
@@ -10675,7 +10675,7 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *const
  *   class(in): class structure
  *   subclasses(in): List of subclasses
  *   con(in): SM_CLASS_CONSTRAINT
- *          con->index(out): The BTID of the returned index. 
+ *          con->index(out): The BTID of the returned index.
  */
 
 static int

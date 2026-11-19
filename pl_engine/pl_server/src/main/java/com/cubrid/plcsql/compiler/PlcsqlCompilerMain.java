@@ -31,11 +31,14 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.Server;
-import com.cubrid.jsp.data.CompileInfo;
+import com.cubrid.jsp.data.CompileRequest;
+import com.cubrid.jsp.data.CompileResponse;
 import com.cubrid.plcsql.compiler.antlrgen.PlcLexer;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
+import com.cubrid.plcsql.compiler.ast.Decl;
 import com.cubrid.plcsql.compiler.ast.Unit;
-import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
+import com.cubrid.plcsql.compiler.ast.UnitPkg;
+import com.cubrid.plcsql.compiler.ast.UnitSp;
 import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.error.SyntaxError;
 import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
@@ -43,8 +46,10 @@ import com.cubrid.plcsql.compiler.visitor.TypeChecker;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
@@ -69,34 +74,20 @@ public class PlcsqlCompilerMain {
         }
     }
 
-    private static synchronized long getCompileSeqNo() {
-        return compileSeqNo++;
-    }
+    public static CompileResponse compilePLCSQL(
+            CompileRequest request, Set<String> referencedClasses) {
 
-    public static CompileInfo compilePLCSQL(String in, String owner, boolean verbose) {
-        return compilePLCSQL(in, verbose, owner, Long.toString(getCompileSeqNo()));
-    }
-    // end of temporary code
-
-    public static CompileInfo compilePLCSQL(
-            String in, boolean verbose, String owner, String compileSeqNo) {
-
-        // System.out.println("[TEMP] text to the compiler");
-        // System.out.println(in);
-
-        int optionFlags = verbose ? OPT_VERBOSE : 0;
-        CharStream input = CharStreams.fromString(in);
         try {
-            return compileInner(new InstanceStore(), input, optionFlags, owner, compileSeqNo);
+            return compileInner(new InstanceStore(), request, referencedClasses);
         } catch (SyntaxError e) {
-            CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
+            CompileResponse err = new CompileResponse(-1, e.line, e.column, e.getMessage());
             return err;
         } catch (SemanticError e) {
-            CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
+            CompileResponse err = new CompileResponse(-1, e.line, e.column, e.getMessage());
             return err;
         } catch (Throwable e) {
             Server.log(e);
-            CompileInfo err = new CompileInfo(-1, 0, 0, "internal error");
+            CompileResponse err = new CompileResponse(-1, 0, 0, "internal error");
             return err;
         }
     }
@@ -104,7 +95,7 @@ public class PlcsqlCompilerMain {
     public static List<CodeAndPosition> checkSyntaxAndGetStaticSqls(String code) {
 
         CharStream input = CharStreams.fromString(code);
-        PlcLexer lexer = new PlcLexerEx(input);
+        PlcLexer lexer = new PlcLexer(input);
 
         SyntaxErrorIndicator lei = new SyntaxErrorIndicator(false);
         lexer.removeErrorListeners(); // This removes unwanted console output
@@ -129,11 +120,6 @@ public class PlcsqlCompilerMain {
     // Private
     // ------------------------------------------------------------------
 
-    private static long compileSeqNo = 1;
-
-    private static final int OPT_VERBOSE = 1;
-    private static final int OPT_PRINT_PARSE_TREE = 1 << 1;
-
     private static final String STR_EXPECTING = " expecting ";
     private static final int STR_EXPECTING_LEN = STR_EXPECTING.length();
 
@@ -157,15 +143,14 @@ public class PlcsqlCompilerMain {
         return errMsg;
     }
 
-    private static ParseTree parse(
-            CharStream input, boolean verbose, String[] sqlTemplate, StringBuilder logStore) {
+    private static ParseTree parse(CharStream input, boolean verbose, StringBuilder logStore) {
 
         long t0 = 0L;
         if (verbose) {
             t0 = System.currentTimeMillis();
         }
 
-        PlcLexerEx lexer = new PlcLexerEx(input);
+        PlcLexer lexer = new PlcLexer(input);
 
         SyntaxErrorIndicator lei = new SyntaxErrorIndicator(false);
         lexer.removeErrorListeners(); // This removes unwanted console output
@@ -188,7 +173,6 @@ public class PlcsqlCompilerMain {
             logElapsedTime(logStore, "  calling parser", t0);
         }
 
-        sqlTemplate[0] = lexer.getCreateSqlTemplate();
         return ret;
     }
 
@@ -215,14 +199,27 @@ public class PlcsqlCompilerMain {
         return t;
     }
 
-    private static CompileInfo compileInner(
-            InstanceStore iStore,
-            CharStream input,
-            int optionFlags,
-            String owner,
-            String compileSeqNo) {
+    private static CompileResponse compileInner(
+            InstanceStore iStore, CompileRequest request, Set<String> referencedClasses) {
 
-        boolean verbose = (optionFlags & OPT_VERBOSE) > 0;
+        int type = request.type;
+        String code = request.code;
+        String bodyCode = request.bodyCode;
+        String owner = request.owner;
+
+        // System.out.println("[TEMP] text to the compiler");
+        // System.out.println(code);
+
+        assert (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP
+                        && !Misc.isEmptyStr(code)
+                        && Misc.isEmptyStr(bodyCode))
+                || (type == CompileRequest.PLCSQL_COMPILE_TYPE_PKG_SPEC && !Misc.isEmptyStr(code))
+                || (type == CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY
+                        && Misc.isEmptyStr(code)
+                        && !Misc.isEmptyStr(bodyCode));
+
+        boolean verbose = request.mode.contains("v");
+        boolean printParseTree = request.mode.contains("p");
 
         long t0 = 0L;
         StringBuilder logStore = null;
@@ -234,10 +231,39 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // parsing
 
-        String[] sqlTemplate = new String[1];
-        ParseTree tree = parse(input, verbose, sqlTemplate, logStore);
-        if (tree == null) {
-            throw new RuntimeException("parsing failed");
+        ParseTree codeTree = null, bodyCodeTree = null;
+
+        if (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
+            // for an SP
+
+            CharStream input = CharStreams.fromString(code);
+            codeTree = parse(input, verbose, logStore);
+            if (codeTree == null) {
+                throw new RuntimeException("parsing failed");
+            }
+        } else {
+            // for a Package
+
+            if (!Misc.isEmptyStr(bodyCode)) {
+                CharStream input = CharStreams.fromString(bodyCode);
+                bodyCodeTree = parse(input, verbose, logStore);
+                if (bodyCodeTree == null) {
+                    throw new RuntimeException("parsing failed for the package body code");
+                }
+            }
+
+            if (Misc.isEmptyStr(code)) {
+                assert type == CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY;
+                // just return:
+                // semantic check and further processes are not possible without a spec code
+                return new CompileResponse(type);
+            } else {
+                CharStream input = CharStreams.fromString(code);
+                codeTree = parse(input, verbose, logStore);
+                if (codeTree == null) {
+                    throw new RuntimeException("parsing failed for the package spec code");
+                }
+            }
         }
 
         if (verbose) {
@@ -247,51 +273,59 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // printing parse tree (optional)
 
-        if ((optionFlags & OPT_PRINT_PARSE_TREE) > 0) {
+        if (printParseTree) {
+
             // walk with a pretty printer to print parse tree
             PrintStream out = getParseTreePrinterOutStream();
             ParseTreePrinter pp = new ParseTreePrinter(out);
-            ParseTreeWalker.DEFAULT.walk(pp, tree);
+
+            if (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
+                // for SP
+                ParseTreeWalker.DEFAULT.walk(pp, codeTree);
+            } else {
+                // for Packages
+                if (codeTree != null) {
+                    ParseTreeWalker.DEFAULT.walk(pp, codeTree);
+                }
+                if (bodyCodeTree != null) {
+                    ParseTreeWalker.DEFAULT.walk(pp, bodyCodeTree);
+                }
+            }
+
             out.close();
 
             if (verbose) {
-                t0 = logElapsedTime(logStore, "printing parse tree", t0);
+                t0 = logElapsedTime(logStore, "parse tree printing", t0);
             }
         }
 
         // ------------------------------------------
         // converting parse tree to AST
 
-        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, compileSeqNo);
-        Unit unit = (Unit) converter.visit(tree);
+        Unit unit;
+        UnitSp unitSp = null;
+        UnitPkg unitPkg = null;
+        Set<String> referencedMethods = new HashSet<>();
+        ParseTreeConverter converter =
+                new ParseTreeConverter(iStore, owner, referencedClasses, referencedMethods);
+
+        if (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
+            unit = unitSp = (UnitSp) converter.visit(codeTree);
+        } else {
+            // either codeTree or bodyCodeTree can be null, but not both
+            unit = unitPkg = converter.convertPackageCode(codeTree, bodyCodeTree);
+        }
 
         if (verbose) {
             t0 = logElapsedTime(logStore, "converting to AST", t0);
         }
 
         // ------------------------------------------
-        // ask server semantic infomation
-        // . signature of a global procedure/function
-        // . whether a name represent a serial or not
-        // . type of a table column
-        converter.askServerSemanticQuestions();
-
-        if (verbose) {
-            t0 = logElapsedTime(logStore, "getting global semantics information from server", t0);
-        }
-
-        // ------------------------------------------
         // typechecking
 
-        Set<SqlUse> sqlUsesInRecursiveCalls = new HashSet<>(); // collected in TypeChecker
         TypeChecker typeChecker =
-                new TypeChecker(
-                        iStore,
-                        converter.symbolStack,
-                        converter.dependenciesOfStaticSql,
-                        owner,
-                        sqlUsesInRecursiveCalls);
-        typeChecker.visitUnit(unit);
+                new TypeChecker(iStore, converter.symbolStack, converter.dependencies, owner);
+        typeChecker.visit(unit);
 
         if (verbose) {
             t0 = logElapsedTime(logStore, "typechecking", t0);
@@ -300,7 +334,31 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // Java code generation
 
-        String javaCode = new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls).buildCodeLines(unit);
+        // Slots of the unit's two per-invocation caches. The numbers are meaningful only within
+        // this compilation: each field's size and every call site's index come from these maps.
+        //
+        //   authCheckedIndex - one slot per directly-referenced class, keyed by its class name.
+        //                      Indexes authChecked, ownerName and targetClass, all of which are a
+        //                      property of the class rather than of a single routine in it.
+        //   methodIndex      - one slot per directly-referenced method, keyed by
+        // "<class>.<method>".
+        //                      Indexes method. A package class holds several routines, so this is
+        //                      finer-grained than authCheckedIndex.
+        Map<String, Integer> authCheckedIndex = new HashMap<>();
+        int slot = 0;
+        for (String cls : referencedClasses) {
+            authCheckedIndex.put(cls, slot++);
+        }
+
+        Map<String, Integer> methodIndex = new HashMap<>();
+        slot = 0;
+        for (String mth : referencedMethods) {
+            methodIndex.put(mth, slot++);
+        }
+
+        String javaCode =
+                new JavaCodeWriter(iStore, authCheckedIndex, methodIndex, converter.unitOwner)
+                        .buildCodeLines(unit);
 
         if (verbose) {
             logElapsedTime(logStore, "Java code generation", t0);
@@ -312,16 +370,34 @@ public class PlcsqlCompilerMain {
             Server.log(unit.getClassName() + logStore.toString());
         }
 
-        String javaSig = unit.getJavaSignature();
-        CompileInfo info =
-                new CompileInfo(
-                        javaCode,
-                        sqlTemplate[0] + String.format(" '%s';", javaSig),
-                        unit.getClassName(),
-                        javaSig,
-                        converter.dataAccessLevel,
-                        typeChecker.dependencies);
-        return info;
+        if (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
+
+            return new CompileResponse(
+                    CompileRequest.PLCSQL_COMPILE_TYPE_SP,
+                    javaCode,
+                    unitSp.getClassName(),
+                    unitSp.getJavaSignature(),
+                    unitSp.routine.sqlDataAccess,
+                    typeChecker.dependencies);
+        } else if (type == CompileRequest.PLCSQL_COMPILE_TYPE_PKG_SPEC) {
+
+            CompileResponse resp =
+                    new CompileResponse(
+                            CompileRequest.PLCSQL_COMPILE_TYPE_PKG_SPEC,
+                            javaCode,
+                            unitPkg.getClassName(),
+                            typeChecker.dependencies);
+
+            assert converter.pkgSpecItems != null;
+            for (Decl d : converter.pkgSpecItems.nodes) {
+                d.addAsPkgItem(resp);
+            }
+
+            return resp;
+        } else {
+            assert false;
+            return null;
+        }
     }
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {

@@ -36,12 +36,8 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclForIter extends DeclId {
 
-    public final String name;
-
     public DeclForIter(ParserRuleContext ctx, String name) {
-        super(ctx);
-
-        this.name = name;
+        super(ctx, name, null);
     }
 
     // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following method
@@ -54,11 +50,6 @@ public class DeclForIter extends DeclId {
     @Override
     public Type type() {
         return Type.INT;
-    }
-
-    @Override
-    public String name() {
-        return name;
     }
 
     @Override

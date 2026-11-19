@@ -4394,8 +4394,8 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 {
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
-  DB_VALUE unique_name_val, sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, lang_val, generated_val, args_val,
-    rtn_type_val, class_val, method_val, directive_val, comment_val;
+  DB_VALUE unique_name_val, sp_name_val, pkg_name_val, pkg_of_val, sp_type_val, arg_cnt_val, lang_val, generated_val,
+    args_val, rtn_type_val, class_val, method_val, directive_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
   int sp_lang, sp_type, rtn_type, arg_cnt, directive, save;
   DB_SET *arg_set;
@@ -4408,7 +4408,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 
   AU_SAVE_AND_DISABLE (save);
 
-  cls = db_find_class (SP_CLASS_NAME);
+  cls = db_find_class (CT_STORED_PROC_NAME);
   if (cls == NULL)
     {
       AU_RESTORE (save);
@@ -4454,7 +4454,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
       if ((err = db_get (obj, SP_ATTR_SP_TYPE, &sp_type_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_UNIQUE_NAME, &unique_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_SP_NAME, &sp_name_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_PKG_NAME, &pkg_name_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_PKG_OF, &pkg_of_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARGS, &args_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_RETURN_TYPE, &rtn_type_val)) != NO_ERROR
@@ -4477,11 +4477,13 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
       PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			sizeof (output_owner));
 
-      if (!DB_IS_NULL (&pkg_name_val))
+      if (!DB_IS_NULL (&pkg_of_val)
+	  && db_get (db_get_object (&pkg_of_val), PKG_ATTR_PKG_NAME, &pkg_name_val) == NO_ERROR)
 	{
 	  const char *pkg_name = db_get_string (&pkg_name_val);
 	  output_ctx (" %s%s%s.%s%s%s (", PRINT_IDENTIFIER (pkg_name), PRINT_IDENTIFIER (sp_name));
 	  db_value_clear (&pkg_name_val);
+	  db_value_clear (&pkg_of_val);
 	}
       else
 	{
@@ -4601,7 +4603,7 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
 
   AU_SAVE_AND_DISABLE (save);
 
-  cls = db_find_class (SP_CLASS_NAME);
+  cls = db_find_class (CT_STORED_PROC_NAME);
   if (cls == NULL)
     {
       AU_RESTORE (save);
@@ -4699,7 +4701,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
   AU_SAVE_AND_DISABLE (save);
 
   db_make_string (&value, code_name);
-  obj = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_CODE_ATTR_NAME, &value);
+  obj = db_find_unique (db_find_class (CT_STORED_PROC_CODE_NAME), SP_CODE_ATTR_NAME, &value);
   if (obj == NULL)
     {
       err = ER_FAILED;
@@ -6076,7 +6078,7 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
 	  err = au_export_grants (ctxt, output_ctx, cl->op, DB_OBJECT_CLASS);
 	}
 
-      sp_list = db_get_all_objects (db_find_class (SP_CLASS_NAME));
+      sp_list = db_get_all_objects (db_find_class (CT_STORED_PROC_NAME));
       for (cls = sp_list; cls; cls = cls->next)
 	{
 	  if (!(ctxt.is_dba_user || ctxt.is_dba_group_member))

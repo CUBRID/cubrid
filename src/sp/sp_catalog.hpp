@@ -23,8 +23,8 @@
  * Note: _db_stored_proceudre, _db_stored_procedure_args
  */
 
-#ifndef _SP_DEFINITION_HPP_
-#define _SP_DEFINITION_HPP_
+#ifndef _SP_CATALOG_HPP_
+#define _SP_CATALOG_HPP_
 
 #include <string>
 #include <vector>
@@ -32,9 +32,6 @@
 #include "jsp_cl.h"
 #include "dbi.h"
 #include "sp_constants.hpp"
-
-#define SAVEPOINT_ADD_STORED_PROC "ADDSTOREDPROC"
-#define SAVEPOINT_CREATE_STORED_PROC "CREATESTOREDPROC"
 
 enum sp_source_code_type
 {
@@ -72,7 +69,7 @@ struct sp_arg_info
   bool is_optional;
   std::string comment;
 
-  sp_arg_info (const std::string& s_name) 
+  sp_arg_info (const std::string& s_name)
   : sp_name {s_name}
   , index_of {SP_TYPE_ENUM::SP_TYPE_PROCEDURE}
   , is_system_generated {false}
@@ -102,6 +99,8 @@ typedef sp_directive SP_DIRECTIVE_ENUM;
 struct sp_code_info
 {
   std::string name;
+  std::string compile_id;
+  MOP sp_of;                    /* the routine this code belongs to */
   std::string created_time;
   MOP owner;
   int is_static;
@@ -117,7 +116,7 @@ struct sp_info
 {
   std::string unique_name;
   std::string sp_name;
-  std::string pkg_name;
+  MOP pkg_of;                   /* the package this routine belongs to, NULL if standalone */
   SP_TYPE_ENUM sp_type;
   DB_TYPE return_type;
   bool is_system_generated;
@@ -132,10 +131,10 @@ struct sp_info
   DB_DATETIME created_time;
   DB_DATETIME updated_time;
 
-  sp_info () 
+  sp_info ()
   : unique_name {}
   , sp_name {}
-  , pkg_name {}
+  , pkg_of {nullptr}
   , sp_type {SP_TYPE_ENUM::SP_TYPE_PROCEDURE}
   , return_type {DB_TYPE::DB_TYPE_NULL}
   , is_system_generated {false}
@@ -157,9 +156,9 @@ typedef sp_info SP_INFO;
 int sp_builtin_install ();
 
 // insert into system catalogs
-int sp_add_stored_procedure (SP_INFO &info);
+int sp_add_stored_procedure (MOP *mop_p, SP_INFO &info);
 int sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info);
-int sp_add_stored_procedure_code (SP_CODE_INFO &info);
+int sp_add_stored_procedure_code (MOP *mop_p, SP_CODE_INFO &info);
 
 // update into system catalogs
 int sp_replace_stored_procedure (MOP sp_mop, SP_INFO &info);
@@ -170,7 +169,10 @@ std::string sp_get_entry_name (int index);
 std::string sp_args_get_entry_name (int index);
 
 // misc
-void sp_normalize_name (std::string &s);
 void sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth);
 
-#endif // _SP_DEFINITION_HPP_
+// package
+MOP sp_find_pkg_var (const char *pkg_unique_name, const char *name);
+MOP sp_find_pkg_cursor (const char *pkg_unique_name, const char *name);
+
+#endif // _SP_CATALOG_HPP_

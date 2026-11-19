@@ -32,9 +32,7 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Scope;
 import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
-import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprLocalFuncCall extends Expr implements LocalRoutineCall {
@@ -47,9 +45,9 @@ public class ExprLocalFuncCall extends Expr implements LocalRoutineCall {
     }
 
     @Override
-    public void markAsReachableFromLoop(Set<SqlUse> accum) {
+    public void markAsReachableFromLoop() {
         this.reachableFromLoop = true;
-        decl.markAsCalledFromLoop(accum);
+        decl.markAsCalledFromLoop();
     }
 
     @Override
@@ -76,6 +74,6 @@ public class ExprLocalFuncCall extends Expr implements LocalRoutineCall {
         this.args = args;
         this.scope = scope;
         this.decl = decl;
-        prefixDeclBlock = decl.scope().declDone;
+        prefixDeclBlock = decl.scope.declDone;
     }
 }

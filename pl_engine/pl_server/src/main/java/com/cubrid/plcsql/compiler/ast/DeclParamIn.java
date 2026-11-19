@@ -30,24 +30,33 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclParamIn extends DeclParam {
 
     public boolean hasDefault() {
-        return defaultVal != null;
+        return hasDefault;
     }
 
-    public final Expr defaultVal;
+    private final boolean hasDefault;
+    public Expr defaultVal; // a routine parameter gets it when the routine declaration is visited
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitDeclParamIn(this);
     }
 
-    public DeclParamIn(ParserRuleContext ctx, String name, TypeSpec typeSpec, Expr defaultVal) {
-        super(ctx, name, typeSpec);
+    public DeclParamIn(
+            ParserRuleContext ctx,
+            String name,
+            String comment,
+            TypeSpec typeSpec,
+            boolean hasDefault,
+            Expr defaultVal) {
+        super(ctx, name, comment, typeSpec);
+        this.hasDefault = hasDefault;
         this.defaultVal = defaultVal;
     }
 
@@ -56,7 +65,33 @@ public class DeclParamIn extends DeclParam {
         return "in-parameter";
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || o.getClass() != DeclParamIn.class) {
+            return false;
+        }
+
+        DeclParamIn other = (DeclParamIn) o;
+        return this.name.equals(other.name) && this.typeSpec.isSameAs(other.typeSpec);
+    }
+
+    @Override
+    public int hashCode() {
+        return name.hashCode() + typeSpec.type.hashCode();
+    }
+
+    @Override
     public String toJavaSignature() {
         return String.format("%s", typeSpec.type.fullJavaType);
+    }
+
+    @Override
+    public int getMode() {
+        return ServerConstants.SP_PARAM_MODE_IN;
+    }
+
+    @Override
+    public String getDefaultValStr() {
+        return (defaultVal == null) ? null : defaultVal.ctx.getText();
     }
 }

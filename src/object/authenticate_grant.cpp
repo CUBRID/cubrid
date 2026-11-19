@@ -47,10 +47,13 @@
 #endif /* SA_MODE */
 
 static int au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
-static int au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option);
+static int au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, bool grant_option);
 
 static int au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user);
-static int au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user);
+static int au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user);
+static int au_check_system_generated_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP obj_mop, const char *op);
+static bool au_is_function (MOP sp_mop);
+static const char *au_get_glossary_of_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP obj_mop);
 
 static int check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type);
 static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked_grant_index,
@@ -95,7 +98,8 @@ au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type, bool g
       break;
 
     case DB_OBJECT_PROCEDURE:
-      error = au_grant_procedure (user, class_mop, type, grant_option);
+    case DB_OBJECT_PACKAGE:
+      error = au_grant_proc_or_pkg (obj_type, user, class_mop, type, grant_option);
       break;
     default:
       error = ER_FAILED;
@@ -311,8 +315,70 @@ fail_end:
   return (error);
 }
 
+/*
+ * au_check_system_generated_proc_or_pkg - refuse GRANT/REVOKE on a system generated package or procedure
+ *                                         by a non-DBA
+ *   return: error code
+ *   obj_type(in): DB_OBJECT_PACKAGE or DB_OBJECT_PROCEDURE
+ *   obj_mop(in): package or procedure object
+ *   op(in): "GRANT" or "REVOKE", for the error message
+ */
 static int
-au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
+au_check_system_generated_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP obj_mop, const char *op)
+{
+  bool is_system = false;
+  int error = (obj_type == DB_OBJECT_PACKAGE) ? jsp_is_system_generated_pkg (obj_mop, &is_system)
+	      : jsp_is_system_generated_sp (obj_mop, &is_system);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  /* a system generated object is owned by PUBLIC, of which every user is a member, so only the DBA group can */
+  if (is_system && !au_is_dba_group_member (Au_user))
+    {
+      char what[64];
+      snprintf (what, sizeof (what), "%s on a system generated %s", op,
+		(obj_type == DB_OBJECT_PACKAGE) ? "package" : au_is_function (obj_mop) ? "function" : "procedure");
+      error = ER_AU_DBA_ONLY;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, what);
+    }
+
+  return error;
+}
+
+/*
+ * au_is_function - check whether a stored procedure object is a function
+ *   return: true if it is a function
+ *   sp_mop(in): stored procedure object
+ */
+static bool
+au_is_function (MOP sp_mop)
+{
+  DB_VALUE sp_type;
+
+  return db_get (sp_mop, SP_ATTR_SP_TYPE, &sp_type) == NO_ERROR && db_get_int (&sp_type) == SP_TYPE_FUNCTION;
+}
+
+/*
+ * au_get_glossary_of_proc_or_pkg - get the word for a package, procedure or function in the messages
+ *   return: the word
+ *   obj_type(in): DB_OBJECT_PACKAGE or DB_OBJECT_PROCEDURE
+ *   obj_mop(in): package or procedure object
+ */
+static const char *
+au_get_glossary_of_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP obj_mop)
+{
+  if (obj_type == DB_OBJECT_PACKAGE)
+    {
+      return MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PACKAGE);
+    }
+
+  return MSGCAT_GET_GLOSSARY_MSG (au_is_function (obj_mop) ? MSGCAT_GLOSSARY_FUNCTION : MSGCAT_GLOSSARY_PROCEDURE);
+}
+
+static int
+au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 {
   int error = NO_ERROR;
   DB_VALUE value;
@@ -324,13 +390,19 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
   assert (type == AU_EXECUTE);
 
   AU_SAVE_AND_DISABLE (save);
-  MOP sp_owner = jsp_get_owner (obj_mop);
+  MOP owner = jsp_get_owner (obj_mop);
+
+  error = au_check_system_generated_proc_or_pkg (obj_type, obj_mop, "GRANT");
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
   /*
-   * The WITH GRANT OPTION is not yet supported for stored procedures.
+   * The WITH GRANT OPTION is not yet supported for stored procedures and packages.
    * Therefore, only the DBA, member of the DBA group, and the owner can grant privileges.
    */
-  if (!au_is_dba_group_member (Au_user) && !au_is_user_group_member (sp_owner, Au_user))
+  if (!au_is_dba_group_member (Au_user) && !au_is_user_group_member (owner, Au_user))
     {
       error = ER_AU_OWNER_ONLY_GRANT_PRIVILEGE;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "EXECUTE");
@@ -348,12 +420,12 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
     }
   else
     {
-      if (ws_is_same_object (sp_owner, user))
+      if (ws_is_same_object (owner, user))
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, au_get_glossary_of_proc_or_pkg (obj_type, obj_mop));
 	}
-      else if ((error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, sp_owner, NULL)) != NO_ERROR)
+      else if ((error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, owner, NULL)) != NO_ERROR)
 	{
 	  goto end;
 	}
@@ -403,14 +475,14 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 		  if (ins_bits)
 		    {
 		      error =
-			      accessor.insert_auth (DB_OBJECT_PROCEDURE, grantor, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
+			      accessor.insert_auth (obj_type, grantor, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
 		    }
 
 		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
 		  if ((error == NO_ERROR) && upd_bits)
 		    {
 		      error =
-			      accessor.update_auth (DB_OBJECT_PROCEDURE, grantor, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
+			      accessor.update_auth (obj_type, grantor, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
 		    }
 		}
 
@@ -422,7 +494,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 		}
 
 	      current |= (int) type;
-	      /* TODO: no grant option for procedure */
+	      /* TODO: no grant option for procedure/package */
 	      /*
 	      if (grant_option)
 	        {
@@ -434,7 +506,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	      if (gindex == -1)
 		{
 		  /* There is no grant entry, add a new one. */
-		  gindex = add_grant_entry (grants, DB_OBJECT_PROCEDURE, obj_mop, grantor);
+		  gindex = add_grant_entry (grants, obj_type, obj_mop, grantor);
 		}
 	      set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
 	      set_free (grants);
@@ -447,10 +519,10 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 		}
 
 	      /*
-	       * clear the cache for this user/procedure pair to make sure we
+	       * clear the cache for this user and procedure/package pair to make sure we
 	       * recalculate it the next time it is referenced
 	       */
-	      Au_cache.reset_cache_for_user_and_procedure (obj_mop);
+	      Au_cache.reset_cache_for_user_and_proc_or_pkg (obj_mop);
 
 	      /*
 	       * Make sure any cached parse trees are rebuild.  This proabably
@@ -494,7 +566,8 @@ au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, MOP dro
       break;
 
     case DB_OBJECT_PROCEDURE:
-      error = au_revoke_procedure (user, obj_mop, type, drop_user);
+    case DB_OBJECT_PACKAGE:
+      error = au_revoke_proc_or_pkg (obj_type, user, obj_mop, type, drop_user);
       break;
     default:
       error = ER_FAILED;
@@ -723,7 +796,7 @@ fail_end:
 }
 
 static int
-au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
+au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 {
   int error = NO_ERROR;
   DB_SET *grants = NULL;
@@ -731,7 +804,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
   int save = 0, current = 0, gindex, mask, savepoint_revoke = 0;
   AU_GRANT *grant_list;
   DB_VALUE cache_element;
-  MOP sp_owner;
+  MOP owner;
   MOP grantor = NULL;
 
   AU_SAVE_AND_DISABLE (save);
@@ -742,8 +815,8 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
       goto fail_end;
     }
 
-  sp_owner = jsp_get_owner (obj_mop);
-  if (sp_owner == NULL)
+  owner = jsp_get_owner (obj_mop);
+  if (owner == NULL)
     {
       error = ER_FAILED;
       goto fail_end;
@@ -751,35 +824,41 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 
   if (error == NO_ERROR)
     {
-      if (ws_is_same_object (sp_owner, user))
+      if (ws_is_same_object (owner, user))
 	{
 	  error = ER_AU_CANT_REVOKE_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, au_get_glossary_of_proc_or_pkg (obj_type, obj_mop));
 	  goto fail_end;
 	}
 
-      /* GRANT OPTION is not supported yet for stored procedure
+      /* GRANT OPTION is not supported yet for stored procedures and packages
          error = check_grant_option (class_mop, obj_mop, type);
          if (error != NO_ERROR)
          {
          goto fail_end;
          }
        */
+      error = au_check_system_generated_proc_or_pkg (obj_type, obj_mop, "REVOKE");
+      if (error != NO_ERROR)
+	{
+	  goto fail_end;
+	}
+
       /*
-       * The WITH GRANT OPTION is not yet supported for stored procedures.
+       * The WITH GRANT OPTION is not yet supported for stored procedures and packages.
        * Therefore, if the user is not the dba group or owner, the same error as grant/revoke_class is output.
        * example:
        *   call login(class db_user,'public','');
        *   REVOKE EXECUTE ON PROCEDURE u1.hello FROM u2;
        */
-      if (!au_is_dba_group_member (Au_user) && !au_is_user_group_member (sp_owner, Au_user))
+      if (!au_is_dba_group_member (Au_user) && !au_is_user_group_member (owner, Au_user))
 	{
 	  error = ER_AU_EXECUTE_FAILURE;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	  goto fail_end;
 	}
 
-      error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, sp_owner, drop_user);
+      error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, owner, drop_user);
       if (error != NO_ERROR)
 	{
 	  goto fail_end;
@@ -848,7 +927,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 		  mask = (int) ~ (type | (type << AU_GRANT_SHIFT));
 
 		  /* propagate the revoke to the affected classes */
-		  if ((error = propagate_revoke (DB_OBJECT_PROCEDURE, grant_list, sp_owner, (DB_AUTH) mask)) == NO_ERROR)
+		  if ((error = propagate_revoke (obj_type, grant_list, owner, (DB_AUTH) mask)) == NO_ERROR)
 		    {
 
 		      /*
@@ -872,14 +951,14 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 		       * it is referenced
 		       */
 		      // TODO: CBRD-24912
-		      // reset_cache_for_user_and_procedure (obj_mop);
+		      // reset_cache_for_user_and_proc_or_pkg (obj_mop);
 
 #if defined(SA_MODE)
 		      if (catcls_Enable == true)
 			{
 #endif /* SA_MODE */
 			  au_auth_accessor accessor;
-			  error = accessor.delete_auth (DB_OBJECT_PROCEDURE, grantor, user, obj_mop, type);
+			  error = accessor.delete_auth (obj_type, grantor, user, obj_mop, type);
 #if defined(SA_MODE)
 			}
 #endif /* SA_MODE */
@@ -1990,7 +2069,8 @@ au_compare_grantor_and_return (MOP *grantor, MOP obj_mop, DB_AUTH type, MOP logi
 	   * 1. gsize == 0: Indicates no prior authorization
 	   *    When the grants column in the _db_authorization catalog is empty.
 	   * 2. db_get_object(&element) != obj_mop: Indicates that permissions exist for other objects but not for the current one
-	   *    When the grants column in the _db_authorization catalog contains permissions for other objects (such as classes or procedures), but lacks permissions for the obj_mop object.
+	   *    When the grants column in the _db_authorization catalog contains permissions for other objects
+	   *    (such as classes,  procedures, and packages), but lacks permissions for the obj_mop object.
 	   */
 	  if (error == NO_ERROR && *grantor == NULL)
 	    {
@@ -2054,15 +2134,18 @@ au_print_grants (MOP auth, FILE *fp)
     }
 }
 
-int
-au_check_procedure_authorization (MOP procedure_mop)
+// Check that the current user has AU_EXECUTE on the given routine/package object.
+// A stored procedure and a package share the same authorization cache and the same "owner"
+// attribute, so a single implementation serves both, parameterized by obj_type.
+static int
+au_check_execute_authorization (MOP obj_mop, DB_OBJECT_TYPE obj_type)
 {
   int error = NO_ERROR;
   DB_VALUE owner;
   MOP owner_mop;
 
-  // if procedure cache does not exist, update the procedure cache
-  uint32_t *bits = Au_cache.get_procedure_cache_bits (procedure_mop);
+  // if the cache does not exist, update it
+  uint32_t *bits = Au_cache.get_proc_or_pkg_cache_bits (obj_mop);
   if (bits == NULL)
     {
       assert (false);
@@ -2073,14 +2156,14 @@ au_check_procedure_authorization (MOP procedure_mop)
     {
       if (*bits == AU_CACHE_INVALID)
 	{
-	  error = db_get (procedure_mop, SP_ATTR_OWNER, &owner);
+	  error = db_get (obj_mop, CT_COMMON_ATTR_OWNER, &owner);
 	  owner_mop = db_get_object (&owner);
 
 	  /* update the cache and try again */
-	  error = Au_cache.update (DB_OBJECT_PROCEDURE, procedure_mop, owner_mop);
+	  error = Au_cache.update (obj_type, obj_mop, owner_mop);
 	  if (error == NO_ERROR)
 	    {
-	      bits = Au_cache.get_procedure_cache_bits (procedure_mop);
+	      bits = Au_cache.get_proc_or_pkg_cache_bits (obj_mop);
 	      if (bits == NULL)
 		{
 		  return er_errid ();
@@ -2100,6 +2183,18 @@ au_check_procedure_authorization (MOP procedure_mop)
     }
 
   return error;
+}
+
+int
+au_check_procedure_authorization (MOP procedure_mop)
+{
+  return au_check_execute_authorization (procedure_mop, DB_OBJECT_PROCEDURE);
+}
+
+int
+au_check_package_authorization (MOP package_mop)
+{
+  return au_check_execute_authorization (package_mop, DB_OBJECT_PACKAGE);
 }
 
 #if defined (SA_MODE)

@@ -30,49 +30,81 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.jsp.data.CompileResponse;
+import com.cubrid.jsp.data.DBType;
+import com.cubrid.plcsql.compiler.Misc;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
 import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
+import com.cubrid.plcsql.compiler.error.SemanticError;
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.type.Type;
+import java.util.Locale;
 import java.util.Set;
 import java.util.Stack;
 import org.antlr.v4.runtime.ParserRuleContext;
+import org.antlr.v4.runtime.tree.ParseTree;
+import org.antlr.v4.runtime.tree.TerminalNode;
 
 public abstract class DeclRoutine extends Decl {
+
+    public static final int DIRECTIVE_AUTHID_CALLER = 1;
+    public static final int DIRECTIVE_DETERMINISTIC = (1 << 1);
+    public static final int DIRECTIVE_PARALLEL_ENABLE = (1 << 2);
 
     // not contained in a loop but reachable from it including the case of (mutually) recursive
     // calls
     public boolean calledFromLoop;
 
-    public void markAsCalledFromLoop(Set<SqlUse> accum) {
+    public void markAsCalledFromLoop() {
 
-        assert loopOptimizables != null;
+        // Calls to DBMS_OUTPUT package members are deemed local routine calls (TODO: fix)
+        // and the bogus declarations of DBMS_OUTPUT package members in SymbolStack do not have
+        // loopOptimizables
+        if (loopOptimizables == null) {
+            return;
+        }
 
-        if (!calledFromLoop) { // must be marked only once
+        // must be marked only once
+        if (calledFromLoop) {
+            return;
+        }
 
-            calledFromLoop = true; // mark as reachable from at least one loop
+        if (sqlUsesOfTopLevel != null) {
+            // a top level routine runs in a new Java method frame per call, so marking its sql uses
+            // for being called from a loop or a cycle has no performance benefit
+            return;
+        }
 
-            // collect sql uses in this routine decl into the accum
-            for (SqlUse n : loopOptimizables.sqlUses) {
-                boolean added = accum.add(n);
-                assert added; // because this routine declaration is first visited
-                assert !n.reachableFromLoop();
-                n.markAsReachableFromLoop();
-            }
+        calledFromLoop = true; // mark as reachable from at least one loop
 
-            // recursively mark the reachable local routine calls
-            for (LocalRoutineCall lrc : loopOptimizables.localRoutineCalls) {
-                lrc.getDecl().markAsCalledFromLoop(accum);
-            }
+        for (SqlUse n : loopOptimizables.sqlUses) {
+            n.markAsReachableFromLoop();
+        }
+
+        // recursively mark the reachable local routine calls
+        for (LocalRoutineCall lrc : loopOptimizables.localRoutineCalls) {
+            lrc.getDecl().markAsCalledFromLoop();
         }
     }
 
-    public DeclRoutine visitToFindRecursiveCalls(Set<SqlUse> accum, Stack<DeclRoutine> calls) {
+    public DeclRoutine visitToFindRecursiveCalls(Stack<DeclRoutine> calls) {
 
+        // Calls to DBMS_OUTPUT package members are deemed local routine calls (TODO: fix)
+        // and the bogus declarations of DBMS_OUTPUT package members in SymbolStack do not have
+        // loopOptimizables
         if (loopOptimizables == null) {
-            return null; // TODO: self recursive routine. optimize this case too
+            return null;
         }
 
         if (calledFromLoop) {
+            // already marked
+            return null;
+        }
+
+        if (sqlUsesOfTopLevel != null) {
+            // optimizing sql uses in a cycle containing a top level routine
+            // does not have a performance benefit
             return null;
         }
 
@@ -88,35 +120,24 @@ public abstract class DeclRoutine extends Decl {
 
         for (LocalRoutineCall lrc : loopOptimizables.localRoutineCalls) {
 
-            DeclRoutine r = lrc.getDecl().visitToFindRecursiveCalls(accum, calls);
+            DeclRoutine r = lrc.getDecl().visitToFindRecursiveCalls(calls);
             if (r != null) {
                 // this routine is on a loop of recursive calls
 
-                if (!calledFromLoop) { // must be marked only once
+                markAsCalledFromLoop();
 
-                    calledFromLoop = true;
-
-                    // collect sql uses in this routine decl into the accum
-                    for (SqlUse n : loopOptimizables.sqlUses) {
-                        boolean added = accum.add(n);
-                        assert added; // because this routine declaration is first visited
-                        assert !n.reachableFromLoop();
-                        n.markAsReachableFromLoop();
-                    }
-                }
-
-                int indexInCalls = calls.indexOf(r);
-                if (indexInCalls < callsSize - 1) {
+                int indexOfRinCalls = calls.indexOf(r);
+                if (indexOfRinCalls < callsSize - 1) {
                     // only when the head is lower than this routine.
 
                     if (lowestRecCallHead == null) {
                         // never set
                         lowestRecCallHead = r;
-                        lowestIndex = indexInCalls;
-                    } else if (indexInCalls < lowestIndex) {
+                        lowestIndex = indexOfRinCalls;
+                    } else if (indexOfRinCalls < lowestIndex) {
                         // lower one found
                         lowestRecCallHead = r;
-                        lowestIndex = indexInCalls;
+                        lowestIndex = indexOfRinCalls;
                     }
                 }
             }
@@ -127,33 +148,70 @@ public abstract class DeclRoutine extends Decl {
         return lowestRecCallHead;
     }
 
-    public boolean isNotContainedInLoop() {
-        return (loopOptimizables != null);
-    }
-
-    public final String name;
+    public Set<SqlUse> sqlUsesOfTopLevel;
     public StmtLoop.LoopOptimizables loopOptimizables;
+    public final boolean isPublic;
     public final NodeList<DeclParam> paramList;
+    public final int directive;
     public final TypeSpec retTypeSpec;
     public NodeList<Decl> decls;
     public Body body;
+    public int sqlDataAccess;
 
     public DeclRoutine(
             ParserRuleContext ctx,
             String name,
+            String comment,
+            Set<SqlUse> sqlUsesOfTopLevel,
             StmtLoop.LoopOptimizables loopOptimizables,
+            boolean isPublic,
             NodeList<DeclParam> paramList,
+            int directive,
             TypeSpec retTypeSpec,
             NodeList<Decl> decls,
             Body body) {
-        super(ctx);
+        super(ctx, name, comment);
 
-        this.name = name;
+        this.sqlUsesOfTopLevel = sqlUsesOfTopLevel;
         this.loopOptimizables = loopOptimizables;
+        this.isPublic = isPublic;
         this.paramList = paramList;
+        this.directive = directive;
         this.retTypeSpec = retTypeSpec;
         this.decls = decls;
         this.body = body;
+    }
+
+    public String getJavaSignature() {
+        String ret;
+        if (paramList == null) {
+            ret = String.format("%s()", name);
+        } else {
+            boolean first = true;
+            StringBuffer sbuf = new StringBuffer();
+            for (DeclParam dp : paramList.nodes) {
+                if (first) {
+                    first = false;
+                } else {
+                    sbuf.append(",");
+                }
+
+                sbuf.append(dp.toJavaSignature());
+            }
+
+            ret = String.format("%s(%s)", name, sbuf.toString());
+        }
+
+        if (retTypeSpec == null) {
+            return ret;
+        } else {
+            return (ret + " return " + retTypeSpec.type.fullJavaType);
+        }
+    }
+
+    @Override
+    public boolean lackOfBody() {
+        return body == null && bodyDecl == null;
     }
 
     public boolean hasTimestampParam() {
@@ -170,10 +228,123 @@ public abstract class DeclRoutine extends Decl {
     }
 
     public String getDeclBlockName() {
-        return name.toLowerCase() + '_' + (scope.level + 1);
+        // name came from Misc.getNormalizedText (), so case-convert it back the same way
+        return name.toLowerCase(Locale.ROOT) + '_' + (scope.level + 1);
     }
 
     public boolean isProcedure() {
         return (retTypeSpec == null);
+    }
+
+    @Override
+    public void addAsPkgItem(CompileResponse resp) {
+
+        int sda = ServerConstants.SP_SQL_TYPE_NO_SQL;
+        if (body != null) {
+            sda = sqlDataAccess;
+        } else if (bodyDecl != null) {
+            sda = ((DeclRoutine) bodyDecl).sqlDataAccess;
+        } else {
+            // NOTE: a forward decl of routine in a package without a body decl is allowed to
+            // create.
+            // but, invoking it results in an error at runtime.
+        }
+
+        CompileResponse.PkgSp pkgSp =
+                new CompileResponse.PkgSp(
+                        getJavaSignature(),
+                        name,
+                        isProcedure()
+                                ? ServerConstants.SP_TYPE_PROCEDURE
+                                : ServerConstants.SP_TYPE_FUNCTION,
+                        isProcedure() ? 0 : getRetDbType(),
+                        directive,
+                        sda,
+                        comment);
+
+        for (DeclParam dp : paramList.nodes) {
+            pkgSp.addArg(
+                    dp.name,
+                    dp.typeSpec.type.dbType,
+                    dp.getMode(),
+                    dp.getDefaultValStr(),
+                    dp.comment);
+        }
+
+        resp.addPkgSp(pkgSp);
+    }
+
+    private int getRetDbType() {
+        if (retTypeSpec.type == Type.SYS_REFCURSOR) {
+            // as the return type SYS_REFCURSOR of stored functions
+            return DBType.DB_RESULTSET;
+        } else {
+            return retTypeSpec.type.dbType;
+        }
+    }
+
+    private boolean hasBodyText() {
+        return ((PlcParser.Routine_declContext) ctx).body() != null;
+    }
+
+    // the normalized text of the routine header without the comments of the parameters, which,
+    // like the comment of the routine, need not match between the specification and the body
+    private String getHeaderText() {
+        return normalizeHeader(((PlcParser.Routine_declContext) ctx).routine_header());
+    }
+
+    private static String normalizeHeader(ParseTree t) {
+
+        if (t instanceof TerminalNode) {
+            return Misc.getNormalizedText(t);
+        }
+
+        TerminalNode comment = null;
+        TerminalNode commentStr = null;
+        if (t instanceof PlcParser.Parameter_inContext) {
+            comment = ((PlcParser.Parameter_inContext) t).COMMENT();
+            commentStr = ((PlcParser.Parameter_inContext) t).CHAR_STRING();
+        } else if (t instanceof PlcParser.Parameter_outContext) {
+            comment = ((PlcParser.Parameter_outContext) t).COMMENT();
+            commentStr = ((PlcParser.Parameter_outContext) t).CHAR_STRING();
+        }
+
+        StringBuilder sbuf = new StringBuilder();
+        for (int i = 0; i < t.getChildCount(); i++) {
+            ParseTree child = t.getChild(i);
+            if (child == comment || child == commentStr) {
+                continue;
+            }
+            if (sbuf.length() > 0) {
+                sbuf.append(' ');
+            }
+            sbuf.append(normalizeHeader(child));
+        }
+        return sbuf.toString();
+    }
+
+    @Override
+    public boolean givesBodyOf(Decl d) {
+
+        if (d == null || this.getClass() != d.getClass() || !this.name.equals(d.name)) {
+            return false;
+        }
+
+        DeclRoutine other = (DeclRoutine) d;
+
+        // this must have a body and the other may not
+        if (!this.hasBodyText() || other.hasBodyText()) {
+            return false;
+        }
+
+        if (!this.getHeaderText().equals(other.getHeaderText())) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(this.ctx), // s114
+                    String.format(
+                            "the header of %s %s in the package body does not match that in the package specification",
+                            kind(), name));
+        }
+
+        return true;
     }
 }

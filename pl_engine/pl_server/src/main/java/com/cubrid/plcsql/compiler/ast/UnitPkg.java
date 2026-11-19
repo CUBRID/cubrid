@@ -30,20 +30,38 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.type.Type;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.sql.*;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class DeclIdTypeSpeced extends DeclId {
-
-    public DeclIdTypeSpeced(ParserRuleContext ctx) {
-        super(ctx);
-    }
-
-    public abstract TypeSpec typeSpec();
+public class UnitPkg extends Unit {
 
     @Override
-    public Type type() {
-        return typeSpec().type;
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitUnitPkg(this);
     }
 
+    public final DeclPackage pkg;
+
+    public UnitPkg(
+            ParserRuleContext ctx, boolean connectionRequired, String owner, DeclPackage pkg) {
+        super(ctx, connectionRequired, owner);
+
+        this.pkg = pkg;
+    }
+
+    public String getClassName() {
+
+        if (className == null) {
+            className = encodeClassName("Pckg", owner, pkg.name);
+        }
+
+        return className;
+    }
+
+    // ------------------------------------------
+    // Private
+    // ------------------------------------------
+
+    private String className;
 }

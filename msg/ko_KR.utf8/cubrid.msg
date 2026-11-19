@@ -215,7 +215,7 @@ $set 5 MSGCAT_SET_ERROR
 143 소유자가 없는 클래스가 발생하였습니다.
 144 사용자 오브젝트를 액세스할 수 없습니다.
 145 자기 자신에 대해 GRANT/REVOKE 명령할 수 없습니다. 
-146 %1$s 소유자에 대해 GRANT/REVOKE 명령할 수 없습니다.
+146 %1$s 소유자에 대해 GRANT 명령할 수 없습니다.
 147 GRANT 옵션이 없습니다.
 148 권한 부여 오브젝트에 대해 쓰기 락을 얻을 수 없습니다.
 149 권한 부여 오브젝트의 인스턴스를 생성할 수 없습니다.
@@ -1465,7 +1465,6 @@ $ LOADDB
 1369 사용자 "%1$s"는 로그인할 수 없습니다.
 
 1370 테이블은 한 개의 AUTO_INCREMENT만 가질 수 있습니다.
-
 1371 클래스 "%1$s"의 모든 속성을 invisible로 정의할 수 없습니다. 클래스 구성 요소에는 한 개 이상의 visible 속성이 필요합니다.
 
 1372 콜백 처리 중에 에러가 발생했습니다. code(%1$d), msg(%2$s)
@@ -1512,7 +1511,23 @@ $ LOADDB
 
 1395 CS 모드에서는 분할 테이블에 행을 로딩할 수 없습니다. 각 분할에 로딩하십시오.
 
-1396 마지막 에러
+1396 패키지 '%1$s' 가 이미 존재합니다.
+1397 패키지 바디 '%1$s' 가 이미 존재합니다.
+1398 패키지 '%1$s' 가 존재하지 않습니다.
+1399 패키지 바디 '%1$s' 가 존재하지 않습니다.
+1400 Package compile error: %1$s
+1401 소유자나 DBA 그룹의 멤버만이 대상 패키지를 %1$s할 수 있습니다.
+1402 시스템 생성 패키지는 삭제(drop)할 수 없습니다.
+1403 패키지 프로시저의 고유 이름은 255바이트보다 짧아야 합니다.
+1404 이름 목록에 중복된 패키지 이름 '%1$s'이(가) 있습니다.
+
+1405 Stored %1$s '%2$s'나 package %3$s '%4$s'가 존재하지 않습니다.
+
+1406 패키지 루틴 '%2$s'에는 %1$s을(를) 적용할 수 없습니다.
+1407 모호함: '%1$s'은(는) <user>.<name> 형식과 <package>.<name> 형식에 모두 해당합니다.
+1408 시스템 생성 패키지나 그 패키지 바디는 생성할 수 없습니다.
+
+1409 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1680,6 +1695,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Server의 USER 최대 길이는 %1$d 바이트입니다.
 139 저장 프로시저/함수의 인수 타입과 결과 타입에는 정밀도를 지정할 수 없습니다.
 140 FILL_FACTOR 인자 값은 %1$d에서 %2$d까지 허용됩니다.
+141 잘못된 형식의 create package 구문입니다.\n  CREATE [OR REPLACE] PACKAGE [<schema_name>.]<package_name> {IS|AS} <package_item> {<package_item>}... END [<package_name>] [COMMENT 'comment_string']
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -2031,6 +2047,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
 346 %2$s의 %1$d번째 인자는 %3$s 매개변수에 넘기므로 바인드 변수(? 또는 :name)여야 합니다.
 
+339 패키지 "%1$s"이(가) 존재하지 않습니다.
+347 잘못된 %1$s 이름 "%2$s".\n  시스템 클래스/뷰 이름은 %1$s 이름이 될 수 없습니다.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
@@ -2333,3 +2351,5 @@ $set 17 MSGCAT_SET_GLOSSARY
 4 서버
 5 동의어
 6 프로시저
+7 패키지
+8 함수

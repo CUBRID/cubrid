@@ -203,6 +203,9 @@ static void pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_create_package (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_drop_package (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_alter_package (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -9198,7 +9201,7 @@ pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (ws_is_same_object (owner_obj, Au_user) == false && au_is_dba_group_member (Au_user) == false)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER, "ALTER SYNONYM");
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY, "ALTER SYNONYM");
       return;
     }
 
@@ -9283,7 +9286,7 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (ws_is_same_object (owner_obj, Au_user) == false && au_is_dba_group_member (Au_user) == false)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER, "CREATE SYNONYM");
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY, "CREATE SYNONYM");
       return;
     }
 
@@ -9389,7 +9392,7 @@ pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (ws_is_same_object (owner_obj, Au_user) == false && au_is_dba_group_member (Au_user) == false)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER, "DROP SYNONYM");
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY, "DROP SYNONYM");
       return;
     }
 
@@ -9459,7 +9462,7 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (ws_is_same_object (old_owner_obj, Au_user) == false && au_is_dba_group_member (Au_user) == false)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER, "RENAME SYNONYM");
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY, "RENAME SYNONYM");
       return;
     }
 
@@ -9748,6 +9751,73 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 }
 
 /*
+ * pt_check_create_package ()
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static void
+pt_check_create_package (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  DB_OBJECT *owner = NULL;
+  PT_NODE *name = node->info.pkg.name;
+  const char *owner_name;
+
+  /* a system class name is left unqualified (see pt_set_user_specified_name ()) */
+  if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (name)))
+    {
+      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_PKG_INVALID_NAME,
+		   MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PACKAGE), PT_NAME_ORIGINAL (name));
+      return;
+    }
+
+  owner_name = pt_get_qualifier_name (parser, name);
+  assert (owner_name != NULL);
+
+  owner = db_find_user (owner_name);
+  if (owner == NULL)
+    {
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_AU_INVALID_USER)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	}
+      return;
+    }
+
+  if (au_is_dba_group_member (Au_user) == false && ws_is_same_object (owner, Au_user) == false)
+    {
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY,
+		  node->info.pkg.for_body ? "CREATE PACKAGE BODY" : "CREATE PACKAGE");
+    }
+}
+
+/*
+ * pt_check_drop_package ()
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static void
+pt_check_drop_package (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  // TODO package
+}
+
+/*
+ * pt_check_alter_package ()
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static void
+pt_check_alter_package (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  // TODO package
+}
+
+/*
  * pt_check_create_stored_procedure () - do semantic checks on the create procedure/function statement
  *   return:  none
  *   parser(in): the parser context used to derive the statement
@@ -9767,7 +9837,18 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 
   DB_OBJECT *owner = NULL;
   PT_NODE *name = node->info.sp.name;
-  const char *owner_name = pt_get_qualifier_name (parser, name);
+  const char *owner_name;
+
+  /* a system class name is left unqualified (see pt_set_user_specified_name ()) */
+  if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (name)))
+    {
+      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_PKG_INVALID_NAME,
+		   MSGCAT_GET_GLOSSARY_MSG (node->info.sp.type == PT_SP_FUNCTION ? MSGCAT_GLOSSARY_FUNCTION :
+					    MSGCAT_GLOSSARY_PROCEDURE), PT_NAME_ORIGINAL (name));
+      return;
+    }
+
+  owner_name = pt_get_qualifier_name (parser, name);
   if (owner_name)
     {
       owner = db_find_user (owner_name);
@@ -9783,7 +9864,7 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else if (au_is_dba_group_member (Au_user) == false && ws_is_same_object (owner, Au_user) == false)
 	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER,
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY,
 		      "CREATE PROCEDURE/FUNCTION");
 	  return;
 	}
@@ -10153,13 +10234,15 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_FLAT_SPEC_INFO info;
 
   bool is_for_spec = true;
+  bool is_package = false;
   PT_NODE *auth_cmd_list = node->info.grant.auth_cmd_list;
   while (auth_cmd_list)
     {
       PT_PRIV_TYPE pt_auth = auth_cmd_list->info.auth_cmd.auth_cmd;
-      if (pt_auth == PT_EXECUTE_PROCEDURE_PRIV)
+      if (pt_auth == PT_EXECUTE_PROCEDURE_PRIV || pt_auth == PT_EXECUTE_PACKAGE_PRIV)
 	{
 	  is_for_spec = false;
+	  is_package = (pt_auth == PT_EXECUTE_PACKAGE_PRIV);
 	  break;
 	}
 
@@ -10179,17 +10262,38 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
       if (node->info.grant.grant_option == PT_GRANT_OPTION)
 	{
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AU_GRANT_OPTION_NOT_ALLOWED,
+		      is_package ? MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PACKAGE) :
 		      MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
 	}
 
-      /* check spec_list (procedures/functions) exists */
+      /* check spec_list (procedures/functions or packages) exists */
       for (PT_NODE * procs = node->info.grant.spec_list; procs != NULL; procs = procs->next)
 	{
 	  // [TODO] Resovle user schema name, built-in package name
-	  const char *proc_name = procs->info.name.original;
-	  if (jsp_is_exist_stored_procedure (proc_name) == false)
+	  const char *obj_name = procs->info.name.original;
+	  bool exists;
+	  if (is_package)
 	    {
-	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_NOT_EXIST, proc_name);
+	      exists = (jsp_is_existing_package (obj_name) != 0);
+	    }
+	  else
+	    {
+	      /* a package routine is granted only through its package */
+	      MOP sp_mop;
+	      int err = jsp_find_standalone_routine (obj_name, (node->node_type == PT_GRANT) ? "GRANT" : "REVOKE",
+						     &sp_mop);
+	      if (err != NO_ERROR && err != ER_SP_NOT_EXIST)
+		{
+		  PT_ERRORc (parser, procs, er_msg ());
+		  break;
+		}
+	      er_clear ();
+	      exists = (err == NO_ERROR);
+	    }
+	  if (!exists)
+	    {
+	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC,
+			  is_package ? MSGCAT_SEMANTIC_PKG_NOT_EXIST : MSGCAT_SEMANTIC_SP_NOT_EXIST, obj_name);
 	      break;
 	    }
 	}
@@ -10241,7 +10345,7 @@ pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node)
   target = node->info.method_call.on_call_target;
   if (target == NULL)
     {
-      if (jsp_is_exist_stored_procedure (node->info.method_call.method_name->info.name.original))
+      if (jsp_is_existing_stored_procedure (node->info.method_call.method_name->info.name.original))
 	{
 	  return;
 	}
@@ -10558,7 +10662,7 @@ pt_check_one_server_owner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * ow
   db_make_object (&owner_val, owner);
   if (au_is_server_authorized_user (&owner_val) == false)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER, statement);
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY, statement);
       return false;
     }
 
@@ -13730,6 +13834,18 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
     case PT_CREATE_STORED_PROCEDURE:
       pt_check_create_stored_procedure (parser, node);
+      break;
+
+    case PT_CREATE_PACKAGE:
+      pt_check_create_package (parser, node);
+      break;
+
+    case PT_DROP_PACKAGE:
+      pt_check_drop_package (parser, node);
+      break;
+
+    case PT_ALTER_PACKAGE:
+      pt_check_alter_package (parser, node);
       break;
 
     default:

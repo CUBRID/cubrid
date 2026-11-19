@@ -32,7 +32,10 @@ package com.cubrid.plcsql.predefined.sp;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.SysParam;
+import com.cubrid.jsp.classloader.CatalogClassLoaderRelay;
+import com.cubrid.jsp.code.ClassAccess;
 import com.cubrid.jsp.context.Context;
+import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideStatement;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.jsp.value.NumericValue;
@@ -42,6 +45,9 @@ import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
@@ -63,6 +69,173 @@ import java.util.Stack;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
+
+    // What the direct calls in a single activation of a generated routine have looked up, in two
+    // slot spaces. See the comment above JavaCodeWriter.hasDirectCalls().
+    public static class DirectCallCache {
+        public final boolean[] authChecked;
+        public final String[] ownerName;
+        public final Class<?>[] targetClass;
+        public final Method[] method;
+
+        public DirectCallCache(int classSlots, int methodSlots) {
+            authChecked = new boolean[classSlots];
+            ownerName = new String[classSlots];
+            targetClass = new Class<?>[classSlots];
+            method = new Method[methodSlots];
+        }
+    }
+
+    public static Method reflectMethod(
+            Class<?> klass, String methodName, Class<?>... paramClasses) {
+
+        assert klass != null;
+
+        try {
+            return klass.getMethod(methodName, paramClasses);
+        } catch (NoSuchMethodException e) {
+            Server.log(e);
+            throw new PROGRAM_ERROR(
+                    "cannot find method "
+                            + methodName
+                            + " in the executable binary"
+                            + " (hint: try recompiling this stored procedure)");
+        } catch (SecurityException e) {
+            Server.log(e);
+            throw new PROGRAM_ERROR("cannot use method " + methodName + " for a serurity reason");
+        }
+    }
+
+    public static Object invokeMethod(Method method, Object... arg) {
+
+        assert method != null;
+
+        try {
+            return method.invoke(null, arg);
+        } catch (IllegalAccessException e) {
+            Server.log(e);
+            throw new PROGRAM_ERROR(method.getName() + ": illegal access");
+        } catch (IllegalArgumentException e) {
+            Server.log(e);
+            throw new PROGRAM_ERROR(method.getName() + ": illegal argument");
+        } catch (ExceptionInInitializerError e) {
+            Server.log(e);
+            Throwable cause = e.getCause();
+            if (cause == null) {
+                // unlikely
+                throw new SQL_ERROR(
+                        "error while initializing the package instance of " + method.getName());
+            } else {
+                throw new SQL_ERROR(
+                        "error while initializing the package instance of "
+                                + method.getName()
+                                + ": "
+                                + cause.getMessage());
+            }
+        } catch (NoClassDefFoundError e) {
+            // a class whose initialization failed once is not initialized again,
+            // and the cause of the failure is not available any more
+            Server.log(e);
+            throw new SQL_ERROR(
+                    "the package instance of "
+                            + method.getName()
+                            + " failed to be initialized earlier in this session");
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause == null) {
+                // unlikely
+                throw new PROGRAM_ERROR("error while executing " + method.getName());
+            } else {
+                if (cause instanceof Error) {
+                    throw (Error) cause;
+                } else if (cause instanceof PlcsqlRuntimeError) {
+                    throw ((PlcsqlRuntimeError) cause).nestInCaller();
+                } else if (cause instanceof RuntimeException) {
+                    throw (RuntimeException) cause;
+                } else {
+                    Server.log(cause);
+                    throw new PROGRAM_ERROR(
+                            "error while executing "
+                                    + method.getName()
+                                    + ": "
+                                    + cause.getMessage());
+                }
+            }
+        }
+    }
+
+    // Runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member.
+    // Called from generated code the first time each call site is reached in an activation of the
+    // caller. Also sets targetClass[slot] to the class of the callee's current code, so that a
+    // callee replaced since this session loaded it runs as replaced, even in the same transaction.
+    // Returns the owner the caller has to switch the execution rights to before the direct call.
+    public static String checkExecuteAuthorization(
+            String uniqueName, String mainClassName, Class<?>[] targetClass, int slot) {
+        String[] ownerRef = new String[1];
+        String[] compileIdRef = new String[1];
+        String[] errMsgRef = new String[1];
+        if (ClassAccess.checkExecuteAuth(uniqueName, ownerRef, compileIdRef, errMsgRef) != 0) {
+            throw new SQL_ERROR(
+                    errMsgRef[0] == null
+                            ? "no authorization to execute " + uniqueName
+                            : errMsgRef[0]);
+        }
+        if (compileIdRef[0] == null) {
+            // replaced by a Java SP after the caller was compiled
+            throw new PROGRAM_ERROR(
+                    uniqueName
+                            + " is not a PL/CSQL routine any more"
+                            + " (hint: try recompiling this stored procedure)");
+        }
+
+        Context context = ContextManager.getContextofCurrentThread();
+        CatalogClassLoaderRelay cclr = context.getCatalogClassLoaderRelay();
+        try {
+            targetClass[slot] = cclr.findClassWithCurrentCompileId(mainClassName, compileIdRef[0]);
+        } catch (ClassNotFoundException e) {
+            Server.log(e);
+            throw new SQL_ERROR(
+                    "cannot find executable binary of " + uniqueName + " (was it dropped?)");
+        }
+        if (context.isPkgInitByOtherThread(targetClass[slot])) {
+            // The package initialization calls the server, and this call through the server came
+            // back to the package. Waiting for the initialization to end would never end.
+            throw new SQL_ERROR(
+                    "the package instance of "
+                            + uniqueName
+                            + " is being initialized by a caller through the DB server");
+        }
+
+        return ownerRef[0];
+    }
+
+    // Called from the class initialization of a package whose initialization can call the server
+    // (see checkExecuteAuthorization).
+    public static void beginPkgInit(Class<?> pkgClass) {
+        ContextManager.getContextofCurrentThread().beginPkgInit(pkgClass);
+    }
+
+    public static void endPkgInit(Class<?> pkgClass) {
+        ContextManager.getContextofCurrentThread().endPkgInit(pkgClass);
+    }
+
+    // push and pop Execution rights around a direct call of an external PL/CSQL routine.
+    public static void pushExecRight(String ownerName) {
+        try {
+            ClassAccess.pushExecRights(ownerName);
+        } catch (Exception e) {
+            throw new SQL_ERROR("failed to switch the execution rights to " + ownerName);
+        }
+    }
+
+    public static void popExecRight() {
+        try {
+            ClassAccess.popExecRights();
+        } catch (Exception e) {
+            // leaving the switched-in rights in effect would be worse than failing the call
+            throw new SQL_ERROR("failed to restore the execution rights");
+        }
+    }
 
     public static final Date ZERO_DATE = new Date(0 - 1900, 0 - 1, 0);
     public static final Timestamp ZERO_DATETIME = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
@@ -243,22 +416,75 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     //
 
+    // for an exception raised in the routine catching it, whose topmost frame of the class is in
+    // the routine
     public static int[] getPlcLineColumn(
             List<CodeRangeMarker> crmList, Throwable thrown, String fileName) {
 
         StackTraceElement[] stackTrace = thrown.getStackTrace();
-
-        // get exception line number in the generated Java class
-        int exceptionJavaLine = 0;
-        for (StackTraceElement e : stackTrace) {
-            if (e.getFileName().equals(fileName)) {
-                exceptionJavaLine = e.getLineNumber();
-                break;
-            }
-        }
-        if (exceptionJavaLine == 0) {
+        int i = findFrame(stackTrace, 0, fileName);
+        if (i < 0) {
             return UNKNOWN_LINE_COLUMN;
         }
+
+        return getPlcLineColumn(crmList, stackTrace[i].getLineNumber());
+    }
+
+    // For an error that escaped from the body of the routine catching it. The error may have come
+    // up from the routines called directly, which have already found their frames in its stack
+    // trace. The routine searches its frames from the frame index of the error, which skips those
+    // frames, and returns the frame index for its caller along with the line and column.
+    public static int[] getPlcLineColumn(
+            List<CodeRangeMarker> crmList, PlcsqlRuntimeError err, String fileName) {
+
+        StackTraceElement[] stackTrace = err.getStackTrace();
+        int from = err.getFrameIndex();
+        int top = findFrame(stackTrace, from, fileName);
+        if (top < 0) {
+            if (err.getLine() == -1 && err.getColumn() == -1) {
+                // its frames are out of the stack trace, which keeps only the top frames in a
+                // deep recursion
+                return new int[] {0, 0, from};
+            }
+            // Keep the position. A routine calling itself calls its entry method in the same
+            // class, so the frames of all its activations make one run, which the innermost one
+            // has skipped, and the position it found stays with the error.
+            return new int[] {err.getLine(), err.getColumn(), from};
+        }
+
+        int bottom = top + 1;
+        while (bottom < stackTrace.length && fileName.equals(stackTrace[bottom].getFileName())) {
+            bottom++;
+        }
+
+        int javaLine = stackTrace[top].getLineNumber();
+
+        // An error converted from a Java exception in the routine (see the template of a body in
+        // JavaCodeWriter) is better located by the exception.
+        Throwable cause = err.getCause();
+        if (cause != null && from == 0) {
+            StackTraceElement[] causeStackTrace = cause.getStackTrace();
+            int i = findFrame(causeStackTrace, 0, fileName);
+            if (i >= 0) {
+                javaLine = causeStackTrace[i].getLineNumber();
+            }
+        }
+
+        int[] pos = getPlcLineColumn(crmList, javaLine);
+        return new int[] {pos[0], pos[1], bottom};
+    }
+
+    // the index of the first frame of the file at or after the index from, or -1 if none
+    private static int findFrame(StackTraceElement[] stackTrace, int from, String fileName) {
+        for (int i = from; i < stackTrace.length; i++) {
+            if (fileName.equals(stackTrace[i].getFileName())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int[] getPlcLineColumn(List<CodeRangeMarker> crmList, int exceptionJavaLine) {
 
         // find the innermost code range that contains the Java line number
         Stack<CodeRangeMarker> stack = new Stack<>();
@@ -562,6 +788,21 @@ public class SpLib {
         }
     }
 
+    // called in place of a package spec item without its implementation
+    public static <T> T implNotGiven() {
+        throw new IMPL_NOT_GIVEN();
+    }
+
+    public static class IMPL_NOT_GIVEN extends PlcsqlRuntimeError {
+        public IMPL_NOT_GIVEN() {
+            super(CODE_IMPL_NOT_GIVEN, MSG_IMPL_NOT_GIVEN);
+        }
+
+        public IMPL_NOT_GIVEN(String msg) {
+            super(CODE_IMPL_NOT_GIVEN, isEmptyStr(msg) ? MSG_IMPL_NOT_GIVEN : msg);
+        }
+    }
+
     //
     // builtin exceptions
     // ---------------------------------------------------------------------------------------
@@ -591,21 +832,46 @@ public class SpLib {
     // --------------------------------------------------------
     // DBMS_OUTPUT procedures
 
-    public static void DBMS_OUTPUT$DISABLE() throws Exception {
-        DBMS_OUTPUT.disable();
+    public static void DBMS_OUTPUT$DISABLE() {
+        try {
+            DBMS_OUTPUT.disable();
+        } catch (IOException e) {
+            Server.log(e);
+            throw new SQL_ERROR(e.getMessage());
+        } catch (SQLException e) {
+            Server.log(e);
+            throw new SQL_ERROR(e.getMessage());
+        }
     }
 
-    public static void DBMS_OUTPUT$ENABLE(Integer size) throws Exception {
+    public static void DBMS_OUTPUT$ENABLE(Integer size) {
         if (size == null) {
             throw new VALUE_ERROR("size must be non-null");
         }
-        DBMS_OUTPUT.enable(size);
+        try {
+            DBMS_OUTPUT.enable(size);
+        } catch (IOException e) {
+            Server.log(e);
+            throw new SQL_ERROR(e.getMessage());
+        } catch (SQLException e) {
+            Server.log(e);
+            throw new SQL_ERROR(e.getMessage());
+        }
     }
 
     public static void DBMS_OUTPUT$GET_LINE(String[] line, Integer[] status) {
         int[] iArr = new int[1];
         DBMS_OUTPUT.getLine(line, iArr);
         status[0] = iArr[0];
+    }
+
+    public static void DBMS_OUTPUT$GET_LINES(String[] lines, Integer[] numlines) {
+        if (numlines[0] == null) {
+            throw new VALUE_ERROR("numlines must be non-null");
+        }
+        int[] iArr = new int[] {numlines[0]}; // in: the number of lines to get
+        DBMS_OUTPUT.getLines(lines, iArr);
+        numlines[0] = iArr[0]; // out: the number of lines got
     }
 
     public static void DBMS_OUTPUT$NEW_LINE() {
@@ -840,6 +1106,46 @@ public class SpLib {
                                         + "the number (%d) of variables in the INTO clause do not match",
                                 selectListLength, intoVarCount));
             }
+        }
+    }
+
+    // cursor declared in a package spec but whose implementation is not given
+    public static class QueryUnimplemented extends Query {
+
+        public QueryUnimplemented() {
+            super(""); // non-null but empty query
+        }
+
+        public void open(Connection conn, PreparedStatement[] pstmtRef, Object... val) {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public void close() {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public boolean isOpen() {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public boolean fetch() {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public Boolean found() {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public Boolean notFound() {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public long rowCount() {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public void updateRowCount() {
+            throw new IMPL_NOT_GIVEN();
         }
     }
 
@@ -4341,6 +4647,7 @@ public class SpLib {
     private static final int CODE_TOO_MANY_ROWS = 7;
     private static final int CODE_VALUE_ERROR = 8;
     private static final int CODE_ZERO_DIVIDE = 9;
+    private static final int CODE_IMPL_NOT_GIVEN = 10;
     private static final int CODE_APP_ERROR = 1000;
 
     private static final String MSG_CASE_NOT_FOUND = "case not found";
@@ -4353,6 +4660,7 @@ public class SpLib {
     private static final String MSG_TOO_MANY_ROWS = "too many rows";
     private static final String MSG_VALUE_ERROR = "value error";
     private static final String MSG_ZERO_DIVIDE = "division by zero";
+    private static final String MSG_IMPL_NOT_GIVEN = "no implementation in the package body";
     private static final String MSG_APP_ERROR = "user defined exception";
 
     private static final Byte BYTE_ZERO = Byte.valueOf((byte) 0);

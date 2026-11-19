@@ -28,58 +28,28 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.antlrgen.PlcLexer;
-import org.antlr.v4.runtime.CharStream;
-import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class PlcLexerEx extends PlcLexer {
-    private boolean collect = true;
-    private boolean putSpace = false;
-    private StringBuffer sbuf = new StringBuffer();
+// <id>%TYPE where <id> is a parameter, variable, or constant
+public class TypeSpecPercentId extends TypeSpec {
 
-    public PlcLexerEx(CharStream input) {
-        super(input);
+    public final String id;
+
+    public TypeSpecPercentId(ParserRuleContext ctx, String id, TypeSpec idTypeSpec) {
+        super(ctx, idTypeSpec.type);
+        this.id = id;
     }
 
+    // the both must be <id>%TYPE of the same text
     @Override
-    public Token emit() {
-        Token ret = super.emit();
-
-        // collect token texts until IS or AS is seen
-        if (collect) {
-            switch (ret.getType()) {
-                case IS:
-                case AS:
-                    collect = false;
-                    break;
-                case SPACES:
-                    if (putSpace) {
-                        sbuf.append(' ');
-                        putSpace = false;
-                    }
-                    break;
-                case SINGLE_LINE_COMMENT:
-                case SINGLE_LINE_COMMENT2:
-                case MULTI_LINE_COMMENT:
-                    break;
-                default:
-                    sbuf.append(ret.getText().toUpperCase());
-                    putSpace = true;
-            }
+    public boolean isSameAs(TypeSpec other) {
+        if (!(other instanceof TypeSpecPercentId)) {
+            return false;
         }
 
-        return ret;
-    }
-
-    public String getCreateSqlTemplate() {
-
-        String s = sbuf.toString().trim();
-        if (s.length() > 0) {
-            return s + " AS LANGUAGE JAVA NAME";
-        } else {
-            return null;
-        }
+        TypeSpecPercentId o = (TypeSpecPercentId) other;
+        return id.equals(o.id);
     }
 }

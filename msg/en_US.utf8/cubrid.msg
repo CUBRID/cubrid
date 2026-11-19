@@ -215,7 +215,7 @@ $set 5 MSGCAT_SET_ERROR
 143 Encountered a class with no owner.
 144 Unable to access user object.
 145 Cannot issue grant/revoke commands to yourself.
-146 Cannot issue GRANT/REVOKE to owner of a %1$s.
+146 Cannot issue GRANT to owner of a %1$s.
 147 No GRANT option.
 148 Cannot obtain write lock on authorization object.
 149 Cannot create instance of authorization object.
@@ -1513,8 +1513,23 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1395 Loading rows into a partitioned class is not supported in CS mode. Load them into its partitions instead.
 
-1396 Last Error
+1396 Package "%1$s" already exists.
+1397 Package Body "%1$s" already exists.
+1398 Package "%1$s" does not exist.
+1399 Package Body "%1$s" does not exist.
+1400 Package compile error: %1$s
+1401 The owner or a member of DBA group can %1$s a package.
+1402 Dropping a system generated package is not allowed.
+1403 Package procedure's unique name must be shorter than 255 bytes.
+1404 Duplicate package name '%1$s' in the name list.
 
+1405 Neither stored %1$s '%2$s' nor package %3$s '%4$s' exists.
+
+1406 %1$s cannot be applied to package routine '%2$s'.
+1407 Ambiguous: '%1$s' matches both <user>.<name> pattern and <package>.<name> pattern.
+1408 Creating a system generated package or its body is not allowed.
+
+1409 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1682,6 +1697,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Maximum length of a server user is %1$d bytes.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
 140 FILL_FACTOR argument must be between %1$d and %2$d.
+141 invalid create package.\n  CREATE [OR REPLACE] PACKAGE [<schema_name>.]<package_name> {IS|AS} <package_item> {<package_item>}... END [<package_name>] [COMMENT 'comment_string']
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -2033,6 +2049,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
 346 Argument %1$d of %2$s must be a bind variable (? or :name) because it is passed to an %3$s parameter.
 
+339 Package "%1$s" does not exist.
+347 Invalid %1$s name "%2$s".\n  The system class/vclass name cannot be a %1$s name.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
@@ -2335,3 +2353,5 @@ $set 17 MSGCAT_SET_GLOSSARY
 4 server
 5 synonym
 6 procedure
+7 package
+8 function

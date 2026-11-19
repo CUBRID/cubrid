@@ -20,6 +20,9 @@
 
 #include <cstring>
 
+#include <string>
+
+#include "network_callback_sr.hpp"
 #include "pl_comm.h"
 #include "pl_execution_stack_context.hpp"
 
@@ -77,8 +80,15 @@ namespace cubpl
   void
   compile_handler::create_error_response (cubmem::extensible_block &res, int error_code)
   {
-    compile_response compile_response;
+    assert (error_code < 0);
+
+    plcsql_compile_response compile_response;
+
     compile_response.err_code = (er_errid () != NO_ERROR) ? er_errid () : error_code;
+    if (compile_response.err_code >= 0)
+      {
+	compile_response.err_code = ER_FAILED;  // defensive code
+      }
     compile_response.err_msg = er_msg ()? er_msg () : "unknown error";
     compile_response.err_line = -1;
     compile_response.err_column = -1;
@@ -89,7 +99,7 @@ namespace cubpl
   }
 
   int
-  compile_handler::compile (const compile_request &req, cubmem::extensible_block &out_blk)
+  compile_handler::compile (const plcsql_compile_request &req, cubmem::extensible_block &out_blk)
   {
     cubpl::session *pl_session = cubpl::get_session ();
     if (!pl_session)
@@ -140,6 +150,8 @@ namespace cubpl
 		  }
 		else
 		  {
+		    error_code = ER_SP_NETWORK_ERROR;
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, code);
 		    create_error_response (out_blk, error_code);
 		  }
 	      }
@@ -149,7 +161,7 @@ namespace cubpl
 		sql_semantics_request request;
 		respone_unpacker.unpack_all (request);
 
-		error_code = m_stack->send_data_to_client_recv (bypass_block, request);
+		error_code = m_stack->send_data_to_client_recv (bypass_block, true, request);
 	      }
 	    else if (code == METHOD_REQUEST_GLOBAL_SEMANTICS)
 	      {
@@ -157,7 +169,21 @@ namespace cubpl
 		global_semantics_request request;
 		respone_unpacker.unpack_all (request);
 
-		error_code = m_stack->send_data_to_client_recv (bypass_block, request);
+		error_code = m_stack->send_data_to_client_recv (bypass_block, true, request);
+	      }
+	    else if (code == METHOD_CALLBACK_GET_CODE_BY_NAME)
+	      {
+		// while compiling, the PL server fetches the object code of referenced SPs/packages
+		// so that their generated Java classes can be resolved by javac. The catalog is read
+		// on the client (CAS) side, so forward the request there and relay the reply - the
+		// same way the executor does at run time.
+		packing_unpacker respone_unpacker (payload_blk);
+		std::string class_name;
+		respone_unpacker.unpack_all (class_name);
+
+		error_code =
+			m_stack->send_data_to_client_recv (bypass_block, true, METHOD_CALLBACK_GET_CODE_BY_NAME,
+			    class_name);
 	      }
 	    else
 	      {

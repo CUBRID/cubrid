@@ -32,18 +32,47 @@ options {
 
 sql_script
     : create_routine EOF
+    | create_package_spec EOF
+    | create_package_body EOF
     ;
+
+create_package_spec
+    : CREATE (OR_REPLACE)? PACKAGE uniq_name (IS | AS) seq_of_declare_specs END label_name? (COMMENT CHAR_STRING)? (SEMICOLON)?
+    ;
+
+create_package_body
+    : CREATE (OR_REPLACE)? PACKAGE BODY uniq_name (IS | AS) seq_of_declare_specs END label_name? (SEMICOLON)?
+    | CREATE (OR_REPLACE)? PACKAGE BODY uniq_name (IS | AS) (seq_of_declare_specs)? body (SEMICOLON)?
+    ;
+
+/*
+record_type_decl
+    : TYPE identifier IS RECORD LPAREN record_field_decl (',' record_field_decl)+ RPAREN (COMMENT CHAR_STRING)? SEMICOLON
+    ;
+
+record_field_decl
+    : identifier type_spec
+    ;
+ */
 
 create_routine
-    : CREATE (OR_REPLACE)? routine_definition (COMMENT CHAR_STRING)?
+    : CREATE (OR_REPLACE)? routine_decl
     ;
 
-routine_definition
-    : (PROCEDURE | FUNCTION) routine_uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
-      (authid_spec | deterministic_spec | parallel_enable_spec)* (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
+routine_decl
+    : routine_header
+      ((IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body)?
+      (COMMENT CHAR_STRING)? (SEMICOLON)?
     ;
 
-routine_uniq_name
+routine_header
+    : PROCEDURE uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN )
+      (authid_spec | deterministic_spec | parallel_enable_spec)*
+    | FUNCTION uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) RETURN type_spec
+      (authid_spec | deterministic_spec | parallel_enable_spec)*
+    ;
+
+uniq_name
     : (owner=identifier '.')? name=identifier
     | '[' (owner=identifier '.')? name=identifier ']'   /* rewritten query */
     ;
@@ -58,8 +87,16 @@ parameter
     ;
 
 authid_spec
-    : AUTHID (DEFINER | OWNER)                          # authid_owner
-    | AUTHID (CALLER | CURRENT_USER)                    # authid_caller
+    : authid_owner
+    | authid_caller
+    ;
+
+authid_owner
+    : AUTHID (DEFINER | OWNER)
+    ;
+
+authid_caller
+    : AUTHID (CALLER | CURRENT_USER)
     ;
 
 deterministic_spec
@@ -79,24 +116,27 @@ seq_of_declare_specs
     : declare_spec+
     ;
 
+/* sp: stored procedure, ps: package spec, pb: package body */
 declare_spec
-    : constant_declaration
-    | exception_declaration
-    | variable_declaration
-    | cursor_definition
-    | routine_definition
+    : constant_decl
+    | exception_decl
+    | variable_decl
+    | cursor_decl
+    | routine_decl
+    //| record_type_decl
     ;
 
-variable_declaration
-    : identifier type_spec ((NOT NULL_)? default_value_part)? SEMICOLON
+variable_decl
+    : identifier type_spec ((NOT NULL_)? default_value_part)? (COMMENT CHAR_STRING)? SEMICOLON
     ;
 
-constant_declaration
-    : identifier CONSTANT type_spec (NOT NULL_)? default_value_part SEMICOLON
+constant_decl
+    : identifier CONSTANT type_spec (NOT NULL_)? default_value_part (COMMENT CHAR_STRING)? SEMICOLON
     ;
 
-cursor_definition
-    : CURSOR identifier ( (LPAREN cursor_parameter_list RPAREN)? | LPAREN RPAREN ) IS static_sql SEMICOLON
+cursor_decl
+    : CURSOR identifier ( (LPAREN cursor_parameter_list RPAREN)? | LPAREN RPAREN ) RETURN type_spec (COMMENT CHAR_STRING)? SEMICOLON
+    | CURSOR identifier ( (LPAREN cursor_parameter_list RPAREN)? | LPAREN RPAREN ) IS static_sql (COMMENT CHAR_STRING)? SEMICOLON
     ;
 
 cursor_parameter_list
@@ -108,15 +148,15 @@ cursor_parameter
     : parameter_name IN? type_spec
     ;
 
-exception_declaration
-    : identifier EXCEPTION SEMICOLON
+exception_decl
+    : identifier EXCEPTION (COMMENT CHAR_STRING)? SEMICOLON
     ;
 
 seq_of_statements
     : (statement SEMICOLON)+
     ;
 
-label_declaration
+label_decl
     : '<<' label_name '>>'
     ;
 
@@ -154,9 +194,14 @@ assignment_statement
     : assign_target ':=' expression
     ;
 
+qualified_id
+    : qualSingle=identifier '.' name=identifier                             // qualifier can be a record, owner, pkg, or table
+    | qualLeft=identifier '.' qualRight=identifier '.' name=identifier      // qualifier can be a owner.pkg or owner.table
+    ;
+
 assign_target
     : identifier
-    | record_field
+    | qualified_id    // record.field, or (owner.)pkg.var
     ;
 
 continue_statement
@@ -180,11 +225,11 @@ else_part
     ;
 
 loop_statement
-    : label_declaration? LOOP seq_of_statements END LOOP label_name?                       # stmt_basic_loop
-    | label_declaration? WHILE expression LOOP seq_of_statements END LOOP label_name?      # stmt_while_loop
-    | label_declaration? FOR iterator LOOP seq_of_statements END LOOP label_name?          # stmt_for_iter_loop
-    | label_declaration? FOR for_cursor LOOP seq_of_statements END LOOP label_name?        # stmt_for_cursor_loop
-    | label_declaration? FOR for_static_sql LOOP seq_of_statements END LOOP label_name?    # stmt_for_static_sql_loop
+    : label_decl? LOOP seq_of_statements END LOOP label_name?                       # stmt_basic_loop
+    | label_decl? WHILE expression LOOP seq_of_statements END LOOP label_name?      # stmt_while_loop
+    | label_decl? FOR iterator LOOP seq_of_statements END LOOP label_name?          # stmt_for_iter_loop
+    | label_decl? FOR for_cursor LOOP seq_of_statements END LOOP label_name?        # stmt_for_cursor_loop
+    | label_decl? FOR for_static_sql LOOP seq_of_statements END LOOP label_name?    # stmt_for_static_sql_loop
     ;
 
  // actually far more complicated according to the Spec.
@@ -229,7 +274,9 @@ procedure_call
     ;
 
 proc_call_name
-    : (owner=identifier '.')? (DBMS_OUTPUT '.')? name=identifier
+    : identifier
+    | DBMS_OUTPUT '.' identifier
+    | qualified_id    // owner.proc, or (owner.)pkg.proc
     ;
 
 body
@@ -361,7 +408,7 @@ unary_expression
 
 atom
     : literal                                   # literal_exp
-    | record_field                              # field_exp
+    | qualified_id                              # qualified_name   // record.field, serial-value, (owner.)pkg.var, or (owner.)pkg.const
     | syntaxed_call                             # syntaxed_call_exp
     | function_call                             # call_exp
     | identifier                                # id_exp
@@ -374,16 +421,13 @@ atom
     | SQLERRM                                   # sqlerrm_exp
     ;
 
-record_field
-    : record=identifier '.' field=identifier
-    ;
-
 function_call
     : func_call_name function_argument
     ;
 
 func_call_name
-    : (owner=identifier '.')? name=func_name
+    : func_name
+    | qualified_id    // owner.func, or (owner.)pkg.func
     ;
 
 func_name
@@ -575,6 +619,7 @@ label_name
 
 exception_name
     : identifier
+    | qualified_id    // (owner.)pkg.exception
     ;
 
 index_name
@@ -583,22 +628,10 @@ index_name
 
 cursor_exp
     : identifier
+    | qualified_id    // (owner.)pkg.cursor
     ;
 
 record_name
-    : identifier
-    ;
-
-table_name
-    : (identifier '.')? identifier
-    ;
-
-/* row name: table name or cursor name to which %ROWTYPE can be applied */
-row_name
-    : (user=identifier '.')? name=identifier
-    ;
-
-column_name
     : identifier
     ;
 
@@ -624,11 +657,13 @@ native_datatype
     ;
 
 percent_type
-    : (table_name '.')? identifier PERCENT_TYPE
+    : identifier PERCENT_TYPE       // var, const
+    | qualified_id PERCENT_TYPE   // (owner.)table.column, (owner.)pkg.var, or (owner.)pkg.const
     ;
 
 percent_rowtype
-    : row_name PERCENT_ROWTYPE
+    : identifier PERCENT_ROWTYPE        // table, or cursor
+    | qualified_id PERCENT_ROWTYPE    // owner.table, or (owner.)pkg.cursor
     ;
 
 numeric_type
