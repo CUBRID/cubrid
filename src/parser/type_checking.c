@@ -22260,6 +22260,12 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 	}
       break;
     case PT_VALUE:
+      if (!PT_HAS_COLLATION (node->type_enum) && !PT_IS_COLLECTION_TYPE (node->type_enum))
+	{
+	  /* CBRD-28066: a value without a collation - a NUMERIC literal carries its precision in a data type - keeps
+	   * it, as an element of a collection whose collation is applied to its elements */
+	  return node;
+	}
       if (node->data_type == NULL && PT_HAS_COLLATION (node->type_enum) && coll_id != LANG_SYS_COLLATION)
 	{
 	  /* create a data type */
