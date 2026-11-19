@@ -66,6 +66,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
+#include "authenticate_password.hpp"
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif // SERVER_MODE
@@ -761,6 +762,30 @@ logtb_am_i_dba_client (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logtb_am_i_dba_group_client () - is the caller DBA, or a member of the DBA
+ *   group, according to the catalog?
+ *
+ * Replaces the flag kill_or_interrupt took from the client.
+ */
+static bool
+logtb_am_i_dba_group_client (THREAD_ENTRY * thread_p)
+{
+  char password[AU_MAX_PASSWORD_BUF + 4];
+  bool is_dba_group = false, found;
+
+  if (logtb_am_i_dba_client (thread_p))
+    {
+      return true;
+    }
+
+  found = cdc_get_user_info (thread_p, logtb_find_current_client_name (thread_p), password, sizeof (password),
+			     &is_dba_group);
+  memset (password, 0, sizeof (password));	/* only the group answer is needed */
+
+  return found && is_dba_group;
+}
+
+/*
  * logtb_assign_tran_index - assign a transaction index for a sequence of
  *                        transactions (thread of execution.. a client)
  *
@@ -1123,6 +1148,21 @@ logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p, MVCCID mvccid
 }
 
 /*
+ * logtb_release_conn_tran_index - if the calling connection owns tran_index,
+ *   it no longer does.
+ */
+static void
+logtb_release_conn_tran_index (THREAD_ENTRY * thread_p, int tran_index)
+{
+#if defined (SERVER_MODE)
+  if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->get_tran_index () == tran_index)
+    {
+      thread_p->conn_entry->release_tran_index ();
+    }
+#endif /* SERVER_MODE */
+}
+
+/*
  * logtb_release_tran_index - return an assigned transaction index
  *
  * return: nothing
@@ -1139,6 +1179,8 @@ void
 logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
+
+  logtb_release_conn_tran_index (thread_p, tran_index);
 
   qmgr_clear_trans_wakeup (thread_p, tran_index, true, false);
   heap_chnguess_clear (thread_p, tran_index);
@@ -1212,6 +1254,8 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 #endif /* SERVER_MODE */
 
   log_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  logtb_release_conn_tran_index (thread_p, tran_index);
 
   tdes = LOG_FIND_TDES (tran_index);
   if (tran_index > NUM_TOTAL_TRAN_INDICES || tdes == NULL || tdes->trid == NULL_TRANID)
@@ -5674,7 +5718,7 @@ logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_aut
 
   *has_authorization = false;
 
-  if (logtb_am_i_dba_client (thread_p) == true)
+  if (logtb_am_i_dba_group_client (thread_p) == true)
     {
       *has_authorization = true;
       return NO_ERROR;
@@ -5791,11 +5835,10 @@ xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill
  *   return:
  *   thread_p(in):
  *   tran_index(in):
- *   is_dba_group_member(in):
  *   kill_query_only(in):
  */
 int
-xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_dba_group_member, bool interrupt_only)
+xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool interrupt_only)
 {
   int error;
   bool interrupt, has_authorization;
@@ -5810,19 +5853,17 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
       return ER_KILL_TR_NOT_ALLOWED;
     }
 
-  if (!is_dba_group_member)
+  /* always checked on the server, never skipped on the client's word */
+  error = logtb_check_kill_tran_auth (thread_p, tran_index, &has_authorization);
+  if (error != NO_ERROR)
     {
-      error = logtb_check_kill_tran_auth (thread_p, tran_index, &has_authorization);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+      return error;
+    }
 
-      if (has_authorization == false)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, tran_index);
-	  return ER_KILL_TR_NOT_ALLOWED;
-	}
+  if (has_authorization == false)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
     }
 
   is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);

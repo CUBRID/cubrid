@@ -54,6 +54,8 @@
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "authenticate.h"
+#include "authenticate_password.hpp"
 #include "log_comm.h"
 #include "log_writer.h"
 #include "arithmetic.h"
@@ -4599,10 +4601,11 @@ boot_shutdown_server (ER_FINAL_CODE iserfinal)
  * session_id (in/out) : the id of the session to end
  * row_count (out)     : the value of row count for this session
  * server_session_key (in/out) :
+ * session_secret (in/out) :
  */
 int
-csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key, const char *db_user,
-				 const char *host, const char *program_name)
+csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key,
+				 char *session_secret, const char *db_user, const char *host, const char *program_name)
 {
 #if defined (CS_MODE)
   int req_error;
@@ -4622,6 +4625,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   request_size += length_const_string (db_user, &db_user_len);
   request_size += length_const_string (host, &host_len);
   request_size += length_const_string (program_name, &program_name_len);
+  request_size += or_packed_stream_length (SESSION_SECRET_SIZE);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4638,6 +4642,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   ptr = pack_const_string_with_length (ptr, db_user, db_user_len);
   ptr = pack_const_string_with_length (ptr, host, host_len);
   ptr = pack_const_string_with_length (ptr, program_name, program_name_len);
+  ptr = or_pack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
 
   req_error =
     net_client_request2 (NET_SERVER_SES_CHECK_SESSION, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
@@ -4650,6 +4655,11 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
       if (error != NO_ERROR)
 	{
 	  free_and_init (request);
+	  if (area != NULL)
+	    {
+	      /* the reply may still carry data; it is not read on an error */
+	      free_and_init (area);
+	    }
 	  return error;
 	}
 
@@ -4662,6 +4672,15 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	  if (update_parameter_values)
 	    {
 	      ptr = sysprm_unpack_session_parameters (ptr, &session_params);
+	    }
+	  if (ptr != NULL && (int) (ptr - area) + or_packed_stream_length (SESSION_SECRET_SIZE) <= area_size)
+	    {
+	      ptr = or_unpack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
+	    }
+	  else
+	    {
+	      /* a server from before CBRD-27434 sends no secret */
+	      memset (session_secret, 0, SESSION_SECRET_SIZE);
 	    }
 
 	  free_and_init (area);
@@ -4701,15 +4720,15 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 
   if (db_Session_id == DB_EMPTY_SESSION)
     {
-      result = xsession_create_new (thread_p, &id);
+      result = xsession_create_new (thread_p, &id, session_secret);
     }
   else
     {
       id = db_Session_id;
-      if (xsession_check_session (thread_p, id) != NO_ERROR)
+      if (xsession_check_session (thread_p, id, session_secret) != NO_ERROR)
 	{
 	  /* create new session */
-	  if (xsession_create_new (thread_p, &id) != NO_ERROR)
+	  if (xsession_create_new (thread_p, &id, session_secret) != NO_ERROR)
 	    {
 	      result = ER_FAILED;
 	    }
@@ -4720,7 +4739,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   *session_id = db_Session_id;
 
   /* get row count */
-  if (result != ER_FAILED)
+  if (result == NO_ERROR)
     {
       xsession_get_row_count (thread_p, row_count);
     }
@@ -5299,6 +5318,162 @@ csession_delete_prepared_statement (const char *name)
   exit_server (*thread_p);
 
   return result;
+#endif
+}
+
+#if defined (CS_MODE)
+/*
+ * cau_copy_reply_string () - copy a string out of a challenge reply, trusting
+ *   its length prefix only once the string lies inside the reply.
+ *   return: the position after it, or NULL if it does not fit
+ */
+static char *
+cau_copy_reply_string (char *ptr, char *reply, int reply_size, char *out, int out_size)
+{
+  int declared_len;
+  char *after_len, *str = NULL;
+
+  if (reply_size - (int) (ptr - reply) < OR_INT_SIZE)
+    {
+      return NULL;
+    }
+
+  after_len = or_unpack_int (ptr, &declared_len);
+  if (declared_len <= 0 || declared_len > (reply_size - (int) (after_len - reply))
+      || memchr (after_len, '\0', declared_len) == NULL)
+    {
+      return NULL;
+    }
+
+  ptr = or_unpack_string_nocopy (ptr, &str);
+  if (str == NULL || (int) strlen (str) >= out_size)
+    {
+      return NULL;
+    }
+
+  strcpy (out, str);
+  return ptr;
+}
+#endif /* CS_MODE */
+
+/*
+ * cau_challenge () - ask the server for a one-time password challenge.
+ *   return: NO_ERROR, or the server's error (ER_AU_INVALID_USER for an unknown account)
+ *   user_name (in) : account to prove
+ *   scheme (out)   : form its password is stored in, 0 if none
+ *   nonce (out)    : the challenge
+ *   nonce_size (in): size of nonce
+ *   issued_at (out): when the server issued it
+ *   tag (out)      : the server's signature over it, sent back with the answer
+ *   tag_size (in)  : size of tag
+ */
+int
+cau_challenge (const char *user_name, int *scheme, char *nonce, int nonce_size, INT64 * issued_at, char *tag,
+	       int tag_size)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (CSS_AU_CHALLENGE_REPLY_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int reply_size = OR_ALIGNED_BUF_SIZE (a_reply);
+  char *request, *ptr;
+  int user_len, req_len, error;
+
+  req_len = length_const_string (user_name, &user_len);
+  request = (char *) malloc (req_len);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) req_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  pack_const_string_with_length (request, user_name, user_len);
+
+  memset (reply, 0, reply_size);
+  error = net_client_request (NET_SERVER_AU_CHALLENGE, request, req_len, reply, reply_size, NULL, 0, NULL, 0);
+  free_and_init (request);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  ptr = or_unpack_int (reply, &error);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  ptr = or_unpack_int (ptr, scheme);
+
+  /* reply: error | scheme | nonce | issued_at | tag */
+  ptr = cau_copy_reply_string (ptr, reply, reply_size, nonce, nonce_size);
+  /* or_unpack_int64 () aligns first, so check the room from the aligned position */
+  if (ptr != NULL && reply_size - (int) (PTR_ALIGN (ptr, MAX_ALIGNMENT) - reply) >= OR_BIGINT_SIZE)
+    {
+      ptr = or_unpack_int64 (ptr, issued_at);
+      ptr = cau_copy_reply_string (ptr, reply, reply_size, tag, tag_size);
+    }
+  else
+    {
+      ptr = NULL;
+    }
+
+  if (ptr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
+      return ER_NET_SERVER_DATA_RECEIVE;
+    }
+
+  return NO_ERROR;
+#else
+  return NO_ERROR;
+#endif
+}
+
+/*
+ * cau_response () - answer a challenge. The challenge goes back
+ *   with the answer, so the server can recognise its own without storing it.
+ *   return: NO_ERROR if the server accepted it, else ER_AU_INVALID_PASSWORD
+ *   user_name (in) : account the challenge was issued for
+ *   nonce (in)     : the challenge
+ *   issued_at (in) : when the server issued it
+ *   tag (in)       : the server's signature over it
+ *   answer (in)    : digest over the challenge and the password's stored form
+ */
+int
+cau_response (const char *user_name, const char *nonce, INT64 issued_at, const char *tag, const char *answer)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *a_request, *request, *ptr;
+  int req_len, error;
+
+  /* request: user | nonce | issued_at | tag | answer */
+  req_len = or_packed_string_length (user_name, NULL) + or_packed_string_length (nonce, NULL) + MAX_ALIGNMENT
+    + OR_BIGINT_SIZE + or_packed_string_length (tag, NULL) + or_packed_string_length (answer, NULL);
+  a_request = (char *) malloc (req_len + MAX_ALIGNMENT);
+  if (a_request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (req_len + MAX_ALIGNMENT));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  request = PTR_ALIGN (a_request, MAX_ALIGNMENT);
+  ptr = or_pack_string (request, user_name);
+  ptr = or_pack_string (ptr, nonce);
+  ptr = or_pack_int64 (ptr, issued_at);
+  ptr = or_pack_string (ptr, tag);
+  ptr = or_pack_string (ptr, answer);
+  req_len = (int) (ptr - request);
+
+  error = net_client_request (NET_SERVER_AU_RESPONSE, request, req_len, OR_ALIGNED_BUF_START (a_reply),
+			      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  free_and_init (a_request);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  or_unpack_int (OR_ALIGNED_BUF_START (a_reply), &error);
+  return error;
+#else
+  return NO_ERROR;
 #endif
 }
 

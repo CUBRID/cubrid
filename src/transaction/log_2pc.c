@@ -36,6 +36,9 @@
 #include "log_lsa.hpp"
 #include "log_reader.hpp"
 #include "log_manager.h"
+#if defined (SERVER_MODE)
+#include "server_support.h"
+#endif /* SERVER_MODE */
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "storage_common.h"
@@ -1043,14 +1046,21 @@ log_2pc_attach_client (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_TDES * clie
   tdes->isloose_end = false;
   tdes->isolation = client_tdes->isolation;
   tdes->wait_msecs = client_tdes->wait_msecs;
-  /*
-   * The client identification remains the same. So there is not a need
-   * to set clientids.
-   */
+  /* Transfer the connection-level client_id to the prepared slot so that
+   * xboot_unregister_client() matches and properly releases this slot when
+   * the attaching client (daemon or recovery CAS) disconnects. */
+  tdes->client_id = client_tdes->client_id;
 
   /* Return the table entry that is not going to be used anymore */
   logtb_free_tran_index (thread_p, client_tdes->tran_index);
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, tdes->tran_index);
+#if defined (SERVER_MODE)
+  /* the connection now runs under the attached index */
+  if (thread_p->conn_entry != NULL)
+    {
+      thread_p->conn_entry->assign_tran_index (tdes->tran_index);
+    }
+#endif /* SERVER_MODE */
 
   /* Reduce the number of loose end transactions by one */
   log_Gl.trantable.num_prepared_loose_end_indices--;

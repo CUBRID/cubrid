@@ -282,7 +282,11 @@
   \
   /* cdc channel authentication - appended at the end so no existing request number moves */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_CHALLENGE) \
-  NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_RESPONSE)
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_RESPONSE) \
+  \
+  /* password proof for a client login or user switch, appended likewise */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_AU_CHALLENGE) \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_AU_RESPONSE)
 
 enum net_server_request
 {

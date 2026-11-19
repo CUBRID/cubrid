@@ -405,7 +405,8 @@ extern int boot_get_server_timezone_checksum (char *timezone_checksum);
 
 /* session state API */
 extern int csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key,
-					    const char *db_user, const char *host, const char *program_name);
+					    char *session_secret, const char *db_user, const char *host,
+					    const char *program_name);
 extern int csession_end_session (SESSION_ID session_id, bool is_keep_session);
 extern int csession_set_row_count (int rows);
 extern int csession_get_row_count (int *rows);
@@ -419,6 +420,10 @@ extern int csession_get_prepared_statement (const char *name, XASL_ID * xasl_id,
 extern int csession_delete_prepared_statement (const char *name);
 
 extern int clogin_user (const char *username);
+extern int cau_challenge (const char *user_name, int *scheme, char *nonce, int nonce_size, INT64 * issued_at, char *tag,
+			  int tag_size);
+extern int cau_response (const char *user_name, const char *nonce, INT64 issued_at, const char *tag,
+			 const char *answer);
 
 extern int csession_set_session_variables (DB_VALUE * variables, const int count);
 extern int csession_get_variable (DB_VALUE * name, DB_VALUE * value);
