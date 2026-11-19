@@ -899,17 +899,19 @@ qo_make_semi_anti_exists_cond (PARSER_CONTEXT * parser, PT_NODE * spec)
  *   return: none
  *   parser(in):
  *   node(in/out): the PT_SELECT
- *   prev_spec(in): the spec before 'spec' in the FROM
  *   spec(in): the spec, freed
  *   expr(in): the [NOT] EXISTS of the spec (qo_make_semi_anti_exists_cond ()), owned by the WHERE
  */
 void
-qo_rewrite_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * prev_spec, PT_NODE * spec,
-				PT_NODE * expr)
+qo_rewrite_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec, PT_NODE * expr)
 {
-  PT_NODE *next_spec;
+  PT_NODE *prev_spec, *next_spec;
 
-  /* cut off the spec */
+  /* cut off the spec; a SEMI / ANTI JOIN spec is never the first */
+  for (prev_spec = node->info.query.q.select.from; prev_spec->next != spec; prev_spec = prev_spec->next)
+    {
+      ;
+    }
   prev_spec->next = next_spec = spec->next;
   spec->next = NULL;
 

@@ -22694,7 +22694,7 @@ static bool
 pt_rewrite_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI_ANTI_SPEC * specs, int n_specs,
 			    int plan_id, bool is_copy)
 {
-  PT_NODE *prev_spec, *spec, *expr;
+  PT_NODE *spec, *expr;
   SEMI_ANTI_TYPE type;
   int i;
   bool was_distinct;
@@ -22708,12 +22708,8 @@ pt_rewrite_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI
 	  continue;
 	}
 
-      for (prev_spec = NULL, spec = select_node->info.query.q.select.from;
-	   spec != NULL && spec->info.spec.id != specs[i].spec_id; prev_spec = spec, spec = spec->next)
-	{
-	  ;
-	}
-      if (spec == NULL || prev_spec == NULL)
+      spec = pt_find_entity (parser, select_node->info.query.q.select.from, specs[i].spec_id);
+      if (spec == NULL)
 	{
 	  return false;
 	}
@@ -22727,7 +22723,7 @@ pt_rewrite_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI
 	      PT_INTERNAL_ERROR (parser, "copy tree");
 	      return false;
 	    }
-	  qo_rewrite_semi_anti_as_exists (parser, select_node, prev_spec, spec, expr);
+	  qo_rewrite_semi_anti_as_exists (parser, select_node, spec, expr);
 	  continue;
 	}
 
