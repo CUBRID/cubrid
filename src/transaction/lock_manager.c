@@ -7669,10 +7669,8 @@ lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * see
   LK_HAND_RESULT hand;
   int owner_tran_index = NULL_TRAN_INDEX;
 
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
+  /* logtb_wait_for_tran_end_on_row (), the only caller, resolves a NULL one */
+  assert (thread_p != NULL);
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   trid = (tdes != NULL) ? tdes->trid : NULL_TRANID;
