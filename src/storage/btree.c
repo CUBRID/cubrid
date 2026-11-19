@@ -611,13 +611,14 @@ struct btree_find_fk_object
   LOCK lock_mode;
   const BTREE_FK_SEEN *seen;	/* the entries the caller saw being written after it marked the key */
   int n_seen;
-  MVCCID deferred_writer;	/* the writer to wait for when no committed child turned up */
+  LK_STAMP_SEEN deferred_writer;	/* a child's writer to wait for when no committed child turned up */
 #endif				/* SERVER_MODE */
 };
 /* BTREE_FIND_FK_OBJECT static initializer */
 #if defined (SERVER_MODE)
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
-  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK, NULL, 0, MVCCID_NULL }
+  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK, NULL, 0, \
+    { MVCCID_NULL, 0, { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK } } }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
   { OID_INITIALIZER }
@@ -6625,7 +6626,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   key_val_range kv_range;
   BTREE_FIND_FK_OBJECT find_fk_object = BTREE_FIND_FK_OBJECT_INITIALIZER;
 #if defined (SERVER_MODE)
-  MVCCID writer;
+  LK_STAMP_SEEN writer;
 #endif /* SERVER_MODE */
 
   assert (btid != NULL);
@@ -6673,16 +6674,16 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
       assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
 #if defined (SERVER_MODE)
       writer = find_fk_object.deferred_writer;
-      if (error_code != NO_ERROR || !OID_ISNULL (&find_fk_object.found_oid) || writer == MVCCID_NULL)
+      if (error_code != NO_ERROR || !OID_ISNULL (&find_fk_object.found_oid) || writer.owner == MVCCID_NULL)
 	{
 	  break;
 	}
       /* no committed child: wait for the writer passed over, then read the key again */
-      find_fk_object.deferred_writer = MVCCID_NULL;
+      find_fk_object.deferred_writer.owner = MVCCID_NULL;
       btree_scan_clear_key (&btree_scan);
-      if (logtb_is_active_other_mvccid (thread_p, writer))
+      if (logtb_is_active_other_mvccid (thread_p, writer.owner))
 	{
-	  error_code = logtb_wait_for_tran_end (thread_p, writer);
+	  error_code = logtb_wait_for_tran_end (thread_p, &writer);
 	  if (error_code != NO_ERROR)
 	    {
 	      break;
@@ -29082,8 +29083,12 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	  error_code = ER_FAILED;
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
-	  error_code = btree_key_wait_out_conflicting_writer (thread_p, satisfies_delete, &mvcc_header,
-							      find_unique_helper, leaf_page, NULL, restart);
+	  {
+	    LK_WAIT_TARGET target = { unique_oid, unique_class_oid, find_unique_helper->lock_mode };
+
+	    error_code = btree_key_wait_out_conflicting_writer (thread_p, satisfies_delete, &mvcc_header,
+								find_unique_helper, leaf_page, NULL, restart, &target);
+	  }
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
@@ -29409,8 +29414,13 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  error_code = ER_FAILED;
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
-	  error_code = btree_key_wait_out_conflicting_writer (thread_p, satisfies_delete, &mvcc_header,
-							      find_unique_helper, leaf_page, &overflow_page, restart);
+	  {
+	    LK_WAIT_TARGET target = { unique_oid, unique_class_oid, find_unique_helper->lock_mode };
+
+	    error_code = btree_key_wait_out_conflicting_writer (thread_p, satisfies_delete, &mvcc_header,
+								find_unique_helper, leaf_page, &overflow_page, restart,
+								&target);
+	  }
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
@@ -32147,10 +32157,15 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	}
       /* the writer may hold no row lock (an inserter takes none, a deleter may have given it back), so a lock could
        * be granted at once: btree_find_foreign_key () waits for its transaction once no committed child turned up */
-      if (find_fk_obj->deferred_writer == MVCCID_NULL)
+      if (find_fk_obj->deferred_writer.owner == MVCCID_NULL)
 	{
-	  find_fk_obj->deferred_writer = (satisfy_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
+	  find_fk_obj->deferred_writer.owner = (satisfy_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
 	    ? BTREE_MVCC_INFO_INSID (mvcc_info) : BTREE_MVCC_INFO_DELID (mvcc_info);
+	  /* read while the leaf is still fixed: see lock_get_tran_wake_generation () */
+	  find_fk_obj->deferred_writer.wake_gen = lock_get_tran_wake_generation ();
+	  COPY_OID (&find_fk_obj->deferred_writer.target.oid, oid);
+	  COPY_OID (&find_fk_obj->deferred_writer.target.class_oid, class_oid);
+	  find_fk_obj->deferred_writer.target.mode = find_fk_obj->lock_mode;
 	}
       return NO_ERROR;
 #else	/* !SERVER_MODE */		   /* SA_MODE */
@@ -34934,8 +34949,13 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
 #if defined (SERVER_MODE)
       if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID && BTREE_MVCC_INFO_IS_DELID_VALID (&settle_mvcc_info))
 	{
+	  /* the object we delete-mark: a deleter takes its X */
+	  LK_WAIT_TARGET target =
+	    { *BTREE_INSERT_OID (insert_helper), *BTREE_INSERT_CLASS_OID (insert_helper), X_LOCK };
+
 	  error_code =
-	    btree_key_wait_for_tran_end (thread_p, settle_mvcc_info.delete_mvccid, NULL, leaf_page, NULL, restart);
+	    btree_key_wait_for_tran_end (thread_p, settle_mvcc_info.delete_mvccid, NULL, leaf_page, NULL, restart,
+					 &target);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();

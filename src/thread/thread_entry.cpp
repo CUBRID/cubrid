@@ -117,6 +117,7 @@ namespace cubthread
     , lockwait_stime (0)
     , lockwait_msecs (0)
     , lockwait_state (-1)
+    , deferred_wake {}
     , query_entry (NULL)
     , tran_next_wait (NULL)
     , worker_thrd_list (NULL)
