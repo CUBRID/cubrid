@@ -210,6 +210,7 @@ static DB_BIGINT serial_fast_last_issued (SERIAL_CACHE_ENTRY * entry, DB_BIGINT 
 static void serial_fast_close (SERIAL_CACHE_ENTRY * entry);
 static bool serial_fast_count (DB_BIGINT base, DB_BIGINT inc, DB_BIGINT value, DB_BIGINT * count);
 static void serial_bigint_to_value (DB_BIGINT v, DB_VALUE * result);
+static bool serial_row_has_entry_definition (SERIAL_CACHE_ENTRY * entry, HEAP_CACHE_ATTRINFO * attr_info);
 static int serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * store_val,
 					   int num_alloc, bool log_supplemental, DB_VALUE * prior_val,
 					   bool * row_moved);
@@ -971,6 +972,30 @@ serial_bigint_to_value (DB_BIGINT v, DB_VALUE * result)
 }
 
 /*
+ * serial_row_has_entry_definition () - whether the row still has the increment, range and cycle the entry has
+ */
+static bool
+serial_row_has_entry_definition (SERIAL_CACHE_ENTRY * entry, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  const int attr_index[] = {
+    SERIAL_ATTR_INCREMENT_VAL_INDEX, SERIAL_ATTR_MIN_VAL_INDEX, SERIAL_ATTR_MAX_VAL_INDEX, SERIAL_ATTR_CYCLIC_INDEX
+  };
+  DB_VALUE *entry_val[] = { &entry->inc_val, &entry->min_val, &entry->max_val, &entry->cyclic };
+  DB_VALUE *row_val;
+  int i;
+
+  for (i = 0; i < (int) (sizeof (attr_index) / sizeof (attr_index[0])); i++)
+    {
+      row_val = heap_attrinfo_access (serial_Attrs_id[attr_index[i]], attr_info);
+      if (row_val == NULL || !tp_value_equal (row_val, entry_val[i], 0))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
  * serial_store_cur_val_of_serial () - write store_val into the cur_val column of the entry's
  *                _db_serial row. Its two callers store opposite values, hence the parameter.
  *   return: NO_ERROR, or ER_status
@@ -1056,7 +1081,9 @@ serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
 
   if (row_moved != NULL)
     {
-      /* any other writer since the entry's block end - a draw through the row, a restart - owns the row now */
+      /* any other writer since the entry's block end - a draw through the row, a restart - owns the row now. Under
+       * this transaction's X lock a write-back also needs the definition the block was reserved under: the rollback of
+       * a DDL that wrote another one reads a cur_val behind the value it wrote as a wrap (serial_rv_issued_end ()). */
       DB_VALUE cmp_result;
       ATTR_ID started_attrid;
 
@@ -1066,7 +1093,9 @@ serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
 	  goto exit_on_error;
 	}
       assert (started_attrid != NOT_FOUND);
-      if (db_get_int (&cmp_result) != 0 || db_get_int (heap_attrinfo_access (started_attrid, attr_info_p)) == 0)
+      if (db_get_int (&cmp_result) != 0 || db_get_int (heap_attrinfo_access (started_attrid, attr_info_p)) == 0
+	  || (prior_val != NULL && lock_get_object_lock (&entry->oid, &serial_class_oid) == X_LOCK
+	      && !serial_row_has_entry_definition (entry, attr_info_p)))
 	{
 	  *row_moved = true;
 	  goto exit;
@@ -1147,15 +1176,14 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
  *                entry is dropped: lower cur_val to the entry's cur_val, the last value actually
  *                handed out. Without it a reset/rebase DDL, a DROP or a shutdown strands the values
  *                between that and the block end, and the next block starts past them. They are still
- *                lost in a crash, and with HA under this transaction's X lock (below).
+ *                lost in a crash, and when a DDL of this transaction has written another definition since the
+ *                block was reserved.
  *   return: NO_ERROR, or ER_status
  *   entry(in)    :
  *
  * The write is deliberately not part of the transaction that triggered the drop: a rolled back
  * reset DDL must still leave the lowered cur_val behind, because the values it covers were already
- * issued. Value state is non-transactional; generation parameters are not. Under this transaction's
- * X lock the write would go without the flush mark, and a rollback would keep it but drop its
- * replication record, so with HA the tail is left unissued instead.
+ * issued. Value state is non-transactional; generation parameters are not.
  *
  * No supplemental (CDC) record is appended. That record reports the values a write hands out, and
  * this one hands out none - any n would push a consumer past the master, in the direction opposite
