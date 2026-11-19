@@ -43,6 +43,11 @@ static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT
 #define QO_NULL_EVAL_NOT_NULL (QO_NULL_EVAL_TRUE | QO_NULL_EVAL_FALSE)
 #define QO_NULL_EVAL_ANY (QO_NULL_EVAL_TRUE | QO_NULL_EVAL_FALSE | QO_NULL_EVAL_UNKNOWN)
 
+/* how many elements of a row value are NULL, for qo_null_eval_row () */
+#define QO_NULL_ROW_NONE 0
+#define QO_NULL_ROW_SOME 1
+#define QO_NULL_ROW_ALL 2
+
 /* the values of an operation that is NULL when either operand is NULL */
 #define QO_NULL_EVAL_STRICT(left, right) \
   (((left) == QO_NULL_EVAL_UNKNOWN || (right) == QO_NULL_EVAL_UNKNOWN) ? QO_NULL_EVAL_UNKNOWN : QO_NULL_EVAL_ANY)
@@ -811,6 +816,95 @@ qo_null_query_value_is_null (PARSER_CONTEXT * parser, PT_NODE * query, QO_NULL_T
 }
 
 /*
+ * qo_null_eval_row () - how many elements of a row value (a, b, ...) are NULL while the target columns are?
+ *   return: QO_NULL_ROW_NONE if the operand is not a row or no element is known to be NULL, QO_NULL_ROW_SOME if one is,
+ *	     QO_NULL_ROW_ALL if every element is
+ *   parser(in):
+ *   node(in): an operand of a comparison
+ *   target(in): the columns taken as NULL
+ *
+ * Note: rows are compared element by element (the executor does not take NULL = NULL as TRUE there): a row whose
+ *	 elements are all NULL compares UNKNOWN with any row, and a row with a NULL element is equal to no row.
+ *	 The row is not a NULL value itself, so qo_null_eval () does not take it as one (it IS NOT NULL).
+ */
+static int
+qo_null_eval_row (PARSER_CONTEXT * parser, PT_NODE * node, QO_NULL_TARGET * target)
+{
+  PT_NODE *elem;
+  int n_elems = 0, n_nulls = 0;
+  bool has_null = false;
+
+  if (node == NULL || node->node_type != PT_FUNCTION || node->info.function.function_type != F_SEQUENCE)
+    {
+      return QO_NULL_ROW_NONE;
+    }
+
+  for (elem = node->info.function.arg_list; elem != NULL; elem = elem->next)
+    {
+      int row;
+
+      n_elems++;
+      if (qo_null_eval (parser, elem, target) == QO_NULL_EVAL_UNKNOWN)
+	{
+	  n_nulls++;
+	  continue;
+	}
+
+      row = qo_null_eval_row (parser, elem, target);
+      if (row == QO_NULL_ROW_ALL)
+	{
+	  n_nulls++;
+	}
+      else if (row == QO_NULL_ROW_SOME)
+	{
+	  has_null = true;
+	}
+    }
+
+  if (n_elems > 0 && n_nulls == n_elems)
+    {
+      return QO_NULL_ROW_ALL;
+    }
+
+  return (n_nulls > 0 || has_null) ? QO_NULL_ROW_SOME : QO_NULL_ROW_NONE;
+}
+
+/*
+ * qo_null_eval_row_compare () - the values of x op y when x or y is a row value with NULL elements
+ *   return: set of QO_NULL_EVAL_* values, or -1 when the rows do not decide them
+ *   parser(in):
+ *   op(in): PT_EQ, PT_NE, PT_GE, PT_GT, PT_LT or PT_LE
+ *   x(in), y(in): the operands
+ *   target(in): the columns taken as NULL
+ */
+static int
+qo_null_eval_row_compare (PARSER_CONTEXT * parser, PT_OP_TYPE op, PT_NODE * x, PT_NODE * y, QO_NULL_TARGET * target)
+{
+  int row_x = qo_null_eval_row (parser, x, target);
+  int row_y = qo_null_eval_row (parser, y, target);
+
+  if (row_x == QO_NULL_ROW_ALL || row_y == QO_NULL_ROW_ALL)
+    {
+      return QO_NULL_EVAL_UNKNOWN;
+    }
+
+  if (row_x == QO_NULL_ROW_SOME || row_y == QO_NULL_ROW_SOME)
+    {
+      if (op == PT_EQ)
+	{
+	  return QO_NULL_EVAL_FALSE | QO_NULL_EVAL_UNKNOWN;
+	}
+      if (op == PT_NE)
+	{
+	  return QO_NULL_EVAL_TRUE | QO_NULL_EVAL_UNKNOWN;
+	}
+      /* < and the others decide by the first pair of elements that differ, which may come before the NULL */
+    }
+
+  return -1;
+}
+
+/*
  * qo_null_eval_quantified () - the values of IN, NOT IN, op SOME and op ALL: an OR (an AND for NOT IN and ALL) of the
  *				comparisons of the left operand with the elements, FALSE (TRUE) for no element
  *   return: set of QO_NULL_EVAL_* values
@@ -825,10 +919,46 @@ qo_null_eval_quantified (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET
   bool is_all = (op == PT_IS_NOT_IN || op == PT_EQ_ALL || op == PT_NE_ALL || op == PT_GE_ALL || op == PT_GT_ALL
 		 || op == PT_LT_ALL || op == PT_LE_ALL);
   int on_empty = is_all ? QO_NULL_EVAL_TRUE : QO_NULL_EVAL_FALSE;
-  int left, values;
+  PT_OP_TYPE cmp_op;
+  int left, values, cmp;
   PT_NODE *set, *elem;
 
   left = qo_null_eval_list (parser, expr->info.expr.arg1, target, true);
+  if (qo_null_eval_row (parser, expr->info.expr.arg1, target) == QO_NULL_ROW_ALL)
+    {
+      /* compares UNKNOWN with each element or row, as a NULL does */
+      left = QO_NULL_EVAL_UNKNOWN;
+    }
+
+  /* the comparison with each element */
+  switch (op)
+    {
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+    case PT_EQ_ALL:
+      cmp_op = PT_EQ;
+      break;
+    case PT_IS_NOT_IN:
+    case PT_NE_SOME:
+    case PT_NE_ALL:
+      cmp_op = PT_NE;
+      break;
+    case PT_GE_SOME:
+    case PT_GE_ALL:
+      cmp_op = PT_GE;
+      break;
+    case PT_GT_SOME:
+    case PT_GT_ALL:
+      cmp_op = PT_GT;
+      break;
+    case PT_LT_SOME:
+    case PT_LT_ALL:
+      cmp_op = PT_LT;
+      break;
+    default:
+      cmp_op = PT_LE;
+      break;
+    }
 
   set = expr->info.expr.arg2;
   while (set != NULL && set->node_type == PT_EXPR && set->info.expr.op == PT_CAST)
@@ -867,8 +997,15 @@ qo_null_eval_quantified (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET
   values = on_empty;
   for (; elem != NULL; elem = elem->next)
     {
-      values = qo_null_eval_combine (is_all ? PT_AND : PT_OR, values,
-				     QO_NULL_EVAL_STRICT (left, qo_null_eval (parser, elem, target)));
+      cmp = QO_NULL_EVAL_STRICT (left, qo_null_eval (parser, elem, target));
+      if (cmp != QO_NULL_EVAL_UNKNOWN)
+	{
+	  int row_cmp = qo_null_eval_row_compare (parser, cmp_op, expr->info.expr.arg1, elem, target);
+
+	  cmp = (row_cmp < 0) ? cmp : row_cmp;
+	}
+
+      values = qo_null_eval_combine (is_all ? PT_AND : PT_OR, values, cmp);
     }
 
   return values;
@@ -890,6 +1027,16 @@ qo_null_eval_expr (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET * tar
   PT_OP_TYPE op = expr->info.expr.op;
   PT_NODE *arg1 = expr->info.expr.arg1, *arg2 = expr->info.expr.arg2, *alt;
   int left, values, alt_values;
+
+  if (op == PT_EQ || op == PT_NE || op == PT_GE || op == PT_GT || op == PT_LT || op == PT_LE)
+    {
+      /* a comparison of rows; a row IN list can be rewritten to an OR of these */
+      values = qo_null_eval_row_compare (parser, op, arg1, arg2, target);
+      if (values >= 0)
+	{
+	  return values;
+	}
+    }
 
   switch (op)
     {
@@ -960,6 +1107,11 @@ qo_null_eval_expr (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET * tar
     case PT_RANGE:
       /* an OR over the alternatives on or_next, each comparing x with one or two bounds */
       left = qo_null_eval_list (parser, arg1, target, true);
+      if (qo_null_eval_row (parser, arg1, target) == QO_NULL_ROW_ALL)
+	{
+	  /* compares UNKNOWN with each bound, as a NULL does */
+	  left = QO_NULL_EVAL_UNKNOWN;
+	}
       values = QO_NULL_EVAL_FALSE;
       for (alt = arg2; alt != NULL; alt = alt->or_next)
 	{
@@ -971,6 +1123,16 @@ qo_null_eval_expr (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET * tar
 	  switch (alt->info.expr.op)
 	    {
 	    case PT_BETWEEN_EQ_NA:
+	      alt_values = QO_NULL_EVAL_STRICT (left, qo_null_eval (parser, alt->info.expr.arg1, target));
+	      if (alt_values != QO_NULL_EVAL_UNKNOWN)
+		{
+		  /* a row IN list becomes a RANGE of row equalities */
+		  int row_cmp = qo_null_eval_row_compare (parser, PT_EQ, arg1, alt->info.expr.arg1, target);
+
+		  alt_values = (row_cmp < 0) ? alt_values : row_cmp;
+		}
+	      break;
+
 	    case PT_BETWEEN_GE_INF:
 	    case PT_BETWEEN_GT_INF:
 	    case PT_BETWEEN_INF_LE:
@@ -3145,13 +3307,14 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like, P
 	  goto fast_exit;
 	}
 
-      if ((like->info.expr.arg1->type_enum != PT_TYPE_CHAR || pattern->type_enum != PT_TYPE_CHAR
-	   || (pt_get_collation_info (like->info.expr.arg1, &coll_infer)
-	       && coll_infer.codeset == INTL_CODESET_BINARY)) && !prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE))
+      if ((pt_get_collation_info (like->info.expr.arg1, &coll_infer) && coll_infer.codeset == INTL_CODESET_BINARY)
+	  || ((like->info.expr.arg1->type_enum != PT_TYPE_CHAR || pattern->type_enum != PT_TYPE_CHAR)
+	      && !prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE)))
 	{
 	  /* LIKE lets the compared string end in spaces past the pattern (qstr_eval_like ()), but "=" ignores them
 	   * only between two CHAR (CBRD-23731): v LIKE 'ab' is not v = 'ab' on a VARCHAR, nor c LIKE 'a' || 'b' on a
-	   * CHAR.  A binary CHAR is padded with zero bytes, not spaces, so LIKE does not let it end in them either.
+	   * CHAR.  A binary CHAR is padded with zero bytes, not spaces, and "=" ignores trailing zero bytes whatever
+	   * ignore_trailing_space is (lang_fastcmp_binary ()) while LIKE does not.
 	   * Keep LIKE, with the generic rewrite for an index scan */
 	  if (last_safe_logical_pos >= 0)
 	    {
