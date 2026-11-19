@@ -571,15 +571,6 @@ typedef int BTREE_PROCESS_KEY_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * btid
     } \
   while (false)
 
-/* CBRD-28141: keys compared one by one in a leaf before the rest of the leaf is decided at once against the upper key */
-#define BTREE_UPPER_KEY_PAGE_CHECK_AFTER_KEYS 2
-
-/* no leaf is decided against the upper key, and the next leaf compares its first keys one by one */
-#define BTREE_UPPER_KEY_PAGE_RESET(bts)   do {                                         \
-              VPID_SET_NULL (&(bts)->upper_key_page_vpid);                             \
-              (bts)->upper_key_keys_to_check = BTREE_UPPER_KEY_PAGE_CHECK_AFTER_KEYS;  \
-       } while(0)
-
 /* also resets the leaf decision against the upper key: the leaf may change once it is unfixed */
 #ifdef NDEBUG
 #define COMMON_PREFIX_PAGE_SIZE_RESET(bts)   do {                    \

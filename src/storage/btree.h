@@ -317,6 +317,15 @@ struct btree_scan
   void *bts_other;
 };
 
+/* CBRD-28141: keys compared one by one in a leaf before the rest of the leaf is decided at once against the upper key */
+#define BTREE_UPPER_KEY_PAGE_CHECK_AFTER_KEYS 2
+
+/* no leaf is decided against the upper key, and the next leaf compares its first keys one by one */
+#define BTREE_UPPER_KEY_PAGE_RESET(bts)   do {                                         \
+              VPID_SET_NULL (&(bts)->upper_key_page_vpid);                             \
+              (bts)->upper_key_keys_to_check = BTREE_UPPER_KEY_PAGE_CHECK_AFTER_KEYS;  \
+       } while(0)
+
 #define BTREE_INIT_SCAN(bts)				\
   do {							\
     (bts)->P_vpid.pageid = NULL_PAGEID;			\
@@ -344,6 +353,9 @@ struct btree_scan
     (bts)->qualified_keys = 0;				\
     (bts)->key_range_max_value_equal = false;		\
     LSA_SET_NULL (&(bts)->cur_leaf_lsa);		\
+    BTREE_UPPER_KEY_PAGE_RESET (bts);			\
+    LSA_SET_NULL (&(bts)->upper_key_page_lsa);		\
+    (bts)->upper_key_end_slot = NULL_SLOTID;		\
     (bts)->lock_mode = NULL_LOCK;			\
     (bts)->key_record.data = NULL;			\
     (bts)->offset = 0;					\
@@ -384,6 +396,9 @@ struct btree_scan
     (bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN;  \
     btree_clear_key_value (&(bts)->clear_common_prefix_key, &(bts)->common_prefix_key); \
     COMMON_PREFIX_PAGE_DEBUG_INFO_RESET((bts));         \
+    BTREE_UPPER_KEY_PAGE_RESET (bts);			\
+    LSA_SET_NULL (&(bts)->upper_key_page_lsa);		\
+    (bts)->upper_key_end_slot = NULL_SLOTID;		\
     pr_clear_value (&(bts)->cur_key);			\
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
