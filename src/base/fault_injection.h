@@ -99,6 +99,9 @@ typedef enum
   FI_TEST_CONNECTION_WORKER_QUEUE_TIMER_STOP_FAIL = 700002,	/* disarming the queue timer */
   FI_TEST_CONNECTION_WORKER_CLOSE_HOLD = 700003,	/* hold a close before it drains the worker's queue */
 
+  /* HEAP MANAGER */
+  FI_TEST_HEAP_PREV_VERSION_WALK_HOLD = 800000,	/* hold a catalog read before it judges a previous version */
+
   /* etc .... */
 
 } FI_TEST_CODE;
