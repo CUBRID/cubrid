@@ -3439,6 +3439,9 @@ end:
 /* statement execution state; per connection (thread-local for multiple connections) */
 CUB_THREAD_LOCAL bool do_Trigger_involved;
 
+/* nesting depth of client UPDATEs that keep their rows in the workspace to check uniqueness at the statement end */
+static CUB_THREAD_LOCAL int do_Unique_check_deferred = 0;
+
 /* do_Trigger_involved does not accurately distinguish
  * whether the corresponding query is a trigger syntax.
  * Therefore, a separate global variable is set to distinguish whether the query is related to a trigger */
@@ -9020,7 +9023,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
   int upd_cls_cnt = 0, vals_cnt = 0;
   CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL;
-  int turn_off_unique_check;
+  int turn_off_unique_check = 0;
   int turn_off_server_serializable_conflict_check;
   CURSOR_ID cursor_id;
   DB_VALUE *dbvals = NULL;
@@ -9085,6 +9088,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
        * performed on the client */
       turn_off_unique_check = 1;
       turn_off_server_serializable_conflict_check = 1;
+      do_Unique_check_deferred++;
     }
 
   /* open cursor */
@@ -9199,6 +9203,11 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
     }
 
 done:
+  if (turn_off_unique_check)
+    {
+      do_Unique_check_deferred--;
+    }
+
   /* free classes information array */
   if (cls_info)
     {
@@ -17769,6 +17778,25 @@ end:
  * Implements the scope statement.
  *
  */
+
+/*
+ * do_flush_before_trigger () - flush the rows that the statement firing a trigger left in the workspace
+ *   return: error of the flush
+ *
+ * Note: a statement in the trigger condition or action that runs on the server sees only flushed rows. An error of
+ *       this flush belongs to the firing statement, so the caller returns it as it is, not as an error of the trigger.
+ */
+int
+do_flush_before_trigger (void)
+{
+  /* a client UPDATE that defers its unique check keeps its rows back until it ends */
+  if (do_Unique_check_deferred > 0 || !ws_need_flush ())
+    {
+      return NO_ERROR;
+    }
+
+  return locator_all_flush ();
+}
 
 /*
  * do_scope() - scopes a statement

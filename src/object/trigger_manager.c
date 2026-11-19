@@ -4521,6 +4521,12 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
     }
   else
     {
+      error = do_flush_before_trigger ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
       if (tr_Current_depth <= 1 && ++act->exec_cnt > prm_get_integer_value (PRM_ID_RESET_TR_PARSER)
 	  && prm_get_integer_value (PRM_ID_RESET_TR_PARSER) > 0)
 	{
@@ -4722,6 +4728,11 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	  break;
 
 	case TR_ACT_EXPRESSION:
+	  error = do_flush_before_trigger ();
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
 	compile_stmt_again:
 	  if (tr_Current_depth <= 1 && ++act->exec_cnt > prm_get_integer_value (PRM_ID_RESET_TR_PARSER)
 	      && prm_get_integer_value (PRM_ID_RESET_TR_PARSER) > 0)
