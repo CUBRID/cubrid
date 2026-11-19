@@ -1798,11 +1798,26 @@
 #define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
 #define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 #define ER_LDR_PARTITIONED_CLASS_NOT_SUPPORTED      -1395
-#define ER_AU_LOGIN_METHOD_NOT_ALLOWED_ON_BROKER    -1396
-#define ER_SES_SESSION_RENEWED                      -1397
-#define ER_SES_LOGIN_NOT_RESTORED                   -1398
 
-#define ER_LAST_ERROR                               -1399
+#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1396
+
+#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1397
+
+#define ER_HEAP_OOS_CORRUPTED_RECORD                -1398
+
+#define ER_HEAP_OOS_INVALID_ARGUMENT                -1399
+
+#define ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED           -1400
+
+#define ER_BO_INCOMPATIBLE_STORAGE_FORMAT           -1401
+
+#define ER_VACUUM_OOS_LOOKUP_DEFERRED               -1402
+
+#define ER_AU_LOGIN_METHOD_NOT_ALLOWED_ON_BROKER    -1403
+#define ER_SES_SESSION_RENEWED                      -1404
+#define ER_SES_LOGIN_NOT_RESTORED                   -1405
+
+#define ER_LAST_ERROR                               -1406
 
 
 /*
