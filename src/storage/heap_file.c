@@ -829,6 +829,7 @@ static int heap_chkreloc_print_notfound (const void *ignore_reloc_oid, void *ent
 static DISK_ISVALID heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_PTR pgptr);
 
 static int heap_chnguess_initialize (void);
+static int heap_oos_auto_inline_target_size (void);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int heap_chnguess_realloc (void);
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -3951,7 +3952,7 @@ heap_vpid_prev (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID
 
 /*
  * heap_manager_initialize () -
- *   return: NO_ERROR
+ *   return: NO_ERROR, or ER_PRM_BAD_VALUE for an out-of-range oos_trigger_threshold
  *
  * Note: Initialization process of the heap file module. Find the
  * maximum size of an object that can be inserted in the heap.
@@ -3967,9 +3968,12 @@ heap_manager_initialize (void)
 		    8 * SPAGE_SLOT_SIZE /* margin */ , HEAP_MAX_ALIGN);
   heap_Slotted_overhead = SPAGE_SLOT_SIZE;
 
+  /* An explicit threshold may only raise the automatic target. A lower one would move more values, including those
+   * of system-class rows, to OOS. */
   UINT64 oos_trigger_threshold = prm_get_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD);
   if (oos_trigger_threshold != 0
-      && (oos_trigger_threshold <= OR_OOS_INLINE_SIZE || oos_trigger_threshold > (UINT64) heap_Maxslotted_reclength))
+      && (oos_trigger_threshold < (UINT64) heap_oos_auto_inline_target_size ()
+	  || oos_trigger_threshold > (UINT64) heap_Maxslotted_reclength))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_OOS_TRIGGER_THRESHOLD));
       return ER_PRM_BAD_VALUE;
@@ -14229,20 +14233,14 @@ heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int paylo
 #define HEAP_OOS_MIN_RECS_PER_PAGE 4
 
 /*
- * heap_oos_inline_target_size () - Return the maximum inline record target used by OOS demotion
+ * heap_oos_auto_inline_target_size () - Return the automatic target: four aligned records and their slots must fit
+ *                                       in the usable heap page capacity
  *
- * A zero oos_trigger_threshold selects the PostgreSQL-style physical target: four aligned records and their slots must
- * fit in the usable heap page capacity. A nonzero value is the byte target. Neither target depends on heap unfill space.
+ * The target does not depend on heap unfill space.
  */
-int
-heap_oos_inline_target_size (void)
+static int
+heap_oos_auto_inline_target_size (void)
 {
-  const UINT64 oos_trigger_threshold = prm_get_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD);
-  if (oos_trigger_threshold != 0)
-    {
-      return (int) oos_trigger_threshold;
-    }
-
   const int page_capacity = heap_nonheader_page_capacity ();
   int target_size;
   int packed_size;
@@ -14257,6 +14255,23 @@ heap_oos_inline_target_size (void)
   assert (next_packed_size > page_capacity);
 
   return target_size;
+}
+
+/*
+ * heap_oos_inline_target_size () - Return the maximum inline record target used by OOS demotion
+ *
+ * A nonzero oos_trigger_threshold is the byte target. Zero selects the automatic target.
+ */
+int
+heap_oos_inline_target_size (void)
+{
+  const UINT64 oos_trigger_threshold = prm_get_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD);
+  if (oos_trigger_threshold != 0)
+    {
+      return (int) oos_trigger_threshold;
+    }
+
+  return heap_oos_auto_inline_target_size ();
 }
 
 /*
@@ -14341,8 +14356,8 @@ try
   header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
 
   /* TODO: change the statistics */
-  /* Push the largest remaining variable column to OOS one by one until at least four resulting heap records can
-   * fit on a page (PG TOAST style), instead of pushing every eligible column. */
+  /* Push the largest remaining variable column to OOS one by one until the record fits the OOS inline target,
+   * instead of pushing every eligible column. */
   const int oos_inline_target_size = heap_oos_inline_target_size ();
   if (header_size + payload_size + mvcc_extra > oos_inline_target_size)
     {

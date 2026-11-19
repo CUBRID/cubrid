@@ -61,24 +61,30 @@ cubrid createdb --db-volume-size=20M --log-volume-size=20M --db-page-size=4K \
   -F "$work_dir/db4k" oos_threshold_4k en_US.utf8 < /dev/null > "$work_dir/output" 2>&1 \
   || fail 'createdb rejected threshold 3948 on a 4K database'
 
-for value in 0 25 3948; do
+for value in 0 988 3948; do
   configure "$value"
   select_db oos_threshold_4k "$value"
 done
 
-for value in 1 24 3949 4096 16385 -1 malformed 8192; do
+for value in 1 24 25 987 3949 4096 16385 -1 malformed 8192; do
   configure "$value"
   expect_refused oos_threshold_4k 'select count (*) from db_root' "threshold $value"
 done
 
 configure 0
 select_db oos_threshold_4k 0
-expect_refused oos_threshold_4k "SET SYSTEM PARAMETERS 'oos_trigger_threshold=25'" 'static SET'
+expect_refused oos_threshold_4k "SET SYSTEM PARAMETERS 'oos_trigger_threshold=988'" 'static SET'
 select_db oos_threshold_4k 0
 
 cubrid createdb --db-volume-size=20M --log-volume-size=20M --db-page-size=16K \
   -F "$work_dir/db16k" oos_threshold_16k en_US.utf8 < /dev/null > "$work_dir/output" 2>&1 \
   || fail 'createdb failed on a 16K database'
-configure 8192
-select_db oos_threshold_16k 8192
+for value in 4060 8192 16236; do
+  configure "$value"
+  select_db oos_threshold_16k "$value"
+done
+for value in 4059 16237; do
+  configure "$value"
+  expect_refused oos_threshold_16k 'select count (*) from db_root' "threshold $value on 16K"
+done
 printf 'PASS: OOS threshold startup validation\n'
