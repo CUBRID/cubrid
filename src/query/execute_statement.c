@@ -20640,15 +20640,21 @@ do_drop_sensitivity_label_in_table (PARSER_CONTEXT * parser, PT_SENSITIVITY_LABE
  *   return: error code
  *   parser(in): parser context
  *   info(in/out): the statement
+ *
+ * Note: each class stays SCH-S locked to the end of the transaction, so it keeps its owner until then.
  */
 static int
 do_drop_sensitivity_label_in_schema (PARSER_CONTEXT * parser, PT_SENSITIVITY_LABEL_INFO * info)
 {
   PT_NODE *schema;
-  DB_OBJLIST *class_list = NULL;
-  DB_OBJLIST *cl;
+  DB_QUERY_RESULT *result = NULL;
+  DB_VALUE value;
+  MOP owner;
+  MOP class_mop;
   SM_CLASS *class_;
+  int cursor;
   int error = NO_ERROR;
+  int save;
 
   /* a prepared statement is executed again on this tree: discard what its last execution left */
   parser_free_tree (parser, info->dropped_columns);
@@ -20658,30 +20664,74 @@ do_drop_sensitivity_label_in_schema (PARSER_CONTEXT * parser, PT_SENSITIVITY_LAB
     {
       assert (schema->node_type == PT_NAME);
 
-      error = sensitivity_label_find_classes_in_schema (PT_NAME_ORIGINAL (schema), &class_list);
-      if (error != NO_ERROR)
+      owner = au_find_user (PT_NAME_ORIGINAL (schema));
+      if (owner == NULL)
 	{
-	  goto end;
-	}
-    }
-
-  for (cl = class_list; cl != NULL; cl = cl->next)
-    {
-      error = au_fetch_class_force (cl->op, &class_, AU_FETCH_READ);
-      if (error != NO_ERROR)
-	{
-	  goto end;
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
 	}
 
-      error = drop_labels_in_class (parser, cl->op, class_, &info->dropped_columns);
-      if (error != NO_ERROR)
+      AU_SAVE_AND_DISABLE (save);
+      db_make_object (&value, owner);
+      error = db_execute_internal_query ("SELECT [class_of] FROM [" CT_CLASS_NAME "] WHERE [owner] = ?", &value, 1,
+					 &result);
+      AU_RESTORE (save);
+      if (error < NO_ERROR)
 	{
 	  goto end;
 	}
+      error = NO_ERROR;
+
+      for (cursor = db_query_first_tuple (result); cursor == DB_CURSOR_SUCCESS; cursor = db_query_next_tuple (result))
+	{
+	  error = db_query_get_tuple_value (result, 0, &value);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  class_mop = db_get_object (&value);
+
+	  /* a DDL statement the fetch waits for may have dropped the class or changed its owner since the query
+	   * read it */
+	  error = au_fetch_class_force (class_mop, &class_, AU_FETCH_READ);
+	  if (error == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      er_clear ();
+	      error = NO_ERROR;
+	      continue;
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  if (!ws_is_same_object (class_->owner, owner))
+	    {
+	      continue;
+	    }
+
+	  error = drop_labels_in_class (parser, class_mop, class_, &info->dropped_columns);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+
+      if (cursor != DB_CURSOR_END)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto end;
+	}
+
+      db_query_end (result);
+      result = NULL;
     }
 
 end:
-  ml_ext_free (class_list);
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
 
   return error;
 }
