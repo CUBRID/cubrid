@@ -34,6 +34,7 @@
 #include "btree.h"
 
 #include "btree_sort.h"
+#include "fault_injection.h"
 #include "heap_file.h"
 #include "file_io.h"
 #include "file_manager.h"
@@ -1357,6 +1358,12 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       if (logpb_no_logging_index_build_begin ())
 	{
 	  is_no_logging_build_registered = true;
+
+	  {
+	    /* lets a test request an online backup while a registered build has not written its pages */
+	    int hold_seconds = 20;
+	    (void) FI_TEST_ARG (thread_p, FI_TEST_BTREE_LOAD_NO_LOGGING_HOLD, &hold_seconds, FI_INIT_STATE);
+	  }
 	}
       else
 	{
