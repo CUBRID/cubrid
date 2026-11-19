@@ -787,6 +787,10 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
     PATTERN "src" EXCLUDE
     PATTERN "output" EXCLUDE
     PATTERN "release" EXCLUDE
+    PATTERN "gradle" EXCLUDE
+    PATTERN "build" EXCLUDE
+    PATTERN ".gradle" EXCLUDE
+    PATTERN "lib" EXCLUDE
   )
 endif()
 
