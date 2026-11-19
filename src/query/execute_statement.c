@@ -6855,12 +6855,23 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   const char *old_name, *new_name;
+  const char *old_qualifier_name, *new_qualifier_name;
   DB_OBJECT *trigger;
 
   CHECK_MODIFICATION_ERROR ();
 
   old_name = statement->info.rename_trigger.old_name->info.name.original;
   new_name = statement->info.rename_trigger.new_name->info.name.original;
+
+  old_qualifier_name = pt_get_qualifier_name (parser, statement->info.rename_trigger.old_name);
+  new_qualifier_name = pt_get_qualifier_name (parser, statement->info.rename_trigger.new_name);
+
+  if (old_qualifier_name == NULL || new_qualifier_name == NULL
+      || intl_identifier_casecmp (old_qualifier_name, new_qualifier_name) != 0)
+    {
+      ERROR_SET_ERROR (error, ER_SM_RENAME_CANT_ALTER_OWNER);
+      return error;
+    }
 
   trigger = tr_find_trigger (old_name);
   if (trigger == NULL)
