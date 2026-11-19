@@ -6412,7 +6412,8 @@ locator_delete_moved_internal_lob_intermediates (THREAD_ENTRY * thread_p, const 
 		  continue;
 		}
 	    }
-	  error_code = oos_delete (thread_p, oos_vfid, ref->ref, NULL);
+	  /* at commit, as the LOB branch: a rollback must not re-insert into a slot another chain reused */
+	  error_code = oos_delete_at_commit (thread_p, oos_vfid, ref->ref);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto end;

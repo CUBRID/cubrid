@@ -247,7 +247,7 @@ extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request
  * reference and a vanished or reused target is unexpected. */
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
 		       std::vector<VPID> *emptied_vpids = NULL, oos_delete_outcome *outcome_out = NULL);
-/* Like oos_delete, for an internal LOB chain deleted in a user transaction: the head is checked now (same outcomes),
+/* Like oos_delete, for a chain deleted in a user transaction: the head is checked now (same outcomes),
  * and the chain is removed when the transaction commits (RVOOS_DELETE_AT_COMMIT postpone, redo-only trim with the
  * head). A rollback then has nothing to re-insert, so it cannot fail for lack of page space. */
 extern int oos_delete_at_commit (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
