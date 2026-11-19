@@ -835,13 +835,12 @@ namespace memoize
 
     size_t size = get_current_size ();
 
-    /* Until the storage holds 60% of its budget every key has cost one miss at most, so a low hit ratio says
-     * nothing yet: keys that repeat but have not come round again look like distinct keys. Judging after a fixed
-     * 1,000 probes turned memoize off whenever the keys outnumbered ~630 (CBRD-27487).
-     * Once inserts have stopped, every miss is judged whatever the size: taking out the partial key in
-     * stop_insert () can bring the storage back under 60%, and it must not then be kept unjudged. */
-    if ((insert_stopped || size > m_max_storage_size * MEMOIZE_HIT_RATIO_CHECK_SIZE)
-	&& ((double) hit) / (hit + miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
+    /* While the storage has room every key has cost one miss at most, so a low hit ratio says nothing yet: keys
+     * that repeat but have not come round again look like distinct keys, whatever share of the budget they fill.
+     * Judging after a fixed 1,000 probes turned memoize off whenever the keys outnumbered ~630 (CBRD-27487), and
+     * judging at 60% of the budget turned it off for keys that come in turn (an outer scan in heap order) and
+     * fill between 60% and all of it (CBRD-28032). Once inserts have stopped, every miss is judged. */
+    if (insert_stopped && ((double) hit) / (hit + miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
       {
 	disabled = true;
 	return false;

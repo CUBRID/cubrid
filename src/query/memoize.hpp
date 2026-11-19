@@ -30,8 +30,6 @@
 namespace memoize
 {
   constexpr double MEMOIZE_HIT_RATIO_THRESHOLD = 0.5;
-  /* the hit ratio is judged only once the storage holds this share of its budget (the subquery cache waits for 60%) */
-  constexpr double MEMOIZE_HIT_RATIO_CHECK_SIZE = 0.6;
 
   template <typename T>
   using fixed_allocator = cubmem::fixed_size_alloc::allocator<T, false>;
