@@ -9799,6 +9799,13 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
 	      /* restore tree structure */
 	      pt_restore_assignment_links (statement->info.update.assignment, links, -1);
 	    }
+
+	  if (oid_list)
+	    {
+	      /* update each oid */
+	      error = update_objs_for_list_file (parser, oid_list, statement, savepoint_started);
+	    }
+	  /* the hint covers the update step too: a view of several queries locks the rows of its later queries there */
 	  if (old_wait_msecs >= -1)
 	    {
 	      (void) tran_reset_wait_times (old_wait_msecs);
@@ -9811,9 +9818,6 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
 	      error = ER_GENERIC_ERROR;
 	      goto exit_on_error;
 	    }
-
-	  /* update each oid */
-	  error = update_objs_for_list_file (parser, oid_list, statement, savepoint_started);
 
 	  cursor_free_self_list_id (oid_list);
 	  pt_end_query (parser, query_id_self);
