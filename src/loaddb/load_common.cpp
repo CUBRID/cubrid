@@ -1220,9 +1220,9 @@ namespace cubload
 			    || args[2] != binary_format_bit_platform () || args[3] != binary_format_endian ())
 			  {
 			    report_split_error (LOADDB_MSG_INCOMPATIBLE_BINARY_FORMAT, lineno + 1, args[1],
-							 args[2], args[3], BIN_FORMAT_VERSION_PRE_11_5,
-							 BIN_FORMAT_VERSION, binary_format_bit_platform (),
-							 binary_format_endian ());
+						args[2], args[3], BIN_FORMAT_VERSION_PRE_11_5,
+						BIN_FORMAT_VERSION, binary_format_bit_platform (),
+						binary_format_endian ());
 			    object_file.close ();
 			    return ER_FAILED;
 			  }
