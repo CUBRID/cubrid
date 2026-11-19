@@ -2820,9 +2820,11 @@ serial_rv_undo_ddl_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   undone = &old_recdes;
 
   /* in redo it applies a compensation logged with this payload when the rollback could not fix the page; that
-   * compensation stands for the replaced row, as a physical one would */
+   * compensation stands for the replaced row, as a physical one would. A page that still holds the replaced row
+   * never took the write: a crash fell between this undo and its redo, and nothing was issued after it. */
   if (!in_redo && !FI_INSERTED (FI_TEST_SERIAL_DDL_UNDO_FALLBACK)
       && spage_get_record (thread_p, rcv->pgptr, rcv->offset, &page_recdes, PEEK) == S_SUCCESS
+      && (page_recdes.length != old_recdes.length || memcmp (page_recdes.data, old_recdes.data, old_recdes.length) != 0)
       && serial_rv_locate (&undo, &old_recdes, &old_cur, &old_cur_length, &old_started)
       && serial_rv_locate (&undo, &page_recdes, &page_cur, &page_cur_length, &page_started))
     {
