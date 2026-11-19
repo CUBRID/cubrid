@@ -4436,8 +4436,8 @@ locator_peek_last_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, M
  *
  *   inserter(in): the active inserter phase 1 found writing the child, or MVCCID_NULL
  *
- * Note: a writer is found by its stamp, not by a row lock: an inserter takes none, and a READ COMMITTED updater
- *	 gives its own back at the end of a successful statement. Locking the child first and waiting in the locked
+ * Note: a writer is found by its stamp, not by a row lock: an inserter takes none, and an updater gives its own
+ *	 back at the end of a successful statement. Locking the child first and waiting in the locked
  *	 read would hold the lock against such a writer, and one that reaches the row again where no owner check lets
  *	 it pass (a unique-key check of the same key, say) would wait for us: a deadlock. A transaction that holds
  *	 the child's X with no stamp (a failed statement, a statement under a savepoint, SELECT ... FOR UPDATE, an
@@ -7400,7 +7400,8 @@ locator_class_keeps_row_locks (THREAD_ENTRY * thread_p, const OID * class_oid)
  *
  * Note: an uncommitted change is guarded by its stamp and our MVCCID self-lock, so its row lock may end unless the
  *	 stamp can go before commit: under a savepoint (a system one counts too), or in a statement nested in another.
- *	 REPEATABLE READ keeps its row locks for now.  Ask with the statement's transient scope open.
+ *	 At any isolation level: a writer settled on the stamp judges it by its own snapshot, and no level promises the
+ *	 lock on a row the scan locked but left unchanged.  Ask with the statement's transient scope open.
  */
 bool
 locator_statement_ends_row_locks (THREAD_ENTRY * thread_p, STMT_ROW_CHANGE change)
@@ -7410,8 +7411,7 @@ locator_statement_ends_row_locks (THREAD_ENTRY * thread_p, STMT_ROW_CHANGE chang
       return true;
     }
 
-  return (!logtb_has_active_savepoint (thread_p) && lock_transient_scope_is_outermost (thread_p)
-	  && logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
+  return (!logtb_has_active_savepoint (thread_p) && lock_transient_scope_is_outermost (thread_p));
 }
 
 /*
