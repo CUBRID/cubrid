@@ -1681,6 +1681,40 @@ namespace cubload
    *    the converter of the text form, which looks its zone up in the timezone library of this
    *    build, so it loads and fails the way the text form does.
    */
+  /*
+   * binary_date_is_valid, binary_time_is_valid, binary_timestamp_is_valid, binary_datetime_is_valid
+   *    return: whether the encoded value is one SQL can hold
+   * Note:
+   *    The size checks let through any bits of the right size, and the db_make functions and the
+   *    instance store take them as they are, so a damaged value would be stored as a date SQL
+   *    cannot make. The zero date (0) is valid. A DATE is a julian day of 0001-01-01 ~ 9999-12-31,
+   *    a TIME the seconds of a day, a TIMESTAMP the seconds since 1970 up to 2038-01-19 03:14:07
+   *    UTC, see db_timestamp_encode_utc_core (), and the time of a DATETIME the milliseconds of a day.
+   */
+  static bool
+  binary_date_is_valid (DB_DATE date)
+  {
+    return date == DB_DATE_ZERO || (date >= DB_DATE_MIN && date <= DB_DATE_MAX);
+  }
+
+  static bool
+  binary_time_is_valid (DB_TIME time)
+  {
+    return time < SECONDS_OF_ONE_DAY;
+  }
+
+  static bool
+  binary_timestamp_is_valid (DB_TIMESTAMP timestamp)
+  {
+    return timestamp <= DB_INT32_MAX;
+  }
+
+  static bool
+  binary_datetime_is_valid (const DB_DATETIME &datetime)
+  {
+    return binary_date_is_valid (datetime.date) && datetime.time < MILLISECONDS_OF_ONE_DAY;
+  }
+
   static int
   binary_tz_value (const binary_column &col, const attribute *attr, db_value *val)
   {
@@ -1720,6 +1754,10 @@ namespace cubload
 	    DB_TIMESTAMPTZ v;
 
 	    std::memcpy (&v.timestamp, payload, sizeof (DB_TIMESTAMP));
+	    if (!binary_timestamp_is_valid (v.timestamp))
+	      {
+		return binary_corrupted (col);
+	      }
 	    v.tz_id = tz_id;
 	    return db_make_timestamptz (val, &v);
 	  }
@@ -1729,6 +1767,10 @@ namespace cubload
 
 	    std::memcpy (&v.datetime.date, payload, sizeof (unsigned int));
 	    std::memcpy (&v.datetime.time, payload + sizeof (unsigned int), sizeof (unsigned int));
+	    if (!binary_datetime_is_valid (v.datetime))
+	      {
+		return binary_corrupted (col);
+	      }
 	    v.tz_id = tz_id;
 	    return db_make_datetimetz (val, &v);
 	  }
@@ -1875,25 +1917,29 @@ namespace cubload
       case DB_TYPE_DATE:
       {
 	DB_DATE v;
-	return binary_read_raw (col, v) ? db_value_put_encoded_date (val, &v) : binary_corrupted (col);
+	return (binary_read_raw (col, v) && binary_date_is_valid (v)) ? db_value_put_encoded_date (val, &v)
+	       : binary_corrupted (col);
       }
 
       case DB_TYPE_TIME:
       {
 	DB_TIME v;
-	return binary_read_raw (col, v) ? db_value_put_encoded_time (val, &v) : binary_corrupted (col);
+	return (binary_read_raw (col, v) && binary_time_is_valid (v)) ? db_value_put_encoded_time (val, &v)
+	       : binary_corrupted (col);
       }
 
       case DB_TYPE_TIMESTAMP:
       {
 	DB_TIMESTAMP v;
-	return binary_read_raw (col, v) ? db_make_timestamp (val, v) : binary_corrupted (col);
+	return (binary_read_raw (col, v) && binary_timestamp_is_valid (v)) ? db_make_timestamp (val, v)
+	       : binary_corrupted (col);
       }
 
       case DB_TYPE_TIMESTAMPLTZ:
       {
 	DB_TIMESTAMP v;
-	return binary_read_raw (col, v) ? db_make_timestampltz (val, v) : binary_corrupted (col);
+	return (binary_read_raw (col, v) && binary_timestamp_is_valid (v)) ? db_make_timestampltz (val, v)
+	       : binary_corrupted (col);
       }
 
       case DB_TYPE_TIMESTAMPTZ:
@@ -1903,13 +1949,15 @@ namespace cubload
       case DB_TYPE_DATETIME:
       {
 	DB_DATETIME v;
-	return binary_read_raw (col, v) ? db_make_datetime (val, &v) : binary_corrupted (col);
+	return (binary_read_raw (col, v) && binary_datetime_is_valid (v)) ? db_make_datetime (val, &v)
+	       : binary_corrupted (col);
       }
 
       case DB_TYPE_DATETIMELTZ:
       {
 	DB_DATETIME v;
-	return binary_read_raw (col, v) ? db_make_datetimeltz (val, &v) : binary_corrupted (col);
+	return (binary_read_raw (col, v) && binary_datetime_is_valid (v)) ? db_make_datetimeltz (val, &v)
+	       : binary_corrupted (col);
       }
 
       case DB_TYPE_NUMERIC:
