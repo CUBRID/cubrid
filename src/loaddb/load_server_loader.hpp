@@ -26,8 +26,11 @@
 #include "dbtype_def.h"
 #include "heap_attrinfo.h"
 #include "heap_file.h"
+#include "heap_pending_record.hpp"
+#include "record_descriptor.hpp"
 #include "load_common.hpp"
 #include "memory_private_allocator.hpp"
+#include "partition_sr.h"
 
 #include <vector>
 
@@ -121,10 +124,19 @@ namespace cubload
       bool m_attrinfo_started;
       heap_cache_attrinfo m_attrinfo;
       std::vector<db_value> m_db_values;
-      std::vector<record_descriptor> m_recdes_collected;
+      std::vector<heap_pending_record> m_recdes_collected;
+      std::size_t m_retained_bytes;
+      int m_pruning_type;
 
       bool m_scancache_started;
       heap_scancache m_scancache;
+
+      // private copy of the context of the partitioned class when the target class is one of its partitions; it is
+      // loaded for each batch (see init)
+      PRUNING_CONTEXT m_pcontext;
+      bool m_pcontext_loaded;
+      // the target class is a partitioned class, whose rows the loader cannot route to its partitions
+      bool m_is_partitioned_class;
 
       std::size_t m_rows;
 
