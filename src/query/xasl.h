@@ -1446,6 +1446,8 @@ struct xasl_node
   memoize::storage *memoize_storage;
   // *INDENT-ON*
   struct qexec_nl_batch *nl_batch;	/* outer rows a batched nested-loop join holds for this inner scan (run time) */
+  struct qexec_sq_batch *nl_sq_batch;	/* a correlated subquery: the rows its join step holds for it (run time, not
+					 * owned) */
   struct hjoin_runtime_filter *rtf;	/* a hash join's runtime filter on this input's outermost scan (not owned) */
   DB_VALUE *rtf_val;		/* ... and the value list cell its key is fetched into */
   INT64 rtf_rows;		/* ... and the rows this node checked against it and dropped (trace): the thread that

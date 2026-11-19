@@ -286,6 +286,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
   xasl->nl_batch = NULL;
+  xasl->nl_sq_batch = NULL;
   xasl->rtf = NULL;
   xasl->rtf_val = NULL;
   xasl->rtf_rows = 0;
@@ -2961,6 +2962,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
   xasl->nl_batch = NULL;
+  xasl->nl_sq_batch = NULL;
   xasl->rtf = NULL;
   xasl->rtf_val = NULL;
   xasl->rtf_rows = 0;
