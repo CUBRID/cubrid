@@ -12416,6 +12416,7 @@ qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * 
  * once and the outer rows are joined in the order they came: each one's values are put back, and the row path runs
  * for it as it would have, finding its OIDs read already.  The rows of the join come out in the same order.
  */
+#define QEXEC_NL_BATCH_MAX_LISTS 16
 #define QEXEC_NL_BATCH_FIRST_OIDS 16	/* the first batch of a join; each following one is twice as large */
 #define QEXEC_NL_BATCH_FIRST_BACKOFF 64
 #define QEXEC_NL_BATCH_MAX_BACKOFF 65536
@@ -12437,8 +12438,14 @@ struct qexec_nl_batch
   bool flush;			/* the outer scan ended: join what is held */
   bool outer_ended;		/* ... and the outer only passes those rows on */
   bool worker_outer;		/* the outer is the first scan of a parallel worker, which reads its rows itself */
+  bool span;			/* the batch stays open while the scans above the outer move on: a held row carries
+				 * their value lists too, and the lists get back what they held when the rows were joined */
+  bool drain;			/* ... and the outer, through with its own rows, only passes the held rows on */
   XASL_NODE *outer;		/* the scan whose rows are held */
-  int n_vals;			/* values of an outer row (outer->val_list) */
+  VAL_LIST *lists[QEXEC_NL_BATCH_MAX_LISTS];	/* the outer's value list, then (span) those of the scans above it */
+  int n_lists;
+  DB_VALUE *saved;		/* span: what the lists held when the batch closed (n_vals values) */
+  int n_vals;			/* values of a held row (the lists) */
   int n_rows;			/* outer rows held */
   int row_cap;
   int next_row;			/* the row to join next */
@@ -12465,21 +12472,20 @@ struct qexec_nl_batch
  * step's up to the first scan's, so the batch may stay open while the scans above move on; its OIDs are read from
  * the subquery's index when it is held. When the batch closes the rows go through the predicates in the order they
  * were held, each execution of the subquery taking its row's OIDs, and the value lists get back what they held. */
-#define QEXEC_SQ_BATCH_MAX_LISTS 16
+#define QEXEC_SQ_BATCH_MAX_LISTS QEXEC_NL_BATCH_MAX_LISTS
 typedef struct qexec_sq_batch QEXEC_SQ_BATCH;
 struct qexec_sq_batch
 {
   QEXEC_NL_BATCH b;		/* rows, values, OIDs, read-ahead window and back-off, as a join's batch */
   XASL_NODE *sq_xasl;		/* the subquery */
-  VAL_LIST *lists[QEXEC_SQ_BATCH_MAX_LISTS];	/* the step's value list, then those of the scans above it */
-  int n_lists;
-  DB_VALUE *saved;		/* what the lists held when the batch closed (b.n_vals values) */
   bool close_now;		/* the batch reached its target: replay before the next row is scanned */
   int slice_start;		/* the OIDs of the row being replayed, for the subquery's next execution */
   int slice_cnt;		/* -1: none */
 };
 
 static void qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_BATCH * batch, int pos);
+static int qexec_nl_batch_copy_lists (THREAD_ENTRY * thread_p, VAL_LIST ** lists, int n_lists, DB_VALUE * vals,
+				      bool to_lists, INT64 * bytes);
 static QEXEC_SQ_BATCH *qexec_sq_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static SCAN_CODE qexec_execute_scan_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					  QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc);
@@ -12539,7 +12545,32 @@ qexec_nl_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * outer, XASL_NODE * inne
       return;
     }
 
+  batch->lists[0] = outer->val_list;
+  batch->n_lists = 1;
   batch->n_vals = outer->val_list->val_cnt;
+  if (!outer_is_root && outer->nl_batch != NULL && outer->nl_batch->on
+      && outer->nl_batch->n_lists < QEXEC_NL_BATCH_MAX_LISTS)
+    {
+      /* the outer's rows come out of a batch of its own: this batch stays open across them */
+      QEXEC_NL_BATCH *above = outer->nl_batch;
+      int n_vals = batch->n_vals;
+      int i;
+
+      for (i = 0; i < above->n_lists; i++)
+	{
+	  n_vals += above->lists[i]->val_cnt;
+	}
+      batch->saved = (DB_VALUE *) calloc (MAX (n_vals, 1), sizeof (DB_VALUE));
+      if (batch->saved != NULL)
+	{
+	  for (i = 0; i < above->n_lists; i++)
+	    {
+	      batch->lists[batch->n_lists++] = above->lists[i];
+	    }
+	  batch->n_vals = n_vals;
+	  batch->span = true;
+	}
+    }
   batch->on = true;
 }
 
@@ -12642,6 +12673,18 @@ qexec_nl_batch_free (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     {
       free (batch->oids);
     }
+  if (batch->saved != NULL)
+    {
+      HL_HEAPID save_heapid = db_change_private_heap (thread_p, 0);
+      int i;
+
+      for (i = 0; i < batch->n_vals; i++)
+	{
+	  pr_clear_value (&batch->saved[i]);
+	}
+      (void) db_change_private_heap (thread_p, save_heapid);
+      free (batch->saved);
+    }
   free (batch);
   xasl->nl_batch = NULL;
 }
@@ -12658,12 +12701,11 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
   SCAN_ID *s_id = (xasl->curr_spec != NULL) ? &xasl->curr_spec->s_id : NULL;
   XASL_NODE *outer = batch->outer;
   QEXEC_NL_BATCH_ROW *row;
-  QPROC_DB_VALUE_LIST vl;
   DB_VALUE *val;
-  HL_HEAPID save_heapid;
   bool scan_ok;
   bool closed = false;
   int error = NO_ERROR;
+  int i;
 
   scan_ok = (s_id != NULL && scan_index_nl_batch_ok (s_id) && outer->curr_spec != NULL
 	     && (batch->worker_outer || outer->curr_spec->s_id.type == S_HEAP_SCAN
@@ -12715,18 +12757,11 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
 
   /* the outer row: its values are copied, the outer scan overwrites them with its next row */
   val = &batch->vals[batch->n_rows * batch->n_vals];
-  save_heapid = db_change_private_heap (thread_p, 0);
-  for (vl = outer->val_list->valp; vl != NULL; vl = vl->next, val++)
+  for (i = 0; i < batch->n_vals; i++)
     {
-      assert (val < &batch->vals[(batch->n_rows + 1) * batch->n_vals]);
-      db_make_null (val);
-      if (error == NO_ERROR)
-	{
-	  error = pr_clone_value (vl->val, val);
-	  batch->bytes += sizeof (DB_VALUE) + (DB_NEED_CLEAR (val) ? pr_value_mem_size (val) : 0);
-	}
+      db_make_null (&val[i]);
     }
-  (void) db_change_private_heap (thread_p, save_heapid);
+  error = qexec_nl_batch_copy_lists (thread_p, batch->lists, batch->n_lists, val, false, &batch->bytes);
   row = &batch->rows[batch->n_rows++];
   row->oid_start = batch->n_oids;
   row->oid_cnt = -1;
@@ -12785,16 +12820,10 @@ qexec_nl_batch_open_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BAT
 {
   QEXEC_NL_BATCH_ROW *row = &batch->rows[batch->next_row];
   DB_VALUE *val = &batch->vals[batch->next_row * batch->n_vals];
-  QPROC_DB_VALUE_LIST vl;
 
-  /* copies: the outer's value list owns what it holds, and frees it when the outer scan reads its next row */
-  for (vl = batch->outer->val_list->valp; vl != NULL; vl = vl->next, val++)
+  if (qexec_nl_batch_copy_lists (thread_p, batch->lists, batch->n_lists, val, true, NULL) != NO_ERROR)
     {
-      pr_clear_value (vl->val);
-      if (pr_clone_value (val, vl->val) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
+      return ER_FAILED;
     }
 
   /* as the outer does for a row it hands over */
@@ -13335,7 +13364,7 @@ qexec_execute_scan_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
 
   sc_scan = qexec_execute_scan_row (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
-  if (sc_scan == S_END && batch->n_rows > 0)
+  if (sc_scan == S_END && batch->n_rows > 0 && !batch->span)
     {
       assert (!batch->replaying);
       batch->flush = true;
@@ -13365,12 +13394,40 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 		    XASL_SCAN_FNC_PTR next_scan_fnc)
 {
   QEXEC_SQ_BATCH *sq = (xasl->nl_batch != NULL) ? xasl->nl_batch->sq : NULL;
+  QEXEC_NL_BATCH *below = (xasl->scan_ptr != NULL) ? xasl->scan_ptr->nl_batch : NULL;
   SCAN_CODE sc_scan;
 
+  if (below != NULL && below->drain)
+    {
+      sc_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
+      if (sc_scan != S_SUCCESS)
+	{
+	  below->drain = false;
+	  below->flush = false;
+	}
+      return sc_scan;
+    }
   if (sq == NULL || !sq->b.flush)
     {
       sc_scan = qexec_execute_scan_join (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
       sq = (xasl->nl_batch != NULL) ? xasl->nl_batch->sq : NULL;
+      below = (xasl->scan_ptr != NULL) ? xasl->scan_ptr->nl_batch : NULL;
+      if (sc_scan == S_END && below != NULL && below->span && below->n_rows > 0
+	  && (xasl->nl_batch == NULL || xasl->nl_batch->n_rows == 0))
+	{
+	  /* this scan holds no row of its own any more: the rows the following scan held across its rows are joined
+	   * before S_END goes up */
+	  assert (!below->replaying);
+	  below->flush = true;
+	  below->drain = true;
+	  sc_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
+	  if (sc_scan != S_SUCCESS)
+	    {
+	      below->drain = false;
+	      below->flush = false;
+	    }
+	  return sc_scan;
+	}
       if (sc_scan != S_END || sq == NULL || sq->b.n_rows == 0)
 	{
 	  return sc_scan;
@@ -13432,6 +13489,11 @@ qexec_execute_scan_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	}
       /* the batch is closed: the pages of the lookups that follow are named to the OS a window at a time, the first
        * one now */
+      if (batch->span
+	  && qexec_nl_batch_copy_lists (thread_p, batch->lists, batch->n_lists, batch->saved, false, NULL) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
       batch->ahead_next = 0;
       batch->hinted = 0;
       qexec_nl_batch_read_ahead (thread_p, xasl, batch, 0);
@@ -13456,6 +13518,13 @@ qexec_execute_scan_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		  batch->backoff = MIN (MAX (batch->backoff * 2, QEXEC_NL_BATCH_FIRST_BACKOFF),
 					QEXEC_NL_BATCH_MAX_BACKOFF);
 		  batch->skip = batch->backoff;
+		}
+	      /* the scans above go on from the rows they were at when the batch closed */
+	      if (batch->span
+		  && qexec_nl_batch_copy_lists (thread_p, batch->lists, batch->n_lists, batch->saved, true,
+						NULL) != NO_ERROR)
+		{
+		  return S_ERROR;
 		}
 	      qexec_nl_batch_drop_rows (thread_p, batch);
 	      return S_END;
@@ -13548,19 +13617,19 @@ qexec_sq_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   sq->slice_cnt = -1;
   for (up = xasl; up != NULL; up = (up->nl_batch != NULL) ? up->nl_batch->outer : NULL)
     {
-      if (up->val_list == NULL || sq->n_lists == QEXEC_SQ_BATCH_MAX_LISTS)
+      if (up->val_list == NULL || sq->b.n_lists == QEXEC_SQ_BATCH_MAX_LISTS)
 	{
 	  free (sq);
 	  return NULL;
 	}
-      sq->lists[sq->n_lists++] = up->val_list;
+      sq->b.lists[sq->b.n_lists++] = up->val_list;
       for (vl = up->val_list->valp; vl != NULL; vl = vl->next)
 	{
 	  sq->b.n_vals++;
 	}
     }
-  sq->saved = (DB_VALUE *) calloc (MAX (sq->b.n_vals, 1), sizeof (DB_VALUE));
-  if (sq->saved == NULL)
+  sq->b.saved = (DB_VALUE *) calloc (MAX (sq->b.n_vals, 1), sizeof (DB_VALUE));
+  if (sq->b.saved == NULL)
     {
       free (sq);
       return NULL;
@@ -13579,17 +13648,17 @@ static void
 qexec_sq_batch_free (THREAD_ENTRY * thread_p, QEXEC_SQ_BATCH * sq)
 {
   qexec_nl_batch_drop_rows (thread_p, &sq->b);
-  if (sq->saved != NULL)
+  if (sq->b.saved != NULL)
     {
       HL_HEAPID save_heapid = db_change_private_heap (thread_p, 0);
       int i;
 
       for (i = 0; i < sq->b.n_vals; i++)
 	{
-	  pr_clear_value (&sq->saved[i]);
+	  pr_clear_value (&sq->b.saved[i]);
 	}
       (void) db_change_private_heap (thread_p, save_heapid);
-      free (sq->saved);
+      free (sq->b.saved);
     }
   if (sq->b.rows != NULL)
     {
@@ -13611,13 +13680,14 @@ qexec_sq_batch_free (THREAD_ENTRY * thread_p, QEXEC_SQ_BATCH * sq)
 }
 
 /*
- * qexec_sq_batch_copy_lists () - the value lists into an array of copies, or the array back into the lists
+ * qexec_nl_batch_copy_lists () - the value lists into an array of copies, or the array back into the lists
  *   return: error code
  *   vals(in/out): b.n_vals values
  *   to_lists(in): true: put the copies back
  */
 static int
-qexec_sq_batch_copy_lists (THREAD_ENTRY * thread_p, QEXEC_SQ_BATCH * sq, DB_VALUE * vals, bool to_lists, INT64 * bytes)
+qexec_nl_batch_copy_lists (THREAD_ENTRY * thread_p, VAL_LIST ** lists, int n_lists, DB_VALUE * vals, bool to_lists,
+			   INT64 * bytes)
 {
   QPROC_DB_VALUE_LIST vl;
   HL_HEAPID save_heapid = 0;
@@ -13629,9 +13699,9 @@ qexec_sq_batch_copy_lists (THREAD_ENTRY * thread_p, QEXEC_SQ_BATCH * sq, DB_VALU
       /* the copies outlive the rows of the scans: they are not in a private heap */
       save_heapid = db_change_private_heap (thread_p, 0);
     }
-  for (i = 0; i < sq->n_lists; i++)
+  for (i = 0; i < n_lists; i++)
     {
-      for (vl = sq->lists[i]->valp; vl != NULL; vl = vl->next, vals++)
+      for (vl = lists[i]->valp; vl != NULL; vl = vl->next, vals++)
 	{
 	  if (to_lists)
 	    {
@@ -13774,7 +13844,8 @@ hold:
   row->oid_start = b->n_oids;
   row->oid_cnt = -1;
   b->n_rows++;
-  if (qexec_sq_batch_copy_lists (thread_p, sq, &b->vals[(b->n_rows - 1) * b->n_vals], false, &b->bytes) != NO_ERROR)
+  if (qexec_nl_batch_copy_lists
+      (thread_p, sq->b.lists, sq->b.n_lists, &b->vals[(b->n_rows - 1) * b->n_vals], false, &b->bytes) != NO_ERROR)
     {
       return S_ERROR;
     }
@@ -13805,7 +13876,7 @@ qexec_sq_batch_close (THREAD_ENTRY * thread_p, QEXEC_SQ_BATCH * sq)
 {
   QEXEC_NL_BATCH *b = &sq->b;
 
-  if (qexec_sq_batch_copy_lists (thread_p, sq, sq->saved, false, NULL) != NO_ERROR)
+  if (qexec_nl_batch_copy_lists (thread_p, sq->b.lists, sq->b.n_lists, sq->b.saved, false, NULL) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -13831,7 +13902,8 @@ qexec_sq_batch_open_row (THREAD_ENTRY * thread_p, QEXEC_SQ_BATCH * sq)
     {
       qexec_nl_batch_read_ahead (thread_p, sq->sq_xasl, b, row->oid_start);
     }
-  if (qexec_sq_batch_copy_lists (thread_p, sq, &b->vals[b->next_row * b->n_vals], true, NULL) != NO_ERROR)
+  if (qexec_nl_batch_copy_lists (thread_p, sq->b.lists, sq->b.n_lists, &b->vals[b->next_row * b->n_vals], true, NULL) !=
+      NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -13851,7 +13923,7 @@ qexec_sq_batch_end (THREAD_ENTRY * thread_p, QEXEC_SQ_BATCH * sq)
   QEXEC_NL_BATCH *b = &sq->b;
   int error;
 
-  error = qexec_sq_batch_copy_lists (thread_p, sq, sq->saved, true, NULL);
+  error = qexec_nl_batch_copy_lists (thread_p, sq->b.lists, sq->b.n_lists, sq->b.saved, true, NULL);
   if (b->hinted > 0)
     {
       b->backoff = 0;
