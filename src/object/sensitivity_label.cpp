@@ -1104,14 +1104,13 @@ sensitivity_label_drop_of_removed_attributes (MOP class_mop, SM_CLASS *class_, S
 /*
  * sensitivity_label_drop_of_dropped_class () - drop the label of every attribute of a class that is being dropped
  *   return: error code
- *   class_mop(in): the class
  *   class_(in): the class structure
  *
  * Note: the caller holds SCH-M on the class, so no other transaction is creating a label of it: one query drops
  *       them all, without the lookup of each attribute that sensitivity_label_drop_all () makes.
  */
 int
-sensitivity_label_drop_of_dropped_class (MOP class_mop, SM_CLASS *class_)
+sensitivity_label_drop_of_dropped_class (SM_CLASS *class_)
 {
   DB_VALUE value;
   int error;
@@ -1125,9 +1124,12 @@ sensitivity_label_drop_of_dropped_class (MOP class_mop, SM_CLASS *class_)
 
   AU_SAVE_AND_DISABLE (save);
 
-  db_make_object (&value, class_mop);
-  error = db_execute_internal_query ("DELETE FROM [" CT_SENSITIVITY_LABEL_NAME "] WHERE [class_of] = ?", &value, 1,
-				     NULL);
+  /* bind the class name, not the class object: with the plan cache off, a class object fails to coerce to the domain
+   * of its host variable */
+  db_make_string (&value, sm_ch_name ((MOBJ) class_));
+  error = db_execute_internal_query ("DELETE FROM [" CT_SENSITIVITY_LABEL_NAME "] WHERE [class_of] IN "
+				     "(SELECT [class_of] FROM [" CT_CLASS_NAME "] WHERE [unique_name] = ?)",
+				     &value, 1, NULL);
 
   AU_RESTORE (save);
 

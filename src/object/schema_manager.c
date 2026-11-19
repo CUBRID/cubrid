@@ -13950,7 +13950,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
       goto end;
     }
 
-  error = sensitivity_label_drop_of_dropped_class (op, class_);
+  error = sensitivity_label_drop_of_dropped_class (class_);
   if (error != NO_ERROR)
     {
       goto end;
