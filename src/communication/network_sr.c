@@ -856,10 +856,13 @@ net_server_init (void)
 static bool
 net_server_request_runs_alongside (int request)
 {
+  if (net_request_is_no_reply (request))
+    {
+      return true;
+    }
+
   switch (request)
     {
-    case NET_SERVER_LOG_SET_INTERRUPT:
-    case NET_SERVER_LD_INTERRUPT:
     case NET_SERVER_TM_WAIT_SERVER_ACTIVE_TRANS:	/* db_shutdown () from a signal or atexit handler */
     case NET_SERVER_PING:
     case NET_SERVER_PING_WITH_HANDSHAKE:

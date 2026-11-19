@@ -107,7 +107,7 @@ namespace cubmethod
     cubmethod::header header (s_id, METHOD_REQUEST_ARG_PREPARE);
     cubmethod::prepare_args arg (m_id, t_id, METHOD_TYPE_CLASS_METHOD, arg_base); // TOD
 
-    error = xs_callback_send_args (m_stack->get_thread_entry (), header, arg);
+    error = xs_callback_send_no_receive (m_stack->get_thread_entry (), header, arg);
 
     return error;
   }

@@ -157,7 +157,7 @@ namespace cubpl
 	session *sess = get_session ();
 	if (sess && er_errid () == NO_ERROR)
 	  {
-	    // If send_data_to_client() fails, it means the connection with CAS has been disconnected.
+	    // If send_data_to_client_no_reply() fails, it means the connection with CAS has been disconnected.
 	    // In this case, get_session() should return NULL.
 	    // According to the current analysis, the following code should be unreachable.
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -290,7 +290,7 @@ namespace cubpl
 	session *sess = get_session ();
 	if (sess && er_errid () == NO_ERROR)
 	  {
-	    // If send_data_to_client() fails, it means the connection with CAS has been disconnected.
+	    // If send_data_to_client_no_reply() fails, it means the connection with CAS has been disconnected.
 	    // In this case, get_session() should return NULL.
 	    // According to the current analysis, the following code should be unreachable.
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -358,11 +358,12 @@ exit:
 
     if (is_restore == 0)
       {
-	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore, std::string (auth_name));
+	error = m_stack->send_data_to_client_no_reply (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore,
+		std::string (auth_name));
       }
     else
       {
-	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
+	error = m_stack->send_data_to_client_no_reply (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
       }
 
     if (error != NO_ERROR)
@@ -372,7 +373,7 @@ exit:
 	session *sess = get_session ();
 	if (sess && er_errid () == NO_ERROR)
 	  {
-	    // If send_data_to_client() fails, it means the connection with CAS has been disconnected.
+	    // If send_data_to_client_no_reply() fails, it means the connection with CAS has been disconnected.
 	    // In this case, get_session() should return NULL.
 	    // According to the current analysis, the following code should be unreachable.
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
