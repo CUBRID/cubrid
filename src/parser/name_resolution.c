@@ -3471,8 +3471,33 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	{
 	  method_name = PT_NAME_ORIGINAL (method_name_node);
 	}
-      if (!node->info.method_call.on_call_target && jsp_is_existing_stored_procedure (method_name))
+
+      sp_mop = NULL;
+      if (!node->info.method_call.on_call_target)
 	{
+	  /* only a CALL statement can call a procedure */
+	  bool functions_only = (node->info.method_call.call_or_expr != PT_IS_CALL_STMT);
+
+	  if (jsp_resolve_routine (method_name, functions_only, &sp_mop) == ER_SP_AMBIGUOUS_NAME)
+	    {
+	      PT_ERRORc (parser, node, er_msg ());
+	      er_clear ();
+	      *continue_walk = PT_STOP_WALK;
+	      break;
+	    }
+	  er_clear ();
+	}
+
+      if (sp_mop != NULL)
+	{
+	  const char *lookup_name = pt_routine_name_for_lookup (parser, method_name, sp_mop);
+	  if (lookup_name != method_name)
+	    {
+	      method_name = lookup_name;
+	      method_name_node->info.name.original = method_name;
+	      method_name_node->info.name.resolved = NULL;
+	    }
+
 	  method_name_node->info.name.spec_id = (UINTPTR) method_name_node;
 	  node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name);
 	  method_name_node->info.name.meta_class = PT_METHOD;

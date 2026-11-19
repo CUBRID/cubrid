@@ -967,6 +967,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> simple_path_id_list
 %type <node> generic_function
 %type <node> generic_function_for_call
+%type <node> routine_name_for_call
 %type <node> opt_on_target
 %type <node> generic_function_id
 %type <node> pred_lhs
@@ -17695,8 +17696,26 @@ generic_function
 		}}
 	;
 
+routine_name_for_call
+	: procedure_or_function_name
+		{{
+			PT_NODE *name = $1;
+
+			/* An unqualified name is not qualified with the current user name in
+			 * pt_set_user_specified_name (): <user>.<routine> would also read as <package>.<routine>
+			 * (see jsp_resolve_routine ()). The name is looked up in the current user without it. */
+			if (name && name->info.name.resolved == NULL)
+			  {
+			    PT_NAME_INFO_CLEAR_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
+			  }
+
+			$$ = name;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
 generic_function_for_call        
-	: procedure_or_function_name 
+	: routine_name_for_call
         {
             if (pwd_info.parser_call_check)
             {
