@@ -4222,6 +4222,15 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		      spec->s_id.s.hsid.batch_why_not = curr_part->batch_why_not;
 		    }
 		  scan_print_stats_text (fp, &spec->s_id);
+#if defined (SERVER_MODE)
+		  if (scan_stats->bitmap_heap != 0)
+		    {
+		      /* the partition's heap was read through a bitmap: its heap step, as under the scan's own line */
+		      fprintf (fp, "\n%*cSCAN (bitmap heap: %s), ", multi_spec_indent + 4, ' ',
+			       class_name != NULL ? class_name : "unknown");
+		      scan_print_bitmap_heap_stats_text (fp, &spec->s_id);
+		    }
+#endif
 
 		  if (class_name != NULL)
 		    {

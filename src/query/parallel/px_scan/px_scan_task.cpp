@@ -109,6 +109,8 @@ namespace parallel_scan
 	perfmon_initialize_parallel_stats (&thread_ref);
       }
     m_scan_fixes = {};
+    m_bitmap_fixes = {};
+    m_bitmap_heap_step = false;
     if (thread_ref.on_trace)
       {
 	tsc_getticks (&m_start_tick);
@@ -731,9 +733,11 @@ namespace parallel_scan
   void task<result_type, ST>::add_scan_fixes (cubthread::entry &thread_ref, const scan_fixes &since)
   {
     scan_fixes now = read_fixes (thread_ref);
-    m_scan_fixes.fetches += now.fetches - since.fetches;
-    m_scan_fixes.ioreads += now.ioreads - since.ioreads;
-    m_scan_fixes.fetch_time += now.fetch_time - since.fetch_time;
+    scan_fixes &fixes = m_bitmap_heap_step ? m_bitmap_fixes : m_scan_fixes;
+
+    fixes.fetches += now.fetches - since.fetches;
+    fixes.ioreads += now.ioreads - since.ioreads;
+    fixes.fetch_time += now.fetch_time - since.fetch_time;
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
@@ -1374,16 +1378,33 @@ namespace parallel_scan
 	    return;
 	  }
 
-	/* the heap step is shown as a scan of its own: its time, page fixes and reads are counted apart */
-	scan_fixes since = {};
+	/* the heap step is shown as a scan of its own: its time and its own page fixes and reads are counted apart.
+	 * The fixes of what a row sets off (an inner scan of a join, the result's pages) are not the scan's: they
+	 * are counted around the scan's own work only, as add_scan_fixes () does for the lookup in key order. */
+	const bool on_trace = thread_ref.on_trace;
 	TSC_TICKS heap_start_tick;
 	UINT64 heap_pages = 0;
 
-	if (thread_ref.on_trace)
+	if (on_trace)
 	  {
-	    since = read_fixes (thread_ref);
 	    tsc_getticks (&heap_start_tick);
 	  }
+	m_bitmap_heap_step = true;
+	auto counted = [&] (auto &&work)
+	{
+	  scan_fixes since = {};
+
+	  if (on_trace)
+	    {
+	      since = read_fixes (thread_ref);
+	    }
+	  auto result = work ();
+	  if (on_trace)
+	    {
+	      add_scan_fixes (thread_ref, since);
+	    }
+	  return result;
+	};
 
 	auto interrupted = [&] () -> bool
 	{
@@ -1403,11 +1424,15 @@ namespace parallel_scan
 	};
 	auto read_page = [&] (const VPID &vpid, const std::uint64_t *words, int single_slot)
 	{
-	  if (m_slot_iterator.set_bitmap_page (&thread_ref, &vpid, words, single_slot) != NO_ERROR)
-	    {
-	      raise ();
-	      return;
-	    }
+	  if (counted ([&] ()
+	  {
+	    return m_slot_iterator.set_bitmap_page (&thread_ref, &vpid, words, single_slot);
+	    })
+	  != NO_ERROR)
+	  {
+	    raise ();
+	    return;
+	  }
 	  (void) drain_slot_oids (thread_ref, stop);
 	};
 
@@ -1418,11 +1443,14 @@ namespace parallel_scan
 	  {
 	    for (std::uint32_t sub = 0; sub < parts_of_partition && !stop; sub++)
 	      {
-		if (m_input_handler->bitmap_load (&thread_ref, worker, part, sub) != NO_ERROR)
-		  {
-		    raise ();
-		    break;
-		  }
+		if (counted ([&] ()
+		{
+		  return m_input_handler->bitmap_load (&thread_ref, worker, part, sub);
+		  }) != NO_ERROR)
+		{
+		  raise ();
+		  break;
+		}
 
 		const bitmap_table &table = worker->heap_tbl;
 		const std::vector<std::uint32_t> &order = worker->order;
@@ -1456,53 +1484,60 @@ namespace parallel_scan
 	  }
 
 	/* the rows whose slot is beyond an entry's width, by the one worker that gets them */
-	if (!stop && m_input_handler->bitmap_take_over (&thread_ref, worker, &error_code))
+	if (!stop && counted ([&] ()
+	{
+	  return m_input_handler->bitmap_take_over (&thread_ref, worker, &error_code);
+	  }))
+	{
+	  OID oid;
+	  SCAN_CODE scan;
+	  UINT64 rows = 0;
+	  VPID last_vpid = VPID_INITIALIZER;
+
+	  while (!stop
+		 && (scan = counted ([&] ()
 	  {
-	    OID oid;
-	    SCAN_CODE scan;
-	    UINT64 rows = 0;
-	    VPID last_vpid = VPID_INITIALIZER;
+	    return m_input_handler->bitmap_next_over (&thread_ref, &oid);
+	    })) == S_SUCCESS)
+	  {
+	    VPID vpid;
 
-	    while (!stop && (scan = m_input_handler->bitmap_next_over (&thread_ref, &oid)) == S_SUCCESS)
+	    if ((rows++ & 1023) == 0 && interrupted ())
 	      {
-		VPID vpid;
-
-		if ((rows++ & 1023) == 0 && interrupted ())
-		  {
-		    stop = true;
-		    break;
-		  }
-		vpid.volid = oid.volid;
-		vpid.pageid = oid.pageid;
-		if (!VPID_EQ (&vpid, &last_vpid))
-		  {
-		    /* the list is in OID order: a page's rows follow each other */
-		    heap_pages++;
-		    last_vpid = vpid;
-		  }
-		read_page (vpid, nullptr, oid.slotid);
+		stop = true;
+		break;
 	      }
-	    if (!stop && scan == S_ERROR)
+	    vpid.volid = oid.volid;
+	    vpid.pageid = oid.pageid;
+	    if (!VPID_EQ (&vpid, &last_vpid))
 	      {
-		raise ();
+		/* the list is in OID order: a page's rows follow each other */
+		heap_pages++;
+		last_vpid = vpid;
 	      }
+	    read_page (vpid, nullptr, oid.slotid);
 	  }
+	  if (!stop && scan == S_ERROR)
+	    {
+	      raise ();
+	    }
+	}
 	else if (error_code != NO_ERROR)
 	  {
 	    raise ();
 	  }
 
-	if (thread_ref.on_trace)
+	m_bitmap_heap_step = false;
+	if (on_trace)
 	  {
-	    const scan_fixes now = read_fixes (thread_ref);
 	    TSC_TICKS heap_end_tick;
 	    TSCTIMEVAL tv_diff;
 
 	    tsc_getticks (&heap_end_tick);
 	    tsc_elapsed_time_usec (&tv_diff, heap_end_tick, heap_start_tick);
 	    TSC_ADD_TIMEVAL (m_scan_id->scan_stats.bitmap_heap_time, tv_diff);
-	    m_scan_id->scan_stats.bitmap_heap_fetches += now.fetches - since.fetches;
-	    m_scan_id->scan_stats.bitmap_heap_ioreads += now.ioreads - since.ioreads;
+	    m_scan_id->scan_stats.bitmap_heap_fetches += m_bitmap_fixes.fetches;
+	    m_scan_id->scan_stats.bitmap_heap_ioreads += m_bitmap_fixes.ioreads;
 	    m_scan_id->scan_stats.bitmap_heap_pages += heap_pages;
 	  }
       }

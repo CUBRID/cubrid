@@ -226,6 +226,13 @@ namespace parallel_scan
 	    m_stats_last.covered_index = m_stats_last.covered_index || trace_handler.m_stats[i].covered_index;
 	    m_stats_last.multi_range_opt = m_stats_last.multi_range_opt || trace_handler.m_stats[i].multi_range_opt;
 	    m_stats_last.bitmap_heap = MAX (m_stats_last.bitmap_heap, trace_handler.m_stats[i].bitmap_heap);
+	    m_stats_last.bitmap_fetches += trace_handler.m_stats[i].bitmap_fetches;
+	    m_stats_last.bitmap_ioreads += trace_handler.m_stats[i].bitmap_ioreads;
+	    m_stats_last.bitmap_pages += trace_handler.m_stats[i].bitmap_pages;
+	    if (timercmp (&trace_handler.m_stats[i].bitmap_time, &m_stats_last.bitmap_time, >))
+	      {
+		m_stats_last.bitmap_time = trace_handler.m_stats[i].bitmap_time;
+	      }
 	    m_stats_last.index_skip_scan = m_stats_last.index_skip_scan || trace_handler.m_stats[i].index_skip_scan;
 	    m_stats_last.loose_index_scan = m_stats_last.loose_index_scan || trace_handler.m_stats[i].loose_index_scan;
 	    m_stats_last.need_count_only = m_stats_last.need_count_only || trace_handler.m_stats[i].need_count_only;
@@ -279,6 +286,13 @@ namespace parallel_scan
 	    m_stats_last.covered_index = m_stats_last.covered_index || trace_handler.m_stats[i].covered_index;
 	    m_stats_last.multi_range_opt = m_stats_last.multi_range_opt || trace_handler.m_stats[i].multi_range_opt;
 	    m_stats_last.bitmap_heap = MAX (m_stats_last.bitmap_heap, trace_handler.m_stats[i].bitmap_heap);
+	    m_stats_last.bitmap_fetches += trace_handler.m_stats[i].bitmap_fetches;
+	    m_stats_last.bitmap_ioreads += trace_handler.m_stats[i].bitmap_ioreads;
+	    m_stats_last.bitmap_pages += trace_handler.m_stats[i].bitmap_pages;
+	    if (timercmp (&trace_handler.m_stats[i].bitmap_time, &m_stats_last.bitmap_time, >))
+	      {
+		m_stats_last.bitmap_time = trace_handler.m_stats[i].bitmap_time;
+	      }
 	    m_stats_last.index_skip_scan = m_stats_last.index_skip_scan || trace_handler.m_stats[i].index_skip_scan;
 	    m_stats_last.loose_index_scan = m_stats_last.loose_index_scan || trace_handler.m_stats[i].loose_index_scan;
 	    m_stats_last.need_count_only = m_stats_last.need_count_only || trace_handler.m_stats[i].need_count_only;
@@ -299,6 +313,12 @@ namespace parallel_scan
 	partition_stats->key_qualified_rows = m_stats_last.key_qualified_rows;
 	partition_stats->data_qualified_rows = m_stats_last.data_qualified_rows;
 	partition_stats->covered_index = m_stats_last.covered_index;
+	/* a partition read through a bitmap shows its heap step as the scan does */
+	partition_stats->bitmap_heap = m_stats_last.bitmap_heap;
+	partition_stats->bitmap_heap_time = m_stats_last.bitmap_time;
+	partition_stats->bitmap_heap_fetches = m_stats_last.bitmap_fetches;
+	partition_stats->bitmap_heap_ioreads = m_stats_last.bitmap_ioreads;
+	partition_stats->bitmap_heap_pages = m_stats_last.bitmap_pages;
 	partition_stats->multi_range_opt = m_stats_last.multi_range_opt;
 	partition_stats->index_skip_scan = m_stats_last.index_skip_scan;
 	partition_stats->loose_index_scan = m_stats_last.loose_index_scan;

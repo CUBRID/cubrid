@@ -135,6 +135,8 @@ namespace parallel_scan
        * scan_next_scan_local () counts a serial scan; the NL inner scans, dptr subqueries and result
        * writes a worker runs per row stay outside, as they do for a serial scan */
       scan_fixes m_scan_fixes;
+      scan_fixes m_bitmap_fixes;	/* the scan's own fixes of a bitmap heap scan's heap step */
+      bool m_bitmap_heap_step;	/* add_scan_fixes () counts into m_bitmap_fixes */
 
       worker_manager *m_worker_manager;
 

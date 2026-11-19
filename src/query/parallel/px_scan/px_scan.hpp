@@ -78,6 +78,11 @@ namespace parallel_scan
 	  m_page_list (nullptr)
       {}
       ~manager();
+      /* SCAN_TYPE::INDEX: the plan's choice of a bitmap heap scan, before open () */
+      void set_bitmap_heap_scan (bool planned)
+      {
+	m_bitmap_heap_scan = planned;
+      }
       /* SCAN_TYPE::HEAP: the page bitmap of the scan's open; the access spec keeps it past this manager */
       void set_page_list (const FILE_FTAB_COLLECTOR *page_list)
       {
@@ -127,6 +132,7 @@ namespace parallel_scan
       bool m_uses_xasl_clone;
       QFILE_LIST_ID *m_list_id;
       INDX_INFO *m_indx_info;
+      bool m_bitmap_heap_scan = false;	/* SCAN_TYPE::INDEX: the plan reads the heap through a bitmap */
       const FILE_FTAB_COLLECTOR *m_page_list;	/* SCAN_TYPE::HEAP: every open () and reset () splits it among the workers */
   };
 }
