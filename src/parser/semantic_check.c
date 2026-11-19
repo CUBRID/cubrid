@@ -255,6 +255,7 @@ static int pt_collection_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_
 static int pt_assignment_class_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs);
 static PT_NODE *pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs);
 static int pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_current_value_by_oid (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrds);
 static int pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
 static bool pt_has_parameters (PARSER_CONTEXT * parser, PT_NODE * stmt);
@@ -11959,6 +11960,11 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  pt_check_defaultf (parser, node);
 	}
 
+      if (node->info.expr.op == PT_CURRENT_VALUE_BY_OID)
+	{
+	  pt_check_current_value_by_oid (parser, node);
+	}
+
       break;
 
     case PT_SPEC:
@@ -16790,6 +16796,39 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
   return NO_ERROR;
+}
+
+/*
+ * pt_check_current_value_by_oid () - Checks that the argument of serial_current_value_by_oid is
+ *	  a _db_serial alias, so that the server reads only the rows of _db_serial
+ *	  The function is internal: only the db_serial and information_schema.tables view specs call it, with
+ *	  a _db_serial alias. Taking any other OID would need a check of the OID before the server fixes its page.
+ *   return: none
+ *   parser(in):
+ *   node(in): the node to check
+ */
+static void
+pt_check_current_value_by_oid (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *arg = node->info.expr.arg1;
+  PT_NODE *entity = NULL;
+
+  /* the server fixes the page of the OID without checking it, so take only an OID name: a FROM alias written as a
+   * value (s, not s.col), the OID of the row its scan has just read. An OID from elsewhere, such as an object column
+   * value or a host variable, can point at a deleted row whose page now holds something else. A dblink alias has no
+   * data_type. */
+  if (PT_IS_OID_NAME (arg) && arg->data_type != NULL)
+    {
+      entity = arg->data_type->info.data_type.entity;
+    }
+
+  /* the server reads the row as a _db_serial record, so the alias must scan _db_serial alone; one FROM item over
+   * several classes, such as (_db_serial, db_root) s, has more than one entity */
+  if (entity == NULL || entity->next != NULL || entity->info.name.db_object != sm_find_class (CT_SERIAL_NAME))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
+      PT_ERRORc (parser, node, er_msg ());
+    }
 }
 
 

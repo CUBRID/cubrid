@@ -3130,12 +3130,6 @@ fetch_op_current_value (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       OID *serial_oid;
       int cached_num;
 
-      if (DB_VALUE_DOMAIN_TYPE (peek_left) != DB_TYPE_OID)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
-	  return ER_QPROC_CANNOT_FETCH_SERIAL;
-	}
-
       serial_oid = db_get_oid (peek_left);
       cached_num = db_get_int (peek_right);
 
