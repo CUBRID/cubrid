@@ -1220,7 +1220,7 @@ qo_is_conjunct_on_spec_only (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * s
  *
  *   The join order and the join methods hinted are written for the SEMI JOIN, so ORDERED, LEADING, KEYLIMIT and a join
  *   method hint naming the spec keep it, but USE_MERGE: there is no semi merge join, so the INNER JOIN is the only
- *   form USE_MERGE applies to.
+ *   type USE_MERGE applies to.
  */
 bool
 qo_is_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec, bool * is_merge_hinted)
@@ -1238,7 +1238,7 @@ qo_is_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * sp
     }
 
   /* a table with no path expression, or a derived table unnested from a subquery: the XASL of the other derived
-   * tables is made before the forms are chosen */
+   * tables is made before the types are chosen */
   if (spec->info.spec.cte_name != NULL || spec->info.spec.path_entities != NULL
       || (spec->info.spec.derived_table != NULL && !(spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)))
     {

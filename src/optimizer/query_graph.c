@@ -1405,7 +1405,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 	      else if ((entity->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)
 		       && entity->info.spec.derived_table->info.query.q.select.qo_summary != NULL)
 		{
-		  /* planned before its XASL is made (pt_plan_semi_anti_forms ()) */
+		  /* planned before its XASL is made (pt_plan_semi_anti_joins ()) */
 		  summary = (QO_SUMMARY *) entity->info.spec.derived_table->info.query.q.select.qo_summary;
 		  QO_NODE_NCARD (node) = (unsigned long) summary->cardinality;
 		  QO_NODE_TCARD (node) =
