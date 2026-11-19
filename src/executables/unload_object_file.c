@@ -886,7 +886,7 @@ desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      /*  Duplicate definitions of collation types are not permitted, so execution should not reach here. 
+      /* Duplicate definitions of collection types are not permitted, so execution should not reach here.
        * It should have been handled by calling process_set() directly in process_value().
        * So, let's add an assert() here and plan to remove fprint_special_set() in the future.
        */
