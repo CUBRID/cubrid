@@ -26,10 +26,11 @@
  *
  * Each step runs in its own child process, so a process that boots the database is the only one that has it
  * open: this process never boots it.
- *   1. A child loads rows with OOS values, updates every row to new values, and commits; the commit stops the
+ *   1. A child loads rows with two OOS values, updates every row to a new first value while the second keeps its
+ *      stub, as an UPDATE that does not assign that column does (CBRD-27230), and commits; the commit stops the
  *      process after the second drop postpone appended its notification (the log is flushed up to it).
  *   2. A second child boots: restart recovery reruns the remaining drop postpones, vacuum rebuilds the lost
- *      blocks, and vacuum must reclaim every chain the UPDATE dropped and none it wrote.
+ *      blocks, and vacuum must reclaim every chain the UPDATE dropped and none it wrote or reused.
  */
 
 #include "test_oos_server_common.hpp"
@@ -64,6 +65,7 @@ namespace
   const int EXIT_SETUP_FAILED = 12;
   const int EXIT_OLD_CHAIN_LEFT = 21;
   const int EXIT_NEW_CHAIN_LOST = 22;
+  const int EXIT_REUSED_CHAIN_LOST = 23;
 
   struct crash_layout
   {
@@ -72,6 +74,7 @@ namespace
     OID heap_oids[NUM_ROWS];
     OID old_oos_oids[NUM_ROWS];
     OID new_oos_oids[NUM_ROWS];
+    OID reused_oos_oids[NUM_ROWS];
   };
 
   const int HEAP_HDR_SIZE = 8;	/* OR_MVCC_REP_SIZE + OR_CHN_SIZE */
@@ -127,10 +130,27 @@ namespace
     return xtran_server_commit (thread_p, false) == TRAN_UNACTIVE_COMMITTED;
   }
 
-  /* A heap record of db_user's representation whose first variable attribute is an OOS stub for oos_oid, the
-   * layout test_oos_real_vacuum_server.cpp builds. */
   int
-  build_heap_recdes_with_oos (const OID &class_oid, const OID &oos_oid, INT64 oos_length, RECDES &rec_out)
+  put_oos_stub (char *stub, const OID &oos_oid, INT64 oos_length)
+  {
+    LOG_LSA identity_stamp = NULL_LSA;
+    int err = oos_get_identity_stamp (thread_p, oos_oid, &identity_stamp);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+    OR_PUT_OID (stub, &oos_oid);
+    OR_PUT_BIGINT (stub + OR_OID_SIZE, &oos_length);
+    INT64 packed_identity_stamp = oos_pack_identity_stamp (identity_stamp);
+    OR_PUT_BIGINT (stub + OR_OID_SIZE + OR_BIGINT_SIZE, &packed_identity_stamp);
+    return NO_ERROR;
+  }
+
+  /* A heap record of db_user's representation whose first two variable attributes are OOS stubs for first_oid and
+   * second_oid, the layout test_oos_real_vacuum_server.cpp builds. */
+  int
+  build_heap_recdes_with_oos (const OID &class_oid, const OID &first_oid, const OID &second_oid, INT64 oos_length,
+			      RECDES &rec_out)
   {
     int cache_index = -1;
     OR_CLASSREP *repr = heap_classrepr_get (thread_p, &class_oid, nullptr, NULL_REPRID, &cache_index);
@@ -141,13 +161,13 @@ namespace
     const int n_var = repr->n_variable;
     const int repr_id = repr->id;
     heap_classrepr_free_and_init (repr, &cache_index);
-    if (n_var < 1)
+    if (n_var < 2)
       {
 	return ER_FAILED;
       }
 
     const int vot_bytes = (n_var + 1) * VOT_ENTRY_SZ;
-    const int total = HEAP_HDR_SIZE + vot_bytes + OR_OOS_INLINE_SIZE;
+    const int total = HEAP_HDR_SIZE + vot_bytes + 2 * OR_OOS_INLINE_SIZE;
     int err = recdes_allocate_data_area (&rec_out, total + MVCC_HEADER_SPARE);
     if (err != NO_ERROR)
       {
@@ -162,25 +182,24 @@ namespace
 		| OR_OFFSET_SIZE_4BYTE);
     char *vot = base + HEAP_HDR_SIZE;
     OR_PUT_INT (vot, OR_SET_VAR_OOS (vot_bytes));
-    for (int i = 1; i <= n_var; ++i)
+    OR_PUT_INT (vot + VOT_ENTRY_SZ, OR_SET_VAR_OOS (vot_bytes + OR_OOS_INLINE_SIZE));
+    for (int i = 2; i <= n_var; ++i)
       {
-	const int offset = vot_bytes + OR_OOS_INLINE_SIZE;
+	const int offset = vot_bytes + 2 * OR_OOS_INLINE_SIZE;
 	OR_PUT_INT (vot + i * VOT_ENTRY_SZ, i == n_var ? OR_SET_VAR_LAST_ELEMENT (offset) : offset);
       }
 
     char *slot = vot + vot_bytes;
-    OR_PUT_OID (slot, &oos_oid);
-    OR_PUT_BIGINT (slot + OR_OID_SIZE, &oos_length);
-    LOG_LSA identity_stamp = NULL_LSA;
-    err = oos_get_identity_stamp (thread_p, oos_oid, &identity_stamp);
+    err = put_oos_stub (slot, first_oid, oos_length);
+    if (err == NO_ERROR)
+      {
+	err = put_oos_stub (slot + OR_OOS_INLINE_SIZE, second_oid, oos_length);
+      }
     if (err != NO_ERROR)
       {
 	recdes_free_data_area (&rec_out);
-	return err;
       }
-    INT64 packed_identity_stamp = oos_pack_identity_stamp (identity_stamp);
-    OR_PUT_BIGINT (slot + OR_OID_SIZE + OR_BIGINT_SIZE, &packed_identity_stamp);
-    return NO_ERROR;
+    return err;
   }
 
   int
@@ -263,7 +282,9 @@ namespace
       {
 	RECDES heap_rec {};
 	if (insert_oos_value (oos_vfid, 'a' + i, layout.old_oos_oids[i]) != NO_ERROR
-	    || build_heap_recdes_with_oos (layout.class_oid, layout.old_oos_oids[i], VALUE_SIZE, heap_rec) != NO_ERROR)
+	    || insert_oos_value (oos_vfid, '0' + i, layout.reused_oos_oids[i]) != NO_ERROR
+	    || build_heap_recdes_with_oos (layout.class_oid, layout.old_oos_oids[i], layout.reused_oos_oids[i],
+					   VALUE_SIZE, heap_rec) != NO_ERROR)
 	  {
 	    std::_Exit (EXIT_SETUP_FAILED);
 	  }
@@ -286,7 +307,8 @@ namespace
       {
 	RECDES heap_rec {};
 	if (insert_oos_value (oos_vfid, 'A' + i, layout.new_oos_oids[i]) != NO_ERROR
-	    || build_heap_recdes_with_oos (layout.class_oid, layout.new_oos_oids[i], VALUE_SIZE, heap_rec) != NO_ERROR)
+	    || build_heap_recdes_with_oos (layout.class_oid, layout.new_oos_oids[i], layout.reused_oos_oids[i],
+					   VALUE_SIZE, heap_rec) != NO_ERROR)
 	  {
 	    std::_Exit (EXIT_SETUP_FAILED);
 	  }
@@ -375,6 +397,10 @@ namespace
 	  {
 	    std::_Exit (EXIT_NEW_CHAIN_LOST);
 	  }
+	if (oos_unreadable (layout.reused_oos_oids[i]))
+	  {
+	    std::_Exit (EXIT_REUSED_CHAIN_LOST);
+	  }
       }
 
     (void) xheap_destroy (thread_p, &layout.hfid, &layout.class_oid);
@@ -429,7 +455,8 @@ TEST (OosServerCrashRecovery, CrashInUpdateCommitPostponesThenRestartReclaimsOnl
   const int recovered = wait_child (pid);
   EXPECT_EQ (recovered, 0) << "restart and vacuum: " << EXIT_BOOT_FAILED << ": boot (recovery) failed; "
 			   << EXIT_OLD_CHAIN_LEFT << ": a dropped chain was not reclaimed; " << EXIT_NEW_CHAIN_LOST
-			   << ": a chain the UPDATE wrote was lost; 134: abort (assert)";
+			   << ": a chain the UPDATE wrote was lost; " << EXIT_REUSED_CHAIN_LOST
+			   << ": a chain the UPDATE reused was lost; 134: abort (assert)";
 }
 
 int

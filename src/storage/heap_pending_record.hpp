@@ -21,6 +21,7 @@
 #ifndef _HEAP_PENDING_RECORD_HPP_
 #define _HEAP_PENDING_RECORD_HPP_
 
+#include "oid.h"
 #include "oos_file.hpp"
 #include "record_descriptor.hpp"
 
@@ -73,10 +74,20 @@ class heap_pending_record
 	  m_record.set_type (REC_HOME);
 	}
     }
+    // The record reuses stubs of an older version of a row of class_oid; they name chains of that class's OOS file.
+    void set_reused_stubs_class (const OID &class_oid)
+    {
+      m_reused_stubs_class = class_oid;
+    }
+    bool reuses_stubs_of (const OID &class_oid) const
+    {
+      return OID_EQ (&m_reused_stubs_class, &class_oid);
+    }
 
   private:
     record_descriptor m_record;
     std::vector<oos_buffer> m_values;
+    OID m_reused_stubs_class = OID_INITIALIZER;
     std::size_t m_bytes = 0;
     enum class state { empty, prepared, finalized, failed };
     state m_state = state::empty;

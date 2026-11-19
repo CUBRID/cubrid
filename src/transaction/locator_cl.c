@@ -7032,7 +7032,7 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
   int required_length;
   int key_length, round_length, wasted_length;
   char *ptr, *obj_start_p;
-  bool pending_oos_insert = false;
+  bool pending_oos_item = false;
 
   while (true)
     {
@@ -7048,7 +7048,7 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 	{
 	  required_length += repl_obj->packed_prior_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
 	}
-      if (repl_obj->operation != LC_FLUSH_DELETE)
+      if (repl_obj->operation != LC_FLUSH_DELETE && repl_obj->operation != LC_FLUSH_REUSE_OOS)
 	{
 	  assert (repl_obj->recdes != NULL && repl_obj->recdes->data != NULL);
 	  required_length += repl_obj->recdes->length + MAX_ALIGNMENT;
@@ -7067,12 +7067,13 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 	    }
 	  else
 	    {
-	      if (pending_oos_insert)
+	      if (pending_oos_item)
 		{
 		  /*
-		   * OOS insert records must be forced together with the following heap insert/update record.
-		   * The server uses the OID produced by LC_FLUSH_INSERT_OOS to rewrite the OOS placeholder
-		   * in the heap record within the same xlocator_repl_force call.
+		   * OOS items must be forced together with the following heap insert/update record.
+		   * The server uses the OID produced by LC_FLUSH_INSERT_OOS, or the stub reused for
+		   * LC_FLUSH_REUSE_OOS, to rewrite the OOS placeholder in the heap record within the same
+		   * xlocator_repl_force call.
 		   */
 		  int minsize = mflush->copy_area->length + (required_length - mflush->recdes.area_size) + DB_PAGESIZE;
 
@@ -7117,7 +7118,7 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
       key_length = CAST_BUFLEN (ptr - obj_start_p);
       mflush->recdes.data = ptr;
 
-      if (repl_obj->operation == LC_FLUSH_DELETE)
+      if (repl_obj->operation == LC_FLUSH_DELETE || repl_obj->operation == LC_FLUSH_REUSE_OOS)
 	{
 	  assert (repl_obj->recdes == NULL);
 	  mflush->recdes.length = 0;
@@ -7160,7 +7161,7 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
       mflush->recdes.area_size -= round_length + sizeof (*(mflush->obj));
 
       mflush->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (mflush->obj);
-      pending_oos_insert = (repl_obj->operation == LC_FLUSH_INSERT_OOS);
+      pending_oos_item = LC_IS_FLUSH_OOS_ITEM (repl_obj->operation);
       ws_free_repl_obj (repl_obj);
     }
 

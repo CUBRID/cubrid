@@ -4740,6 +4740,10 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
     {
       tdes->append_repl_recidx = 0;
     }
+#if !defined (NDEBUG)
+  /* no OOS item is written apart from its row */
+  repl_assert_oos_items_follow_row (tdes, tdes->append_repl_recidx, false);
+#endif
 
   /* there is any replication info */
   while (tdes->append_repl_recidx < tdes->cur_repl_record)
@@ -6846,6 +6850,10 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
       break;
     case RVREPL_DUMMY_OOS_RECORD:
       type = "RVREPL_DUMMY_OOS_RECORD";
+      dump_function = log_repl_data_dump;
+      break;
+    case RVREPL_OOS_REUSE:
+      type = "RVREPL_OOS_REUSE";
       dump_function = log_repl_data_dump;
       break;
     default:

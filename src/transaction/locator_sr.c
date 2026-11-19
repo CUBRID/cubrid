@@ -320,7 +320,14 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 /* lob */
 static int locator_lob_make_dir_path (char *buf, const HFID * hfid, int attrid);
 
-static int locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes);
+static int locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes,
+					     RECDES * old_recdes);
+static int locator_copy_reused_oos_stub (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * old_recdes,
+					 const OR_ATTRIBUTE * attrepr, char *stub);
+static int locator_repl_publish_reused_oos (THREAD_ENTRY * thread_p);
+/* *INDENT-OFF* */
+static LOG_RCVINDEX locator_oos_repl_rcvindex (const cubthread::entry::oos_published_ref & ref);
+/* *INDENT-ON* */
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -8366,6 +8373,12 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
   SCAN_CODE scan;
   SCAN_OPERATION_TYPE scan_op_type;
 
+  if (obj->operation == LC_FLUSH_REUSE_OOS)
+    {
+      /* no record and no row of its own: the heap row that follows takes the reused stub */
+      return NO_ERROR;
+    }
+
   if (obj->operation == LC_FLUSH_DELETE)
     {
       scan_op_type = S_DELETE;
@@ -8413,9 +8426,12 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
     {
       assert (OID_ISNULL (&obj->oid) != true);
 
-      /* only the CHN is read from the old record (CBRD-26847) */
+      /* The old record is read for its CHN and, without OOS Expand, for the stubs of the OOS columns the master
+       * reused (CBRD-26847, CBRD-27230). The stubs are read after the modify scan cache releases the page, so the
+       * record is copied into the scan cache's area. */
+      old_recdes->data = NULL;
       scan =
-	heap_get_visible_version (thread_p, &obj->oid, &obj->class_oid, old_recdes, force_scancache, PEEK, NULL_CHN,
+	heap_get_visible_version (thread_p, &obj->oid, &obj->class_oid, old_recdes, force_scancache, COPY, NULL_CHN,
 				  HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 
       if (scan != S_SUCCESS)
@@ -8607,7 +8623,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    }
 	  row_topop_active = true;
 	}
-      else if (!LC_IS_FLUSH_INSERT (obj->operation) && !LC_IS_FLUSH_UPDATE (obj->operation))
+      else if (!LC_IS_FLUSH_INSERT (obj->operation) && !LC_IS_FLUSH_UPDATE (obj->operation)
+	       && !LC_IS_FLUSH_OOS_ITEM (obj->operation))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  error_code = ER_GENERIC_ERROR;
@@ -8623,7 +8640,9 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	      && (LC_IS_FLUSH_INSERT (obj->operation) || LC_IS_FLUSH_UPDATE (obj->operation))
 	      && heap_recdes_contains_oos (&recdes))
 	    {
-	      error_code = locator_fixup_oos_oids_in_recdes (thread_p, &obj->class_oid, &recdes);
+	      error_code =
+		locator_fixup_oos_oids_in_recdes (thread_p, &obj->class_oid, &recdes,
+						  LC_IS_FLUSH_UPDATE (obj->operation) ? &old_recdes : NULL);
 	      if (error_code != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -8634,6 +8653,9 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    {
 	    case LC_FLUSH_INSERT_OOS:
 	      error_code = locator_oos_insert_force (thread_p, &obj->class_oid, &recdes);
+	      break;
+	    case LC_FLUSH_REUSE_OOS:
+	      error_code = locator_repl_publish_reused_oos (thread_p);
 	      break;
 	    case LC_FLUSH_INSERT:
 	    case LC_FLUSH_INSERT_PRUNE:
@@ -8700,7 +8722,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
       if (error_code != NO_ERROR)
 	{
-	  if (obj->operation == LC_FLUSH_INSERT_OOS)
+	  if (LC_IS_FLUSH_OOS_ITEM (obj->operation))
 	    {
 	      /* One failed OOS item invalidates the pending OOS-plus-heap-row apply group. */
 	      thread_p->oos_oids.clear ();
@@ -8716,7 +8738,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
 	  row_topop_active = false;
 	}
-      else if (obj->operation != LC_FLUSH_INSERT_OOS)
+      else if (!LC_IS_FLUSH_OOS_ITEM (obj->operation))
 	{
 	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
 	  row_topop_active = false;
@@ -8724,7 +8746,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
       pr_clear_value (&key_value);
       pr_clear_value (&prior_value);
 
-      if (obj->operation != LC_FLUSH_INSERT_OOS)
+      if (!LC_IS_FLUSH_OOS_ITEM (obj->operation))
 	{
 	  thread_p->oos_oids.clear ();
 	}
@@ -9154,6 +9176,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   SCAN_CODE scan = S_SUCCESS;	/* Scan return value for next operation */
   RECDES copy_recdes;
   RECDES *old_recdes = NULL;
+  bool reuse_oos_stubs = false;
   int error_code = NO_ERROR;
   HFID class_hfid;
   OID class_oid;
@@ -9251,12 +9274,19 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
       old_recdes = &copy_recdes;
 
+      /* old_recdes is the row's latest version, locked above, so a stub it holds names a chain no committed version
+       * dropped. Only an MVCC update of a row that stays in this heap copies the stubs of the OOS columns it does
+       * not assign: vacuum, not the update, reclaims a chain a later version drops, once no snapshot can read the
+       * versions sharing it (CBRD-27230). */
+      reuse_oos_stubs = (pruning_type == DB_NOT_PARTITIONED_CLASS
+			 && HEAP_UPDATE_IS_MVCC_OP (!mvcc_is_mvcc_disabled_class (&class_oid), force_update_inplace));
+
       [[fallthrough]];
 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
-      if (heap_attrinfo_prepare_record (thread_p, attr_info, old_recdes, &pending) != S_SUCCESS)
+      if (heap_attrinfo_prepare_record (thread_p, attr_info, old_recdes, &pending, true, reuse_oos_stubs) != S_SUCCESS)
 	{
 	  error_code = ER_FAILED;
 	  break;
@@ -9725,8 +9755,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      // insert oos replication log
 	      for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
 		{
-		  LOG_RCVINDEX oos_repl_rcvindex =
-		    OID_ISNULL (&thread_p->oos_oids[i].oid) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
+		  LOG_RCVINDEX oos_repl_rcvindex = locator_oos_repl_rcvindex (thread_p->oos_oids[i]);
 		  error_code = repl_log_insert (thread_p,
 						class_oid,
 						&thread_p->oos_oids[i].oid,
@@ -10542,8 +10571,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
 	  for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
 	    {
-	      LOG_RCVINDEX oos_repl_rcvindex =
-		OID_ISNULL (&thread_p->oos_oids[i].oid) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
+	      LOG_RCVINDEX oos_repl_rcvindex = locator_oos_repl_rcvindex (thread_p->oos_oids[i]);
 	      error_code =
 		repl_log_insert (thread_p, class_oid, &thread_p->oos_oids[i].oid, LOG_REPLICATION_DATA,
 				 oos_repl_rcvindex, new_key, REPL_INFO_TYPE_RBR_NORMAL);
@@ -16104,8 +16132,130 @@ xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
   xcache_remove_by_oid (thread_p, oidp);
 }
 
+/*
+ * locator_oos_repl_rcvindex () - The replication item of one OOS reference published for the heap record being
+ *				   replicated
+ */
+/* *INDENT-OFF* */
+static LOG_RCVINDEX
+locator_oos_repl_rcvindex (const cubthread::entry::oos_published_ref & ref)
+{
+  if (ref.reused)
+    {
+      return RVREPL_OOS_REUSE;
+    }
+  return OID_ISNULL (&ref.oid) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
+}
+
+/*
+ * locator_repl_publish_reused_oos () - Record, in its place among the replicated OOS items, an OOS column the
+ *				       master's UPDATE reused (CBRD-27230)
+ */
 static int
-locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes)
+locator_repl_publish_reused_oos (THREAD_ENTRY * thread_p)
+{
+  try
+    {
+      thread_p->oos_oids.push_back ({ oid_Null_oid, NULL_LSA, true });
+    }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (thread_p->oos_oids[0]));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  return NO_ERROR;
+}
+/* *INDENT-ON* */
+
+/*
+ * locator_copy_reused_oos_stub () - Give a replicated heap record this replica's own stub of an OOS column the
+ *				    master's UPDATE reused (CBRD-27230)
+ *
+ * return: NO_ERROR, or ER_HA_GENERIC_ERROR when the replica's previous version has no stub of the same full length
+ *	   for the column
+ *   class_oid(in): class of the row
+ *   old_recdes(in): the replica's previous version of the row; NULL when the replicated row has none
+ *   attrepr(in): the column in the class's current representation
+ *   stub(in/out): the column's stub in the replicated record; the master's on entry
+ *
+ * Note: The stub is looked up by attribute id in old_recdes's own representation. The master's head OID names
+ *	 nothing on this replica; the replica's own chain holds the value the master reused. A replica without such a
+ *	 stub has diverged, and the apply stops rather than write a stub that names another chain.
+ */
+static int
+locator_copy_reused_oos_stub (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * old_recdes,
+			      const OR_ATTRIBUTE * attrepr, char *stub)
+{
+  OR_CLASSREP *old_rep = NULL;
+  int old_rep_cacheindex = -1;
+  const OR_ATTRIBUTE *old_attr = NULL;
+  char *old_stub = NULL;
+  DB_BIGINT master_length = 0;
+  DB_BIGINT replica_length = 0;
+  const char *divergence = NULL;
+  int i;
+
+  if (old_recdes == NULL || old_recdes->data == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "reused OOS column without a previous version while applying replicated heap record");
+      return ER_HA_GENERIC_ERROR;
+    }
+
+  old_rep = heap_classrepr_get (thread_p, class_oid, NULL, or_rep_id (old_recdes), &old_rep_cacheindex);
+  if (old_rep == NULL)
+    {
+      ASSERT_ERROR ();
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+
+  for (i = 0; i < old_rep->n_attributes; i++)
+    {
+      if (old_rep->attributes[i].id == attrepr->id)
+	{
+	  old_attr = &old_rep->attributes[i];
+	  break;
+	}
+    }
+
+  if (old_attr == NULL || old_attr->is_fixed || !tp_domain_match (old_attr->domain, attrepr->domain, TP_EXACT_MATCH)
+      || heap_recdes_get_oos_inline_stub (old_recdes, old_attr->location, &old_stub) != NO_ERROR)
+    {
+      divergence = "reused OOS column has no OOS stub in the previous version while applying replicated heap record";
+    }
+  else
+    {
+      OR_GET_BIGINT (stub + OR_OID_SIZE, &master_length);
+      OR_GET_BIGINT (old_stub + OR_OID_SIZE, &replica_length);
+      if (master_length != replica_length)
+	{
+	  divergence =
+	    "reused OOS column length differs from the previous version while applying replicated heap record";
+	}
+      else
+	{
+	  memcpy (stub, old_stub, OR_OOS_INLINE_SIZE);
+	}
+    }
+
+  heap_classrepr_free_and_init (old_rep, &old_rep_cacheindex);
+  if (divergence != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, divergence);
+      return ER_HA_GENERIC_ERROR;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * locator_fixup_oos_oids_in_recdes () - Replace the master's OOS stubs of a replicated heap record with this
+ *					  replica's, in attribute order
+ *
+ *   old_recdes(in): the replica's previous version of an updated row, NULL for an inserted row; the stubs of the
+ *		     columns the master reused come from it
+ */
+static int
+locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes, RECDES * old_recdes)
 {
   HEAP_CACHE_ATTRINFO attr_info;
   OR_CLASSREP *classrep = NULL;
@@ -16194,6 +16344,17 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
 	  goto end;
 	}
 
+      if (thread_p->oos_oids[oos_oid_count].reused)
+	{
+	  error = locator_copy_reused_oos_stub (thread_p, class_oid, old_recdes, attrepr, stub_ptr);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  oos_oid_count++;
+	  continue;
+	}
+
       or_init (&buf, stub_ptr, OR_OOS_INLINE_SIZE);
       or_put_oid (&buf, &oos_oid);
 
@@ -16220,9 +16381,10 @@ end:
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 int
-bridge_locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes)
+bridge_locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes,
+					 RECDES * old_recdes)
 {
-  return locator_fixup_oos_oids_in_recdes (thread_p, class_oid, recdes);
+  return locator_fixup_oos_oids_in_recdes (thread_p, class_oid, recdes, old_recdes);
 }
 #endif
 

@@ -355,13 +355,15 @@ namespace cubthread
        * OOS OID plus the identity stamp the chain was created with (CBRD-26950). The HA applier's
        * stub fixup rewrites both fields of each OOS inline stub from these pairs, so the slave's
        * stubs carry the stamps the slave itself issued and never depend on reading OOS storage. A
-       * NULL OID with a NULL stamp is the multi-chunk replication boundary marker. The layout
-       * mirrors oos_chain_ref (oos_file.hpp) but is kept separate so this header does not depend on
-       * storage headers. */
+       * NULL OID with a NULL stamp is the multi-chunk replication boundary marker. A reused entry names
+       * no chain: an UPDATE reused that column's stub, and the replica takes the stub of its own previous
+       * version (CBRD-27230). The layout mirrors oos_chain_ref (oos_file.hpp) but is kept separate so
+       * this header does not depend on storage headers. */
       struct oos_published_ref
       {
 	OID oid;
 	LOG_LSA identity_stamp;
+	bool reused = false;
       };
       std::vector<oos_published_ref> oos_oids;
 

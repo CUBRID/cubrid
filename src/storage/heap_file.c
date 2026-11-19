@@ -169,13 +169,6 @@ static int rv;
     } \
   while (0)
 
-#if defined (SERVER_MODE)
-#define HEAP_UPDATE_IS_MVCC_OP(is_mvcc_class, update_style) \
-    ((is_mvcc_class) && (!HEAP_IS_UPDATE_INPLACE (update_style)) ? (true) : (false))
-#else
-#define HEAP_UPDATE_IS_MVCC_OP(is_mvcc_class, update_style) (false)
-#endif
-
 #define HEAP_SCAN_ORDERED_HFID(scan) \
   (((scan) != NULL) ? (&(scan)->node.hfid) : (PGBUF_ORDERED_NULL_HFID))
 
@@ -746,21 +739,27 @@ static bool heap_capacity_vpid_is_counted (const FILE_FTAB_COLLECTOR * collector
 static int heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_reset);
 static int heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
-					    HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
 
 /* *INDENT-OFF* */
 static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class,
 						 size_t * offset_size_ptr);
+/* How one column is written: inline (not selected), as the stub of a new chain, or as the reused stub of the old
+ * version. A reused stub is copied byte for byte, so the new version names the same chain (CBRD-27230). */
 struct heap_oos_column_plan
 {
   bool selected = false;
+  bool reused = false;
   int pending_index = -1;
   OID oid = OID_INITIALIZER;
   DB_BIGINT length = 0;
   LOG_LSA identity_stamp = NULL_LSA;	/* identity stamp of the inserted OOS value chain (CBRD-26950) */
+  char reused_stub[OR_OOS_INLINE_SIZE];
 };
+static bool heap_attrinfo_plan_reused_oos_stubs (HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
+						 std::vector<heap_oos_column_plan> * oos_plan);
+static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
+					    HEAP_CACHE_ATTRINFO * attr_info, const heap_oos_column_plan * oos_plan);
 static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
 						size_t * offset_size_ptr,
 						std::vector<heap_oos_column_plan> * oos_plan,
@@ -863,7 +862,7 @@ static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_
 static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							   RECDES * old_recdes, record_descriptor * new_recdes,
 							   int lob_create_flag, heap_pending_record * pending =
-							   nullptr);
+							   nullptr, bool reuse_oos_stubs = false);
 /* *INDENT-ON* */
 
 static int heap_update_statistics (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
@@ -13899,12 +13898,63 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
 }
 
 /*
+ * heap_attrinfo_plan_reused_oos_stubs () - Plan to copy the old version's stub of each OOS column an UPDATE does not
+ *   assign (CBRD-27230)
+ *   return: true when a column reuses its stub
+ *   attr_info(in): the new version's values; a column the UPDATE does not assign is still uninitialized
+ *   old_recdes(in): the row's latest version, locked by the UPDATE
+ *   oos_plan(in/out): per-column write plan
+ *
+ * Note: The copied stub keeps the chain's head OID and identity stamp, so the value is neither read nor inserted. A
+ *	 column an increment recomputes keeps the ordinary path, as does every column of a record in an older
+ *	 representation, where a column can lie elsewhere or have another domain.
+ */
+/* *INDENT-OFF* */
+static bool
+heap_attrinfo_plan_reused_oos_stubs (HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
+				     std::vector<heap_oos_column_plan> * oos_plan)
+/* *INDENT-ON* */
+{
+  bool has_reused = false;
+  int i;
+
+  if (!heap_recdes_contains_oos (old_recdes) || or_rep_id (old_recdes) != attr_info->last_classrepr->id)
+    {
+      return false;
+    }
+
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      const HEAP_ATTRVALUE *value = &attr_info->values[i];
+      char *stub = NULL;
+
+      if (value->state != HEAP_UNINIT_ATTRVALUE || value->do_increment != 0 || value->last_attrepr->is_fixed
+	  || heap_recdes_get_oos_inline_stub (old_recdes, value->last_attrepr->location, &stub) != NO_ERROR)
+	{
+	  continue;
+	}
+
+      if (oos_plan->empty ())
+	{
+	  oos_plan->resize (attr_info->num_values);
+	}
+      (*oos_plan)[i].selected = true;
+      (*oos_plan)[i].reused = true;
+      memcpy ((*oos_plan)[i].reused_stub, stub, OR_OOS_INLINE_SIZE);
+      has_reused = true;
+    }
+
+  return has_reused;
+}
+
+/*
  * heap_attrinfo_set_uninitialized () - Read unitialized attributes
  *   return: NO_ERROR
  *   inst_oid(in): The instance oid
  *   recdes(in): The instance record descriptor
  *   attr_info(in/out): The attribute information structure which describe the
  *                      desired attributes
+ *   oos_plan(in): per-column write plan, or NULL; a column that reuses its stub is not read
  *
  * Note: Read the db values of the unitialized attributes from the
  * given recdes. This function is used when we are ready to
@@ -13918,7 +13968,7 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
  */
 static int
 heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
-				 HEAP_CACHE_ATTRINFO * attr_info)
+				 HEAP_CACHE_ATTRINFO * attr_info, const heap_oos_column_plan * oos_plan)
 {
   int i;
   REPR_ID reprid;		/* Representation of object */
@@ -13974,6 +14024,10 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
       value = &attr_info->values[i];
       if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
+	  if (oos_plan != NULL && oos_plan[i].reused)
+	    {
+	      continue;
+	    }
 	  ret = heap_attrvalue_read (recdes, value, attr_info, layoutp);
 	  if (ret != NO_ERROR)
 	    {
@@ -14146,6 +14200,13 @@ try
 	{
 	  column_size[i] = tp_domain_disk_size (value->last_attrepr->domain);
 	  payload_size += column_size[i];
+	}
+      else if (!oos_plan->empty () && (*oos_plan)[i].reused)
+	{
+	  /* already a stub, so neither forced out nor a demotion candidate */
+	  column_size[i] = OR_OOS_INLINE_SIZE;
+	  payload_size += OR_OOS_INLINE_SIZE;
+	  *has_oos = true;
 	}
       else
 	{
@@ -14509,7 +14570,7 @@ heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_A
       heap_oos_column_plan & plan = (*oos_plan)[i];
       RECDES payload = { 0, 0, REC_HOME, NULL };
 
-      if (!plan.selected)
+      if (!plan.selected || plan.reused)
 	{
 	  continue;
 	}
@@ -14625,7 +14686,7 @@ void heap_oos_test_fail_heap_insert_once () { heap_Oos_fail_heap_insert.store (t
 
 SCAN_CODE
 heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes,
-                             heap_pending_record *pending, bool copy_lobs)
+                             heap_pending_record *pending, bool copy_lobs, bool reuse_oos_stubs)
 {
   record_descriptor *record = &pending->record ();
   assert (record->get_recdes ().data == nullptr);
@@ -14644,7 +14705,7 @@ heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_
   try
     {
       status = heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, record,
-                    copy_lobs ? LOB_FLAG_INCLUDE_LOB : LOB_FLAG_EXCLUDE_LOB, pending);
+                    copy_lobs ? LOB_FLAG_INCLUDE_LOB : LOB_FLAG_EXCLUDE_LOB, pending, reuse_oos_stubs);
     }
   catch (const std::bad_alloc &)
     {
@@ -14985,7 +15046,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       length = CAST_BUFLEN (*ptr_varvals - buf->buffer - header_size);
       if (oos_plan != nullptr && oos_plan->selected)
 	{
-	  assert (dbvalue != NULL && db_value_is_null (dbvalue) != true);
+	  assert (oos_plan->reused || (dbvalue != NULL && db_value_is_null (dbvalue) != true));
 
 	  /* see Implementation in CBRD-26352 for details on why this design is possible. */
 	  /* use 2-bit of offset value as flags */
@@ -15000,6 +15061,13 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       if (*ptr_varvals + OR_OOS_INLINE_SIZE > buf->endptr)
 	{
 	  return S_DOESNT_FIT;
+	}
+
+      if (oos_plan->reused)
+	{
+	  memcpy (*ptr_varvals, oos_plan->reused_stub, OR_OOS_INLINE_SIZE);
+	  *ptr_varvals += OR_OOS_INLINE_SIZE;
+	  return S_SUCCESS;
 	}
 
       /* *INDENT-OFF* */
@@ -15152,7 +15220,8 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
       else
 	{
 	  heap_oos_column_plan *plan = oos_plan->empty ()? nullptr : &(*oos_plan)[i];
-	  assert (plan == nullptr || !plan->selected || plan->pending_index >= 0 || !OID_ISNULL (&plan->oid));
+	  assert (plan == nullptr || !plan->selected || plan->reused || plan->pending_index >= 0
+		  || !OID_ISNULL (&plan->oid));
 
 	  status =
 	    heap_attrinfo_transform_variable_to_disk (thread_p, attr_info, buf, &ptr_varvals, plan, i, offset_size,
@@ -15213,7 +15282,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 static SCAN_CODE
 heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 					  RECDES * old_recdes, record_descriptor * new_recdes, int lob_create_flag,
-					  heap_pending_record * pending)
+					  heap_pending_record * pending, bool reuse_oos_stubs)
 {
   OR_BUF buf;
   size_t inline_size_after_oos, mvcc_extra;
@@ -15234,8 +15303,16 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       return S_ERROR;
     }
 
+  /* A reused stub names a chain of this class's OOS file, so finalization must keep the record in this class. */
+  if (reuse_oos_stubs && pending != nullptr && old_recdes != NULL && old_recdes->data != NULL
+      && heap_attrinfo_plan_reused_oos_stubs (attr_info, old_recdes, &oos_plan))
+    {
+      pending->set_reused_stubs_class (attr_info->class_oid);
+    }
+
   /* get any of the values that have not been set/read */
-  if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info) != NO_ERROR)
+  if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info,
+				       oos_plan.empty ()? NULL : oos_plan.data ()) != NO_ERROR)
     {
       return S_ERROR;
     }
@@ -15292,7 +15369,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
            * For UPDATE, consider externalization immediately before locator_update_index. */
           for (int i = 0; i < attr_info->num_values && status == S_SUCCESS; ++i)
             {
-              if (!oos_plan[i].selected)
+              if (!oos_plan[i].selected || oos_plan[i].reused)
                 {
                   continue;
                 }
@@ -20273,7 +20350,7 @@ heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid,
       return ER_FAILED;
     }
 
-  return heap_attrinfo_set_uninitialized (thread_p, inst_oid, recdes, attr_info);
+  return heap_attrinfo_set_uninitialized (thread_p, inst_oid, recdes, attr_info, NULL);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -25015,9 +25092,9 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       /* For non-MVCC deletes (!is_mvcc_op, as in SA_MODE or for an MVCC-disabled class), eagerly delete the OOS
        * records referenced by the forward REC_NEWHOME record before the destructive physical delete below removes
-       * the forward slot. There is no new image on DELETE and OOS OIDs are never shared across rows, so every
-       * OOS OID is reclaimed. MVCC mode keeps the old OOS alive for concurrent readers; that path is reclaimed
-       * by vacuum. */
+       * the forward slot. There is no new image on DELETE. An OOS chain is shared only across versions of one row
+       * (CBRD-27230), and no older version is read on this non-MVCC path, so every OOS OID is reclaimed. MVCC mode
+       * keeps the old OOS alive for concurrent readers; that path is reclaimed by vacuum. */
       if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
 	{
 	  rc = heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, NULL, "delete relocation");
@@ -25362,8 +25439,9 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       /* For non-MVCC deletes (!is_mvcc_op, as in SA_MODE or for an MVCC-disabled class), eagerly delete the OOS
        * records referenced by the home record before the destructive physical delete below removes the slot.
-       * There is no new image on DELETE and OOS OIDs are never shared across rows, so every OOS OID is
-       * reclaimed. MVCC mode keeps the old OOS alive for concurrent readers; that path is reclaimed by vacuum. */
+       * There is no new image on DELETE. An OOS chain is shared only across versions of one row (CBRD-27230), and
+       * no older version is read on this non-MVCC path, so every OOS OID is reclaimed. MVCC mode keeps the old OOS
+       * alive for concurrent readers; that path is reclaimed by vacuum. */
       if (!is_mvcc_op && context->record_type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
 	{
 	  error_code = heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, NULL, "delete home");

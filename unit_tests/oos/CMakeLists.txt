@@ -82,6 +82,7 @@ set(SERVER_MODE_TESTS
   test_oos_vacuum_server
   test_oos_real_vacuum_server
   test_oos_server_crash_recovery
+  test_oos_update_reuse_server
 )
 
 foreach(test_name ${SERVER_MODE_TESTS})
@@ -394,6 +395,51 @@ set_tests_properties(
   test_oos_real_vacuum_latch_timeout_shutdown
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
     ENVIRONMENT "${OOS_HEADER_HELD_ENV}"
+)
+
+# test_oos_update_reuse_server updates rows of user tables, which a SERVER_MODE binary booted without a client cannot
+# create; this fixture creates them in unittestdb in standalone mode (CBRD-27230).
+add_test(NAME oos_setup_update_reuse_tables
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_update_reuse_tables.sh"
+)
+set_tests_properties(oos_setup_update_reuse_tables
+  PROPERTIES FIXTURES_SETUP OOS_UPDATE_REUSE_TABLES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
+)
+string(CONCAT oos_update_reuse_write_filter
+  "OosUpdateReuse.UnassignedChainsAreReusedNotRewritten:"
+  "OosUpdateReuse.ReplicatesAReusedColumnAsAMarkerInAttributeOrder:"
+  "OosUpdateReuse.FlushMarkWritesTheOosItemsWithTheirRow:"
+  "OosUpdateReuse.InPlaceUpdateWritesNewChains:"
+  "OosUpdateReuse.IncrementReusesTheOtherColumnsChains:"
+  "OosUpdateReuse.IncrementReusesTheOtherColumnsChainsUnderReplication:"
+  "OosUpdateReuseSetupRow.*"
+)
+add_test(NAME test_oos_update_reuse_write COMMAND test_oos_update_reuse_server
+  "--gtest_filter=${oos_update_reuse_write_filter}")
+string(CONCAT oos_update_reuse_reclaim_filter
+  "OosUpdateReuse.MixedUpdateDropsOnlyTheAssignedChain:"
+  "OosUpdateReuse.VacuumReclaimsAReusedChainOnceAVersionDropsIt:"
+  "OosUpdateReuse.SnapshotOfTheReusingVersionHoldsTheReclaim:"
+  "OosUpdateReuse.OldSnapshotAcrossInPlaceRewriteOfReusedChainMatchesNewChains:"
+  "OosUpdateReuse.OldSnapshotReadsTheReusedChainAfterTheRowIsDeleted"
+)
+add_test(NAME test_oos_update_reuse_reclaim COMMAND test_oos_update_reuse_server
+  "--gtest_filter=${oos_update_reuse_reclaim_filter}")
+string(CONCAT oos_update_reuse_rollback_filter
+  "OosUpdateReuse.PartialRollbackCancelsOnlyTheLaterDrop:"
+  "OosUpdateReuse.PartialRollbackCancelsOnlyTheLaterDropUnderReplication:"
+  "OosUpdateReuse.SavepointRollbackDropsTheMarkersWithTheirRow:"
+  "OosUpdateReuse.TransactionRollbackKeepsTheChains"
+)
+add_test(NAME test_oos_update_reuse_rollback COMMAND test_oos_update_reuse_server
+  "--gtest_filter=${oos_update_reuse_rollback_filter}")
+set_tests_properties(
+  test_oos_update_reuse_write test_oos_update_reuse_reclaim test_oos_update_reuse_rollback
+  PROPERTIES FIXTURES_REQUIRED "OOS_DB;OOS_UPDATE_REUSE_TABLES" RUN_SERIAL TRUE TIMEOUT 60
 )
 
 # Two children boot the database in turn; the second waits up to 40 seconds for vacuum.
