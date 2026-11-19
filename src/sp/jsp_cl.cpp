@@ -5833,6 +5833,9 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	      }
 	    if (!DB_IS_NULL (&pkg_code))
 	      {
+		// the code of a package member called directly from SQL is read from this row
+		// (see sp_get_code_attr ())
+		sig.ext.sp.code_oid = *WS_OID (db_get_object (&pkg_code));
 		error = db_get (db_get_object (&pkg_code), PKG_CODE_ATTR_COMPILE_ID, &cid);
 		pr_clear_value (&pkg_code);
 		if (error != NO_ERROR)
