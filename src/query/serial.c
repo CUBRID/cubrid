@@ -1536,6 +1536,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   int sp_success;
   int tran_index;
   LOCK lock_mode = NULL_LOCK;
+  bool flush_mark_started = false;
 
   assert_release (serial_class_oidp != NULL && !OID_ISNULL (serial_class_oidp));
 
@@ -1553,6 +1554,9 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 
   if (lock_mode != X_LOCK && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+      /* Leave an existing flush mark to its owner. */
+      flush_mark_started = tdes != NULL && tdes->fl_mark_repl_recidx == -1;
       repl_start_flush_mark (thread_p);
     }
 
@@ -1582,26 +1586,44 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
       goto exit_on_error;
     }
 
+#if defined (SERVER_MODE)
   /* make replication log for the special type of update for serial */
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
+      const OR_INDEX *serial_index = NULL;
+      for (int i = 0; i < attr_info->last_classrepr->n_indexes; i++)
+	{
+	  const OR_INDEX *index = &attr_info->last_classrepr->indexes[i];
+	  if (BTID_IS_EQUAL (&index->btid, &serial_Cached_btid))
+	    {
+	      serial_index = index;
+	      break;
+	    }
+	}
+
       if (prior_val == NULL)
 	{
-	  repl_log_insert (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, key_val,
-			   REPL_INFO_TYPE_RBR_NORMAL);
-	  repl_add_update_lsa (thread_p, serial_oidp);
+	  /* A replication record that cannot be made does not undo the serial update: the value stays
+	   * advanced and this update goes unreplicated, as before the RK metadata was logged. */
+	  if (repl_log_insert (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE,
+			       key_val, serial_index, REPL_INFO_TYPE_RBR_NORMAL) == NO_ERROR)
+	    {
+	      repl_add_update_lsa (thread_p, serial_oidp);
+	    }
 	}
       else
 	{
 	  /* flush-marked, the write-back's record outlives a rollback of the DDL that caused it */
 	  assert (lock_mode != X_LOCK);
-	  repl_log_insert_serial_write_back (thread_p, serial_oidp, key_val, prior_val);
+	  repl_log_insert_serial_write_back (thread_p, serial_oidp, key_val, serial_index, prior_val);
 	}
+    }
 
-      if (lock_mode != X_LOCK)
-	{
-	  repl_end_flush_mark (thread_p, false);
-	}
+#endif /* SERVER_MODE */
+
+  if (flush_mark_started)
+    {
+      repl_end_flush_mark (thread_p, false);
     }
 
   if (lock_mode != X_LOCK)
@@ -1612,6 +1634,11 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   return NO_ERROR;
 
 exit_on_error:
+
+  if (flush_mark_started)
+    {
+      repl_end_flush_mark (thread_p, true);
+    }
 
   if (lock_mode != X_LOCK)
     {

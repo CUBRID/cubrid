@@ -6999,7 +6999,14 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 	}
 
       /* includes leading and trailing alignment */
-      required_length = repl_obj->packed_pkey_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
+      if (repl_obj->rk_metadata_length > INT_MAX - repl_obj->packed_pkey_value_length - 3 * (int) MAX_ALIGNMENT)
+	{
+	  ws_free_repl_obj (repl_obj);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Replication-key payload is too large.");
+	  return ER_HA_GENERIC_ERROR;
+	}
+      required_length = repl_obj->packed_pkey_value_length + repl_obj->rk_metadata_length
+	+ 2 * OR_INT_SIZE + MAX_ALIGNMENT + INT_ALIGNMENT;
       if (repl_obj->packed_prior_value != NULL)
 	{
 	  required_length += repl_obj->packed_prior_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
@@ -7035,6 +7042,8 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
       /* put packed key_value first */
       obj_start_p = ptr = mflush->recdes.data;
 
+      ptr = or_pack_int (ptr, repl_obj->packed_pkey_value_length);
+      ptr = or_pack_int (ptr, repl_obj->rk_metadata_length);
       ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);	/* 8 bytes alignment. see or_pack_mem_value */
 
       memcpy (ptr, repl_obj->packed_pkey_value, repl_obj->packed_pkey_value_length);
@@ -7042,7 +7051,10 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);	/* for int alignment. see or_pack_mem_value */
 
-      /* the value a _db_serial write-back replaced follows the key, in the same form */
+      memcpy (ptr, repl_obj->rk_metadata, repl_obj->rk_metadata_length);
+      ptr += repl_obj->rk_metadata_length;
+
+      /* the value a _db_serial write-back replaced follows the RK digest, in the same form as the key */
       if (repl_obj->packed_prior_value != NULL)
 	{
 	  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);

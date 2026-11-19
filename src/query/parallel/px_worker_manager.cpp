@@ -35,6 +35,7 @@
 
 namespace parallel_query
 {
+
   worker_manager::worker_manager()
     : m_active_tasks (0),
       m_reserved_workers (0)

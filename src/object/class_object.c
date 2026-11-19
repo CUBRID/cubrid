@@ -92,6 +92,10 @@ static const char *Constraint_properties[] = {
   ((int)(sizeof(Constraint_types)/sizeof(Constraint_types[0])))
 #define NUM_CONSTRAINT_PROPERTIES       \
   ((int)(sizeof(Constraint_properties)/sizeof(Constraint_properties[0])))
+#define IS_HA_REPLICATION_KEY_CONSTRAINT(c) \
+  ((c)->type == SM_CONSTRAINT_PRIMARY_KEY || \
+    (SM_IS_CONSTRAINT_UNIQUE_FAMILY((c)->type) && \
+     sm_has_non_null_attribute((c)->attributes)))
 
 static CUB_THREAD_LOCAL AREA *Template_area = NULL;
 
@@ -534,6 +538,54 @@ classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE constraint)
     }
 
   return property_type;
+}
+
+/*
+ * classobj_copy_pk_unique_constraints() - Copy PK or NOT NULL UNIQUE constraints
+ *    from the source attribute to the destination attribute.
+ *    Previously, only the unique BTID was copied; now each constraint object is
+ *    recreated using classobj_make_constraint() to preserve type information.
+ *
+ *    This is required because later logic performs constraint-type comparisons,
+ *    but the destination (ctemplate) does not yet contain that information.
+ *
+ *    TODO: Consider copying the constraint cache or regenerating it on the
+ *    destination attribute in the future.
+ *          Also, since only the constraint type is required when comparing
+ *          PK and NOT NULL UNIQUE constraints, it may be worth exploring
+ *          an approach that copies only the type information.
+ *
+ * return: NO_ERROR on success, error code on failure
+ *   src(in): source attribute
+ *   dest(in/out): destination attribute
+ */
+static int
+classobj_copy_pk_and_uk_notnull_constraints (const SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest)
+{
+  SM_CONSTRAINT *src_cons, *dest_new;
+  for (src_cons = src->constraints; src_cons != NULL; src_cons = (SM_CONSTRAINT *) src_cons->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (src_cons->type) && (src->flags & SM_ATTFLAG_NON_NULL) != 0)
+	{
+	  dest_new =
+	    classobj_make_constraint (src_cons->name, src_cons->type, &src_cons->index, src_cons->has_function);
+	  if (dest_new == NULL)
+	    {
+	      return er_errid ();
+	    }
+
+	  if (dest->constraints == NULL)
+	    {
+	      dest->constraints = dest_new;
+	    }
+	  else
+	    {
+	      dest_new->next = dest->constraints;
+	      dest->constraints = dest_new;
+	    }
+	}
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -2217,6 +2269,28 @@ classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT * constraints)
 }
 
 /*
+ * classobj_has_class_repl_key_constraint ()
+ *   return: true if a replication key constraint is contained in the constraint list,
+ *           otherwise false.
+ *   constraints(in): constraint list
+ */
+bool
+classobj_has_class_repl_key_constraint (SM_CLASS_CONSTRAINT * constraints)
+{
+  SM_CLASS_CONSTRAINT *c;
+
+  for (c = constraints; c != NULL; c = c->next)
+    {
+      if (IS_HA_REPLICATION_KEY_CONSTRAINT (c))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * classobj_has_unique_constraint ()
  *   return: true if an unique constraint is contained in the constraint list,
  *           otherwise false.
@@ -2279,6 +2353,7 @@ classobj_make_constraint (const char *name, SM_CONSTRAINT_TYPE type, BTID * id, 
 
   if (constraint == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SM_CONSTRAINT));
       return NULL;
     }
 
@@ -2291,6 +2366,7 @@ classobj_make_constraint (const char *name, SM_CONSTRAINT_TYPE type, BTID * id, 
   if (name && !constraint->name)
     {
       classobj_free_constraint (constraint);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (name) + 1);
       return NULL;
     }
 
@@ -3892,6 +3968,40 @@ classobj_find_cons_primary_key (SM_CLASS_CONSTRAINT * cons_list)
 }
 
 /*
+ * classobj_find_cons_replication_key() - find the replication key (RK) of a class
+ *   return: the RK constraint, or NULL if the class has none
+ *   cons_list(in): constraint list of the class
+ *
+ * Note: a PRIMARY KEY is preferred, then a UNIQUE, then a REVERSE UNIQUE that has a NOT NULL key column; an index
+ *       still being built online is skipped. The server picks the first candidate of its representation in the same
+ *       way (or_is_replication_candidate_key), and both lists keep the same order, so the client and the server
+ *       choose the same RK.
+ */
+SM_CLASS_CONSTRAINT *
+classobj_find_cons_replication_key (SM_CLASS_CONSTRAINT * cons_list)
+{
+  SM_CONSTRAINT_TYPE types[] = {
+    SM_CONSTRAINT_PRIMARY_KEY,
+    SM_CONSTRAINT_UNIQUE,
+    SM_CONSTRAINT_REVERSE_UNIQUE
+  };
+
+  for (size_t i = 0; i < sizeof (types) / sizeof (types[0]); i++)
+    {
+      for (SM_CLASS_CONSTRAINT * cons = cons_list; cons != NULL; cons = cons->next)
+	{
+	  if (cons->type == types[i]
+	      && cons->index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && IS_HA_REPLICATION_KEY_CONSTRAINT (cons))
+	    {
+	      return cons;
+	    }
+	}
+    }
+
+  return NULL;
+}
+
+/*
  * classobj_find_class_primary_key()
  *   return: constraint
  *   class(in):
@@ -4579,12 +4689,11 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
 
       if (src->constraints != NULL)
 	{
-	  /*
-	   *  We used to just copy the unique BTID from the source to the
-	   *  destination.  We might want to copy the src cache to dest, or
-	   *  maybe regenerate the cache for dest since the information is
-	   *  already in its property list.  - JB
-	   */
+	  error = classobj_copy_pk_and_uk_notnull_constraints (src, dest);
+	  if (error != NO_ERROR)
+	    {
+	      goto memory_error;
+	    }
 	}
 
       /* make a copy of the default value */
@@ -4632,8 +4741,11 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
 memory_error:
   /* Could try to free the partially allocated things.  If we get here then we're out of virtual memory, a few leaks
    * aren't going to matter much. */
-  assert (er_errid () != NO_ERROR);
-  return er_errid ();
+  if (error == NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+  return error;
 }
 
 
@@ -4652,6 +4764,7 @@ classobj_copy_attribute (SM_ATTRIBUTE * src, const char *alias)
   att = (SM_ATTRIBUTE *) db_ws_alloc (sizeof (SM_ATTRIBUTE));
   if (att == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SM_ATTRIBUTE));
       return NULL;
     }
   att->header.next = NULL;
@@ -4669,6 +4782,7 @@ classobj_copy_attribute (SM_ATTRIBUTE * src, const char *alias)
       att->header.name = ws_copy_string (alias);
       if (att->header.name == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (alias) + 1);
 	  db_ws_free (att);
 	  return NULL;
 	}
@@ -4681,7 +4795,7 @@ classobj_copy_attribute (SM_ATTRIBUTE * src, const char *alias)
  * classobj_copy_attlist() - Copies an attribute list.  This does NOT return a
  *    threaded array. The filter_class is optional and will cause only those
  *    attributes whose origin is the given class to be copied to the result list
- *   return: NO_ERROR on success, non-zero for ERROR
+ *   return: NO_ERROR on success, error code on failure
  *   attlist(in): attribute list
  *   filter_class(in): optional filter class
  *   ordered(in):
@@ -4692,6 +4806,7 @@ int
 classobj_copy_attlist (SM_ATTRIBUTE * attlist, MOP filter_class, int ordered, SM_ATTRIBUTE ** copy_ptr)
 {
   SM_ATTRIBUTE *att, *new_, *first, *last, *next;
+  int error = NO_ERROR;
 
   first = last = NULL;
 
@@ -4730,8 +4845,8 @@ classobj_copy_attlist (SM_ATTRIBUTE * attlist, MOP filter_class, int ordered, SM
 memory_error:
   /* Could try to free the previously copied attribute list. We're out of virtual memory at this point.  A few leaks
    * aren't going to matter. */
-  assert (er_errid () != NO_ERROR);
-  return er_errid ();
+  ASSERT_ERROR_AND_SET (error);
+  return error;
 }
 
 /*

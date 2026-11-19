@@ -1513,8 +1513,17 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1395 Loading rows into a partitioned class is not supported in CS mode. Load them into its partitions instead.
 
-1396 Last Error
+1396 HA constraint violation: A replication key candidate (PRIMARY KEY or NOT NULL UNIQUE) is required in HA mode. Otherwise, set the replication option to OFF.
 
+1397 HA constraint violation: Changing replication option is not allowed in HA mode.
+
+1398 HA constraint violation: A replication-enabled table cannot define a foreign key referencing a table with replication option OFF in HA mode.
+
+1399 HA constraint violation: %1$d constraint(s) failed, so HA mode cannot be started. Refer to '%2$s' for more details.
+
+1400 HA constraint violation: The schema change on superclass '%1$s' would leave replication subclass '%2$s' without a valid replication constraint.
+
+1401 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

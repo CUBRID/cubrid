@@ -677,6 +677,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <boolean> opt_analytic_from_last
 %type <boolean> opt_analytic_ignore_nulls
 %type <number> opt_encrypt_algorithm
+%type <number> opt_replication_option
 %type <number> opt_access_modifier
 %type <number> opt_authid
 %type <number> opt_deterministic
@@ -1018,6 +1019,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> charset_spec
 %type <node> class_comment_spec
 %type <node> class_encrypt_spec
+%type <node> class_replication_spec
 %type <node> opt_vclass_comment_spec
 %type <node> comment_value
 %type <node> opt_comment_spec
@@ -1711,6 +1713,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> RESPECT
 %token <cptr> RETAIN
 %token <cptr> REUSE_OID
+%token <cptr> REPLICATION
 %token <cptr> REVERSE
 %token <cptr> RLIKE
 %token <cptr> DISK_SIZE
@@ -6025,6 +6028,16 @@ alter_clause_for_alter_list
 				alter_node->info.alter.alter_clause.comment.tbl_comment = $1;
 			  }
 		}}
+	| class_replication_spec
+		{{
+			PT_NODE *alter_node = parser_get_alter_node();
+
+			if (alter_node != NULL && alter_node->info.alter.code != PT_CHANGE_REPLICATION)
+			  {
+				alter_node->info.alter.code = PT_CHANGE_REPLICATION;
+				alter_node->info.alter.alter_clause.replication.tbl_replication = $1;
+			  }
+		}}
 	;
 
 alter_clause_cubrid_specific
@@ -9228,7 +9241,15 @@ table_option
 	
                         $$ = pt_table_option (this_parser, PT_TABLE_OPTION_ENCRYPT, $1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
 		  }}
+        | class_replication_spec
+                {{
+
+                        $$ = pt_table_option (this_parser, PT_TABLE_OPTION_REPLICATION, $1);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                }}
 	| charset_spec
 		{{
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_CHARSET, $1);
@@ -19976,6 +19997,24 @@ class_encrypt_spec
 		}}
 	;
 
+class_replication_spec
+  : REPLICATION opt_equalsign opt_replication_option
+		{{
+			PT_NODE *node = NULL;
+
+      node = parser_new_node (this_parser, PT_VALUE);
+
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_INTEGER;
+          node->info.value.data_value.i = $3;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+			  }
+
+			$$ = node;
+		}}
+	;
+
 class_comment_spec
 	: COMMENT opt_equalsign char_string_literal
 		{{
@@ -20053,6 +20092,18 @@ opt_encrypt_algorithm
   | ARIA
     {
       $$ = 2; }   /* TDE_ALGORITHM_ARIA */
+  ;
+
+opt_replication_option
+  : /* empty */
+    {
+      $$ = 1; }   /* default: REPLICATION = ON */
+  | ON_
+    {
+      $$ = 1; }   /* REPLICATION = ON */
+  | OFF_
+    {
+      $$ = 0; }   /* REPLICATION = OFF */
   ;
 
 opt_index_with_clause_no_online
@@ -20934,6 +20985,7 @@ identifier
 	| REMOVE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REORGANIZE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REPEATABLE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REPLICATION            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RESPECT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RETAIN                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REUSE_OID              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}

@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <limits.h>
 
 #include "memory_alloc.h"
 #include "area_alloc.h"
@@ -5542,8 +5543,8 @@ ws_repl::ws_clear_all_repl_objs (void)
  */
 int
 ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
-				  RECDES * recdes, int operation, bool has_index, char *packed_prior_value,
-				  int packed_prior_value_length)
+				  const char *rk_metadata, int rk_metadata_length, RECDES * recdes, int operation,
+				  bool has_index, char *packed_prior_value, int packed_prior_value_length)
 {
   WS_REPL_OBJ *repl_obj = NULL;
 
@@ -5559,15 +5560,27 @@ ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int 
 
   COPY_OID (&repl_obj->class_oid, class_oid);
 
+  if (packed_pkey_value_length > INT_MAX - rk_metadata_length)
+    {
+      free_and_init (repl_obj);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Replication-key payload is too large.");
+      return ER_HA_GENERIC_ERROR;
+    }
+
   repl_obj->packed_pkey_value_length = packed_pkey_value_length;
-  repl_obj->packed_pkey_value = (char *) malloc (packed_pkey_value_length);
+  repl_obj->packed_pkey_value = (char *) malloc (packed_pkey_value_length + rk_metadata_length);
   if (repl_obj->packed_pkey_value == NULL)
     {
-      free (repl_obj);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (WS_REPL_OBJ));
+      free_and_init (repl_obj);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      packed_pkey_value_length + rk_metadata_length);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
   memcpy (repl_obj->packed_pkey_value, packed_pkey_value, packed_pkey_value_length);
+  repl_obj->rk_metadata = repl_obj->packed_pkey_value + packed_pkey_value_length;
+  memcpy (repl_obj->rk_metadata, rk_metadata, rk_metadata_length);
+  repl_obj->rk_metadata_length = rk_metadata_length;
 
   repl_obj->packed_prior_value = NULL;
   repl_obj->packed_prior_value_length = 0;

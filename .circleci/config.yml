@@ -209,6 +209,8 @@ commands:
       # pipelines exit non-zero when there is nothing left to prune.
       - run:
           name: Check out testcases and testtools
+          environment:
+            BRANCH_TESTTOOLS: "add-replication-option"
           shell: /bin/bash
           command: |
             if [ -z "$TEST_SUITE" ] || [ "$TEST_SUITE" = "none" ]; then

@@ -44,6 +44,9 @@
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))
 #define OR_ARRAY_EXTENT 10
 
+/* Must match SM_CLASSFLAG_DATA_REPLICATION_OFF in class_object.h. */
+#define OR_CLASSFLAG_DATA_REPLICATION_OFF 32
+
 /*
  * VARIABLE OFFSET TABLE ACCESSORS
  * The variable offset table is present in the headers of objects and sets.
@@ -778,6 +781,29 @@ or_class_tde_algorithm (RECDES * record, TDE_ALGORITHM * tde_algo)
 
   ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
   *(int *) tde_algo = OR_GET_INT (ptr + ORC_CLASS_TDE_ALGORITHM);
+}
+
+void
+or_class_flags (RECDES * record, int *flags)
+{
+  char *ptr;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+  *(int *) flags = OR_GET_INT (ptr + ORC_CLASS_FLAGS);
+}
+
+bool
+or_class_is_replication_on (RECDES * record)
+{
+  int flags = 0;
+
+  /* TODO:
+   * Consider adding a replication flag to HEAP_CLASSREPR_ENTRY in heap_classrepr to reduce class record interpretation(EPIC CBRD-26096). */
+  or_class_flags (record, &flags);
+
+  return !(flags & OR_CLASSFLAG_DATA_REPLICATION_OFF);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -2324,7 +2350,8 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_INDEX) * n_btids);
 	  return;
 	}
-      memset (rep->indexes, 0, sizeof (OR_INDEX) * n_btids);
+      /* all zero is also the "not computed" value of repl_key_digest, a lock-free atomic word */
+      memset ((void *) rep->indexes, 0, sizeof (OR_INDEX) * n_btids);
     }
 
   /* Now extract the unique and index BTIDs from the property list and install them into the class and attribute
@@ -2489,6 +2516,24 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
+      char *attribute_name = NULL;
+      int allocated_name = 0;
+      if (or_get_diskattr_string (diskatt, ORC_ATT_NAME_INDEX, &attribute_name, &allocated_name) != NO_ERROR
+	  || attribute_name == NULL)
+	{
+	  goto error_cleanup;
+	}
+      size_t name_length = strlen (attribute_name) + 1;
+      att->name = strdup (attribute_name);
+      if (allocated_name)
+	{
+	  db_private_free (NULL, attribute_name);
+	}
+      if (att->name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, name_length);
+	  goto error_cleanup;
+	}
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2841,6 +2886,13 @@ error_cleanup:
 
   if (rep->attributes)
     {
+      for (i = 0; i < rep->n_attributes; i++)
+	{
+	  if (rep->attributes[i].name != NULL)
+	    {
+	      free_and_init (rep->attributes[i].name);
+	    }
+	}
       free_and_init (rep->attributes);
     }
 
@@ -3607,6 +3659,11 @@ or_free_classrep (OR_CLASSREP * rep)
     {
       for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
 	{
+	  if (att->name != NULL)
+	    {
+	      free_and_init (att->name);
+	    }
+
 	  if (att->default_value.value != NULL)
 	    {
 	      free_and_init (att->default_value.value);
@@ -4746,4 +4803,55 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
   buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 
   return NO_ERROR;
+}
+
+/* 
+ * or_is_replication_candidate_key() -
+ *   return : true if the index is a replication-key candidate
+ *            (PRIMARY KEY, or UNIQUE/REVERSE UNIQUE with at least one key attribute NOT NULL)
+ *   index(in): OR_INDEX pointer (may be NULL)
+ */
+/* TODO: We need to review a method to replace the index-dependent approach with one that receives the replication key name from the master node(EPIC CBRD-26096). */
+bool
+or_is_replication_candidate_key (const OR_INDEX * index)
+{
+  bool has_notnull_attribute = false;
+
+  if (index == NULL)
+    {
+      assert (false);
+      return false;
+    }
+
+  /* An index being built online must not be used as a replication key. */
+  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      return false;
+    }
+
+  if (index->type == BTREE_PRIMARY_KEY)
+    {
+      return true;
+    }
+
+  if (!btree_is_unique_type (index->type) || index->n_atts <= 0 || index->atts == NULL)
+    {
+      return false;
+    }
+
+  for (int i = 0; i < index->n_atts; i++)
+    {
+      OR_ATTRIBUTE *attr = index->atts[i];
+      if (attr == NULL)
+	{
+	  return false;
+	}
+
+      if (attr->is_notnull)
+	{
+	  has_notnull_attribute = true;
+	}
+    }
+
+  return has_notnull_attribute;
 }

@@ -23,6 +23,9 @@
 #ident "$Id$"
 
 #include "replication.h"
+#include "replication_key.h"
+#include "object_representation_sr.h"
+#include "object_domain.h"
 
 #include "dbtype.h"
 #include "heap_file.h"
@@ -67,14 +70,26 @@ static int repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc
 void
 repl_data_insert_log_dump (FILE * fp, int length, void *data)
 {
-  char *class_name;
+  const char *class_name, *key_bytes, *metadata;
+  int key_length, metadata_length;
   DB_VALUE key;
-  char *ptr;
-
-  ptr = or_unpack_string_nocopy ((char *) data, &class_name);
-  ptr = or_unpack_mem_value (ptr, &key);
-  fprintf (fp, "      class_name: %s\n", class_name);
-  fprintf (fp, "      pk_value: ");
+  char description[64];
+  if (!repl_key_unpack_log ((const char *) data, length, &class_name, &key_bytes, &key_length,
+			    &metadata, &metadata_length))
+    {
+      fprintf (fp, "Invalid replication-key metadata log\n");
+      return;
+    }
+  or_unpack_mem_value ((char *) key_bytes, &key);
+  if (metadata == NULL)
+    {
+      snprintf (description, sizeof (description), "(no digest: written before the RK digest was logged)");
+    }
+  else
+    {
+      repl_key_describe_digest (metadata, metadata_length, description, sizeof (description));
+    }
+  fprintf (fp, "      class_name: %s\n      RK: %s\n      key_value: ", class_name, description);
   db_value_print (&key);
   pr_clear_value (&key);
   fprintf (fp, "\n");
@@ -277,6 +292,102 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 }
 
 /*
+ * repl_pack_key_metadata() - serialize the cached RK used for the logged key value
+ *   return: NO_ERROR or an error code
+ *   index(in): selected RK index
+ *   data(out): allocated descriptor owned by the caller
+ *   length(out): descriptor length in bytes
+ */
+static int
+repl_pack_key_metadata (const OR_INDEX * index, char **data, int *length)
+{
+  *data = NULL;
+  *length = 0;
+
+  if (index == NULL || !or_is_replication_candidate_key (index) || index->n_atts <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "Cannot describe the selected replication key.");
+      return ER_HA_GENERIC_ERROR;
+    }
+
+  REPL_KEY_COLUMN *columns = (REPL_KEY_COLUMN *) calloc (index->n_atts, sizeof (*columns));
+  if (columns == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, index->n_atts * sizeof (*columns));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  int error = NO_ERROR;
+  for (int i = 0; i < index->n_atts; i++)
+    {
+      OR_ATTRIBUTE *a = index->atts[i];
+
+      if (a == NULL || a->domain == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "Missing replication key attribute domain.");
+	  error = ER_HA_GENERIC_ERROR;
+	  goto end;
+	}
+
+      columns[i].id = a->id;
+      columns[i].name = a->name;
+      columns[i].domain = a->domain;
+      columns[i].descending = index->asc_desc ? index->asc_desc[i] : 0;
+      columns[i].not_null = a->is_notnull;
+    }
+
+  error = repl_key_pack (index->btname, index->type, index->n_atts, columns, data, length);
+end:
+  free_and_init (columns);
+  return error;
+}
+
+/*
+ * repl_get_key_digest() - digest of an RK, computed once per class representation
+ *   return: NO_ERROR or an error code
+ *   index(in): RK index of a class representation
+ *   digest(out): REPL_KEY_DIGEST_SIZE bytes
+ *
+ * Note: the descriptor is made only of the class's own definition (index, key columns, their domains), so it is the
+ *	 same for every row of one representation. A DDL on the class builds a new representation, which starts
+ *	 without a digest, and a rolled back DDL drops the representation it built, so the cached digest never
+ *	 outlives the definition it describes.
+ */
+int
+repl_get_key_digest (const OR_INDEX * index, char *digest)
+{
+  // *INDENT-OFF*
+  static_assert (REPL_KEY_DIGEST_SIZE == sizeof (UINT64), "the RK digest must fit in the cached word");
+  // *INDENT-ON*
+
+  UINT64 cached = index->repl_key_digest.load ();
+  if (cached != 0)
+    {
+      memcpy (digest, &cached, REPL_KEY_DIGEST_SIZE);
+      return NO_ERROR;
+    }
+
+  char *data = NULL;
+  int length = 0;
+  int error = repl_pack_key_metadata (index, &data, &length);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  repl_key_digest (data, length, digest);
+  free_and_init (data);
+
+  /* threads that race here compute the same value, so the last store wins harmlessly */
+  memcpy (&cached, digest, REPL_KEY_DIGEST_SIZE);
+  index->repl_key_digest.store (cached);
+
+  return NO_ERROR;
+}
+
+/*
  * repl_log_insert_internal - insert a replication info to the transaction descriptor
  *
  * return: NO_ERROR or error code
@@ -286,14 +397,15 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  *   log_type(in): log type (DATA or SCHEMA)
  *   rcvindex(in): recovery index (INSERT or DELETE or UPDATE)
  *   key_dbvalue(in): Primary Key value
+ *   index(in): RK index whose digest is logged after the key value
  *   prior_dbvalue(in): NULL, or the value packed after the key (see LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC)
  *
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
 static int
 repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
-			  LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info,
-			  DB_VALUE * prior_dbvalue)
+			  LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, const OR_INDEX * index,
+			  REPL_INFO_TYPE repl_info, DB_VALUE * prior_dbvalue)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -366,6 +478,8 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
     {
       char *ptr_to_packed_key_value_size = NULL;
       int packed_key_len = 0;
+      int metadata_length = REPL_KEY_DIGEST_SIZE;
+      char key_digest[REPL_KEY_DIGEST_SIZE];
       char *ptr_to_packed_prior_value_size = NULL;
       int packed_prior_len = 0;
 
@@ -387,6 +501,16 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 	    {
 	      error = ER_REPL_ERROR;
 	    }
+	  free_and_init (class_name);
+	  return error;
+	}
+
+      /* the row log carries the digest of the descriptor, not the descriptor: the slave only needs to know
+       * whether its own descriptor is the same one */
+      error = repl_get_key_digest (index, key_digest);
+      if (error != NO_ERROR)
+	{
+	  free_and_init (class_name);
 	  return error;
 	}
 
@@ -395,6 +519,7 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
       repl_rec->length = OR_INT_SIZE;	/* packed_key_value_size */
       repl_rec->length += or_packed_string_length (class_name, &strlen);
       repl_rec->length += OR_VALUE_ALIGNED_SIZE (key_dbvalue);
+      repl_rec->length += metadata_length + OR_INT_SIZE + MAX_ALIGNMENT;
       if (prior_dbvalue != NULL)
 	{
 	  /* int-alignment slack, marker, packed_prior_value_size, value */
@@ -421,6 +546,9 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 
       ptr = or_pack_string_with_length (ptr, class_name, strlen);
       ptr = or_pack_mem_value (ptr, key_dbvalue, &packed_key_len);
+      ptr = or_pack_int (ptr, metadata_length);
+      memcpy (ptr, key_digest, metadata_length);
+      ptr += metadata_length;
 
       /* fill the length of disk image of pk */
       or_pack_int (ptr_to_packed_key_value_size, packed_key_len);
@@ -434,6 +562,7 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 	  ptr = or_pack_mem_value (ptr, prior_dbvalue, &packed_prior_len);
 	  or_pack_int (ptr_to_packed_prior_value_size, packed_prior_len);
 	}
+      repl_rec->length = CAST_BUFLEN (ptr - repl_rec->repl_data);
     }
   else
     {
@@ -524,12 +653,14 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
  *   log_type(in): log type (DATA or SCHEMA)
  *   rcvindex(in): recovery index (INSERT or DELETE or UPDATE)
  *   key_dbvalue(in): Primary Key value
+ *   index(in): RK index whose digest is logged after the key value
  */
 int
 repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
-		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info)
+		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, const OR_INDEX * index, REPL_INFO_TYPE repl_info)
 {
-  return repl_log_insert_internal (thread_p, class_oid, inst_oid, log_type, rcvindex, key_dbvalue, repl_info, NULL);
+  return repl_log_insert_internal (thread_p, class_oid, inst_oid, log_type, rcvindex, key_dbvalue, index, repl_info,
+				   NULL);
 }
 
 /*
@@ -539,6 +670,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
  *
  *   serial_oidp(in): OID of the serial
  *   key_dbvalue(in): name of the serial
+ *   index(in): RK index of _db_serial, whose digest is logged after the key value
  *   prior_dbvalue(in): the cur_val the write-back replaces (see LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC)
  *
  * NOTE: logged even while a DDL suppresses row replication: the DDL replicates as its statement, and the
@@ -546,7 +678,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
  */
 int
 repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_oidp, DB_VALUE * key_dbvalue,
-				   DB_VALUE * prior_dbvalue)
+				   const OR_INDEX * index, DB_VALUE * prior_dbvalue)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   int save_suppress, error;
@@ -560,7 +692,7 @@ repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_o
   tdes->suppress_replication = 0;
 
   error = repl_log_insert_internal (thread_p, oid_Serial_class_oid, serial_oidp, LOG_REPLICATION_DATA,
-				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, prior_dbvalue);
+				    RVREPL_DATA_UPDATE, key_dbvalue, index, REPL_INFO_TYPE_RBR_NORMAL, prior_dbvalue);
   if (error == NO_ERROR)
     {
       error = repl_add_update_lsa (thread_p, serial_oidp);

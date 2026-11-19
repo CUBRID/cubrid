@@ -51,6 +51,7 @@
 #include "log_lsa.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "replication_key.h"
 #include "db_value_printer.hpp"
 #include "db.h"
 #include "object_accessor.h"
@@ -246,6 +247,8 @@ struct la_item
   char *ha_sys_prm;
   int packed_key_value_length;
   char *packed_key_value;	/* disk image of pkey value */
+  char *rk_metadata;		/* points inside packed_key_value */
+  int rk_metadata_length;
   DB_VALUE key;			/* it will be unpacked from packed_key_value on demand */
   int packed_prior_value_length;
   char *packed_prior_value;	/* _db_serial write-back: disk image of the value it replaced, or NULL */
@@ -530,6 +533,7 @@ static int la_apply_insert_log (LA_ITEM * item);
 static int la_update_query_execute (const char *sql, bool au_disable);
 static int la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * vals, bool au_disable);
 static int la_apply_statement_log (LA_ITEM * item);
+static bool la_can_log_repl_sql (LA_ITEM * item, DB_OBJECT * class_obj);
 static int la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_rows, LOG_PAGEID final_pageid);
 static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
 static void la_free_repl_items_by_tranid (int tranid);
@@ -3036,6 +3040,8 @@ la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa)
   db_make_null (&item->key);
   item->packed_key_value_length = 0;
   item->packed_key_value = NULL;
+  item->rk_metadata = NULL;
+  item->rk_metadata_length = 0;
   item->packed_prior_value_length = 0;
   item->packed_prior_value = NULL;
 
@@ -3198,28 +3204,48 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
   switch (log_type)
     {
     case LOG_REPLICATION_DATA:
-      ptr = or_unpack_int (area, &item->packed_key_value_length);
-      ptr = or_unpack_string (ptr, &item->class_name);
+      {
+	const char *class_name, *key_bytes, *metadata;
+	if (!repl_key_unpack_log (area, length, &class_name, &key_bytes, &item->packed_key_value_length,
+				  &metadata, &item->rk_metadata_length))
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		    "Invalid replication-key metadata in data log.");
+	    goto error_return;
+	  }
+	if (metadata == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		    "Data log without a replication-key digest: it was written by a master that does not log "
+		    "the replication key. Upgrade the master first, then replicate from a log it wrote after "
+		    "the upgrade.");
+	    goto error_return;
+	  }
 
-      item->packed_key_value = (char *) malloc (item->packed_key_value_length);
-      if (item->packed_key_value == NULL)
-	{
-	  goto error_return;
-	}
+	item->class_name = db_private_strdup (NULL, class_name);
+	item->packed_key_value = (char *) malloc (item->packed_key_value_length + item->rk_metadata_length);
+	if (item->class_name == NULL || item->packed_key_value == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, length);
+	    goto error_return;
+	  }
 
-      ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);	/* 8 bytes alignment. see or_pack_mem_value */
-      memcpy (item->packed_key_value, ptr, item->packed_key_value_length);
+	memcpy (item->packed_key_value, key_bytes, item->packed_key_value_length);
+	item->rk_metadata = item->packed_key_value + item->packed_key_value_length;
+	memcpy (item->rk_metadata, metadata, item->rk_metadata_length);
 
-      if (strcasecmp (item->class_name, CT_SERIAL_NAME) == 0)
-	{
-	  if (la_copy_serial_prior_value (item, ptr + item->packed_key_value_length, area + length) != NO_ERROR)
-	    {
-	      goto error_return;
-	    }
-	}
+	if (strcasecmp (item->class_name, CT_SERIAL_NAME) == 0)
+	  {
+	    /* a _db_serial write-back appends its prior value after the RK digest */
+	    if (la_copy_serial_prior_value (item, (char *) metadata + item->rk_metadata_length, area + length)
+		!= NO_ERROR)
+	      {
+		goto error_return;
+	      }
+	  }
 
-      item->item_type = repl_log->rcvindex;
-
+	item->item_type = repl_log->rcvindex;
+      }
       break;
 
     case LOG_REPLICATION_STATEMENT:
@@ -5002,9 +5028,9 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
   has_index = classobj_class_has_indexes (class_);
 
   error =
-    __gv_loc_repl.ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
-					   operation, has_index, item->packed_prior_value,
-					   item->packed_prior_value_length);
+    __gv_loc_repl.ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length,
+					   item->rk_metadata, item->rk_metadata_length, recdes, operation, has_index,
+					   item->packed_prior_value, item->packed_prior_value_length);
   return error;
 }
 
@@ -5086,7 +5112,7 @@ la_apply_delete_log (LA_ITEM * item)
       goto end;
     }
 
-  if (la_enable_sql_logging)
+  if (la_enable_sql_logging && la_can_log_repl_sql (item, class_obj))
     {
       if (la_write_delete_sql_log (item, class_obj) != NO_ERROR)
 	{
@@ -5161,6 +5187,37 @@ end:
     }
 
   return ret;
+}
+
+/*
+ * la_can_log_repl_sql() - check whether a SQL log can use the row log's RK
+ *   return: true if the local RK matches, false otherwise
+ *   item(in): row log with the digest of the master's RK descriptor
+ *   class_obj(in): local class used to select an RK
+ * Note: A different RK could make the SQL log's WHERE clause target another row.
+ */
+static bool
+la_can_log_repl_sql (LA_ITEM * item, DB_OBJECT * class_obj)
+{
+  char *local = NULL;
+  int length = 0;
+
+  er_stack_push ();
+  int error = repl_key_from_class (class_obj, &local, &length);
+  bool matches = false;
+
+  if (error == NO_ERROR)
+    {
+      matches = repl_key_matches_digest (item->rk_metadata, item->rk_metadata_length, local, length);
+    }
+
+  if (local != NULL)
+    {
+      free_and_init (local);
+    }
+
+  er_stack_pop ();
+  return matches;
 }
 
 /*
@@ -5244,7 +5301,7 @@ la_apply_update_log (LA_ITEM * item)
    * we should write sql log.
    */
 
-  if (la_enable_sql_logging)
+  if (la_enable_sql_logging && la_can_log_repl_sql (item, class_obj))
     {
       int ret;
 
@@ -5441,7 +5498,7 @@ la_apply_insert_log (LA_ITEM * item)
       goto end;
     }
 
-  if (la_enable_sql_logging)
+  if (la_enable_sql_logging && la_can_log_repl_sql (item, class_obj))
     {
       int ret;
 
