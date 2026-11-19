@@ -485,7 +485,7 @@ namespace parallel_index_scan
     if (m_bm_worker != nullptr)
       {
 	/* bitmap heap scan, index step: the heap step looks the row up */
-	return m_input_handler->bitmap_mark (thread_p, m_bm_worker, oid, &m_bm_sector_hint) == NO_ERROR ? S_END : S_ERROR;
+	return m_input_handler->bitmap ().mark (thread_p, m_bm_worker, oid, &m_bm_sector_hint) == NO_ERROR ? S_END : S_ERROR;
       }
 
     /* Non-covering index path: read values from heap record */
@@ -580,35 +580,7 @@ namespace parallel_index_scan
   int
   leaf_slot_walker::fix_bitmap_page (THREAD_ENTRY *thread_p, const VPID *vpid, bool *is_fixed)
   {
-    HEAP_SCANCACHE *scan_cache = &m_scan_id->s.isid.scan_cache;
-    int error_code;
-
-    *is_fixed = false;
-    /* release the page of the previous lookup first: two heap pages are never held together here */
-    if (scan_cache->page_watcher.pgptr != NULL)
-      {
-	pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
-      }
-    /* the page was in the heap when the scan started; vacuum may have emptied and deallocated it since. A row
-     * lookup fixes its page as one that must exist, so the page is fixed here first and kept until its last row. */
-    error_code = pgbuf_ordered_fix (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
-				    &scan_cache->page_watcher);
-    if (scan_cache->page_watcher.pgptr == NULL)
-      {
-	if (error_code != NO_ERROR && error_code != ER_PB_BAD_PAGEID)
-	  {
-	    return error_code;
-	  }
-	er_clear ();
-	return NO_ERROR;
-      }
-    if (error_code != NO_ERROR)
-      {
-	pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
-	return error_code;
-      }
-    *is_fixed = true;
-    return NO_ERROR;
+    return scan_fix_bitmap_heap_page (thread_p, &m_scan_id->s.isid.scan_cache, vpid, is_fixed);
   }
 
   SCAN_CODE

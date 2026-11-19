@@ -4126,6 +4126,13 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		  free (spec->s_id.s.pisid.trace_storage);
 		  spec->s_id.s.pisid.trace_storage = NULL;
 		}
+	      else if (spec->s_id.scan_stats.bitmap_heap != 0)
+		{
+		  /* a serial scan's heap step */
+		  fprintf (fp, "\n%*cSCAN (bitmap heap: %s), ", indent + 2, ' ',
+			   class_name != NULL ? class_name : "unknown");
+		  scan_print_bitmap_heap_stats_text (fp, &spec->s_id);
+		}
 	    }
 #endif
 	  if (class_name != NULL)

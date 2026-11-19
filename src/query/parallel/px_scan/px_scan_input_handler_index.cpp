@@ -57,6 +57,10 @@ namespace parallel_scan
 
   input_handler_index::~input_handler_index ()
   {
+  }
+
+  bitmap_marks::~bitmap_marks ()
+  {
     THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
     for (int i = 0; i < m_bm_nworkers; i++)
@@ -120,7 +124,7 @@ namespace parallel_scan
   static const int BITMAP_PAGE_HEADER = QFILE_PAGE_HEADER_SIZE;
 
   int
-  input_handler_index::bitmap_write (THREAD_ENTRY *thread_p, bitmap_writer &wr)
+  bitmap_marks::write (THREAD_ENTRY *thread_p, bitmap_writer &wr)
   {
     const int per_page = (DB_PAGESIZE - BITMAP_PAGE_HEADER - (int) sizeof (bitmap_page_header))
 			 / (int) sizeof (bitmap_record);
@@ -227,8 +231,8 @@ namespace parallel_scan
   /* nobody writes the chain any more: its pages are read without a lock of ours */
   template <typename F>
   int
-  input_handler_index::bitmap_read_chain (THREAD_ENTRY *thread_p, const bitmap_writer &wr, std::uint32_t chain,
-					  F &&each)
+  bitmap_marks::read_chain (THREAD_ENTRY *thread_p, const bitmap_writer &wr, std::uint32_t chain,
+			    F &&each)
   {
     if (chain >= wr.chain.size ())
       {
@@ -262,7 +266,7 @@ namespace parallel_scan
   }
 
   int
-  input_handler_index::bitmap_mark (THREAD_ENTRY *thread_p, bitmap_worker *w, const OID *oid, int *sector_hint)
+  bitmap_marks::mark (THREAD_ENTRY *thread_p, bitmap_worker *w, const OID *oid, int *sector_hint)
   {
     const int sectid = SECTOR_FROM_PAGEID (oid->pageid);
     int s = *sector_hint;
@@ -356,13 +360,13 @@ namespace parallel_scan
 		kept.push_back (x);
 		continue;
 	      }
-	    const std::uint32_t part = bitmap_unit_of (x.page) / m_bm_nsub;
+	    const std::uint32_t part = unit_of (x.page) / m_bm_nsub;
 
 	    for (int k = 0; k < BITMAP_WORDS; k++)
 	      {
 		if (x.w[k] != 0)
 		  {
-		    int error_code = bitmap_add (thread_p, w->rec, part, x.page, k, x.w[k]);
+		    int error_code = add (thread_p, w->rec, part, x.page, k, x.w[k]);
 
 		    if (error_code != NO_ERROR)
 		      {
@@ -393,11 +397,11 @@ namespace parallel_scan
 	p->w[word] |= bit;
 	return NO_ERROR;
       }
-    return bitmap_add (thread_p, w->rec, bitmap_unit_of (page) / m_bm_nsub, page, word, bit);
+    return add (thread_p, w->rec, unit_of (page) / m_bm_nsub, page, word, bit);
   }
 
   int
-  input_handler_index::bitmap_end_marks (THREAD_ENTRY *thread_p, bitmap_worker *w)
+  bitmap_marks::end_marks (THREAD_ENTRY *thread_p, bitmap_worker *w)
   {
     if (w->over != nullptr)
       {
@@ -408,7 +412,7 @@ namespace parallel_scan
     w->tbl_start.assign (m_bm_nparts + 1, 0);
     for (int i = 0; i < w->tbl.n; i++)
       {
-	w->tbl_start[bitmap_unit_of (w->tbl.e[i].page) / m_bm_nsub + 1]++;
+	w->tbl_start[unit_of (w->tbl.e[i].page) / m_bm_nsub + 1]++;
       }
     for (std::uint32_t k = 0; k < m_bm_nparts; k++)
       {
@@ -417,7 +421,7 @@ namespace parallel_scan
     w->tbl_order.resize (w->tbl.n);
     for (int i = 0; i < w->tbl.n; i++)
       {
-	w->tbl_order[w->tbl_start[bitmap_unit_of (w->tbl.e[i].page) / m_bm_nsub]++] = (std::uint16_t) i;
+	w->tbl_order[w->tbl_start[unit_of (w->tbl.e[i].page) / m_bm_nsub]++] = (std::uint16_t) i;
       }
     /* each start moved to its partition's end, the next one's start */
     for (std::uint32_t k = m_bm_nparts; k > 0; k--)
@@ -425,11 +429,11 @@ namespace parallel_scan
 	w->tbl_start[k] = w->tbl_start[k - 1];
       }
     w->tbl_start[0] = 0;
-    return bitmap_write (thread_p, w->rec);
+    return write (thread_p, w->rec);
   }
 
   int
-  input_handler_index::bitmap_load (THREAD_ENTRY *thread_p, bitmap_worker *w, std::uint32_t part, std::uint32_t sub)
+  bitmap_marks::load (THREAD_ENTRY *thread_p, bitmap_worker *w, std::uint32_t part, std::uint32_t sub)
   {
     bitmap_table &table = w->heap_tbl;
     int error_code = NO_ERROR;
@@ -461,16 +465,16 @@ namespace parallel_scan
 
     if (sub > 0)
       {
-	error_code = bitmap_read_chain (thread_p, w->sub, sub, keep);
+	error_code = read_chain (thread_p, w->sub, sub, keep);
       }
     else
       {
 	/* the partition's first part stays here; the other parts go to this worker's own temp file */
 	auto put = [&] (std::uint32_t page, int word, std::uint64_t bits) -> int
 	{
-	  const std::uint32_t to = m_bm_nsub > 1 ? bitmap_unit_of (page) % m_bm_nsub : 0;
+	  const std::uint32_t to = m_bm_nsub > 1 ? unit_of (page) % m_bm_nsub : 0;
 
-	  return to == 0 ? keep (page, word, bits) : bitmap_add (thread_p, w->sub, to, page, word, bits);
+	  return to == 0 ? keep (page, word, bits) : add (thread_p, w->sub, to, page, word, bits);
 	};
 
 	if (m_bm_nsub > 1)
@@ -499,12 +503,12 @@ namespace parallel_scan
 	      }
 	    if (error_code == NO_ERROR && from.rec.tfile != nullptr)
 	      {
-		error_code = bitmap_read_chain (thread_p, from.rec, part, put);
+		error_code = read_chain (thread_p, from.rec, part, put);
 	      }
 	  }
 	if (error_code == NO_ERROR)
 	  {
-	    error_code = bitmap_write (thread_p, w->sub);
+	    error_code = write (thread_p, w->sub);
 	  }
       }
     if (error_code != NO_ERROR)
@@ -525,7 +529,7 @@ namespace parallel_scan
   }
 
   bool
-  input_handler_index::bitmap_take_over (THREAD_ENTRY *thread_p, bitmap_worker *taker, int *error_code)
+  bitmap_marks::take_over (THREAD_ENTRY *thread_p, bitmap_worker *taker, int *error_code)
   {
     bool expected = false;
     bitmap_worker *base = nullptr;
@@ -576,7 +580,7 @@ namespace parallel_scan
   }
 
   SCAN_CODE
-  input_handler_index::bitmap_next_over (THREAD_ENTRY *thread_p, OID *oid)
+  bitmap_marks::next_over (THREAD_ENTRY *thread_p, OID *oid)
   {
     DB_VALUE value;
     bool is_null;
@@ -597,7 +601,7 @@ namespace parallel_scan
   }
 
   void
-  input_handler_index::bitmap_close_worker (THREAD_ENTRY *thread_p, bitmap_worker *w)
+  bitmap_marks::close_worker (THREAD_ENTRY *thread_p, bitmap_worker *w)
   {
     if (w->over != nullptr)
       {
@@ -611,22 +615,21 @@ namespace parallel_scan
       }
   }
 
-  int
-  input_handler_index::bitmap_init_on_main (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, int parallelism)
+  bool
+  bitmap_marks::scan_qualifies (const INDX_SCAN_ID *isidp)
   {
-    INDX_SCAN_ID *isidp = &scan_id->s.isid;
+    return isidp->bitmap_planned && isidp->indx_info != nullptr && isidp->indx_info->coverage == 0
+	   && !isidp->need_count_only && isidp->gby_skip == nullptr && !isidp->multi_range_opt.use && !isidp->iss.use
+	   && !mvcc_is_mvcc_disabled_class (&isidp->cls_oid);
+  }
+
+  int
+  bitmap_marks::init (THREAD_ENTRY *thread_p, const VFID *heap_vfid, int nworkers, QUERY_ID query_id)
+  {
     FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
     int error_code;
 
-    /* the plan decides; a scan that reads no heap row per OID, or that returns its rows in key order, has nothing
-     * to read in file order */
-    if (!m_bm_planned || isidp->indx_info == nullptr || isidp->indx_info->coverage != 0 || isidp->need_count_only
-	|| isidp->gby_skip != nullptr || isidp->multi_range_opt.use || isidp->iss.use
-	|| mvcc_is_mvcc_disabled_class (&isidp->cls_oid))
-      {
-	return NO_ERROR;
-      }
-
+    m_bm_query_id = query_id;
     /* The sector list below misses every page allocated after it. With the statement's snapshot taken first, the
      * rows on those pages all belong to transactions the snapshot does not see, so a mark outside the list is
      * dropped. */
@@ -635,7 +638,7 @@ namespace parallel_scan
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
 	return ER_MVCC_CANT_GET_SNAPSHOT;
       }
-    error_code = file_get_all_data_sectors (thread_p, &isidp->hfid.vfid, &collector);
+    error_code = file_get_all_data_sectors (thread_p, heap_vfid, &collector);
     if (error_code == NO_ERROR && collector.nsects > 0)
       {
 	const size_t nsects = (size_t) collector.nsects;
@@ -662,7 +665,7 @@ namespace parallel_scan
 	/* a part is a run of whole sectors: the sectors of the largest one must fit a table. A small heap still gets
 	 * a few partitions a worker, so that the heap step is shared as the index step is. */
 	while ((nsects + units - 1) / units * DISK_SECTOR_NPAGES > (size_t) m_bm_cap
-	       || (units < (size_t) MAX (parallelism, 1) * 4 && units < nsects))
+	       || (units < (size_t) MAX (nworkers, 1) * 4 && units < nsects))
 	  {
 	    units *= 2;
 	  }
@@ -670,14 +673,14 @@ namespace parallel_scan
 	m_bm_nsub = (std::uint32_t) (units / m_bm_nparts);
 	m_bm_first_unit_sectors = (std::uint32_t) ((nsects + units - 1) / units);
 
-	m_bm_nworkers = MAX (parallelism, 1);
+	m_bm_nworkers = MAX (nworkers, 1);
 	/* the memory wrapper's operator new returns NULL when out of memory */
 	m_bm_workers = new bitmap_worker[m_bm_nworkers];
 	if (m_bm_workers == nullptr)
 	  {
 	    m_bm_nworkers = 0;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		    sizeof (bitmap_worker) * MAX (parallelism, 1));
+		    sizeof (bitmap_worker) * MAX (nworkers, 1));
 	    error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  }
 	for (int i = 0; i < m_bm_nworkers && error_code == NO_ERROR; i++)
@@ -689,13 +692,30 @@ namespace parallel_scan
 	  }
 	if (error_code == NO_ERROR)
 	  {
-	    m_bm_index_pending = parallelism;
 	    m_bm_on = true;
 	  }
       }
     if (collector.partsect_ftab != NULL)
       {
 	db_private_free_and_init (thread_p, collector.partsect_ftab);
+      }
+    return error_code;
+  }
+
+  int
+  input_handler_index::bitmap_init_on_main (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, int parallelism)
+  {
+    int error_code;
+
+    /* the plan decides */
+    if (!bitmap_marks::scan_qualifies (&scan_id->s.isid))
+      {
+	return NO_ERROR;
+      }
+    error_code = m_bm.init (thread_p, &scan_id->s.isid.hfid.vfid, parallelism, m_bm_query_id);
+    if (error_code == NO_ERROR && m_bm.on ())
+      {
+	m_bm_index_pending = parallelism;
       }
     return error_code;
   }

@@ -66,7 +66,7 @@ namespace parallel_scan
       }
     if (m_bm_worker != nullptr)
       {
-	m_input_handler->bitmap_close_worker (thread_p, m_bm_worker);
+	m_input_handler->bitmap ().close_worker (thread_p, m_bm_worker);
 	m_bm_worker = nullptr;
       }
     m_drain_fsm.cleanup_on_reset (thread_p);

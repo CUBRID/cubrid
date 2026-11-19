@@ -3966,8 +3966,8 @@ qo_to_xasl (QO_PLAN * plan, xasl_node * xasl)
   if (plan && xasl && (env = (plan->info)->env))
     {
       qo_apply_parallel_index_scan_threshold (plan);
-      /* after it: only a scan left to run in parallel reads its heap through a bitmap */
-      qo_plan_decide_bitmap_heap_scan (qo_find_driving_scan_plan (plan));
+      /* after it: the size of a bitmap's tables follows the scan's workers */
+      qo_plan_decide_bitmap_heap (plan);
 
       if (qo_check_pass_through_wrapper (env, xasl))
 	{

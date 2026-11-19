@@ -125,11 +125,14 @@
  * when the workers' tables are full, a page (its entry merged and put in order, its fix), a row looked up on the
  * page held. Measured on a release build as instructions of the server a row or a page, against the 1,328 a row of
  * a parallel sequential scan of the same table takes (TPC-H SF10 lineitem by l_partkey, 12,038 to 5,996,296 rows on
- * 11,936 to 716,271 pages; CBRD-28032). */
+ * 11,936 to 716,271 pages; CBRD-28032). The start is what a serial scan of one row takes more than its lookup in
+ * key order (450 thousand instructions). */
 #define BITMAP_HEAP_MARK_OVERHEAD 0.24
 #define BITMAP_HEAP_RECORD_OVERHEAD 0.12
 #define BITMAP_HEAP_PAGE_OVERHEAD 1.39
 #define BITMAP_HEAP_LOOKUP_OVERHEAD 1.92
+/* a worker's table and temp files, made once a scan */
+#define BITMAP_HEAP_START_OVERHEAD 340.0
 /* Switching the index scan of a nested-loop inner walked per outer row to another partition
  * (scan_switch_index_partition ()), as a share of the B+tree descent that follows it: about a quarter on the
  * release build (CBRD-27866) */
@@ -472,6 +475,7 @@ static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * ter
 static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
 
 static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
+static void qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp);
 static int qo_check_groupby_iscan (QO_PLAN * plan, void *arg);
 static void qo_set_use_desc (QO_PLAN * plan);
 static int qo_set_orderby_skip (QO_PLAN * plan, void *arg);
@@ -3843,19 +3847,95 @@ qo_iscan_cost (QO_PLAN * planp)
 
 
 /*
+ * qo_plan_decide_bitmap_heap_scans () - decide it for every index scan of a plan that is run once and read to its end
+ *   return: nothing
+ *   planp(in): a plan
+ *   to_end(in): whoever reads this plan reads all its rows
+ *
+ * Note: The driving scan and the scans below both inputs of a hash join run once. The inner scan of a nested loop
+ *	 join runs once an outer row: a bitmap built again for every outer row costs more than it saves. A bitmap
+ *	 records every row of the key range before the first row leaves, so a scan the statement may stop early
+ *	 (a row limit) keeps the lookup in key order; a sort or a hash join reads its input
+ *	 to the end whatever the statement does with the result.
+ */
+static void
+qo_plan_decide_bitmap_heap_scans (QO_PLAN * planp, bool to_end)
+{
+  while (planp != NULL)
+    {
+      if (planp->plan_type == QO_PLANTYPE_SORT)
+	{
+	  to_end = true;
+	  planp = planp->plan_un.sort.subplan;
+	}
+      else if (planp->plan_type == QO_PLANTYPE_JOIN)
+	{
+	  if (planp->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN)
+	    {
+	      to_end = true;
+	      qo_plan_decide_bitmap_heap_scans (planp->plan_un.join.inner, true);
+	    }
+	  planp = planp->plan_un.join.outer;
+	}
+      else
+	{
+	  if (planp->plan_type == QO_PLANTYPE_SCAN && to_end)
+	    {
+	      qo_plan_decide_bitmap_heap_scan (planp);
+	    }
+	  return;
+	}
+    }
+}
+
+/*
+ * qo_plan_decide_bitmap_heap () - decide which index scans of a statement's plan read their heap rows through a bitmap
+ *   return: nothing
+ *   planp(in): the statement's plan, after the parallelism of its driving scan was decided
+ */
+void
+qo_plan_decide_bitmap_heap (QO_PLAN * planp)
+{
+  QO_ENV *env;
+  PT_NODE *tree;
+  bool to_end = true;
+  int t;
+
+  if (planp == NULL || planp->info == NULL || (env = planp->info->env) == NULL || (tree = QO_ENV_PT_TREE (env)) == NULL
+      || !PT_IS_SELECT (tree) || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_FOR_UPDATE)
+      || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_MVCC_LOCK_NEEDED)
+      || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_UPD_DEL_QUERY))
+    {
+      /* a scan that locks the rows it reads looks them up in key order */
+      return;
+    }
+  if (tree->info.query.limit != NULL && tree->info.query.order_by == NULL
+      && tree->info.query.q.select.group_by == NULL && !PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_HAS_AGG))
+    {
+      to_end = false;
+    }
+  for (t = 0; to_end && t < (signed) planp->info->planner->T; t++)
+    {
+      /* an inst_num () predicate */
+      to_end = QO_TERM_CLASS (&planp->info->planner->term[t]) != QO_TC_TOTALLY_AFTER_JOIN;
+    }
+  qo_plan_decide_bitmap_heap_scans (planp, to_end);
+}
+
+/*
  * qo_plan_decide_bitmap_heap_scan () - whether an index scan reads its heap rows through a bitmap
  *   return: nothing
- *   planp(in): the plan's driving scan, after its parallelism was decided; NULL when it has none
+ *   planp(in): an index scan the statement runs once, after its parallelism was decided
  *
  * Note: An index scan looks its rows up in key order, one heap page fix a row. A bitmap heap scan first records
  *	 every row the index finds by heap page, then reads the recorded pages in file order, each once. Its cost
- *	 has one term a step: a mark a row, a record written and read a row when the workers' tables cannot hold
+ *	 has one term a step: the tables and temp files made at its start, a mark a row, a record written and read a row when the workers' tables cannot hold
  *	 the pages, the pages put in order, the pages read once each at a price between a random and a sequential
  *	 read (the denser they lie, the closer to sequential), a row lookup on the page held. The index part costs
  *	 the same both ways, so only the heap parts are compared. The rows leave in file order: a plan that uses
  *	 the key order, or stops the scan by a key limit, keeps the lookup in key order.
  */
-void
+static void
 qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp)
 {
   QO_NODE *nodep;
@@ -3863,10 +3943,9 @@ qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp)
   PT_NODE *spec;
   BITSET_ITERATOR iter;
   double heap_rows, opages, pages, tables, lookup_cost, bitmap_cost;
-  int t;
+  int t, workers;
 
-  if (planp == NULL || planp->plan_type != QO_PLANTYPE_SCAN
-      || planp->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN || planp->plan_un.scan.index == NULL)
+  if (planp->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN || planp->plan_un.scan.index == NULL)
     {
       return;
     }
@@ -3879,14 +3958,12 @@ qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp)
     }
   /* a tree planned again decides again */
   spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag & ~PT_SPEC_FLAG_BITMAP_HEAP_SCAN);
-  /* the workers of a parallel index scan run it */
-  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN) || spec->info.spec.num_parallel_threads <= 1)
-    {
-      return;
-    }
+  /* a serial scan is the one worker of its bitmap */
+  workers =
+    PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN) ? 1 : MAX (1, spec->info.spec.num_parallel_threads);
   if (qo_is_index_covering_scan (planp) || qo_is_index_iss_scan (planp) || qo_is_index_loose_scan (planp)
-      || qo_plan_multi_range_opt (planp) || bitset_is_empty (&(planp->plan_un.scan.terms))
-      || index_entryp->orderby_skip || index_entryp->groupby_skip || index_entryp->key_limit != NULL)
+      || qo_plan_multi_range_opt (planp) || bitset_is_empty (&(planp->plan_un.scan.terms)) || index_entryp->orderby_skip
+      || index_entryp->groupby_skip || index_entryp->key_limit != NULL)
     {
       return;
     }
@@ -3908,8 +3985,8 @@ qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp)
   /* the distinct pages heap_rows rows lie on (Mackert and Lohman's estimate without a cache) */
   pages = MIN (opages, (2.0 * opages * heap_rows) / (2.0 * opages + heap_rows));
   /* page entries the workers' tables hold: a table takes an index scan's key buffer, 92 bytes an entry */
-  tables = (double) spec->info.spec.num_parallel_threads
-    * (double) prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES) * (double) DB_PAGESIZE / 92.0;
+  tables =
+    (double) workers *(double) prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES) * (double) DB_PAGESIZE / 92.0;
 
   /* the lookup in key order as qo_iscan_cost () prices it: the pages its rows touch, each a random read, and a row */
   lookup_cost = MAX (1.0, qo_mackert_lohman_pages (opages, heap_rows)) * QO_COST_RANDOM_PAGE
@@ -3917,7 +3994,8 @@ qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp)
   bitmap_cost = pages * (QO_COST_RANDOM_PAGE - (QO_COST_RANDOM_PAGE - QO_COST_SEQ_PAGE) * sqrt (pages / opages));
   bitmap_cost += (heap_rows * (BITMAP_HEAP_MARK_OVERHEAD + BITMAP_HEAP_LOOKUP_OVERHEAD)
 		  + (pages > tables ? heap_rows * BITMAP_HEAP_RECORD_OVERHEAD : 0.0)
-		  + pages * BITMAP_HEAP_PAGE_OVERHEAD) * (double) QO_CPU_WEIGHT;
+		  + pages * BITMAP_HEAP_PAGE_OVERHEAD
+		  + (double) workers * BITMAP_HEAP_START_OVERHEAD) * (double) QO_CPU_WEIGHT;
 
   if (bitmap_cost < lookup_cost)
     {

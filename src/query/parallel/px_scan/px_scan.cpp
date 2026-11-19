@@ -1484,8 +1484,6 @@ extern "C"
 
     /* Save indx_info from isid.  init_on_main (called from manager::open) needs the BTID. */
     INDX_INFO *saved_indx_info = scan_id->s.isid.indx_info;
-    /* the plan's choice, read from the spec the scan was opened with: every partition's scan gets it */
-    const bool bitmap_heap_scan = ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN);
 
     /* pisid is isid superset — promote-fail safe (parallel-only fields live after isid) */
     void *local_manager = nullptr;
@@ -1511,7 +1509,6 @@ extern "C"
 				       false, false, false, worker_manager_p, nullptr, saved_indx_info);
 	assert (local_manager != nullptr);
 
-	((manager_type *) local_manager)->set_bitmap_heap_scan (bitmap_heap_scan);
 	error = ((manager_type *) local_manager)->open ();
 	if (error != NO_ERROR)
 	  {
@@ -1544,7 +1541,6 @@ extern "C"
 				       false, false, false, worker_manager_p, nullptr, saved_indx_info);
 	assert (local_manager != nullptr);
 
-	((manager_type *) local_manager)->set_bitmap_heap_scan (bitmap_heap_scan);
 	error = ((manager_type *) local_manager)->open ();
 	if (error != NO_ERROR)
 	  {
@@ -1734,7 +1730,7 @@ namespace parallel_scan
 	}
       else if constexpr (ST == SCAN_TYPE::INDEX)
 	{
-	  m_input_handler->set_bitmap_heap_scan (m_bitmap_heap_scan, m_query_id);
+	  m_input_handler->set_bitmap_query_id (m_query_id);
 	  init_err = m_input_handler->init_on_main (m_thread_p, m_indx_info, m_scan_id, m_vd, m_parallelism);
 	}
       else

@@ -496,7 +496,7 @@ extern void qo_info_stats (FILE *);
 
 extern bool qo_is_seq_scan (QO_PLAN *);
 extern bool qo_is_func_index_cover_routed (QO_PLAN * plan);
-extern void qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp);
+extern void qo_plan_decide_bitmap_heap (QO_PLAN * planp);
 extern bool qo_is_iscan (QO_PLAN *);
 extern bool qo_is_iscan_from_groupby (QO_PLAN *);
 extern bool qo_is_iscan_from_orderby (QO_PLAN *);

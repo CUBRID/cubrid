@@ -429,6 +429,10 @@ struct indx_scan_id
    * the spec is not eligible for parallel index scan. Owned by the scan_id. */
   void *parallel_pending;
   INDX_GBY_SKIP *gby_skip;	/* GROUP BY skip aggregated during the scan; NULL otherwise. Owned by the executor */
+  bool bitmap_planned;		/* the plan reads the heap through a bitmap of the rows the index finds (the access
+				 * spec's flag, set by the executor after the open) */
+  bool bitmap_keep_page;	/* the block lets this scan keep its heap page between two rows (the innermost scan) */
+  void *bitmap;			/* a serial bitmap heap scan's state, from its first row to its end; NULL otherwise */
 };
 
 struct parallel_index_scan_id
@@ -483,6 +487,9 @@ struct parallel_index_scan_id
   bool ahead_single;		/* mirror of INDX_SCAN_ID::ahead_single */
   void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
   INDX_GBY_SKIP *gby_skip;	/* mirror of INDX_SCAN_ID::gby_skip */
+  bool bitmap_planned;		/* mirror of INDX_SCAN_ID::bitmap_planned */
+  bool bitmap_keep_page;	/* mirror of INDX_SCAN_ID::bitmap_keep_page */
+  void *bitmap;			/* mirror of INDX_SCAN_ID::bitmap */
   /* parallel-only fields (must follow all isid fields) */
   // *INDENT-OFF*
   #if !WINDOWS
@@ -895,6 +902,8 @@ extern void scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * stats);
 extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);
 extern int scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp);
 extern void scan_print_bitmap_heap_stats_text (FILE * fp, SCAN_ID * scan_id);
+extern int scan_fix_bitmap_heap_page (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const VPID * vpid,
+				      bool * is_fixed);
 #endif /* SERVER_MODE */
 
 #endif /* _SCAN_MANAGER_H_ */

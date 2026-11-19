@@ -11116,6 +11116,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	    /* shortcut: only the scans of the EXISTS subquery's or the inst_num () block's own XASL start their
 	     * read-ahead late, the scans of its scan_ptr blocks keep the first window; pass the flag down when a join
 	     * inside EXISTS or under LIMIT shows the cost */
+	    s_id->s.isid.bitmap_planned = ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN);
 	    s_id->s.isid.ahead_single = (xasl != NULL && (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN)
 							  || xasl->instnum_pred != NULL));
 
@@ -13021,6 +13022,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
   int error = NO_ERROR;
   bool fast_switch = false;
   bool started = false;
+  bool keep_page = false;
   OID class_oid;
   HFID class_hfid;
   BTID btid;
@@ -13354,6 +13356,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		  isidp->caches_inited = false;
 		}
 	      spec->s_id.s.isid.scancache_inited = false;
+	      keep_page = spec->s_id.s.isid.bitmap_keep_page;
 
 	      spec->indexptr->btid = btid;
 
@@ -13378,6 +13381,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		{
 		  return S_ERROR;
 		}
+	      spec->s_id.s.isid.bitmap_planned = ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN);
+	      spec->s_id.s.isid.bitmap_keep_page = keep_page;
 	      spec->s_id.s.isid.ahead_single = (xasl != NULL && (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN)
 								 || xasl->instnum_pred != NULL));
 
@@ -22700,7 +22705,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    {
 	      /* Index found: only the innermost scan may keep its page while the block takes its rows. What it keeps
 	       * goes by how it reads: a sequential heap scan its heap page, a covered index scan its B-tree leaf
-	       * (qexec_covered_visit_scan ()); an index scan that looks its rows up in the heap keeps neither */
+	       * (qexec_covered_visit_scan ()), a bitmap heap scan the heap page of its heap step; an index scan that
+	       * looks its rows up in key order keeps neither */
 	      for (xptr = xasl; xptr->scan_ptr != NULL; xptr = xptr->scan_ptr)
 		{
 		  ;
@@ -22712,7 +22718,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  if (specp->type != TARGET_CLASS
 		      || (specp->access != ACCESS_METHOD_SEQUENTIAL
 			  && (specp->access != ACCESS_METHOD_INDEX || specp->indexptr == NULL
-			      || specp->indexptr->coverage == 0)))
+			      || (specp->indexptr->coverage == 0
+				  && !ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN)))))
 		    {
 		      fixed_scan_xasl = NULL;
 		    }
@@ -22855,6 +22862,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      /* the instances are locked at select phase */
 			      p_class_instance_lock_info->instances_locked = true;
 			    }
+			}
+		      if (xptr == fixed_scan_xasl && specp->s_id.type == S_INDX_SCAN)
+			{
+			  specp->s_id.s.isid.bitmap_keep_page = true;
 			}
 		      if (spec_level == 0 && level >= 1 && !mvcc_select_lock_needed)
 			{

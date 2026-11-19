@@ -1215,7 +1215,7 @@ namespace parallel_scan
 	worker_guard.handler = m_input_handler;
 	if (m_input_handler->bitmap_on ())
 	  {
-	    m_slot_iterator.begin_bitmap_index_step (m_input_handler->bitmap_claim_worker ());
+	    m_slot_iterator.begin_bitmap_index_step (m_input_handler->bitmap ().claim_worker ());
 	    m_scan_id->scan_stats.bitmap_heap = 1;
 	  }
       }
@@ -1367,7 +1367,7 @@ namespace parallel_scan
 	  stop = true;
 	};
 
-	if (!stop && m_input_handler->bitmap_end_marks (&thread_ref, worker) != NO_ERROR)
+	if (!stop && m_input_handler->bitmap ().end_marks (&thread_ref, worker) != NO_ERROR)
 	  {
 	    raise ();
 	  }
@@ -1436,16 +1436,16 @@ namespace parallel_scan
 	  (void) drain_slot_oids (thread_ref, stop);
 	};
 
-	const std::uint32_t parts_of_partition = m_input_handler->bitmap_parts_of_partition ();
+	const std::uint32_t parts_of_partition = m_input_handler->bitmap ().parts_of_partition ();
 	std::uint32_t part;
 
-	while (!stop && m_input_handler->bitmap_take_partition (&part))
+	while (!stop && m_input_handler->bitmap ().take_partition (&part))
 	  {
 	    for (std::uint32_t sub = 0; sub < parts_of_partition && !stop; sub++)
 	      {
 		if (counted ([&] ()
 		{
-		  return m_input_handler->bitmap_load (&thread_ref, worker, part, sub);
+		  return m_input_handler->bitmap ().load (&thread_ref, worker, part, sub);
 		  }) != NO_ERROR)
 		{
 		  raise ();
@@ -1472,11 +1472,11 @@ namespace parallel_scan
 			  }
 			for (size_t k = i; k < order.size () && count < DISK_SECTOR_NPAGES; k++)
 			  {
-			    m_input_handler->bitmap_page_vpid (table.e[order[k]].page, &vpids[count++]);
+			    m_input_handler->bitmap ().page_vpid (table.e[order[k]].page, &vpids[count++]);
 			  }
 			(void) pgbuf_read_ahead (&thread_ref, vpids, count);
 		      }
-		    m_input_handler->bitmap_page_vpid (table.e[order[i]].page, &vpid);
+		    m_input_handler->bitmap ().page_vpid (table.e[order[i]].page, &vpid);
 		    heap_pages++;
 		    read_page (vpid, table.e[order[i]].w, -1);
 		  }
@@ -1486,7 +1486,7 @@ namespace parallel_scan
 	/* the rows whose slot is beyond an entry's width, by the one worker that gets them */
 	if (!stop && counted ([&] ()
 	{
-	  return m_input_handler->bitmap_take_over (&thread_ref, worker, &error_code);
+	  return m_input_handler->bitmap ().take_over (&thread_ref, worker, &error_code);
 	  }))
 	{
 	  OID oid;
@@ -1497,7 +1497,7 @@ namespace parallel_scan
 	  while (!stop
 		 && (scan = counted ([&] ()
 	  {
-	    return m_input_handler->bitmap_next_over (&thread_ref, &oid);
+	    return m_input_handler->bitmap ().next_over (&thread_ref, &oid);
 	    })) == S_SUCCESS)
 	  {
 	    VPID vpid;
