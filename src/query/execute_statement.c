@@ -20535,7 +20535,7 @@ do_drop_sensitivity_label_on_column (const PT_SENSITIVITY_LABEL_INFO * info)
 }
 
 /*
- * append_dropped_columns () - append the PT_DOT_ (table.column) of attributes of a class to dropped_columns
+ * append_dropped_columns () - add the PT_DOT_ (table.column) of attributes of a class to dropped_columns
  *   return: error code
  *   parser(in): where the nodes are allocated
  *   class_(in): the class structure
@@ -20566,7 +20566,9 @@ append_dropped_columns (PARSER_CONTEXT * parser, SM_CLASS * class_, DB_NAMELIST 
 	  return error;
 	}
 
-      *dropped_columns = parser_append_node (column, *dropped_columns);
+      /* the replicated statement does not depend on the order */
+      column->next = *dropped_columns;
+      *dropped_columns = column;
     }
 
   return NO_ERROR;
@@ -20578,7 +20580,7 @@ append_dropped_columns (PARSER_CONTEXT * parser, SM_CLASS * class_, DB_NAMELIST 
  *   parser(in): where the nodes of dropped_columns are allocated
  *   class_mop(in): the class
  *   class_(in): the class structure
- *   dropped_columns(in/out): with HA, the PT_DOT_ (table.column) of each attribute whose label is dropped is appended
+ *   dropped_columns(in/out): with HA, the PT_DOT_ (table.column) of each attribute whose label is dropped is added
  */
 static int
 drop_labels_in_class (PARSER_CONTEXT * parser, MOP class_mop, SM_CLASS * class_, PT_NODE ** dropped_columns)
