@@ -2478,8 +2478,10 @@ serial_row_write_keep_value (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, 
     {
       error = heap_attrinfo_set (serial_oidp, started_id, old_started, &write->new_info);
     }
+  /* keep the client's storage form, which is inline for a system class: a _db_serial row that holds an OOS stub
+   * replicates as an image the HA applier cannot apply, and every later NEXT VALUE would keep that stub */
   if (error == NO_ERROR
-      && heap_attrinfo_transform_to_disk (thread_p, &write->new_info, new_recdes, merged) != S_SUCCESS)
+      && heap_attrinfo_transform_to_disk_keep_form (thread_p, &write->new_info, new_recdes, merged) != S_SUCCESS)
     {
       ASSERT_ERROR_AND_SET (error);
     }
