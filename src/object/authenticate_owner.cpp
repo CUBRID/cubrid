@@ -594,6 +594,12 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
 	  goto end;
 	}
       target_cls = db_get_string (&target_cls_val);
+      if (target_cls == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error = er_errid ();
+	  goto end;
+	}
 
       /* change _db_stored_procedure_code */
       error = alter_stored_procedure_code (parser, sp, target_cls, owner_str, 0);
