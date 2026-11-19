@@ -31,7 +31,6 @@
 
 static const char *get_component_class_name (const PT_MISC_TYPE kind);
 static const char *get_component_kind_name (const PT_MISC_TYPE kind);
-static int execute_query_with_object (const char *sql, DB_OBJECT *object, DB_QUERY_RESULT **result);
 static int find_component (const PT_MISC_TYPE kind, const char *name, const AU_FETCHMODE fetchmode,
 			   DB_OBJECT **component);
 static int find_attribute (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_,
@@ -361,66 +360,6 @@ end:
 }
 
 /*
- * execute_query_with_object () - execute a query whose only host variable is an object, and close its session
- *   return: the number of rows of the result, or an error code
- *   sql(in): the query
- *   object(in): the value of the host variable
- *   result(out): the result for the caller to end with db_query_end (), or NULL to end it here
- */
-static int
-execute_query_with_object (const char *sql, DB_OBJECT *object, DB_QUERY_RESULT **result)
-{
-  DB_SESSION *session;
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_VALUE value;
-  STATEMENT_ID stmt_id;
-  int error;
-
-  /* the object value needs a host variable, which db_compile_and_execute_local cannot take */
-  session = db_open_buffer_local (sql);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  db_make_object (&value, object);
-  error = db_push_values (session, 1, &value);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &query_result);
-  if (result != NULL)
-    {
-      *result = query_result;
-    }
-  else if (error >= 0)
-    {
-      db_query_end (query_result);
-    }
-
-end:
-  db_close_session (session);
-
-  return error;
-}
-
-/*
  * sensitivity_label_drop_component () - drop a grade, an info_type or a source no label refers to
  *   return: error code
  *   kind(in): PT_SENSITIVITY_LABEL_GRADE, PT_SENSITIVITY_LABEL_INFO_TYPE or PT_SENSITIVITY_LABEL_SOURCE
@@ -430,6 +369,8 @@ int
 sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name)
 {
   DB_OBJECT *component;
+  DB_QUERY_RESULT *result = NULL;
+  DB_VALUE value;
   const char *sql;
   char lower_name[DB_MAX_IDENTIFIER_LENGTH];
   int error;
@@ -465,7 +406,12 @@ sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name)
    * label committed during the wait */
   db_invalidate_mvcc_snapshot_before_statement ();
 
-  error = execute_query_with_object (sql, component, NULL);
+  db_make_object (&value, component);
+  error = db_execute_internal_query (sql, &value, 1, &result);
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
   if (error > 0)
     {
       sm_downcase_name (name, lower_name, DB_MAX_IDENTIFIER_LENGTH);
@@ -676,7 +622,9 @@ sensitivity_label_find_classes_in_schema (const char *schema_name, DB_OBJLIST **
 
   AU_SAVE_AND_DISABLE (save);
 
-  error = execute_query_with_object ("SELECT [class_of] FROM [" CT_CLASS_NAME "] WHERE [owner] = ?", owner, &result);
+  db_make_object (&value, owner);
+  error = db_execute_internal_query ("SELECT [class_of] FROM [" CT_CLASS_NAME "] WHERE [owner] = ?", &value, 1,
+				     &result);
   if (error < NO_ERROR)
     {
       goto end;
@@ -1165,6 +1113,7 @@ sensitivity_label_drop_of_removed_attributes (MOP class_mop, SM_CLASS *class_, S
 int
 sensitivity_label_drop_of_dropped_class (MOP class_mop, SM_CLASS *class_)
 {
+  DB_VALUE value;
   int error;
   int save;
 
@@ -1176,12 +1125,9 @@ sensitivity_label_drop_of_dropped_class (MOP class_mop, SM_CLASS *class_)
 
   AU_SAVE_AND_DISABLE (save);
 
-  error = execute_query_with_object ("DELETE FROM [" CT_SENSITIVITY_LABEL_NAME "] WHERE [class_of] = ?", class_mop,
+  db_make_object (&value, class_mop);
+  error = db_execute_internal_query ("DELETE FROM [" CT_SENSITIVITY_LABEL_NAME "] WHERE [class_of] = ?", &value, 1,
 				     NULL);
-  if (error > 0)
-    {
-      error = NO_ERROR;
-    }
 
   AU_RESTORE (save);
 

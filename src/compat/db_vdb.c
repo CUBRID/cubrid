@@ -5750,6 +5750,64 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
 }
 
 /*
+ * db_execute_internal_query () - run sql and close its session
+ *   return: the number of rows (NO_ERROR if result is NULL), or an error code if negative
+ *   sql(in): the query
+ *   values(in): its host variables
+ *   count(in): the number of values
+ *   result(out): the result for the caller to end with db_query_end, or NULL to end it here
+ */
+int
+db_execute_internal_query (const char *sql, DB_VALUE * values, int count, DB_QUERY_RESULT ** result)
+{
+  DB_SESSION *session;
+  DB_QUERY_RESULT *query_result = NULL;
+  STATEMENT_ID stmt_id;
+  int error;
+
+  session = db_open_buffer_local (sql);
+  if (session == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  stmt_id = db_compile_statement_local (session);
+  if (stmt_id < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  error = db_push_values (session, count, values);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  error = db_execute_statement_local (session, stmt_id, &query_result);
+  if (result != NULL)
+    {
+      *result = query_result;
+    }
+  else if (error >= 0)
+    {
+      error = db_query_end (query_result);
+    }
+
+exit:
+  db_close_session (session);
+
+  return error;
+}
+
+/*
  * db_set_system_generated_statement () -
  *
  * returns  : error status, if an invalid session is given
