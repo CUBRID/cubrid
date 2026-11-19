@@ -338,13 +338,12 @@ jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mod
 }
 
 /*
- * jsp_check_param_type_supported
- *
- * Note:
+ * jsp_is_param_type_supported () - whether a stored procedure takes a value of the type as an input argument
+ *   return: true or false
+ *   type(in): the type
  */
-
-static int
-jsp_check_param_type_supported (DB_TYPE type, int mode)
+bool
+jsp_is_param_type_supported (DB_TYPE type)
 {
   switch (type)
     {
@@ -365,9 +364,29 @@ jsp_check_param_type_supported (DB_TYPE type, int mode)
     case DB_TYPE_CHAR:
     case DB_TYPE_BIGINT:
     case DB_TYPE_DATETIME:
-      return NO_ERROR;
-      break;
+      return true;
 
+    default:
+      return false;
+    }
+}
+
+/*
+ * jsp_check_param_type_supported
+ *
+ * Note:
+ */
+
+static int
+jsp_check_param_type_supported (DB_TYPE type, int mode)
+{
+  if (jsp_is_param_type_supported (type))
+    {
+      return NO_ERROR;
+    }
+
+  switch (type)
+    {
     case DB_TYPE_RESULTSET:
       if (mode != SP_MODE_OUT)
 	{

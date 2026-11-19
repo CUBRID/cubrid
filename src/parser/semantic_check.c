@@ -10175,7 +10175,7 @@ pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 }
 
 /*
- * pt_check_default_value_param_for_stored_procedure () - do semantic checks for default value params' invalid form: Out parameter, an expression a DEFAULT may not hold, incoercible type
+ * pt_check_default_value_param_for_stored_procedure () - do semantic checks for default value params' invalid form: Out parameter, an expression a DEFAULT may not hold, incoercible type, a type an argument cannot have
  *   return:  none
  *   parser(in): the parser context used to derive the statement
  *   node(in): a statement
@@ -10214,6 +10214,7 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
     {
       /* evaluated at each call: only its type is checked here, as that of a column DEFAULT is */
       PT_TYPE_ENUM expr_type = default_value_node->info.data_default.expr_type;
+      DB_TYPE expr_db_type;
 
       if (expr_type == PT_TYPE_NONE)
 	{
@@ -10224,6 +10225,15 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 	  PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 		       default_value_node->info.data_default.expr_text,
 		       pt_get_type_name (param->type_enum, param->data_type));
+	  return ER_FAILED;
+	}
+
+      /* its value is passed as the argument a call left out, uncast, so it must be of a type an argument can have */
+      expr_db_type = pt_type_enum_to_db (expr_type);
+      if (expr_db_type != DB_TYPE_NULL && !jsp_is_param_type_supported (expr_db_type))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1, pr_type_name (expr_db_type));
+	  PT_ERRORc (parser, default_value, er_msg ());
 	  return ER_FAILED;
 	}
       return NO_ERROR;
