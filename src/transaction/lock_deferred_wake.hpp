@@ -52,7 +52,7 @@ struct lk_thread_deferred_wake
    * resource mutex */
   UINT64 wake_gen;		/* lock_get_tran_wake_generation () the waiter read before its stamp */
   UINT64 held_row;		/* packed OID of the row held X while waiting on a self-lock, or 0 */
-  lk_entry *prequeued;		/* our lock entry queued but not asleep yet (lock_ask_row_hand ()) */
+  lk_entry *prequeued;		/* our lock entry queued but not asleep yet (lock_ask_row_handoff ()) */
 
   /* one request: lock_reset_request_state () clears it */
   request_state request;

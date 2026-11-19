@@ -354,22 +354,22 @@ struct lk_deadlock_wake
 
 #define LK_MAX_DEADLOCK_WAKES 64
 
-/* lock_recheck_decide () results */
-enum
+/* what a self-lock wait does after a recheck (lock_recheck_decide ()) */
+typedef enum
 {
-  LK_RECHECK_READ,
-  LK_RECHECK_REWAIT,
-  LK_RECHECK_HAND
-};
+  LK_RECHECK_READ,		/* read the stamp again */
+  LK_RECHECK_REWAIT,		/* the owner's wake is deferred: wait again */
+  LK_RECHECK_HAND		/* the owner asks for the row we hold: hand it over */
+} LK_RECHECK_DECISION;
 
-/* lock_hand_row_to_owner () results */
-enum
+/* how a hand-off ended (lock_hand_row_to_owner ()) */
+typedef enum
 {
-  LK_NOT_HANDED,
-  LK_NOT_HANDED_STALE,
-  LK_HANDED_REGAINED,
-  LK_HANDED_LOST
-};
+  LK_NOT_HANDED,		/* read the row again */
+  LK_NOT_HANDED_STALE,		/* the owner no longer asks for the row: look at its wake again */
+  LK_HANDED_REGAINED,		/* the row is ours again */
+  LK_HANDED_LOST		/* timeout or interrupt while waiting to have it back */
+} LK_HAND_RESULT;
 
 /*
  * Lock Entry Block Structure
@@ -404,7 +404,7 @@ struct lk_nested_transient
 // *INDENT-OFF*
 /*
  * the wake of a transaction's self-lock waiters that an undo deferred (lock_deferred_wake_mark ()), and the row the
- * transaction asks to be handed meanwhile (lock_ask_row_hand ()); other transactions read both
+ * transaction asks to be handed meanwhile (lock_ask_row_handoff ()); other transactions read both
  *
  * Note: no constructor, so the memset of the lock table zeroes it.
  */
@@ -723,8 +723,8 @@ static bool lock_entry_is_prequeued (const LK_ENTRY * entry_ptr);
 static bool lock_entry_is_asleep (const LK_ENTRY * entry_ptr);
 static void lock_recompute_total_waiters_mode (LK_RES * res_ptr);
 static void lock_grant_waiting_entry (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * prev, LK_ENTRY * entry_ptr);
-static bool lock_ask_row_hand (THREAD_ENTRY * thread_p, int tran_index, LK_RES * res_ptr, LK_ENTRY * entry_ptr,
-			       bool conversion, bool * asked);
+static bool lock_ask_row_handoff (THREAD_ENTRY * thread_p, int tran_index, LK_RES * res_ptr, LK_ENTRY * entry_ptr,
+				  bool conversion, bool * asked);
 static bool lock_resolve_cycle_by_wake (int s, int t);
 static void lock_send_deadlock_wakes (THREAD_ENTRY * thread_p);
 static int lock_transaction_mvccid_with_wait (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int wait_msecs);
@@ -734,17 +734,17 @@ static int lock_recheck_wait_left (const THREAD_ENTRY * thread_p, MVCCID mvccid,
 				   INT64 * waited_msecs);
 static void lock_recheck_add_waited (THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int wait_msecs,
 				     INT64 waited_msecs, INT64 start_msecs);
-static int lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_row, UINT64 * wake_gen,
-				int *owner_tran_index);
+static LK_RECHECK_DECISION lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_row,
+						UINT64 * wake_gen, int *owner_tran_index);
 static bool lock_deferred_wake_send (THREAD_ENTRY * thread_p, int tran_index, MVCCID mvccid, UINT64 epoch);
 static void lock_wake_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 packed_row);
 static UINT64 lock_pack_row_oid (const OID * oid);
-static LK_ENTRY *lock_find_row_hand_owner (LK_RES * res_ptr, int tran_index, int owner_tran_index, MVCCID owner_mvccid,
-					   bool transient, LK_ENTRY ** mine, bool * stale);
+static LK_ENTRY *lock_find_row_handoff_owner (LK_RES * res_ptr, int tran_index, int owner_tran_index,
+					      MVCCID owner_mvccid, bool transient, LK_ENTRY ** mine, bool * stale);
 static void lock_remove_row_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * mine, int tran_index,
 				    bool transient);
-static int lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
-				   int owner_tran_index, MVCCID owner_mvccid, bool transient);
+static LK_HAND_RESULT lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
+					      int owner_tran_index, MVCCID owner_mvccid, bool transient);
 #endif /* SERVER_MODE */
 
 static LK_ENTRY *lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
@@ -3041,7 +3041,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  break;		/* stop the granting */
 	}
 
-      /* an entry queued but not asleep yet is granted by its own thread (lock_ask_row_hand ()): stop as at an
+      /* an entry queued but not asleep yet is granted by its own thread (lock_ask_row_handoff ()): stop as at an
        * incompatible one */
       if (lock_entry_is_prequeued (waiter))
 	{
@@ -3294,7 +3294,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
 
 #if defined(SERVER_MODE)
 /*
- * lock_entry_is_prequeued - the entry waits, but its thread has not gone to sleep on it yet (lock_ask_row_hand ())
+ * lock_entry_is_prequeued - the entry waits, but its thread has not gone to sleep on it yet (lock_ask_row_handoff ())
  */
 static bool
 lock_entry_is_prequeued (const LK_ENTRY * entry_ptr)
@@ -3830,8 +3830,8 @@ lock_join_existing_wait_train (THREAD_ENTRY * thrd_entry, int tran_index, LK_ENT
 }
 
 /*
- * lock_ask_row_hand - the owner must wait for a row while its wake is deferred: ask the waiters holding the row to
- *		       hand it over
+ * lock_ask_row_handoff - the owner must wait for a row while its wake is deferred: ask the waiters holding the row to
+ *			  hand it over
  *
  * return: true if granted meanwhile (the resource mutex is released); false to sleep as usual (still held)
  *   conversion(in): a holder converting is not handed the row; the deadlock detector's wake resolves its cycle
@@ -3841,8 +3841,8 @@ lock_join_existing_wait_train (THREAD_ENTRY * thrd_entry, int tran_index, LK_ENT
  *	 row grants it (lock_hand_row_to_owner ()). lockwait_stime 0 keeps our edges from the deadlock detector.
  */
 static bool
-lock_ask_row_hand (THREAD_ENTRY * thread_p, int tran_index, LK_RES * res_ptr, LK_ENTRY * entry_ptr, bool conversion,
-		   bool * asked)
+lock_ask_row_handoff (THREAD_ENTRY * thread_p, int tran_index, LK_RES * res_ptr, LK_ENTRY * entry_ptr, bool conversion,
+		      bool * asked)
 {
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
   LOG_TDES *tdes;
@@ -3944,7 +3944,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time;
   LK_PERFORM_STATE state = LK_S_FIND_RESOURCE;
-  bool hand_row_asked = false;
+  bool handoff_asked = false;
 
 #if defined(ENABLE_SYSTEMTAP)
   const OID *class_oid_for_marker_p;
@@ -4480,7 +4480,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	case LK_S_SUSPENDED:
 
 	  if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE
-	      && lock_ask_row_hand (thread_p, tran_index, res_ptr, entry_ptr, lock_conversion, &hand_row_asked))
+	      && lock_ask_row_handoff (thread_p, tran_index, res_ptr, entry_ptr, lock_conversion, &handoff_asked))
 	    {
 	      /* handed the row before going to sleep */
 	      is_res_mutex_locked = false;
@@ -4612,7 +4612,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
   CUBRID_LOCK_ACQUIRE_END (oid_for_marker_p, class_oid_for_marker_p, lock, ret_val != LK_GRANTED);
 #endif /* ENABLE_SYSTEMTAP */
 
-  if (hand_row_asked)
+  if (handoff_asked)
     {
       /* however the request ended, it no longer waits on that row */
       lk_Gl.tran_lock_table[tran_index].deferred_wake.ask_row (0);
@@ -7197,7 +7197,7 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
-  /* no request of ours is queued but not asleep (lock_ask_row_hand ()): its grant would add to the hold list this
+  /* no request of ours is queued but not asleep (lock_ask_row_handoff ()): its grant would add to the hold list this
    * walks without hold_mutex */
   assert (tran_lock->deferred_wake.asked_row () == 0);
 
@@ -7664,7 +7664,9 @@ lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * see
   const OID *held_row = (held != NULL) ? held->oid : NULL;
   UINT64 packed_held = (held_row != NULL) ? lock_pack_row_oid (held_row) : 0;
   INT64 start_msecs, waited_msecs;
-  int trid, wait_msecs, wait_left, granted, decision, hand;
+  int trid, wait_msecs, wait_left, granted;
+  LK_RECHECK_DECISION decision;
+  LK_HAND_RESULT hand;
   int owner_tran_index = NULL_TRAN_INDEX;
 
   if (thread_p == NULL)
@@ -7749,7 +7751,7 @@ lock_find_self_lock_owner (THREAD_ENTRY * thread_p, MVCCID mvccid)
  *
  * Note: the generation is read before the owner's asked row and epoch; a wake writes those before its bump.
  */
-static int
+static LK_RECHECK_DECISION
 lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_row, UINT64 * wake_gen,
 		     int *owner_tran_index)
 {
@@ -7970,16 +7972,16 @@ lock_pack_row_oid (const OID * oid)
 }
 
 /*
- * lock_find_row_hand_owner - the owner's entry if we can hand it the row: we are the row's only holder, with the one
- *			      request this call's lock took, and the owner waits on it with a request our mode blocks
+ * lock_find_row_handoff_owner - the owner's entry if we can hand it the row: we are the row's only holder, with the one
+ *				 request this call's lock took, and the owner waits on it with a request our mode blocks
  *
  * return: the owner's entry, or NULL; *stale is set when the owner no longer waits on the row
  *
  * Note: while its entry waits on the row the owner cannot end, so its descriptor holds still.
  */
 static LK_ENTRY *
-lock_find_row_hand_owner (LK_RES * res_ptr, int tran_index, int owner_tran_index, MVCCID owner_mvccid, bool transient,
-			  LK_ENTRY ** mine, bool * stale)
+lock_find_row_handoff_owner (LK_RES * res_ptr, int tran_index, int owner_tran_index, MVCCID owner_mvccid,
+			     bool transient, LK_ENTRY ** mine, bool * stale)
 {
   LK_ENTRY *holder, *owner;
   LOG_TDES *owner_tdes;
@@ -8061,7 +8063,7 @@ lock_remove_row_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * mi
  * Note: the hand-over is one step under the row's resource mutex and the owner's thread mutex, so the owner cannot
  *	 time out in between and no writer queued behind us gets the row.
  */
-static int
+static LK_HAND_RESULT
 lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, int owner_tran_index,
 			MVCCID owner_mvccid, bool transient)
 {
@@ -8089,7 +8091,7 @@ lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
     }
   assert (res_ptr->key.type == LOCK_RESOURCE_INSTANCE);
 
-  owner = lock_find_row_hand_owner (res_ptr, tran_index, owner_tran_index, owner_mvccid, transient, &mine, &stale);
+  owner = lock_find_row_handoff_owner (res_ptr, tran_index, owner_tran_index, owner_mvccid, transient, &mine, &stale);
   if (owner != NULL)
     {
       entry_ptr = lock_get_new_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list);
@@ -9893,7 +9895,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	  if (res_ptr->waiter == NULL || hi != NULL)
 	    {
 	      /* no waiter; or the last holder left while an owner queued here is not asleep yet: it grants itself
-	       * (lock_ask_row_hand ()) */
+	       * (lock_ask_row_handoff ()) */
 	      continue;
 	    }
 	  else
