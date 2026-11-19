@@ -3654,41 +3654,6 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 }
 
 /*
- * qo_plan_set_summary () - set the qo_summary of the select from the plan
- *   return: false on allocation failure
- *   plan(in): The plan
- *   xasl(in): The xasl tree generated from the plan; NULL if not generated
- */
-bool
-qo_plan_set_summary (QO_PLAN * plan, XASL_NODE * xasl)
-{
-  QO_ENV *env;
-  QO_SUMMARY *summary;
-  PARSER_CONTEXT *parser;
-  PT_NODE *select;
-
-  env = (plan->info)->env;
-  parser = QO_ENV_PARSER (env);
-  select = QO_ENV_PT_TREE (env);
-  summary = (QO_SUMMARY *) parser_alloc (parser, sizeof (QO_SUMMARY));
-  if (summary == NULL)
-    {
-      return false;
-    }
-
-  summary->fixed_cpu_cost = plan->fixed_cpu_cost;
-  summary->fixed_io_cost = plan->fixed_io_cost;
-  summary->variable_cpu_cost = plan->variable_cpu_cost;
-  summary->variable_io_cost = plan->variable_io_cost;
-  summary->cardinality = (plan->info)->group_rows;
-  summary->projected_size = (plan->info)->projected_size;
-  summary->xasl = xasl;
-  select->info.query.q.select.qo_summary = summary;
-
-  return true;
-}
-
-/*
  * preserve_info () -
  *   return: XASL_NODE *
  *   env(in): The optimizer environment
@@ -3698,9 +3663,27 @@ qo_plan_set_summary (QO_PLAN * plan, XASL_NODE * xasl)
 static XASL_NODE *
 preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
 {
+  QO_SUMMARY *summary;
+  PARSER_CONTEXT *parser;
+  PT_NODE *select;
+
   if (xasl != NULL)
     {
-      if (!qo_plan_set_summary (plan, xasl))
+      parser = QO_ENV_PARSER (env);
+      select = QO_ENV_PT_TREE (env);
+      summary = (QO_SUMMARY *) parser_alloc (parser, sizeof (QO_SUMMARY));
+      if (summary)
+	{
+	  summary->fixed_cpu_cost = plan->fixed_cpu_cost;
+	  summary->fixed_io_cost = plan->fixed_io_cost;
+	  summary->variable_cpu_cost = plan->variable_cpu_cost;
+	  summary->variable_io_cost = plan->variable_io_cost;
+	  summary->cardinality = (plan->info)->group_rows;
+	  summary->projected_size = (plan->info)->projected_size;
+	  summary->xasl = xasl;
+	  select->info.query.q.select.qo_summary = summary;
+	}
+      else
 	{
 	  xasl = NULL;
 	}

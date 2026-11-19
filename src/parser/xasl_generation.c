@@ -22643,7 +22643,7 @@ pt_optimize_query_without_dump (PARSER_CONTEXT * parser, PT_NODE * select_node)
 }
 
 /*
- * pt_plan_query_summary () - plan the select for its summary only (qo_plan_set_summary ()), without its XASL
+ * pt_plan_query_summary () - plan the select for its qo_summary only, as preserve_info () sets it, without its XASL
  *   return: false if the select has no plan or no summary
  *   parser(in): context
  *   select_node(in/out): of PT_SELECT type
@@ -22652,17 +22652,29 @@ static bool
 pt_plan_query_summary (PARSER_CONTEXT * parser, PT_NODE * select_node)
 {
   QO_PLAN *plan;
-  bool has_summary;
+  QO_SUMMARY *summary;
 
   plan = pt_optimize_query_without_dump (parser, select_node);
   if (plan == NULL)
     {
       return false;
     }
-  has_summary = qo_plan_set_summary (plan, NULL);
+
+  summary = (QO_SUMMARY *) parser_alloc (parser, sizeof (QO_SUMMARY));
+  if (summary != NULL)
+    {
+      summary->fixed_cpu_cost = plan->fixed_cpu_cost;
+      summary->fixed_io_cost = plan->fixed_io_cost;
+      summary->variable_cpu_cost = plan->variable_cpu_cost;
+      summary->variable_io_cost = plan->variable_io_cost;
+      summary->cardinality = (plan->info)->group_rows;
+      summary->projected_size = (plan->info)->projected_size;
+      summary->xasl = NULL;
+      select_node->info.query.q.select.qo_summary = summary;
+    }
   qo_plan_discard (plan);
 
-  return has_summary;
+  return summary != NULL;
 }
 
 /*
