@@ -780,6 +780,7 @@ namespace cubload
    *   return: NO_ERROR, ER_LDR_CORRUPTED_BINARY_RECORD when the section is malformed, or ER_FAILED when
    *           the record is too large to be sent to the server
    *   object_file(in/out): object file positioned on a record size field
+   *   file_end(in): size of the object file, or -1 when it is unknown
    *   lineno(in): line the record is counted as, from 1, for the message of a record too large
    *   class_is_ignored(in): true when the rows of the current class are not loaded
    *   compressed(in): true for a section of OBJECT_FORMAT_BINARY_COMPRESSED, whose records are blocks of rows
@@ -795,10 +796,15 @@ namespace cubload
    *       A record of a compressed section is a block of rows, see BIN_BLOCK_HEADER_SIZE, and goes into a batch as
    *       it is, header included: the server decompresses it. The row count of the header is taken as it is, the
    *       scanner checks it against the rows it finds in the block.
+   *
+   *       The size field is checked against the bytes left in the file before one_row_buffer is sized after it, as
+   *       binary_input_has () in load_lexer.l does in SA mode, so that the size field of a truncated or damaged file is
+   *       reported as such and does not make loaddb allocate up to LOADDB_BUFFER_SIZE_LIMIT first.
    */
   static int
-  gathering_binary_record (std::ifstream &object_file, int lineno, bool class_is_ignored, bool compressed,
-			   std::size_t format_line_size, bool &binary_mode, int64_t &rows, std::string &one_row_buffer)
+  gathering_binary_record (std::ifstream &object_file, std::streampos file_end, int lineno, bool class_is_ignored,
+			   bool compressed, std::size_t format_line_size, bool &binary_mode, int64_t &rows,
+			   std::string &one_row_buffer)
   {
     BIN_REC_SIZE_TYPE binary_length = 0;
     BIN_BLOCK_SIZE_TYPE block_header[3] = { 0, 0, 0 };	/* raw size, row count and checksum of a block */
@@ -868,6 +874,17 @@ namespace cubload
 	fprintf (stderr, msg_format, lineno, (long long) binary_length, (long long) max_record_size);
 	util_log_write_errstr (msg_format, lineno, (long long) binary_length, (long long) max_record_size);
 	return ER_FAILED;
+      }
+
+    if (binary_length != BIN_END_OF_RECORDS && file_end != std::streampos (-1))
+      {
+	std::streampos pos = object_file.tellg ();
+
+	if (pos == std::streampos (-1) || pos > file_end || (std::streamoff) binary_length > file_end - pos)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) record_offset);
+	    return ER_LDR_CORRUPTED_BINARY_RECORD;
+	  }
       }
 
     one_row_buffer.resize (header_size + binary_length);
@@ -1070,6 +1087,14 @@ namespace cubload
 	return ER_FILE_UNKNOWN_FILE;
       }
 
+    /* the size of the file, which a record of a binary section is checked against, see gathering_binary_record () */
+    std::streampos object_file_end = -1;
+
+    object_file.seekg (0, std::ios::end);
+    object_file_end = object_file.tellg ();
+    object_file.clear ();
+    object_file.seekg (0, std::ios::beg);
+
     assert (batch_size > 0);
 
     /* one_row_buffer reuses allocated space.
@@ -1259,8 +1284,9 @@ namespace cubload
 	  }
 	else
 	  {
-	    error_code = gathering_binary_record (object_file, lineno + 1, class_is_ignored, compressed_mode,
-						  format_string.size (), binary_mode, unit_rows, one_row_buffer);
+	    error_code = gathering_binary_record (object_file, object_file_end, lineno + 1, class_is_ignored,
+						  compressed_mode, format_string.size (), binary_mode, unit_rows,
+						  one_row_buffer);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
