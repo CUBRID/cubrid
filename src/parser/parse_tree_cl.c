@@ -12254,7 +12254,11 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	      r2 = r1 = pt_print_bytes (parser, arg3);
 	    }
 	  r3 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r4 = (p->info.expr.arg2->type_enum == PT_TYPE_NULL) ? NULL : pt_print_bytes (parser, p->info.expr.arg2);
+	  /* the ELSE is NULL when name resolution failed for it (a dotted name or a function that does not exist, a
+	   * subquery that failed to bind), and the error is reported with the statement printed (CBRD-28028). The
+	   * searched CASE and DECODE check it the same way */
+	  r4 = ((p->info.expr.arg2 == NULL || p->info.expr.arg2->type_enum == PT_TYPE_NULL)
+		? NULL : pt_print_bytes (parser, p->info.expr.arg2));
 
 	  if (!p->info.expr.continued_case)
 	    {
@@ -13247,6 +13251,11 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
       q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
       q = pt_append_nulstring (parser, q, "(");
+      /* the printed text is the XASL cache key and the stored view definition */
+      if (code == PT_MEDIAN && p->info.function.all_or_distinct == PT_DISTINCT)
+	{
+	  q = pt_append_nulstring (parser, q, "distinct ");
+	}
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
     }
