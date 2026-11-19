@@ -87,14 +87,15 @@ extern int btree_key_wait_out_conflicting_writer (THREAD_ENTRY *thread_p,
     MVCC_SATISFIES_DELETE_RESULT satisfies_delete,
     MVCC_REC_HEADER *mvcc_header,
     BTREE_FIND_UNIQUE_HELPER *find_unique_helper,
-    PAGE_PTR *leaf_page, PAGE_PTR *overflow_page, bool *restart);
+    PAGE_PTR *leaf_page, PAGE_PTR *overflow_page, bool *restart,
+    const LK_WAIT_TARGET *target);
 /* The other half of this mechanism -- finding the MVCCID to wait for -- is in btree.c: the object searches
  * report it through their deleted_mvcc_info out-param (btree_note_active_delete_owner ()), and
  * btree_key_find_and_insert_delete_mvccid () decides on it.  It stays there because those searches walk the
  * record layouts, leaf and overflow alike; only the waiting is here. */
 extern int btree_key_wait_for_tran_end (THREAD_ENTRY *thread_p, MVCCID writer_mvccid,
 					BTREE_FIND_UNIQUE_HELPER *find_unique_helper, PAGE_PTR *leaf_page,
-					PAGE_PTR *overflow_page, bool *restart);
+					PAGE_PTR *overflow_page, bool *restart, const LK_WAIT_TARGET *target);
 #endif /* SERVER_MODE */
 
 #endif /* _BTREE_LOCK_HPP_ */

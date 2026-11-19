@@ -4499,7 +4499,8 @@ locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 {
   HEAP_GET_CONTEXT context;
   MVCC_REC_HEADER header;
-  LK_STAMP_SEEN writer;
+  /* phase 3 takes the child's X */
+  LK_STAMP_SEEN writer = { MVCCID_NULL, 0, {*oid, *class_oid, X_LOCK} };
   SCAN_CODE scan;
   int error_code;
 
@@ -4735,6 +4736,9 @@ locator_read_taken_child (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, R
       else
 	{
 	  conflict->writer.owner = locator_header_writer (thread_p, &header);
+	  COPY_OID (&conflict->writer.target.oid, oid);
+	  COPY_OID (&conflict->writer.target.class_oid, class_oid);
+	  conflict->writer.target.mode = X_LOCK;	/* phase 3 takes the child's X */
 	  if (conflict->writer.owner == MVCCID_NULL)
 	    {
 	      (void) locator_has_isolation_conflict (thread_p, &context, &header, &scan);
@@ -14660,6 +14664,7 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
  * recdes_header (out) : MVCC header of the version read.
  * lock_acquired (in/out) : whether we hold the row's lock; cleared when it was handed to the owner and lost
  * transient (in)      : whether that lock request was counted transient
+ * lock_mode (in)      : the lock the caller asked for on the row, for the lock wait diagnostics
  *
  * Note: settled means no delete is left undecided. A deleter holds no row lock and may still roll back,
  *	 so it is waited out and the version read again; our row lock bounds that to one owner, which stamps the row
@@ -14667,7 +14672,7 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
  */
 static SCAN_CODE
 locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_mvcc_class,
-				  MVCC_REC_HEADER * recdes_header, bool * lock_acquired, bool transient)
+				  MVCC_REC_HEADER * recdes_header, bool * lock_acquired, bool transient, LOCK lock_mode)
 {
   SCAN_CODE scan = S_SUCCESS;
 #if defined (SERVER_MODE)
@@ -14714,7 +14719,9 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
       if (owner_mvccid != MVCCID_NULL)
 	{
 	  /* read while the page the stamp was seen on is still fixed: see lock_get_tran_wake_generation () */
-	  LK_STAMP_SEEN seen = { owner_mvccid, lock_get_tran_wake_generation () };
+	  LK_STAMP_SEEN seen =
+	    { owner_mvccid, lock_get_tran_wake_generation (), {*context->oid_p, *context->class_oid_p, lock_mode}
+	  };
 	  LK_HELD_ROW held = { context->oid_p, context->class_oid_p, transient, false };
 
 	  if (context->scan_cache != NULL && context->scan_cache->cache_last_fix_page
@@ -15041,7 +15048,8 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 
   assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK);
 
-  scan = locator_get_settled_last_version (thread_p, context, is_mvcc_class, &recdes_header, &lock_acquired, transient);
+  scan = locator_get_settled_last_version (thread_p, context, is_mvcc_class, &recdes_header, &lock_acquired, transient,
+					   lock_mode);
   if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE)
     {
       goto error;
