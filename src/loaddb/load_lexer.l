@@ -27,6 +27,7 @@
 #include "load_scanner.hpp"
 #include "error_manager.h"
 #include "error_code.h"
+#include "memory_alloc.h"
 
 #include <cerrno>
 #include <climits>
@@ -995,6 +996,69 @@ cubload::scanner::binary_input_has (size_t len)
 }
 
 /*
+ * ~scanner () - free the block buffers, see read_binary_block ()
+ */
+cubload::scanner::~scanner ()
+{
+  free_and_init (m_block);
+  free_and_init (m_block_stored);
+}
+
+/*
+ * clear_binary_block () - drop the rows of a compressed block not handed over yet
+ *   return: void
+ *
+ * Note: a batch ends on a block boundary, so there are none left when its parse completes; they would be left over
+ *       from a parse that stopped early, and must not leak into the next batch. The buffers of a block of a very
+ *       large row are not kept for the blocks of ordinary size.
+ */
+void
+cubload::scanner::clear_binary_block ()
+{
+  m_block_rows_left = 0;
+  m_block_pos = 0;
+  m_block_size = 0;
+  if (m_block_capacity > BLOCK_BUFFER_KEEP_SIZE || m_block_stored_capacity > BLOCK_BUFFER_KEEP_SIZE)
+    {
+      free_and_init (m_block);
+      free_and_init (m_block_stored);
+      m_block_capacity = 0;
+      m_block_stored_capacity = 0;
+    }
+}
+
+/*
+ * reserve_block_buffer () - make a block buffer hold a number of bytes
+ *   return: false when the memory cannot be taken, the buffer is left empty then
+ *   buf (in/out): the buffer, NULL when it has none
+ *   capacity (in/out): the bytes buf holds
+ *   size (in): the bytes needed
+ *
+ * Note: what the buffer holds is not kept, every block is read or decompressed into it anew. malloc () does not fill
+ *       the buffer, so its pages are taken only as they are written.
+ */
+bool
+cubload::scanner::reserve_block_buffer (char *&buf, std::size_t &capacity, std::size_t size)
+{
+  if (size <= capacity)
+    {
+      return true;
+    }
+
+  free_and_init (buf);
+  capacity = 0;
+
+  buf = (char *) malloc (size);
+  if (buf == NULL)
+    {
+      return false;
+    }
+
+  capacity = size;
+  return true;
+}
+
+/*
  * read_binary_block () - read a block of a compressed binary section, see BIN_BLOCK_HEADER_SIZE
  *   return: true when the block is in m_block and its rows are ready to be handed over, false when the
  *           section has been reported unreadable and scanning goes on in ABORTED
@@ -1037,8 +1101,8 @@ cubload::scanner::read_binary_block (BIN_BLOCK_SIZE_TYPE stored_size)
     }
 
   /*
-   * Checked before the memory for the block is allocated, up to 2GB that resize () fills with zeros, so that a broken
-   * header is reported as such and does not run out of memory first. The stored bytes have to be left in the input,
+   * Checked before the memory for the block is allocated, up to 2GB, so that a broken header is reported as such and
+   * does not run out of memory first. The stored bytes have to be left in the input,
    * and a compressed block cannot hold more raw bytes than BIN_LZ4_MAX_RATIO times them.
    */
   if (!binary_input_has (stored_size))
@@ -1054,11 +1118,26 @@ cubload::scanner::read_binary_block (BIN_BLOCK_SIZE_TYPE stored_size)
       return false;
     }
 
-  m_block.resize (raw_size);
+  /*
+   * malloc () does not fill the buffers, so only the pages the block is read or decompressed into are taken, up to
+   * BIN_LZ4_MAX_RATIO times the bytes the block is stored in. A block of a row that large can still not get its
+   * memory, on the server above all, where loaddb_worker_count batches are loaded at once: that fails the section
+   * and does not end the process.
+   */
+  if (!reserve_block_buffer (m_block, m_block_capacity, raw_size)
+      || (stored_size != raw_size && !reserve_block_buffer (m_block_stored, m_block_stored_capacity, stored_size)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) raw_size + stored_size);
+      m_error_handler.on_failure ();
+      BEGIN ABORTED;
+      return false;
+    }
+  m_block_size = raw_size;
+
   if (stored_size == raw_size)
     {
       /* LZ4 could not make the block smaller, the raw bytes are stored as they are */
-      if (read_binary (m_block.data (), raw_size) != raw_size)
+      if (read_binary (m_block, raw_size) != raw_size)
 	{
 	  fail_binary_section_at (lineno, LOADDB_MSG_TRUNCATED_BINARY_SECTION);
 	  BEGIN ABORTED;
@@ -1067,8 +1146,7 @@ cubload::scanner::read_binary_block (BIN_BLOCK_SIZE_TYPE stored_size)
     }
   else
     {
-      m_block_stored.resize (stored_size);
-      if (read_binary (m_block_stored.data (), stored_size) != stored_size)
+      if (read_binary (m_block_stored, stored_size) != stored_size)
 	{
 	  fail_binary_section_at (lineno, LOADDB_MSG_TRUNCATED_BINARY_SECTION);
 	  BEGIN ABORTED;
@@ -1079,7 +1157,7 @@ cubload::scanner::read_binary_block (BIN_BLOCK_SIZE_TYPE stored_size)
        * LZ4_decompress_safe () itself and not cubcompress::decompress (), which sets an error of its own on a
        * corrupted block on top of the one reported here. It never writes past raw_size, whatever the input.
        */
-      if (LZ4_decompress_safe (m_block_stored.data (), m_block.data (), (int) stored_size, (int) raw_size)
+      if (LZ4_decompress_safe (m_block_stored, m_block, (int) stored_size, (int) raw_size)
 	  != (int) raw_size)
 	{
 	  fail_binary_section_at (lineno, LOADDB_MSG_CORRUPTED_BINARY_BLOCK);
@@ -1092,7 +1170,7 @@ cubload::scanner::read_binary_block (BIN_BLOCK_SIZE_TYPE stored_size)
    * The checksum catches what the checks below cannot: a byte of the stored data that decompresses into other values
    * of the same layout. A block without one, written by a build for Windows, is not checked.
    */
-  if (!binary_block_checksum_matches (m_block.data (), raw_size, checksum))
+  if (!binary_block_checksum_matches (m_block, raw_size, checksum))
     {
       fail_binary_section_at (lineno, LOADDB_MSG_CORRUPTED_BINARY_BLOCK);
       BEGIN ABORTED;
@@ -1107,7 +1185,7 @@ cubload::scanner::read_binary_block (BIN_BLOCK_SIZE_TYPE stored_size)
 	{
 	  break;
 	}
-      memcpy (&rec_size, m_block.data () + pos, sizeof (rec_size));
+      memcpy (&rec_size, m_block + pos, sizeof (rec_size));
       pos += sizeof (rec_size);
 
       /* a row has a column at least, so its size is never BIN_END_OF_RECORDS */
@@ -1144,9 +1222,9 @@ cubload::scanner::next_block_row (cubload::parser::semantic_type *yylval)
   BIN_REC_SIZE_TYPE rec_size;
   string_type *row;
 
-  assert (m_block_rows_left > 0 && m_block_pos + sizeof (rec_size) <= m_block.size ());
+  assert (m_block_rows_left > 0 && m_block_pos + sizeof (rec_size) <= m_block_size);
 
-  memcpy (&rec_size, m_block.data () + m_block_pos, sizeof (rec_size));
+  memcpy (&rec_size, m_block + m_block_pos, sizeof (rec_size));
   m_block_pos += sizeof (rec_size);
 
   /*
@@ -1154,7 +1232,7 @@ cubload::scanner::next_block_row (cubload::parser::semantic_type *yylval)
    * a look ahead token (see binary_row in load_grammar.yy), so the row is done with before the next one is handed
    * over, and the block is replaced only once all its rows have been. Nothing that reads a row writes to it.
    */
-  row = m_semantic_helper.make_string_by_reference (m_block.data () + m_block_pos, rec_size);
+  row = m_semantic_helper.make_string_by_reference (m_block + m_block_pos, rec_size);
   m_block_pos += rec_size;
   m_block_rows_left--;
 
