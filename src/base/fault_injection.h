@@ -78,6 +78,7 @@ typedef enum
   /* BTREE MANAGER */
   FI_TEST_BTREE_MANAGER_RANDOM_EXIT = 300000,
   FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL = 300001,
+  FI_TEST_BTREE_LOAD_NO_LOGGING_HOLD = 300002,	/* hold a registered no-logging index build before it writes pages */
 
   /* QUERY MANAGER (start number is 400000) */
 
