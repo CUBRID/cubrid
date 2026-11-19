@@ -248,6 +248,7 @@ static int locator_child_still_refers (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
 				       OID * oid, RECDES * recdes, DB_VALUE * parent_key, bool * refers);
 static int locator_lock_gathered_child (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
 					HEAP_SCANCACHE * scan_cache, bool * gone);
+static int locator_gathered_child_read_result (SCAN_CODE scan, const OID * oid, bool * gone);
 static void locator_child_conflict_clear (LOCATOR_CHILD_CONFLICT * conflict);
 static bool locator_child_conflict_is_set (const LOCATOR_CHILD_CONFLICT * conflict);
 static int locator_read_taken_child (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
@@ -4646,23 +4647,34 @@ locator_lock_gathered_child (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid
 			     HEAP_SCANCACHE * scan_cache, bool * gone)
 {
   SCAN_CODE scan_code;
-  int error_code;
 
   *gone = false;
   recdes->data = NULL;
   /* kept to commit; a child row we stamped ourselves is touched again without its lock */
   scan_code = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY, NULL_CHN,
 					   LOG_ERROR_IF_DELETED, false, true);
-  if (scan_code == S_SUCCESS)
+  return locator_gathered_child_read_result (scan_code, oid, gone);
+}
+
+/*
+ * locator_gathered_child_read_result () - what the read of a gathered child tells phase 3
+ *
+ * return: NO_ERROR when the child was read, or is gone (*gone set); otherwise the error of the read
+ */
+static int
+locator_gathered_child_read_result (SCAN_CODE scan, const OID * oid, bool * gone)
+{
+  int error_code;
+
+  if (scan == S_SUCCESS)
     {
       return NO_ERROR;
     }
 
-  if (scan_code == S_DOESNT_EXIST)
+  if (scan == S_DOESNT_EXIST)
     {
       /* deleted since it was gathered, by the writer its lock waited for or by a cascade of this statement */
-      er_log_debug (ARG_FILE_LINE, "locator_lock_gathered_child: gone oid ( %d|%d|%d )\n", oid->volid, oid->pageid,
-		    oid->slotid);
+      er_log_debug (ARG_FILE_LINE, "gathered child gone: oid ( %d|%d|%d )\n", oid->volid, oid->pageid, oid->slotid);
       *gone = true;
       return NO_ERROR;
     }
@@ -4736,20 +4748,7 @@ locator_read_taken_child (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, R
     }
   heap_clean_get_context (thread_p, &context);
 
-  if (scan == S_SUCCESS)
-    {
-      return NO_ERROR;
-    }
-  if (scan == S_DOESNT_EXIST)
-    {
-      er_log_debug (ARG_FILE_LINE, "locator_read_taken_child: gone oid ( %d|%d|%d )\n", oid->volid, oid->pageid,
-		    oid->slotid);
-      *gone = true;
-      return NO_ERROR;
-    }
-
-  error_code = er_errid ();
-  return error_code == NO_ERROR ? ER_FAILED : error_code;
+  return locator_gathered_child_read_result (scan, oid, gone);
 }
 
 /*
