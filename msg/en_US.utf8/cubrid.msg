@@ -2035,6 +2035,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 346 The level of a sensitivity label grade must be 1 or greater.
 347 %1$s is specified more than once for a sensitivity label.
 348 GRADE is required for a sensitivity label.
+349 Column "%1$s" of "%2$s" is specified more than once for a sensitivity label.
 
 
 

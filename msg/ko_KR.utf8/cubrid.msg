@@ -2033,6 +2033,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 346 sensitivity label grade의 level은 1 이상이어야 합니다.
 347 sensitivity label에 %1$s이(가) 두 번 이상 지정되었습니다.
 348 sensitivity label에는 GRADE를 지정해야 합니다.
+349 sensitivity label에 "%2$s"의 컬럼 "%1$s"이(가) 두 번 이상 지정되었습니다.
 
 
 
