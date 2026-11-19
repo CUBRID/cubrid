@@ -813,7 +813,9 @@ fileio_writeback_requested_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO *
 {
   int vol_fd;
 
-  if (vol_info_p->temp_writeback_requested == 0 || ATOMIC_TAS_32 (&vol_info_p->temp_writeback_requested, 0) == 0)
+  /* every access to the flag is atomic: writers set it with ATOMIC_TAS_32 concurrently, so a plain read here would be a
+   * data race */
+  if (ATOMIC_TAS_32 (&vol_info_p->temp_writeback_requested, 0) == 0)
     {
       return false;
     }
