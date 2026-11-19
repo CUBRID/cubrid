@@ -31,10 +31,11 @@
 
 #include <vector>
 
+struct scan_bitmap_worker;
+
 namespace parallel_scan
 {
   class input_handler_index;
-  struct bitmap_worker;
 }
 
 namespace parallel_index_scan
@@ -97,7 +98,7 @@ namespace parallel_index_scan
 
       /* bitmap heap scan, index step: while set, process_oid records the OID with the worker's marks instead of
        * reading the heap */
-      void set_bitmap_worker (parallel_scan::bitmap_worker *worker)
+      void set_bitmap_worker (scan_bitmap_worker *worker)
       {
 	m_bm_worker = worker;
       }
@@ -211,7 +212,7 @@ namespace parallel_index_scan
       bool m_ahead_end;                               /* evaluate_ahead found no more key to queue on m_page. */
       int m_ahead_skipped_keys;                       /* read_keys of the slots skipped before that stop. */
       bool m_ahead_interrupted;                       /* evaluate_ahead took the query's interrupt. */
-      parallel_scan::bitmap_worker *m_bm_worker;      /* bitmap heap scan, index step: OIDs are recorded here. */
+      scan_bitmap_worker *m_bm_worker;      /* bitmap heap scan, index step: OIDs are recorded here. */
       int m_bm_sector_hint;                           /* sector of the last mark. */
   };
 }

@@ -153,7 +153,7 @@ namespace parallel_scan
 	  }
 	else
 	  {
-	    for (int bit = m_bm_next_slot; bit < BITMAP_WORDS * 64;)
+	    for (int bit = m_bm_next_slot; bit < SCAN_BITMAP_WORDS * 64;)
 	      {
 		const std::uint64_t word = m_bm_words[bit >> 6] >> (bit & 63);
 

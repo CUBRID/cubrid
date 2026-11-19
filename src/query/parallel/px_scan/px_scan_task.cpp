@@ -1351,7 +1351,7 @@ namespace parallel_scan
   {
     if constexpr (ST == SCAN_TYPE::INDEX)
       {
-	bitmap_worker *const worker = m_slot_iterator.bitmap_worker_of ();
+	scan_bitmap_worker *const worker = m_slot_iterator.bitmap_worker_of ();
 	bool dummy = false;
 	int error_code = NO_ERROR;
 	auto raise = [&] ()
@@ -1452,7 +1452,7 @@ namespace parallel_scan
 		  break;
 		}
 
-		const bitmap_table &table = worker->heap_tbl;
+		const scan_bitmap_table &table = worker->heap_tbl;
 		const std::vector<std::uint32_t> &order = worker->order;
 
 		for (size_t i = 0; i < order.size () && !stop; i++)

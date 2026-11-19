@@ -31,10 +31,11 @@
 
 #include <cstdint>
 
+struct scan_bitmap_worker;
+
 namespace parallel_scan
 {
   class input_handler_index;
-  struct bitmap_worker;
 
   /* facade: composes leaf_slot_walker (slot loop) + overflow_drain_fsm (drain state machine). */
   class slot_iterator_index
@@ -73,7 +74,7 @@ namespace parallel_scan
 
       /* bitmap heap scan: this worker's tables and files; from here on the walker records OIDs with them (index
        * step) ... */
-      void begin_bitmap_index_step (bitmap_worker *worker)
+      void begin_bitmap_index_step (scan_bitmap_worker *worker)
       {
 	m_bm_worker = worker;
 	m_slot_walker.set_bitmap_worker (worker);
@@ -85,7 +86,7 @@ namespace parallel_scan
 	m_slot_walker.cleanup_on_reset (thread_p);
 	m_slot_walker.set_bitmap_worker (nullptr);
       }
-      bitmap_worker *bitmap_worker_of () const
+      scan_bitmap_worker *bitmap_worker_of () const
       {
 	return m_bm_worker;
       }
@@ -107,7 +108,7 @@ namespace parallel_scan
       parallel_index_scan::overflow_drain_fsm    m_drain_fsm;     /* (E) drain state machine; pokes walker via friend. */
 
       /* bitmap heap scan */
-      bitmap_worker *m_bm_worker;
+      scan_bitmap_worker *m_bm_worker;
       bool m_bm_heap_step;	/* set_bitmap_page was called: the leaf walk is over */
       bool m_bm_page_on;	/* the page being read is fixed */
       int m_bm_next_slot;	/* its rows before this slot are looked up */
