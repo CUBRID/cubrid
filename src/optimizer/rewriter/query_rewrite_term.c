@@ -1018,8 +1018,9 @@ qo_null_eval_quantified (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET
  *   expr(in): PT_EXPR node
  *   target(in): the columns taken as NULL
  *
- * Note: an operation not listed is taken to be NULL when its first operand is, as qo_check_nullable_op () takes it;
- *	 a later operand may be an option that a NULL leaves at its default (ESCAPE NULL, WEEK (d, NULL)).
+ * Note: an operation not listed is taken to be NULL when any of its operands is; one that can be other than NULL on a
+ *	 NULL operand is listed, as one whose later operand is an option that a NULL leaves at its default (ESCAPE NULL,
+ *	 WEEK (d, NULL)).
  */
 static int
 qo_null_eval_expr (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET * target)
@@ -1230,21 +1231,6 @@ qo_null_eval_expr (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET * tar
       return QO_NULL_EVAL_STRICT (qo_null_eval_list (parser, arg1, target, true),
 				  qo_null_eval_list (parser, arg2, target, true));
 
-    case PT_DATEDIFF:
-    case PT_TIMEDIFF:
-    case PT_STRCMP:
-    case PT_ATAN2:
-    case PT_POWER:
-    case PT_POSITION:
-    case PT_FINDINSET:
-    case PT_LOCATE:
-      /* NULL when any operand is NULL, the target column may be any of them (fetch_op_datediff (), fetch_op_locate (),
-       * db_power_dbval () and the others check every operand) */
-      values = QO_NULL_EVAL_STRICT (qo_null_eval_list (parser, arg1, target, true),
-				    qo_null_eval_list (parser, arg2, target, true));
-      return ((expr->info.expr.arg3 == NULL) ? values
-	      : QO_NULL_EVAL_STRICT (values, qo_null_eval_list (parser, expr->info.expr.arg3, target, true)));
-
     case PT_CASE:
     case PT_DECODE:
     case PT_IF:
@@ -1275,8 +1261,29 @@ qo_null_eval_expr (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET * tar
       /* can be other than NULL on a NULL operand, or reads another row */
       return QO_NULL_EVAL_ANY;
 
-    default:
+    case PT_LIKE_ESCAPE:
+    case PT_LIKE_LOWER_BOUND:
+    case PT_LIKE_UPPER_BOUND:
+    case PT_WEEKF:
+      /* NULL by the first operand only: a NULL later operand is an option left at its default - LIKE and its bounds
+       * take a NULL escape character as none, WEEK (d, NULL) takes the default mode */
       return QO_NULL_EVAL_STRICT (qo_null_eval_list (parser, arg1, target, true), QO_NULL_EVAL_ANY);
+
+    case PT_REPLACE:
+      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+	{
+	  /* a NULL search or replacement string is an empty string */
+	  return QO_NULL_EVAL_ANY;
+	}
+      [[fallthrough]];
+
+    default:
+      /* NULL when any operand is NULL, and the target column may be any of them; an operator that can be other than
+       * NULL on a NULL operand is listed above */
+      values = QO_NULL_EVAL_STRICT (qo_null_eval_list (parser, arg1, target, true),
+				    qo_null_eval_list (parser, arg2, target, true));
+      return ((expr->info.expr.arg3 == NULL) ? values
+	      : QO_NULL_EVAL_STRICT (values, qo_null_eval_list (parser, expr->info.expr.arg3, target, true)));
     }
 }
 
