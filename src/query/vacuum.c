@@ -2752,7 +2752,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
    *     REC_BIGONE      n/a    home + ovf chain       one sysop   (OOS must not coexist; abort below)
    *
    * The sysop bundles every per-page log record of a multi-page removal into one atomic unit, so a crash
-   * cannot leave it half-done (heap slot vacuumed but its OOS chunks still referenced, or vice versa).
+   * cannot leave it half-done. OOS chunk deletes inside it are redo-only (vacuum_heap_oos_delete_within_sysop).
    * Single-page REC_HOME needs no sysop: its single log record is already atomic, so it rides the bulk
    * path.  record_type alone is only a proxy for the footprint -- OOS is the orthogonal axis that can push
    * an otherwise single-page REC_HOME into the sysop path. */
@@ -2887,10 +2887,9 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
     case REC_HOME:
       if (has_oos)
 	{
-	  /* OOS-bearing REC_HOME: the heap-slot removal log and the OOS chunk deletes must share the one
-	   * sysop opened above so a crash between them cannot leave dangling OOS references. The bulk path
-	   * would split them across sysop boundaries. The slot was already cleared via spage_vacuum_slot;
-	   * commit (or abort on failure) that sysop here, mirroring the REC_RELOCATION/REC_BIGONE cases. */
+	  /* OOS-bearing REC_HOME: the slot was already cleared via spage_vacuum_slot; its OOS chains are deleted
+	   * redo-only before the sysop opened above commits (or aborts on failure, restoring only the slot),
+	   * mirroring the REC_RELOCATION/REC_BIGONE cases. */
 	  pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
 	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
 					     helper->reusable);

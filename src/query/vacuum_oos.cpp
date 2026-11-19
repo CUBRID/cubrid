@@ -26,7 +26,6 @@
 #include "fault_injection.h"
 #include "file_manager.h"
 #include "heap_file.h"
-#include "internal_lob_file.hpp"
 #include "log_manager.h"
 #include "memory_alloc.h"
 #include "object_domain.h"
@@ -63,8 +62,6 @@ static VACUUM_OOS_VFID_LOOKUP_RESULT vacuum_oos_vfid_lookup (THREAD_ENTRY *threa
     VACUUM_OOS_VFID_MEMO *memo, const VFID *heap_vfid, VFID *out_oos_vfid, VFID *out_internal_lob_vfid);
 static int vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
     const VFID *internal_lob_vfid, HEAP_OOS_REFERENCE_VECTOR references);
-static int vacuum_oos_delete_reference (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const VFID *internal_lob_vfid,
-					const HEAP_OOS_REFERENCE &reference, VACUUM_OOS_EMPTIED_PAGES *emptied_pages);
 
 /* Records whose chains a worker is deleting outside the home page latch.  Another block's job may see the
  * same removable record meanwhile; it leaves the record to the owner. */
@@ -152,45 +149,6 @@ vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_MEMO *memo, cons
 
   return (VFID_ISNULL (out_oos_vfid) && VFID_ISNULL (out_internal_lob_vfid))
 	 ? VACUUM_OOS_VFID_NONE : VACUUM_OOS_VFID_FOUND;
-}
-
-/*
- * vacuum_oos_delete_reference () - Delete one OOS reference of a vacuumed record from the file of its kind.
- *   return: error code; a reference whose file the heap lacks is logged and skipped (bounded leak)
- *   emptied_pages (out): pages an ordinary OOS delete emptied; internal LOB pages are left to the growth-gate sweep
- */
-static int
-vacuum_oos_delete_reference (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const VFID *internal_lob_vfid,
-			     const HEAP_OOS_REFERENCE &reference, VACUUM_OOS_EMPTIED_PAGES *emptied_pages)
-{
-  /* [리뷰] kind는 스텁에서 오므로 vacuum은 소유 클래스·스키마를 볼 필요가 없다.
-   * 파일 없는 참조는 로그만 남기고 건너뛴다(bounded leak, vacuum은 멈추지 않음).
-   * LOB 삭제는 emptied_pages에 넣지 않는다. LOB 파일의 빈 페이지는 growth-gate sweep이 반납한다. */
-  if (TP_IS_LOB_TYPE (reference.type))
-    {
-      INTERNAL_LOB_LOCATOR locator = { reference.ref.head_oid, reference.ref.identity_stamp, 0 };
-
-      if (internal_lob_vfid == NULL || VFID_ISNULL (internal_lob_vfid))
-	{
-	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "internal LOB reference %d|%d|%d without an internal LOB file; "
-			       "skipped (bounded leak)", OID_AS_ARGS (&reference.ref.head_oid));
-	  return NO_ERROR;
-	}
-      if (internal_lob_decode_disk_length (locator, reference.disk_length) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-      /* walks the chain reading only node headers and deletes each node through oos_delete */
-      return internal_lob_delete (thread_p, *internal_lob_vfid, locator, false);
-    }
-
-  if (oos_vfid == NULL || VFID_ISNULL (oos_vfid))
-    {
-      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "OOS reference %d|%d|%d without an OOS file; skipped (bounded leak)",
-			   OID_AS_ARGS (&reference.ref.head_oid));
-      return NO_ERROR;
-    }
-  return oos_delete (thread_p, *oos_vfid, reference.ref, emptied_pages);
 }
 
 /*
@@ -516,13 +474,9 @@ vacuum_oos_report_missing_oos_file (const HFID *hfid, const RECDES *record, PGSL
 /*
  * vacuum_heap_oos_delete_within_sysop () - Delete OOS records referenced by a heap record being vacuumed.
  *
- *   PRECONDITION: the caller must already have an open sysop; this function deliberately does NOT
- *   start one. The heap-slot vacuum record and these OOS deletes must commit in the SAME sysop, so a
- *   crash between them cannot leave the heap slot vacuumed while its OOS chunks still look referenced
- *   (or the reverse). The only caller, vacuum_heap_record, opens that sysop and commits/aborts it.
- *
- *   Contrast vacuum_forward_walk_oos_delete_atomic, which has no heap slot to pair with and deletes
- *   redo-only without a sysop.
+ *   The deletes are redo-only, head last, as in vacuum_forward_walk_oos_delete_atomic: the caller's sysop undoes
+ *   only the heap slot, never re-inserting a chunk into a slot another chain may have reused. After a crash
+ *   the dead slot comes back and the block re-run removes it; the stamp makes the gone or reused head a no-op.
  *
  * return	  : Error code.
  * thread_p (in)  : Thread entry.
@@ -558,18 +512,28 @@ vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfi
       return error_code;
     }
 
-  /* TODO(perf): oos_delete re-fixes the page per OID, as noted in vacuum_forward_walk_oos_delete_atomic. These
-   * references are not even sorted by page yet. */
+  /* TODO(perf): oos_vacuum_delete_chain re-fixes the page per OID, as noted in
+   * vacuum_forward_walk_oos_delete_atomic. These references are not even sorted by page yet. */
   for (const HEAP_OOS_REFERENCE &reference : oos_references)
     {
       const OID &oos_oid = reference.ref.head_oid;
-      error_code = vacuum_oos_delete_reference (thread_p, oos_vfid, internal_lob_vfid, reference, emptied_pages_out);
+      bool is_lob = TP_IS_LOB_TYPE (reference.type);
+      const VFID *vfid = is_lob ? internal_lob_vfid : oos_vfid;
+      if (vfid == NULL || VFID_ISNULL (vfid))
+	{
+	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "OOS reference %d|%d|%d without its file; skipped (bounded leak)",
+			       OID_AS_ARGS (&oos_oid));
+	  continue;
+	}
+
+      /* internal LOB pages are left to the growth-gate sweep */
+      error_code = oos_vacuum_delete_chain (thread_p, *vfid, reference.ref, true, is_lob ? NULL : emptied_pages_out);
       if (error_code != NO_ERROR)
 	{
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			       "Failed to delete OOS record %d|%d|%d.", oos_oid.volid, oos_oid.pageid, oos_oid.slotid);
-	  /* The caller's abort restores these deletes — keep its batch list committed-only. (An
-	   * OOM inside oos_delete_chain may already have cleared the list; never grow it.) */
+	  /* The caller aborts and reclaims nothing: drop this call's pages; the growth-gate sweep returns them.
+	   * (An OOM inside the delete may already have cleared the list; never grow it.) */
 	  if (emptied_pages_out != NULL && emptied_pages_out->size () > n_emptied_on_entry)
 	    {
 	      emptied_pages_out->resize (n_emptied_on_entry);

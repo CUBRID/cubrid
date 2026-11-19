@@ -3932,11 +3932,12 @@ oos_vacuum_delete_chunk (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID
 /*
  * oos_vacuum_delete_chain () - Vacuum only: trim a dead chain to its head, tail first, with redo-only logs.
  *   Each chunk is cut off from the one before it, then deleted, so after a crash the chain still runs from the head
- *   to NULL (at most the cut-off chunk leaks).  The caller deletes the head with the record, since a freed head could
- *   be reused first.  An old locator reads the original leading bytes, then a short chain, never skipped bytes.
+ *   to NULL (at most the cut-off chunk leaks).  The head goes later with the record (with_head), since a freed head
+ *   could be reused first.  An old locator reads the original leading bytes, then a short chain, never skipped bytes.
  *   The head is checked against ref like oos_delete_chain (CBRD-26950): a head that is gone or carries another
  *   identity stamp leaves nothing to trim; a stamp-matching continuation chunk is a malformed reference.
- *   with_head: also delete the head, last, when no record holds it (oos_delete_at_commit, vacuum forward walk).
+ *   with_head: also delete the head, last, when no record holds it (oos_delete_at_commit, vacuum forward walk,
+ *   vacuum heap record removal).
  */
 int
 oos_vacuum_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref, bool with_head,
