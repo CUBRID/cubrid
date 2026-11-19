@@ -1511,7 +1511,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 The stored DEFAULT expression of attribute "%1$s" cannot be restored.
+1395 The stored DEFAULT expression of "%1$s" cannot be restored.
 
 1396 Last Error
 
