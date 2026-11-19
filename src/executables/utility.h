@@ -1360,7 +1360,7 @@ typedef struct _ha_config
 #define TRANLIST_REVERSE_L                      "reverse"
 #define TRANLIST_FULL_SQL_S                     'f'
 #define TRANLIST_FULL_SQL_L                     "full"
-#define TRANLIST_DBA_PASSWORD_S                 'p'
+#define TRANLIST_DBA_PASSWORD_S                 12600
 #define TRANLIST_DBA_PASSWORD_L                 "dba-password"
 
 

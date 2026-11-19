@@ -2007,10 +2007,13 @@ killtran (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  /* disable password, if don't use kill option. The password is still taken for a server on another host,
-   * which asks for it */
+  /* disable password, if don't use kill option */
   if (isbatch == 0)
     {
+      if (dba_password != NULL)
+	{
+	  goto print_killtran_usage;
+	}
       AU_DISABLE_PASSWORDS ();
     }
 
