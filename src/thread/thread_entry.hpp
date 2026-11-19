@@ -28,6 +28,7 @@
 #endif // not SERVER_MODE and not SA_MODE
 
 #include "error_context.hpp"
+#include "lock_deferred_wake.hpp"
 #include "lockfree_transaction_def.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
@@ -275,18 +276,7 @@ namespace cubthread
       INT64 lockwait_stime;		/* time in milliseconds */
       int lockwait_msecs;		/* time in milliseconds */
       int lockwait_state;
-      UINT64 lockwait_wake_gen;	/* lock_get_tran_wake_generation () the waiter read before its stamp */
-      /* the self-lock wait a recheck cut short in this request; see lock_wait_transaction_mvccid () */
-      struct lockwait_recheck_record
-      {
-	UINT64 mvccid;		/* the owner's MVCCID, or 0 */
-	int trid;		/* the transaction that waited */
-	int wait_msecs;		/* the lock timeout it waited with */
-	INT64 waited_msecs;	/* how long it has waited on that owner, in all */
-      };
-      lockwait_recheck_record lockwait_recheck;
-      UINT64 lockwait_held_row;	/* packed OID of the row held X while waiting on a self-lock, or 0 */
-      void *lockwait_prequeued;	/* our lock entry queued but not asleep yet (lock_ask_row_hand ()) */
+      lk_thread_deferred_wake deferred_wake;
       void *query_entry;
       entry *tran_next_wait;
       entry *worker_thrd_list;	/* worker thread on job queue */
@@ -300,7 +290,6 @@ namespace cubthread
       bool no_logging;
 
       int net_request_index;	/* request index of net server functions */
-      UINT64 deferred_wake_epoch_seen;	/* the deferred wake due at a row write of this request, or 0 */
 
       struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
 

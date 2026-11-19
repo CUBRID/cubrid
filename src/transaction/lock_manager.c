@@ -2475,7 +2475,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   /* The caller is holding the thread entry mutex */
 
   /* a thread asleep with its entry flagged as queued would be granted without a resume */
-  assert (entry_ptr->thrd_entry->lockwait_prequeued == NULL);
+  assert (entry_ptr->thrd_entry->deferred_wake.prequeued == NULL);
 
   if (lk_Gl.config.verbose_mode)
     {
@@ -2984,7 +2984,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 
       /* an entry queued but not asleep yet is granted by its own thread (lock_ask_row_hand ()): stop as at an
        * incompatible one */
-      if (waiter->thrd_entry != NULL && waiter->thrd_entry->lockwait_prequeued == (void *) waiter)
+      if (waiter->thrd_entry != NULL && waiter->thrd_entry->deferred_wake.prequeued == waiter)
 	{
 	  break;
 	}
@@ -3778,11 +3778,11 @@ lock_ask_row_hand (THREAD_ENTRY * thread_p, int tran_index, LK_RES * res_ptr, LK
     {
       return false;
     }
-  assert (entry_ptr->thrd_entry == thread_p && thread_p->lockwait_prequeued == NULL);
+  assert (entry_ptr->thrd_entry == thread_p && thread_p->deferred_wake.prequeued == NULL);
   /* one thread of a transaction takes row locks (parallel query workers do not) */
   assert (__atomic_load_n (&tran_lock->hand_row, __ATOMIC_RELAXED) == 0);
 
-  thread_p->lockwait_prequeued = (void *) entry_ptr;
+  thread_p->deferred_wake.prequeued = entry_ptr;
   thread_p->lockwait_stime = 0;
   packed_row = lock_pack_row_oid (&res_ptr->key.oid);
   __atomic_store_n (&tran_lock->hand_row, packed_row, __ATOMIC_RELAXED);
@@ -3792,7 +3792,7 @@ lock_ask_row_hand (THREAD_ENTRY * thread_p, int tran_index, LK_RES * res_ptr, LK
   lock_wake_mvccid_waiters (thread_p, tdes->mvccinfo.id, packed_row);
 
   pthread_mutex_lock (&res_ptr->res_mutex);
-  thread_p->lockwait_prequeued = NULL;
+  thread_p->deferred_wake.prequeued = NULL;
   if (entry_ptr->blocked_mode != NULL_LOCK)
     {
       /* not handed: grant it where the common grant would have granted a sleeping waiter */
@@ -4164,7 +4164,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	    }
 
 	  if (res_ptr->key.type == LOCK_RESOURCE_TRANSACTION && lock == S_LOCK
-	      && thrd_entry->lockwait_wake_gen != lk_Gl.tran_wake_generation.load ())
+	      && thrd_entry->deferred_wake.wake_gen != lk_Gl.tran_wake_generation.load ())
 	    {
 	      /* a wake went out after the caller read the stamp, before we joined the waiters */
 	      pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -7533,7 +7533,7 @@ lock_monotonic_msecs (void)
 static int
 lock_recheck_wait_left (const THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int wait_msecs, INT64 * waited_msecs)
 {
-  const THREAD_ENTRY::lockwait_recheck_record & rec = thread_p->lockwait_recheck;
+  const lk_thread_deferred_wake::recheck_record & rec = thread_p->deferred_wake.request.recheck;
 
   *waited_msecs = 0;
   if (wait_msecs > 0 && rec.mvccid == mvccid && rec.trid == trid && rec.wait_msecs == wait_msecs)
@@ -7582,22 +7582,22 @@ lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wak
   while (true)
     {
       wait_left = lock_recheck_wait_left (thread_p, mvccid, trid, wait_msecs, &waited_msecs);
-      thread_p->lockwait_recheck.mvccid = MVCCID_NULL;
+      thread_p->deferred_wake.request.recheck.mvccid = MVCCID_NULL;
 
       start_msecs = lock_monotonic_msecs ();
-      thread_p->lockwait_wake_gen = wake_gen;
-      __atomic_store_n (&thread_p->lockwait_held_row, packed_held, __ATOMIC_RELAXED);
+      thread_p->deferred_wake.wake_gen = wake_gen;
+      __atomic_store_n (&thread_p->deferred_wake.held_row, packed_held, __ATOMIC_RELAXED);
       granted = lock_transaction_mvccid_with_wait (thread_p, mvccid, S_LOCK, wait_left);
-      __atomic_store_n (&thread_p->lockwait_held_row, (UINT64) 0, __ATOMIC_RELAXED);
+      __atomic_store_n (&thread_p->deferred_wake.held_row, (UINT64) 0, __ATOMIC_RELAXED);
       if (granted != LK_NOTGRANTED_DUE_RECHECK)
 	{
 	  return granted;
 	}
 
-      thread_p->lockwait_recheck.mvccid = mvccid;
-      thread_p->lockwait_recheck.trid = trid;
-      thread_p->lockwait_recheck.wait_msecs = wait_msecs;
-      thread_p->lockwait_recheck.waited_msecs = waited_msecs + lock_monotonic_msecs () - start_msecs;
+      thread_p->deferred_wake.request.recheck.mvccid = mvccid;
+      thread_p->deferred_wake.request.recheck.trid = trid;
+      thread_p->deferred_wake.request.recheck.wait_msecs = wait_msecs;
+      thread_p->deferred_wake.request.recheck.waited_msecs = waited_msecs + lock_monotonic_msecs () - start_msecs;
       switch (lock_recheck_decide (thread_p, mvccid, held_row, &wake_gen, &owner_tran_index))
 	{
 	case LK_RECHECK_REWAIT:
@@ -7691,8 +7691,7 @@ void
 lock_reset_request_state (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
-  thread_p->lockwait_recheck.mvccid = MVCCID_NULL;
-  thread_p->deferred_wake_epoch_seen = 0;
+  thread_p->deferred_wake.request = lk_thread_deferred_wake::request_state ();
 #endif /* SERVER_MODE */
 }
 
@@ -7747,7 +7746,7 @@ lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p)
     {
       thread_p = thread_get_thread_entry_info ();
     }
-  if (thread_p->deferred_wake_epoch_seen != 0)
+  if (thread_p->deferred_wake.request.epoch_seen != 0)
     {
       return;
     }
@@ -7756,7 +7755,7 @@ lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p)
     {
       return;
     }
-  thread_p->deferred_wake_epoch_seen =
+  thread_p->deferred_wake.request.epoch_seen =
     __atomic_load_n (&lk_Gl.tran_lock_table[tdes->tran_index].deferred_wake_epoch, __ATOMIC_ACQUIRE);
 #endif /* SERVER_MODE */
 }
@@ -7771,14 +7770,14 @@ void
 lock_deferred_wake_on_request_end (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
-  UINT64 epoch = thread_p->deferred_wake_epoch_seen;
+  UINT64 epoch = thread_p->deferred_wake.request.epoch_seen;
   LOG_TDES *tdes;
 
   if (epoch == 0)
     {
       return;
     }
-  thread_p->deferred_wake_epoch_seen = 0;
+  thread_p->deferred_wake.request.epoch_seen = 0;
   tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   if (tdes != NULL)
     {
@@ -7811,7 +7810,7 @@ lock_deferred_wake_send (THREAD_ENTRY * thread_p, int tran_index, MVCCID mvccid,
 /*
  * lock_wake_mvccid_waiters - wake, without granting, the waiters on the self-lock keyed by mvccid
  *
- *   packed_row(in): 0 wakes all of them; otherwise only those holding that row X (lockwait_held_row)
+ *   packed_row(in): 0 wakes all of them; otherwise only those holding that row X (deferred_wake.held_row)
  *
  * Note: the generation bump publishes what the caller wrote for the woken (the cleared epoch, hand_row). A woken
  *	 entry leaves the waiters here, as at a grant, so the deadlock detector sees no wait that is over.
@@ -7848,7 +7847,7 @@ lock_wake_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 packed_
       thread_lock_entry (waiter->thrd_entry);
       if (LK_IS_LOCKWAIT_THREAD (waiter->thrd_entry) && waiter->thrd_entry->lockwait == (void *) waiter
 	  && (packed_row == 0
-	      || __atomic_load_n (&waiter->thrd_entry->lockwait_held_row, __ATOMIC_RELAXED) == packed_row))
+	      || __atomic_load_n (&waiter->thrd_entry->deferred_wake.held_row, __ATOMIC_RELAXED) == packed_row))
 	{
 	  /* edges the deadlock detector collected before the wake must not meet one collected after it */
 	  lk_Gl.TWFG_node[waiter->tran_index].thrd_wait_stime = 0;
@@ -7876,7 +7875,7 @@ lock_wake_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 packed_
   pthread_mutex_unlock (&res_ptr->res_mutex);
 }
 
-/* a row's OID in one word, for hand_row and lockwait_held_row */
+/* a row's OID in one word, for hand_row and deferred_wake.held_row */
 static UINT64
 lock_pack_row_oid (const OID * oid)
 {
@@ -7993,7 +7992,7 @@ lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
   int wait_msecs, ret;
   INT64 waited_msecs, start_msecs;
 
-  assert (thread_p->lockwait_prequeued == NULL);
+  assert (thread_p->deferred_wake.prequeued == NULL);
 
   search_key = lock_create_search_key (oid, class_oid);
   res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
@@ -8015,7 +8014,7 @@ lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
   if (owner != NULL)
     {
       thread_lock_entry (owner->thrd_entry);
-      if (owner->thrd_entry->lockwait_prequeued != (void *) owner
+      if (owner->thrd_entry->deferred_wake.prequeued != owner
 	  && !(LK_IS_LOCKWAIT_THREAD (owner->thrd_entry) && owner->thrd_entry->lockwait == (void *) owner))
 	{
 	  /* the owner has just timed out or been interrupted, and takes its entry away */
@@ -8041,7 +8040,7 @@ lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
   lock_remove_row_holder (thread_p, res_ptr, mine, tran_index, transient);
   /* we were the only holder */
   res_ptr->total_holders_mode = owner->granted_mode;
-  if (owner->thrd_entry->lockwait_prequeued == (void *) owner)
+  if (owner->thrd_entry->deferred_wake.prequeued == owner)
     {
       /* queued and not asleep yet: it sees the grant when it takes the resource mutex again */
       thread_unlock_entry (owner->thrd_entry);
@@ -8072,10 +8071,11 @@ lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
   thread_lock_entry (thread_p);
   pthread_mutex_unlock (&res_ptr->res_mutex);
   ret = lock_suspend (thread_p, entry_ptr, wait_msecs);
-  if (thread_p->lockwait_recheck.mvccid == owner_mvccid && thread_p->lockwait_recheck.trid == trid)
+  if (thread_p->deferred_wake.request.recheck.mvccid == owner_mvccid
+      && thread_p->deferred_wake.request.recheck.trid == trid)
     {
       /* the wait counts toward the timeout of the next wait on the owner */
-      thread_p->lockwait_recheck.waited_msecs += lock_monotonic_msecs () - start_msecs;
+      thread_p->deferred_wake.request.recheck.waited_msecs += lock_monotonic_msecs () - start_msecs;
     }
 
   if (ret == LOCK_RESUMED)
@@ -9803,7 +9803,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	{
 	  for (hi = res_ptr->waiter; hi != NULL; hi = hi->next)
 	    {
-	      if (hi->thrd_entry != NULL && hi->thrd_entry->lockwait_prequeued == (void *) hi)
+	      if (hi->thrd_entry != NULL && hi->thrd_entry->deferred_wake.prequeued == hi)
 		{
 		  break;
 		}

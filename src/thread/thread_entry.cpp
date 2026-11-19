@@ -117,10 +117,7 @@ namespace cubthread
     , lockwait_stime (0)
     , lockwait_msecs (0)
     , lockwait_state (-1)
-    , lockwait_wake_gen (0)
-    , lockwait_recheck {}
-    , lockwait_held_row (0)
-    , lockwait_prequeued (NULL)
+    , deferred_wake {}
     , query_entry (NULL)
     , tran_next_wait (NULL)
     , worker_thrd_list (NULL)
@@ -131,7 +128,6 @@ namespace cubthread
     , log_data_length (0)
     , no_logging (false)
     , net_request_index (-1)
-    , deferred_wake_epoch_seen (0)
     , vacuum_worker (NULL)
     , sort_stats_active (false)
     , event_stats ()
