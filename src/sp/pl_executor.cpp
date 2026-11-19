@@ -143,7 +143,7 @@ namespace cubpl
 
   int
   executor::fetch_args_peek (regu_variable_list_node *val_list_p, VAL_DESCR *val_desc_p, OID *obj_oid_p,
-			     QFILE_TUPLE_RECORD *tplrec)
+			     QFILE_TUPLE_RECORD *tplrec, int num_default_args)
   {
     int error = NO_ERROR;
     int index = 0;
@@ -170,11 +170,24 @@ namespace cubpl
     if (m_sig.has_args ())
       {
 	DB_VALUE *value = NULL;
+	const int first_default_arg = m_sig.arg.arg_size - num_default_args;
 
 	operand = val_list_p;
 	while (operand != NULL)
 	  {
+	    // the default of a parameter a call left out is a DEFAULT: a clock it reads is the statement clock
+	    const bool is_default = val_desc_p != NULL && index >= first_default_arg;
+	    const bool save_evaluating_default = is_default ? val_desc_p->evaluating_default : false;
+	    if (is_default)
+	      {
+		val_desc_p->evaluating_default = true;
+	      }
 	    error = fetch_peek_dbval (m_thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tplrec, &value);
+	    if (is_default)
+	      {
+		val_desc_p->evaluating_default = save_evaluating_default;
+	      }
+	    index++;
 	    if (error != NO_ERROR)
 	      {
 		m_args.clear ();

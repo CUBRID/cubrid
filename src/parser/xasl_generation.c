@@ -8971,6 +8971,13 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       node->info.method_call.arg_list = parser_append_node (default_next_node_list, node->info.method_call.arg_list);
 
+      /* the defaults are the last arguments: grafted here, or by an earlier compilation of the statement */
+      sp->num_default_args = 0;
+      for (PT_NODE * arg = node->info.method_call.arg_list; arg != NULL; arg = arg->next)
+	{
+	  sp->num_default_args = arg->flag.is_sp_default_arg ? sp->num_default_args + 1 : 0;
+	}
+
       DB_TYPE result_type = (DB_TYPE) sp->sig->result_type;
       if (result_type == DB_TYPE_RESULTSET)
 	{

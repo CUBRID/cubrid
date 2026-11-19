@@ -6355,6 +6355,8 @@ xts_process_sp_type (char *ptr, const SP_TYPE * sp)
     }
   ptr = or_pack_int (ptr, offset);
 
+  ptr = or_pack_int (ptr, sp->num_default_args);
+
   return ptr;
 }
 
@@ -8833,7 +8835,8 @@ xts_sizeof_sp_type (const SP_TYPE * sp)
 
   size += (PTR_SIZE		/* value */
 	   + PTR_SIZE		/* sig */
-	   + PTR_SIZE);		/* args */
+	   + PTR_SIZE		/* args */
+	   + OR_INT_SIZE);	/* num_default_args */
 
   return size;
 }

@@ -2754,5 +2754,11 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 	}
     }
 
+  // a statement compiled again finds them among its arguments
+  for (PT_NODE *arg = default_next_node_list; arg != NULL; arg = arg->next)
+    {
+      arg->flag.is_sp_default_arg = 1;
+    }
+
   return default_next_node_list;
 }

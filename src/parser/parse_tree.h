@@ -3957,6 +3957,7 @@ struct parser_node
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
     unsigned is_restored_default:1;	/* root of a DEFAULT tree copy grafted into a statement: type checking
 					 * keeps the types it was restored with */
+    unsigned is_sp_default_arg:1;	/* an argument a stored procedure call left out, from its parameter's DEFAULT */
     unsigned is_own_default:1;	/* an INSERT value that is the DEFAULT of its own column (the DEFAULT keyword, or
 				 * DEFAULT (c) in the place of c): all of them share the DEFAULT slot of the column */
     unsigned is_dblink_odku_value:1;	/* a remote INSERT ... SELECT ODKU value bound from the source row, and its copy

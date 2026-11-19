@@ -811,6 +811,7 @@ namespace cubxasl
     dest->sig = spawn (src->sig);
     dest->args = spawn (src->args);
     dest->value = spawn (src->value);
+    dest->num_default_args = src->num_default_args;
 
     return dest;
   }
