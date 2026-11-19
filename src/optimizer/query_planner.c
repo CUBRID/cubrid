@@ -267,7 +267,7 @@ static void qo_scan_info (QO_PLAN *, FILE *, int);
 typedef enum
 {
   QO_PARALLEL_MARK_NONE,	/* the child decides for itself */
-  QO_PARALLEL_MARK_SCAN,	/* a hash join input scan read in parallel */
+  QO_PARALLEL_MARK_SCAN,	/* a scan read in parallel outside a nested-loop block: a hash join input or a driving scan */
   QO_PARALLEL_MARK_IN_BLOCK	/* inside a parallel nested-loop block: not marked */
 } QO_PARALLEL_MARK;
 
@@ -9264,6 +9264,13 @@ qo_plan_child_parallel_mark (QO_PLAN * parent, QO_PLAN * child)
 	  && (child->plan_type == QO_PLANTYPE_SCAN || (child->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (child))))
 	{
 	  return QO_PARALLEL_MARK_IN_BLOCK;
+	}
+      /* a driving heap scan the executor reads in parallel while its few rows keep the chain serial
+       * (qo_plan_drives_parallel ()): its cost is divided in qo_nljoin_cost (), as a hash join input scan's is */
+      if (child == parent->plan_un.join.outer && child->plan_type == QO_PLANTYPE_SCAN
+	  && qo_join_input_factor (child, qo_parallel_cost_divisor (parent)) < 1.0)
+	{
+	  return QO_PARALLEL_MARK_SCAN;
 	}
       return QO_PARALLEL_MARK_NONE;
     }
