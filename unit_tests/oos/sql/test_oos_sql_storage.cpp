@@ -1217,8 +1217,8 @@ TEST_F (OosSqlStorage, ConfiguredThresholdPreservesStoragePolicies)
 TEST_F (OosSqlStorage, ConfiguredThresholdGateIsStrict)
 {
   scoped_oos_threshold restore_threshold;
-  prm_set_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD, 2048);
-  const int sizes[] = { 1999, 2000 };
+  prm_set_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD, 8192);
+  const int sizes[] = { 8143, 8144 };
 
   for (int i = 0; i < 2; ++i)
     {
