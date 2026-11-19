@@ -23041,7 +23041,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  return rc;
 	}
 
-      log_append_supplemental_undo_record (thread_p, &ovf_recdes);
+      log_append_supplemental_undo_record (thread_p, &ovf_recdes,
+					   pgbuf_get_tde_algorithm (context->home_page_watcher_p->pgptr));
 
       LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
     }
@@ -23524,7 +23525,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  if (context->do_supplemental_log)
 	    {
 	      /* relocation -> relocation case does not have any undo image to refer */
-	      log_append_supplemental_undo_record (thread_p, &new_forward_recdes);
+	      log_append_supplemental_undo_record (thread_p, &new_forward_recdes,
+						   pgbuf_get_tde_algorithm (context->forward_page_watcher_p->pgptr));
 
 	      /* SUPPLEMENT_DELETE UNDO LSA */
 	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
@@ -23948,7 +23950,8 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  /* undo lsa for SUPPLEMENT_DELETE : when REC_HOME is not changed  */
 	  if (context->do_supplemental_log)
 	    {
-	      log_append_supplemental_undo_record (thread_p, &built_recdes);
+	      log_append_supplemental_undo_record (thread_p, &built_recdes,
+						   pgbuf_get_tde_algorithm (context->home_page_watcher_p->pgptr));
 	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 	    }
 
