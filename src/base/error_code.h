@@ -1800,7 +1800,9 @@
 
 #define ER_LDR_PARTITIONED_CLASS_NOT_SUPPORTED      -1395
 
-#define ER_LAST_ERROR                               -1396
+#define ER_LOG_RESTORE_INCOMPLETE                   -1396
+
+#define ER_LAST_ERROR                               -1397
 
 
 /*
