@@ -509,6 +509,8 @@ au_export_grants (extract_context &ctxt, print_output &output_ctx, MOP class_mop
       cl_auth.users = NULL;
       break;
     case DB_OBJECT_PROCEDURE:
+    case DB_OBJECT_PACKAGE:
+      /* _db_stored_procedure and _db_package have the same owner attribute */
       cl_auth.class_mop = class_mop;
       cl_auth.owner = jsp_get_owner (class_mop);
       cl_auth.users = NULL;
@@ -946,6 +948,14 @@ issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AU
       username = au_get_user_name (grant->user->obj);
 
       output_ctx ("GRANT %s ON PROCEDURE ", gtype);
+      break;
+    case DB_OBJECT_PACKAGE:
+      unique_name[0] = '\0';
+      jsp_get_unique_name (auth->class_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH + 1);
+      SPLIT_USER_SPECIFIED_NAME (unique_name, owner_name, class_name);
+      username = au_get_user_name (grant->user->obj);
+
+      output_ctx ("GRANT %s ON PACKAGE ", gtype);
       break;
     default:
       output_ctx ("GRANT %s ON ", gtype);
