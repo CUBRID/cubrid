@@ -323,24 +323,26 @@ logwr_read_log_header (void)
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DISK_INCONSISTENT_VOL_HEADER, 1,
 		      logwr_Gl.active_name);
 
-	      /* Close the descriptor mounted above and forget it, so that a new active log is created when the first
-	       * pages arrive. If it stayed in append_vdes, the pages would go to the removed file. */
-	      fileio_dismount_without_fsync (NULL, logwr_Gl.append_vdes);
-	      logwr_Gl.append_vdes = NULL_VOLDES;
-	      fileio_unformat (NULL, logwr_Gl.active_name);
-	      er_clear ();
-
-	      if (fileio_is_volume_exist (logwr_Gl.active_name))
+	      if (remove (logwr_Gl.active_name) != 0 && errno != ENOENT)
 		{
-		  /* Could not remove it. The pages would have nowhere to go: no descriptor, and no new active log is
-		   * created while this one exists. */
+		  /* Could not remove it. Keep the descriptor: the pages still go to this file, which applylogdb reads
+		   * at the same path. */
 		  char error_str[PATH_MAX + 128];
+		  int remove_errno = errno;
 
 		  snprintf (error_str, sizeof (error_str), "Unable to remove the active log %s whose header page is "
-			    "only formatted", logwr_Gl.active_name);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_str);
-		  return ER_HA_GENERIC_ERROR;
+			    "only formatted. Keep writing to it", logwr_Gl.active_name);
+		  errno = remove_errno;
+		  er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_str);
 		}
+	      else
+		{
+		  /* Close the descriptor mounted above and forget it, so that a new active log is created when the
+		   * first pages arrive. If it stayed in append_vdes, the pages would go to the removed file. */
+		  fileio_dismount_without_fsync (NULL, logwr_Gl.append_vdes);
+		  logwr_Gl.append_vdes = NULL_VOLDES;
+		}
+	      er_clear ();
 	      return NO_ERROR;
 	    }
 
