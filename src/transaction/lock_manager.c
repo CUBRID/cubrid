@@ -7580,8 +7580,9 @@ lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOC
  * lock_get_tran_wake_generation - the count of wakes sent to self-lock waiters so far
  *
  * Note: a waiter reads it where no undo can yet have removed the stamp it will wait on -- under the latch it saw the
- *	 stamp with, or before it reads the stamp -- and passes it to lock_wait_transaction_mvccid (). A wake cannot
- *	 reach a waiter that has not joined the waiters yet; its bump sends that waiter back to read.
+ *	 stamp with, or before it reads the stamp -- and passes it with the owner (LK_STAMP_SEEN) to
+ *	 lock_wait_transaction_mvccid (). A wake cannot reach a waiter that has not joined the waiters yet; its bump
+ *	 sends that waiter back to read.
  */
 UINT64
 lock_get_tran_wake_generation (void)
@@ -7638,13 +7639,13 @@ lock_recheck_add_waited (THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int w
 #endif /* SERVER_MODE */
 
 /*
- * lock_wait_transaction_mvccid - Wait until the transaction working under mvccid ends, or until what the caller saw
- *				  may be gone
+ * lock_wait_transaction_mvccid - Wait until the transaction a stamp named ends, or until what the caller saw may be
+ *				  gone
  *
  * return: LK_GRANTED once it ended; LK_NOTGRANTED_DUE_RECHECK to read again; another LK_NOTGRANTED_* on failure,
  *	   with held->lost set when the row was handed to the owner and not had back
  *
- *   wake_gen(in): lock_get_tran_wake_generation (), read as that function says
+ *   seen(in): the owner the caller's stamp named, and the wake generation read with that stamp
  *   held(in/out): the row the caller holds X while it waits, or NULL
  *
  * Note: while the owner's wake is deferred, a recheck waits again, and an owner that comes back to the held row is
@@ -7652,11 +7653,13 @@ lock_recheck_add_waited (THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int w
  *	 rolling back again and again would keep the waiter from ever timing out.
  */
 int
-lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, LK_HELD_ROW * held)
+lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen, LK_HELD_ROW * held)
 {
 #if !defined (SERVER_MODE)
   return LK_GRANTED;
 #else /* !SERVER_MODE */
+  MVCCID mvccid = seen->owner;
+  UINT64 wake_gen = seen->wake_gen;	/* a recheck that waits again reads it anew */
   LOG_TDES *tdes;
   const OID *held_row = (held != NULL) ? held->oid : NULL;
   UINT64 packed_held = (held_row != NULL) ? lock_pack_row_oid (held_row) : 0;

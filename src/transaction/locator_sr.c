@@ -140,8 +140,7 @@ typedef struct locator_child_conflict LOCATOR_CHILD_CONFLICT;
 struct locator_child_conflict
 {
   OID oid;			/* the child whose lock is busy, or a NULL OID */
-  MVCCID writer;		/* the writer to wait for, or MVCCID_NULL */
-  UINT64 wake_gen;		/* lock_get_tran_wake_generation () before the header naming the writer was read */
+  LK_STAMP_SEEN writer;		/* the writer to wait for, or an owner MVCCID_NULL */
 };
 
 /* phase 3 restarts of one key before it waits holding its children, as without restarts: it bounds the passes over
@@ -4499,15 +4498,14 @@ locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 {
   HEAP_GET_CONTEXT context;
   MVCC_REC_HEADER header;
-  MVCCID writer;
+  LK_STAMP_SEEN writer;
   SCAN_CODE scan;
   int error_code;
-  UINT64 wake_gen;
 
   while (true)
     {
       /* read before the header: see lock_get_tran_wake_generation () */
-      wake_gen = lock_get_tran_wake_generation ();
+      writer.wake_gen = lock_get_tran_wake_generation ();
       heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN);
       context.latch_mode = PGBUF_LATCH_READ;
       scan = locator_peek_last_header (thread_p, &context, &header);
@@ -4521,8 +4519,8 @@ locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	  /* the gathered insert was undone; this row's writer came after phase 1 and may wait on our mark */
 	  return NO_ERROR;
 	}
-      writer = (scan == S_SUCCESS) ? locator_header_writer (thread_p, &header) : MVCCID_NULL;
-      if (writer == MVCCID_NULL)
+      writer.owner = (scan == S_SUCCESS) ? locator_header_writer (thread_p, &header) : MVCCID_NULL;
+      if (writer.owner == MVCCID_NULL)
 	{
 	  /* nothing to wait for, or nothing left to read (a slot freed, or taken by another row's address or moved
 	   * record): the locked read decides, and skips the child as it always has */
@@ -4532,7 +4530,7 @@ locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	    }
 	  return NO_ERROR;
 	}
-      error_code = logtb_wait_for_tran_end (thread_p, writer, wake_gen);
+      error_code = logtb_wait_for_tran_end (thread_p, &writer);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -4677,14 +4675,14 @@ static void
 locator_child_conflict_clear (LOCATOR_CHILD_CONFLICT * conflict)
 {
   OID_SET_NULL (&conflict->oid);
-  conflict->writer = MVCCID_NULL;
-  conflict->wake_gen = 0;
+  conflict->writer.owner = MVCCID_NULL;
+  conflict->writer.wake_gen = 0;
 }
 
 static bool
 locator_child_conflict_is_set (const LOCATOR_CHILD_CONFLICT * conflict)
 {
-  return !OID_ISNULL (&conflict->oid) || conflict->writer != MVCCID_NULL;
+  return !OID_ISNULL (&conflict->oid) || conflict->writer.owner != MVCCID_NULL;
 }
 
 /*
@@ -4713,7 +4711,7 @@ locator_read_taken_child (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, R
     }
 
   /* before the header: see lock_get_tran_wake_generation () */
-  conflict->wake_gen = lock_get_tran_wake_generation ();
+  conflict->writer.wake_gen = lock_get_tran_wake_generation ();
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, COPY, NULL_CHN);
   scan = heap_get_last_version (thread_p, &context);
   if (scan == S_SUCCESS && is_mvcc_class)
@@ -4724,8 +4722,8 @@ locator_read_taken_child (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, R
 	}
       else
 	{
-	  conflict->writer = locator_header_writer (thread_p, &header);
-	  if (conflict->writer == MVCCID_NULL)
+	  conflict->writer.owner = locator_header_writer (thread_p, &header);
+	  if (conflict->writer.owner == MVCCID_NULL)
 	    {
 	      (void) locator_has_isolation_conflict (thread_p, &context, &header, &scan);
 	    }
@@ -4780,7 +4778,7 @@ locator_try_lock_gathered_child (THREAD_ENTRY * thread_p, OID * oid, OID * class
   if (lock_object (thread_p, oid, class_oid, X_LOCK, LK_COND_LOCK) == LK_GRANTED)
     {
       error_code = locator_read_taken_child (thread_p, oid, class_oid, recdes, scan_cache, gone, conflict);
-      if (error_code != NO_ERROR || *gone || conflict->writer != MVCCID_NULL)
+      if (error_code != NO_ERROR || *gone || conflict->writer.owner != MVCCID_NULL)
 	{
 	  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, X_LOCK);
 	  return error_code;
@@ -4970,7 +4968,7 @@ locator_wait_out_child_conflict (THREAD_ENTRY * thread_p, OR_INDEX * index, LOCA
     }
   else
     {
-      error_code = logtb_wait_for_tran_end (thread_p, conflict->writer, conflict->wake_gen);
+      error_code = logtb_wait_for_tran_end (thread_p, &conflict->writer);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -14713,7 +14711,7 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
       if (owner_mvccid != MVCCID_NULL)
 	{
 	  /* read while the page the stamp was seen on is still fixed: see lock_get_tran_wake_generation () */
-	  UINT64 wake_gen = lock_get_tran_wake_generation ();
+	  LK_STAMP_SEEN seen = { owner_mvccid, lock_get_tran_wake_generation () };
 	  LK_HELD_ROW held = { context->oid_p, context->class_oid_p, transient, false };
 
 	  if (context->scan_cache != NULL && context->scan_cache->cache_last_fix_page
@@ -14723,8 +14721,7 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
 	      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
 	    }
 	  heap_clean_get_context (thread_p, context);
-	  if (logtb_wait_for_tran_end_on_row (thread_p, owner_mvccid, wake_gen, (*lock_acquired) ? &held : NULL) !=
-	      NO_ERROR)
+	  if (logtb_wait_for_tran_end_on_row (thread_p, &seen, (*lock_acquired) ? &held : NULL) != NO_ERROR)
 	    {
 	      if (held.lost)
 		{

@@ -70,6 +70,14 @@ enum
 enum
 { LK_UNCOND_LOCK, LK_COND_LOCK };
 
+/* what a self-lock waiter saw: the owner a stamp named, and the wake generation read with that stamp */
+typedef struct lk_stamp_seen LK_STAMP_SEEN;
+struct lk_stamp_seen
+{
+  MVCCID owner;			/* the MVCCID to wait out, or MVCCID_NULL */
+  UINT64 wake_gen;		/* lock_get_tran_wake_generation (), read as that function says */
+};
+
 /* the row a self-lock waiter holds X while it waits: the owner may be handed it (lock_wait_transaction_mvccid ()) */
 typedef struct lk_held_row LK_HELD_ROW;
 struct lk_held_row
@@ -255,7 +263,7 @@ extern void lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvcc
 extern int lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
 extern bool lock_is_transaction_mvccid_held (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern UINT64 lock_get_tran_wake_generation (void);
-extern int lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, LK_HELD_ROW * held);
+extern int lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen, LK_HELD_ROW * held);
 extern void lock_reset_request_state (THREAD_ENTRY * thread_p);
 extern void lock_deferred_wake_mark (THREAD_ENTRY * thread_p, int tran_index);
 extern void lock_deferred_wake_clear (THREAD_ENTRY * thread_p, int tran_index);

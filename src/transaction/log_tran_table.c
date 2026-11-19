@@ -4385,22 +4385,21 @@ logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 }
 
 /*
- * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends, or until what the caller saw may
- *				be gone
+ * logtb_wait_for_tran_end () - Block until the transaction a stamp named ends, or until what the caller saw may be
+ *				gone
  *
  * return	 : NO_ERROR once that transaction has ended, or when the caller is to read the stamp again
  *		   (lock_wait_transaction_mvccid ()). An error if the lock failed, or if it was granted while that
  *		   transaction is still active -- waiting again cannot help.
  * thread_p (in) : Thread entry.
- * mvccid (in)	 : MVCCID of the in-progress transaction to wait out.
- * wake_gen (in) : lock_get_tran_wake_generation (), read as that function says.
+ * seen (in)	 : the in-progress transaction to wait out (seen->owner), and the wake generation read with its stamp.
  *
  * Note: call with no page latch held.
  */
 int
-logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen)
+logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen)
 {
-  return logtb_wait_for_tran_end_on_row (thread_p, mvccid, wake_gen, NULL);
+  return logtb_wait_for_tran_end_on_row (thread_p, seen, NULL);
 }
 
 /*
@@ -4408,7 +4407,7 @@ logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen
  *				       owner may be handed the row (held->lost when it is not had back)
  */
 int
-logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, LK_HELD_ROW * held)
+logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen, LK_HELD_ROW * held)
 {
   int error_code;
   int granted;
@@ -4418,7 +4417,7 @@ logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 w
       thread_p = thread_get_thread_entry_info ();
     }
 
-  granted = lock_wait_transaction_mvccid (thread_p, mvccid, wake_gen, held);
+  granted = lock_wait_transaction_mvccid (thread_p, seen, held);
   if (granted == LK_NOTGRANTED_DUE_RECHECK)
     {
       return NO_ERROR;
@@ -4433,9 +4432,9 @@ logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 w
 	}
       return error_code;
     }
-  lock_unlock_transaction_mvccid (thread_p, mvccid, S_LOCK);
+  lock_unlock_transaction_mvccid (thread_p, seen->owner, S_LOCK);
 
-  if (log_Gl.mvcc_table.is_active (mvccid))
+  if (log_Gl.mvcc_table.is_active (seen->owner))
     {
       /* Invariant breach: no-op grant while that transaction is still active. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
