@@ -14981,7 +14981,7 @@ heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_
  *                           variable column keeps the storage form it has in old_recdes
  *   return: SCAN_CODE
  *   attr_info(in/out): read from old_recdes
- *   old_recdes(in): the record the new one replaces
+ *   old_recdes(in): the record the new one replaces, as stored (its OOS stubs not replaced by values); required
  *   new_recdes(out):
  *
  * Note: Nothing is written to OOS. For a writer that logs the new record redo-only, which must not write anything a
@@ -14991,7 +14991,13 @@ SCAN_CODE
 heap_attrinfo_transform_to_disk_keep_form (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 					   RECDES * old_recdes, record_descriptor * new_recdes)
 {
-  assert (old_recdes != NULL && old_recdes->data != NULL);
+  /* without the record there is no form to keep, and the layout would demote columns that nothing then inserts */
+  if (old_recdes == NULL || old_recdes->data == NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return S_ERROR;
+    }
   return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_INCLUDE_LOB,
 						   nullptr, /* reuse_oos_stubs */ false, /* keep_form */ true);
 }
