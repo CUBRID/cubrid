@@ -497,13 +497,10 @@ struct insert_proc_node
   int remote_odku_val_start;	/* position in the source row of the first value bound for a NULL remote_odku_exprs */
   int remote_num_odku_bound;	/* number of NULL remote_odku_exprs, as the plan counted them */
   TP_DOMAIN **att_domains;	/* CBRD-27583: the domain of each attribute, in att_id order */
-  int *default_types;		/* CBRD-27583: the DB_TYPE each of the first num_default_expr attributes' default
-				 * is made in before its cast into the attribute's domain (pt_default_value_type) */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   DB_TYPE *value_types;		/* CBRD-27583: the type each value comes in - per row of values and
 				 * attribute, a single row for a SELECT - chosen at unpack */
   TP_VALUE_CONVERTER *convs;	/* CBRD-27583: each value_types entry into its attribute's domain */
-  TP_VALUE_CONVERTER *default_convs;	/* CBRD-27583: each default_types entry into its attribute's domain */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

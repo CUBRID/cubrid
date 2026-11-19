@@ -58,6 +58,7 @@ extern int jsp_make_pl_args (PARSER_CONTEXT * parser, PT_NODE * node, int num_pa
 			     cubpl::pl_signature & signature);
 
 extern int jsp_is_exist_stored_procedure (const char *name);
+extern bool jsp_is_param_type_supported (DB_TYPE type);
 
 extern char *jsp_get_owner_name (const char *name, char *buf, int buf_size);
 extern int jsp_get_return_type (const char *name);
@@ -76,5 +77,6 @@ extern void jsp_set_prepare_call (void);
 extern void jsp_unset_prepare_call (void);
 extern bool jsp_is_prepare_call (void);
 
-extern PT_NODE *jsp_get_default_expr_node_list (PARSER_CONTEXT * parser, cubpl::pl_signature & sig);
+extern PT_NODE *jsp_get_default_expr_node_list (PARSER_CONTEXT * parser, cubpl::pl_signature & sig,
+						bool * reads_statement_clock);
 #endif /* _JSP_CL_H_ */

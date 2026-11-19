@@ -1780,11 +1780,6 @@
 #define ER_SYSMETA_UPGRADE_REQUIRED                 -1381
 #define ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED          -1382
 
-<<<<<<< HEAD
-#define ER_SM_INVALID_DEFAULT_EXPR_STREAM           -1383
-
-#define ER_LAST_ERROR                               -1384
-=======
 #define ER_QPROC_DOMAIN_UNRESOLVED                  -1383
 
 #define ER_SES_VARIABLE_TYPE_FIXED                  -1384
@@ -1803,8 +1798,9 @@
 #define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
 #define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-#define ER_LAST_ERROR                               -1395
->>>>>>> upstream/develop
+#define ER_SM_INVALID_DEFAULT_EXPR_STREAM           -1395
+
+#define ER_LAST_ERROR                               -1396
 
 
 /*

@@ -686,12 +686,19 @@ pt_is_analytic_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 bool
 pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
-  FUNC_CODE function_type;
+  return node->node_type == PT_FUNCTION && pt_is_expr_wrapped_fcode (node->info.function.function_type);
+}
 
-  if (node->node_type == PT_FUNCTION)
-    {
-      function_type = node->info.function.function_type;
-      if (function_type == F_INSERT_SUBSTRING
+/*
+ * pt_is_expr_wrapped_fcode () - whether a function is one the grammar wraps in an expression, which the client can
+ *	evaluate
+ *   return: true if so
+ *   function_type(in): function code
+ */
+bool
+pt_is_expr_wrapped_fcode (FUNC_CODE function_type)
+{
+  return (function_type == F_INSERT_SUBSTRING
 	  || function_type == F_ELT
 	  || function_type == F_JSON_ARRAY
 	  || function_type == F_JSON_ARRAY_APPEND || function_type == F_JSON_ARRAY_INSERT
@@ -712,13 +719,7 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  || function_type == F_JSON_SET
 	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID
 	  || function_type == F_REGEXP_COUNT || function_type == F_REGEXP_INSTR || function_type == F_REGEXP_LIKE
-	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR)
-	{
-	  return true;
-	}
-    }
-
-  return false;
+	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR);
 }
 
 /*
@@ -11503,12 +11504,17 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
  * stream restores the already type-checked tree (resolved result domains
  * included) deterministically.
  * Stream layout (all multi-byte fields via OR_BUF):
- *   version(byte = PT_CDT_VERSION)  node
+ *   version(byte = PT_CDT_VERSION)  volatility(int)  si_requirement(int)  node
  *   node := VALUE_TAG(int)  db_value(or_put_value, domain included)
- *         | OP_TAG(int)     op(int)  qualifier(int)  continued_case(int)  result domain  arity(int)  node*arity
- *         | FUNC_TAG(int)   fcode(int)  qualifier(int = 0)  continued_case(int = 0)  result domain  arity(int)
- *                          node*arity
+ *         | OP_TAG(int)     op(int)  qualifier(int)  continued_case(int)  volatility(int)  si_requirement(int)
+ *                          result domain  arity(int)  node*arity
+ *         | FUNC_TAG(int)   fcode(int)  qualifier(int = 0)  continued_case(int = 0)  volatility(int)
+ *                          si_requirement(int)  result domain  arity(int)  node*arity
  * A PT_FUNCTION_HOLDER wrapper is transparent: its held PT_FUNCTION is stored.
+ * The volatility and si_requirement at the head are those of the whole tree, for a reader that needs only them
+ * (pt_compact_default_tree_properties).  Those of a node are the ones of the overload type checking matched for it
+ * (not combined with its operands'): a rehydrated tree is not type-checked again, and the code alone does not tell
+ * RAND () from RAND (seed).
  * continued_case is an unparse hint of PT_EXPR (CONCAT/CONCAT_WS/FIELD and the
  * CASE/DECODE/COALESCE/LEAST/GREATEST chains); without it a rehydrated residual
  * prints in a different form than the original expression.
@@ -11563,7 +11569,7 @@ pt_cdt_canonical_domain (TP_DOMAIN * domain)
 
 /*
  * pt_cdt_put_node_header () - emit the uniform OP/FUNC node header: tag,
- *	code, qualifier, continued_case, canonical result domain, 32-bit alignment
+ *	code, qualifier, continued_case, volatility, si_requirement, canonical result domain, 32-bit alignment
  *   return: NO_ERROR or error code
  *
  * On overflow this returns ER_TF_BUFFER_OVERFLOW before anything is written 
@@ -11571,7 +11577,7 @@ pt_cdt_canonical_domain (TP_DOMAIN * domain)
  */
 static int
 pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, int tag, int code, int qualifier,
-			int continued_case)
+			int continued_case, PT_VOLATILITY volatility, int si_requirement)
 {
   TP_DOMAIN *domain;
   int rc;
@@ -11586,7 +11592,7 @@ pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, i
 
   /* everything written below plus the arity int the caller writes right
    * after this header */
-  int header_ints_size = 4 * OR_INT_SIZE;	/* tag, code, qualifier, continued_case */
+  int header_ints_size = 6 * OR_INT_SIZE;	/* tag, code, qualifier, continued_case, volatility, si_requirement */
   int aligned_domain_size = DB_ALIGN (or_packed_domain_size (domain, 0), INT_ALIGNMENT);
   int arity_size = OR_INT_SIZE;
 
@@ -11599,6 +11605,8 @@ pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, i
   or_put_int (buf, code);
   or_put_int (buf, qualifier);
   or_put_int (buf, continued_case);
+  or_put_int (buf, (int) volatility);
+  or_put_int (buf, si_requirement);
   rc = or_put_domain (buf, domain, 0, 0);
   if (rc == NO_ERROR)
     {
@@ -11661,7 +11669,8 @@ pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
       /* continued_case is an unparse hint (e.g. whether CONCAT prints as a function call); preserve it so a
        * rehydrated residual prints like the original expression */
       rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_OP, (int) node->info.expr.op,
-				   (int) node->info.expr.qualifier, (int) node->info.expr.continued_case);
+				   (int) node->info.expr.qualifier, (int) node->info.expr.continued_case,
+				   node->info.expr.expr_volatility, node->info.expr.expr_si_requirement);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -11686,7 +11695,8 @@ pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
       return rc;
 
     case PT_FUNCTION:
-      rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_FUNC, (int) node->info.function.function_type, 0, 0);
+      rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_FUNC, (int) node->info.function.function_type, 0, 0,
+				   node->info.function.expr_volatility, node->info.function.expr_si_requirement);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -11714,11 +11724,21 @@ pt_cdt_serialize (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *s
   char *data = NULL;
   OR_BUF buf;
   int rc;
+  PT_VOLATILITY volatility;
+  PT_NODE *unclassified_node = NULL;
 
   assert (parser != NULL && expr != NULL && stream != NULL && stream_size != NULL);
 
   *stream = NULL;
   *stream_size = 0;
+
+  volatility = pt_get_expr_tree_volatility (expr, &unclassified_node);
+  if (!PT_VOLATILITY_IS_RESIDUAL (volatility))
+    {
+      /* only a residual DEFAULT is stored as a tree */
+      assert (false);
+      return ER_FAILED;
+    }
 
   /* the stream is small by design; grow geometrically on overflow */
   for (; buf_size <= max_size; buf_size *= 2)
@@ -11735,6 +11755,14 @@ pt_cdt_serialize (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *s
       if (rc == NO_ERROR)
 	{
 	  rc = or_put_align32 (&buf);
+	}
+      if (rc == NO_ERROR)
+	{
+	  rc = or_put_int (&buf, (int) volatility);
+	}
+      if (rc == NO_ERROR)
+	{
+	  rc = or_put_int (&buf, pt_get_expr_tree_si_requirement (expr));
 	}
       if (rc == NO_ERROR)
 	{
@@ -11801,7 +11829,8 @@ static PT_NODE *
 pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 {
   int rc = NO_ERROR;
-  int tag, code, qualifier, continued_case = 0, arity, i;
+  int tag, code, qualifier, continued_case = 0, volatility = PT_VOLATILITY_UNSET, si_requirement = PT_SI_NONE;
+  int arity, i;
   int is_null = 0;
   TP_DOMAIN *domain = NULL;
   PT_NODE *node = NULL;
@@ -11846,7 +11875,15 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
     {
       continued_case = or_get_int (buf, &rc);
     }
-  if (rc != NO_ERROR)
+  if (rc == NO_ERROR)
+    {
+      volatility = or_get_int (buf, &rc);
+    }
+  if (rc == NO_ERROR)
+    {
+      si_requirement = or_get_int (buf, &rc);
+    }
+  if (rc != NO_ERROR || volatility < PT_VOLATILITY_UNSET || volatility > PT_VOLATILITY_VOLATILE)
     {
       return NULL;
     }
@@ -11863,7 +11900,7 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 
   /* a code outside its enumeration is a damaged stream, or one written by a build whose enumeration differs */
   if ((tag == PT_CDT_TAG_OP && (code < PT_AND || code >= PT_LAST_OPCODE))
-      || (tag == PT_CDT_TAG_FUNC && (code < PT_MIN || code > PT_PERCENTILE_DISC)))
+      || (tag == PT_CDT_TAG_FUNC && (code < PT_MIN || code >= PT_LAST_FUNC_CODE)))
     {
       return NULL;
     }
@@ -11893,6 +11930,8 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
       node->info.expr.op = (PT_OP_TYPE) code;
       node->info.expr.qualifier = (PT_MISC_TYPE) qualifier;
       node->info.expr.continued_case = (short) continued_case;
+      node->info.expr.expr_volatility = (PT_VOLATILITY) volatility;
+      node->info.expr.expr_si_requirement = si_requirement;
       node->info.expr.arg1 = args[0];
       node->info.expr.arg2 = args[1];
       node->info.expr.arg3 = args[2];
@@ -11917,6 +11956,8 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 	  return NULL;
 	}
       node->info.function.function_type = (FUNC_CODE) code;
+      node->info.function.expr_volatility = (PT_VOLATILITY) volatility;
+      node->info.function.expr_si_requirement = si_requirement;
       node->info.function.arg_list = arg_list;
     }
 
@@ -11939,7 +11980,95 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
    * (Default Reference), so its evaluation stays at execution time */
   node->flag.do_not_fold = 1;
 
+  if (tag == PT_CDT_TAG_FUNC)
+    {
+      /* the parser never leaves a PT_FUNCTION bare: a function call is held by a PT_FUNCTION_HOLDER expression,
+       * which evaluation and printing expect.  The stream stores the function without it, so put it back. */
+      PT_NODE *holder = pt_expression_1 (parser, PT_FUNCTION_HOLDER, node);
+
+      if (holder == NULL)
+	{
+	  return NULL;
+	}
+      holder->type_enum = node->type_enum;
+      holder->data_type = parser_copy_tree (parser, node->data_type);
+      holder->flag.do_not_fold = 1;
+      node = holder;
+    }
+
   return node;
+}
+
+/*
+ * pt_cdt_get_head () - reads the head of a Compact DEFAULT Tree stream, leaving the buffer at the root node
+ *   return: NO_ERROR, or ER_FAILED for a stream this build does not read (no error is set)
+ *   buf(in/out): buffer at the start of the stream
+ *   volatility(out): volatility of the whole tree
+ *   si_requirement(out): SI requirement of the whole tree
+ */
+static int
+pt_cdt_get_head (OR_BUF * buf, PT_VOLATILITY * volatility, int *si_requirement)
+{
+  int rc = NO_ERROR;
+  int version, vol = PT_VOLATILITY_UNSET, si = PT_SI_NONE;
+
+  version = or_get_byte (buf, &rc);
+  if (rc != NO_ERROR || version != PT_CDT_VERSION || or_get_align32 (buf) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  vol = or_get_int (buf, &rc);
+  if (rc == NO_ERROR)
+    {
+      si = or_get_int (buf, &rc);
+    }
+  /* only a residual DEFAULT is stored as a tree */
+  if (rc != NO_ERROR || (vol != PT_VOLATILITY_STABLE && vol != PT_VOLATILITY_VOLATILE)
+      || (si & ~PT_SI_SYS_DATETIME) != 0)
+    {
+      return ER_FAILED;
+    }
+
+  *volatility = (PT_VOLATILITY) vol;
+  *si_requirement = si;
+  return NO_ERROR;
+}
+
+/*
+ * pt_compact_default_tree_properties () - the evaluation properties of a whole residual DEFAULT, read from the
+ *	head of its Compact DEFAULT Tree stream without rehydrating the tree
+ *   return: NO_ERROR, or ER_FAILED for a stream this build does not read (no error is set)
+ *   stream(in): serialized Compact DEFAULT Tree
+ *   stream_size(in): stream size in bytes
+ *   volatility(out): STABLE or VOLATILE; may be NULL
+ *   si_requirement(out): PT_SI_REQUIREMENT bits; may be NULL
+ */
+int
+pt_compact_default_tree_properties (const char *stream, int stream_size, PT_VOLATILITY * volatility,
+				    int *si_requirement)
+{
+  OR_BUF buf;
+  PT_VOLATILITY head_volatility;
+  int head_si_requirement;
+
+  assert (stream != NULL && stream_size > 0);
+
+  or_init (&buf, CONST_CAST (char *, stream), stream_size);
+  if (pt_cdt_get_head (&buf, &head_volatility, &head_si_requirement) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (volatility != NULL)
+    {
+      *volatility = head_volatility;
+    }
+  if (si_requirement != NULL)
+    {
+      *si_requirement = head_si_requirement;
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -11954,20 +12083,31 @@ PT_NODE *
 pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream, int stream_size)
 {
   OR_BUF buf;
-  int rc = NO_ERROR;
-  int version;
+  PT_NODE *tree;
+  PT_VOLATILITY volatility;
+  int si_requirement;
 
   assert (parser != NULL && stream != NULL && stream_size > 0);
 
   or_init (&buf, CONST_CAST (char *, stream), stream_size);
 
-  version = or_get_byte (&buf, &rc);
-  if (rc != NO_ERROR || version != PT_CDT_VERSION || or_get_align32 (&buf) != NO_ERROR)
+  if (pt_cdt_get_head (&buf, &volatility, &si_requirement) != NO_ERROR)
     {
       return NULL;
     }
 
-  return pt_cdt_get_node (parser, &buf);
+  tree = pt_cdt_get_node (parser, &buf);
+#if !defined (NDEBUG)
+  if (tree != NULL)
+    {
+      PT_NODE *unclassified_node = NULL;
+
+      /* the head is what the nodes combine to */
+      assert (volatility == pt_get_expr_tree_volatility (tree, &unclassified_node));
+      assert (si_requirement == pt_get_expr_tree_si_requirement (tree));
+    }
+#endif
+  return tree;
 }
 
 /*
@@ -11975,7 +12115,7 @@ pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream
  *
  * Each attribute's stream is decoded once per parser (once per compile, once per
  * prepare) and the same tree is handed to every reader in the statement: the Default
- * References, the statement-clock probe and the Local Evaluation CDT_EVAL_SET.
+ * References, the DEFAULT slots and the Local Evaluation CDT_EVAL_SET.
  * Entries, stream copies and tree nodes are parser memory and go with the parser.
  * Only the DB_VALUEs inside the PT_VALUE nodes need a walk, pt_cdt_registry_free.
  *
@@ -11997,7 +12137,7 @@ struct pt_cdt_registry_entry
   const char *stream;		/* parser-owned copy of the stream the tree was decoded from (content check) */
   int stream_size;
   PT_NODE *tree;		/* the shared rehydrated tree */
-  PT_VOLATILITY volatility;	/* effective volatility of tree (pt_get_expr_tree_volatility) */
+  PT_VOLATILITY volatility;	/* volatility of tree, from the head of the stream */
 };
 
 /*
@@ -12015,7 +12155,8 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
 {
   struct pt_cdt_registry_entry *entry;
   const DB_DEFAULT_EXPR *default_expr;
-  PT_NODE *tree, *unclassified_node = NULL;
+  PT_NODE *tree;
+  PT_VOLATILITY head_volatility = PT_VOLATILITY_UNSET;
   char *stream_copy;
 
   assert (parser != NULL && att != NULL);
@@ -12085,7 +12226,9 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
   entry->stream = stream_copy;
   entry->stream_size = default_expr->default_expr_tree_stream_size;
   entry->tree = tree;
-  entry->volatility = pt_get_expr_tree_volatility (tree, &unclassified_node);
+  (void) pt_compact_default_tree_properties (default_expr->default_expr_tree_stream,
+					     default_expr->default_expr_tree_stream_size, &head_volatility, NULL);
+  entry->volatility = head_volatility;
   entry->next = parser->cdt_registry;
   parser->cdt_registry = entry;
 
@@ -12204,7 +12347,7 @@ pt_omits_client_default (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE
       tree = pt_cdt_registry_tree (parser, att, NULL);
       if (tree == NULL)
 	{
-	  /* name resolution decoded this tree already; a failure here is reported when the XASL is generated */
+	  /* a failure here is reported when the XASL is generated */
 	  return true;
 	}
       if (pt_expr_tree_reads_client_value (parser, tree))

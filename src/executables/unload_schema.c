@@ -4303,6 +4303,7 @@ emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg
 {
   MOP arg;
   DB_VALUE arg_val, arg_name_val, arg_mode_val, arg_type_val, arg_comment_val;
+  DB_VALUE arg_optional_val, arg_default_val, arg_default_expr_val;
   int arg_mode, arg_type, i, save;
   int err;
   int err_count = 0;
@@ -4323,7 +4324,10 @@ emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg
       if ((err = db_get (arg, SP_ARG_ATTR_ARG_NAME, &arg_name_val)) != NO_ERROR
 	  || (err = db_get (arg, SP_ARG_ATTR_MODE, &arg_mode_val)) != NO_ERROR
 	  || (err = db_get (arg, SP_ARG_ATTR_DATA_TYPE, &arg_type_val)) != NO_ERROR
-	  || (err = db_get (arg, SP_ARG_ATTR_COMMENT, &arg_comment_val)) != NO_ERROR)
+	  || (err = db_get (arg, SP_ARG_ATTR_COMMENT, &arg_comment_val)) != NO_ERROR
+	  || (err = db_get (arg, SP_ARG_ATTR_IS_OPTIONAL, &arg_optional_val)) != NO_ERROR
+	  || (err = db_get (arg, SP_ARG_ATTR_DEFAULT_VALUE, &arg_default_val)) != NO_ERROR
+	  || (err = db_get (arg, SP_ARG_ATTR_DEFAULT_EXPR, &arg_default_expr_val)) != NO_ERROR)
 	{
 	  err_count++;
 	  continue;
@@ -4345,6 +4349,25 @@ emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg
 	  output_ctx ("%s", db_get_type_name ((DB_TYPE) arg_type));
 	}
 
+      if (!DB_IS_NULL (&arg_optional_val) && db_get_int (&arg_optional_val) == 1)
+	{
+	  output_ctx (" DEFAULT ");
+	  if (!DB_IS_NULL (&arg_default_expr_val))
+	    {
+	      /* an expression evaluated at each call: default_value holds its text */
+	      output_ctx ("%s", db_get_string (&arg_default_val));
+	    }
+	  else if (DB_IS_NULL (&arg_default_val))
+	    {
+	      output_ctx ("NULL");
+	    }
+	  else
+	    {
+	      /* a value, kept as the string it converts from at a call: written as a string, of any type */
+	      desc_value_print (output_ctx, &arg_default_val);
+	    }
+	}
+
       if (!DB_IS_NULL (&arg_comment_val))
 	{
 	  output_ctx (" COMMENT ");
@@ -4356,6 +4379,8 @@ emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg
 	  output_ctx (", ");
 	}
 
+      pr_clear_value (&arg_default_val);
+      pr_clear_value (&arg_default_expr_val);
       pr_clear_value (&arg_val);
     }
 
