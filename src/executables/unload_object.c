@@ -1412,6 +1412,19 @@ unload_printer (LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj, TEXT_OUTPUT * obj
 		}
 	      error = NO_ERROR;
 	    }
+	  else
+	    {
+	      /*
+	       * A flush that fails loses the rows obj_out has gathered, not this one alone: a compressed section
+	       * releases them all when it cannot compress them, see binary_compress_output (). So it is never
+	       * ignored as the error of one object is.
+	       */
+	      error = text_print_request_flush (obj_out, false);
+	      if (error != NO_ERROR)
+		{
+		  break;
+		}
+	    }
 	}
       else
 	{
@@ -2303,7 +2316,8 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_O
     }
   TIMER_END ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
 
-  return text_print_request_flush (obj_out, false);
+  /* the caller flushes obj_out, see unload_printer () */
+  return NO_ERROR;
 
 exit_on_error:
   CHECK_EXIT_ERROR (error);
