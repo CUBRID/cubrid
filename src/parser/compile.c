@@ -670,6 +670,11 @@ pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
 	  if (class_->info.name.virt_object != NULL)
 	    {
+	      if (locator_flush_class (class_->info.name.virt_object) != NO_ERROR)
+		{
+		  PT_ERRORc (parser, class_, er_msg ());
+		}
+
 	      class_->info.name.virt_object_chn = locator_get_cache_coherency_number (class_->info.name.virt_object);
 	    }
 	}
