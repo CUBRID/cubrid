@@ -592,7 +592,8 @@ namespace cubconn::connection
 	assert_release (false);
       }
 
-    /* timer */
+    /* timer: eventfd_addtimer () takes the first base time from m_timens */
+    m_timens = this->get_time_ns (CLOCK_MONOTONIC);
     for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
       {
 	m_timer_handler[i].valid = false;
