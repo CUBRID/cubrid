@@ -457,6 +457,7 @@ static XASL_NODE *pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * sele
 static XASL_NODE *pt_gen_simple_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan, XASL_NODE * xasl);
 static XASL_NODE *pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * qo_plan);
 static XASL_NODE *pt_to_buildschema_proc (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static bool pt_buildvalue_output_reads_scan (XASL_NODE * xasl);
 static XASL_NODE *pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * qo_plan);
 static bool pt_analytic_to_metadomain (ANALYTIC_TYPE * func_p, PT_NODE * sort_list, ANALYTIC_KEY_METADOMAIN * func_meta,
 				       PT_NODE ** index, int *index_size);
@@ -661,8 +662,7 @@ static bool pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statemen
 
 int pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl);
 static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
-static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
-							  int *continue_walk);
+static PT_NODE *pt_check_reuse_unsafe_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_find_group_key_expr (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list);
 static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list,
 				    VAL_LIST * vallist);
@@ -1225,6 +1225,14 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
   int level;
 
   plan = qo_optimize_query (parser, select_node);
+
+  if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
+    {
+      /* retry ignoring only the join method hints that cannot be applied to their joins (CBRD-28089) */
+      PT_SELECT_INFO_SET_FLAG (select_node, PT_SELECT_INFO_LENIENT_JOIN_HINT);
+      plan = qo_optimize_query (parser, select_node);
+      PT_SELECT_INFO_CLEAR_FLAG (select_node, PT_SELECT_INFO_LENIENT_JOIN_HINT);
+    }
 
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
     {
@@ -3760,6 +3768,8 @@ pt_symbol_info_alloc (void)
       symbols->listfile_attr_offset = 0;
 
       symbols->query_node = NULL;
+      symbols->func_idx_cover_list = NULL;
+      symbols->func_idx_routed_list = NULL;
     }
 
   return symbols;
@@ -4585,6 +4595,17 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      /* convert to SORT_LIST */
 	      aggregate_list->sort_list =
 		pt_agg_orderby_to_sort_list (parser, tree->info.function.order_by, tree->info.function.arg_list);
+	      if (aggregate_list->function == PT_CUME_DIST || aggregate_list->function == PT_PERCENT_RANK)
+		{
+		  /* CBRD-27817: no list is sorted by these keys - the hypothetical values compare with the ORDER BY
+		   * items - and each key carries its item's domain, not the hypothetical argument's */
+		  SORT_LIST *key = aggregate_list->sort_list;
+		  for (PT_NODE * item = tree->info.function.order_by; key != NULL && item != NULL;
+		       key = key->next, item = item->next)
+		    {
+		      key->pos_descr.dom = pt_xasl_node_to_domain (parser, item->info.sort_spec.expr);
+		    }
+		}
 	    }
 	  else
 	    {
@@ -9344,6 +9365,8 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 
 	  if (xasl->single_tuple)
 	    {
+	      /* the value is read in the list's column domain (qdata_get_single_tuple_from_list_id), as regu's */
+	      xasl->single_tuple->valp->dom = regu->domain;
 	      regu->type = TYPE_CONSTANT;
 	      regu->value.dbvalptr = xasl->single_tuple->valp->val;
 	      /* mark uncorrelated scalar subquery (precompute/inject/checker-relax):
@@ -9363,8 +9386,10 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	}
       else
 	{
-	  /* CBRD-27583: a list a type checking left variable reads as its first column, as a single tuple does */
-	  if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
+	  /* CBRD-27583: a list a type checking left variable, or whose collation it left to an enforced or bound one,
+	   * reads as its first column, as a single tuple does */
+	  if (regu->domain != NULL && (TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE
+				       || TP_DOMAIN_COLLATION_FLAG (regu->domain) != TP_DOMAIN_COLL_NORMAL))
 	    {
 	      regu->domain = pt_reader_domain (regu->domain, domain_list_column_of (xasl, 0));
 	    }
@@ -9805,6 +9830,544 @@ pt_make_prefix_index_data_filter (PARSER_CONTEXT * parser, PT_NODE * where_key_p
 }
 
 /*
+ * pt_func_index_scan_cons () - get the function index of an index scan plan
+ *   return: the function index constraint, or NULL
+ *   plan(in): plan
+ */
+static SM_CLASS_CONSTRAINT *
+pt_func_index_scan_cons (QO_PLAN * plan)
+{
+  QO_INDEX_ENTRY *index_entry;
+  SM_CLASS_CONSTRAINT *cons;
+
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN || plan->plan_un.scan.index == NULL)
+    {
+      return NULL;
+    }
+
+  index_entry = plan->plan_un.scan.index->head;
+  if (index_entry == NULL || index_entry->constraints == NULL)
+    {
+      return NULL;
+    }
+
+  cons = index_entry->constraints;
+  if (cons->func_index_info == NULL || cons->attributes == NULL)
+    {
+      return NULL;
+    }
+
+  return cons;
+}
+
+/*
+ * pt_is_func_index_arg_only_in_expr () - check whether a covered function index scan can leave out a column, because
+ *   it is an argument the query uses only inside the indexed expression
+ *   return: bool
+ *   plan(in): covered function index scan plan
+ *   attr(in): column (PT_NAME)
+ *   scan_terms(in): key range and key filter terms of the scan
+ */
+static bool
+pt_is_func_index_arg_only_in_expr (QO_PLAN * plan, PT_NODE * attr, BITSET * scan_terms)
+{
+  QO_ENV *env = plan->info->env;
+  QO_SEGMENT *seg;
+  PT_NODE *pt_seg;
+  int i;
+
+  for (i = 0; i < env->nsegs; i++)
+    {
+      seg = QO_ENV_SEG (env, i);
+      if (seg == NULL || QO_SEG_HEAD (seg) != plan->plan_un.scan.node || QO_SEG_FUNC_INDEX (seg))
+	{
+	  continue;
+	}
+
+      pt_seg = QO_SEG_PT_NODE (seg);
+      if (pt_seg != NULL && pt_seg->node_type == PT_NAME && pt_seg->info.name.original != NULL
+	  && !intl_identifier_casecmp (pt_seg->info.name.original, attr->info.name.original))
+	{
+	  return qo_seg_used_only_in_func_index (env, plan->plan_un.scan.index->head, seg, scan_terms);
+	}
+    }
+
+  return false;
+}
+
+/*
+ * pt_add_func_index_result_attr () - append (once) a pseudo attribute for the function index result to the
+ *   table info of a spec, together with its value list slot
+ *   return: the pseudo attribute, or NULL
+ *   parser(in):
+ *   spec(in): scanned spec
+ *   cons(in): function index constraint
+ */
+static PT_NODE *
+pt_add_func_index_result_attr (PARSER_CONTEXT * parser, PT_NODE * spec, SM_CLASS_CONSTRAINT * cons)
+{
+  TABLE_INFO *table_info;
+  PT_NODE *attr;
+  TP_DOMAIN *dom = cons->func_index_info->fi_domain;
+  const char *expr_str = cons->func_index_info->expr_str;
+  VAL_LIST *slot;
+  QPROC_DB_VALUE_LIST *tail;
+
+  if (parser->symbols == NULL || dom == NULL || expr_str == NULL)
+    {
+      return NULL;
+    }
+
+  table_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);
+  if (table_info == NULL || table_info->value_list == NULL)
+    {
+      return NULL;
+    }
+
+  for (attr = table_info->attribute_list; attr != NULL; attr = attr->next)
+    {
+      if (attr->node_type == PT_NAME && PT_NAME_INFO_IS_FLAGED (attr, PT_NAME_INFO_FUNC_INDEX_RESULT)
+	  && !intl_identifier_casecmp (attr->info.name.original, expr_str))
+	{
+	  return attr;
+	}
+    }
+
+  attr = pt_name (parser, expr_str);
+  if (attr == NULL)
+    {
+      return NULL;
+    }
+  attr->info.name.spec_id = spec->info.spec.id;
+  attr->info.name.meta_class = PT_NORMAL;
+  if (spec->info.spec.flat_entity_list != NULL)
+    {
+      attr->info.name.resolved = spec->info.spec.flat_entity_list->info.name.original;
+    }
+  PT_NAME_INFO_SET_FLAG (attr, PT_NAME_INFO_FUNC_INDEX_RESULT);
+  attr->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
+  attr->data_type = pt_domain_to_data_type (parser, dom);
+
+  slot = pt_make_val_list (parser, attr);
+  if (slot == NULL || slot->valp == NULL)
+    {
+      return NULL;
+    }
+
+  /* table_info->attribute_list is shared with the spec's referenced_attrs; extend a copy */
+  table_info->attribute_list = parser_append_node (attr, parser_copy_tree_list (parser, table_info->attribute_list));
+
+  for (tail = &table_info->value_list->valp; *tail != NULL; tail = &(*tail)->next)
+    {
+      ;
+    }
+  *tail = slot->valp;
+  table_info->value_list->val_cnt++;
+
+  return attr;
+}
+
+/*
+ * pt_make_func_index_cover () - make the routing entry of a function index scan, adding the pseudo result
+ *   attribute to the spec
+ *   return: the entry, or NULL
+ *   parser(in):
+ *   plan(in): plan
+ */
+static PT_FUNC_INDEX_COVER *
+pt_make_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
+{
+  SM_CLASS_CONSTRAINT *cons;
+  QO_NODE *node;
+  PT_NODE *spec, *attr;
+  PT_FUNC_INDEX_COVER *entry;
+
+  cons = pt_func_index_scan_cons (plan);
+  if (cons == NULL)
+    {
+      return NULL;
+    }
+
+  node = plan->plan_un.scan.node;
+  spec = (node != NULL) ? QO_NODE_ENTITY_SPEC (node) : NULL;
+  if (spec == NULL || spec->node_type != PT_SPEC || !qo_is_func_index_routable (plan->info->env, node))
+    {
+      return NULL;
+    }
+
+  /* without the expression in the query the pseudo result would only cost an extra key column read per row */
+  if (qo_find_func_index_seg (plan->info->env, node, cons->func_index_info->expr_str) == NULL)
+    {
+      return NULL;
+    }
+
+  attr = pt_add_func_index_result_attr (parser, spec, cons);
+  if (attr == NULL)
+    {
+      return NULL;
+    }
+
+  entry = (PT_FUNC_INDEX_COVER *) pt_alloc_packing_buf (sizeof (PT_FUNC_INDEX_COVER));
+  if (entry == NULL)
+    {
+      return NULL;
+    }
+  entry->next = NULL;
+  entry->expr_str = cons->func_index_info->expr_str;
+  entry->spec_id = spec->info.spec.id;
+  entry->result_attr = attr;
+
+  return entry;
+}
+
+/*
+ * pt_uncover_func_index_scans () - turn off covering for the function index scans of a plan whose output reaches the
+ *   query through a list file, when they cover a function argument missing from the key
+ *   return: void
+ *   plan(in): plan
+ *
+ * Note: a list file carries the function from its raw arguments, so such a scan must read them from the heap.
+ */
+static void
+pt_uncover_func_index_scans (QO_PLAN * plan)
+{
+  if (plan == NULL)
+    {
+      return;
+    }
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      if (qo_is_func_index_cover_routed (plan))
+	{
+	  /* a loose scan is made only of a covering scan */
+	  plan->plan_un.scan.index_cover = false;
+	  plan->plan_un.scan.index_loose = false;
+	}
+      break;
+
+    case QO_PLANTYPE_SORT:
+      pt_uncover_func_index_scans (plan->plan_un.sort.subplan);
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      pt_uncover_func_index_scans (plan->plan_un.join.outer);
+      pt_uncover_func_index_scans (plan->plan_un.join.inner);
+      break;
+
+    case QO_PLANTYPE_FOLLOW:
+      pt_uncover_func_index_scans (plan->plan_un.follow.head);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * pt_collect_func_index_cover () - register the covered function index scans of a plan whose function results
+ *   are routed to their pseudo result attribute
+ *   return: void
+ *   parser(in):
+ *   plan(in): plan
+ *   nl_outer(in): true if the plan is the outer side of a nested loop join
+ *
+ * Note: only scans whose value list the query reads directly are routed; this follows gen_outer () and gen_inner (),
+ *   which put the other plans (merge and hash join inputs, sorts under a join, sort limit) into list files.
+ *   qo_plan_uncover_cost () charges the heap fetches at the same positions, so the two must change together.
+ */
+static void
+pt_collect_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan, bool nl_outer)
+{
+  PT_FUNC_INDEX_COVER *entry;
+  QO_PLAN *inner;
+
+  if (plan == NULL || parser->symbols == NULL)
+    {
+      return;
+    }
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      entry = plan->plan_un.scan.index_cover ? pt_make_func_index_cover (parser, plan) : NULL;
+      if (entry != NULL)
+	{
+	  entry->next = parser->symbols->func_idx_cover_list;
+	  parser->symbols->func_idx_cover_list = entry;
+	}
+      break;
+
+    case QO_PLANTYPE_SORT:
+      if (nl_outer || plan->plan_un.sort.sort_type == SORT_LIMIT)
+	{
+	  pt_uncover_func_index_scans (plan->plan_un.sort.subplan);
+	}
+      else
+	{
+	  pt_collect_func_index_cover (parser, plan->plan_un.sort.subplan, false);
+	}
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      inner = plan->plan_un.join.inner;
+      if ((plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN && plan->plan_un.join.join_type != JOIN_CSELECT)
+	  || plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN)
+	{
+	  pt_collect_func_index_cover (parser, plan->plan_un.join.outer, true);
+	  if (inner != NULL && (inner->plan_type == QO_PLANTYPE_SCAN || inner->plan_type == QO_PLANTYPE_FOLLOW))
+	    {
+	      pt_collect_func_index_cover (parser, inner, false);
+	    }
+	  else
+	    {
+	      pt_uncover_func_index_scans (inner);
+	    }
+	}
+      else
+	{
+	  pt_uncover_func_index_scans (plan->plan_un.join.outer);
+	  pt_uncover_func_index_scans (inner);
+	}
+      break;
+
+    case QO_PLANTYPE_FOLLOW:
+      pt_collect_func_index_cover (parser, plan->plan_un.follow.head, nl_outer);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * pt_is_func_index_scan_routed () - check whether the output of a spec's covered function index scan is routed to
+ *   its pseudo result attribute
+ *   return: bool
+ *   parser(in):
+ *   spec_id(in): spec id
+ */
+static bool
+pt_is_func_index_scan_routed (PARSER_CONTEXT * parser, UINTPTR spec_id)
+{
+  PT_FUNC_INDEX_COVER *e;
+
+  for (e = parser->symbols->func_idx_routed_list; e != NULL; e = e->next)
+    {
+      if (e->spec_id == spec_id)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * pt_get_func_index_result_attr () - get the pseudo result attribute a function index expression is routed to
+ *   return: the pseudo attribute, or NULL
+ *   parser(in):
+ *   node(in): expression
+ */
+static PT_NODE *
+pt_get_func_index_result_attr (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_FUNC_INDEX_COVER *e;
+  UINTPTR spec_id = 0;
+  char *expr_str;
+
+  if (parser->symbols == NULL || parser->symbols->func_idx_cover_list == NULL || node == NULL
+      || node->node_type != PT_EXPR)
+    {
+      return NULL;
+    }
+
+  if (!pt_is_function_index_expr (parser, node, false) || pt_is_join_expr (node, &spec_id))
+    {
+      return NULL;
+    }
+
+  expr_str = qo_print_func_index_expr (parser, node);
+  if (expr_str == NULL)
+    {
+      return NULL;
+    }
+
+  for (e = parser->symbols->func_idx_cover_list; e != NULL; e = e->next)
+    {
+      if (e->spec_id == spec_id && !intl_identifier_casecmp (expr_str, e->expr_str))
+	{
+	  return e->result_attr;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * pt_is_attr_in_key_range () - check whether the key range terms of an index scan reference an attribute outside
+ *   of the function index expression
+ *   return: bool
+ *   parser(in):
+ *   index_pred(in): index scan terms
+ *   func_expr_str(in): printed function index expression
+ *   attr(in): attribute (PT_NAME)
+ */
+static bool
+pt_is_attr_in_key_range (PARSER_CONTEXT * parser, QO_XASL_INDEX_INFO * index_pred, const char *func_expr_str,
+			 PT_NODE * attr)
+{
+  PT_NODE **term_exprs = qo_xasl_get_terms (index_pred);
+  int nterms = qo_xasl_get_num_terms (index_pred);
+  PT_NODE *node, *save_next;
+  bool found = false;
+  int i;
+
+  for (i = 0; i < nterms && !found; i++)
+    {
+      node = term_exprs[i];
+      CAST_POINTER_TO_NODE (node);
+      if (node != NULL)
+	{
+	  save_next = node->next;
+	  node->next = NULL;
+	  found = qo_func_index_arg_used_raw (parser, node, func_expr_str, attr);
+	  node->next = save_next;
+	}
+    }
+
+  return found;
+}
+
+/*
+ * pt_is_attr_in_key_filter () - check whether the key filter terms of an index scan reference an attribute outside
+ *   of the function index expression
+ *   return: bool
+ *   parser(in):
+ *   key_pred(in): key filter terms
+ *   func_expr_str(in): printed function index expression
+ *   attr(in): attribute (PT_NAME)
+ *
+ * note: The terms point into the WHERE list, so each is walked without its next conjuncts.
+ */
+static bool
+pt_is_attr_in_key_filter (PARSER_CONTEXT * parser, PT_NODE * key_pred, const char *func_expr_str, PT_NODE * attr)
+{
+  PT_NODE *term, *node, *save_next;
+  bool found = false;
+
+  for (term = key_pred; term != NULL && !found; term = term->next)
+    {
+      node = term;
+      CAST_POINTER_TO_NODE (node);
+      if (node != NULL)
+	{
+	  save_next = node->next;
+	  node->next = NULL;
+	  found = qo_func_index_arg_used_raw (parser, node, func_expr_str, attr);
+	  node->next = save_next;
+	}
+    }
+
+  return found;
+}
+
+typedef enum
+{
+  PT_FI_REMOVE_RESULT,		/* the pseudo result attribute */
+  PT_FI_REMOVE_COVERED_ARGS,	/* argument columns a covered scan does not output */
+  PT_FI_REMOVE_KEY_ARGS		/* argument columns the key filter does not read */
+} PT_FI_REMOVE_MODE;
+
+/*
+ * pt_remove_func_index_attrs () - remove function index related attributes from an attribute list
+ *   return: void
+ *   parser(in):
+ *   plan(in): function index scan plan
+ *   mode(in): which attributes to remove
+ *   key_pred(in): key filter predicate, for PT_FI_REMOVE_KEY_ARGS
+ *   index_pred(in): index scan terms, for PT_FI_REMOVE_KEY_ARGS
+ *   attrs(in/out): attribute list
+ *   offsets(in/out): value list offsets of attrs
+ */
+static void
+pt_remove_func_index_attrs (PARSER_CONTEXT * parser, QO_PLAN * plan, PT_FI_REMOVE_MODE mode, PT_NODE * key_pred,
+			    QO_XASL_INDEX_INFO * index_pred, PT_NODE ** attrs, int *offsets)
+{
+  SM_CLASS_CONSTRAINT *cons = pt_func_index_scan_cons (plan);
+  PT_NODE *node, *real, *prev = NULL, *next;
+  BITSET scan_terms;
+  int i = 0, kept = 0;
+  bool remove;
+
+  if (mode == PT_FI_REMOVE_COVERED_ARGS)
+    {
+      bitset_init (&scan_terms, plan->info->env);
+      bitset_assign (&scan_terms, &(plan->plan_un.scan.terms));
+      bitset_union (&scan_terms, &(plan->plan_un.scan.kf_terms));
+    }
+
+  for (node = *attrs; node != NULL; node = next, i++)
+    {
+      next = node->next;
+      real = node;
+      CAST_POINTER_TO_NODE (real);
+
+      if (real == NULL || real->node_type != PT_NAME || real->info.name.original == NULL)
+	{
+	  remove = false;
+	}
+      else if (PT_NAME_INFO_IS_FLAGED (real, PT_NAME_INFO_FUNC_INDEX_RESULT))
+	{
+	  remove = (mode == PT_FI_REMOVE_RESULT);
+	}
+      else if (mode == PT_FI_REMOVE_KEY_ARGS)
+	{
+	  /* oracle_style_empty_string also adds the key range columns, which must stay */
+	  remove = (!pt_is_attr_in_key_filter (parser, key_pred, cons->func_index_info->expr_str, real)
+		    && !(prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
+			 && pt_is_attr_in_key_range (parser, index_pred, cons->func_index_info->expr_str, real)));
+	}
+      else if (mode == PT_FI_REMOVE_COVERED_ARGS)
+	{
+	  remove = pt_is_func_index_arg_only_in_expr (plan, real, &scan_terms);
+	}
+      else
+	{
+	  remove = false;
+	}
+
+      if (remove)
+	{
+	  if (prev == NULL)
+	    {
+	      *attrs = next;
+	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
+	  node->next = NULL;
+	  parser_free_node (parser, node);
+	  continue;
+	}
+
+      if (offsets != NULL)
+	{
+	  offsets[kept] = offsets[i];
+	}
+      kept++;
+      prev = node;
+    }
+
+  if (mode == PT_FI_REMOVE_COVERED_ARGS)
+    {
+      bitset_delset (&scan_terms);
+    }
+}
+
+/*
  * pt_to_regu_variable () - converts a parse expression tree to regu_variables
  *   return:
  *   parser(in):
@@ -9951,6 +10514,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      break;
 
 	    case PT_EXPR:
+	      {
+		PT_NODE *fi_attr = pt_get_func_index_result_attr (parser, node);
+
+		if (fi_attr != NULL)
+		  {
+		    node->next = save_next;
+		    return pt_to_regu_variable (parser, fi_attr, unbox);
+		  }
+	      }
+
 	      if (parser->symbols != NULL && parser->symbols->current_listfile != NULL
 		  && parser->symbols->listfile_value_list != NULL && pt_is_function_index_expression (node))
 		{
@@ -12230,6 +12803,28 @@ pt_to_regu_attr_descr (PARSER_CONTEXT * parser, DB_OBJECT * class_object, HEAP_C
   REGU_VARIABLE *regu;
   ATTR_DESCR *attr_descr;
 
+  if (PT_NAME_INFO_IS_FLAGED (attr, PT_NAME_INFO_FUNC_INDEX_RESULT))
+    {
+      TP_DOMAIN *dom = pt_xasl_node_to_domain (parser, attr);
+
+      if (dom == NULL)
+	{
+	  return NULL;
+	}
+      regu_alloc (regu);
+      if (regu == NULL)
+	{
+	  return NULL;
+	}
+      attr_descr = &regu->value.attr_descr;
+      attr_descr->reset ();
+      regu->type = TYPE_ATTR_ID;
+      regu->domain = dom;
+      attr_descr->id = FUNC_INDEX_RESULT_ATTRID;
+      attr_descr->cache_attrinfo = cache_attrinfo;
+      attr_descr->type = TP_DOMAIN_TYPE (dom);
+      return regu;
+    }
 
   if (sm_att_info (class_object, attr_name, &attr_id, &smdomain, &sharedp, attr->info.name.meta_class == PT_META_ATTR)
       != NO_ERROR)
@@ -15658,6 +16253,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      /* for index with prefix length */
 	      PT_NODE *where_part_save = NULL, *where_key_part_save = NULL;
 	      PT_NODE *ipl_where_part = NULL;
+	      PT_FUNC_INDEX_COVER *fi_cover = pt_make_func_index_cover (parser, plan);
 
 	      if (index_pred->ni_entry && index_pred->ni_entry->head && qo_is_prefix_index (index_pred->ni_entry->head))
 		{
@@ -15703,6 +16299,35 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  return NULL;
 		}
 
+	      if (fi_cover != NULL)
+		{
+		  if (where_key_part != NULL && key_offsets != NULL)
+		    {
+		      /* the key filter reads the routed result attribute instead of recomputing the function */
+		      pt_remove_func_index_attrs (parser, plan, PT_FI_REMOVE_KEY_ARGS, where_key_part, index_pred,
+						  &key_attrs, key_offsets);
+		      key_offsets[pt_length_of_list (key_attrs)] =
+			pt_find_attribute (parser, fi_cover->result_attr, table_info->attribute_list);
+		      key_attrs = parser_append_node (pt_point (parser, fi_cover->result_attr), key_attrs);
+		    }
+		  if (qo_is_index_covering_scan (plan))
+		    {
+		      if (pt_is_func_index_scan_routed (parser, fi_cover->spec_id))
+			{
+			  pt_remove_func_index_attrs (parser, plan, PT_FI_REMOVE_COVERED_ARGS, NULL, NULL, &rest_attrs,
+						      rest_offsets);
+			}
+		    }
+		  else
+		    {
+		      /* a non-covered scan reads rest/pred attributes from the heap, which has no function result */
+		      pt_remove_func_index_attrs (parser, plan, PT_FI_REMOVE_RESULT, NULL, NULL, &rest_attrs,
+						  rest_offsets);
+		      pt_remove_func_index_attrs (parser, plan, PT_FI_REMOVE_RESULT, NULL, NULL, &pred_attrs,
+						  pred_offsets);
+		    }
+		}
+
 	      symbols->current_class = class_;
 
 	      if (pt_get_mvcc_reev_range_data (parser, table_info, where_key_part, index_pred, &where_range,
@@ -15732,10 +16357,19 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 
 	      symbols->cache_attrinfo = cache_key;
 
-	      where_key = pt_to_pred_expr (parser, where_key_part);
+	      {
+		/* key range regus (pt_to_index_info) must keep the original expression, so route only here */
+		PT_FUNC_INDEX_COVER *saved_func_idx_cover = symbols->func_idx_cover_list;
 
-	      regu_attributes_key =
-		pt_to_regu_variable_list (parser, key_attrs, UNBOX_AS_VALUE, table_info->value_list, key_offsets);
+		symbols->func_idx_cover_list = fi_cover;
+
+		where_key = pt_to_pred_expr (parser, where_key_part);
+
+		regu_attributes_key =
+		  pt_to_regu_variable_list (parser, key_attrs, UNBOX_AS_VALUE, table_info->value_list, key_offsets);
+
+		symbols->func_idx_cover_list = saved_func_idx_cover;
+	      }
 
 	      symbols->cache_attrinfo = cache_pred;
 
@@ -17400,6 +18034,7 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		      regu->domain =
 			pt_reader_domain (pt_xasl_node_to_domain (parser, col), domain_list_column_of (xasl, i));
 		      regu->value.dbvalptr = value_list->val;
+		      value_list->dom = regu->domain;
 		      /* move to next db_value holder */
 		      value_list = value_list->next;
 		      if (pt_prepare_corr_subquery_hash_result_cache (parser, node, xasl))
@@ -19655,6 +20290,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   BUILDLIST_PROC_NODE *buildlist;
   int i;
   REGU_VARIABLE_LIST regu_var_p;
+  PT_FUNC_INDEX_COVER *saved_func_idx_cover = NULL;
 
   assert (parser != NULL);
 
@@ -19719,6 +20355,16 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
     }
 
   unbox = UNBOX_AS_VALUE;
+
+  /* route function index expressions of covered scans while the output list is built */
+  saved_func_idx_cover = symbols->func_idx_cover_list;
+  symbols->func_idx_cover_list = NULL;
+  /* grouping and aggregation evaluate the function from the raw argument, as qo_is_coverage_index assumes */
+  if (select_node->info.query.q.select.group_by == NULL && !pt_has_aggregate (parser, select_node))
+    {
+      pt_collect_func_index_cover (parser, qo_plan, false);
+    }
+  symbols->func_idx_routed_list = symbols->func_idx_cover_list;
 
   if (pt_has_aggregate (parser, select_node))
     {
@@ -20485,6 +21131,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
     }
 
+  symbols->func_idx_cover_list = saved_func_idx_cover;
+
   /* the calls pt_to_out_list and pt_to_spec_list record information in the "symbol_info" structure used by subsequent
    * calls, and must be done first, before calculating subquery lists, etc. */
 
@@ -20717,6 +21365,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
   /* CBRD-27583: the sort keys over the block's lists, whose columns are decided by now */
   pt_set_sort_list_domains (buildlist->groupby_list, NULL, xasl->outptr_list);
+  /* CBRD-27817: the GROUP BY's output list is sorted by its keys over the output columns */
+  pt_set_sort_list_domains (buildlist->after_groupby_list, NULL, buildlist->g_outptr_list);
   for (ANALYTIC_EVAL_TYPE * eval = buildlist->a_eval_list; eval != NULL; eval = eval->next)
     {
       pt_set_sort_list_domains (eval->sort_list, NULL, buildlist->a_outptr_list_ex);
@@ -20793,6 +21443,57 @@ exit_on_error:
   parser->parent_proc_xasl = save_parent_proc_xasl;
 
   return NULL;
+}
+
+/*
+ * pt_buildvalue_output_reads_scan () - does the output list of a BUILDVALUE read a column of its own scans?
+ *   return: true when an output value reads a slot of the block's value list or of a scan_ptr's
+ *   xasl(in): the BUILDVALUE, its plan generated
+ *
+ * A BUILDVALUE evaluates its output list once, after its scans (qexec_end_buildvalueblock_iterations ()): its
+ * aggregates' results, constants and the outer blocks' values.  A column of its own scans there reads what the row
+ * loop last fetched into the slot, the last row that passed the filters.  A select list cannot name such a column
+ * beside an aggregate ("not single valued"), but two rewrites put one there: INSERT ... SELECT ... ON DUPLICATE KEY
+ * UPDATE appends the columns its assignments read to the SELECT's list (pt_append_assignment_references ()), and a
+ * select list of aggregates whose correlated subquery reads a column of the source becomes a derived table that
+ * carries the column (mq_rewrite_aggregate_as_derived ()).  A SELECT of aggregates without GROUP BY carries them so.
+ * The page batch (qexec_batch_eligible ()) accumulates the aggregates without fetching any row into the slots: such a
+ * block is marked XASL_OUTPUT_READS_SCAN and the page batch leaves it to the row loop, which copies the columns of each
+ * row it aggregates for the output list (qexec_keep_last_row ()).  A block that ends without the row loop, an
+ * aggregate answered from the index or the statistics or the buildvalue gather of a parallel scan, leaves the columns
+ * NULL (qexec_restore_last_row ()), as before the page batch.
+ */
+static bool
+pt_buildvalue_output_reads_scan (XASL_NODE * xasl)
+{
+  REGU_VARIABLE_LIST out;
+  bool reads = false;
+
+  for (out = xasl->outptr_list->valptrp; out != NULL && !reads; out = out->next)
+    {
+      // *INDENT-OFF*
+      out->value.map_regu ([&] (regu_variable_node & regu, bool & stop)
+	{
+	  if (regu.type != TYPE_CONSTANT)
+	    {
+	      return;
+	    }
+	  for (XASL_NODE * scan = xasl; scan != NULL && !reads; scan = scan->scan_ptr)
+	    {
+	      for (QPROC_DB_VALUE_LIST v = (scan->val_list != NULL) ? scan->val_list->valp : NULL; v != NULL;
+		   v = v->next)
+		{
+		  if (v->val == regu.value.dbvalptr)
+		    {
+		      reads = stop = true;
+		      break;
+		    }
+		}
+	    }
+	});
+      // *INDENT-ON*
+    }
+  return reads;
 }
 
 /*
@@ -20996,6 +21697,11 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   if (!xasl->outptr_list || !xasl->spec_list || !xasl->val_list || pt_has_error (parser))
     {
       goto exit_on_error;
+    }
+
+  if (pt_buildvalue_output_reads_scan (xasl))
+    {
+      XASL_SET_FLAG (xasl, XASL_OUTPUT_READS_SCAN);
     }
 
   /* set CONNECT BY xasl */
@@ -21606,7 +22312,23 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       return NULL;
     }
 
-  /* optimization fails, ignore join hint and retry optimization */
+  /* optimization fails with the join method hints as written: retry ignoring only those that cannot be applied to
+   * their joins, so that the other hints (LEADING included) are kept (CBRD-28089) */
+  if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
+    {
+      PT_SELECT_INFO_SET_FLAG (select_node, PT_SELECT_INFO_LENIENT_JOIN_HINT);
+      plan = qo_optimize_query (parser, select_node);
+      PT_SELECT_INFO_CLEAR_FLAG (select_node, PT_SELECT_INFO_LENIENT_JOIN_HINT);
+
+      if (!plan && pt_has_error (parser)
+	  && (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()) || ER_IS_SERVER_DOWN_ERROR (er_errid ())
+	      || er_errid () == ER_INTERRUPTED))
+	{
+	  return NULL;
+	}
+    }
+
+  /* optimization still fails, ignore join hint and retry optimization */
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
     {
       hint_ignored = true;
@@ -25703,7 +26425,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 
   if (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
     {
-      pt_mark_spec_list_for_update_clause (parser, statement, PT_SPEC_FLAG_UPDATE);
+      pt_mark_spec_list_for_update_clause (parser, statement,
+					   (scan_op_type == S_DELETE) ? PT_SPEC_FLAG_DELETE : PT_SPEC_FLAG_UPDATE);
     }
 
   return statement;
@@ -32614,7 +33337,7 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
 
   regu->type = TYPE_REGU_VAR_LIST;
   /* CBRD-27583: a container of values, not a value: no domain of its own */
-  regu->domain = tp_domain_resolve_default (DB_TYPE_VARIABLE);
+  regu->domain = NULL;
   /* for cume_dist and percent_rank, regu_variable should be hidden */
   REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_HIDDEN_COLUMN);
   arg_list = tree->info.function.arg_list;
@@ -33272,7 +33995,6 @@ pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * n
   int n_elements, i;
   SQ_KEY *sq_key_struct;
   QPROC_DB_VALUE_LIST dbv_list;
-  bool cachable = true;
 
   if (XASL_IS_FLAGED (xasl, XASL_USES_SQ_CACHE))
     {
@@ -33285,8 +34007,7 @@ pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * n
       /* it means SUBQUERY RESULT won't be cached. */
       return false;
     }
-  parser_walk_tree (parser, node, NULL, NULL, pt_check_corr_subquery_not_cachable_expr, &cachable);
-  if (!cachable)
+  if (!pt_is_result_reuse_safe (parser, node))
     {
       return false;
     }
@@ -33648,19 +34369,7 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	    }
 	  break;
 	case TYPE_SP:
-	  /* The value of regu_src->value.sp_ptr->sig->is_deterministic is interpreted as follows
-	   * 0: PT_AUTHID_OWNER + PT_NOT_DETERMINISTIC
-	   * 1: PT_AUTHID_CALLER + PT_NOT_DETERMINISTIC
-	   * 2: PT_AUTHID_OWNER + PT_DETERMINISTIC
-	   * 3: PT_AUTHID_CALLER + PT_DETERMINISTIC
-	   */
-#if defined (CS_MODE)
-	  if (regu_src->value.sp_ptr->sig->is_deterministic == false)
-	    {
-	      return ER_FAILED;
-	    }
-#endif
-
+	  /* a stored function not DETERMINISTIC was refused before, in CS and SA alike (pt_is_result_reuse_safe ()) */
 	  regu_var_list_p = regu_src->value.sp_ptr->args;
 
 	  while (regu_var_list_p)
@@ -33748,22 +34457,22 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 }
 
 /*
- * pt_check_corr_subquery_not_cachable_expr () - Evaluates whether expressions within a node are cachable for subqueries. 
- * 
- * 
- * parser (in): PARSER_CONTEXT* - Pointer to the parser context, provides contextual information necessary for processing the node.
- * node (in): PT_NODE* - Pointer to the query node being checked. This node can represent various query elements such as expressions.
- * arg (in/out): void* - A generic pointer, which in this context is used to point to a boolean flag indicating cachability.
- * continue_walk (in/out): int* - Pointer to an integer that controls the continuation of the tree walk. Set to PT_STOP_WALK to halt further processing.
- * 
+ * pt_check_reuse_unsafe_expr () - CBRD-27993: an expression that can give another value for the same inputs within
+ *   one statement, or whose side effect a replay would skip, so a result reuse (memoize, the correlated subquery
+ *   cache) must not replay a result computed with it
+ *
+ * parser (in): parser context
+ * node (in): node visited
+ * arg (in/out): bool *, set false on such an expression
+ * continue_walk (in/out): PT_STOP_WALK once one is found
  */
 static PT_NODE *
-pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_check_reuse_unsafe_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  bool *reusable = (bool *) arg;
 
   if (node->node_type == PT_EXPR)
     {
-      bool *cachable = (bool *) arg;
       switch (node->info.expr.op)
 	{
 	case PT_SYS_GUID:
@@ -33774,15 +34483,136 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
 	case PT_DRANDOM:
 	case PT_CURRENT_VALUE:
 	case PT_NEXT_VALUE:
-	  *cachable = false;
+	case PT_INCR:
+	case PT_DECR:
+	case PT_EXEC_STATS:
+	case PT_TRACE_STATS:
+	case PT_SLEEP:
+	  /* a session variable, assigned in this statement or not */
+	case PT_EVALUATE_VARIABLE:
+	case PT_DEFINE_VARIABLE:
+	  *reusable = false;
 	  *continue_walk = PT_STOP_WALK;
 	  break;
 	default:
-	  /* continue walk */
 	  break;
 	}
     }
+  else if (node->node_type == PT_METHOD_CALL && !PT_IS_METHOD (node) && !jsp_is_sp_deterministic (parser, node))
+    {
+      *reusable = false;
+      *continue_walk = PT_STOP_WALK;
+    }
+
   return node;
+}
+
+/*
+ * pt_is_result_reuse_safe () - CBRD-27993: whether a result computed from tree may be replayed for the same key
+ *   within one statement (pt_check_reuse_unsafe_expr ()); memoize and the correlated subquery cache share it
+ *   return: true when tree holds no expression that refuses the reuse
+ *   tree (in): an expression or a query; its next list is not visited
+ */
+bool
+pt_is_result_reuse_safe (PARSER_CONTEXT * parser, PT_NODE * tree)
+{
+  bool reusable = true;
+  PT_NODE *next;
+
+  if (tree == NULL)
+    {
+      return true;
+    }
+
+  next = tree->next;
+  tree->next = NULL;
+  (void) parser_walk_tree (parser, tree, pt_check_reuse_unsafe_expr, &reusable, NULL, NULL);
+  tree->next = next;
+
+  return reusable;
+}
+
+/*
+ * pt_make_memoize_key () - CBRD-27993: the memoize key of an NL inner from the outer scans' column names its terms
+ *   read: each name's slot is the one pt_attribute_to_regu () points the inner's terms at (its table's value list),
+ *   with the domain the slot's producer writes (pt_list_reader_domain (), what regu_produced_domain () reads)
+ *   return: the key (n_elements 0 for no name); NULL when a name has no such slot, so the inner is not memoized
+ *   names (in): PT_NAME nodes of outer specs; a name repeated is one slot
+ *   n_names (in): their count
+ */
+SQ_KEY *
+pt_make_memoize_key (PARSER_CONTEXT * parser, PT_NODE ** names, int n_names)
+{
+  SYMBOL_INFO *symbols = parser->symbols;
+  SQ_KEY *key;
+  int i, j, n = 0;
+
+  /* shortcut: a listfile context points names at other slots; an NL inner is generated outside one
+   * (make_hashjoin_proc () restores the symbols), handle it if an inner is ever generated inside one */
+  if (symbols == NULL || symbols->current_listfile != NULL)
+    {
+      return NULL;
+    }
+
+  key = (SQ_KEY *) pt_alloc_packing_buf (sizeof (SQ_KEY));
+  if (key == NULL)
+    {
+      return NULL;
+    }
+  key->dbv_array = NULL;
+  key->domains = NULL;
+  key->n_elements = 0;
+  if (n_names == 0)
+    {
+      return key;
+    }
+
+  key->dbv_array = (DB_VALUE **) pt_alloc_packing_buf (n_names * sizeof (DB_VALUE *));
+  key->domains = (TP_DOMAIN **) pt_alloc_packing_buf (n_names * sizeof (TP_DOMAIN *));
+  if (key->dbv_array == NULL || key->domains == NULL)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < n_names; i++)
+    {
+      PT_NODE *name = names[i];
+      TABLE_INFO *table_info = pt_find_table_info (name->info.name.spec_id, symbols->table_info);
+      int index;
+      DB_VALUE *dbval;
+      TP_DOMAIN *domain;
+
+      if (table_info == NULL)
+	{
+	  return NULL;
+	}
+      index = pt_find_attribute (parser, name, table_info->attribute_list);
+      dbval = pt_index_value (table_info->value_list, index);
+      if (dbval == NULL)
+	{
+	  return NULL;
+	}
+      domain = pt_list_reader_domain (parser, table_info->class_spec, index, name);
+      /* shortcut: a CTE column NULL-typed until its producer is made gets its domain after this
+       * (pt_note_cte_null_reader ()), such an inner is not memoized; key it once the readers patch key domains */
+      if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
+	{
+	  return NULL;
+	}
+
+      for (j = 0; j < n && key->dbv_array[j] != dbval; j++)
+	;
+      if (j < n)
+	{
+	  continue;
+	}
+      key->dbv_array[n] = dbval;
+      key->domains[n] = domain;
+      n++;
+    }
+  key->n_elements = n;
+
+  return key;
 }
 
 /*
@@ -33860,7 +34690,6 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
 
       if (key == 0 && db_list)
 	{
-	  assert (node->etc == NULL);
 	  new_node = pt_point_ref (parser, node);
 	  if (new_node == NULL)
 	    {

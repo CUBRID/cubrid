@@ -153,7 +153,12 @@ static const char *schema_type_str[] = {
   "EXPORTED_KEYS",
   "CROSS_REFERENCE",
   "ATTR_WITH_SYNONYM",
-  "SCHEMAS"
+  "SCHEMAS",
+  "CURRENT_SCHEMA",
+  "PROCEDURES",
+  "PROCEDURE_COLUMNS",
+  "FUNCTIONS",
+  "FUNCTION_COLUMNS"
 };
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };

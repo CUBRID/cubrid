@@ -58,6 +58,7 @@
 #include "query_hash_scan.h"
 #include "statistics.h"
 #include "px_scan.hpp"
+#include "bit.h"		/* bit64_count_ones */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -182,6 +183,9 @@ static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * is
 				      VAL_DESCR * vd);
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_heap_next_listed_page (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp, VPID * vpid_out);
+static SCAN_CODE scan_heap_next_listed_row (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp, RECDES * recdes,
+					    int is_peeking);
 static int scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * spec,
 				     const XASL_NODE * xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
 				     const EXPR_BATCH_GBY_MAP * gby, const valptr_list_node * proj, bool cached_ok);
@@ -1280,6 +1284,10 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_K
 	  pr_clear_value (&nextp->key2);
 	  memmove (nextp, nextp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - n - 2));
 	  key_cnt--;
+
+	  /* the stale tail entry keeps a bitwise duplicate of the key moved down; it must not own the buffer */
+	  db_make_null (&key_vals[key_cnt].key1);
+	  db_make_null (&key_vals[key_cnt].key2);
 	}
       else
 	{
@@ -1321,6 +1329,10 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
 	  pr_clear_value (&curp->key2);
 	  memmove (curp, curp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - cur_n - 1));
 	  key_cnt--;
+
+	  /* the stale tail entry keeps a bitwise duplicate of the key moved down; it must not own the buffer */
+	  db_make_null (&key_vals[key_cnt].key1);
+	  db_make_null (&key_vals[key_cnt].key2);
 	}
       else
 	{
@@ -1427,6 +1439,10 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
 	  /* remove merged one(nextp) */
 	  memmove (nextp, nextp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - next_n - 1));
 	  key_cnt--;
+
+	  /* the stale tail entry keeps a bitwise duplicate of the key moved down; it must not own the buffer */
+	  db_make_null (&key_vals[key_cnt].key1);
+	  db_make_null (&key_vals[key_cnt].key2);
 
 	  /* the merged range may now overlap one skipped as disjoint before it (e.g. k > 7 sorted ahead of
 	   * k between 7 and 59 when k < 7 is the current one); check them again */
@@ -2622,6 +2638,7 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATI
   /* set by the two openers that reach a row-lock site; every other scan type leaves them off */
   scan_id->upddel_target_scan = false;
   scan_id->lock_ends_with_statement = false;
+  scan_id->click_counter_scan = false;
   scan_id->scan_op_type = scan_op_type;
   scan_id->fixed = fixed;
 
@@ -2646,18 +2663,25 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATI
  *   return: void
  *   thread_p(in): thread entry
  *   scan_id(in/out): the scan being opened
- *   upddel_target_scan(in): the row locks are the statement's (outermost READ COMMITTED DELETE/UPDATE target);
+ *   upddel_target_scan(in): the row locks are the statement's (a DELETE/UPDATE target, or a click counter's scan);
+ *			   kept across a partition switch
+ *   click_counter_scan(in): a click counter's scan, which changes no row: its increments decide at the statement end;
  *			   kept across a partition switch
  *   cls_oid(in): the class this scan is on -- the pruned partition, on a partition switch
  *
- * Note: decided per class, since a partition can differ from its root; see locator_class_keeps_row_locks ().
+ * Note: decided per class, since a partition can differ from its root.
  */
 static void
-scan_set_upddel_target (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool upddel_target_scan, const OID * cls_oid)
+scan_set_upddel_target (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool upddel_target_scan, bool click_counter_scan,
+			const OID * cls_oid)
 {
   scan_id->upddel_target_scan = upddel_target_scan;
-  scan_id->lock_ends_with_statement = (upddel_target_scan && cls_oid != NULL && !OID_ISNULL (cls_oid)
-				       && !locator_class_keeps_row_locks (thread_p, cls_oid));
+  scan_id->click_counter_scan = click_counter_scan;
+  scan_id->lock_ends_with_statement =
+    (upddel_target_scan && cls_oid != NULL && !OID_ISNULL (cls_oid)
+     && locator_can_release_row_lock_at_statement_end (thread_p, cls_oid,
+						       click_counter_scan ? STMT_ROW_NOT_CHANGED :
+						       STMT_ROW_CHANGE_UNCOMMITTED));
 }
 
 /*
@@ -2691,8 +2715,8 @@ scan_set_upddel_target (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool upddel_
 int
 scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     /* fields of SCAN_ID */
-		     bool mvcc_select_lock_needed, bool upddel_target_scan, SCAN_OPERATION_TYPE scan_op_type,
-		     int fixed, int grouped,
+		     bool mvcc_select_lock_needed, bool upddel_target_scan, bool click_counter_scan,
+		     SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
 		     QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list, VAL_DESCR * vd,
 		     /* fields of HEAP_SCAN_ID */
 		     OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
@@ -2716,7 +2740,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* initialize SCAN_ID structure */
   scan_init_scan_id (scan_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, single_fetch, join_dbval, val_list,
 		     vd);
-  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, cls_oid);
+  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, click_counter_scan, cls_oid);
 
   /* initialize HEAP_SCAN_ID structure */
   hsidp = &scan_id->s.hsid;
@@ -2766,6 +2790,13 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->batch_copy = NULL;
   hsidp->batch_copy_cap = 0;
   hsidp->batch_spec = NULL;
+
+  hsidp->sector_order = false;	/* the caller hands the page bitmap after the open (scan_heap_scan_set_page_list ()) */
+  hsidp->page_list = NULL;
+  hsidp->page_list_sect = 0;
+  hsidp->page_list_pgoffset = 0;
+  VPID_SET_NULL (&hsidp->page_list_vpid);
+  hsidp->page_list_build = 0;
 
   /* sampling pick owned by qexec_prepare_table_sampling (gated by prepared); no re-pick here */
 
@@ -2925,8 +2956,8 @@ scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      /* fields of SCAN_ID */
-		      bool mvcc_select_lock_needed, bool upddel_target_scan, SCAN_OPERATION_TYPE scan_op_type,
-		      int fixed, int grouped,
+		      bool mvcc_select_lock_needed, bool upddel_target_scan, bool click_counter_scan,
+		      SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
 		      QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list, VAL_DESCR * vd,
 		      /* fields of INDX_SCAN_ID */
 		      indx_info * indx_info, OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_key,
@@ -2958,7 +2989,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* initialize SCAN_ID structure */
   scan_init_scan_id (scan_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, single_fetch, join_dbval, val_list,
 		     vd);
-  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, cls_oid);
+  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, click_counter_scan, cls_oid);
 
   /* read Root page header info */
   btid = &indx_info->btid;
@@ -3195,6 +3226,10 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     }
 
   isidp->iscan_oid_order = iscan_oid_order;
+  isidp->ahead_next = INT_MAX;
+  isidp->ahead_distance = 0;
+  isidp->ahead_limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
+  isidp->ahead_single = false;
 
   if (scan_init_indx_coverage (thread_p, coverage_enabled, output_val_list, regu_val_list, vd, query_id,
 			       root_header->node.max_key_len, func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
@@ -3269,6 +3304,211 @@ exit_on_error:
     }
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * scan_switch_index_attr_caches () - bind the attribute caches of a started index scan to another partition
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   isidp(in/out): the index scan
+ *   cls_oid(in): the partition the scan moves to
+ *
+ * Note: the partitions have the same attributes, so each cache keeps its attribute ids and its value array and takes
+ *	 the class representation of the partition from the server-wide cache (heap_attrinfo_switch_class ()). Only the
+ *	 partition the scan reads holds an entry of that cache, as when the scan is opened on each partition, and the
+ *	 entries of the partitions a walk comes back to stay cached (CBRD-27866). regu variables point at the caches
+ *	 themselves and the partition switch resets the value pointers they cache.
+ */
+static int
+scan_switch_index_attr_caches (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, OID * cls_oid)
+{
+  /* the range, key, pred and rest caches */
+  HEAP_CACHE_ATTRINFO *caches[4];
+  int k, error = NO_ERROR;
+
+  caches[0] = (isidp->range_pred.regu_list != NULL) ? isidp->range_attrs.attr_cache : NULL;
+  caches[1] = (isidp->key_pred.regu_list != NULL) ? isidp->key_attrs.attr_cache : NULL;
+  caches[2] = isidp->pred_attrs.attr_cache;
+  caches[3] = isidp->rest_attrs.attr_cache;
+
+  for (k = 0; k < 4 && error == NO_ERROR; k++)
+    {
+      if (caches[k] != NULL)
+	{
+	  error = heap_attrinfo_switch_class (thread_p, cls_oid, caches[k]);
+	}
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  /* as scan_start_scan () arms the predicate cache */
+  eval_mark_first_term_attrs (isidp->scan_pred.pred_expr, isidp->pred_attrs.attr_cache);
+  eval_disable_lazy_read (isidp->pred_attrs.attr_cache);
+
+  return NO_ERROR;
+}
+
+/*
+ * scan_switch_index_partition () - move an index scan of a partitioned class to another partition
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   scan_id(in/out): an index scan opened by scan_open_index_scan ()
+ *   cls_oid(in): the partition
+ *   hfid(in): its heap
+ *   btid_int(in/out): the header of the partition's B+tree, which indx_info->btid already holds; read from its root
+ *		       page on the first switch to the partition and kept for the next ones
+ *   btid_int_cached(in/out): whether btid_int is read
+ *   lock_held(in): the scan already holds the IS_LOCK of the partition (it was started on it before)
+ *   started(out): the scan is started on the partition; otherwise the caller starts it (scan_start_scan ())
+ *
+ * Note: the partitions of a class have the same index columns and attributes, so what scan_open_index_scan () set up
+ *	 for the index (the key attributes, the OID buffer, the key copy buffer, the covering list) stays as it is, and
+ *	 a started scan keeps its heap scan cache, which only takes the partition's heap, and its attribute caches, which
+ *	 only take the partition's class representation (scan_switch_index_attr_caches ()). A scan walked per outer
+ *	 row switches partitions for every outer key, and closing and opening it again costs more than the B+tree probe
+ *	 itself (CBRD-27866). The caller resets its block as for a new key.
+ */
+int
+scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * cls_oid, HFID * hfid,
+			     BTID_INT * btid_int, bool * btid_int_cached, bool lock_held, bool * started)
+{
+  INDX_SCAN_ID *isidp = &scan_id->s.isid;
+  BTREE_SCAN *BTS = &isidp->bt_scan;
+  struct bts_attid_idx_info attid_idxs;
+  KEY_VAL_RANGE *key_vals;
+  bool upddel_target_scan, click_counter_scan;
+  int i, error;
+
+  assert (scan_id->type == S_INDX_SCAN);
+
+  *started = (scan_id->status == S_STARTED && isidp->scancache_inited && isidp->caches_inited);
+
+  if (!*btid_int_cached)
+    {
+      BTID *btid = &isidp->indx_info->btid;
+      VPID root_vpid;
+      PAGE_PTR root;
+      BTREE_ROOT_HEADER *root_header;
+
+      root_vpid.pageid = btid->root_pageid;
+      root_vpid.volid = btid->vfid.volid;
+      root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (root == NULL)
+	{
+	  ASSERT_ERROR ();
+	  return ER_FAILED;
+	}
+
+      root_header = btree_get_root_header (thread_p, root);
+      if (root_header == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, root);
+	  return ER_FAILED;
+	}
+
+      btid_int->sys_btid = btid;
+      btid_int->key_type = NULL;
+      if (btree_glean_root_header_info (thread_p, root_header, btid_int, true) != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, root);
+	  return ER_FAILED;
+	}
+      pgbuf_unfix_and_init (thread_p, root);
+
+      /* the search keys were decided against the key domain of the index, as scan_open_index_scan () checks */
+      if (isidp->indx_info->key_type == NULL
+	  || !tp_domain_match (isidp->indx_info->key_type, btid_int->key_type, TP_EXACT_MATCH))
+	{
+	  (void) domain_unresolved_error (-1, TP_DOMAIN_TYPE (btid_int->key_type));
+	  return ER_FAILED;
+	}
+
+      *btid_int_cached = true;
+    }
+
+  if (*started)
+    {
+      /* scan_end_scan () without ending the caches, which move to the partition below */
+      if (isidp->curr_keyno >= 0 && isidp->curr_keyno < isidp->key_cnt)
+	{
+	  key_vals = isidp->key_vals;
+	  for (i = 0; i < isidp->key_cnt; i++)
+	    {
+	      pr_clear_value (&key_vals[i].key1);
+	      pr_clear_value (&key_vals[i].key2);
+	    }
+	}
+      btree_scan_clear_key (BTS);
+      (void) scan_init_iss (isidp);
+
+      error = heap_scancache_switch_class (thread_p, &isidp->scan_cache, hfid, cls_oid, lock_held);
+      if (error == NO_ERROR)
+	{
+	  error = scan_switch_index_attr_caches (thread_p, isidp, cls_oid);
+	}
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  else
+    {
+      scan_end_scan (thread_p, scan_id);
+      if (isidp->caches_inited)
+	{
+	  if (isidp->range_pred.regu_list != NULL)
+	    {
+	      heap_attrinfo_end (thread_p, isidp->range_attrs.attr_cache);
+	    }
+	  if (isidp->key_pred.regu_list != NULL)
+	    {
+	      heap_attrinfo_end (thread_p, isidp->key_attrs.attr_cache);
+	    }
+	  heap_attrinfo_end (thread_p, isidp->pred_attrs.attr_cache);
+	  heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
+	  isidp->caches_inited = false;
+	}
+      isidp->scancache_inited = false;
+    }
+
+  /* the attribute id mappings of the key filter map an attribute to its place in the attribute caches, which every
+   * partition builds from the same attribute ids: they go on to the next partition, built once per scan and freed by
+   * scan_close_scan (), instead of being dropped by BTREE_INIT_SCAN () (CBRD-27866) */
+  attid_idxs = BTS->attid_idxs;
+  BTREE_INIT_SCAN (BTS);
+  BTS->attid_idxs = attid_idxs;
+  BTS->btid_int = *btid_int;
+  BTS->btid_int.sys_btid = &isidp->indx_info->btid;
+  BTS->is_btid_int_valid = true;
+
+  upddel_target_scan = scan_id->upddel_target_scan;
+  click_counter_scan = scan_id->click_counter_scan;
+  scan_init_scan_id (scan_id, scan_id->mvcc_select_lock_needed, scan_id->scan_op_type, scan_id->fixed,
+		     scan_id->grouped, scan_id->single_fetch, scan_id->join_dbval, scan_id->val_list, scan_id->vd);
+  /* whether the row locks end with the statement is decided per class, as scan_open_index_scan () does */
+  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, click_counter_scan, cls_oid);
+
+  COPY_OID (&isidp->cls_oid, cls_oid);
+  isidp->hfid = *hfid;		/* bitwise copy */
+  isidp->oids_count = 0;
+  isidp->curr_keyno = -1;
+  isidp->curr_oidno = -1;
+  isidp->one_range = false;
+  if (isidp->oid_list != NULL)
+    {
+      isidp->oid_list->oid_cnt = 0;
+      isidp->curr_oidp = isidp->oid_list->oidp;
+    }
+
+  if (*started)
+    {
+      /* as scan_start_scan () leaves a started scan */
+      scan_id->status = S_STARTED;
+    }
+
+  return scan_init_index_key_limit (thread_p, isidp, &isidp->indx_info->key_info, scan_id->vd);
 }
 
 /*
@@ -3414,6 +3654,10 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_pred (&isidp->scan_pred, NULL, pr, ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
 
   isidp->iscan_oid_order = iscan_oid_order;
+  isidp->ahead_next = INT_MAX;
+  isidp->ahead_distance = 0;
+  isidp->ahead_limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
+  isidp->ahead_single = false;
 
   if (scan_init_indx_coverage (thread_p, false, NULL, NULL, vd, query_id, root_header->node.max_key_len,
 			       func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
@@ -4056,6 +4300,18 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      goto exit_on_error;
 	    }
 	  hsidp->scancache_inited = true;
+
+	  if (hsidp->sector_order && mvcc_snapshot != NULL && mvcc_snapshot->build_serial != hsidp->page_list_build)
+	    {
+	      /* a nested statement rebuilt the READ COMMITTED snapshot after the bitmap: pages allocated since may
+	       * hold rows it sees, so the rest of this open follows the page links (the next open collects again) */
+	      hsidp->sector_order = false;
+	      hsidp->page_list = NULL;
+	    }
+	  /* the walk starts at the bitmap's first page */
+	  hsidp->page_list_sect = 0;
+	  hsidp->page_list_pgoffset = 0;
+	  VPID_SET_NULL (&hsidp->page_list_vpid);
 	}
       if (hsidp->caches_inited != true)
 	{
@@ -4356,7 +4612,21 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	    {
 	      scan_batch_rewind (thread_p, s_id);
 	    }
+	  if (s_id->s.hsid.sector_order && s_id->s.hsid.scancache_inited
+	      && s_id->s.hsid.scan_cache.mvcc_snapshot != NULL
+	      && s_id->s.hsid.scan_cache.mvcc_snapshot->build_serial != s_id->s.hsid.page_list_build)
+	    {
+	      /* the snapshot was rebuilt after the bitmap (see scan_start_scan ()): the links from here on */
+	      s_id->s.hsid.sector_order = false;
+	      s_id->s.hsid.page_list = NULL;
+	    }
+	  /* the next pass walks the same page bitmap from its start */
+	  s_id->s.hsid.page_list_sect = 0;
+	  s_id->s.hsid.page_list_pgoffset = 0;
+	  VPID_SET_NULL (&s_id->s.hsid.page_list_vpid);
 	}
+      /* the next pass reads its pages afresh, not from the copy the last pass took */
+      VPID_SET_NULL (&s_id->s.hsid.scan_cache.local_cache_vpid);
       break;
 
 
@@ -5147,7 +5417,106 @@ call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCA
       break;
     }
 
+  /* heap pages of the new buffer: the lookups tell the OS about them a window ahead, from the first window's size */
+  isidp->ahead_next = INT_MAX;
+  isidp->ahead_distance = 0;
+  if (oids_cnt > 1 && isidp->oid_list != NULL && !isidp->multi_range_opt.use && !isidp->need_count_only
+      && !SCAN_IS_INDEX_COVERED (isidp) && !scan_id->grouped)
+    {
+      isidp->ahead_next = 0;
+      if (scan_id->single_fetch == QPROC_SINGLE_INNER || isidp->ahead_single)
+	{
+	  /* the inner scan of a NL semi/anti join and the scan of an EXISTS subquery stop at their first match, the
+	   * scan of a block with an inst_num () condition (LIMIT) when the block has its rows: the first OID's page
+	   * is read at once and the windows start after it, so a scan that stops at its first row tells the OS
+	   * nothing */
+	  isidp->ahead_next = 1;
+	  isidp->ahead_distance = 1;
+	}
+    }
+
   return S_SUCCESS;
+}
+
+/*
+ * scan_index_alloc_oid_buffer () - give an index scan the OID buffer a covering scan goes without
+ *   return: error code
+ *   isidp(in/out): index scan
+ *
+ * Note: A parallel index scan worker drains every key's OIDs through its scan's OID buffer, covering or not.
+ */
+#if defined(SERVER_MODE)
+int
+scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp)
+{
+  int error_code;
+
+  if (isidp->oid_list != NULL)
+    {
+      return NO_ERROR;
+    }
+  error_code = scan_alloc_iscan_oid_buf_list (&isidp->oid_list);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  isidp->oid_list->max_oid_cnt = ISCAN_OID_BUFFER_COUNT;
+  isidp->oid_list->oid_cnt = 0;
+  isidp->curr_oidp = isidp->oid_list->oidp;
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * scan_index_read_ahead () - tell the OS which heap pages the OIDs of the OID buffer from the one being looked up on
+ *                            are, a window ahead
+ *   thread_p(in):
+ *   isidp(in/out): index scan; oid_list->oidp[0, oids_count) the OIDs, curr_oidno the OID about to be looked up,
+ *                  ahead_next the first OID not yet in a window (INT_MAX when every OID left was), ahead_distance
+ *                  the size of the last whole window, ahead_limit the size a window grows to
+ *   more(in): OIDs may follow the buffer's last one (a parallel index scan worker's buffer grows with the keys it
+ *             evaluates ahead)
+ *
+ * Note: The lookups stay in the order of the buffer and read one page at a time; the OS reads the pages of the
+ *       window together, so a lookup finds its page read or on its way. The caller calls it when the lookup is half a
+ *       window (ahead_distance / 2) from ahead_next. A window holds twice the OIDs of the one before it and ends
+ *       ahead_limit OIDs from the lookup at most, so no more than that many OIDs are told and not yet looked up.
+ */
+void
+scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, bool more)
+{
+  VPID vpids[SCAN_INDEX_READ_AHEAD_DISTANCE];
+  const OID *oids = isidp->oid_list->oidp;
+  const int curr = isidp->curr_oidno;
+  const int count = isidp->oids_count;
+  const int distance = SCAN_INDEX_READ_AHEAD_NEXT (isidp);
+  int start = MAX (isidp->ahead_next, curr);
+  int end = MIN (count, curr + distance);
+  int n = 0;
+  int i;
+
+  for (i = start; i < end; i++)
+    {
+      if (n == 0 || vpids[n - 1].pageid != oids[i].pageid || vpids[n - 1].volid != oids[i].volid)
+	{
+	  vpids[n].pageid = oids[i].pageid;
+	  vpids[n].volid = oids[i].volid;
+	  n++;
+	}
+    }
+  isidp->ahead_next = (end == count && !more) ? INT_MAX : end;
+  if (end == curr + distance)
+    {
+      /* a window cut short by the buffer's end does not make the next one larger */
+      isidp->ahead_distance = distance;
+    }
+
+  if (n == 0 || (n == 1 && start == curr))
+    {
+      /* the one page of a window that starts here is the page the lookup reads right now */
+      return;
+    }
+  pgbuf_read_ahead (thread_p, vpids, n);
 }
 
 /*
@@ -5371,6 +5740,221 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
+ * scan_heap_scan_page_list_free_one () - let one kept page bitmap go
+ */
+static void
+scan_heap_scan_page_list_free_one (THREAD_ENTRY * thread_p, FILE_FTAB_COLLECTOR * keep)
+{
+  if (keep->partsect_ftab != NULL)
+    {
+      db_private_free_and_init (thread_p, keep->partsect_ftab);
+    }
+
+  keep->npages = 0;
+  keep->nsects = 0;
+}
+
+/*
+ * scan_heap_scan_page_list () - a heap scan's open: the statement's snapshot, then the heap's page bitmap in file
+ *				  order, for the parallel heap scan and the serial sector-based scan alike
+ *   return: error code
+ *   spec(in/out): the access spec; keeps the bitmap until the execution ends (scan_heap_scan_page_list_free ())
+ *   cls_oid(in), hfid(in): the class and its heap
+ *   grouped(in): a grouped scan reads its heap by ranges (heap_scanrange_next ()) and takes no bitmap
+ *   page_list(out): the bitmap, the spec's; NULL when the scan follows the page links
+ *   num_data_pages(out): the bitmap's pages (the parallel decision's count); -1 without a bitmap
+ *
+ * Note: the snapshot comes first, so a page allocated after the bitmap holds only rows the snapshot does not see.
+ *	 A class without snapshots (the root class, an MVCC-disabled class) keeps the page links.
+ *	 A scan opened again in the same execution (a correlated subquery, once per outer row) reads the bitmap the
+ *	 spec kept, as long as the snapshot is the build the bitmap followed: a snapshot a nested statement rebuilt
+ *	 (READ COMMITTED) sees rows on pages allocated since, so the bitmap is collected again; a rewind of an open
+ *	 scan after such a rebuild follows the page links (serial) or collects again (parallel).  Rows this transaction
+ *	 inserts between two opens into a page allocated after the bitmap are not read (a stored procedure called
+ *	 from a statement runs no DML: CBRD-27579).
+ *	 A partition's bitmap is kept in its partition_spec_node, so a partitioned class opened again collects once
+ *	 per partition and snapshot build, not at every partition switch.
+ */
+int
+scan_heap_scan_page_list (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, const OID * cls_oid, const HFID * hfid,
+			  bool grouped, const FILE_FTAB_COLLECTOR ** page_list, int *num_data_pages)
+{
+  MVCC_SNAPSHOT *snapshot;
+  FILE_FTAB_COLLECTOR *keep;
+  unsigned int *keep_snapshot;
+  int *keep_npages;
+  int error_code;
+  int i;
+
+  *page_list = NULL;
+  *num_data_pages = -1;
+
+  if (grouped || HFID_IS_NULL (hfid) || OID_IS_ROOTOID (cls_oid) || mvcc_is_mvcc_disabled_class (cls_oid))
+    {
+      return NO_ERROR;
+    }
+
+  snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (snapshot == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
+      return ER_MVCC_CANT_GET_SNAPSHOT;
+    }
+
+  if (spec->curent != NULL && HFID_EQ (&spec->curent->hfid, hfid))
+    {
+      /* the current partition's own bitmap */
+      keep = &spec->curent->page_list_keep;
+      keep_snapshot = &spec->curent->page_list_keep_snapshot;
+      keep_npages = &spec->curent->page_list_keep_npages;
+    }
+  else
+    {
+      keep = &spec->page_list_keep;
+      keep_snapshot = &spec->page_list_keep_snapshot;
+      keep_npages = &spec->page_list_keep_npages;
+      if (!HFID_EQ (&spec->page_list_keep_hfid, hfid))
+	{
+	  scan_heap_scan_page_list_free_one (thread_p, keep);
+	  spec->page_list_keep_hfid = *hfid;
+	}
+    }
+
+  if (keep->partsect_ftab == NULL || *keep_snapshot != snapshot->build_serial)
+    {
+      scan_heap_scan_page_list_free_one (thread_p, keep);
+
+      error_code = file_get_all_data_sectors (thread_p, &hfid->vfid, keep);
+      if (error_code != NO_ERROR)
+	{
+	  scan_heap_scan_page_list_free_one (thread_p, keep);
+	  return error_code;
+	}
+
+      /* file order: the partial sectors come first and the full table keeps the order the sectors filled up;
+       * VSID is the first member of FILE_PARTIAL_SECTOR */
+      qsort (keep->partsect_ftab, keep->nsects, sizeof (FILE_PARTIAL_SECTOR), disk_compare_vsids);
+
+      *keep_npages = 0;
+      for (i = 0; i < keep->nsects; i++)
+	{
+	  *keep_npages += bit64_count_ones (keep->partsect_ftab[i].page_bitmap);
+	}
+      *keep_snapshot = snapshot->build_serial;
+    }
+
+  *page_list = keep;
+  *num_data_pages = *keep_npages;
+  return NO_ERROR;
+}
+
+/*
+ * scan_heap_scan_set_page_list () - hand the page bitmap of the open to the serial heap scan just opened
+ *   scan_id(in/out): the heap scan, opened by scan_open_heap_scan ()
+ *   spec(in): the access spec that keeps the bitmap
+ *   page_list(in): the bitmap, the access spec's; NULL when the scan follows the page links
+ */
+void
+scan_heap_scan_set_page_list (SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec, const FILE_FTAB_COLLECTOR * page_list)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+
+  assert (scan_id->type == S_HEAP_SCAN);
+  assert (page_list == NULL || !scan_id->grouped);
+  hsidp->page_list = page_list;
+  hsidp->sector_order = (page_list != NULL);
+  assert (page_list == NULL || page_list == &spec->page_list_keep
+	  || (spec->curent != NULL && page_list == &spec->curent->page_list_keep));
+  hsidp->page_list_build = ((page_list == &spec->page_list_keep || spec->curent == NULL)
+			    ? spec->page_list_keep_snapshot : spec->curent->page_list_keep_snapshot);
+}
+
+/*
+ * scan_heap_scan_page_list_free () - let the page bitmaps the spec and its partitions kept go, at the end of the
+ *				      execution or before the partitions are freed
+ *
+ * Note: on the thread that executed the clone, whose private heap holds the bitmap, as scan_batch_keep_free ().
+ */
+void
+scan_heap_scan_page_list_free (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
+{
+  PARTITION_SPEC_TYPE *part;
+
+  scan_heap_scan_page_list_free_one (thread_p, &spec->page_list_keep);
+  for (part = spec->parts; part != NULL; part = part->next)
+    {
+      scan_heap_scan_page_list_free_one (thread_p, &part->page_list_keep);
+    }
+}
+
+/*
+ * scan_heap_next_listed_page () - the sector-based heap scan's next page: fix it, letting the held page go
+ *   return: S_SUCCESS (the page is held in the scan cache's watcher), S_END past the bitmap (no page held), S_ERROR
+ *   hsidp(in/out): the heap scan; its page bitmap and the walk's position
+ *   vpid_out(out): the page fixed
+ */
+static SCAN_CODE
+scan_heap_next_listed_page (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp, VPID * vpid_out)
+{
+  PGBUF_WATCHER *watcher = &hsidp->scan_cache.page_watcher;
+  const FILE_FTAB_COLLECTOR *page_list = hsidp->page_list;
+
+  while (hsidp->page_list_sect < page_list->nsects)
+    {
+      SCAN_CODE code = heap_page_list_fix_next (thread_p, &hsidp->hfid,
+						&page_list->partsect_ftab[hsidp->page_list_sect],
+						&hsidp->page_list_pgoffset, watcher, vpid_out);
+      if (code != S_END)
+	{
+	  return code;
+	}
+      hsidp->page_list_sect++;
+      hsidp->page_list_pgoffset = 0;
+    }
+
+  if (watcher->pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, watcher);
+    }
+  return S_END;
+}
+
+/*
+ * scan_heap_next_listed_row () - the sector-based heap scan's next visible row: the rows of the page it is on, then
+ *				   of the next listed page
+ *   return: S_SUCCESS, S_END past the bitmap, S_ERROR
+ *   hsidp(in/out): the heap scan; curr_oid is the last row returned (NULL at a page's start)
+ */
+static SCAN_CODE
+scan_heap_next_listed_row (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp, RECDES * recdes, int is_peeking)
+{
+  SCAN_CODE code;
+  VPID vpid;
+
+  for (;;)
+    {
+      if (VPID_ISNULL (&hsidp->page_list_vpid))
+	{
+	  code = scan_heap_next_listed_page (thread_p, hsidp, &vpid);
+	  if (code != S_SUCCESS)
+	    {
+	      return code;
+	    }
+	  hsidp->page_list_vpid = vpid;
+	  OID_SET_NULL (&hsidp->curr_oid);
+	}
+
+      code = heap_next_1page (thread_p, &hsidp->hfid, &hsidp->page_list_vpid, &hsidp->cls_oid, &hsidp->curr_oid,
+			      recdes, &hsidp->scan_cache, is_peeking);
+      if (code != S_END)
+	{
+	  return code;
+	}
+      VPID_SET_NULL (&hsidp->page_list_vpid);
+    }
+}
+
+/*
  * scan_next_heap_scan_rows () - the heap scan's next row, the row path: record by record, each through the filter
  */
 static SCAN_CODE
@@ -5464,6 +6048,15 @@ scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
 			}
 		    }
+		  else if (hsidp->sector_order)
+		    {
+		      sp_scan = scan_heap_next_listed_row (thread_p, hsidp, &recdes, is_peeking);
+		      if (retry_oid.pageid != hsidp->curr_oid.pageid || retry_oid.volid != hsidp->curr_oid.volid)
+			{
+			  /* the row is the first this call found on a new page: a retry reads that page from its start */
+			  OID_SET_NULL (&retry_oid);
+			}
+		    }
 		  else
 		    {
 		      sp_scan =
@@ -5484,6 +6077,8 @@ scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      /* move backward */
 	      if (scan_id->type == S_HEAP_SCAN)
 		{
+		  /* a query heap scan never runs backward; the page bitmap has no backward walk */
+		  assert (!hsidp->sector_order);
 		  sp_scan =
 		    heap_prev (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
 			       is_peeking);
@@ -6107,6 +6702,24 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	      isidp->curr_oidno = 0;	/* first oid number */
 	      scan_id->position = S_ON;
+	      if (!SCAN_IS_INDEX_COVERED (isidp))
+		{
+		  /* the OIDs were read again from the other end: point at the first one, as S_BEFORE does.  The pointer
+		   * was left at the slot where the forward scan found its row, so when a data filter had rejected the
+		   * keys ahead of it, the backward scan took another row for its first one (CBRD-28007) */
+		  if (isidp->multi_range_opt.use)
+		    {
+		      assert (isidp->curr_oidno < isidp->multi_range_opt.cnt);
+		      assert (isidp->multi_range_opt.top_n_items[isidp->curr_oidno] != NULL);
+		      isidp->curr_oidp = &(isidp->multi_range_opt.top_n_items[isidp->curr_oidno]->inst_oid);
+		    }
+		  else
+		    {
+		      assert (isidp->oid_list != NULL);
+		      isidp->curr_oidp = GET_NTH_OID (isidp->oid_list->oidp, isidp->curr_oidno);
+		    }
+		  assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
+		}
 	    }
 	  else if (scan_id->position == S_ON)
 	    {
@@ -6264,6 +6877,11 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (thread_is_on_trace (thread_p))
 	    {
 	      tsc_getticks (&start_tick);
+	    }
+
+	  if (isidp->curr_oidno + isidp->ahead_distance / 2 >= isidp->ahead_next)
+	    {
+	      scan_index_read_ahead (thread_p, isidp, false);
 	    }
 
 	  lookup_status = scan_next_index_lookup_heap (thread_p, scan_id, isidp, &data_filter, isolation);
@@ -7361,6 +7979,12 @@ end:
   /* maintain what is apparently supposed to be an invariant-- S_END implies position is "after" the scan */
   if (result == S_END)
     {
+      /* a fixed heap scan that stopped at its first match still holds its page: release it before the outer scans
+       * of the chain move */
+      if (s_id->type == S_HEAP_SCAN && s_id->s.hsid.scan_cache.page_watcher.pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, &s_id->s.hsid.scan_cache.page_watcher);
+	}
       if (s_id->direction != S_BACKWARD)
 	{
 	  s_id->position = S_AFTER;
@@ -7549,14 +8173,16 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
     }
 
   /* a decline here is the row path, not a fault: an allocation that failed on the way leaves no error behind (a parallel
-   * worker takes a set error as its initialization failing, px_scan_task.cpp) -- unless one was set before */
-  err_before = er_errid ();
+   * worker takes a set error as its initialization failing, px_scan_task.cpp) -- unless one was set before.  Errors
+   * only: NUMERIC arithmetic sets ER_IT_DATA_OVERFLOW as a warning, and a warning left before must not keep the
+   * decline's error (CBRD-28049, as expr_batch_run ()) */
+  err_before = er_errid_if_has_error ();
   hsidp->batch_plan = expr_batch_plan_build (thread_p, &in, &hsidp->batch_why_not);
   if (hsidp->batch_plan == NULL)
     {
       /* a decline of the inputs, not an allocation that failed on the way (an error, or "out of memory"), is kept for
        * the next open of the spec from the same inputs */
-      if (spec != NULL && er_errid () == err_before && hsidp->batch_why_not != NULL
+      if (spec != NULL && er_errid_if_has_error () == err_before && hsidp->batch_why_not != NULL
 	  && strstr (hsidp->batch_why_not, "memory") == NULL)
 	{
 	  keep = scan_batch_keep_for (thread_p, spec, keep);
@@ -7566,7 +8192,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
 	      keep->declined_why = hsidp->batch_why_not;
 	    }
 	}
-      if (err_before == NO_ERROR)
+      if (err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
 	{
 	  er_clear ();
 	}
@@ -7578,7 +8204,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
       expr_batch_plan_free (thread_p, hsidp->batch_plan);
       hsidp->batch_plan = NULL;
       hsidp->batch_why_not = "out of memory";
-      if (err_before == NO_ERROR)
+      if (err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
 	{
 	  er_clear ();
 	}
@@ -7590,7 +8216,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
       expr_batch_plan_free (thread_p, hsidp->batch_plan);
       hsidp->batch_plan = NULL;
       hsidp->batch_why_not = "out of memory";
-      if (err_before == NO_ERROR)
+      if (err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
 	{
 	  er_clear ();
 	}
@@ -7862,9 +8488,12 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
  *           scan_batch_collect_chunk ()), S_END past the last page, S_ERROR
  *   scan_id(in/out): the heap scan
  *
- * The pages in the order heap_next () takes them: the header page first, then the chain
- * (heap_vpid_next ()), the next page fixed before the held one is released so that it cannot
- * be deallocated in between (OLD_PAGE_PREVENT_DEALLOC, as heap_next_internal ()).  The page
+ * A scan that follows the page links takes the pages in the order heap_next () takes them: the
+ * header page first, then the chain (heap_vpid_next ()), the next page fixed before the held one
+ * is released so that it cannot be deallocated in between (OLD_PAGE_PREVENT_DEALLOC, as
+ * heap_next_internal ()).  A sector-based scan takes the pages of its page bitmap in file order:
+ * the held page is released first, the next one is fixed with OLD_PAGE_MAYBE_DEALLOCATED and a
+ * page deallocated since the bitmap is skipped (heap_page_list_fix_next ()).  Either way the page
  * stays fixed until the next step or the scan's end, whatever the scan's own fix mode: the
  * consumer that takes a batch runs nothing under it that could need the page released.
  */
@@ -7875,6 +8504,36 @@ scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   HEAP_SCANCACHE *scan_cache = &hsidp->scan_cache;
   VPID vpid;
   int rc;
+
+  if (hsidp->sector_order)
+    {
+      SCAN_CODE code;
+
+      if (hsidp->batch_started && VPID_ISNULL (&hsidp->batch_vpid))
+	{
+	  /* past the last page already */
+	  assert (scan_cache->page_watcher.pgptr == NULL);
+	  scan_id->position = S_AFTER;
+	  return S_END;
+	}
+      /* the next page comes from the page bitmap, not from the held page's link */
+      code = scan_heap_next_listed_page (thread_p, hsidp, &vpid);
+      if (code == S_ERROR)
+	{
+	  return S_ERROR;
+	}
+      hsidp->batch_started = true;
+      if (code == S_END)
+	{
+	  OID_SET_NULL (&hsidp->curr_oid);
+	  VPID_SET_NULL (&hsidp->batch_vpid);
+	  scan_id->position = S_AFTER;
+	  return S_END;
+	}
+      scan_id->position = S_ON;
+      hsidp->batch_vpid = vpid;
+      return S_SUCCESS;
+    }
 
   if (!hsidp->batch_started)
     {
@@ -8886,7 +9545,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
     }
 
   error = btree_attrinfo_read_dbvalues (thread_p, key, NULL, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
-					iscan_id->rest_attrs.attr_cache, -1, NULL);
+					iscan_id->rest_attrs.attr_cache, iscan_id->indx_cov.func_index_col_id, NULL);
   if (error != NO_ERROR)
     {
       return error;

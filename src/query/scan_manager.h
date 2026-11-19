@@ -185,6 +185,17 @@ struct heap_scan_id
   size_t batch_copy_cap;
   struct access_spec_node *batch_spec;	/* the spec the batch was opened on: scan_end_scan () parks the plan in its
 					 * keep (SCAN_BATCH_KEEP); NULL frees it */
+
+  /* sector-based heap scan (CBRD-28043): the scan reads the page bitmap its open took (after the statement's
+   * snapshot) in file order instead of following the page links; a rewind walks the same bitmap again, unless the
+   * snapshot was rebuilt since (page_list_build): the rest of the open then follows the links */
+  bool sector_order;
+  const FILE_FTAB_COLLECTOR *page_list;	/* the page bitmap, the access spec's (page_list_keep); NULL when the scan
+					 * follows the links */
+  int page_list_sect;		/* the walk's sector in page_list */
+  size_t page_list_pgoffset;	/* the walk's next page offset in that sector */
+  VPID page_list_vpid;		/* the row path's page; NULL to take the next listed page */
+  unsigned int page_list_build;	/* the snapshot build the bitmap followed (MVCC_SNAPSHOT.build_serial) */
 };				/* Regular Heap File Scan Identifier */
 
 namespace parallel_scan
@@ -228,6 +239,14 @@ struct parallel_heap_scan_id
   char *batch_copy;
   size_t batch_copy_cap;
   struct access_spec_node *batch_spec;
+  /* the sector-based heap scan fields of heap_scan_id, in the same place (a scan goes between the two layouts:
+   * the parallel fields below must survive a serial open, e.g. the trace storage across partitions) */
+  bool sector_order;
+  const FILE_FTAB_COLLECTOR *page_list;
+  int page_list_sect;
+  size_t page_list_pgoffset;
+  VPID page_list_vpid;
+  unsigned int page_list_build;
   // *INDENT-OFF*
   #if !WINDOWS
   parallel_scan::RESULT_TYPE result_type;
@@ -250,6 +269,18 @@ struct parallel_list_scan_id
 };				/* List PARALLEL Scan Identifier */
 
 typedef struct parallel_index_scan_id PARALLEL_INDEX_SCAN_ID;
+
+/* OIDs ahead of an index scan's lookup whose heap pages the OS is told about: the first window holds
+ * SCAN_INDEX_READ_AHEAD_INITIAL OIDs and every next one twice the one before, up to the scan's ahead_limit, so a
+ * scan that stops after a few rows told the OS about few pages; the next window is told when half of the current
+ * one was looked up. The pages a query was told about and has not read yet queue on the device every session's
+ * reads and log writes use, so a query keeps at most SCAN_INDEX_READ_AHEAD_DISTANCE OIDs ahead: a serial scan's
+ * ahead_limit, which the workers of a parallel index scan share (each its first window at least) */
+#define SCAN_INDEX_READ_AHEAD_DISTANCE 64
+#define SCAN_INDEX_READ_AHEAD_INITIAL 8
+#define SCAN_INDEX_READ_AHEAD_NEXT(isidp) \
+  (((isidp)->ahead_distance == 0) ? SCAN_INDEX_READ_AHEAD_INITIAL \
+   : MIN ((isidp)->ahead_distance * 2, (isidp)->ahead_limit))
 /* INDX_SCAN_ID superset (mirrors PARALLEL_HEAP_SCAN_ID pattern); paired static_asserts pin layout */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;
@@ -387,6 +418,11 @@ struct indx_scan_id
   bool check_not_vacuumed;	/* if true then during index scan, the entries will be checked if they should've been
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
+  int ahead_next;		/* first OID of the buffer whose heap page the OS was not told about; INT_MAX: none */
+  int ahead_distance;		/* OIDs of the last whole read-ahead window; 0: none yet */
+  int ahead_limit;		/* OIDs a read-ahead window holds at most */
+  bool ahead_single;		/* the scan's XASL may stop at its first row (EXISTS, an inst_num () condition): the
+				 * windows start after the first lookup */
   /* Parallel index scan pending state. Set in scan_open_parallel_index_scan when the spec is
    * parallel-eligible; consumed by scan_start_scan to attempt the promotion after
    * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
@@ -441,6 +477,10 @@ struct parallel_index_scan_id
   bool check_not_vacuumed;	/* if true then during index scan, the entries will be checked if they should've been
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
+  int ahead_next;		/* mirror of INDX_SCAN_ID::ahead_next */
+  int ahead_distance;		/* mirror of INDX_SCAN_ID::ahead_distance */
+  int ahead_limit;		/* mirror of INDX_SCAN_ID::ahead_limit */
+  bool ahead_single;		/* mirror of INDX_SCAN_ID::ahead_single */
   void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
   INDX_GBY_SKIP *gby_skip;	/* mirror of INDX_SCAN_ID::gby_skip */
   /* parallel-only fields (must follow all isid fields) */
@@ -454,6 +494,20 @@ struct parallel_index_scan_id
 };				/* Index PARALLEL Scan Identifier */
 
 // *INDENT-OFF*
+/* pin phsid/hsid layout: a serial open (scan_open_heap_scan) writes the heap_scan_id fields and must not reach
+ * the parallel fields that outlive it */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+static_assert (offsetof (HEAP_SCAN_ID, batch_spec) == offsetof (PARALLEL_HEAP_SCAN_ID, batch_spec), "phsid mirror: batch_spec");
+static_assert (offsetof (HEAP_SCAN_ID, page_list) == offsetof (PARALLEL_HEAP_SCAN_ID, page_list), "phsid mirror: page_list");
+static_assert (offsetof (HEAP_SCAN_ID, page_list_vpid) == offsetof (PARALLEL_HEAP_SCAN_ID, page_list_vpid), "phsid mirror: page_list_vpid");
+static_assert (offsetof (HEAP_SCAN_ID, page_list_build) == offsetof (PARALLEL_HEAP_SCAN_ID, page_list_build), "phsid mirror: page_list_build");
+static_assert (sizeof (HEAP_SCAN_ID) <= sizeof (PARALLEL_HEAP_SCAN_ID), "phsid mirror: heap_scan_id fits");
+#if !WINDOWS
+static_assert (offsetof (HEAP_SCAN_ID, page_list_build) + sizeof (unsigned int) <= offsetof (PARALLEL_HEAP_SCAN_ID, result_type), "phsid mirror: heap_scan_id ends before the parallel fields");
+#endif
+#pragma GCC diagnostic pop
+
 /* pin pisid/isid layout — drift fails build; offsetof on non-standard-layout is well-defined on GCC */
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -589,9 +643,10 @@ struct scan_id_struct
   SCAN_POSITION position;	/* Scan Position */
   SCAN_DIRECTION direction;	/* Forward/Backward Direction */
   bool mvcc_select_lock_needed;	/* true if lock at scanning needed in mvcc */
-  bool upddel_target_scan;	/* the row locks are the statement's: the outermost READ COMMITTED DELETE/UPDATE
-				 * target, not SELECT ... FOR UPDATE.  Kept across a partition switch. */
-  bool lock_ends_with_statement;	/* the same, narrowed by the class this scan is on now */
+  bool upddel_target_scan;	/* the row locks are the statement's: a DELETE/UPDATE target or a click counter's scan,
+				 * not SELECT ... FOR UPDATE.  Kept across a partition switch. */
+  bool lock_ends_with_statement;	/* they end with the statement, for the class this scan is on now */
+  bool click_counter_scan;	/* a click counter's scan, which changes no row.  Kept across a partition switch. */
   SCAN_OPERATION_TYPE scan_op_type;	/* SELECT, DELETE, UPDATE */
 
   int fixed;			/* if true, pages containing scan items in a group keep fixed */
@@ -641,7 +696,7 @@ struct scan_id_struct
 extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				bool mvcc_select_lock_needed, bool upddel_target_scan,
-				SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
+				bool click_counter_scan, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
 				QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 				val_descr * vd,
 				/* fields of HEAP_SCAN_ID */
@@ -668,7 +723,7 @@ extern int scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id
 extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 /* fields of SCAN_ID */
 				 bool mvcc_select_lock_needed, bool upddel_target_scan,
-				 SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
+				 bool click_counter_scan, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
 				 QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 				 val_descr * vd,
 				 /* fields of INDX_SCAN_ID */
@@ -683,6 +738,8 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 HEAP_CACHE_ATTRINFO * cache_rest, int num_attrs_range, ATTR_ID * attrids_range,
 				 HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id,
 				 bool min_max_optimzied_scan);
+extern int scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * cls_oid, HFID * hfid,
+					BTID_INT * btid_int, bool * btid_int_cached, bool lock_held, bool * started);
 extern int scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 					  /* fields of SCAN_ID */
 					  val_list_node * val_list, val_descr * vd,
@@ -748,6 +805,12 @@ extern SCAN_CODE scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_free_hash_list_scan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid_p);
 extern void scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+extern int scan_heap_scan_page_list (THREAD_ENTRY * thread_p, struct access_spec_node *spec, const OID * cls_oid,
+				     const HFID * hfid, bool grouped, const FILE_FTAB_COLLECTOR ** page_list,
+				     int *num_data_pages);
+extern void scan_heap_scan_set_page_list (SCAN_ID * scan_id, const struct access_spec_node *spec,
+					  const FILE_FTAB_COLLECTOR * page_list);
+extern void scan_heap_scan_page_list_free (THREAD_ENTRY * thread_p, struct access_spec_node *spec);
 /* page batch over a sequential heap scan (expr_batch.h): the consumer opens it with what it
  * aggregates, steps to a page with scan_batch_next_page () (serial; a parallel worker's walker
  * fixes its own), takes the page's rows a chunk at a time with scan_batch_collect_chunk () --
@@ -821,9 +884,11 @@ extern void showstmt_scan_init (void);
 extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+extern void scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, bool more);
 #if defined(SERVER_MODE)
 extern void scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * stats);
 extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);
+extern int scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp);
 #endif /* SERVER_MODE */
 
 #endif /* _SCAN_MANAGER_H_ */
