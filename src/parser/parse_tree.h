@@ -1679,8 +1679,9 @@ typedef enum
 						 * asked for, so it must not hide the remote invisible columns the statement references - unlike
 						 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
   PT_SPEC_FLAG_UNNESTED_SUBQUERY = 0x80000	/* derived SEMI/ANTI spec unnested from a [NOT] EXISTS / [NOT] IN subquery
-						 * over several tables, or a SEMI JOIN table read with its duplicates removed; its XASL is
-						 * made once the query keeps it */
+						 * over several tables, or the derived table that reads a SEMI JOIN table with its
+						 * duplicates removed.  Its XASL is made once the query keeps it; before, the plan reads
+						 * its rows from its summary (qo_add_node ()) and charges its build (qo_sscan_cost ()) */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2352,7 +2353,6 @@ struct pt_spec_info
   PT_MISC_TYPE flavor;		/* enum 0 or PT_METHOD_ENTITY */
   PT_NODE *on_cond;
   PT_NODE *using_cond;		/* -- does not support named columns join */
-  PT_NODE *exists_cond;		/* [NOT] EXISTS an unnested SEMI/ANTI spec may run as; not walked */
   PT_JOIN_TYPE join_type;
   short location;		/* n-th position in FROM (start from 0); init val = -1 */
   bool natural;			/* -- does not support natural join */

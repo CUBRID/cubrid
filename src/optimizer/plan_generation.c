@@ -3656,17 +3656,18 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 /*
  * qo_plan_set_summary () - set the qo_summary of the select from the plan
  *   return: false on allocation failure
- *   env(in): The optimizer environment
  *   plan(in): The plan
  *   xasl(in): The xasl tree generated from the plan; NULL if not generated
  */
 bool
-qo_plan_set_summary (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
+qo_plan_set_summary (QO_PLAN * plan, XASL_NODE * xasl)
 {
+  QO_ENV *env;
   QO_SUMMARY *summary;
   PARSER_CONTEXT *parser;
   PT_NODE *select;
 
+  env = (plan->info)->env;
   parser = QO_ENV_PARSER (env);
   select = QO_ENV_PT_TREE (env);
   summary = (QO_SUMMARY *) parser_alloc (parser, sizeof (QO_SUMMARY));
@@ -3699,7 +3700,7 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
 {
   if (xasl != NULL)
     {
-      if (!qo_plan_set_summary (env, plan, xasl))
+      if (!qo_plan_set_summary (plan, xasl))
 	{
 	  xasl = NULL;
 	}

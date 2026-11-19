@@ -895,15 +895,17 @@ qo_make_semi_anti_exists_cond (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
- * qo_rewrite_semi_anti_as_exists () - replace a derived SEMI / ANTI JOIN spec with its exists_cond in the WHERE
+ * qo_rewrite_semi_anti_as_exists () - replace a derived SEMI / ANTI JOIN spec with its [NOT] EXISTS in the WHERE
  *   return: none
  *   parser(in):
  *   node(in/out): the PT_SELECT
  *   prev_spec(in): the spec before 'spec' in the FROM
  *   spec(in): the spec, freed
+ *   expr(in): the [NOT] EXISTS of the spec (qo_make_semi_anti_exists_cond ()), owned by the WHERE
  */
 void
-qo_rewrite_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * prev_spec, PT_NODE * spec)
+qo_rewrite_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * prev_spec, PT_NODE * spec,
+				PT_NODE * expr)
 {
   PT_NODE *next_spec;
 
@@ -914,7 +916,7 @@ qo_rewrite_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
   /* reset location */
   qo_reset_spec_location (parser, next_spec, node);
 
-  node->info.query.q.select.where = parser_append_node (spec->info.spec.exists_cond, node->info.query.q.select.where);
+  node->info.query.q.select.where = parser_append_node (expr, node->info.query.q.select.where);
 
   /* free spec */
   parser_free_tree (parser, spec);
@@ -1227,8 +1229,15 @@ qo_is_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * sp
 
   *is_merge_hinted = false;
 
-  if (spec->info.spec.join_type != PT_JOIN_SEMI || spec == node->info.query.q.select.from
-      || spec->info.spec.cte_name != NULL || spec->info.spec.path_entities != NULL
+  /* the inner of a SEMI JOIN, which is never the first spec */
+  if (spec->info.spec.join_type != PT_JOIN_SEMI || spec == node->info.query.q.select.from)
+    {
+      return false;
+    }
+
+  /* a table with no path expression, or a derived table unnested from a subquery: the XASL of the other derived
+   * tables is made before the forms are chosen */
+  if (spec->info.spec.cte_name != NULL || spec->info.spec.path_entities != NULL
       || (spec->info.spec.derived_table != NULL && !(spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)))
     {
       return false;

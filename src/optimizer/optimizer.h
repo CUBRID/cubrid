@@ -208,7 +208,7 @@ extern bool qo_is_index_iss_scan (QO_PLAN * plan);
 extern bool qo_is_index_loose_scan (QO_PLAN * plan);
 extern bool qo_is_index_mro_scan (QO_PLAN * plan);
 extern bool qo_plan_multi_range_opt (QO_PLAN * plan);
-extern bool qo_plan_set_summary (QO_ENV * env, QO_PLAN * plan, xasl_node * xasl);
+extern bool qo_plan_set_summary (QO_PLAN * plan, xasl_node * xasl);
 
 /*
  *  QO_XASL support functions
@@ -219,7 +219,7 @@ extern PT_NODE *qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node,
 extern bool qo_check_nullable_op (PT_NODE * node);
 extern PT_NODE *qo_make_semi_anti_exists_cond (PARSER_CONTEXT * parser, PT_NODE * spec);
 extern void qo_rewrite_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * prev_spec,
-					    PT_NODE * spec);
+					    PT_NODE * spec, PT_NODE * expr);
 extern bool qo_is_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec, bool * is_merge_hinted);
 extern PT_NODE *qo_rewrite_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec);
 extern PT_NODE *mq_rewrite (PARSER_CONTEXT * parser, PT_NODE * statement);
