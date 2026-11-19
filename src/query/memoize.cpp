@@ -689,6 +689,28 @@ namespace memoize
       }
   }
 
+  bool storage::has_key ()
+  {
+    if (disabled)
+      {
+	return false;
+      }
+
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
+    key *k = get_key();
+    bool found = false;
+
+    if (k != nullptr)
+      {
+	found = m_key_value_map.find (k) != m_key_value_map.end ();
+	k->~key();
+	m_key_fixed_allocator.deallocate (k);
+      }
+    db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+
+    return found;
+  }
+
   result_code storage::put()
   {
     HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);

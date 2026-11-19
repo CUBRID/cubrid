@@ -3237,6 +3237,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->ahead_distance = 0;
   isidp->ahead_limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
   isidp->ahead_single = false;
+  isidp->nl_slice_cnt = -1;
+  isidp->nl_slice = NULL;
 
   if (scan_init_indx_coverage (thread_p, coverage_enabled, output_val_list, regu_val_list, vd, query_id,
 			       root_header->node.max_key_len, func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
@@ -3665,6 +3667,8 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->ahead_distance = 0;
   isidp->ahead_limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
   isidp->ahead_single = false;
+  isidp->nl_slice_cnt = -1;
+  isidp->nl_slice = NULL;
 
   if (scan_init_indx_coverage (thread_p, false, NULL, NULL, vd, query_id, root_header->node.max_key_len,
 			       func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
@@ -4688,6 +4692,17 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
 	  /* a scan read again starts its bitmap again */
 	  scan_index_bitmap_free (thread_p, &s_id->s.isid);
+	  if (s_id->s.isid.curr_keyno >= 0 && s_id->s.isid.curr_keyno < s_id->s.isid.key_cnt)
+	    {
+	      /* rewound inside a key range: its key values are built again by the next search */
+	      int i;
+
+	      for (i = 0; i < s_id->s.isid.key_cnt; i++)
+		{
+		  pr_clear_value (&s_id->s.isid.key_vals[i].key1);
+		  pr_clear_value (&s_id->s.isid.key_vals[i].key2);
+		}
+	    }
 	  s_id->s.isid.curr_oidno = -1;
 	  s_id->s.isid.curr_keyno = -1;
 	  s_id->position = S_BEFORE;
@@ -6575,6 +6590,175 @@ scan_gby_skip_note_key_start (INDX_GBY_SKIP * gby, int oidno)
 }
 
 /*
+ * scan_index_take_nl_slice () - the OID buffer of an outer row whose OIDs a batched nested-loop join read from the
+ *				 index when it collected the row: the index is not walked again
+ *   return: S_SUCCESS, or S_END when the row has no OID
+ *   isidp(in/out):
+ */
+static SCAN_CODE
+scan_index_take_nl_slice (INDX_SCAN_ID * isidp)
+{
+  int count = isidp->nl_slice_cnt;
+
+  isidp->nl_slice_cnt = -1;
+  isidp->oids_count = count;
+  isidp->oid_list->oid_cnt = count;
+  if (count == 0)
+    {
+      return S_END;
+    }
+  assert (count <= isidp->oid_list->capacity);
+  memcpy (isidp->oid_list->oidp, isidp->nl_slice, count * sizeof (OID));
+  /* the join told the OS about the pages of the whole batch */
+  isidp->ahead_next = INT_MAX;
+
+  return S_SUCCESS;
+}
+
+/*
+ * scan_index_nl_batch_ok () - can a batched nested-loop join read this inner scan's OIDs ahead of its heap lookups?
+ *   return: true for a plain index scan of one key or one range that looks its rows up in the heap
+ *   scan_id(in): the inner scan, rewound for an outer row
+ */
+bool
+scan_index_nl_batch_ok (const SCAN_ID * scan_id)
+{
+  const INDX_SCAN_ID *isidp = &scan_id->s.isid;
+
+  return (scan_id->type == S_INDX_SCAN && !scan_id->grouped && scan_id->position == S_BEFORE
+	  && scan_id->direction == S_FORWARD && !scan_id->mvcc_select_lock_needed && scan_id->scan_op_type == S_SELECT
+	  && scan_id->single_fetch != QPROC_SINGLE_INNER && !scan_id->scan_immediately_stop
+	  && isidp->oid_list != NULL && !SCAN_IS_INDEX_COVERED (isidp) && !isidp->multi_range_opt.use
+	  && !isidp->iss.use && !isidp->need_count_only && isidp->gby_skip == NULL
+	  && isidp->key_limit_upper == -1 && isidp->key_limit_lower == -1 && isidp->indx_info != NULL
+	  && (isidp->indx_info->range_type == R_KEY || isidp->indx_info->range_type == R_RANGE)
+	  && !isidp->scan_cache.mvcc_disabled_class);
+}
+
+/*
+ * scan_index_nl_batch_collect () - read the OIDs of the current outer row from the index, without its heap lookups
+ *   return: S_SUCCESS or S_ERROR
+ *   scan_id(in/out): the inner scan, rewound for the outer row
+ *   oids(out): the row's OIDs
+ *   room(in): OIDs that fit there
+ *   n_oids(out):
+ *   complete(out): false when the row has more OIDs than one buffer: nothing is copied, and the row scan reads the
+ *		    index itself
+ */
+SCAN_CODE
+scan_index_nl_batch_collect (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * oids, int room, int *n_oids,
+			     bool * complete)
+{
+  INDX_SCAN_ID *isidp = &scan_id->s.isid;
+  SCAN_CODE ret;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 old_fetches = 0, old_ioreads = 0;
+  UINT64 old_read_keys = 0, old_qualified_keys = 0, old_key_qualified_rows = 0;
+  bool on_trace = thread_is_on_trace (thread_p);
+
+  *n_oids = 0;
+  *complete = false;
+
+  if (on_trace)
+    {
+      tsc_getticks (&start_tick);
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_read_keys = scan_id->scan_stats.read_keys;
+      old_qualified_keys = scan_id->scan_stats.qualified_keys;
+      old_key_qualified_rows = scan_id->scan_stats.key_qualified_rows;
+    }
+
+  ret = call_get_next_index_oidset (thread_p, scan_id, isidp, true);
+
+  if (on_trace)
+    {
+      UINT64 fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      UINT64 ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (scan_id->scan_stats.elapsed_scan, tv_diff);
+      scan_id->scan_stats.num_fetches += fetches;
+      scan_id->scan_stats.num_ioreads += ioreads;
+      if (scan_id->partition_stats != NULL)
+	{
+	  /* as scan_next_scan () does for the search of a row scan */
+	  TSC_ADD_TIMEVAL (scan_id->partition_stats->elapsed_scan, tv_diff);
+	  scan_id->partition_stats->num_fetches += fetches;
+	  scan_id->partition_stats->num_ioreads += ioreads;
+	  scan_id->partition_stats->read_keys += scan_id->scan_stats.read_keys - old_read_keys;
+	  scan_id->partition_stats->qualified_keys += scan_id->scan_stats.qualified_keys - old_qualified_keys;
+	  scan_id->partition_stats->key_qualified_rows +=
+	    scan_id->scan_stats.key_qualified_rows - old_key_qualified_rows;
+	}
+    }
+
+  if (ret == S_ERROR)
+    {
+      return S_ERROR;
+    }
+  if (!BTREE_END_OF_SCAN (&isidp->bt_scan))
+    {
+      return S_SUCCESS;
+    }
+  if (ret == S_SUCCESS)
+    {
+      /* the caller takes a row while half of its array, one OID buffer, is free */
+      assert (isidp->oids_count <= room);
+      memcpy (oids, isidp->oid_list->oidp, isidp->oids_count * sizeof (OID));
+      *n_oids = isidp->oids_count;
+    }
+  scan_id->scan_stats.nl_batch_rows++;
+  *complete = true;
+
+  return S_SUCCESS;
+}
+
+/*
+ * scan_index_nl_batch_read_ahead () - name the heap pages of a batch's OIDs to the OS before the lookups start
+ *   return: pages named; 0 when every page is in the buffer already
+ *   oids(in): in lookup order
+ *   count(in):
+ */
+int
+scan_index_nl_batch_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int count)
+{
+  VPID vpids[SCAN_INDEX_READ_AHEAD_DISTANCE];
+  int num_hinted = 0;
+  int n = 0;
+  int i;
+
+  if (count <= 1)
+    {
+      /* one page: the lookup reads it right now */
+      return 0;
+    }
+  for (i = 0; i < count; i++)
+    {
+      if (n > 0 && vpids[n - 1].pageid == oids[i].pageid && vpids[n - 1].volid == oids[i].volid)
+	{
+	  continue;
+	}
+      vpids[n].pageid = oids[i].pageid;
+      vpids[n].volid = oids[i].volid;
+      n++;
+      if (n == SCAN_INDEX_READ_AHEAD_DISTANCE)
+	{
+	  num_hinted += pgbuf_read_ahead (thread_p, vpids, n);
+	  n = 0;
+	}
+    }
+  if (n > 1 || (n == 1 && num_hinted > 0))
+    {
+      num_hinted += pgbuf_read_ahead (thread_p, vpids, n);
+    }
+
+  return num_hinted;
+}
+
+/*
  * scan_next_index_scan () - The scan is moved to the next index scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
@@ -6686,7 +6870,14 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      /* Either we are not using ISS, or we are using it, and in this case, we are supposed to be here for the
 	       * first time */
 	      assert_release (!isidp->iss.use || isidp->iss.current_op == ISS_OP_NONE);
-	      ret = call_get_next_index_oidset (thread_p, scan_id, isidp, true);
+	      if (isidp->nl_slice_cnt >= 0)
+		{
+		  ret = scan_index_take_nl_slice (isidp);
+		}
+	      else
+		{
+		  ret = call_get_next_index_oidset (thread_p, scan_id, isidp, true);
+		}
 	      if (ret != S_SUCCESS)
 		{
 		  return ret;
@@ -10795,6 +10986,11 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
 	  trace_json_object_set_new (scan_stats, "mro", trace_json_true ());
 	}
 
+      if (scan_id->scan_stats.nl_batch_rows != 0)
+	{
+	  trace_json_object_set_new (scan_stats, "nlbatch", trace_json_integer (scan_id->scan_stats.nl_batch_rows));
+	}
+
       if (scan_id->scan_stats.index_skip_scan == true)
 	{
 	  trace_json_object_set_new (scan_stats, "iss", trace_json_true ());
@@ -11019,6 +11215,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       if (scan_id->scan_stats.multi_range_opt == true)
 	{
 	  fprintf (fp, ", mro: true");
+	}
+
+      if (scan_id->scan_stats.nl_batch_rows != 0)
+	{
+	  fprintf (fp, ", nlbatch: %llu", (unsigned long long) scan_id->scan_stats.nl_batch_rows);
 	}
 
       if (scan_id->scan_stats.index_skip_scan == true)

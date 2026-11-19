@@ -90,6 +90,8 @@ namespace memoize
       static storage *new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl, bool match_only);
       void init (std::vector<DB_VALUE *> &key_ptr_src, std::vector<const TP_DOMAIN *> &key_domains);
       result_code get ();
+      /* is the key of the current outer row stored? Nothing is replayed and no hit or miss is counted */
+      bool has_key ();
       result_code put();
       void start_timer();
       void stop_timer();

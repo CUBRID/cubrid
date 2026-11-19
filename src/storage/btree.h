@@ -380,6 +380,8 @@ struct btree_scan
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_scan_started = false;			\
+    /* a scan stopped inside a key's overflow OIDs and rewound reads its next key from the leaf record */ \
+    (bts)->is_key_partially_processed = false;		\
   } while (0)
 
 #define BTREE_END_OF_SCAN(bts) \

@@ -146,6 +146,7 @@ namespace parallel_scan
       void loop (cubthread::entry &thread_ref);
       SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
       SCAN_CODE row_body (cubthread::entry &thread_ref, bool &stop);
+      SCAN_CODE join_rows (cubthread::entry &thread_ref, bool &stop);
       static int emit_row (cubthread::entry *thread_p, void *arg);
       static int emit_row_body (cubthread::entry *thread_p, void *arg);
       static QFILE_LIST_ID *gby_list (void *arg);

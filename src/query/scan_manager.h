@@ -428,6 +428,9 @@ struct indx_scan_id
   int ahead_limit;		/* OIDs a read-ahead window holds at most */
   bool ahead_single;		/* the scan's XASL may stop at its first row (EXISTS, an inst_num () condition): the
 				 * windows start after the first lookup */
+  int nl_slice_cnt;		/* OIDs of the next outer row, read from the index when a batched nested-loop join
+				 * collected the row; -1: none, the scan reads the index */
+  OID *nl_slice;		/* ... and where they are */
   /* Parallel index scan pending state. Set in scan_open_parallel_index_scan when the spec is
    * parallel-eligible; consumed by scan_start_scan to attempt the promotion after
    * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
@@ -490,6 +493,8 @@ struct parallel_index_scan_id
   int ahead_distance;		/* mirror of INDX_SCAN_ID::ahead_distance */
   int ahead_limit;		/* mirror of INDX_SCAN_ID::ahead_limit */
   bool ahead_single;		/* mirror of INDX_SCAN_ID::ahead_single */
+  int nl_slice_cnt;		/* mirror of INDX_SCAN_ID::nl_slice_cnt */
+  OID *nl_slice;		/* mirror of INDX_SCAN_ID::nl_slice */
   void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
   INDX_GBY_SKIP *gby_skip;	/* mirror of INDX_SCAN_ID::gby_skip */
   bool bitmap_planned;		/* mirror of INDX_SCAN_ID::bitmap_planned */
@@ -641,6 +646,7 @@ struct scan_stats
   UINT64 bitmap_heap_fetches;
   UINT64 bitmap_heap_ioreads;
   UINT64 bitmap_heap_pages;	/* recorded pages it read */
+  UINT64 nl_batch_rows;		/* outer rows whose OIDs a batched nested-loop join read ahead of their lookups */
   bool multi_range_opt;
   bool index_skip_scan;
   bool loose_index_scan;
@@ -888,6 +894,10 @@ extern int scan_batch_rows_consume (THREAD_ENTRY * thread_p, struct expr_chunk_n
 /* one row of a chunk through the projection's tail: its columns into the value list, then emit */
 extern int scan_batch_project_row (THREAD_ENTRY * thread_p, SCAN_BATCH_PROJECT * st, struct heap_page_row *row);
 extern SCAN_CODE scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+extern bool scan_index_nl_batch_ok (const SCAN_ID * scan_id);
+extern SCAN_CODE scan_index_nl_batch_collect (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * oids, int room,
+					      int *n_oids, bool * complete);
+extern int scan_index_nl_batch_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int count);
 extern SCAN_CODE scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos);
 extern SCAN_CODE scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos);
