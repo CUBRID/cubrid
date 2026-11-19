@@ -56,6 +56,7 @@ la_worker_context_init (LA_APPLY_WORKER_CONTEXT *context, int db_page_size, int 
   memset (context, 0, sizeof (*context));
   context->worker_idx = -1;
   OID_SET_NULL (&context->marker_class_oid);
+  LSA_SET_NULL (&context->batch_upto_lsa);
 
   context->undo_unzip_ptr = log_zip_alloc (db_page_size);
   context->redo_unzip_ptr = log_zip_alloc (db_page_size);
@@ -93,6 +94,13 @@ la_worker_context_final (LA_APPLY_WORKER_CONTEXT *context)
   assert (context != NULL);
 
   la_clear_recdes_pool (context);
+
+  if (context->batch_lsas != NULL)
+    {
+      free_and_init (context->batch_lsas);
+    }
+  context->batch_lsa_count = 0;
+  context->batch_lsa_capacity = 0;
 
   if (context->undo_unzip_ptr != NULL)
     {

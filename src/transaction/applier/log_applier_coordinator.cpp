@@ -23,6 +23,7 @@
 #include "config.h"
 
 #include "log_applier_coordinator.hpp"
+#include "log_applier_clock.hpp"
 #include "log_applier_debug.hpp"
 
 #include "log_applier_gate.hpp"
@@ -30,6 +31,7 @@
 #include "log_applier_result_queue.hpp"
 #include "log_applier_stat.hpp"
 #include "log_applier_task_queue.hpp"
+#include "log_applier_worker.hpp"	/* LA_MAX_WORKER_COUNT */
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "log_record.hpp"
@@ -38,7 +40,6 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <time.h>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -53,10 +54,47 @@ typedef enum
 static LA_COORDINATOR_CONFIG la_Coordinator_config;
 static bool la_Coordinator_initialized = false;
 
-static UINT64 la_coordinator_clock_ns (void);
+/* Tasks dispatched to each worker and not answered yet; a task whose predecessors are all applied goes to the
+ * worker with the fewest of them (la_coordinator_route) */
+static int la_Coordinator_outstanding[LA_MAX_WORKER_COUNT];
+
+/* position in la_Coordinator_live_workers where the next search for a worker starts */
+static int la_Coordinator_next_worker = 0;
+
+/* Indexes of the workers that take tasks, in increasing order. Every task goes to one of them: a worker that
+ * failed to start never pops its queue, so a task given to it would stall the gap-free frontier for good. */
+static int la_Coordinator_live_workers[LA_MAX_WORKER_COUNT];
+static int la_Coordinator_live_worker_count = 0;
+
+/* What the last pass over the parked tasks saw. la_coordinator_pending_may_release compares it and skips the
+ * rescan when nothing they wait for has changed, so that the coordinator does not spend its time rescanning the
+ * whole list. */
+/* false until the first pass, so there is nothing to compare with yet */
+static bool la_Coordinator_pending_scan_valid = false;
+/* gate completion version at the last pass; a change means a unit completed */
+static UINT64 la_Coordinator_pending_seen_completion = 0;
+/* gate dispatch version at the last pass; a change means a unit went to a worker */
+static UINT64 la_Coordinator_pending_seen_dispatch = 0;
+/* a task left in the last pass waits for an earlier unit to be dispatched */
+static bool la_Coordinator_pending_waits_dispatch = false;
+/* workers whose full queue left a task parked in the last pass, one bit per worker. Note that one bit per worker
+ * in a UINT64 holds at most 64 workers; the static_assert below stops the build if the worker limit goes past it. */
+static UINT64 la_Coordinator_pending_room_workers = 0;
+static_assert (LA_MAX_WORKER_COUNT <= 64, "la_Coordinator_pending_room_workers keeps one bit per worker");
+
+/* the bit for worker w in la_Coordinator_pending_room_workers */
+#define LA_COORDINATOR_WORKER_BIT(w) (1ULL << (w))
+
+/* A worker whose full queue parked a task is looked at again once its unanswered tasks drop to this many: its queue
+ * then has room for half a queue of tasks, so one pass can release many of them instead of rescanning every parked
+ * task each time a single slot frees. Half a queue is still waiting in it, so the worker does not run dry. */
+#define LA_COORDINATOR_ROOM_RESCAN_OUTSTANDING (LA_TASK_QUEUE_CAPACITY / 2)
+
 static int la_coordinator_drain_ready (void);
 static int la_coordinator_wait_for_commit_order_slot (void);
-static int la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status);
+static int la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status, int worker);
+static bool la_coordinator_route (const LA_TASK *task, int *worker);
+static bool la_coordinator_queue_has_room (int worker);
 static void la_coordinator_trace_schedule (const LA_TASK *task, LA_SCHED_STATUS sched_status, UINT64 dispatch_seq);
 static int la_coordinator_collect_results (void);
 static int la_coordinator_record_result (LA_RESULT *result);
@@ -65,22 +103,6 @@ static int la_coordinator_wait_until_retired (void);
 static int la_coordinator_wait_for_inflight_slot (void);
 static int la_coordinator_retire_results (void);
 static int la_coordinator_run_alone (LA_TASK *task);
-static bool la_coordinator_merge_into_pending (LA_TASK *task, int *error);
-
-/*
- * la_coordinator_clock_ns - read the monotonic clock used by scheduling statistics
- *
- * return: monotonic time in nanoseconds
- */
-static UINT64
-la_coordinator_clock_ns (void)
-{
-  struct timespec ts;
-
-  clock_gettime (CLOCK_MONOTONIC, &ts);
-
-  return (UINT64) ts.tv_sec * 1000000000ULL + (UINT64) ts.tv_nsec;
-}
 
 /*
  * la_coordinator_initialize - initialize coordinator-owned scheduling state
@@ -108,8 +130,21 @@ la_coordinator_initialize (const LA_COORDINATOR_CONFIG *config)
 
   la_Coordinator_config = *config;
 
-  la_task_queue_init ();
+  error = la_task_queue_init (config->worker_count);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
   la_pending_reset ();
+  for (int i = 0; i < config->worker_count; i++)
+    {
+      la_Coordinator_outstanding[i] = 0;
+      la_Coordinator_live_workers[i] = i;
+    }
+  la_Coordinator_live_worker_count = config->worker_count;
+  la_Coordinator_next_worker = 0;
+  la_Coordinator_pending_scan_valid = false;
+  la_Coordinator_pending_room_workers = 0;
 
   error = la_result_queue_init (config->commit_order_capacity);
   if (error != NO_ERROR)
@@ -135,29 +170,152 @@ la_coordinator_initialize (const LA_COORDINATOR_CONFIG *config)
 }
 
 /*
- * la_coordinator_drain_ready - dispatch pending tasks whose dependency is satisfied
+ * la_coordinator_signal_shutdown - wake every worker waiting on a coordinator queue so that it stops
+ *
+ * return: none
+ *
+ * Note: a worker waits for a task in its queue, or for room in the result queue; both see the shutdown flag
+ *       once woken and leave their loop. Called before the workers are joined.
+ */
+void
+la_coordinator_signal_shutdown (void)
+{
+  la_task_queue_signal_shutdown ();
+  la_result_queue_signal_shutdown ();
+}
+
+/*
+ * la_coordinator_finalize - release the coordinator's queues
+ *
+ * return: none
+ *
+ * Note: called after the workers are joined. Tasks still queued are dropped; they were never retired, so a
+ *       restart reads them again.
+ */
+void
+la_coordinator_finalize (void)
+{
+  la_task_queue_final ();
+  la_result_queue_final ();
+  la_Coordinator_initialized = false;
+}
+
+/*
+ * la_coordinator_set_live_workers - limit dispatch to the workers that started
+ *
+ * return: none
+ *
+ *   live_workers(in): indexes of the workers that started, in increasing order
+ *   live_worker_count(in): number of entries in live_workers; at least one
+ *
+ * Note: called once after the workers have started and before the first task is submitted; until then every
+ *       configured worker is taken as live.
+ */
+void
+la_coordinator_set_live_workers (const int *live_workers, int live_worker_count)
+{
+  assert (la_Coordinator_initialized);
+  assert (live_workers != NULL);
+  assert (live_worker_count > 0 && live_worker_count <= la_Coordinator_config.worker_count);
+
+  for (int i = 0; i < live_worker_count; i++)
+    {
+      assert (live_workers[i] >= 0 && live_workers[i] < la_Coordinator_config.worker_count);
+      la_Coordinator_live_workers[i] = live_workers[i];
+    }
+  la_Coordinator_live_worker_count = live_worker_count;
+  la_Coordinator_next_worker = 0;
+}
+
+/*
+ * la_coordinator_pending_may_release - whether a pass over the parked tasks may release one now
+ *
+ * return: true when something a parked task waits for may have changed since the last pass
+ *
+ * Note: a parked task is released by a completion, by the dispatch of an earlier task it waits for, or by room
+ *       in a worker queue. The checks below, in order:
+ *       1. No pass has run since the coordinator started, so there is nothing to compare with.
+ *       2. A task waits for room in a worker queue, and that worker's unanswered tasks have dropped to
+ *          LA_COORDINATOR_ROOM_RESCAN_OUTSTANDING.
+ *       3. A task completed since the last pass, so the frontier may have moved.
+ *       4. A task waits for an earlier task to be dispatched, and a task was dispatched since the last pass.
+ *          Dispatches happen on almost every call, so they count only while such a task waits.
+ */
+static bool
+la_coordinator_pending_may_release (void)
+{
+  if (!la_Coordinator_pending_scan_valid)
+    {
+      return true;
+    }
+
+  for (int w = 0; la_Coordinator_pending_room_workers != 0 && w < la_Coordinator_config.worker_count; w++)
+    {
+      if ((la_Coordinator_pending_room_workers & LA_COORDINATOR_WORKER_BIT (w))
+	  && la_Coordinator_outstanding[w] <= LA_COORDINATOR_ROOM_RESCAN_OUTSTANDING)
+	{
+	  return true;
+	}
+    }
+
+  if (la_Coordinator_pending_seen_completion != la_gate_get_completion_version ())
+    {
+      return true;
+    }
+
+  if (la_Coordinator_pending_waits_dispatch
+      && la_Coordinator_pending_seen_dispatch != la_gate_get_dispatch_version ())
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
+ * la_coordinator_drain_ready - dispatch the parked tasks that may run now
  *
  * return: NO_ERROR or an error code
  *
- * Note: ready tasks are dispatched in pending-list order.
+ * Note: a parked task runs now when its earlier units are all applied (any worker), or when the unfinished ones
+ *       are all on one worker (that worker). Tasks are released in pending-list order.
  */
 static int
 la_coordinator_drain_ready (void)
 {
   LA_TASK task;
+  int worker;
   int error;
 
-  la_pending_mark_ready (la_coordinator_clock_ns ());
-
-  while (!la_task_queue_is_full () && la_pending_pop_ready (&task))
+  /* la_coordinator_pending_may_release compares what the parked tasks wait for (completions, dispatches, queue
+   * room) with what the last pass saw; no change, or no parked task at all, means a pass would release nothing */
+  if (la_pending_is_empty () || !la_coordinator_pending_may_release ())
     {
-      error = la_coordinator_enqueue_task (&task, LA_SCHED_RELEASED);
+      return NO_ERROR;
+    }
+
+  la_pending_mark_ready (la_monotonic_now_ns ());
+
+  while (true)
+    {
+      /* the route calls of this pass record what the tasks left parked wait for */
+      la_Coordinator_pending_waits_dispatch = false;
+      la_Coordinator_pending_room_workers = 0;
+      if (!la_pending_pop_routable (&task, &worker, la_coordinator_route))
+	{
+	  /* nothing was dispatched in this pass, so the counters are the ones it scanned with */
+	  la_Coordinator_pending_seen_completion = la_gate_get_completion_version ();
+	  la_Coordinator_pending_seen_dispatch = la_gate_get_dispatch_version ();
+	  la_Coordinator_pending_scan_valid = true;
+	  break;
+	}
+
+      error = la_coordinator_enqueue_task (&task, LA_SCHED_RELEASED, worker);
       if (error != NO_ERROR)
 	{
-	  if (task.apply != NULL || task.merged_lsa != NULL)
+	  if (task.apply != NULL)
 	    {
 	      la_Coordinator_config.discard_task (la_Coordinator_config.context, &task);
-	      free_and_init (task.merged_lsa);
 	    }
 	  return error;
 	}
@@ -205,13 +363,19 @@ la_coordinator_wait_for_commit_order_slot (void)
  *
  * return: NO_ERROR or an error code
  *
- *   task_in(in/out): task to dispatch; apply and merged_lsa are cleared when in-flight takes ownership
+ *   task_in(in/out): task to dispatch; apply is cleared when in-flight takes ownership
  *   sched_status(in): reason the task is being dispatched
+ *   worker(in): the worker whose queue takes the task
  *
- * Note: the in-flight entry is created first so every worker result has a matching dispatch number.
+ * Note: the steps, in order:
+ *       1. Lock the slave DB name through before_dispatch when the task applies rows not yet committed.
+ *       2. Wait until the in-flight list has a free entry, retiring worker results meanwhile.
+ *       3. Record the worker as the owner of the task on the commit-order ring.
+ *       4. Push the task into the in-flight list, which takes its apply and gives the dispatch number.
+ *       5. Count one more unanswered task of the worker and push the task into its queue.
  */
 static int
-la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status)
+la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status, int worker)
 {
   LA_TASK task;
   UINT64 dispatch_seq = 0;
@@ -222,7 +386,7 @@ la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status)
   task = *task_in;
   if (task.ready_ns == 0)
     {
-      task.ready_ns = la_coordinator_clock_ns ();
+      task.ready_ns = la_monotonic_now_ns ();
     }
 
   error = la_Coordinator_config.before_dispatch (la_Coordinator_config.context, &task);
@@ -237,15 +401,22 @@ la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status)
       return error;
     }
 
-  error = la_inflight_push (task.apply, task.tranid, task.rectype, &dispatch_seq, task.merged_lsa);
+  /* record the owner on the ring, so a later unit waiting for this one can follow it to the same worker; before
+   * the in-flight list takes the task, so a failure leaves the task with the caller */
+  assert (worker >= 0 && worker < la_Coordinator_config.worker_count);
+  error = la_gate_set_owner (&task.commit_lsa, worker);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  /* before the queue push, so every worker result has a matching dispatch number */
+  error = la_inflight_push (task.apply, task.tranid, task.rectype, &dispatch_seq);
   if (error != NO_ERROR)
     {
       return error;
     }
   task_in->apply = NULL;
-  task_in->merged_lsa = NULL;
-  task_in->merged_count = 0;
-  task_in->merged_capacity = 0;
   task.dispatch_seq = dispatch_seq;
 
   if (sched_status == LA_SCHED_DISPATCHED && task.has_items && task.rectype == LOG_COMMIT)
@@ -254,9 +425,129 @@ la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status)
     }
   la_coordinator_trace_schedule (&task, sched_status, dispatch_seq);
 
-  task.queue_enter_ns = la_coordinator_clock_ns ();
+  task.queue_enter_ns = la_monotonic_now_ns ();
 
-  return la_task_queue_push (&task);
+  la_Coordinator_outstanding[worker]++;
+
+  return la_task_queue_push (&task, worker);
+}
+
+/*
+ * la_coordinator_queue_has_room - check whether one more task fits in a worker's queue
+ *
+ * return: true when the task queue of worker has room
+ *
+ *   worker(in): the worker
+ *
+ * Note: a task in a worker's queue is also an unanswered task of that worker, so the queue holds at most
+ *       la_Coordinator_outstanding[worker] tasks. Below LA_TASK_QUEUE_CAPACITY unanswered tasks the queue has
+ *       room without asking the queue module, which takes the mutex the workers pop under.
+ */
+static bool
+la_coordinator_queue_has_room (int worker)
+{
+  if (la_Coordinator_outstanding[worker] < LA_TASK_QUEUE_CAPACITY)
+    {
+      return true;
+    }
+
+  return !la_task_queue_is_full (worker);
+}
+
+/*
+ * la_coordinator_route - decide whether a task may be dispatched now, and to which worker
+ *
+ * return: true with *worker set when the task may be dispatched now
+ *
+ *   task(in): task to dispatch
+ *   worker(out): the chosen worker
+ *
+ * Note:
+ *   A task whose predecessors are all applied goes to the live worker with the fewest unanswered tasks whose
+ *   queue has room. A task whose unfinished predecessors were all dispatched to one worker goes to that worker: it
+ *   applies its queue in order on one connection, so the task runs after them, in the same open slave
+ *   transaction or a later one. Otherwise the task waits. A waiting task does not ask the workers that hold its
+ *   predecessors to commit early: they commit by their own batch limits, so independent tasks keep filling their
+ *   batches.
+ *
+ *   Sending a task to another worker never breaks the order: while a predecessor is unfinished on worker A, the
+ *   task can go only to A, and it may go elsewhere only after every predecessor is committed, so their changes
+ *   are visible to any worker. What another worker costs is waiting: each worker applies in its own slave
+ *   transaction, so a task on worker B cannot see A's uncommitted changes and has to wait until A commits by its
+ *   own batch limits. Keeping a chain on one worker lets it continue in the same open transaction and commit in
+ *   one batch.
+ */
+static bool
+la_coordinator_route (const LA_TASK *task, int *worker)
+{
+  int live_worker_count = la_Coordinator_live_worker_count;
+  int wait_reason;
+  LA_GATE_ROUTE route;
+  int chosen = -1;
+
+  assert (task != NULL);
+  assert (worker != NULL);
+  /* with one worker, la_coordinator_submit_task dispatches every task directly and nothing is parked */
+  assert (la_Coordinator_config.worker_count > 1);
+
+  route = la_gate_route (&task->dependency_lsa, worker, &wait_reason);
+  if (route == LA_GATE_ROUTE_WORKER)
+    {
+      if (!la_coordinator_queue_has_room (*worker))
+	{
+	  la_Coordinator_pending_room_workers |= LA_COORDINATOR_WORKER_BIT (*worker);
+	  return false;
+	}
+
+      return true;
+    }
+
+  if (route == LA_GATE_ROUTE_WAIT)
+    {
+      LA_WSET_TRACE (2, "coordinator route wait trid=%d commit_lsa=%lld|%d type=%d dependency=%lld|%d reason=%d\n",
+		     task->tranid, LSA_AS_ARGS (&task->commit_lsa), task->rectype, LSA_AS_ARGS (&task->dependency_lsa),
+		     wait_reason);
+      if (wait_reason & 1)
+	{
+	  la_Coordinator_pending_waits_dispatch = true;
+	}
+
+      return false;
+    }
+
+  /* least busy live worker with room; ties go round-robin */
+  *worker = -1;
+  for (int k = 0; k < live_worker_count; k++)
+    {
+      int pos = (la_Coordinator_next_worker + k) % live_worker_count;
+      int i = la_Coordinator_live_workers[pos];
+
+      if (!la_coordinator_queue_has_room (i))
+	{
+	  continue;
+	}
+
+      /* the first worker with room becomes the candidate; a later one replaces it only with fewer unanswered
+       * tasks, so on a tie the worker met first from la_Coordinator_next_worker stays */
+      if (*worker < 0 || la_Coordinator_outstanding[i] < la_Coordinator_outstanding[*worker])
+	{
+	  *worker = i;
+	  chosen = pos;
+	}
+    }
+  if (*worker < 0)
+    {
+      /* every live worker's queue is full */
+      for (int k = 0; k < live_worker_count; k++)
+	{
+	  la_Coordinator_pending_room_workers |= LA_COORDINATOR_WORKER_BIT (la_Coordinator_live_workers[k]);
+	}
+
+      return false;
+    }
+  la_Coordinator_next_worker = (chosen + 1) % live_worker_count;
+
+  return true;
 }
 
 /*
@@ -340,8 +631,10 @@ la_coordinator_record_result (LA_RESULT *result)
   int error;
 
   assert (result != NULL);
+  assert (result->worker_idx >= 0 && result->worker_idx < la_Coordinator_config.worker_count);
+  assert (la_Coordinator_outstanding[result->worker_idx] > 0);
 
-  result->collected_ns = la_coordinator_clock_ns ();
+  result->collected_ns = la_monotonic_now_ns ();
 
   error = la_inflight_attach_result (result);
   if (error != NO_ERROR)
@@ -351,13 +644,11 @@ la_coordinator_record_result (LA_RESULT *result)
 
   la_stat_note_result_collected (result);
 
+  la_Coordinator_outstanding[result->worker_idx]--;
+
   if (result->error == NO_ERROR && (result->rectype == LOG_COMMIT || result->rectype == LOG_SYSOP_END))
     {
       la_gate_mark_completed (&result->commit_lsa);
-      for (int i = 0; i < result->merged_count; i++)
-	{
-	  la_gate_mark_completed (&result->merged_lsa[i]);
-	}
     }
 
   return NO_ERROR;
@@ -608,78 +899,14 @@ la_coordinator_run_alone (LA_TASK *task)
       return error;
     }
 
-  error = la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
+  /* everything before it is retired, so any live worker may run it */
+  error = la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED, la_Coordinator_live_workers[0]);
   if (error != NO_ERROR)
     {
       return error;
     }
 
   return la_coordinator_wait_until_retired ();
-}
-
-/*
- * la_coordinator_merge_into_pending - let a fragment join the parked fragment of the previous change of its key
- *
- * return: true if the task was merged (error tells whether that succeeded), false to schedule it on its own
- *
- *   task(in/out): fragment task just read from the log, already on the commit-order ring
- *   error(out): NO_ERROR or an error code when merged
- *
- * Note: Independent replication units of one key (updates of one serial, INCR/DECR of one row) are ordered one
- *       after another, so a backlog of them is applied one slave transaction at a time. When the previous one is
- *       still parked, this one is applied by the same task right after it: one slave transaction instead of one
- *       per unit. Its LSA stays on the commit-order ring and is completed with the task, so whatever waits for it
- *       (the next unit, its outer commit) is released as before. The task only waits for the dependency of the
- *       parked task: the merged fragment has that single key (the master's label says so), whose earlier writers
- *       are the parked task's own fragments or lie at or below that dependency.
- */
-static bool
-la_coordinator_merge_into_pending (LA_TASK *task, int *error)
-{
-  LA_TASK *target;
-  LOG_LSA *grown;
-
-  assert (task != NULL && error != NULL);
-  *error = NO_ERROR;
-
-  if (task->unit_key_hash == 0 || la_Coordinator_config.merge_task == NULL)
-    {
-      return false;
-    }
-
-  target = la_pending_find_merge_target (&task->dependency_lsa, task->unit_key_hash);
-  if (target == NULL)
-    {
-      return false;
-    }
-
-  if (target->merged_count == target->merged_capacity)
-    {
-      int capacity = (target->merged_capacity == 0) ? 16 : target->merged_capacity * 2;
-
-      grown = (LOG_LSA *) realloc (target->merged_lsa, capacity * sizeof (LOG_LSA));
-      if (grown == NULL)
-	{
-	  /* not merged: the fragment is scheduled on its own */
-	  return false;
-	}
-      target->merged_lsa = grown;
-      target->merged_capacity = capacity;
-    }
-
-  if (!la_Coordinator_config.merge_task (la_Coordinator_config.context, target, task))
-    {
-      return false;
-    }
-
-  LSA_COPY (&target->merged_lsa[target->merged_count], &task->commit_lsa);
-  target->merged_count++;
-
-  LA_WSET_TRACE (1, "coordinator merge trid=%d sysop_lsa=%lld|%d into trid=%d sysop_lsa=%lld|%d merged=%d\n",
-		 task->tranid, LSA_AS_ARGS (&task->commit_lsa), target->tranid,
-		 LSA_AS_ARGS (&target->commit_lsa), target->merged_count);
-
-  return true;
 }
 
 /*
@@ -695,12 +922,13 @@ la_coordinator_submit_task (LA_TASK *task, bool commit_order)
 {
   LOG_LSA dependency_lsa;
   bool dependency_ready;
+  int worker;
   int error;
 
   assert (la_Coordinator_initialized);
   assert (task != NULL);
 
-  task->created_ns = la_coordinator_clock_ns ();
+  task->created_ns = la_monotonic_now_ns ();
 
   error = la_coordinator_wait_for_commit_order_slot ();
   if (error != NO_ERROR)
@@ -737,7 +965,7 @@ la_coordinator_submit_task (LA_TASK *task, bool commit_order)
 	{
 	  return la_coordinator_run_alone (task);
 	}
-      return la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
+      return la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED, la_Coordinator_live_workers[0]);
     }
 
   error = la_coordinator_drain_ready ();
@@ -746,25 +974,22 @@ la_coordinator_submit_task (LA_TASK *task, bool commit_order)
       return error;
     }
 
-  if (la_coordinator_merge_into_pending (task, &error))
-    {
-      return error;
-    }
-
   dependency_ready = la_gate_is_satisfied (&task->dependency_lsa);
   if (dependency_ready)
     {
-      task->ready_ns = la_coordinator_clock_ns ();
+      task->ready_ns = la_monotonic_now_ns ();
     }
 
-  if (dependency_ready && !la_task_queue_is_full ())
+  /* dispatch now when the dependency is satisfied or every unfinished predecessor is in one
+   * worker's queue or open slave transaction */
+  if (la_coordinator_route (task, &worker))
     {
-      return la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
+      return la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED, worker);
     }
 
   if (!dependency_ready)
     {
-      task->pending_begin_ns = la_coordinator_clock_ns ();
+      task->pending_begin_ns = la_monotonic_now_ns ();
     }
 
   error = la_pending_push (task);

@@ -53,6 +53,9 @@ struct test_coordinator_context
   int shutdown_queue_tranid;
 };
 
+/* number of worker queues of the coordinator under test; the fake workers below look at every one */
+static int test_Worker_count = 0;
+
 static int
 test_before_dispatch (void *arg, const LA_TASK *task)
 {
@@ -108,7 +111,7 @@ test_discard_task (void *arg, LA_TASK *task)
 }
 
 static void
-test_initialize_coordinator (TEST_COORDINATOR_CONTEXT *context, const LOG_LSA *restart_lsa)
+test_initialize_coordinator (TEST_COORDINATOR_CONTEXT *context, const LOG_LSA *restart_lsa, int worker_count = 2)
 {
   LA_COORDINATOR_CONFIG config;
 
@@ -117,18 +120,55 @@ test_initialize_coordinator (TEST_COORDINATOR_CONTEXT *context, const LOG_LSA *r
   la_pending_clear ();
 
   config.commit_order_capacity = 8;
-  config.worker_count = 2;
+  config.worker_count = worker_count;
   config.run_each_task_alone = false;
   config.restart_lsa = restart_lsa;
   config.before_dispatch = test_before_dispatch;
   config.retire_entry = test_retire_entry;
   config.store_progress = test_store_progress;
   config.shutdown_requested = test_shutdown_requested;
-  config.merge_task = NULL;
   config.discard_task = test_discard_task;
   config.context = context;
 
   REQUIRE (la_coordinator_initialize (&config) == NO_ERROR);
+  test_Worker_count = worker_count;
+}
+
+/* Take the next task from whichever worker queue has one, as some worker would; fails on queue shutdown. */
+static int
+test_pop_any (LA_TASK *task, int *worker)
+{
+  bool taken;
+  int error;
+
+  while (true)
+    {
+      for (int w = 0; w < test_Worker_count; w++)
+	{
+	  error = la_task_queue_try_pop (task, &taken, w, 1000 * 1000ULL);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  if (taken)
+	    {
+	      *worker = w;
+	      return NO_ERROR;
+	    }
+	}
+    }
+}
+
+/* Answer a task as the worker that took it, without applying anything. */
+static void
+test_push_result (const LA_TASK *task, int worker, int error = NO_ERROR)
+{
+  LA_RESULT result;
+
+  la_result_init (&result, task, worker);
+  result.error = error;
+  result.apply_end_ns = task->queue_enter_ns;
+  REQUIRE (la_result_queue_push (&result) == NO_ERROR);
 }
 
 /* Return queue results without a server connection. failed_tranid selects an apply failure. */
@@ -138,7 +178,8 @@ test_complete_tasks (int count, int failed_tranid, std::atomic<int> &worker_erro
   for (int i = 0; i < count; i++)
     {
       LA_TASK task;
-      int error = la_task_queue_pop (&task);
+      int worker;
+      int error = test_pop_any (&task, &worker);
       if (error != NO_ERROR)
 	{
 	  worker_error.store (error);
@@ -146,7 +187,7 @@ test_complete_tasks (int count, int failed_tranid, std::atomic<int> &worker_erro
 	}
 
       LA_RESULT result;
-      la_result_init (&result, &task, 0);
+      la_result_init (&result, &task, worker);
       result.error = task.tranid == failed_tranid ? ER_FAILED : NO_ERROR;
       result.apply_end_ns = task.queue_enter_ns;
       error = la_result_queue_push (&result);
@@ -158,47 +199,130 @@ test_complete_tasks (int count, int failed_tranid, std::atomic<int> &worker_erro
     }
 }
 
-TEST_CASE ("coordinator releases a dependent task after its predecessor completes", "[log_applier_coordinator]")
+/* whether a worker's queue is empty right now; takes the task when it is not */
+static bool
+test_queue_empty (int worker)
+{
+  LA_TASK task;
+  bool taken;
+
+  REQUIRE (la_task_queue_try_pop (&task, &taken, worker, 0) == NO_ERROR);
+  return !taken;
+}
+
+TEST_CASE ("coordinator spreads independent tasks over the workers and keeps a dependent on its predecessor's worker",
+	   "[log_applier_coordinator]")
 {
   TEST_COORDINATOR_CONTEXT context;
   LOG_LSA restart_lsa = test_lsa (10);
-  LOG_LSA null_lsa = test_null_lsa ();
-  LA_TASK first = test_task (1, test_lsa (20), null_lsa);
-  LA_TASK second = test_task (2, test_lsa (30), first.commit_lsa);
+  LA_TASK first = test_task (1, test_lsa (20), test_null_lsa ());
+  LA_TASK dependent = test_task (2, test_lsa (30), first.commit_lsa);
+  LA_TASK independent = test_task (3, test_lsa (40), test_null_lsa ());
   LA_TASK queued;
-  LA_RESULT result;
+
+  test_initialize_coordinator (&context, &restart_lsa);
+
+  /* worker 1 is idle, yet the dependent goes after its unfinished predecessor on worker 0 */
+  REQUIRE (la_coordinator_submit_task (&first) == NO_ERROR);
+  REQUIRE (la_coordinator_submit_task (&dependent) == NO_ERROR);
+  REQUIRE (la_coordinator_submit_task (&independent) == NO_ERROR);
+  REQUIRE (context.dispatched == 3);
+  REQUIRE (la_pending_is_empty ());
+
+  REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
+  REQUIRE (queued.tranid == first.tranid);
+  test_push_result (&queued, 0);
+  REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
+  REQUIRE (queued.tranid == dependent.tranid);
+  test_push_result (&queued, 0);
+  REQUIRE (la_task_queue_pop (&queued, 1) == NO_ERROR);
+  REQUIRE (queued.tranid == independent.tranid);
+  test_push_result (&queued, 1);
+
+  REQUIRE (la_coordinator_collect_and_retire () == NO_ERROR);
+  REQUIRE (context.retired == 3);
+  REQUIRE (LSA_EQ (&context.frontier, &independent.commit_lsa));
+  REQUIRE (la_coordinator_drain_complete ());
+}
+
+TEST_CASE ("coordinator dispatches only to the live workers", "[log_applier_coordinator]")
+{
+  TEST_COORDINATOR_CONTEXT context;
+  LOG_LSA restart_lsa = test_lsa (10);
+  int live[] = { 0, 2 };
+  int taken[3] = { 0, 0, 0 };
+
+  test_initialize_coordinator (&context, &restart_lsa, 3);
+  scope_exit cleanup
+  {
+    []
+    {
+      la_pending_clear ();
+      la_inflight_clear ();
+    }
+  };
+
+  /* worker 1 failed to start and never pops its queue */
+  la_coordinator_set_live_workers (live, 2);
+  for (int t = 0; t < 4; t++)
+    {
+      LA_TASK task = test_task (t + 1, test_lsa (20 + t * 10), test_null_lsa ());
+      REQUIRE (la_coordinator_submit_task (&task) == NO_ERROR);
+    }
+  REQUIRE (context.dispatched == 4);
+
+  for (int w = 0; w < 3; w++)
+    {
+      while (!test_queue_empty (w))
+	{
+	  taken[w]++;
+	}
+    }
+  REQUIRE (taken[0] == 2);
+  REQUIRE (taken[1] == 0);
+  REQUIRE (taken[2] == 2);
+}
+
+TEST_CASE ("coordinator parks a task whose predecessors are on several workers and releases it to the one left",
+	   "[log_applier_coordinator]")
+{
+  TEST_COORDINATOR_CONTEXT context;
+  LOG_LSA restart_lsa = test_lsa (10);
+  LA_TASK first = test_task (1, test_lsa (20), test_null_lsa ());
+  LA_TASK second = test_task (2, test_lsa (30), test_null_lsa ());
+  LA_TASK dependent = test_task (3, test_lsa (40), second.commit_lsa);
+  LA_TASK queued;
 
   test_initialize_coordinator (&context, &restart_lsa);
 
   REQUIRE (la_coordinator_submit_task (&first) == NO_ERROR);
   REQUIRE (la_coordinator_submit_task (&second) == NO_ERROR);
-  REQUIRE (context.dispatched == 1);
-  REQUIRE_FALSE (la_pending_is_empty ());
+  REQUIRE (la_coordinator_submit_task (&dependent) == NO_ERROR);
+  REQUIRE (context.dispatched == 2);
+  REQUIRE (la_pending_get_count () == 1);
 
-  REQUIRE (la_task_queue_pop (&queued) == NO_ERROR);
+  REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
   REQUIRE (queued.tranid == first.tranid);
-  la_result_init (&result, &queued, 0);
-  result.error = NO_ERROR;
-  result.apply_end_ns = queued.queue_enter_ns;
-  REQUIRE (la_result_queue_push (&result) == NO_ERROR);
+  test_push_result (&queued, 0);
 
+  /* only worker 1 still holds an unfinished predecessor, so the task follows it there */
   REQUIRE (la_coordinator_collect_and_retire () == NO_ERROR);
   REQUIRE (context.retired == 1);
   REQUIRE (context.stored == 1);
-  REQUIRE (context.dispatched == 2);
+  REQUIRE (context.dispatched == 3);
   REQUIRE (la_pending_is_empty ());
 
-  REQUIRE (la_task_queue_pop (&queued) == NO_ERROR);
+  REQUIRE (la_task_queue_pop (&queued, 1) == NO_ERROR);
   REQUIRE (queued.tranid == second.tranid);
-  la_result_init (&result, &queued, 1);
-  result.error = NO_ERROR;
-  result.apply_end_ns = queued.queue_enter_ns;
-  REQUIRE (la_result_queue_push (&result) == NO_ERROR);
+  test_push_result (&queued, 1);
+  REQUIRE (la_task_queue_pop (&queued, 1) == NO_ERROR);
+  REQUIRE (queued.tranid == dependent.tranid);
+  test_push_result (&queued, 1);
 
   REQUIRE (la_coordinator_collect_and_retire () == NO_ERROR);
-  REQUIRE (context.retired == 2);
-  REQUIRE (context.stored == 2);
-  REQUIRE (LSA_EQ (&context.frontier, &second.commit_lsa));
+  REQUIRE (context.retired == 3);
+  REQUIRE (context.stored == 3);
+  REQUIRE (LSA_EQ (&context.frontier, &dependent.commit_lsa));
   REQUIRE (la_coordinator_drain_complete ());
 }
 
@@ -208,19 +332,21 @@ TEST_CASE ("commit-order submission retires preceding and pending tasks before d
   TEST_COORDINATOR_CONTEXT context;
   LOG_LSA restart_lsa = test_lsa (10);
   LA_TASK first = test_task (1, test_lsa (20), test_null_lsa ());
-  LA_TASK dependent = test_task (2, test_lsa (30), first.commit_lsa);
-  LA_TASK fragment = test_task (3, test_lsa (40), test_null_lsa ());
-  LA_TASK later = test_task (4, test_lsa (50), test_null_lsa ());
+  LA_TASK second = test_task (2, test_lsa (25), test_null_lsa ());
+  LA_TASK dependent = test_task (3, test_lsa (30), second.commit_lsa);
+  LA_TASK fragment = test_task (4, test_lsa (40), test_null_lsa ());
+  LA_TASK later = test_task (5, test_lsa (50), test_null_lsa ());
   fragment.rectype = TEST_RECTYPE_SYSOP_END;
 
   test_initialize_coordinator (&context, &restart_lsa);
   context.commit_order_tranid = fragment.tranid;
   REQUIRE (la_coordinator_submit_task (&first) == NO_ERROR);
+  REQUIRE (la_coordinator_submit_task (&second) == NO_ERROR);
   REQUIRE (la_coordinator_submit_task (&dependent) == NO_ERROR);
   REQUIRE_FALSE (la_pending_is_empty ());
 
   std::atomic<int> worker_error { NO_ERROR };
-  std::thread worker ([&] { test_complete_tasks (4, 0, worker_error); });
+  std::thread worker ([&] { test_complete_tasks (5, 0, worker_error); });
   scope_exit cleanup
   {
     [&]
@@ -235,9 +361,9 @@ TEST_CASE ("commit-order submission retires preceding and pending tasks before d
   };
 
   REQUIRE (la_coordinator_submit_task (&fragment, true) == NO_ERROR);
-  REQUIRE (context.retired_before_commit_order_dispatch == 2);
-  REQUIRE (context.retired == 3);
-  REQUIRE (context.dispatched == 3);
+  REQUIRE (context.retired_before_commit_order_dispatch == 3);
+  REQUIRE (context.retired == 4);
+  REQUIRE (context.dispatched == 4);
   REQUIRE (la_pending_is_empty ());
   REQUIRE (LSA_EQ (&context.frontier, &fragment.commit_lsa));
   REQUIRE (la_coordinator_drain_complete ());
@@ -246,7 +372,7 @@ TEST_CASE ("commit-order submission retires preceding and pending tasks before d
   worker.join ();
   REQUIRE (worker_error.load () == NO_ERROR);
   REQUIRE (la_coordinator_collect_and_retire () == NO_ERROR);
-  REQUIRE (context.retired == 4);
+  REQUIRE (context.retired == 5);
   REQUIRE (LSA_EQ (&context.frontier, &later.commit_lsa));
 }
 
@@ -292,16 +418,10 @@ TEST_CASE ("submission transfers apply-slot ownership at dispatch and preserves 
   LA_APPLY *apply = reinterpret_cast<LA_APPLY *> (&context);
   task.apply = apply;
   test_initialize_coordinator (&context, &restart_lsa);
-  /* A merge attempt can reserve an array before deciding not to add a fragment. */
-  LOG_LSA *merged = static_cast<LOG_LSA *> (malloc (sizeof (LOG_LSA)));
-  REQUIRE (merged != NULL);
-  task.merged_lsa = merged;
-  task.merged_capacity = 1;
   scope_exit cleanup
   {
-    [&]
+    []
     {
-      free_and_init (task.merged_lsa);
       la_inflight_clear ();
       (void) la_inflight_init (8);
     }
@@ -312,8 +432,6 @@ TEST_CASE ("submission transfers apply-slot ownership at dispatch and preserves 
     context.dispatch_error = ER_FAILED;
     REQUIRE (la_coordinator_submit_task (&task, true) == ER_FAILED);
     REQUIRE (task.apply == apply);
-    REQUIRE (task.merged_lsa == merged);
-    REQUIRE (task.merged_capacity == 1);
     REQUIRE (context.retired == 0);
   }
 
@@ -321,20 +439,12 @@ TEST_CASE ("submission transfers apply-slot ownership at dispatch and preserves 
   {
     REQUIRE (la_coordinator_submit_task (&task) == NO_ERROR);
     REQUIRE (task.apply == NULL);
-    REQUIRE (task.merged_lsa == NULL);
-    REQUIRE (task.merged_count == 0);
-    REQUIRE (task.merged_capacity == 0);
 
     LA_TASK queued;
-    REQUIRE (la_task_queue_pop (&queued) == NO_ERROR);
+    REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
     REQUIRE (queued.apply == apply);
-    REQUIRE (queued.merged_lsa == merged);
 
-    LA_RESULT result;
-    la_result_init (&result, &queued, 0);
-    result.error = NO_ERROR;
-    result.apply_end_ns = queued.queue_enter_ns;
-    REQUIRE (la_result_queue_push (&result) == NO_ERROR);
+    test_push_result (&queued, 0);
     REQUIRE (la_coordinator_collect_and_retire () == NO_ERROR);
     REQUIRE (context.retired == 1);
     REQUIRE (context.discarded == 0);
@@ -342,40 +452,76 @@ TEST_CASE ("submission transfers apply-slot ownership at dispatch and preserves 
   }
 }
 
-TEST_CASE ("drain closes an out-of-order gap and dispatches every generation of pending work",
+TEST_CASE ("an out-of-order completion releases dependents only to the worker holding the gap, and drain retires all",
 	   "[log_applier_coordinator]")
 {
   TEST_COORDINATOR_CONTEXT context;
   LOG_LSA restart_lsa = test_lsa (10);
   LA_TASK first = test_task (1, test_lsa (20), test_null_lsa ());
-  LA_TASK second = test_task (2, test_lsa (30), first.commit_lsa);
+  LA_TASK second = test_task (2, test_lsa (30), test_null_lsa ());
   LA_TASK third = test_task (3, test_lsa (40), second.commit_lsa);
-  LA_TASK independent = test_task (4, test_lsa (50), test_null_lsa ());
-  LA_TASK queued_first, queued_later;
-  LA_RESULT result;
+  LA_TASK fourth = test_task (4, test_lsa (50), third.commit_lsa);
+  LA_TASK queued_second;
+
+  test_initialize_coordinator (&context, &restart_lsa);
+  REQUIRE (la_coordinator_submit_task (&first) == NO_ERROR);
+  REQUIRE (la_coordinator_submit_task (&second) == NO_ERROR);
+  /* the third waits for units on both workers, the fourth for the third, which has no worker yet */
+  REQUIRE (la_coordinator_submit_task (&third) == NO_ERROR);
+  REQUIRE (la_coordinator_submit_task (&fourth) == NO_ERROR);
+  REQUIRE (context.dispatched == 2);
+  REQUIRE (la_pending_get_count () == 2);
+
+  /* The later commit finishes first. The frontier stays behind the first task, so nothing retires, and both
+   * parked tasks may run only after it, on worker 0. */
+  REQUIRE (la_task_queue_pop (&queued_second, 1) == NO_ERROR);
+  REQUIRE (queued_second.tranid == second.tranid);
+  test_push_result (&queued_second, 1);
+  REQUIRE (la_coordinator_collect_and_retire () == NO_ERROR);
+  REQUIRE (context.retired == 0);
+  REQUIRE (context.dispatched == 4);
+  REQUIRE (la_pending_is_empty ());
+  REQUIRE (test_queue_empty (1));
+
+  std::atomic<int> worker_error { NO_ERROR };
+  std::thread worker ([&] { test_complete_tasks (3, 0, worker_error); });
+  scope_exit cleanup
+  {
+    [&]
+    {
+      la_task_queue_signal_shutdown ();
+      la_result_queue_signal_shutdown ();
+      worker.join ();
+    }
+  };
+
+  REQUIRE (la_coordinator_drain () == NO_ERROR);
+  REQUIRE (worker_error.load () == NO_ERROR);
+  REQUIRE (context.retired == 4);
+  REQUIRE (context.stored == 4);
+  REQUIRE (LSA_EQ (&context.frontier, &fourth.commit_lsa));
+  REQUIRE (la_coordinator_drain_complete ());
+}
+
+TEST_CASE ("drain dispatches every generation of pending work once their predecessors retire",
+	   "[log_applier_coordinator]")
+{
+  TEST_COORDINATOR_CONTEXT context;
+  LOG_LSA restart_lsa = test_lsa (10);
+  LA_TASK first = test_task (1, test_lsa (20), test_null_lsa ());
+  LA_TASK second = test_task (2, test_lsa (30), test_null_lsa ());
+  LA_TASK third = test_task (3, test_lsa (40), second.commit_lsa);
+  LA_TASK fourth = test_task (4, test_lsa (50), third.commit_lsa);
 
   test_initialize_coordinator (&context, &restart_lsa);
   REQUIRE (la_coordinator_submit_task (&first) == NO_ERROR);
   REQUIRE (la_coordinator_submit_task (&second) == NO_ERROR);
   REQUIRE (la_coordinator_submit_task (&third) == NO_ERROR);
-  REQUIRE (la_coordinator_submit_task (&independent) == NO_ERROR);
-  REQUIRE (la_pending_get_count () == 2);
-  REQUIRE (la_task_queue_pop (&queued_first) == NO_ERROR);
-  REQUIRE (la_task_queue_pop (&queued_later) == NO_ERROR);
-  REQUIRE (queued_later.tranid == independent.tranid);
-
-  /* A completed later commit must not release either dependent through the gap. */
-  la_result_init (&result, &queued_later, 1);
-  REQUIRE (la_result_queue_push (&result) == NO_ERROR);
-  REQUIRE (la_coordinator_collect_and_retire () == NO_ERROR);
-  REQUIRE (context.retired == 0);
-  REQUIRE (context.dispatched == 2);
+  REQUIRE (la_coordinator_submit_task (&fourth) == NO_ERROR);
   REQUIRE (la_pending_get_count () == 2);
 
-  la_result_init (&result, &queued_first, 0);
-  REQUIRE (la_result_queue_push (&result) == NO_ERROR);
   std::atomic<int> worker_error { NO_ERROR };
-  std::thread worker ([&] { test_complete_tasks (2, 0, worker_error); });
+  std::thread worker ([&] { test_complete_tasks (4, 0, worker_error); });
   scope_exit cleanup
   {
     [&]
@@ -391,7 +537,7 @@ TEST_CASE ("drain closes an out-of-order gap and dispatches every generation of 
   REQUIRE (context.dispatched == 4);
   REQUIRE (context.retired == 4);
   REQUIRE (context.stored == 4);
-  REQUIRE (LSA_EQ (&context.frontier, &independent.commit_lsa));
+  REQUIRE (LSA_EQ (&context.frontier, &fourth.commit_lsa));
   REQUIRE (la_coordinator_drain_complete ());
 }
 
@@ -401,7 +547,8 @@ TEST_CASE ("drain propagates errors instead of reporting an unfinished stream dr
   TEST_COORDINATOR_CONTEXT context;
   LOG_LSA restart_lsa = test_lsa (10);
   LA_TASK first = test_task (1, test_lsa (20), test_null_lsa ());
-  LA_TASK dependent = test_task (2, test_lsa (30), first.commit_lsa);
+  LA_TASK second = test_task (2, test_lsa (25), test_null_lsa ());
+  LA_TASK dependent = test_task (3, test_lsa (30), second.commit_lsa);
   LA_TASK queued;
   LA_RESULT result;
 
@@ -415,18 +562,19 @@ TEST_CASE ("drain propagates errors instead of reporting an unfinished stream dr
     }
   };
   REQUIRE (la_coordinator_submit_task (&first) == NO_ERROR);
+  REQUIRE (la_coordinator_submit_task (&second) == NO_ERROR);
   REQUIRE (la_coordinator_submit_task (&dependent) == NO_ERROR);
-  REQUIRE (la_task_queue_pop (&queued) == NO_ERROR);
+  REQUIRE (la_pending_get_count () == 1);
+  REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
+  REQUIRE (queued.tranid == first.tranid);
 
   SECTION ("a failed worker leaves the gap and its dependent unfinished")
   {
-    la_result_init (&result, &queued, 0);
-    result.error = ER_FAILED;
-    REQUIRE (la_result_queue_push (&result) == NO_ERROR);
+    test_push_result (&queued, 0, ER_FAILED);
     REQUIRE (la_coordinator_drain () == ER_FAILED);
     REQUIRE (context.retired == 0);
     REQUIRE (context.stored == 0);
-    REQUIRE (context.dispatched == 1);
+    REQUIRE (context.dispatched == 2);
     REQUIRE (la_pending_get_count () == 1);
     LOG_LSA frontier;
     REQUIRE (la_gate_get_frontier (&frontier));
@@ -438,19 +586,18 @@ TEST_CASE ("drain propagates errors instead of reporting an unfinished stream dr
     context.shutdown = true;
     REQUIRE (la_coordinator_drain () == ER_FAILED);
     REQUIRE (context.retired == 0);
-    REQUIRE (context.dispatched == 1);
+    REQUIRE (context.dispatched == 2);
     REQUIRE (la_pending_get_count () == 1);
   }
 
   SECTION ("a progress-store error is returned before pending work is dispatched")
   {
     context.store_error = ER_FAILED;
-    la_result_init (&result, &queued, 0);
-    REQUIRE (la_result_queue_push (&result) == NO_ERROR);
+    test_push_result (&queued, 0);
     REQUIRE (la_coordinator_drain () == ER_FAILED);
     REQUIRE (context.retired == 1);
     REQUIRE (context.stored == 1);
-    REQUIRE (context.dispatched == 1);
+    REQUIRE (context.dispatched == 2);
     REQUIRE (la_pending_get_count () == 1);
   }
 
@@ -463,9 +610,9 @@ TEST_CASE ("released pending tasks discard only resources not transferred to in-
   TEST_COORDINATOR_CONTEXT context;
   LOG_LSA restart_lsa = test_lsa (10);
   LA_TASK first = test_task (1, test_lsa (20), test_null_lsa ());
-  LA_TASK pending = test_task (2, test_lsa (30), first.commit_lsa);
+  LA_TASK second = test_task (2, test_lsa (25), test_null_lsa ());
+  LA_TASK pending = test_task (3, test_lsa (30), second.commit_lsa);
   LA_TASK queued;
-  LA_RESULT result;
 
   test_initialize_coordinator (&context, &restart_lsa);
   scope_exit cleanup
@@ -473,52 +620,45 @@ TEST_CASE ("released pending tasks discard only resources not transferred to in-
     []
     {
       la_pending_clear ();
-      /* Shutdown frees apply slots separately from the in-flight merged arrays. */
+      /* shutdown frees the apply slots the in-flight entries own */
       for (int i = 0; i < la_inflight_get_count (); i++)
 	{
 	  LA_APPLY *apply = la_inflight_entry_take_apply (la_inflight_entry_at (i));
 	  free_and_init (apply);
 	}
       la_inflight_clear ();
-      /* Remove stale copies so LSan can detect an unfreed merged allocation. */
-      (void) la_inflight_init (8);
     }
   };
   REQUIRE (la_coordinator_submit_task (&first) == NO_ERROR);
-  REQUIRE (la_task_queue_pop (&queued) == NO_ERROR);
+  REQUIRE (la_coordinator_submit_task (&second) == NO_ERROR);
+  REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
+  REQUIRE (queued.tranid == first.tranid);
   pending.apply = reinterpret_cast<LA_APPLY *> (malloc (1));
   REQUIRE (pending.apply != NULL);
-  pending.merged_lsa = static_cast<LOG_LSA *> (malloc (sizeof (LOG_LSA)));
-  REQUIRE (pending.merged_lsa != NULL);
-  pending.merged_lsa[0] = test_lsa (40);
-  pending.merged_count = pending.merged_capacity = 1;
   REQUIRE (la_coordinator_submit_task (&pending) == NO_ERROR);
   REQUIRE (la_pending_get_count () == 1);
-  /* The pending-list copy now owns both allocations. */
+  /* the pending-list copy now owns the slot */
   pending.apply = NULL;
-  pending.merged_lsa = NULL;
 
   SECTION ("failure before dispatch discards the popped task exactly once")
   {
     context.dispatch_error = ER_FAILED;
-    la_result_init (&result, &queued, 0);
-    REQUIRE (la_result_queue_push (&result) == NO_ERROR);
+    test_push_result (&queued, 0);
     REQUIRE (la_coordinator_collect_and_retire () == ER_FAILED);
     REQUIRE (context.discarded == 1);
     REQUIRE (la_pending_is_empty ());
-    REQUIRE (la_inflight_get_count () == 1);
+    REQUIRE (la_inflight_get_count () == 2);
   }
 
   SECTION ("queue failure after in-flight registration leaves shutdown as the sole owner")
   {
     context.shutdown_queue_tranid = pending.tranid;
-    la_result_init (&result, &queued, 0);
-    REQUIRE (la_result_queue_push (&result) == NO_ERROR);
+    test_push_result (&queued, 0);
     REQUIRE (la_coordinator_collect_and_retire () == ER_FAILED);
     REQUIRE (context.discarded == 0);
     REQUIRE (la_pending_is_empty ());
-    REQUIRE (la_inflight_get_count () == 2);
-    LA_INFLIGHT_ENTRY *entry = la_inflight_entry_at (1);
+    REQUIRE (la_inflight_get_count () == 3);
+    LA_INFLIGHT_ENTRY *entry = la_inflight_entry_at (2);
     REQUIRE (la_inflight_entry_get_tranid (entry) == pending.tranid);
     REQUIRE (la_inflight_entry_get_apply (entry) != NULL);
     REQUIRE_FALSE (la_inflight_entry_has_result (entry));
@@ -532,36 +672,38 @@ TEST_CASE ("a taskless boundary releases dependents only after the preceding gap
   LOG_LSA restart_lsa = test_lsa (10);
   LOG_LSA empty_boundary = test_lsa (30);
   LA_TASK first = test_task (1, test_lsa (20), test_null_lsa ());
-  LA_TASK dependent = test_task (2, test_lsa (40), empty_boundary);
+  LA_TASK second = test_task (2, test_lsa (25), test_null_lsa ());
+  LA_TASK dependent = test_task (3, test_lsa (40), empty_boundary);
   LA_TASK queued;
-  LA_RESULT result;
+  int worker;
   LOG_LSA frontier;
 
   test_initialize_coordinator (&context, &restart_lsa);
   REQUIRE (la_coordinator_submit_task (&first) == NO_ERROR);
+  REQUIRE (la_coordinator_submit_task (&second) == NO_ERROR);
   REQUIRE (la_coordinator_complete_without_task (&empty_boundary) == NO_ERROR);
   REQUIRE (la_coordinator_submit_task (&dependent) == NO_ERROR);
   REQUIRE (la_gate_get_frontier (&frontier));
   REQUIRE (LSA_EQ (&frontier, &restart_lsa));
-  REQUIRE (context.dispatched == 1);
+  REQUIRE (context.dispatched == 2);
   REQUIRE (la_pending_get_count () == 1);
 
-  REQUIRE (la_task_queue_pop (&queued) == NO_ERROR);
-  la_result_init (&result, &queued, 0);
-  REQUIRE (la_result_queue_push (&result) == NO_ERROR);
+  REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
+  test_push_result (&queued, 0);
+  REQUIRE (la_task_queue_pop (&queued, 1) == NO_ERROR);
+  test_push_result (&queued, 1);
   REQUIRE (la_coordinator_collect_and_retire () == NO_ERROR);
-  REQUIRE (context.dispatched == 2);
-  REQUIRE (context.retired == 1);
+  REQUIRE (context.dispatched == 3);
+  REQUIRE (context.retired == 2);
   REQUIRE (la_pending_is_empty ());
   REQUIRE (LSA_EQ (&context.frontier, &empty_boundary));
 
-  REQUIRE (la_task_queue_pop (&queued) == NO_ERROR);
+  REQUIRE (test_pop_any (&queued, &worker) == NO_ERROR);
   REQUIRE (queued.tranid == dependent.tranid);
-  la_result_init (&result, &queued, 1);
-  REQUIRE (la_result_queue_push (&result) == NO_ERROR);
+  test_push_result (&queued, worker);
   REQUIRE (la_coordinator_drain () == NO_ERROR);
-  REQUIRE (context.retired == 2);
-  REQUIRE (context.stored == 2);
+  REQUIRE (context.retired == 3);
+  REQUIRE (context.stored == 3);
   REQUIRE (LSA_EQ (&context.frontier, &dependent.commit_lsa));
   REQUIRE (la_coordinator_drain_complete ());
 }

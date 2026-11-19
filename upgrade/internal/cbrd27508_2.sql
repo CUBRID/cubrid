@@ -36,3 +36,9 @@ DELETE FROM _db_ha_applied_tx_marker WHERE stream_id IS NULL;
 ALTER TABLE _db_ha_applied_tx_marker MODIFY stream_id BIGINT NOT NULL;
 ALTER TABLE _db_ha_applied_tx_marker ADD UNIQUE (stream_id, commit_pageid, commit_offset);
 ALTER TABLE _db_ha_applied_tx_marker DROP COLUMN copied_log_path;
+
+-- Markers became range, list or single rows; the existing rows mark one commit each.
+ALTER TABLE _db_ha_applied_tx_marker ADD COLUMN covers_preceding INTEGER;
+UPDATE _db_ha_applied_tx_marker SET covers_preceding = 0;
+ALTER TABLE _db_ha_applied_tx_marker MODIFY covers_preceding INTEGER NOT NULL;
+ALTER TABLE _db_ha_applied_tx_marker ADD COLUMN applied_lsas VARCHAR(4096);

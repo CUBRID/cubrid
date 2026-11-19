@@ -38,6 +38,10 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include <new>
+#include <set>
+#include <vector>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -47,6 +51,7 @@ struct la_gate_order
 {
   LOG_LSA commit_lsa;
   bool completed;
+  int owner;			/* the worker the unit was dispatched to; LA_GATE_UNDISPATCHED until dispatched */
 };
 
 /* Gap-free completion frontier: the last COMMIT or independent SYSOP_END through which every apply unit
@@ -60,8 +65,51 @@ static int la_Gate_order_capacity = 0;
 static int la_Gate_order_head = 0;
 static int la_Gate_order_count = 0;
 
+/* owner of a unit on the commit-order ring that is not dispatched to any worker yet */
+#define LA_GATE_UNDISPATCHED (-1)
+
+/* Positions of the apply units on the ring that are not applied yet: la_Gate_undispatched for the units not
+ * dispatched yet, and la_Gate_unfinished[w] for those dispatched to worker w. Each set keeps its positions in
+ * order, so its first element is the earliest unit its owner has not committed, which tells la_gate_route
+ * whether that owner holds an unfinished unit at or below a dependency without walking the ring. */
+static std::set<std::int64_t> la_Gate_undispatched;
+static std::vector<std::set<std::int64_t>> la_Gate_unfinished;
+
+/* Counters the coordinator compares to tell whether a parked task may have become releasable. The completion
+ * counter moves when a unit completes or the frontier advances, which is when a task waiting for earlier units
+ * may pass; the dispatch counter moves when a unit gets a worker, which is when a task waiting for an earlier
+ * unit that had no worker yet may follow it. Only equality matters, not the values. */
+static UINT64 la_Gate_completion_version = 0;
+static UINT64 la_Gate_dispatch_version = 0;
+
 static LA_GATE_ORDER *la_gate_order_at (int pos);
 static LA_GATE_ORDER *la_gate_order_find (const LOG_LSA *commit_lsa);
+
+/* An LSA as one integer that keeps the LSA order (the offset fits in 16 bits), so positions compare as numbers.
+ * It is not a hash. */
+static std::int64_t
+la_gate_lsa_to_int (const LOG_LSA *lsa)
+{
+  return (std::int64_t) lsa->pageid * 65536 + (std::int64_t) (lsa->offset & 0xffff);
+}
+
+static std::set<std::int64_t> &
+la_gate_unfinished_of (int owner)
+{
+  assert (owner == LA_GATE_UNDISPATCHED || owner >= 0);
+
+  if (owner == LA_GATE_UNDISPATCHED)
+    {
+      return la_Gate_undispatched;
+    }
+
+  if (la_Gate_unfinished.size () <= (size_t) owner)
+    {
+      la_Gate_unfinished.resize ((size_t) owner + 1);
+    }
+
+  return la_Gate_unfinished[owner];
+}
 
 /*
  * la_gate_init() - reset the gate before the workers start
@@ -98,6 +146,8 @@ la_gate_init (int commit_order_capacity)
   la_Gate_order_head = 0;
   la_Gate_order_count = 0;
   LSA_SET_NULL (&la_Gate_frontier);
+  la_Gate_undispatched.clear ();
+  la_Gate_unfinished.clear ();
 
   return NO_ERROR;
 }
@@ -214,11 +264,12 @@ la_gate_bound_dependency (LOG_LSA *dependency_lsa)
 
 /*
  * la_gate_order_push() - record an apply unit read from the log on the commit-order ring
- *   return: NO_ERROR, or ER_FAILED when the ring is full
+ *   return: NO_ERROR, ER_FAILED when the ring is full, or ER_OUT_OF_VIRTUAL_MEMORY
  *   commit_lsa(in): COMMIT or independent SYSOP_END position; above every unit pushed before it
  *
  * Note:
  *   The ring cannot actually fill (see la_Gate_order_ring); the failure guards against a counting bug.
+ *   The position set allocates a node; when that fails the unit is taken off the ring again.
  */
 int
 la_gate_order_push (const LOG_LSA *commit_lsa)
@@ -226,6 +277,7 @@ la_gate_order_push (const LOG_LSA *commit_lsa)
   LA_GATE_ORDER *entry;
 
   assert (la_Gate_order_ring != NULL);
+  assert (commit_lsa != NULL && !LSA_ISNULL (commit_lsa));
 
   if (la_Gate_order_count >= la_Gate_order_capacity)
     {
@@ -239,7 +291,18 @@ la_gate_order_push (const LOG_LSA *commit_lsa)
   entry = la_gate_order_at (la_Gate_order_count);
   LSA_COPY (&entry->commit_lsa, commit_lsa);
   entry->completed = false;
+  entry->owner = LA_GATE_UNDISPATCHED;
   la_Gate_order_count++;
+  try
+    {
+      la_gate_unfinished_of (LA_GATE_UNDISPATCHED).insert (la_gate_lsa_to_int (commit_lsa));
+    }
+  catch (const std::bad_alloc &)
+    {
+      la_Gate_order_count--;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (std::int64_t));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
 
   return NO_ERROR;
 }
@@ -267,6 +330,7 @@ la_gate_advance_frontier (void)
 
   if (advanced > 0)
     {
+      la_Gate_completion_version++;
       LA_DEBUG_LOG (ARG_FILE_LINE, "ws_gate frontier advanced by %d -> %lld|%d (ring=%d)\n", advanced,
 		    LSA_AS_ARGS (&la_Gate_frontier), la_Gate_order_count);
     }
@@ -289,6 +353,11 @@ la_gate_mark_completed (const LOG_LSA *commit_lsa)
   entry = la_gate_order_find (commit_lsa);
   if (entry != NULL)
     {
+      if (!entry->completed)
+	{
+	  la_gate_unfinished_of (entry->owner).erase (la_gate_lsa_to_int (&entry->commit_lsa));
+	  la_Gate_completion_version++;
+	}
       entry->completed = true;
     }
 }
@@ -370,4 +439,140 @@ la_gate_order_find (const LOG_LSA *commit_lsa)
     }
 
   return NULL;
+}
+
+/*
+ * la_gate_set_owner() - record the worker an apply unit on the commit-order ring was dispatched to
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY when the worker's position set cannot grow
+ *   commit_lsa(in): COMMIT or independent SYSOP_END position of the unit
+ *   worker(in): index of the worker
+ *
+ * Note: called by the coordinator only, like every other ring update. The position is added to the new owner
+ *       before it is removed from the old one, so a failed allocation leaves the gate as it was.
+ */
+int
+la_gate_set_owner (const LOG_LSA *commit_lsa, int worker)
+{
+  LA_GATE_ORDER *entry;
+
+  assert (commit_lsa != NULL && !LSA_ISNULL (commit_lsa));
+  assert (worker >= 0);
+
+  entry = la_gate_order_find (commit_lsa);
+  if (entry == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  if (!entry->completed && entry->owner != worker)
+    {
+      std::int64_t pos = la_gate_lsa_to_int (&entry->commit_lsa);
+
+      try
+	{
+	  la_gate_unfinished_of (worker).insert (pos);
+	}
+      catch (const std::bad_alloc &)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (std::int64_t));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      la_gate_unfinished_of (entry->owner).erase (pos);
+      la_Gate_dispatch_version++;
+    }
+  entry->owner = worker;
+
+  return NO_ERROR;
+}
+
+UINT64
+la_gate_get_completion_version (void)
+{
+  return la_Gate_completion_version;
+}
+
+UINT64
+la_gate_get_dispatch_version (void)
+{
+  return la_Gate_dispatch_version;
+}
+
+/*
+ * la_gate_route() - decide where an apply unit may run now
+ *   return: LA_GATE_ROUTE_ANY when every unit through dependency_lsa is applied (any worker may run it),
+ *           LA_GATE_ROUTE_WORKER when the unfinished units through dependency_lsa were all dispatched to one
+ *           worker (*worker; it runs the unit after them in the same slave transaction or a later one),
+ *           LA_GATE_ROUTE_WAIT otherwise
+ *   dependency_lsa(in): dependency of the unit
+ *   worker(out): the worker for LA_GATE_ROUTE_WORKER
+ *   wait_reason(out): for LA_GATE_ROUTE_WAIT, 1 when an unfinished unit through dependency_lsa is not dispatched
+ *                     yet, 2 when such units are on several workers, 3 for both
+ *
+ * Note: the gate passes a unit only when the gap-free frontier reaches its dependency, as
+ *       la_gate_is_satisfied does; a unit routed to the worker that holds every unfinished predecessor needs no
+ *       wait, because that worker applies its queue in order in one connection.
+ */
+LA_GATE_ROUTE
+la_gate_route (const LOG_LSA *dependency_lsa, int *worker, int *wait_reason)
+{
+  int owner = -1;
+  bool mixed = false;
+  bool undispatched = false;
+
+  assert (dependency_lsa != NULL && worker != NULL && wait_reason != NULL);
+
+  *worker = -1;
+  *wait_reason = 0;
+
+  if (la_gate_is_satisfied (dependency_lsa))
+    {
+      return LA_GATE_ROUTE_ANY;
+    }
+
+  /* The units before this one up to dependency_lsa must be applied first. Decide which owners still hold such a
+   * unit. Each set keeps only the units its owner has not committed yet, in position order, so its first element
+   * is the earliest of them. When that element is past the dependency, every other one is too, and the owner holds
+   * none of the units before this one: those it was given are committed and gone from the set. */
+  std::int64_t dependency_pos = la_gate_lsa_to_int (dependency_lsa);
+
+  /* an earlier unit has no worker yet, so there is no worker to follow */
+  undispatched = (!la_Gate_undispatched.empty () && *la_Gate_undispatched.begin () <= dependency_pos);
+
+  for (int w = 0; w < (int) la_Gate_unfinished.size (); w++)
+    {
+      const std::set<std::int64_t> &positions = la_Gate_unfinished[w];
+
+      if (positions.empty () || *positions.begin () > dependency_pos)
+	{
+	  continue;
+	}
+
+      if (owner < 0)
+	{
+	  owner = w;
+	}
+      else if (owner != w)
+	{
+	  mixed = true;
+	}
+    }
+
+  if (owner < 0 && !undispatched)
+    {
+      /* Every unit through the dependency is committed, but the frontier has not reached it: the frontier stops
+       * only at positions on the ring, and the dependency may lie between two of them. Any worker sees the
+       * committed changes. */
+      return LA_GATE_ROUTE_ANY;
+    }
+
+  if (owner >= 0 && !mixed && !undispatched)
+    {
+      *worker = owner;
+      return LA_GATE_ROUTE_WORKER;
+    }
+
+  /* 1: an unfinished predecessor is not dispatched yet, 2: predecessors on several workers, 3: both */
+  *wait_reason = (undispatched ? 1 : 0) | (mixed ? 2 : 0);
+
+  return LA_GATE_ROUTE_WAIT;
 }

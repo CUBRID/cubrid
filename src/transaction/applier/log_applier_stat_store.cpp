@@ -24,6 +24,7 @@
 
 #include "log_applier_stat_store.hpp"
 #include "log_applier_stat_internal.hpp"
+#include "log_applier_clock.hpp"
 #include "log_applier_inflight.hpp"
 #include "log_applier_pending.hpp"
 #include "log_applier_task_queue.hpp"
@@ -275,7 +276,7 @@ la_stat_update_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execut
     }
 
   gettimeofday (&now, NULL);
-  now_ns = la_stat_clock_ns ();
+  now_ns = la_monotonic_now_ns ();
   pthread_mutex_lock (&la_Worker_live_lock);
   la_stat_account_concurrency (now_ns);
   used = 0;
@@ -331,8 +332,8 @@ la_stat_update_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execut
   db_make_varchar (&in_value[idx++], 1024, concurrency_buf, strlen (concurrency_buf), LANG_SYS_CODESET,
 		   LANG_SYS_COLLATION);
   db_make_varchar (&in_value[idx++], 255, prefix_name, strlen (prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  db_make_varchar (&in_value[idx++], 4096, applier->copied_log_path, strlen (applier->copied_log_path), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
+  db_make_varchar (&in_value[idx++], 4096, applier->copied_log_path, strlen (applier->copied_log_path),
+		   LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert (idx == LA_APPLY_VALUE_COUNT);
 
   res = execute (query_buf, idx, &in_value[0], true);
@@ -412,8 +413,8 @@ la_stat_update_rows (const LA_STAT_APPLIER *applier, LA_STAT_EXECUTE_FUNC execut
       la_stat_make_time (&in_value[idx++], worker->last_error_time, 0);
       db_make_varchar (&in_value[idx++], 255, prefix_name, strlen (prefix_name), LANG_SYS_CODESET,
 		       LANG_SYS_COLLATION);
-      db_make_varchar (&in_value[idx++], 4096, applier->copied_log_path, strlen (applier->copied_log_path), LANG_SYS_CODESET,
-		       LANG_SYS_COLLATION);
+      db_make_varchar (&in_value[idx++], 4096, applier->copied_log_path, strlen (applier->copied_log_path),
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       db_make_int (&in_value[idx++], w);
       assert (idx == LA_WORKER_VALUE_COUNT);
 

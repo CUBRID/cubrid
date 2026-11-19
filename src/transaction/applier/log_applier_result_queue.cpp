@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include "log_applier_result_queue.hpp"
+#include "log_applier_clock.hpp"
 #include "log_applier_worker.hpp"
 #include "log_applier_debug.hpp"
 #include "error_manager.h"
@@ -54,7 +55,8 @@ struct la_result_queue
 
 static LA_RESULT_QUEUE la_Shared_result_queue = { NULL, 0, 0, 0, 0 };
 static pthread_mutex_t la_Shared_result_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t la_Shared_result_not_empty = PTHREAD_COND_INITIALIZER;	/* the coordinator waits for a result */
+static pthread_cond_t la_Shared_result_not_empty = PTHREAD_COND_INITIALIZER;	/* the coordinator waits for a result;
+										 * on CLOCK_MONOTONIC from init */
 static pthread_cond_t la_Shared_result_not_full = PTHREAD_COND_INITIALIZER;	/* workers wait for a free slot */
 static bool la_Shared_result_shutdown = false;
 
@@ -71,10 +73,11 @@ la_result_queue_init (int capacity)
 {
   assert (capacity > 0);
 
-  if (la_Shared_result_queue.results != NULL)
-    {
-      free_and_init (la_Shared_result_queue.results);
-    }
+  la_result_queue_final ();
+
+  /* the coordinator's timed wait for a result reads its deadline on the monotonic clock */
+  (void) pthread_cond_destroy (&la_Shared_result_not_empty);
+  la_cond_init_monotonic (&la_Shared_result_not_empty);
 
   la_Shared_result_queue.results = (LA_RESULT *) malloc ((size_t) capacity * sizeof (LA_RESULT));
   if (la_Shared_result_queue.results == NULL)
@@ -90,6 +93,24 @@ la_result_queue_init (int capacity)
   la_Shared_result_shutdown = false;
 
   return NO_ERROR;
+}
+
+/*
+ * la_result_queue_final() - release the queue
+ *
+ * Note: called with no worker thread left, so no lock is taken.
+ */
+void
+la_result_queue_final (void)
+{
+  if (la_Shared_result_queue.results != NULL)
+    {
+      free_and_init (la_Shared_result_queue.results);
+    }
+  la_Shared_result_queue.capacity = 0;
+  la_Shared_result_queue.head = 0;
+  la_Shared_result_queue.tail = 0;
+  la_Shared_result_queue.count = 0;
 }
 
 /*
@@ -170,14 +191,7 @@ la_result_queue_wait_for_result (int timeout_msec)
   struct timespec abstime;
   bool available;
 
-  clock_gettime (CLOCK_REALTIME, &abstime);
-  abstime.tv_sec += timeout_msec / 1000;
-  abstime.tv_nsec += (long) (timeout_msec % 1000) * 1000000L;
-  if (abstime.tv_nsec >= 1000000000L)
-    {
-      abstime.tv_sec += 1;
-      abstime.tv_nsec -= 1000000000L;
-    }
+  la_monotonic_deadline ((UINT64) timeout_msec * 1000000ULL, &abstime);
 
   pthread_mutex_lock (&la_Shared_result_mutex);
 

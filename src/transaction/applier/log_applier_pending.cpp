@@ -30,12 +30,12 @@
 
 #include "log_applier_pending.hpp"
 #include "log_applier_gate.hpp"
+#include "log_applier_clock.hpp"
 #include "error_manager.h"
 #include "memory_alloc.h"	/* free_and_init */
 
 #include <assert.h>
 #include <stdlib.h>
-#include <time.h>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -122,35 +122,33 @@ la_pending_mark_ready (UINT64 now_ns)
 }
 
 /*
- * la_pending_pop_ready() - take the oldest parked task whose dependency is satisfied
+ * la_pending_pop_routable() - take the oldest parked task that may run now, and the worker it goes to
  *   return: true when a task was released, false when every parked task still waits
  *   task(out): the released task
+ *   worker(out): the worker chosen by route
+ *   route(in): decides for one parked task whether it may run now and on which worker
  *
- * Note:
- *   Scans in parking order, so released tasks keep their relative order, while a task that still
- *   waits does not hold back a later one that is ready.
+ * Note: scans in parking order, so released tasks keep their relative order, while a task that still waits
+ *       does not hold back a later one that may run.
  */
 bool
-la_pending_pop_ready (LA_TASK *task)
+la_pending_pop_routable (LA_TASK *task, int *worker, bool (*route) (const LA_TASK *task, int *worker))
 {
   LA_PENDING_NODE *prev = NULL;
   LA_PENDING_NODE *cur;
 
-  assert (task != NULL);
+  assert (task != NULL && worker != NULL && route != NULL);
 
   for (cur = la_Pending_head; cur != NULL; prev = cur, cur = cur->next)
     {
-      if (cur->task.ready_ns == 0 && la_gate_is_satisfied (&cur->task.dependency_lsa) == false)
+      if (!route (&cur->task, worker))
 	{
 	  continue;
 	}
 
-      if (cur->task.ready_ns == 0)
+      if (cur->task.ready_ns == 0 && la_gate_is_satisfied (&cur->task.dependency_lsa))
 	{
-	  /* Defensive fallback for callers that did not mark readiness before popping. */
-	  struct timespec ts;
-	  clock_gettime (CLOCK_MONOTONIC, &ts);
-	  cur->task.ready_ns = (UINT64) ts.tv_sec * 1000000000ULL + (UINT64) ts.tv_nsec;
+	  cur->task.ready_ns = la_monotonic_now_ns ();
 	}
 
       if (prev == NULL)
@@ -195,10 +193,6 @@ la_pending_clear (void)
     {
       node = la_Pending_head;
       la_Pending_head = node->next;
-      if (node->task.merged_lsa != NULL)
-	{
-	  free_and_init (node->task.merged_lsa);
-	}
       free_and_init (node);
       assert (la_Pending_count > 0);
       la_Pending_count--;
@@ -241,47 +235,4 @@ la_pending_foreach (void (*fn) (const LA_TASK *task, void *arg), void *arg)
     {
       fn (&node->task, arg);
     }
-}
-
-/*
- * la_pending_find_merge_target() - find the parked fragment task a later fragment of the same key can join
- *   return: the parked task, or NULL
- *   dependency_lsa(in): the later fragment's dependency
- *   unit_key_hash(in): the later fragment's single key hash, not 0
- *
- * Note:
- *   The later fragment's dependency is the SYSOP_END of the previous change of its key. When that change is the
- *   last fragment of a parked task, which has not gone to a worker yet, the later fragment can be applied by the
- *   same task right after it.
- */
-LA_TASK *
-la_pending_find_merge_target (const LOG_LSA *dependency_lsa, UINT64 unit_key_hash)
-{
-  LA_PENDING_NODE *node;
-
-  assert (dependency_lsa != NULL);
-
-  if (LSA_ISNULL (dependency_lsa))
-    {
-      return NULL;
-    }
-
-  for (node = la_Pending_head; node != NULL; node = node->next)
-    {
-      const LOG_LSA *last;
-
-      if (node->task.unit_key_hash == 0 || node->task.unit_key_hash != unit_key_hash)
-	{
-	  continue;
-	}
-
-      last = (node->task.merged_count > 0) ? &node->task.merged_lsa[node->task.merged_count - 1]
-	: &node->task.commit_lsa;
-      if (LSA_EQ (last, dependency_lsa))
-	{
-	  return &node->task;
-	}
-    }
-
-  return NULL;
 }

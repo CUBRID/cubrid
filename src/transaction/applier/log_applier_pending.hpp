@@ -28,12 +28,11 @@
 extern void la_pending_reset (void);
 extern int la_pending_push (const LA_TASK *task);
 extern void la_pending_mark_ready (UINT64 now_ns);
-extern bool la_pending_pop_ready (LA_TASK *task);
+extern bool la_pending_pop_routable (LA_TASK *task, int *worker, bool (*route) (const LA_TASK *task, int *worker));
 extern void la_pending_clear (void);
 extern bool la_pending_is_empty (void);
 extern int la_pending_get_count (void);
 extern int la_pending_get_max_count (void);
 extern void la_pending_foreach (void (*fn) (const LA_TASK *task, void *arg), void *arg);
-extern LA_TASK *la_pending_find_merge_target (const LOG_LSA *dependency_lsa, UINT64 unit_key_hash);
 
 #endif /* _LOG_APPLIER_PENDING_HPP_ */

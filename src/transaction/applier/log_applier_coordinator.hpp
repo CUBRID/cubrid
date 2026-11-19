@@ -44,14 +44,21 @@ struct la_coordinator_config
 			const LOG_LSA *frontier); /* apply ordered completion to legacy state */
   int (*store_progress) (void *context); /* persist retired progress when its interval expires */
   bool (*shutdown_requested) (void *context); /* stop coordinator waits when the applier is shutting down */
-  bool (*merge_task) (void *context, LA_TASK *target, LA_TASK *task); /* move task's items into the parked
-									   * target; false if they cannot join */
   void (*discard_task) (void *context, LA_TASK *task); /* release an undispatched task's apply slot */
   void *context;
 };
 
 /* Initialize scheduling state before workers start. */
 extern int la_coordinator_initialize (const LA_COORDINATOR_CONFIG *config);
+
+/* Wake the workers waiting on the task or result queue so that they stop; called before they are joined. */
+extern void la_coordinator_signal_shutdown (void);
+
+/* Release the task and result queues; called after the workers are joined. */
+extern void la_coordinator_finalize (void);
+
+/* Give tasks only to these workers, the ones that started; called before the first task is submitted. */
+extern void la_coordinator_set_live_workers (const int *live_workers, int live_worker_count);
 
 /* Register an assembled task. commit_order waits for preceding work and retires this task before returning. */
 extern int la_coordinator_submit_task (LA_TASK *task, bool commit_order = false);

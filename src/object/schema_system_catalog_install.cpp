@@ -1297,8 +1297,10 @@ namespace cubschema
 	   );
   }
 
-  /* commits an applylogdb on this node has applied above its stored position, one row per commit; a restart skips
-   * them. Written by the applier only; see log_applier.c */
+  /* commits an applylogdb on this node has applied above its stored position; a restart skips them. A row is keyed
+   * by the largest commit it covers and is a range marker (applied_lsas NULL, every commit up to the key) or a list
+   * marker (applied_lsas, exactly the commits it lists as "pageid:offset,"). Written by the applier only; see
+   * LA_APPLIED_TX_MARKER_NAME in log_applier.c */
   system_metadata_definition
   system_catalog_initializer::get_ha_applied_tx_marker ()
   {
@@ -1309,7 +1311,8 @@ namespace cubschema
     {
       {"stream_id", "bigint"},
       {"commit_pageid", "bigint"},
-      {"commit_offset", "integer"}
+      {"commit_offset", "integer"},
+      {"applied_lsas", format_varchar (4096)}
     },
 // constraints
     {

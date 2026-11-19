@@ -29,6 +29,7 @@
 
 #include "storage_common.h"	/* RECDES */
 #include "log_compress.h"	/* LOG_ZIP */
+#include "log_lsa.hpp"		/* LOG_LSA */
 
 /* Record buffers of one worker. Replication items collect until one flush, so their records must remain
  * allocated together. A record larger than one page temporarily replaces its pool slot allocation. */
@@ -53,6 +54,16 @@ struct la_apply_worker_context
   LOG_ZIP *redo_unzip_ptr;
   LA_RECDES_POOL recdes_pool;
   OID marker_class_oid;	/* identifies fatal marker errors in a mixed row batch */
+  /* markers of the open slave transaction, written just before it commits (la_add_batch_markers) */
+  LOG_LSA batch_upto_lsa;	/* single worker: commit LSA of the last task that applied a row */
+  bool batch_has_rows;		/* single worker: a task in the transaction applied a row */
+  LOG_LSA *batch_lsas;		/* commit LSAs to list, one per task that applied a row; used with several workers */
+  int batch_lsa_count;
+  int batch_lsa_capacity;
+  /* tasks that applied at least one item into the open slave transaction, the current one included; reset when
+   * that transaction commits or rolls back. When the server rolls the transaction back on its own, these are the
+   * tasks whose changes were lost with it. */
+  int tran_applied_tasks;
 };
 
 extern int la_worker_context_init (LA_APPLY_WORKER_CONTEXT *context, int db_page_size, int recdes_pool_size);

@@ -48,18 +48,12 @@ struct la_task
   LA_APPLY *apply;		/* repl_list pre-mapped by the coordinator so the worker never calls
 				 * la_find_apply_list, avoiding the la_Info.repl_lists realloc / slot-reuse race */
   bool has_items;		/* false for a commit without replicated items; the worker does not trace it */
-  /* Later fragments of the same key merged into this pending fragment task (la_coordinator_submit_task): the
-   * worker applies their items in the same slave transaction and marks each of them applied, and the coordinator
-   * completes each of their LSAs in the gate. Pending owns the array until dispatch; in-flight then owns it
-   * until retire or shutdown. The worker and result only borrow it. */
-  LOG_LSA *merged_lsa;
-  int merged_count;
-  int merged_capacity;
-  UINT64 unit_key_hash;		/* a fragment of an independent replication unit ordered by a single key: the
-				 * key's writeset hash from the master's label; 0 otherwise. A later fragment of the
-				 * same key may join this task */
+  bool has_statement;		/* the transaction has a statement item (DDL); the worker applies the task in a slave
+				 * transaction of its own, because the statement takes la_sql_compile_mutex and the
+				 * worker must not hold a lock from other tasks then */
   LOG_LSA dependency_lsa;	/* master's dependency from LOG_DUMMY_WSET_LABEL before COMMIT or independent
-				 * SYSOP_END; parallel dispatch waits until frontier reaches this LSA. NULL = no dependency */
+				 * SYSOP_END; parallel dispatch waits until frontier reaches this LSA.
+				 * NULL = no dependency */
 
   /* Monotonic timestamps used only for parallel-apply statistics. */
   UINT64 created_ns;		/* coordinator assembled the task */

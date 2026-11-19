@@ -57,13 +57,12 @@ struct la_result
   int rectype;
   int error;
   LOG_LSA commit_lsa;		/* marks this commit applied in the gate; releases transactions that depend on it */
-  LOG_LSA *merged_lsa;		/* borrowed from in-flight until retire; also marked applied in the gate */
-  int merged_count;
   LOG_LSA committed_rep_lsa;	/* last applied replication-record LSA; advances the reported position in
 				 * la_Info.committed_rep_lsa, not the restart boundary */
   time_t log_record_time;
   int total_rows;		/* items the worker went through, as the serial applier counted them; summed into
-				 * la_Info.total_rows at retire, where a change makes the main loop store the apply info */
+				 * la_Info.total_rows at retire, where a change makes the main loop store the
+				 * apply info */
 
   /* statistics only: added to the worker's row of _db_ha_apply_worker_stat at retire */
   bool has_items;		/* the task applied replicated items; an empty commit is not counted as work */
@@ -103,8 +102,6 @@ la_result_init (LA_RESULT *result, const LA_TASK *task, int worker_idx)
   result->tranid = task->tranid;
   result->rectype = task->rectype;
   result->commit_lsa = task->commit_lsa;
-  result->merged_lsa = task->merged_lsa;
-  result->merged_count = task->merged_count;
   LSA_SET_NULL (&result->committed_rep_lsa);
   result->log_record_time = task->log_record_time;
   result->has_items = task->has_items;

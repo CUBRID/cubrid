@@ -245,3 +245,93 @@ TEST_CASE ("gate init clears the frontier and the ring left by a previous run", 
   REQUIRE (LSA_EQ (&frontier, &l15));
   REQUIRE_FALSE (la_gate_is_satisfied (&l20));
 }
+
+TEST_CASE ("gate routes a unit to any worker once every unit through its dependency is applied",
+	   "[log_applier_gate]")
+{
+  LOG_LSA l10 = test_lsa (10), l20 = test_lsa (20), l30 = test_lsa (30), nul = test_null_lsa ();
+  int worker, wait_reason;
+
+  REQUIRE (la_gate_init (8) == NO_ERROR);
+  la_gate_set_initial_frontier (&l10);
+  REQUIRE (la_gate_route (&nul, &worker, &wait_reason) == LA_GATE_ROUTE_ANY);
+  REQUIRE (la_gate_route (&l10, &worker, &wait_reason) == LA_GATE_ROUTE_ANY);
+
+  /* a unit past the dependency is still running; it does not hold back a dependency below it */
+  REQUIRE (la_gate_order_push (&l20) == NO_ERROR);
+  la_gate_set_owner (&l20, 0);
+  REQUIRE (la_gate_order_push (&l30) == NO_ERROR);
+  la_gate_set_owner (&l30, 1);
+  la_gate_mark_completed (&l20);
+  la_gate_advance_frontier ();
+  REQUIRE (la_gate_route (&l20, &worker, &wait_reason) == LA_GATE_ROUTE_ANY);
+  REQUIRE (worker == -1);
+}
+
+TEST_CASE ("gate routes a unit to the one worker that holds every unfinished unit through its dependency",
+	   "[log_applier_gate]")
+{
+  LOG_LSA l10 = test_lsa (10), l20 = test_lsa (20), l30 = test_lsa (30), l40 = test_lsa (40);
+  int worker, wait_reason;
+  UINT64 dispatch_version;
+
+  REQUIRE (la_gate_init (8) == NO_ERROR);
+  la_gate_set_initial_frontier (&l10);
+  REQUIRE (la_gate_order_push (&l20) == NO_ERROR);
+  REQUIRE (la_gate_order_push (&l30) == NO_ERROR);
+  REQUIRE (la_gate_order_push (&l40) == NO_ERROR);
+
+  dispatch_version = la_gate_get_dispatch_version ();
+  la_gate_set_owner (&l20, 2);
+  la_gate_set_owner (&l30, 2);
+  REQUIRE (la_gate_get_dispatch_version () != dispatch_version);
+
+  /* the unit at 40 is the one being routed; only the units through 30 count */
+  REQUIRE (la_gate_route (&l30, &worker, &wait_reason)
+	   == LA_GATE_ROUTE_WORKER);
+  REQUIRE (worker == 2);
+
+  /* finishing one of them out of order leaves the other still on the same worker */
+  la_gate_mark_completed (&l30);
+  la_gate_advance_frontier ();
+  REQUIRE (la_gate_route (&l30, &worker, &wait_reason)
+	   == LA_GATE_ROUTE_WORKER);
+  REQUIRE (worker == 2);
+}
+
+TEST_CASE ("gate holds a unit whose unfinished predecessors are on several workers or not dispatched yet",
+	   "[log_applier_gate]")
+{
+  LOG_LSA l10 = test_lsa (10), l20 = test_lsa (20), l30 = test_lsa (30), l40 = test_lsa (40);
+  int worker, wait_reason;
+  UINT64 completion_version;
+
+  REQUIRE (la_gate_init (8) == NO_ERROR);
+  la_gate_set_initial_frontier (&l10);
+  REQUIRE (la_gate_order_push (&l20) == NO_ERROR);
+  REQUIRE (la_gate_order_push (&l30) == NO_ERROR);
+  REQUIRE (la_gate_order_push (&l40) == NO_ERROR);
+  la_gate_set_owner (&l20, 0);
+  la_gate_set_owner (&l30, 1);
+
+  REQUIRE (la_gate_route (&l30, &worker, &wait_reason) == LA_GATE_ROUTE_WAIT);
+  REQUIRE (worker == -1);
+  REQUIRE (wait_reason == 2);
+
+  /* the unit at 40 has no worker yet, so a unit depending on it has none to follow */
+  REQUIRE (la_gate_route (&l40, &worker, &wait_reason) == LA_GATE_ROUTE_WAIT);
+  REQUIRE (wait_reason == 3);
+
+  /* once worker 0 finishes, only worker 1 is left for the dependency at 30 */
+  completion_version = la_gate_get_completion_version ();
+  la_gate_mark_completed (&l20);
+  la_gate_advance_frontier ();
+  REQUIRE (la_gate_get_completion_version () != completion_version);
+  REQUIRE (la_gate_route (&l30, &worker, &wait_reason)
+	   == LA_GATE_ROUTE_WORKER);
+  REQUIRE (worker == 1);
+
+  /* the unit at 40 is still undispatched even though the other predecessors are on one worker now */
+  REQUIRE (la_gate_route (&l40, &worker, &wait_reason) == LA_GATE_ROUTE_WAIT);
+  REQUIRE (wait_reason == 1);
+}

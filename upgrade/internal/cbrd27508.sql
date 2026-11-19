@@ -93,10 +93,12 @@ CREATE TABLE _db_ha_apply_worker_stat (
 
 GRANT SELECT ON _db_ha_apply_worker_stat TO information_schema;
 
--- commits an applylogdb on this node has applied above its stored position, one row per commit
+-- commits an applylogdb on this node has applied above its stored position: range, list or single markers
 CREATE TABLE _db_ha_applied_tx_marker (
   stream_id BIGINT NOT NULL,
   commit_pageid BIGINT NOT NULL,
   commit_offset INTEGER NOT NULL,
+  covers_preceding INTEGER NOT NULL,
+  applied_lsas VARCHAR(4096),
   UNIQUE (stream_id, commit_pageid, commit_offset)
 ) DONT_REUSE_OID;

@@ -43,7 +43,6 @@ struct la_inflight_entry
 {
   UINT64 dispatch_seq;
   LA_APPLY *apply;		/* owned by the applier; this entry prevents reuse until retire */
-  LOG_LSA *merged_lsa;		/* owned until pop or shutdown, even when no result arrives */
   int tranid;
   int rectype;
   bool result_ready;
@@ -108,8 +107,7 @@ la_inflight_init (int capacity)
  * la_inflight_clear() - drop every entry, keeping the allocation
  *
  * Note:
- *   Called after workers stop. Merged-LSA arrays are freed even when no result arrived; apply slots are
- *   released separately by the applier's shutdown path.
+ *   Called after workers stop. Apply slots are released separately by the applier's shutdown path.
  */
 void
 la_inflight_clear (void)
@@ -139,10 +137,9 @@ la_inflight_get_capacity (void)
  *   tranid(in): transaction id
  *   rectype(in): LOG_COMMIT or LOG_SYSOP_END
  *   dispatch_seq_out(out): dispatch number given to the task; may be NULL
- *   merged_lsa(in): array owned by the entry on success, released by pop or clear
  */
 int
-la_inflight_push (LA_APPLY *apply, int tranid, int rectype, UINT64 *dispatch_seq_out, LOG_LSA *merged_lsa)
+la_inflight_push (LA_APPLY *apply, int tranid, int rectype, UINT64 *dispatch_seq_out)
 {
   LA_INFLIGHT_ENTRY *entry;
 
@@ -156,7 +153,6 @@ la_inflight_push (LA_APPLY *apply, int tranid, int rectype, UINT64 *dispatch_seq
   entry = &la_Inflight.entries[la_Inflight.tail];
   entry->dispatch_seq = la_Dispatch_seq++;
   entry->apply = apply;
-  entry->merged_lsa = merged_lsa;
   entry->tranid = tranid;
   entry->rectype = rectype;
   entry->result_ready = false;
@@ -203,7 +199,6 @@ la_inflight_pop (void)
       return;
     }
 
-  free_and_init (la_Inflight.entries[la_Inflight.head].merged_lsa);
   la_Inflight.head = (la_Inflight.head + 1) % la_Inflight.capacity;
   la_Inflight.count--;
 }
@@ -322,19 +317,24 @@ la_inflight_entry_get_result (const LA_INFLIGHT_ENTRY *entry)
 static LA_INFLIGHT_ENTRY *
 la_inflight_find_by_dispatch_seq (UINT64 dispatch_seq)
 {
-  int i, idx;
+  UINT64 head_seq;
+  int idx;
 
-  idx = la_Inflight.head;
-  for (i = 0; i < la_Inflight.count; i++)
+  if (la_Inflight.count == 0)
     {
-      LA_INFLIGHT_ENTRY *entry = &la_Inflight.entries[idx];
-
-      if (entry->dispatch_seq == dispatch_seq)
-	{
-	  return entry;
-	}
-      idx = (idx + 1) % la_Inflight.capacity;
+      return NULL;
     }
 
-  return NULL;
+  /* every push takes the next dispatch number and entries leave only from the head, so the entry with a given
+   * number sits at its distance from the head's number, and a number outside that range is not on the list */
+  head_seq = la_Inflight.entries[la_Inflight.head].dispatch_seq;
+  if (dispatch_seq < head_seq || dispatch_seq - head_seq >= (UINT64) la_Inflight.count)
+    {
+      return NULL;
+    }
+
+  idx = (int) ((la_Inflight.head + (dispatch_seq - head_seq)) % la_Inflight.capacity);
+  assert (la_Inflight.entries[idx].dispatch_seq == dispatch_seq);
+
+  return &la_Inflight.entries[idx];
 }

@@ -262,8 +262,8 @@ struct log_rec_wset_label
 {
   LOG_LSA dependency_lsa;	/* dependency selected from history for this apply unit */
   UINT64 unit_key_hash;		/* an independent replication unit (serial update, INCR/DECR) ordered by a single key:
-				 * the writeset hash of that key; 0 otherwise. Consecutive units of one key may be
-				 * applied together by the slave */
+				 * the writeset hash of that key; 0 otherwise. The slave does not read it since SYSOP
+				 * fragments are no longer merged; it stays in the record format */
 };
 
 /* Information of database external redo log records */

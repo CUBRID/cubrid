@@ -33,8 +33,7 @@ typedef struct la_inflight_entry LA_INFLIGHT_ENTRY;
 extern int la_inflight_init (int capacity);
 extern void la_inflight_clear (void);
 extern int la_inflight_get_capacity (void);
-extern int la_inflight_push (LA_APPLY *apply, int tranid, int rectype, UINT64 *dispatch_seq_out,
-			     LOG_LSA *merged_lsa = NULL);
+extern int la_inflight_push (LA_APPLY *apply, int tranid, int rectype, UINT64 *dispatch_seq_out);
 extern LA_INFLIGHT_ENTRY *la_inflight_peek (void);
 extern void la_inflight_pop (void);
 extern int la_inflight_attach_result (const LA_RESULT *result);

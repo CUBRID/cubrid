@@ -81,6 +81,24 @@ namespace
     FAIL ("no task is queued in these tests");
   }
 
+  int
+  commit_batch_never (LA_APPLY_WORKER_CONTEXT *, int, unsigned long long, LA_STATS *)
+  {
+    FAIL ("no task is queued in these tests");
+    return NO_ERROR;
+  }
+
+  void
+  abort_batch_noop (LA_APPLY_WORKER_CONTEXT *)
+  {
+  }
+
+  bool
+  shutdown_requested_never ()
+  {
+    return false;
+  }
+
   void
   request_shutdown ()
   {
@@ -101,30 +119,35 @@ namespace
     config.recdes_pool_size = 4;
     config.trace_level = 0;
     config.run_task = run_task_never;
+    config.commit_batch = commit_batch_never;
+    config.abort_batch = abort_batch_noop;
     config.request_shutdown = request_shutdown;
+    config.shutdown_requested = shutdown_requested_never;
     config.end_context = end_context_noop;
     return config;
   }
 
-  /* start count workers, wait until each has tried its sub-client, stop the queues and join */
-  void
-  start_and_stop (LA_WORKER *workers, int count)
+  /* start count workers, wait until each has started or failed, report the ones that started in live, then stop
+   * the queues and join; returns what la_worker_wait_started returned */
+  int
+  start_and_stop (LA_WORKER *workers, int count, int *live, int *live_count)
   {
     LA_WORKER_CONFIG config = test_config ();
+    int error;
 
-    la_task_queue_init ();
+    REQUIRE (la_task_queue_init (count) == NO_ERROR);
     REQUIRE (la_result_queue_init (16) == NO_ERROR);
     REQUIRE (la_worker_start (workers, count, &config) == NO_ERROR);
 
-    for (int i = 0; i < 500 && restart_calls < count; i++)
-      {
-	std::this_thread::sleep_for (std::chrono::milliseconds (10));
-      }
+    error = la_worker_wait_started (workers, count, live, live_count);
     REQUIRE (restart_calls == count);
 
     la_task_queue_signal_shutdown ();
     la_result_queue_signal_shutdown ();
     la_worker_join (workers, count);
+    la_task_queue_final ();
+
+    return error;
   }
 }
 
@@ -176,9 +199,11 @@ tr_init (void)
 TEST_CASE ("every worker closes the sub-client it opened", "[log_applier_worker]")
 {
   LA_WORKER workers[4] = {};
+  int live[4], live_count;
 
   reset_stubs (0, 1000);
-  start_and_stop (workers, 4);
+  REQUIRE (start_and_stop (workers, 4, live, &live_count) == NO_ERROR);
+  REQUIRE (live_count == 4);
 
   REQUIRE (shutdown_calls == 4);
   REQUIRE (shutdown_requests == 0);
@@ -187,10 +212,17 @@ TEST_CASE ("every worker closes the sub-client it opened", "[log_applier_worker]
 TEST_CASE ("a worker whose sub-client fails to start closes it and the others keep running", "[log_applier_worker]")
 {
   LA_WORKER workers[4] = {};
+  int live[4], live_count;
 
   /* sub-client indexes are the worker slots */
   reset_stubs (1u << 2, 1000);
-  start_and_stop (workers, 4);
+  REQUIRE (start_and_stop (workers, 4, live, &live_count) == NO_ERROR);
+
+  /* the coordinator is given only the workers that started */
+  REQUIRE (live_count == 3);
+  REQUIRE (live[0] == 0);
+  REQUIRE (live[1] == 1);
+  REQUIRE (live[2] == 3);
 
   /* the failed one too: db_shutdown_sub releases the error context a failed db_restart_sub keeps */
   REQUIRE (shutdown_calls == 4);
@@ -200,9 +232,11 @@ TEST_CASE ("a worker whose sub-client fails to start closes it and the others ke
 TEST_CASE ("when no worker can start the applier is told to stop", "[log_applier_worker]")
 {
   LA_WORKER workers[3] = {};
+  int live[3], live_count;
 
   reset_stubs (0x7, 1000);
-  start_and_stop (workers, 3);
+  REQUIRE (start_and_stop (workers, 3, live, &live_count) == ER_HA_GENERIC_ERROR);
+  REQUIRE (live_count == 0);
 
   REQUIRE (shutdown_calls == 3);
   REQUIRE (shutdown_requests == 1);
@@ -217,7 +251,7 @@ TEST_CASE ("a stop while workers are still opening their sub-clients waits for t
   /* the workers open their sub-clients one at a time; the first one in is held inside db_restart_sub and the
    * others wait for their turn */
   reset_stubs (0, 0);
-  la_task_queue_init ();
+  REQUIRE (la_task_queue_init (4) == NO_ERROR);
   REQUIRE (la_result_queue_init (16) == NO_ERROR);
   REQUIRE (la_worker_start (workers, 4, &config) == NO_ERROR);
 
@@ -238,4 +272,5 @@ TEST_CASE ("a stop while workers are still opening their sub-clients waits for t
   REQUIRE (restart_calls == 4);
   REQUIRE (shutdown_calls == 4);
   REQUIRE (shutdown_requests == 0);
+  la_task_queue_final ();
 }

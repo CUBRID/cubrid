@@ -88,7 +88,6 @@ extern LA_APPLY_STAT la_Apply_stat;
 extern LA_WORKER_LIVE la_Worker_live[LA_MAX_WORKER_COUNT];
 extern pthread_mutex_t la_Worker_live_lock;
 
-extern UINT64 la_stat_clock_ns (void);
 extern void la_stat_account_concurrency (UINT64 now_ns);
 
 #endif /* _LOG_APPLIER_STAT_INTERNAL_HPP_ */

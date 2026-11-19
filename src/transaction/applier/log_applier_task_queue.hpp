@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_task_queue.hpp - interface for the shared coordinator-to-worker task queue
+ * log_applier_task_queue.hpp - interface for the coordinator-to-worker task queues (one per worker)
  */
 
 #ifndef _LOG_APPLIER_TASK_QUEUE_HPP_
@@ -25,10 +25,14 @@
 
 #include "log_applier_task.hpp"		/* LA_TASK */
 
-extern void la_task_queue_init (void);
-extern int la_task_queue_push (const LA_TASK *task);
-extern bool la_task_queue_is_full (void);
-extern int la_task_queue_pop (LA_TASK *task);
+#define LA_TASK_QUEUE_CAPACITY      1024	/* tasks one worker's queue holds: dispatched but not yet taken */
+
+extern int la_task_queue_init (int worker_count);
+extern void la_task_queue_final (void);
+extern int la_task_queue_push (const LA_TASK *task, int worker);
+extern bool la_task_queue_is_full (int worker);
+extern int la_task_queue_pop (LA_TASK *task, int worker);
+extern int la_task_queue_try_pop (LA_TASK *task, bool *taken, int worker, UINT64 hold_nsec);
 extern void la_task_queue_signal_shutdown (void);
 extern int la_task_queue_get_count (void);
 extern int la_task_queue_get_max_count (void);

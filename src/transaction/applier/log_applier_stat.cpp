@@ -24,6 +24,7 @@
 
 #include "log_applier_stat.hpp"
 #include "log_applier_stat_internal.hpp"
+#include "log_applier_clock.hpp"
 #include "log_record.hpp"		/* LOG_COMMIT */
 
 #include <assert.h>
@@ -35,16 +36,6 @@
 LA_APPLY_STAT la_Apply_stat;
 LA_WORKER_LIVE la_Worker_live[LA_MAX_WORKER_COUNT];
 pthread_mutex_t la_Worker_live_lock = PTHREAD_MUTEX_INITIALIZER;
-
-UINT64
-la_stat_clock_ns (void)
-{
-  struct timespec ts;
-
-  clock_gettime (CLOCK_MONOTONIC, &ts);
-
-  return (UINT64) ts.tv_sec * 1000000000ULL + (UINT64) ts.tv_nsec;
-}
 
 void
 la_stat_account_concurrency (UINT64 now_ns)
@@ -68,7 +59,7 @@ void
 la_stat_reset (void)
 {
   memset (&la_Apply_stat, 0, sizeof (la_Apply_stat));
-  la_Apply_stat.run_start_ns = la_stat_clock_ns ();
+  la_Apply_stat.run_start_ns = la_monotonic_now_ns ();
   la_Apply_stat.last_concurrency_change_ns = la_Apply_stat.run_start_ns;
   LSA_SET_NULL (&la_Apply_stat.max_completed_lsa);
 

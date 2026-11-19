@@ -26,9 +26,6 @@
 #include "log_applier_inflight.hpp"
 
 #include "error_code.h"
-#include "memory_alloc.h"
-
-#include <cstdlib>
 
 static LA_RESULT
 test_result_for (UINT64 dispatch_seq, int error = NO_ERROR)
@@ -139,82 +136,19 @@ TEST_CASE ("in-flight list init empties the list and restarts dispatch numbering
   REQUIRE (dispatch_seq == 0);
 }
 
-TEST_CASE ("in-flight owns merged boundaries until pop, shutdown or in-process restart",
-	   "[log_applier_inflight]")
+TEST_CASE ("in-flight clear drops entries with and without a result", "[log_applier_inflight]")
 {
-  REQUIRE (la_inflight_init (2) == NO_ERROR);
   UINT64 dispatch_seq[2];
 
-  /* These are real allocations: ASan/LSan must see missing frees and duplicate ownership. */
-  for (int i = 0; i < 2; i++)
-    {
-      LOG_LSA *merged = static_cast<LOG_LSA *> (malloc (2 * sizeof (LOG_LSA)));
-      REQUIRE (merged != NULL);
-      merged[0] = test_lsa (100 + i * 10);
-      merged[1] = test_lsa (101 + i * 10);
-      REQUIRE (la_inflight_push (NULL, i + 1, TEST_RECTYPE_SYSOP_END, &dispatch_seq[i], merged) == NO_ERROR);
+  /* on shutdown some workers have answered and some never will */
+  REQUIRE (la_inflight_init (2) == NO_ERROR);
+  REQUIRE (la_inflight_push (NULL, 1, TEST_RECTYPE_COMMIT, &dispatch_seq[0]) == NO_ERROR);
+  REQUIRE (la_inflight_push (NULL, 2, TEST_RECTYPE_SYSOP_END, &dispatch_seq[1]) == NO_ERROR);
+  LA_RESULT r1 = test_result_for (dispatch_seq[1], ER_FAILED);
+  REQUIRE (la_inflight_attach_result (&r1) == NO_ERROR);
 
-      /* A worker result borrows the same array; it must not become a second owner. */
-      if (i == 1)
-	{
-	  LA_RESULT result = test_result_for (dispatch_seq[i], ER_FAILED);
-	  result.merged_lsa = merged;
-	  result.merged_count = 2;
-	  REQUIRE (la_inflight_attach_result (&result) == NO_ERROR);
-	  REQUIRE (la_inflight_entry_get_result (la_inflight_entry_at (i))->merged_lsa == merged);
-	}
-    }
-  REQUIRE_FALSE (la_inflight_entry_has_result (la_inflight_entry_at (0)));
-  REQUIRE (la_inflight_entry_has_result (la_inflight_entry_at (1)));
-
-  SECTION ("pop releases arrays even if their worker never returned")
-  {
-    la_inflight_pop ();
-    REQUIRE (la_inflight_get_count () == 1);
-    REQUIRE (la_inflight_entry_has_result (la_inflight_peek ()));
-    la_inflight_pop ();
-    REQUIRE (la_inflight_get_count () == 0);
-    la_inflight_pop ();
-  }
-
-  SECTION ("shutdown clears both missing and failed worker results")
-  {
-    la_inflight_clear ();
-    REQUIRE (la_inflight_get_count () == 0);
-    REQUIRE (la_inflight_peek () == NULL);
-    la_inflight_clear ();
-  }
-
-  SECTION ("restart reinitializes a nonempty list without needing worker results")
-  {
-    REQUIRE (la_inflight_init (3) == NO_ERROR);
-    REQUIRE (la_inflight_get_capacity () == 3);
-    REQUIRE (la_inflight_get_count () == 0);
-  }
-
-  /* Free the old ring too, so stale pointers cannot hide leaked arrays from LSan. */
-  REQUIRE (la_inflight_init (1) == NO_ERROR);
-  UINT64 next_dispatch_seq;
-  REQUIRE (la_inflight_push (NULL, 9, TEST_RECTYPE_COMMIT, &next_dispatch_seq) == NO_ERROR);
-  REQUIRE (next_dispatch_seq == 0);
-  REQUIRE_FALSE (la_inflight_entry_has_result (la_inflight_peek ()));
   la_inflight_clear ();
-}
-
-TEST_CASE ("a rejected in-flight push leaves the merged array owned by its caller", "[log_applier_inflight]")
-{
-  REQUIRE (la_inflight_init (1) == NO_ERROR);
-  REQUIRE (la_inflight_push (NULL, 1, TEST_RECTYPE_COMMIT, NULL) == NO_ERROR);
-  LOG_LSA *merged = static_cast<LOG_LSA *> (malloc (sizeof (LOG_LSA)));
-  REQUIRE (merged != NULL);
-  merged[0] = test_lsa (200);
-
-  REQUIRE (la_inflight_push (NULL, 2, TEST_RECTYPE_SYSOP_END, NULL, merged) == ER_FAILED);
-  REQUIRE (la_inflight_get_count () == 1);
-  REQUIRE (merged[0].pageid == 200);
+  REQUIRE (la_inflight_get_count () == 0);
+  REQUIRE (la_inflight_peek () == NULL);
   la_inflight_clear ();
-  /* If failure transferred ownership, this read/free is caught by ASan. */
-  REQUIRE (merged[0].pageid == 200);
-  free_and_init (merged);
-  REQUIRE (la_inflight_init (1) == NO_ERROR);
 }

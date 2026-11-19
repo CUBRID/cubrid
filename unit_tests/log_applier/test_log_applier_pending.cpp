@@ -36,6 +36,33 @@ test_collect_tranid (const LA_TASK *task, void *arg)
   ((std::vector<int> *) arg)->push_back (task->tranid);
 }
 
+/* routes a parked task once the gate passes its dependency, to the worker named by its transaction id */
+static bool
+test_route_satisfied (const LA_TASK *task, int *worker)
+{
+  if (!la_gate_is_satisfied (&task->dependency_lsa))
+    {
+      return false;
+    }
+
+  *worker = task->tranid % 4;
+  return true;
+}
+
+static bool
+test_pop (LA_TASK *task)
+{
+  int worker = -1;
+
+  if (!la_pending_pop_routable (task, &worker, test_route_satisfied))
+    {
+      return false;
+    }
+
+  REQUIRE (worker == task->tranid % 4);
+  return true;
+}
+
 static void
 test_reset (const LOG_LSA *restart_lsa)
 {
@@ -58,12 +85,12 @@ TEST_CASE ("pending list records dependency readiness before task queue capacity
   REQUIRE (la_pending_push (&task) == NO_ERROR);
 
   la_pending_mark_ready (200);
-  REQUIRE_FALSE (la_pending_pop_ready (&out));
+  REQUIRE_FALSE (test_pop (&out));
 
   la_gate_mark_completed (&l20);
   la_gate_advance_frontier ();
   la_pending_mark_ready (300);
-  REQUIRE (la_pending_pop_ready (&out));
+  REQUIRE (test_pop (&out));
   REQUIRE (out.ready_ns == 300);
 }
 
@@ -83,16 +110,16 @@ TEST_CASE ("pending list releases ready tasks in parking order without waiting f
   REQUIRE (la_pending_push (&b) == NO_ERROR);
   REQUIRE (la_pending_push (&c) == NO_ERROR);
 
-  REQUIRE (la_pending_pop_ready (&out));
+  REQUIRE (test_pop (&out));
   REQUIRE (out.tranid == 2);
-  REQUIRE (la_pending_pop_ready (&out));
+  REQUIRE (test_pop (&out));
   REQUIRE (out.tranid == 3);
-  REQUIRE_FALSE (la_pending_pop_ready (&out));
+  REQUIRE_FALSE (test_pop (&out));
   REQUIRE_FALSE (la_pending_is_empty ());
 
   la_gate_mark_completed (&l20);
   la_gate_advance_frontier ();
-  REQUIRE (la_pending_pop_ready (&out));
+  REQUIRE (test_pop (&out));
   REQUIRE (out.tranid == 1);
   REQUIRE (LSA_EQ (&out.dependency_lsa, &l20));
   REQUIRE (la_pending_is_empty ());
@@ -130,13 +157,13 @@ TEST_CASE ("pending list clear drops every parked task and the list is usable ag
     }
   la_pending_clear ();
   REQUIRE (la_pending_is_empty ());
-  REQUIRE_FALSE (la_pending_pop_ready (&out));
+  REQUIRE_FALSE (test_pop (&out));
   la_pending_foreach (test_collect_tranid, &seen);
   REQUIRE (seen.empty ());
 
   LA_TASK again = test_task (9, test_lsa (200), nul);
   REQUIRE (la_pending_push (&again) == NO_ERROR);
-  REQUIRE (la_pending_pop_ready (&out));
+  REQUIRE (test_pop (&out));
   REQUIRE (out.tranid == 9);
   REQUIRE (la_pending_is_empty ());
 }
