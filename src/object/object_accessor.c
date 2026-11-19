@@ -3862,7 +3862,7 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
   if (result == BTREE_KEY_FOUND)
     {
       obj = ws_mop (&oid, NULL);
-      if (lookup == OBJ_FIND_CATALOG_READ && ws_get_lock (obj) == NULL_LOCK && !WS_ISDIRTY (obj))
+      if (lookup == OBJ_FIND_CATALOG_READ && obj != NULL && ws_get_lock (obj) == NULL_LOCK && !WS_ISDIRTY (obj))
 	{
 	  /* an unlocked cached copy is reused while the client's snapshot version holds, which in REPEATABLE READ
 	   * is the whole transaction: read the row again so the copy is the version the request's snapshot finds */
