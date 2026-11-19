@@ -5244,7 +5244,7 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   int no_logging_index = 0;
   size_t tail_offset;
 
-  if (!net_check_request_remaining (request, reqlen, request, OR_BTID_ALIGNED_SIZE))
+  if (!net_check_request_remaining (request, reqlen, request, OR_BTID_ALIGNED_SIZE + OR_INT_SIZE))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
@@ -6508,8 +6508,7 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		      (size_t) (n_query_ids + 1) * sizeof (QUERY_ID));
-	      css_send_abort_to_client (thread_p->conn_entry, rid);
-	      return;
+	      goto abort_request;
 	    }
 	}
 
@@ -6538,12 +6537,7 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
       if (csserror || data == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
-	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  if (data)
-	    {
-	      thread_p->release_packet (data);
-	    }
-	  return;		/* error */
+	  goto abort_request;
 	}
     }
 
@@ -6873,7 +6867,7 @@ exit:
   return;
 
 abort_request:
-  /* the request is not valid, and nothing has been executed for it */
+  /* the request is rejected before anything has been executed for it */
   if (data != NULL && data != aligned_data_buf)
     {
       thread_p->release_packet (data);
@@ -9679,7 +9673,7 @@ slocator_check_fk_validity (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  if (!net_check_request_remaining (request, reqlen, request, OR_OID_SIZE + OR_HFID_SIZE))
+  if (!net_check_request_remaining (request, reqlen, request, OR_OID_SIZE + OR_HFID_SIZE + OR_INT_SIZE))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
