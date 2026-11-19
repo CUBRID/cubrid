@@ -130,9 +130,17 @@ add_test(NAME test_oos_trigger_threshold
   COMMAND ${CMAKE_COMMAND} -E env
     "CUBRID=$ENV{CUBRID}"
     "PATH=$ENV{PATH}"
-    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_oos_trigger_threshold.sh"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_oos_trigger_threshold.sh" startup
 )
 set_tests_properties(test_oos_trigger_threshold PROPERTIES RUN_SERIAL TRUE TIMEOUT 60)
+
+add_test(NAME test_oos_trigger_threshold_system
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_oos_trigger_threshold.sh" system
+)
+set_tests_properties(test_oos_trigger_threshold_system PROPERTIES RUN_SERIAL TRUE TIMEOUT 60)
 
 # =============================================================================
 # CTest fixtures: databases owned by a single binary

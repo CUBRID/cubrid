@@ -829,7 +829,6 @@ static int heap_chkreloc_print_notfound (const void *ignore_reloc_oid, void *ent
 static DISK_ISVALID heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_PTR pgptr);
 
 static int heap_chnguess_initialize (void);
-static int heap_oos_auto_inline_target_size (void);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int heap_chnguess_realloc (void);
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -3952,7 +3951,7 @@ heap_vpid_prev (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID
 
 /*
  * heap_manager_initialize () -
- *   return: NO_ERROR, or ER_PRM_BAD_VALUE for an out-of-range oos_trigger_threshold
+ *   return: NO_ERROR
  *
  * Note: Initialization process of the heap file module. Find the
  * maximum size of an object that can be inserted in the heap.
@@ -3967,17 +3966,6 @@ heap_manager_initialize (void)
     DB_ALIGN_BELOW (spage_max_record_size () - DB_ALIGN (sizeof (HEAP_CHAIN), HEAP_MAX_ALIGN) -
 		    8 * SPAGE_SLOT_SIZE /* margin */ , HEAP_MAX_ALIGN);
   heap_Slotted_overhead = SPAGE_SLOT_SIZE;
-
-  /* An explicit threshold may only raise the automatic target. A lower one would move more values, including those
-   * of system-class rows, to OOS. */
-  UINT64 oos_trigger_threshold = prm_get_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD);
-  if (oos_trigger_threshold != 0
-      && (oos_trigger_threshold < (UINT64) heap_oos_auto_inline_target_size ()
-	  || oos_trigger_threshold > (UINT64) heap_Maxslotted_reclength))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_OOS_TRIGGER_THRESHOLD));
-      return ER_PRM_BAD_VALUE;
-    }
 
   /* Initialize the class representation cache */
   ret = heap_chnguess_initialize ();
@@ -14238,7 +14226,7 @@ heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int paylo
  *
  * The target does not depend on heap unfill space.
  */
-static int
+int
 heap_oos_auto_inline_target_size (void)
 {
   const int page_capacity = heap_nonheader_page_capacity ();
@@ -14258,15 +14246,39 @@ heap_oos_auto_inline_target_size (void)
 }
 
 /*
- * heap_oos_inline_target_size () - Return the maximum inline record target used by OOS demotion
+ * heap_oos_check_trigger_threshold () - Reject an oos_trigger_threshold outside the range for this page size
+ *   return: NO_ERROR or ER_PRM_BAD_VALUE
  *
- * A nonzero oos_trigger_threshold is the byte target. Zero selects the automatic target.
+ * An explicit threshold may only raise the automatic target, up to the largest record a heap page holds.
+ * Call it after heap_manager_initialize, once the database page size is known.
  */
 int
-heap_oos_inline_target_size (void)
+heap_oos_check_trigger_threshold (void)
 {
   const UINT64 oos_trigger_threshold = prm_get_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD);
-  if (oos_trigger_threshold != 0)
+  if (oos_trigger_threshold != 0
+      && (oos_trigger_threshold < (UINT64) heap_oos_auto_inline_target_size ()
+	  || oos_trigger_threshold > (UINT64) heap_Maxslotted_reclength))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_OOS_TRIGGER_THRESHOLD));
+      return ER_PRM_BAD_VALUE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * heap_oos_inline_target_size () - Return the maximum inline record target used by OOS demotion
+ *   class_oid(in): class of the record being laid out
+ *
+ * A nonzero oos_trigger_threshold is the byte target for user classes. System classes always use the automatic
+ * target: some of their rows, such as _db_serial rows, are rewritten in place and must not grow back after their
+ * values moved to OOS under a lower target.
+ */
+int
+heap_oos_inline_target_size (const OID * class_oid)
+{
+  const UINT64 oos_trigger_threshold = prm_get_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD);
+  if (oos_trigger_threshold != 0 && !oid_is_system_class (class_oid))
     {
       return (int) oos_trigger_threshold;
     }
@@ -14358,7 +14370,7 @@ try
   /* TODO: change the statistics */
   /* Push the largest remaining variable column to OOS one by one until the record fits the OOS inline target,
    * instead of pushing every eligible column. */
-  const int oos_inline_target_size = heap_oos_inline_target_size ();
+  const int oos_inline_target_size = heap_oos_inline_target_size (&attr_info->class_oid);
   if (header_size + payload_size + mvcc_extra > oos_inline_target_size)
     {
       /* *INDENT-OFF* */
