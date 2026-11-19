@@ -5541,7 +5541,17 @@ lang_fastcmp_byte (const LANG_COLLATION * lang_coll, const unsigned char *string
 
 
   n = size1 < size2 ? size1 : size2;
-  for (i = 0, cmp = 0; i < n && cmp == 0; i++)
+
+  /* the same bytes weigh the same: step over them without looking up the weights */
+  i = 0;
+  while (i < n && string1[i] == string2[i])
+    {
+      i++;
+    }
+  string1 += i;
+  string2 += i;
+
+  for (cmp = 0; i < n && cmp == 0; i++)
     {
       c1 = *string1++;
       if (c1 == SPACE)
