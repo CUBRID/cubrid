@@ -575,12 +575,12 @@ typedef int BTREE_PROCESS_KEY_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * btid
 #ifdef NDEBUG
 #define COMMON_PREFIX_PAGE_SIZE_RESET(bts)   do {                    \
               (bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN;     \
-              BTREE_UPPER_KEY_PAGE_RESET (bts);                      \
+              BTREE_UPPER_KEY_PAGE_CLEAR (bts);                      \
        } while(0)
 #else
 #define COMMON_PREFIX_PAGE_SIZE_RESET(bts)   do {                    \
               (bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN;     \
-              BTREE_UPPER_KEY_PAGE_RESET (bts);                      \
+              BTREE_UPPER_KEY_PAGE_CLEAR (bts);                      \
               COMMON_PREFIX_PAGE_DEBUG_INFO_RESET((bts));            \
        } while(0)
 #endif
@@ -21607,16 +21607,16 @@ btree_range_scan_compare_upper_key_at_slot (THREAD_ENTRY * thread_p, BTREE_SCAN 
  *
  * return	  : Error code.
  * thread_p (in)  : Thread entry.
- * bts (in/out)	  : B-tree scan helper. The current key comes before the upper key.
+ * bts (in/out)	  : B-tree scan helper. The current key is not compared with the upper key yet.
  *
  * Note: The keys of a leaf are sorted. When the last key of the leaf, in scan order, comes before the upper key, so do
- *	 all the keys between the current key and it, and they are not compared. Otherwise the range ends in this leaf
+ *	 all the keys from the current key to it, and they are not compared. Otherwise the range ends in this leaf
  *	 and its keys are compared one by one: searching for the end would read keys the scan reads next anyway.
  */
 static int
 btree_range_scan_find_upper_key_end (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
-  int end = bts->slot_id;
+  int end = bts->use_desc_index ? bts->slot_id + 1 : bts->slot_id - 1;	/* no key decided */
   int last;
   int c;
   RECDES rec;
@@ -21691,56 +21691,62 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
     {
       *is_key_range_satisfied = true;
     }
-  else if (BTREE_UPPER_KEY_PAGE_IS_DECIDED (bts)
-	   && (bts->use_desc_index ? bts->slot_id >= bts->upper_key_end_slot : bts->slot_id <= bts->upper_key_end_slot))
-    {
-      /* decided for this leaf by btree_range_scan_find_upper_key_end */
-      assert (LSA_EQ (&bts->upper_key_page_lsa, pgbuf_get_lsa (bts->C_page)));
-      *is_key_range_satisfied = true;
-    }
   else
     {
-      c = btree_range_scan_compare_upper_key (bts, &bts->cur_key, bts->is_cur_key_compressed);
-      if (c == DB_UNK)
+      /* the first keys of a range are compared one by one, so a range that ends within them (an equality, say) reads
+       * no other key; past them each leaf is decided once, before its keys are compared */
+      bool is_decided = BTREE_UPPER_KEY_PAGE_IS_DECIDED (bts);
+
+      if (!is_decided && bts->upper_key_keys_to_check == 0)
 	{
-	  /* error should have been set */
-	  goto exit_on_error;
+	  ret = btree_range_scan_find_upper_key_end (thread_p, bts);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  is_decided = BTREE_UPPER_KEY_PAGE_IS_DECIDED (bts);
 	}
 
-      if (c < 0)
+      if (is_decided
+	  && (bts->use_desc_index ? bts->slot_id >= bts->upper_key_end_slot : bts->slot_id <= bts->upper_key_end_slot))
 	{
-	  *is_key_range_satisfied = false;
-	}
-      else if (c == 0)
-	{
-	  if (bts->key_range.range == GE_LE || bts->key_range.range == GT_LE || bts->key_range.range == INF_LE)
-	    {
-	      *is_key_range_satisfied = true;
-	      /* the next key can compare equal to a limit that merges keys too: it is compared */
-	      bts->key_range_max_value_equal = bts->key_range.upper_bound == NULL
-		|| !bts->key_range.upper_bound->merges;
-	    }
-	  else
-	    {
-	      *is_key_range_satisfied = false;
-	    }
+	  /* decided for this leaf by btree_range_scan_find_upper_key_end */
+	  assert (LSA_EQ (&bts->upper_key_page_lsa, pgbuf_get_lsa (bts->C_page)));
+	  *is_key_range_satisfied = true;
 	}
       else
 	{
-	  *is_key_range_satisfied = true;
-
-	  /* the first keys of each leaf are compared one by one, so a range that ends within them (an equality, say)
-	   * reads no other key; past them the rest of the leaf is decided once */
-	  if (bts->upper_key_keys_to_check > 0)
+	  c = btree_range_scan_compare_upper_key (bts, &bts->cur_key, bts->is_cur_key_compressed);
+	  if (c == DB_UNK)
 	    {
-	      bts->upper_key_keys_to_check--;
+	      /* error should have been set */
+	      goto exit_on_error;
 	    }
-	  else if (!BTREE_UPPER_KEY_PAGE_IS_DECIDED (bts))
+
+	  if (c < 0)
 	    {
-	      ret = btree_range_scan_find_upper_key_end (thread_p, bts);
-	      if (ret != NO_ERROR)
+	      *is_key_range_satisfied = false;
+	    }
+	  else if (c == 0)
+	    {
+	      if (bts->key_range.range == GE_LE || bts->key_range.range == GT_LE || bts->key_range.range == INF_LE)
 		{
-		  goto exit_on_error;
+		  *is_key_range_satisfied = true;
+		  /* the next key can compare equal to a limit that merges keys too: it is compared */
+		  bts->key_range_max_value_equal = bts->key_range.upper_bound == NULL
+		    || !bts->key_range.upper_bound->merges;
+		}
+	      else
+		{
+		  *is_key_range_satisfied = false;
+		}
+	    }
+	  else
+	    {
+	      *is_key_range_satisfied = true;
+	      if (bts->upper_key_keys_to_check > 0)
+		{
+		  bts->upper_key_keys_to_check--;
 		}
 	    }
 	}
@@ -30560,6 +30566,9 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   assert (bts->is_cur_key_compressed == false);
   assert (bts->common_prefix_size == COMMON_PREFIX_UNKNOWN);
+
+  /* the leaf may have changed while it was unfixed: compare the first keys one by one again */
+  BTREE_UPPER_KEY_PAGE_RESET (bts);
 
   /* Resume range scan. It can be resumed from same leaf or by looking up the key again from root. */
   if (bts->force_restart_from_root)
