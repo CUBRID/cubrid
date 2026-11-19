@@ -1399,6 +1399,7 @@ qo_rewrite_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
   subq->info.query.all_distinct = PT_DISTINCT;
   subq->info.query.is_subquery = PT_IS_SUBQUERY;
   subq->info.query.id = (UINTPTR) subq;
+  subq->flag.is_system_generated_stmt = node->flag.is_system_generated_stmt;
 
   if (mq_make_derived_spec (parser, node, subq, &idx, &new_spec, &new_attr) == NULL)
     {
