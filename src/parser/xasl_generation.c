@@ -9192,11 +9192,13 @@ pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
  *   whose element domains type checking left to the values - an ENFORCE cast around a bind, a LEAVE default,
  *   copied from the elements' data types (pt_add_type_to_set) - lists the domains of its operands instead, which
  *   XASL generation has decided by now (pt_decide_function_collation and its siblings; a nested constructor is made
- *   before the one it is an operand of); an operand left undecided is left out, as type checking leaves out a MAYBE
- *   element, and so is one alike an earlier one. A table function (SET, MULTISET or LIST of a subquery) takes the
- *   values of every output column of its one operand (qdata_convert_table_to_set), so it lists the domains of those
- *   columns, and stays as it is when one of them is undecided: a list of fewer domains than the values it holds
- *   would read a value in another's type. A decided domain stays as it is.
+ *   before the one it is an operand of), leaving out one alike an earlier one. A table function (SET, MULTISET or
+ *   LIST of a subquery) takes the values of every output column of its one operand (qdata_convert_table_to_set), so
+ *   its operands are those columns. When an operand is one whose type the value decides - a MAYBE one, as ? or
+ *   - ?, which type checking leaves out of the list - or is undecided, the constructor lists no element domain, so
+ *   that each value is stored with its own: a list without that operand's type stores its value without a domain
+ *   and reads it in another's (SET{?, 1} with 2.5 read the value as an INTEGER). Otherwise a decided domain stays as
+ *   it is.
  *   return: NO_ERROR, ER_FAILED when a domain cannot be made
  *   parser(in): parser context
  *   function(in): the constructor's parse tree node
@@ -9206,7 +9208,7 @@ static int
 pt_decide_collection_domain (PARSER_CONTEXT * parser, const PT_NODE * function, REGU_VARIABLE * regu)
 {
   if (regu == NULL || regu->type != TYPE_FUNC || regu->domain == NULL || regu->value.funcp == NULL
-      || !TP_IS_SET_TYPE (TP_DOMAIN_TYPE (regu->domain)) || pt_domain_is_decided (regu->domain))
+      || !TP_IS_SET_TYPE (TP_DOMAIN_TYPE (regu->domain)))
     {
       return NO_ERROR;
     }
@@ -9227,20 +9229,28 @@ pt_decide_collection_domain (PARSER_CONTEXT * parser, const PT_NODE * function, 
       n_columns = pt_length_of_select_list (pt_get_select_list (parser, query), EXCLUDE_HIDDEN_COLUMNS);
     }
 
-  int status = ER_FAILED;
+  const bool was_decided = pt_domain_is_decided (regu->domain);
+  bool undecided = false;
+  if (function != NULL)
+    {
+      const PT_NODE *arg = function->info.function.arg_list;
+      for (arg = table ? pt_get_select_list (parser, (PT_NODE *) arg) : arg; arg != NULL && !undecided; arg = arg->next)
+	{
+	  undecided = (arg->type_enum == PT_TYPE_MAYBE);
+	}
+    }
   TP_DOMAIN *elements = NULL, *last = NULL;
   REGU_VARIABLE_LIST op = table ? NULL : regu->value.funcp->operand;
-  for (int pos = 0; table ? pos < n_columns : op != NULL; pos++, op = op != NULL ? op->next : NULL)
+  for (int pos = 0; !undecided && (table ? pos < n_columns : op != NULL); pos++, op = op != NULL ? op->next : NULL)
     {
       const TP_DOMAIN *domain = table ? domain_list_column_of (subquery, pos) : op->value.domain;
       if (domain == NULL || domain->next != NULL || !pt_domain_is_decided (domain))
 	{
-	  if (table)
-	    {
-	      /* every column's values go into the collection */
-	      status = NO_ERROR;
-	      goto cleanup;
-	    }
+	  undecided = true;
+	  break;
+	}
+      if (was_decided)
+	{
 	  continue;
 	}
       const TP_DOMAIN *e = elements;
@@ -9254,7 +9264,7 @@ pt_decide_collection_domain (PARSER_CONTEXT * parser, const PT_NODE * function, 
       TP_DOMAIN *copy = tp_domain_copy (domain, false);
       if (copy == NULL)
 	{
-	  goto cleanup;
+	  goto error;
 	}
       if (last == NULL)
 	{
@@ -9267,25 +9277,43 @@ pt_decide_collection_domain (PARSER_CONTEXT * parser, const PT_NODE * function, 
       last = copy;
     }
 
+  if (undecided)
+    {
+      while (elements != NULL)
+	{
+	  TP_DOMAIN *next = elements->next;
+	  tp_domain_free (elements);
+	  elements = next;
+	}
+      if (regu->domain->setdomain == NULL)
+	{
+	  return NO_ERROR;
+	}
+    }
+  else if (was_decided)
+    {
+      return NO_ERROR;
+    }
+
   {
     TP_DOMAIN *decided = tp_domain_construct (TP_DOMAIN_TYPE (regu->domain), NULL, 0, 0, elements);
     if (decided == NULL)
       {
-	goto cleanup;
+	goto error;
       }
     decided->is_desc = regu->domain->is_desc;
     regu->domain = tp_domain_cache (decided);
   }
   return NO_ERROR;
 
-cleanup:
+error:
   while (elements != NULL)
     {
       TP_DOMAIN *next = elements->next;
       tp_domain_free (elements);
       elements = next;
     }
-  return status;
+  return ER_FAILED;
 }
 
 static REGU_VARIABLE *
