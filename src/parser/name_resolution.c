@@ -185,6 +185,7 @@ static bool pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
 static PT_NODE *pt_resolve_method (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
 static PT_NODE *pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
+static const char *pt_routine_name_for_lookup (PARSER_CONTEXT * parser, const char *name, MOP sp_mop);
 
 static PT_NODE *pt_find_entity_in_scopes (PARSER_CONTEXT * parser, SCOPES * scopes, UINTPTR spec_id);
 static PT_NODE *pt_find_outer_entity_in_scopes (PARSER_CONTEXT * parser, SCOPES * scopes, UINTPTR spec_id,
@@ -2097,6 +2098,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
   void *save_etc = NULL;
   PT_NODE *method_name_node = NULL;
   const char *method_name;
+  MOP sp_mop = NULL;
 
   if (!node || !parser || pt_has_error (parser))
     {
@@ -3613,7 +3615,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  {
 	    node = temp;
 	  }
-	else if (PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION (node))
+	else if (PT_IS_ONE_DOT_GENERIC_FUNCTION (node))
 	  {
 	    /*
 	     * when (dot.arg1->node_type == PT_NAME) && (dot.arg2->node_type == PT_FUNCTION),
@@ -3622,8 +3624,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    pt_reset_error (parser);
 
 	    /*
-	     * jsp_is_existing_stored_procedure() could not be checked in pt_set_user_specified_name(), so it was checked in pt_bind_names().
-	     * Created a temporary node in name.original to join user_schema(dot.arg1) and sp_name(dot.arg2).
+	     * the stored procedure reading could not be checked in pt_set_user_specified_name(), so it is checked in pt_bind_names().
+	     * Created a temporary node in name.original to join the qualifier (dot.arg1) and sp_name(dot.arg2).
+	     * The qualifier is a user name, or the name of a package of the current user (see jsp_resolve_routine ()).
 	     */
 	    char downcase_owner_name[DB_MAX_USER_LENGTH];
 	    downcase_owner_name[0] = '\0';
@@ -3634,21 +3637,47 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	     * The parser bounds an identifier by DB_MAX_IDENTIFIER_LENGTH, which is far more than
 	     * this buffer holds. sm_downcase_name () asserts that its input fits instead of checking
 	     * it, so a qualifier too long to be a user name must not reach it: a debug build aborts
-	     * and a release build writes past the buffer. Leaving generic_name NULL skips the stored
-	     * procedure reading of the name, which is right because no procedure can be owned by a
-	     * name that cannot be a user name.
+	     * and a release build writes past the buffer. Such a qualifier can still be a package name,
+	     * and it is kept as written: jsp_resolve_routine () bounds and downcases the name.
 	     */
-	    if (intl_identifier_lower_string_size (owner_name) < DB_MAX_USER_LENGTH)
+	    bool owner_fits = (intl_identifier_lower_string_size (owner_name) < DB_MAX_USER_LENGTH);
+	    if (owner_fits)
 	      {
 		sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
 		generic_name = pt_append_string (parser, downcase_owner_name, ".");
-		generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
+	      }
+	    else
+	      {
+		/* Not downcased here. The name is only looked up: jsp_resolve_routine () downcases it, or refuses it
+		 * if it is too long. It is not left in the node either: the qualifier is kept as written, so that
+		 * the error of binding it reports it as written, and a routine found is named by its unique name
+		 * (see pt_routine_name_for_lookup ()). */
+		generic_name = pt_append_string (parser, owner_name, ".");
+	      }
+	    generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
+
+	    sp_mop = NULL;
+	    if (jsp_resolve_routine (generic_name, true, &sp_mop) == ER_SP_AMBIGUOUS_NAME)
+	      {
+		/* before the names are joined below, so that the statement in the error message is printed as written */
+		PT_ERRORc (parser, node, er_msg ());
+		er_clear ();
+		*continue_walk = PT_STOP_WALK;
+		return node;
+	      }
+	    er_clear ();
+
+	    if (owner_fits)
+	      {
 		node->info.dot.arg2->info.function.generic_name = generic_name;
 		node->info.dot.arg1->info.name.original = generic_name;
 	      }
 
-	    if (generic_name != NULL && jsp_is_existing_stored_procedure (generic_name))
+	    if (sp_mop != NULL)
 	      {
+		node->info.dot.arg2->info.function.generic_name =
+		  pt_routine_name_for_lookup (parser, generic_name, sp_mop);
+
 		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		if (node1 == NULL)
 		  {
@@ -3698,7 +3727,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
     case PT_FUNCTION:
       if (node->info.function.function_type == PT_GENERIC)
 	{
-	  MOP sp_mop = NULL;
 	  char sp_unique_name[SM_MAX_IDENTIFIER_LENGTH + 1];
 	  node->info.function.function_type = pt_find_function_type (node->info.function.generic_name);
 
@@ -3720,7 +3748,15 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	       * nodes PT_FUNCTION.  If so, pt_make_stored_procedure() and pt_make_method_call() will
 	       * translate it into a method_call.
 	       */
-	      sp_mop = jsp_find_stored_procedure (node->info.function.generic_name);
+	      sp_mop = NULL;
+	      if (jsp_resolve_routine (node->info.function.generic_name, true, &sp_mop) == ER_SP_AMBIGUOUS_NAME)
+		{
+		  PT_ERRORc (parser, node, er_msg ());
+		  er_clear ();
+		  *continue_walk = PT_STOP_WALK;
+		  return node;
+		}
+
 	      if (sp_mop != NULL)
 		{
 		  sp_unique_name[0] = '\0';
@@ -11400,6 +11436,34 @@ pt_resolve_method (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * 
       return new_node;		/* it is a method call */
     }
 }				/* pt_resolve_method */
+
+/*
+ * pt_routine_name_for_lookup () - the name by which the later steps look up a routine found by name
+ *   return: name if it finds the routine by itself, otherwise the unique name of the routine
+ *   parser(in):
+ *   name(in): the name as written
+ *   sp_mop(in): the routine found by jsp_resolve_routine ()
+ *
+ * Note: the later steps (e.g. jsp_get_return_type (), jsp_make_pl_signature ()) read <a>.<b> only as
+ *       <user>.<routine>. A routine found as <package>.<routine> must be named by its unique name then.
+ *       Otherwise the name is kept as written, which is how the statement is printed.
+ */
+static const char *
+pt_routine_name_for_lookup (PARSER_CONTEXT * parser, const char *name, MOP sp_mop)
+{
+  char unique_name[SM_MAX_IDENTIFIER_LENGTH + 1];
+
+  if (jsp_find_stored_procedure (name) == sp_mop)
+    {
+      return name;
+    }
+  er_clear ();
+
+  unique_name[0] = '\0';
+  jsp_get_unique_name (sp_mop, unique_name, sizeof (unique_name));
+
+  return (unique_name[0] != '\0') ? pt_append_string (parser, NULL, unique_name) : name;
+}
 
 /*
  * pt_resolve_stored_procedure () - creates and resolves the PT_METHOD_CALL node for java sp
