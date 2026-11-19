@@ -1431,11 +1431,30 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       init_emergency = true;
     }
 
+  if (log_Gl.hdr.is_restore_incomplete != 0 && ismedia_crash == false && init_emergency == false)
+    {
+      /* The volumes hold a backup with at most part of the log replayed, and the log goes on past them. A restart
+       * would take them as they are, without any recovery, and lose the committed work that the log holds. */
+      logtb_undefine_trantable (thread_p);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_RESTORE_INCOMPLETE, 1, db_fullname);
+      error_code = ER_LOG_RESTORE_INCOMPLETE;
+      goto error;
+    }
+
   /*
    * Was the database system shut down or was it involved in a crash ?
    */
   if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true))
     {
+      if (ismedia_crash == true && log_Gl.append.vdes != NULL_VOLDES)
+	{
+	  /* Until this recovery ends, the restored volumes do not match the log. The restore marked the log
+	   * already if it existed before the restore; mark it here when it came from the backup. */
+	  log_Gl.hdr.is_restore_incomplete = 1;
+	  logpb_flush_header (thread_p);
+	  (void) fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, false);
+	}
+
       /*
        * System was involved in a crash.
        * Execute the recovery process

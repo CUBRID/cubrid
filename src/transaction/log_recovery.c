@@ -943,6 +943,11 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
   (void) fileio_synchronize_all (thread_p);
 
+  if (ismedia_crash != false)
+    {
+      /* the restored volumes are now on disk with the log replayed */
+      log_Gl.hdr.is_restore_incomplete = 0;
+    }
   logpb_flush_header (thread_p);
 
   /* re-cache Tracker */

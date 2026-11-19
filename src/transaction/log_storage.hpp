@@ -150,7 +150,8 @@ struct log_header
   bool has_logging_been_skipped;	/* Has logging been skipped ? */
   /* Here exists 5 bytes */
   VACUUM_LOG_BLOCKID vacuum_last_blockid;	/* Last processed blockid needed for vacuum. */
-  int perm_status_obsolete;
+  int is_restore_incomplete;	/* a restore wrote volumes and its media recovery has not ended: the volumes do not
+				 * match the log. The int that the obsolete permanent status left, 0 in older logs. */
   /* Here exists 4 bytes */
   LOG_HDR_BKUP_LEVEL_INFO bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
   /* backup specific info for future growth */
@@ -204,7 +205,7 @@ struct log_header
     , prefix_name {'0'}
     , has_logging_been_skipped (false)
     , vacuum_last_blockid (0)
-    , perm_status_obsolete (0)
+    , is_restore_incomplete (0)
     , bkinfo {{0, 0, 0, 0, 0}}
   , ha_server_state (0)
   , ha_file_status (0)
