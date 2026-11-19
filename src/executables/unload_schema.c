@@ -4394,7 +4394,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 {
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
-  DB_VALUE unique_name_val, sp_name_val, pkg_name_val, pkg_of_val, sp_type_val, arg_cnt_val, lang_val, generated_val,
+  DB_VALUE unique_name_val, sp_name_val, pkg_of_val, sp_type_val, arg_cnt_val, lang_val, generated_val,
     args_val, rtn_type_val, class_val, method_val, directive_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
   int sp_lang, sp_type, rtn_type, arg_cnt, directive, save;
@@ -4422,13 +4422,20 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 
       if ((err = db_get (obj, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_LANG, &lang_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR)
+	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_PKG_OF, &pkg_of_val)) != NO_ERROR)
 	{
 	  err_count++;
 	  continue;
 	}
 
       if (db_get_int (&generated_val) == 1)
+	{
+	  continue;
+	}
+
+      /* a routine of a package is emitted with the package (emit_package_specs ()) */
+      if (!DB_IS_NULL (&pkg_of_val))
 	{
 	  continue;
 	}
@@ -4454,7 +4461,6 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
       if ((err = db_get (obj, SP_ATTR_SP_TYPE, &sp_type_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_UNIQUE_NAME, &unique_name_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_SP_NAME, &sp_name_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_PKG_OF, &pkg_of_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARG_COUNT, &arg_cnt_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_ARGS, &args_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_RETURN_TYPE, &rtn_type_val)) != NO_ERROR
@@ -4477,18 +4483,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
       PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			sizeof (output_owner));
 
-      if (!DB_IS_NULL (&pkg_of_val)
-	  && db_get (db_get_object (&pkg_of_val), PKG_ATTR_PKG_NAME, &pkg_name_val) == NO_ERROR)
-	{
-	  const char *pkg_name = db_get_string (&pkg_name_val);
-	  output_ctx (" %s%s%s.%s%s%s (", PRINT_IDENTIFIER (pkg_name), PRINT_IDENTIFIER (sp_name));
-	  db_value_clear (&pkg_name_val);
-	  db_value_clear (&pkg_of_val);
-	}
-      else
-	{
-	  output_ctx (" %s%s%s%s (", output_owner, PRINT_IDENTIFIER (sp_name));
-	}
+      output_ctx (" %s%s%s%s (", output_owner, PRINT_IDENTIFIER (sp_name));
 
       arg_cnt = db_get_int (&arg_cnt_val);
       arg_set = db_get_set (&args_val);
@@ -4595,7 +4590,7 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
 {
   MOP cls, obj, owner;
   DB_OBJLIST *sp_list = NULL, *cur_sp;
-  DB_VALUE lang_val, owner_val, owner_name_val, generated_val, class_val, comment_val;
+  DB_VALUE lang_val, owner_val, owner_name_val, generated_val, class_val, comment_val, pkg_of_val;
   int save;
   int err;
   int err_count = 0;
@@ -4618,7 +4613,8 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
       if ((err = db_get (obj, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_LANG, &lang_val)) != NO_ERROR
 	  || (err = db_get (obj, SP_ATTR_OWNER, &owner_val)) != NO_ERROR
-	  || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
+	  || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR
+	  || (err = db_get (obj, SP_ATTR_PKG_OF, &pkg_of_val)) != NO_ERROR)
 	{
 	  err_count++;
 	  continue;
@@ -4626,6 +4622,13 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
 
       if (db_get_int (&generated_val) == 1)
 	{
+	  continue;
+	}
+
+      /* a routine of a package is emitted with the package (emit_package_bodies ()) */
+      if (!DB_IS_NULL (&pkg_of_val))
+	{
+	  db_value_clear (&comment_val);
 	  continue;
 	}
 
@@ -6081,6 +6084,18 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
       sp_list = db_get_all_objects (db_find_class (CT_STORED_PROC_NAME));
       for (cls = sp_list; cls; cls = cls->next)
 	{
+	  DB_VALUE pkg_of_val;
+	  int save, get_err;
+
+	  /* the grants on a package are emitted right after its spec (emit_package_specs ()) */
+	  AU_SAVE_AND_DISABLE (save);
+	  get_err = db_get (cls->op, SP_ATTR_PKG_OF, &pkg_of_val);
+	  AU_RESTORE (save);
+	  if (get_err == NO_ERROR && !DB_IS_NULL (&pkg_of_val))
+	    {
+	      continue;
+	    }
+
 	  if (!(ctxt.is_dba_user || ctxt.is_dba_group_member))
 	    {
 	      sp_owner = jsp_get_owner (cls->op);
