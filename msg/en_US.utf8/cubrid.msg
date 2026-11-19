@@ -2050,7 +2050,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 346 Argument %1$d of %2$s must be a bind variable (? or :name) because it is passed to an %3$s parameter.
 
 339 Package "%1$s" does not exist.
-346 Invalid %1$s name "%2$s".\n  The system class/vclass name cannot be a %1$s name.
+347 Invalid %1$s name "%2$s".\n  The system class/vclass name cannot be a %1$s name.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
