@@ -25914,6 +25914,33 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_VALUE * boun
 	    {
 	      char *next_alpha_char_p = result + result_size;
 	      int next_len = 0;
+	      int char_size = 0;
+	      INTL_UTF8_VALIDITY validity = INTL_UTF8_VALID;
+
+	      /* a byte that is not a character of the codeset has no next character: the next one of an invalid UTF-8
+	       * byte wraps to U+0000 (intl_utf8_to_cp () returns 0xffffffff), and the bound below the pattern made
+	       * LIKE find no row.  No upper bound then, as for a pattern with no fixed prefix */
+	      intl_char_size ((unsigned char *) crt_char_p, 1, codeset, &char_size);
+	      if (codeset == INTL_CODESET_UTF8)
+		{
+		  validity = intl_check_utf8 ((unsigned char *) crt_char_p, char_size, NULL);
+		}
+	      else if (codeset == INTL_CODESET_KSC5601_EUC)
+		{
+		  validity = intl_check_euckr ((unsigned char *) crt_char_p, char_size, NULL);
+		}
+	      if (validity != INTL_UTF8_VALID)
+		{
+		  db_private_free_and_init (NULL, result);
+		  error_code =
+		    db_value_domain_max (bound, DB_TYPE_VARCHAR, DB_VALUE_PRECISION (pattern), DB_VALUE_SCALE (pattern),
+					 codeset, collation_id, NULL);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error_exit;
+		    }
+		  goto fast_exit;
+		}
 
 	      result_size +=
 		QSTR_NEXT_ALPHA_CHAR (collation_id, (unsigned char *) crt_char_p,
