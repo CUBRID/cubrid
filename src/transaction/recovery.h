@@ -204,12 +204,11 @@ typedef enum
   RVOOS_INSERT = 137,
   RVOOS_DELETE = 138,		/* redo-only chunk delete of the OOS reclaimer (ADR-0008); never undone */
   RVREPL_OOS_INSERT = 139,
-  RVREPL_OOS_DELETE = 140,
-  RVOOS_NOTIFY_VACUUM = 141,	/* MVCC undo record naming the chains a committed UPDATE dropped */
-  RVREPL_DUMMY_OOS_RECORD = 142,	/* multi-chunk OOS replication marker */
-  RVOOS_RECLAIM_POSTPONE = 143,	/* logical postpone: reclaim chains once the deciding unit commits */
-  RVOOS_UPDATE_DROP_POSTPONE = 144,	/* logical postpone: append RVOOS_NOTIFY_VACUUM once an UPDATE commits */
-  RVREPL_OOS_REUSE = 145,	/* OOS replication marker: the UPDATE reused this column's chain */
+  RVOOS_NOTIFY_VACUUM = 140,	/* MVCC undo record naming the chains a committed UPDATE dropped */
+  RVREPL_DUMMY_OOS_RECORD = 141,	/* multi-chunk OOS replication marker */
+  RVOOS_RECLAIM_POSTPONE = 142,	/* logical postpone: reclaim chains once the deciding unit commits */
+  RVOOS_UPDATE_DROP_POSTPONE = 143,	/* logical postpone: append RVOOS_NOTIFY_VACUUM once an UPDATE commits */
+  RVREPL_OOS_REUSE = 144,	/* OOS replication marker: the UPDATE reused this column's chain */
   RV_LAST_LOGID = RVREPL_OOS_REUSE,
 
   RV_NOT_DEFINED = 999
