@@ -3885,6 +3885,101 @@ expr_scan_pred_kid_runs_query (const void *compiled, int kid)
   return pred != NULL && expr_scan_pred_node_runs (pred, EXPR_RUNS_QUERY);
 }
 
+/* CBRD-28249: the side of a comparison whose steps are one generic step the row loop computes once per execution
+ * (the bound "col LIKE ?" adds -- expr_compile_generic ()), its operands fixed for the execution: that step's index,
+ * or -1.  The step is the side cell's producer, and the side's row steps are that step alone. */
+static int
+expr_scan_side_once_step (const EXPR_PRED * root, const EXPR_PRED * pred, bool is_rhs)
+{
+  const EXPR_PROG *prog = (root != NULL) ? root->prog : NULL;
+  DB_VALUE **cell = is_rhs ? pred->arg2p : pred->arg1p;
+  const int start = is_rhs ? pred->rhs_start : pred->lhs_start, n = is_rhs ? pred->rhs_n : pred->lhs_n;
+  int j, producer = -1;
+
+  if (prog == NULL || cell == NULL || !(is_rhs ? pred->rhs_compiled : pred->lhs_compiled))
+    {
+      return -1;
+    }
+  for (j = 0; j < prog->n_steps; j++)
+    {
+      if (prog->steps[j].out_cell == cell && prog->steps[j].alias_of < 0)
+	{
+	  producer = j;
+	  break;
+	}
+    }
+  if (producer < prog->n_prologue + prog->n_exec_prologue || prog->steps[producer].kernel_id != EXPR_KID_generic
+      || prog->steps[producer].out == NULL)
+    {
+      return -1;
+    }
+  for (j = start; j < start + n; j++)
+    {
+      if (j != producer)
+	{
+	  return -1;
+	}
+    }
+  return producer;
+}
+
+/* CBRD-28249: a string column of the scan compared with a value a generic step computes once per execution, the
+ * comparison generic (the decided comparison of two strings -- expr_pred_generic_cmp ()): a string leaf whose
+ * constant is that step's slot.  The batch computes the step before the rows and checks that the value reads as the
+ * column does, its codeset and its collation (eb_load_leaf_constants ()). */
+static bool
+expr_scan_pred_string_once_info (const EXPR_PRED * root, const EXPR_PRED * pred, EXPR_RAW_LEAF_INFO * out)
+{
+  const REGU_VARIABLE *col;
+  bool col_is_lhs;
+  int step;
+
+  switch (pred->rel_op)
+    {
+    case R_EQ:
+    case R_NE:
+    case R_LT:
+    case R_LE:
+    case R_GT:
+    case R_GE:
+      break;
+    default:
+      return false;
+    }
+  if (pred->fetch_lhs->type == TYPE_ATTR_ID && !pred->lhs_compiled)
+    {
+      col = pred->fetch_lhs;
+      col_is_lhs = true;
+    }
+  else if (pred->fetch_rhs->type == TYPE_ATTR_ID && !pred->rhs_compiled && !pred->rhs_pinned)
+    {
+      col = pred->fetch_rhs;
+      col_is_lhs = false;
+    }
+  else
+    {
+      return false;
+    }
+  if (col->domain == NULL
+      || (TP_DOMAIN_TYPE (col->domain) != DB_TYPE_VARCHAR && TP_DOMAIN_TYPE (col->domain) != DB_TYPE_CHAR))
+    {
+      return false;
+    }
+  step = expr_scan_side_once_step (root, pred, col_is_lhs);
+  if (step < 0)
+    {
+      return false;
+    }
+  memset (out, 0, sizeof (*out));
+  out->col_regu = col;
+  out->col_is_lhs = col_is_lhs;
+  out->fast_type = TP_DOMAIN_TYPE (col->domain);
+  out->rel_op = pred->rel_op;
+  out->k_cell = col_is_lhs ? pred->arg2p : pred->arg1p;
+  out->k_cell_step = step + 1;
+  return true;
+}
+
 /* a node of the compiled filter as a raw leaf */
 static bool
 expr_scan_pred_node_raw_info (const EXPR_PRED * root, const EXPR_PRED * pred, const val_descr * vd,
@@ -3911,7 +4006,12 @@ expr_scan_pred_node_raw_info (const EXPR_PRED * root, const EXPR_PRED * pred, co
       if (c->type != TYPE_ATTR_ID || c->domain == NULL || TP_DOMAIN_TYPE (c->domain) != DB_TYPE_NUMERIC)
 	{
 	  /* another type compared generically (a CHAR column inside an OR the optimizer made of an IN list): the
-	   * original term, read as an interpreted filter's term */
+	   * original term, read as an interpreted filter's term -- unless the constant is a value the row loop computes
+	   * once per execution (CBRD-28249) */
+	  if (expr_scan_pred_string_once_info (root, pred, out))
+	    {
+	      return true;
+	    }
 	  memset (out, 0, sizeof (*out));
 	  return pred->fetch_src != NULL && expr_pred_term_raw_info ((const PRED_EXPR *) pred->fetch_src, vd, out);
 	}
@@ -4204,16 +4304,16 @@ expr_pred_term_in_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEA
   return true;
 }
 
-/* A term on a VARCHAR or CHAR column of the scan against a string constant: "col = 'x'", "col <> 'x'", "col [NOT] LIKE
- * 'pattern'" without an ESCAPE (a page batch compares the record's bytes with the collation's own function, and
- * matches a pattern with qstr_like_match () under the column's collation, '%' and '_' as the row path takes them;
- * without an ESCAPE a backslash is a literal) */
+/* A term on a VARCHAR or CHAR column of the scan against a string constant: "col = 'x'", "col <> 'x'", "col < 'x'"
+ * and the other orders (CBRD-28249), "col [NOT] LIKE 'pattern'" without an ESCAPE (a page batch compares the record's
+ * bytes with the collation's own function, and matches a pattern with qstr_like_match () under the column's
+ * collation, '%' and '_' as the row path takes them; without an ESCAPE a backslash is a literal) */
 static bool
 expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
 {
   const REGU_VARIABLE *col, *k;
   const DB_VALUE *kv = NULL;
-  bool negate = false, like = false;
+  bool negate = false, like = false, col_is_lhs = true;
   int rel_op = R_EQ;
 
   if (pr != NULL && pr->type == T_NOT_TERM)
@@ -4241,7 +4341,19 @@ expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW
     {
       const COMP_EVAL_TERM *et = &pr->pe.m_eval_term.et.et_comp;
 
-      if ((et->rel_op != R_EQ && et->rel_op != R_NE) || et->lhs == NULL || et->rhs == NULL)
+      switch (et->rel_op)
+	{
+	case R_EQ:
+	case R_NE:
+	case R_LT:
+	case R_LE:
+	case R_GT:
+	case R_GE:
+	  break;
+	default:
+	  return false;
+	}
+      if (et->lhs == NULL || et->rhs == NULL)
 	{
 	  return false;
 	}
@@ -4254,6 +4366,7 @@ expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW
 	{
 	  col = et->rhs;
 	  k = et->lhs;
+	  col_is_lhs = false;
 	}
       else
 	{
@@ -4286,7 +4399,7 @@ expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW
       return false;
     }
   out->col_regu = col;
-  out->col_is_lhs = true;
+  out->col_is_lhs = col_is_lhs;	/* rel_op as written: the batch turns it for a column on the right */
   out->fast_type = TP_DOMAIN_TYPE (col->domain);
   out->rel_op = rel_op;
   out->k_value = kv;
@@ -4467,6 +4580,50 @@ expr_scan_pred_eval_kid (void *compiled, int kid, cubthread::entry * thread_p, v
 	}
     }
   return expr_scan_pred_eval_node (pred, &ctx);
+}
+
+/* CBRD-28249: the page batch computes, before the rows, a step the row loop computes once per execution (a generic
+ * step that owns a slot -- expr_compile_generic ()), so that a filter term comparing a column with its value is a
+ * leaf the batch runs.  The step runs as the row loop would run it, under the same recursion check, and marks the
+ * execution it computed for (EXPR_STEP.once_exec), so the row loop then returns at once.  Its error is not this
+ * call's to raise: the interpreter computes the node on the first row that evaluates the term, which may be a later
+ * row or none (an earlier term FALSE on every row, an empty table), so the error is discarded with the error stack
+ * and the caller hands the scan to the row loop, which computes the step again and raises it where the interpreter
+ * does.  The step's operands hold one value for the execution and the filter's prologues have run
+ * (expr_scan_pred_prepare ()). */
+int
+expr_scan_pred_compute_step (void *compiled, int step, cubthread::entry * thread_p, val_descr * vd)
+{
+  EXPR_PRED *root = (EXPR_PRED *) compiled;
+  EXPR_PROG *prog = (root != NULL) ? root->prog : NULL;
+  EXPR_EVAL_CTX ctx;
+  int rc;
+
+  if (prog == NULL || step < 0 || step >= prog->n_steps || prog->steps[step].kernel_id != EXPR_KID_generic
+      || prog->steps[step].out == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  if (prog->steps[step].once_exec != 0 && prog->steps[step].once_exec == prog->n_executions)
+    {
+      return NO_ERROR;
+    }
+  ctx.thread_p = thread_p;
+  ctx.vd = vd;
+  ctx.obj_oid = NULL;
+  ctx.tpl = NULL;
+  ctx.prog = prog;
+  ctx.checked = false;
+  er_stack_push ();
+  expr_ctx_arm_depth (&ctx, prog);
+  rc = expr_prog_prepare (prog, &ctx);
+  if (rc == NO_ERROR)
+    {
+      rc = expr_run_range (prog, step, step + 1, &ctx);
+    }
+  er_stack_pop ();
+  return (rc == NO_ERROR && prog->steps[step].once_exec == prog->n_executions) ? NO_ERROR : ER_FAILED;
 }
 
 #endif /* SERVER_MODE || SA_MODE */
