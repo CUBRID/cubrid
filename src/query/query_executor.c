@@ -5676,10 +5676,9 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
       key = (AGGREGATE_HASH_KEY *) hentry->key;
       value = (AGGREGATE_HASH_VALUE *) hentry->data;
-      /* what the table counted for the group (its value's last size): the save below flattens a word sum into the
-       * value (qdata_save_agg_hentry_to_list ()), and measuring it after that took off more than was added, the
-       * budget drifting up eviction by eviction */
-      freed = qdata_get_agg_hkey_size (key) + value->curr_size;
+      /* what the table counted for the group (its value's last size), taken before the save below flattens a word
+       * sum into the value (qdata_save_agg_hentry_to_list ()) */
+      freed = (context->spill != NULL) ? qdata_get_agg_hkey_size (key) + value->curr_size : 0;
       /* where this group goes: its first tuple goes where its accumulators went, though the check after them may
        * turn the partitions on for the next groups */
       to_parts = (context->spill != NULL && context->spill->active);
@@ -5718,8 +5717,20 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		    (qdata_get_agg_hkey_size (key) + qdata_get_agg_hvalue_size (value, false)) / 1024.0f);
 #endif
 
-      /* remove entry */
-      context->hash_size -= freed;
+      /* remove entry: a table that may spill gives back what it counted, so it stays within the budget its
+       * partitions are checked against (qexec_gby_spill_check ()); one that may not (a parallel scan's worker, a
+       * block qexec_gby_spill_init () refuses) takes off the size measured after the save as before: the table
+       * grows over the budget eviction by eviction, but counting it exactly would have it evict more and its sort
+       * grow (2 to 4 workers: +1.3% on 14,000 groups) */
+      if (freed > 0)
+	{
+	  context->hash_size -= freed;
+	}
+      else
+	{
+	  context->hash_size -= qdata_get_agg_hkey_size (key);
+	  context->hash_size -= qdata_get_agg_hvalue_size (value, false);
+	}
       mht_rem (context->hash_table, key, qdata_free_agg_hentry, NULL);
       context->evictions++;	/* the page batch's key cache may hold this group (qexec_batch_gby_consume ()) */
     }
@@ -7488,6 +7499,8 @@ struct qexec_gby_merge_job
   void *leaf_arg;
   QFILE_LIST_ID *to_sort_rows;	/* what the sort is left: opened on the first need (or by the owner beforehand) */
   QFILE_LIST_ID *to_sort_partials;
+  bool collapse;		/* the groups go to the sort collapsed (qexec_gby_merge_leaf_collapse ()), a worker's
+				 * too: a first tuple and the accumulators of the rest */
   bool stop;			/* the leaf asks for no more partitions (the group count limit was reached) */
   bool split_again;		/* a partition was split a second time */
   int sorted_parts;		/* the sub-partitions left to the sort */
@@ -8423,6 +8436,9 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
 	  qexec_gby_px_delete (thread_p, px);
 	  return NO_ERROR;
 	}
+      /* a group the sort is to take keeps its first tuple apart from its accumulators, as the leader's own
+       * (qexec_gby_reader_init ()); one a worker finishes has it in them */
+      readers[w].rd.first_aggregated = job->collapse ? readers[w].rd.no_first_tuple : true;
     }
   *why = NULL;
   px->gbstate = gbstate;
@@ -8551,6 +8567,16 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
     }
   for (w = 0; w < n && rc == NO_ERROR && gbstate->state == NO_ERROR; w++)
     {
+      if (job->collapse)
+	{
+	  /* the workers' groups collapsed, one first tuple and one partial entry each: the sort takes them */
+	  rc = qexec_gby_merge_append_list (thread_p, job->to_sort_rows, px->out_rows[w]);
+	  if (rc == NO_ERROR)
+	    {
+	      rc = qexec_gby_merge_append_list (thread_p, job->to_sort_partials, px->out_partials[w]);
+	    }
+	  continue;
+	}
       rc = qexec_gby_px_finish (thread_p, gbstate, px->out_rows[w], px->out_partials[w]);
     }
   if (px->on_trace)
@@ -8567,7 +8593,7 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
 	    (px->out_partials[w] != NULL) ? px->out_partials[w]->tuple_cnt : 0;
 	}
     }
-  /* what the workers left to the sort, after the leader's own (the order is free when workers merge) */
+  /* what the workers left to the sort, after the leader's own (when the order is free) or the collapsed groups */
   for (w = 0; w < n && rc == NO_ERROR && gbstate->state == NO_ERROR; w++)
     {
       if (px->sort_rows[w] == NULL || px->sort_partials[w] == NULL || px->sort_rows[w]->tuple_cnt == 0)
@@ -8797,7 +8823,7 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   QEXEC_GBY_MTABLE table;
   QEXEC_GBY_READER reader;
   QEXEC_GBY_MERGE_JOB job;
-  bool order_free, parallel;
+  bool order_free, parallel, sort_px;
   double groups, row_bytes;
   UINT64 budget, bytes;
   INT64 n_entries, n_rows, row_pages;
@@ -8855,8 +8881,6 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
     {
       xasl->groupby_stats.groupby_hash_groups = (INT64) groups;
     }
-  /* many groups whose order does not reach the result: workers merge the partitions (qexec_gby_px_merge ()), as
-   * many as the sort of these lists would take */
   /* the entries the lists hold, and the unsorted rows' size (a spill's lists with them) */
   n_entries = list_id->tuple_cnt + partials->tuple_cnt;
   n_rows = list_id->tuple_cnt;
@@ -8884,16 +8908,20 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
     }
 
 #if defined (SERVER_MODE)
-  px_degree = (order_free && groups >= QEXEC_GBY_PX_MIN_GROUPS)
+  /* workers merge where the sort of these lists would take workers as well, or where the groups are many; a merge
+   * whose group order reaches the result gives the sort its groups collapsed (QEXEC_GBY_MERGE_JOB::collapse) */
+  sort_px = (qexec_gby_sort_takes_workers (list_id, xasl->parallelism)
+	     || qexec_gby_sort_takes_workers (partials, xasl->parallelism));
+  px_degree = (groups >= QEXEC_GBY_PX_MIN_GROUPS || sort_px)
     ? (int) parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT,
 						     (UINT64) list_id->page_cnt + partials->page_cnt,
 						     xasl->parallelism) : 1;
 #else /* SERVER_MODE */
+  sort_px = false;
   px_degree = 1;
 #endif /* SERVER_MODE */
   parallel = (px_degree > 1);
-  if (!parallel && (qexec_gby_sort_takes_workers (list_id, xasl->parallelism)
-		    || qexec_gby_sort_takes_workers (partials, xasl->parallelism)))
+  if (!parallel && sort_px)
     {
       /* the merge would run on the leader alone, where the sort of these lists takes workers: the sort keeps them
        * (a merge that has workers of its own goes on below) */
@@ -8949,6 +8977,7 @@ fold:
   job.budget = budget;
   job.per_entry = (double) bytes / (double) MAX (n_entries, (INT64) 1);
   job.leaf = order_free ? qexec_gby_merge_leaf_write : qexec_gby_merge_leaf_collapse;
+  job.collapse = !order_free;
   job.leaf_arg = gbstate;
   if (!order_free)
     {
