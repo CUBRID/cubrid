@@ -6902,8 +6902,10 @@ pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
     {
       return parse_tree;
     }
-  /* a NULL producer column (a derived table whose query is false) types nothing */
+  /* a NULL producer column (a derived table whose query is false) types nothing, but a parse tree domain whose type
+   * or (CBRD-28134) collation is left to the values reads it: no value comes to decide them */
   if (TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE
+      || (TP_DOMAIN_TYPE (producer) == DB_TYPE_NULL && TP_DOMAIN_COLLATION_FLAG (parse_tree) != TP_DOMAIN_COLL_NORMAL)
       || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != DB_TYPE_NULL
 	  && TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree)))
     {

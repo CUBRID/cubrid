@@ -8559,12 +8559,12 @@ heap_page_prefetch (const char *pgptr)
 /* or_mvcc_get_header () for a REC_HOME record of a page heap_page_collect_visible () collects, read inline: the same
  * fields from the same bytes -- representation and flags, CHN, then the insert id, the delete id and the previous
  * version's address where the flags say they are there -- without the OR_BUF and the five calls into
- * object_representation_sr.c that every record of a filter scan paid for */
+ * object_representation_sr.c that every record of a filter scan paid for; repid_and_flag_bits is the record's first
+ * word, already read by the caller */
 static inline void
-heap_page_row_mvcc_header (const char *data, MVCC_REC_HEADER * header)
+heap_page_row_mvcc_header (const char *data, int repid_and_flag_bits, MVCC_REC_HEADER * header)
 {
   const char *p = data;
-  const int repid_and_flag_bits = OR_GET_INT (p);
 
   header->repid = repid_and_flag_bits & OR_MVCC_REPID_MASK;
   header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_FLAG_MASK);
@@ -8598,6 +8598,41 @@ heap_page_row_mvcc_header (const char *data, MVCC_REC_HEADER * header)
       LSA_SET_NULL (&header->prev_version_lsa);
     }
 }
+
+#if !defined (NDEBUG)
+/* heap_page_collect_visible (): the header decode's answer for a record the first word answered for -- a row
+ * (visible, of a representation the caller decodes) or a deleted record (skipped) */
+static void
+heap_page_check_word_decision (THREAD_ENTRY * thread_p, const RECDES * rec, MVCC_SNAPSHOT * snapshot,
+			       const REPR_ID * repids, int n_repids, bool is_row)
+{
+  MVCC_REC_HEADER header = MVCC_REC_HEADER_INITIALIZER;
+  MVCC_SATISFIES_SNAPSHOT_RESULT res = SNAPSHOT_SATISFIED;
+  int i = 0;
+
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT))
+    {
+      /* snapshot_fnc () would count the record in Num_mvcc_snapshot_ext, which the release build does not */
+      return;
+    }
+  heap_page_row_mvcc_header (rec->data, OR_GET_INT (rec->data), &header);
+  if (snapshot != NULL && !MVCC_IS_HEADER_ALL_VISIBLE (&header))
+    {
+      res = snapshot->snapshot_fnc (thread_p, &header, snapshot);
+    }
+  if (!is_row)
+    {
+      assert (res == TOO_OLD_FOR_SNAPSHOT);
+      return;
+    }
+  assert (res == SNAPSHOT_SATISFIED);
+  while (i < n_repids && repids[i] != MVCC_GET_REPID (&header))
+    {
+      i++;
+    }
+  assert (n_repids == 0 || i < n_repids);
+}
+#endif /* !NDEBUG */
 
 /*
  * heap_page_collect_visible () - the next records heap_next_1page () would return for one page, a chunk at a time
@@ -8638,6 +8673,12 @@ heap_page_row_mvcc_header (const char *data, MVCC_REC_HEADER * header)
  * it holds, never looked up on a page vacuum may be removing (heap_remove_page_on_vacuum ()).
  * A scan cache without a snapshot (an MVCC-disabled class) never gets here -- the batch refuses
  * those scans (scan_batch_open_internal ()) -- so the snapshot == NULL branch below is defensive.
+ *
+ * Most records are answered by their first word -- the representation and the MVCC flags -- before
+ * the header is decoded (CBRD-28188).  A record with no MVCC id is visible to every snapshot.  On a
+ * page whose max MVCCID precedes the snapshot's lowest active MVCCID, every id on the page belongs to
+ * a transaction that ended before the snapshot, so an inserted record is visible and a deleted one is
+ * not, whatever the ids.  A record the word does not answer for is decided from its header below.
  */
 SCAN_CODE
 heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
@@ -8647,9 +8688,17 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
   MVCC_SNAPSHOT *snapshot = NULL;
   PAGE_PTR pgptr;
   RECDES rec;
+  RECDES chain_recdes;
+  const HEAP_CHAIN *chain;
   OID oid;
   SCAN_CODE scan;
   int n = 0;
+  const int delid_bit = OR_MVCC_FLAG_VALID_DELID << OR_RECORD_FLAG_SHIFT_BITS;
+  const int repid_bits = (n_repids > 0) ? OR_MVCC_REPID_MASK : 0;
+  int word_mask = ((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID) << OR_RECORD_FLAG_SHIFT_BITS) | repid_bits;
+  int word_want = (n_repids > 0) ? repids[0] : 0;
+  bool page_precedes_snapshot = false;
+  bool root_page;
 
   *n_rows = 0;
   /* A cached scan (HEAP_SCAN_IS_LOCAL_CACHE_READ) reads a copy of the page so that it holds no latch while its rows
@@ -8680,7 +8729,14 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
       /* the page's first chunk, whoever fixed the page (the scan's caller, usually) */
       heap_page_prefetch (pgptr);
     }
-  if (heap_page_is_bestspace (thread_p, pgptr))
+  /* slot 0 holds the page's chain, or HEAP_HDR_STATS on the heap header page (as heap_page_is_bestspace () reads it) */
+  if (spage_get_record (thread_p, pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &chain_recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      chain_recdes.length = 0;
+    }
+  chain = (chain_recdes.length == sizeof (HEAP_CHAIN)) ? (const HEAP_CHAIN *) chain_recdes.data : NULL;
+  if (chain != NULL && HEAP_PAGE_IS_BESTSPACE (chain))
     {
       return S_END;
     }
@@ -8689,14 +8745,25 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
     {
       snapshot = scan_cache->mvcc_snapshot;
     }
+  /* the heap header page has no chain: never judged */
+  if (snapshot != NULL && snapshot->snapshot_fnc == mvcc_satisfies_snapshot && chain != NULL
+      && MVCC_ID_PRECEDES (chain->max_mvccid, snapshot->lowest_active_mvccid))
+    {
+      page_precedes_snapshot = true;
+      word_mask = delid_bit | repid_bits;
+    }
+
+  /* the root class's own object is one slot of one page: compared per record only on that page */
+  root_page = (class_oid != NULL && !OID_ISNULL (class_oid) && vpid->volid == oid_Root_class_oid->volid
+	       && vpid->pageid == oid_Root_class_oid->pageid);
 
   oid.volid = vpid->volid;
   oid.pageid = vpid->pageid;
   oid.slotid = *slot;		/* 0: the walk starts at slot 1 */
   while (true)
     {
-      MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
       bool is_exception = false;
+      int word;
 
       scan = spage_next_record (pgptr, &oid.slotid, &rec, PEEK);
       if (scan == S_END)
@@ -8713,15 +8780,33 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 	{
 	  continue;
 	}
+      assert (rec.type != REC_HOME || rec.length >= OR_MVCC_REP_SIZE);
+      word = (rec.type == REC_HOME) ? OR_GET_INT (rec.data) : 0;
       if (rec.type != REC_HOME)
 	{
 	  /* REC_RELOCATION, REC_BIGONE: the header is in the forward page; the row path fetches it from there */
 	  is_exception = true;
 	}
+      else if ((word & word_mask) == word_want)
+	{
+	  /* the word answers: a row */
+#if !defined (NDEBUG)
+	  heap_page_check_word_decision (thread_p, &rec, snapshot, repids, n_repids, true);
+#endif
+	}
+      else if (page_precedes_snapshot && (word & delid_bit) != 0)
+	{
+	  /* the word answers: deleted before the snapshot */
+#if !defined (NDEBUG)
+	  heap_page_check_word_decision (thread_p, &rec, snapshot, repids, n_repids, false);
+#endif
+	  continue;
+	}
       else
 	{
-	  assert (rec.length >= OR_MVCC_REP_SIZE);
-	  heap_page_row_mvcc_header (rec.data, &mvcc_header);
+	  MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+
+	  heap_page_row_mvcc_header (rec.data, word, &mvcc_header);
 #if !defined (NDEBUG)
 	  {
 	    MVCC_REC_HEADER check = MVCC_REC_HEADER_INITIALIZER;
@@ -8753,7 +8838,8 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 		  is_exception = true;
 		}
 	    }
-	  if (!is_exception && n_repids > 0)
+	  /* word_want is one of repids: the search only runs for another representation */
+	  if (!is_exception && n_repids > 0 && (word & repid_bits) != word_want)
 	    {
 	      REPR_ID rec_repid = MVCC_GET_REPID (&mvcc_header);
 	      int i = 0;
@@ -8773,8 +8859,13 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 		    }
 		}
 	    }
+	  if (!is_exception)
+	    {
+	      /* the next records likely share this row's representation */
+	      word_want = word & repid_bits;
+	    }
 	}
-      if (class_oid != NULL && !OID_ISNULL (class_oid) && OID_IS_ROOTOID (&oid))
+      if (root_page && oid.slotid == oid_Root_class_oid->slotid)
 	{
 	  continue;
 	}
@@ -8788,7 +8879,8 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 	}
       rows[n].oid = oid;
       rows[n].recdes = rec;
-      rows[n].hdr_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&mvcc_header)];	/* OR_HEADER_SIZE (rec.data) */
+      /* OR_HEADER_SIZE (rec.data): a row is a REC_HOME record */
+      rows[n].hdr_size = mvcc_header_size_lookup[(word >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_MVCC_FLAG_MASK];
       n++;
       if (n == cap)
 	{
