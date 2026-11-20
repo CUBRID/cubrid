@@ -1287,10 +1287,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
 1216 Invalid object id %1$d when trying to unpack.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 스트림 세션 오류: %1$s.
+1218 스트림이 열려 있지 않음: %1$s.
+1219 지원하지 않는 스트림: %1$s.
+1220 잘못된 스트림 사용: %1$s.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
@@ -1504,15 +1504,37 @@ $ LOADDB
 1390 세션 %1$u의 비밀값이 일치하지 않습니다.
 1391 세션 %1$u은(는) 이 연결의 세션이 아니므로 종료하거나 유지할 수 없습니다.
 
-1392 Sensitivity label %1$s "%2$s"이(가) 이미 존재합니다.
-1393 Sensitivity label %1$s "%2$s"이(가) 존재하지 않습니다.
-1394 Sensitivity label %1$s "%2$s"을(를) 참조하는 라벨이 있습니다.
-1395 Sensitivity label grade level %1$d이(가) 이미 존재합니다.
-1396 "%2$s"의 컬럼 "%1$s"에 이미 sensitivity label이 있습니다.
-1397 "%2$s"의 컬럼 "%1$s"에 sensitivity label이 없습니다.
-1398 "%1$s"은(는) 시스템 클래스, 뷰 또는 파티션이므로 sensitivity label을 가질 수 없습니다.
+1392 연결이 트랜잭션 인덱스 %1$d 를 사용했으나, 서버가 이 연결에 할당한 인덱스는 %2$d 입니다. 할당된 인덱스를 사용했습니다.
 
-1399 마지막 에러
+1393 시스템 생성 stored procedure를 변경(alter)할 수 없습니다.
+
+1394 시스템 생성 stored procedure에는 권한을 부여(grant)하거나 회수(revoke)할 수 없습니다.
+
+1395 CS 모드에서는 분할 테이블에 행을 로딩할 수 없습니다. 각 분할에 로딩하십시오.
+
+1396 내부 에러: 오브젝트 "%1$d|%2$d|%3$d"의 out-of-row storage 저장 레코드가 손상되었을 수 있습니다.
+
+1397 대상 가변 길이 컬럼을 out-of-row 저장소(OOS)로 옮긴 뒤에도 레코드 크기(%1$d 바이트)가 최대 레코드 크기(%2$d 바이트)를 넘어 저장할 수 없습니다. 레코드는 한 페이지에 들어가야 합니다. 고정 길이 컬럼, 작은 가변 길이 컬럼, STORAGE FORCE_INLINE 컬럼의 크기를 줄이십시오.
+
+1398 내부 에러: out-of-row storage 저장 레코드 메타데이터가 일치하지 않거나 손상되었습니다.
+
+1399 내부 에러: out-of-row storage 인자가 유효하지 않습니다.
+
+1400 오브젝트 %2$d|%3$d|%4$d 의 %1$s 처리 중 out-of-row storage(OOS) 정리를 건너뛰었습니다. 이전 레코드가 참조한 OOS value chain %9$d 개가 더 이상 존재하지 않으며, 그 중 첫 번째의 head OOS OID 는 %5$d|%6$d|%7$d 입니다(%8$s). 해당 chain 들에 대해 삭제된 데이터는 없으며 연산은 정상 완료되었습니다.
+
+1401 저장 형식이 호환되지 않는 CUBRID 빌드로 생성된 데이터베이스입니다(형식 %1$d, 현재 빌드 %2$d). 데이터베이스를 생성한 빌드로 unloaddb 한 뒤, 현재 빌드로 생성한 데이터베이스에 loaddb 하십시오.
+
+1402 Vacuum 이 heap 파일 %1$d|%2$d 의 OOS 파일을 찾지 못했습니다(오류 %3$d). 오브젝트 %4$d|%5$d|%6$d 와 현재 로그 블록에 있는 그 heap 파일의 나머지는 이 블록을 다시 실행할 때 처리합니다.
+
+1403 Sensitivity label %1$s "%2$s"이(가) 이미 존재합니다.
+1404 Sensitivity label %1$s "%2$s"이(가) 존재하지 않습니다.
+1405 Sensitivity label %1$s "%2$s"을(를) 참조하는 라벨이 있습니다.
+1406 Sensitivity label grade level %1$d이(가) 이미 존재합니다.
+1407 "%2$s"의 컬럼 "%1$s"에 이미 sensitivity label이 있습니다.
+1408 "%2$s"의 컬럼 "%1$s"에 sensitivity label이 없습니다.
+1409 "%1$s"은(는) 시스템 클래스, 뷰 또는 파티션이므로 sensitivity label을 가질 수 없습니다.
+
+1410 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -2025,15 +2047,19 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 336 NUMERIC의 스케일 범위(-84부터 127)를 초과했습니다.
 337 파티션 이름이 너무 깁니다.
 338 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
+339 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서만 storage 옵션을 정의할 수 있습니다.
+340 '%1$s'에는 이 STORAGE 옵션을 지정할 수 없습니다. STORAGE 옵션은 클래스의 일반 속성에만 지정할 수 있으며, 고정 타입 속성에는 DEFAULT와 FORCE_INLINE만 지정할 수 있습니다.
 341 SEMI/ANTI JOIN inner 테이블의 컬럼 '%1$s'은 참조할 수 없습니다.
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
-345 ALTER SENSITIVITY LABEL에 대해 지정된 옵션이 없습니다.
-346 sensitivity label grade의 level은 1 이상이어야 합니다.
-347 sensitivity label에 %1$s이(가) 두 번 이상 지정되었습니다.
-348 sensitivity label에는 GRADE를 지정해야 합니다.
-349 sensitivity label에 "%2$s"의 컬럼 "%1$s"이(가) 두 번 이상 지정되었습니다.
+345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
+346 %2$s의 %1$d번째 인자는 %3$s 매개변수에 넘기므로 바인드 변수(? 또는 :name)여야 합니다.
+347 ALTER SENSITIVITY LABEL에 대해 지정된 옵션이 없습니다.
+348 sensitivity label grade의 level은 1 이상이어야 합니다.
+349 sensitivity label에 %1$s이(가) 두 번 이상 지정되었습니다.
+350 sensitivity label에는 GRADE를 지정해야 합니다.
+351 sensitivity label에 "%2$s"의 컬럼 "%1$s"이(가) 두 번 이상 지정되었습니다.
 
 
 
@@ -2326,6 +2352,10 @@ $set 16 MSGCAT_SET_LOG
 30 보관 로그의 개수가 허용 최대치를 초과했습니다.
 
 31 이 백업과 로그 체인은 loaddb의 no-logging 인덱스 빌드 구간을 포함하여 그 지점을 넘는 재생 복원이 불가능합니다. loaddb 이후에 받은 백업으로 복원하거나, 시점 복원으로 그 이전 시점까지만 복원하십시오.
+32 데이터베이스를 복구하는 도중, 어느 백업 레벨에도 없는 페이지를 포맷하다가 에러가 발생하였습니다\n\
+   Database Volume: %1$s\n\
+    Database Volid: %2$d\n\
+** 경고: 에러 없이 데이터베이스가 복구되기 전까지는 데이터베이스를 사용하지 마시오.\n
 $set 17 MSGCAT_SET_GLOSSARY
 1 클래스
 2 트리거

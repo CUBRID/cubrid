@@ -2316,6 +2316,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  /* Refuse a database of another storage format before any other page is read, or rewritten by the double write
+   * buffer or log recovery. */
+  error_code = disk_check_storage_format (thread_p, LOG_DBFIRST_VOLID);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* Find the location of the database parameters and read them */
   if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) == NULL)
     {
@@ -3261,12 +3269,36 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
   /* Initialize scan function pointers of show statements */
   showstmt_scan_init ();
 
+#if defined (SERVER_MODE)
+  /* a connection runs under one transaction index; registering again
+   * would orphan the first one, which nothing would then release */
+  if (thread_p->conn_entry != NULL && thread_p->conn_entry->get_tran_index () != NULL_TRAN_INDEX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      *tran_state = TRAN_UNACTIVE_UNKNOWN;
+      return NULL_TRAN_INDEX;
+    }
+#endif /* SERVER_MODE */
+
   db_user_save = client_credential->get_db_user ();
   if (!client_credential->db_user.empty ())
     {
       intl_identifier_upper (client_credential->get_db_user (), db_user_upper);
       client_credential->db_user = db_user_upper;
     }
+
+#if defined (SERVER_MODE)
+  /* the declared user is trusted only once this connection proved its
+   * password, so check it before a transaction index is given out */
+  if (BOOT_PASSWORD_PROOF_CLIENT_TYPE (client_credential->client_type)
+      && !css_consume_auth_proof (thread_p->conn_entry, client_credential->get_db_user ()))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_PASSWORD, 0);
+      *tran_state = TRAN_UNACTIVE_UNKNOWN;
+      client_credential->db_user = db_user_save;
+      return NULL_TRAN_INDEX;
+    }
+#endif /* SERVER_MODE */
 
   /* Assign a transaction index to the client */
   tran_index =
@@ -3279,13 +3311,20 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
       logtb_release_tran_index (thread_p, tran_index);
       tran_index = NULL_TRAN_INDEX;
     }
+  else if (tran_index != NULL_TRAN_INDEX && !thread_p->conn_entry->claim_tran_index (tran_index))
+    {
+      /* the only place an index is assigned to a connection. Another
+       * registration on this connection, run at the same time, passed the check
+       * above too and got its index in first: give this one back */
+      logtb_release_tran_index (thread_p, tran_index);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      *tran_state = TRAN_UNACTIVE_UNKNOWN;
+      tran_index = NULL_TRAN_INDEX;
+    }
 #endif /* SERVER_MODE */
 
   if (tran_index != NULL_TRAN_INDEX)
     {
-#if defined (SERVER_MODE)
-      thread_p->conn_entry->set_tran_index (tran_index);
-#endif /* SERVER_MODE */
       server_credential->db_full_name = boot_Db_full_name;
       server_credential->host_name = boot_Host_name;
       server_credential->lob_path = boot_Lob_path;
@@ -5520,6 +5559,13 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
 
   /* Mount the data volume */
   error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* The emergency patch reads catalogs and may recreate the log; refuse another storage format first. */
+  error_code = disk_check_storage_format (thread_p, LOG_DBFIRST_VOLID);
   if (error_code != NO_ERROR)
     {
       goto error_exit;

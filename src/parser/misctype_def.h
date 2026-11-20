@@ -201,6 +201,8 @@ typedef enum
   PT_LOGIN,			/* user login capability */
   PT_NOLOGIN,
 
+  PT_PLCSQL_BLOCK,		/* trigger action written as a PL/CSQL block */
+
   PT_SENSITIVITY_LABEL_GRADE,	/* sensitivity label kind */
   PT_SENSITIVITY_LABEL_INFO_TYPE,
   PT_SENSITIVITY_LABEL_SOURCE,

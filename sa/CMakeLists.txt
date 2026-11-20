@@ -170,6 +170,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/fixed_size_allocator.hpp
+  ${BASE_DIR}/byte_span_writer.hpp
   ${BASE_DIR}/ifsys.hpp
   ${BASE_DIR}/filesys_parser.hpp
   ${BASE_DIR}/cgroup.hpp
@@ -200,6 +201,9 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_callback_sr.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
+  ${COMMUNICATION_DIR}/stream_session.cpp
+  ${COMMUNICATION_DIR}/stream_handle.cpp
+  ${COMMUNICATION_DIR}/stream_client.c
   )
 
 set(DEBUGGING_HEADERS
@@ -315,6 +319,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c
+  ${QUERY_DIR}/vacuum_oos.cpp
   ${QUERY_DIR}/xasl_cache.c
   ${QUERY_DIR}/xasl_to_stream.c
   )
@@ -540,7 +545,12 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/file_manager.c
   ${STORAGE_DIR}/ftab_set.cpp
   ${STORAGE_DIR}/heap_file.c
+  ${STORAGE_DIR}/heap_oos.cpp
+  ${STORAGE_DIR}/heap_oos_value_ref.cpp
+  ${STORAGE_DIR}/heap_pending_record.cpp
   ${STORAGE_DIR}/oid.c
+  ${STORAGE_DIR}/oos_file.cpp
+  ${STORAGE_DIR}/oos_util.cpp
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
   ${STORAGE_DIR}/record_descriptor.cpp
@@ -606,8 +616,10 @@ set(HISTOGRAM_HEADERS
 set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
+  ${LOADDB_DIR}/load_class_registry.cpp
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
+  ${LOADDB_DIR}/load_db_value_converter.cpp
   ${LOADDB_DIR}/load_driver.cpp
   ${LOADDB_DIR}/load_error_handler.cpp
   ${LOADDB_DIR}/load_object.c
@@ -618,7 +630,9 @@ set(LOADDB_SOURCES
 
 set(LOADDB_HEADERS
   ${BISON_loader_grammar_OUTPUT_HEADER}
+  ${LOADDB_DIR}/load_class_registry.hpp
   ${LOADDB_DIR}/load_common.hpp
+  ${LOADDB_DIR}/load_db_value_converter.hpp
   ${LOADDB_DIR}/load_driver.hpp
   ${LOADDB_DIR}/load_error_handler.hpp
   ${LOADDB_DIR}/load_object.h

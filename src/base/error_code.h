@@ -1568,10 +1568,10 @@
 
 #define ER_STREAM_NO_MORE_DATA                      -1215
 #define ER_STREAM_UNPACKING_INV_OBJ_ID              -1216
-#define ER_STREAM_RESERVED_2                        -1217
-#define ER_STREAM_RESERVED_3                        -1218
-#define ER_STREAM_RESERVED_4                        -1219
-#define ER_STREAM_RESERVED_5                        -1220
+#define ER_STREAM_SESSION_ERROR                     -1217
+#define ER_STREAM_NOT_OPEN                          -1218
+#define ER_STREAM_NOT_SUPPORTED                     -1219
+#define ER_STREAM_INVALID_USE                       -1220
 #define ER_STREAM_RESERVED_6                        -1221
 #define ER_STREAM_RESERVED_7                        -1222
 #define ER_STREAM_RESERVED_8                        -1223
@@ -1794,16 +1794,35 @@
 
 #define ER_SES_SESSION_SECRET_MISMATCH              -1390
 #define ER_SES_SESSION_NOT_ATTACHED                 -1391
+#define ER_CSS_TRAN_INDEX_NOT_OWNED                 -1392
+#define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
+#define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-#define ER_SENSITIVITY_LABEL_NAME_ALREADY_EXISTS    -1392
-#define ER_SENSITIVITY_LABEL_NAME_NOT_FOUND         -1393
-#define ER_SENSITIVITY_LABEL_NAME_IN_USE            -1394
-#define ER_SENSITIVITY_LABEL_LEVEL_ALREADY_EXISTS   -1395
-#define ER_SENSITIVITY_LABEL_ALREADY_EXISTS         -1396
-#define ER_SENSITIVITY_LABEL_NOT_FOUND              -1397
-#define ER_SENSITIVITY_LABEL_NOT_ALLOWED            -1398
+#define ER_LDR_PARTITIONED_CLASS_NOT_SUPPORTED      -1395
 
-#define ER_LAST_ERROR                               -1399
+#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1396
+
+#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1397
+
+#define ER_HEAP_OOS_CORRUPTED_RECORD                -1398
+
+#define ER_HEAP_OOS_INVALID_ARGUMENT                -1399
+
+#define ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED           -1400
+
+#define ER_BO_INCOMPATIBLE_STORAGE_FORMAT           -1401
+
+#define ER_VACUUM_OOS_LOOKUP_DEFERRED               -1402
+
+#define ER_SENSITIVITY_LABEL_NAME_ALREADY_EXISTS    -1403
+#define ER_SENSITIVITY_LABEL_NAME_NOT_FOUND         -1404
+#define ER_SENSITIVITY_LABEL_NAME_IN_USE            -1405
+#define ER_SENSITIVITY_LABEL_LEVEL_ALREADY_EXISTS   -1406
+#define ER_SENSITIVITY_LABEL_ALREADY_EXISTS         -1407
+#define ER_SENSITIVITY_LABEL_NOT_FOUND              -1408
+#define ER_SENSITIVITY_LABEL_NOT_ALLOWED            -1409
+
+#define ER_LAST_ERROR                               -1410
 
 
 /*

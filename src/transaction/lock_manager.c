@@ -363,6 +363,14 @@ struct lk_res_block
   int count;			/* # of entries in lock res block */
 };
 
+/* a transient request of a statement nested in another, kept apart from the outer statement's counts */
+typedef struct lk_nested_transient LK_NESTED_TRANSIENT;
+struct lk_nested_transient
+{
+  OID oid;
+  int scope;			/* the transient_scope depth that took it */
+};
+
 /*
  * Transaction Lock Entry Structure
  */
@@ -379,7 +387,10 @@ struct lk_tran_lock
   int inst_hold_count;		/* # of entries in inst_hold_list */
   int transient_scope;		/* statements now taking transient row locks, so nesting is visible */
   int transient_total;		/* counted requests outstanding, never below the entries' sum: the walk stops on it */
-  int escalated_count;		/* class entries with escalated_from set; only this transaction's thread writes them */
+  LK_NESTED_TRANSIENT *nested_transient;	/* each scope's above its outer scopes', so a scope's are the last */
+  int nested_transient_count;
+  int nested_transient_size;
+  int escalated_count;		/* class entries with escalated_from set; both written by the main thread only */
   bool reclaimed_only_transient;	/* the last reclaim of instance locks took only this statement's requests */
   int class_hold_count;		/* # of entries in class_hold_list */
 
@@ -392,9 +403,6 @@ struct lk_tran_lock
 
   /* lock escalation related fields */
   bool lock_escalation_on;
-
-  /* locking on manual duration */
-  bool is_instant_duration;
 };
 
 typedef struct lk_init_state LK_INIT_STATE;
@@ -547,7 +555,6 @@ static LK_ENTRY *lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_in
 static bool lock_force_timeout_expired_wait_transactions (void *thrd_entry);
 static bool lock_is_local_deadlock_detection_interval_up (void);
 static void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
-static bool lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation);
 static LK_ENTRY *lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
 static void lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr);
 static const char *lock_res_desc_format (int msgnum);
@@ -566,15 +573,21 @@ static int lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, cons
 				  int cond_flag, bool mark_transient, bool ahead_of_waiters);
 static bool lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LOCK * tran_lock);
 static void lock_reset_transient_state (LK_TRAN_LOCK * tran_lock);
+static void lock_count_nested_transient (LK_TRAN_LOCK * tran_lock, const OID * oid);
+static bool lock_uncount_nested_transient (LK_TRAN_LOCK * tran_lock, const OID * oid);
+static void lock_end_nested_transient (THREAD_ENTRY * thread_p, LK_TRAN_LOCK * tran_lock, bool release);
 static void lock_end_escalated_class_lock (THREAD_ENTRY * thread_p, bool lower);
-static void lock_withdraw_escalation_record (LK_TRAN_LOCK * tran_lock, LK_ENTRY * class_entry);
+static void lock_withdraw_escalation_record (THREAD_ENTRY * thread_p, LK_TRAN_LOCK * tran_lock, LK_ENTRY * class_entry);
+static bool lock_grant_row_by_class_lock (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY * class_entry,
+					  LOCK class_lock, LOCK lock, bool outlives_statement);
 static LOCK lock_escalation_mode (LOCK class_mode);
 static int lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tran_index);
 static int lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
 						   const OID * class_oid, LOCK lock);
 static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_RES_KEY search_key,
 					      LOCK lock, int wait_msecs, LK_ENTRY ** entry_addr_ptr,
-					      LK_ENTRY * class_entry, bool ahead_of_waiters = false);
+					      LK_ENTRY * class_entry, bool ahead_of_waiters = false,
+					      bool outlives_statement = true);
 static bool lock_res_held_only_by_writers (LK_RES * res_ptr);
 static void lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
 						 bool move_to_non2pl);
@@ -997,7 +1010,6 @@ lock_initialize_entry (LK_ENTRY * entry_ptr)
   entry_ptr->tran_prev = NULL;
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
-  entry_ptr->instant_lock_count = 0;
   entry_ptr->transient_count = 0;
   entry_ptr->escalated_from = NULL_LOCK;
   entry_ptr->shared_requested = false;
@@ -1020,7 +1032,6 @@ lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index, LK_RES *
   entry_ptr->tran_prev = NULL;
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
-  entry_ptr->instant_lock_count = 0;
   entry_ptr->transient_count = 0;
   entry_ptr->escalated_from = NULL_LOCK;
   entry_ptr->shared_requested = (lock == S_LOCK);
@@ -1044,7 +1055,6 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p,
   entry_ptr->tran_prev = NULL;
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
-  entry_ptr->instant_lock_count = 0;
   entry_ptr->transient_count = 0;
   entry_ptr->escalated_from = NULL_LOCK;
   entry_ptr->shared_requested = (lock == S_LOCK);
@@ -1067,7 +1077,6 @@ lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * 
   entry_ptr->tran_prev = NULL;
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
-  entry_ptr->instant_lock_count = 0;
   entry_ptr->transient_count = 0;
   entry_ptr->escalated_from = NULL_LOCK;
   entry_ptr->shared_requested = false;
@@ -1143,6 +1152,7 @@ lock_reset_transient_state (LK_TRAN_LOCK * tran_lock)
 {
   tran_lock->transient_scope = 0;
   tran_lock->transient_total = 0;
+  tran_lock->nested_transient_count = 0;
   tran_lock->escalated_count = 0;
 }
 
@@ -2569,6 +2579,19 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 }
 #endif /* SERVER_MODE */
 
+/*
+ * lock_is_deadlock_victim () - Did the last lock wait of thread_p end with it chosen to abort its transaction?
+ */
+bool
+lock_is_deadlock_victim (const THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  return thread_p->lockwait_state == LOCK_RESUMED_ABORTED_FIRST;
+#else /* SERVER_MODE */
+  return false;
+#endif /* !SERVER_MODE */
+}
+
 #if defined(SERVER_MODE)
 /*
  * lk_resume - Resume the thread (transaction)
@@ -3233,6 +3256,7 @@ lock_end_escalated_class_lock (THREAD_ENTRY * thread_p, bool lower)
 	{
 	  continue;
 	}
+      assert (thread_get_main_thread (thread_p) == thread_p);
       /* a further raise since is not this statement's to undo */
       if (lower && entry_ptr->granted_mode == lock_escalation_mode (entry_ptr->escalated_from))
 	{
@@ -3246,19 +3270,50 @@ lock_end_escalated_class_lock (THREAD_ENTRY * thread_p, bool lower)
 }
 
 /*
- * lock_withdraw_escalation_record () - Forget the class's record, so its lock stays raised to commit
+ * lock_withdraw_escalation_record () - Withdraw the class's record, so its lock stays raised to commit
  *   return: void
+ *   thread_p(in): thread entry
  *   tran_lock(in): the transaction's lock list
  *   class_entry(in): the transaction's lock entry of the class, or NULL
  */
 static void
-lock_withdraw_escalation_record (LK_TRAN_LOCK * tran_lock, LK_ENTRY * class_entry)
+lock_withdraw_escalation_record (THREAD_ENTRY * thread_p, LK_TRAN_LOCK * tran_lock, LK_ENTRY * class_entry)
 {
   if (class_entry != NULL && class_entry->escalated_from != NULL_LOCK)
     {
+      assert (thread_get_main_thread (thread_p) == thread_p);
+      assert (tran_lock->escalated_count > 0);
       class_entry->escalated_from = NULL_LOCK;
       tran_lock->escalated_count--;
     }
+}
+
+/*
+ * lock_grant_row_by_class_lock () - Grant a row request the class lock covers; one that stays withdraws the record
+ *   return: true if granted, with no row lock
+ *   thread_p(in): thread entry
+ *   tran_index(in): transaction index
+ *   class_entry(in): the transaction's lock entry of the class, or NULL when the request does not stay
+ *   class_lock(in): the transaction's lock mode on the class
+ *   lock(in): the row request's mode
+ *   outlives_statement(in): the request stays after its statement ends
+ *
+ * Note: the grant takes no row lock; if the request stays, the class lock alone protects the row and stays raised.
+ */
+static bool
+lock_grant_row_by_class_lock (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY * class_entry, LOCK class_lock,
+			      LOCK lock, bool outlives_statement)
+{
+  if ((class_lock < lock && !IS_WRITE_EXCLUSIVE_LOCK (class_lock)) || (class_lock == IX_LOCK && lock == S_LOCK))
+    {
+      return false;
+    }
+  if (outlives_statement)
+    {
+      assert (class_entry != NULL);
+      lock_withdraw_escalation_record (thread_p, &lk_Gl.tran_lock_table[tran_index], class_entry);
+    }
+  return true;
 }
 
 /*
@@ -3361,10 +3416,11 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
       lock_internal_perform_unlock_object (thread_p, class_entry, false, true);
 
       if (tran_lock->transient_scope > 0 && tran_lock->reclaimed_only_transient
-	  && class_entry->escalated_from == NULL_LOCK)
+	  && class_entry->escalated_from == NULL_LOCK && thread_get_main_thread (thread_p) == thread_p)
 	{
 	  /* written after the raise: as a class grant escalated_from does not cover, the raise would withdraw it.  A raise
-	   * that reclaimed nothing (a partition counted by its partitioned class) covers only the requests after it. */
+	   * that reclaimed nothing (a partition counted by its partitioned class) covers only the requests after it.  A
+	   * parallel worker's raise writes none, so that class stays raised. */
 	  class_entry->escalated_from = pre_escalation_mode;
 	  tran_lock->escalated_count++;
 	}
@@ -3425,8 +3481,9 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
   if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
     {
       /* instance lock request */
-      /* check if an implicit lock has been acquired */
-      if (lock_is_class_lock_escalated (lock_get_object_lock (class_oid, oid_Root_class_oid), lock) == true)
+      /* check if an implicit lock has been acquired; an instant hold never outlives the statement */
+      if (lock_grant_row_by_class_lock (thread_p, tran_index, NULL,
+					lock_get_object_lock (class_oid, oid_Root_class_oid), lock, false))
 	{
 	  return LK_GRANTED;
 	}
@@ -3631,6 +3688,7 @@ lock_join_existing_wait_train (THREAD_ENTRY * thrd_entry, int tran_index, LK_ENT
  *   class_entry(in):
  *   ahead_of_waiters(in): a new request that must wait goes to the head of the waiters, not the end, unless only
  *			   writers hold the object: then it is not made (LK_NOTGRANTED_HELD_BY_WRITERS)
+ *   outlives_statement(in): a row request stays after its statement ends; the default, true, keeps the class raised
  *
  * Note:lock the resource identified by search_key with given lock mode 'lock'.
  *
@@ -3641,7 +3699,7 @@ lock_join_existing_wait_train (THREAD_ENTRY * thrd_entry, int tran_index, LK_ENT
 static int
 lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_RES_KEY search_key, LOCK lock,
 				   int wait_msecs, LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry,
-				   bool ahead_of_waiters)
+				   bool ahead_of_waiters, bool outlives_statement)
 {
   LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   /* The caller passes a pre-built key. oid/class_oid are recovered from it for object-typed resources;
@@ -3657,8 +3715,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
   LK_ENTRY *prev, *curr, *i;
   bool lock_conversion = false;
   THREAD_ENTRY *thrd_entry;
-  LK_TRAN_LOCK *tran_lock;
-  bool is_instant_duration;
   LOCK_COMPATIBILITY compat1, compat2;
   bool is_res_mutex_locked = false;
   TSC_TICKS start_tick, end_tick;
@@ -3732,10 +3788,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
   /* initialize */
   *entry_addr_ptr = NULL;
 
-  /* get current locking phase */
-  tran_lock = &lk_Gl.tran_lock_table[tran_index];
-  is_instant_duration = tran_lock->is_instant_duration;
-
   while (state != LK_S_DONE)
     {
       switch (state)
@@ -3772,7 +3824,9 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 		}
 
 	      if (ret_val == LK_GRANTED
-		  && lock_is_class_lock_escalated (lock_get_object_lock (class_oid, oid_Root_class_oid), lock) == true)
+		  && lock_grant_row_by_class_lock (thread_p, tran_index, class_entry,
+						   lock_get_object_lock (class_oid, oid_Root_class_oid), lock,
+						   outlives_statement))
 		{
 		  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
 		  ret_val = LK_GRANTED;
@@ -3824,11 +3878,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 
 	      /* initialize the lock entry as granted state */
 	      lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr, lock);
-	      if (is_instant_duration)
-		{
-		  entry_ptr->instant_lock_count++;
-		  assert (entry_ptr->instant_lock_count > 0);
-		}
 
 	      /* add the lock entry into the holder list */
 	      res_ptr->holder = entry_ptr;
@@ -3898,11 +3947,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 
 	      /* initialize the lock entry as granted state */
 	      lock_initialize_entry_as_granted (entry_ptr, tran_index, res_ptr, lock);
-	      if (is_instant_duration)
-		{
-		  entry_ptr->instant_lock_count++;
-		  assert (entry_ptr->instant_lock_count > 0);
-		}
 
 	      /* to manage granules */
 	      entry_ptr->class_entry = class_entry;
@@ -3954,12 +3998,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 			  break;
 			}
 		      lock_initialize_entry_as_blocked (entry_ptr, thread_p, tran_index, res_ptr, lock);
-		      if (is_instant_duration
-			  /* && lock_compat (lock, NULL_LOCK) == true */ )
-			{
-			  entry_ptr->instant_lock_count++;
-			  assert (entry_ptr->instant_lock_count > 0);
-			}
 		    }
 		  (void) lock_set_error_for_timeout (thread_p, entry_ptr);
 
@@ -4009,11 +4047,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	    }
 	  /* initialize the lock entry as blocked state */
 	  lock_initialize_entry_as_blocked (entry_ptr, thread_p, tran_index, res_ptr, lock);
-	  if (is_instant_duration)
-	    {
-	      entry_ptr->instant_lock_count++;
-	      assert (entry_ptr->instant_lock_count > 0);
-	    }
 
 	  if (ahead_of_waiters)
 	    {
@@ -4063,22 +4096,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	    {
 	      /* a request with either a less exclusive or an equal mode of lock */
 	      entry_ptr->count += 1;
-	      if (is_instant_duration)
-		{
-		  compat1 = lock_compat (lock, entry_ptr->granted_mode);
-		  if ((lock >= IX_LOCK && (entry_ptr->instant_lock_count == 0 && entry_ptr->granted_mode >= IX_LOCK))
-		      && compat1 != LOCK_COMPAT_YES)
-		    {
-		      /* if the lock is already acquired with incompatible mode by current transaction, remove instant instance
-		       * locks */
-		      lock_stop_instant_lock_mode (thread_p, tran_index, false);
-		    }
-		  else
-		    {
-		      entry_ptr->instant_lock_count++;
-		      assert (entry_ptr->instant_lock_count > 0);
-		    }
-		}
 
 	      if (is_res_mutex_locked)
 		{
@@ -4116,11 +4133,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	    {
 	      entry_ptr->granted_mode = new_mode;
 	      entry_ptr->count += 1;
-	      if (is_instant_duration)
-		{
-		  entry_ptr->instant_lock_count++;
-		  assert (entry_ptr->instant_lock_count > 0);
-		}
 
 	      assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
 	      res_ptr->total_holders_mode = lock_conv (lock, res_ptr->total_holders_mode);
@@ -4203,11 +4215,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 
 	  entry_ptr->blocked_mode = new_mode;
 	  entry_ptr->count += 1;
-	  if (is_instant_duration)
-	    {
-	      entry_ptr->instant_lock_count++;
-	      assert (entry_ptr->instant_lock_count > 0);
-	    }
 
 	  entry_ptr->thrd_entry = thread_p;
 
@@ -4365,7 +4372,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
       && lock_conv (lock, (*entry_addr_ptr)->escalated_from) != (*entry_addr_ptr)->escalated_from)
     {
       /* at the grant, so no caller of a class lock can skip it; a mode the lowered lock covers keeps the record */
-      lock_withdraw_escalation_record (&lk_Gl.tran_lock_table[tran_index], *entry_addr_ptr);
+      lock_withdraw_escalation_record (thread_p, &lk_Gl.tran_lock_table[tran_index], *entry_addr_ptr);
     }
 
   return ret_val;
@@ -4431,12 +4438,6 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
   if (release_flag == false)
     {
       entry_ptr->count--;
-      if (lock_is_instant_lock_mode (tran_index))
-	{
-	  entry_ptr->instant_lock_count--;
-	  assert (entry_ptr->instant_lock_count >= 0);
-	}
-
       if (entry_ptr->blocked_mode == NULL_LOCK && entry_ptr->count > 0)
 	{
 	  return;
@@ -5897,8 +5898,10 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	    {
 	      RECDES recdes = RECDES_INITIALIZER;
 
-	      if (heap_get_visible_version (thread_p, &res_ptr->key.oid, &res_ptr->key.class_oid, &recdes, &scan_cache,
-					    PEEK, NULL_CHN) == S_SUCCESS)
+	      /* only the MVCC header is read from the record (CBRD-26847) */
+	      if (heap_get_visible_version
+		  (thread_p, &res_ptr->key.oid, &res_ptr->key.class_oid, &recdes, &scan_cache, PEEK,
+		   NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES) == S_SUCCESS)
 		{
 		  MVCC_REC_HEADER mvcc_rec_header;
 		  if (or_mvcc_get_header (&recdes, &mvcc_rec_header) == NO_ERROR)
@@ -6167,6 +6170,10 @@ lock_finalize_tran_lock_table (void)
 	  tran_lock = &lk_Gl.tran_lock_table[i];
 	  pthread_mutex_destroy (&tran_lock->hold_mutex);
 	  pthread_mutex_destroy (&tran_lock->non2pl_mutex);
+	  if (tran_lock->nested_transient != NULL)
+	    {
+	      free_and_init (tran_lock->nested_transient);
+	    }
 	  while (tran_lock->lk_entry_pool != NULL)
 	    {
 	      LK_ENTRY *entry = tran_lock->lk_entry_pool;
@@ -6599,10 +6606,9 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
 	}
 
       /* case 3 : resource type is LOCK_RESOURCE_INSTANCE */
-      if (lock_is_class_lock_escalated (old_class_lock, lock) == true)
+      /* a transient request needs no class lock after its statement: it is given back, or its row carries our stamp */
+      if (lock_grant_row_by_class_lock (thread_p, tran_index, class_entry, old_class_lock, lock, !mark_transient))
 	{			/* already granted on the class level */
-	  /* if incompatible old class lock with requested lock, remove instant class locks */
-	  lock_stop_instant_lock_mode (thread_p, tran_index, false);
 	  granted = LK_GRANTED;
 	  goto end;
 	}
@@ -6612,10 +6618,18 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
        * given. */
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (oid, class_oid), lock,
-					   wait_msecs, &inst_entry, class_entry, ahead_of_waiters);
+					   wait_msecs, &inst_entry, class_entry, ahead_of_waiters, !mark_transient);
       if (mark_transient && granted == LK_GRANTED && inst_entry != NULL
 	  && inst_entry->transient_count < inst_entry->count)
 	{
+	  if (lk_Gl.tran_lock_table[tran_index].transient_scope > 1)
+	    {
+	      /* kept by OID: only an escalation to a class X frees an X entry, and that class lock covers any later
+	       * request on the object, so no other request can own an entry of the same OID by the scope end */
+	      assert (lock == X_LOCK);
+	      lock_count_nested_transient (&lk_Gl.tran_lock_table[tran_index], oid);
+	      goto end;
+	    }
 	  /* counted, not flagged: a repeated request only raises count, and the release gives back exactly what was
 	   * taken.  Never past count -- a request an earlier statement took is not this statement's to give back. */
 	  if (inst_entry->transient_count == 0 && inst_entry->count > 1)
@@ -6630,13 +6644,6 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
     }
 
 end:
-  if (granted == LK_GRANTED && !mark_transient && class_oid != NULL && !OID_IS_ROOTOID (class_oid)
-      && lk_Gl.tran_lock_table[tran_index].escalated_count > 0)
-    {
-      /* a row request the statement keeps (nested statement, FK check) has no entry under the escalated class */
-      lock_withdraw_escalation_record (&lk_Gl.tran_lock_table[tran_index], class_entry);
-    }
-
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
@@ -6713,8 +6720,8 @@ lock_object_ahead_of_waiters (THREAD_ENTRY * thread_p, const OID * oid, const OI
  *   return: true when this is the outermost such statement
  *   thread_p(in): thread entry
  *
- * Note: the counts live on the transaction, so a nested statement must not give them back: only the outermost
- *	statement takes transient locks, and one nested in it keeps its own to commit.
+ * Note: the counts live on the transaction and are the outermost statement's.  A statement nested in it that takes
+ *	transient locks has them kept apart, and its own scope end gives back or keeps only those.
  */
 bool
 lock_transient_scope_start (THREAD_ENTRY * thread_p)
@@ -6748,7 +6755,7 @@ lock_transient_scope_is_outermost (THREAD_ENTRY * thread_p)
 }
 
 /*
- * lock_transient_scope_end () - Leave such a statement, giving its locks back if it was the outermost
+ * lock_transient_scope_end () - Leave such a statement, giving back its own transient locks or keeping them to commit
  *   return: void
  *   thread_p(in): thread entry
  *   release(in): give the counted requests back and lower the class locks escalations raised, not only forget both
@@ -6762,11 +6769,16 @@ lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release)
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
 
   assert (tran_lock->transient_scope > 0);
-  if (tran_lock->transient_scope > 0 && --tran_lock->transient_scope > 0)
+  if (tran_lock->transient_scope > 1)
     {
-      /* an outer statement is still running and the counts are its to give back */
+      /* an outer statement is still running and the counts are its to give back; this one ends only its own */
+      lock_end_nested_transient (thread_p, tran_lock, release);
+      tran_lock->transient_scope--;
       return;
     }
+  tran_lock->transient_scope = 0;
+  assert (tran_lock->nested_transient_count == 0);
+  tran_lock->nested_transient_count = 0;
 
   if (release)
     {
@@ -6800,6 +6812,19 @@ lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OI
   int tran_index;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (lk_Gl.tran_lock_table[tran_index].transient_scope > 1)
+    {
+      if (lock_uncount_nested_transient (&lk_Gl.tran_lock_table[tran_index], oid))
+	{
+	  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
+	  if (entry_ptr != NULL)
+	    {
+	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
+	    }
+	}
+      return;
+    }
+
   entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
   if (entry_ptr == NULL || entry_ptr->transient_count == 0)
     {
@@ -6897,6 +6922,94 @@ lock_forget_transient_object_locks (THREAD_ENTRY * thread_p)
   tran_lock->transient_total = 0;
 #endif /* !SERVER_MODE */
 }
+
+#if defined (SERVER_MODE)
+/*
+ * lock_count_nested_transient () - Count a transient request of a statement nested in another as its own
+ *   return: void
+ *   tran_lock(in/out): the transaction's lock list
+ *   oid(in): the object
+ *
+ * Note: without memory the request is not counted and stays to commit.
+ */
+static void
+lock_count_nested_transient (LK_TRAN_LOCK * tran_lock, const OID * oid)
+{
+  LK_NESTED_TRANSIENT *grown;
+  int size;
+
+  if (tran_lock->nested_transient_count == tran_lock->nested_transient_size)
+    {
+      size = MAX (16, 2 * tran_lock->nested_transient_size);
+      grown = (LK_NESTED_TRANSIENT *) realloc (tran_lock->nested_transient, size * sizeof (LK_NESTED_TRANSIENT));
+      if (grown == NULL)
+	{
+	  return;
+	}
+      tran_lock->nested_transient = grown;
+      tran_lock->nested_transient_size = size;
+    }
+  tran_lock->nested_transient[tran_lock->nested_transient_count].oid = *oid;
+  tran_lock->nested_transient[tran_lock->nested_transient_count].scope = tran_lock->transient_scope;
+  tran_lock->nested_transient_count++;
+}
+
+/*
+ * lock_uncount_nested_transient () - Drop one request the current nested scope counted on the object
+ *   return: whether there was one
+ *   tran_lock(in/out): the transaction's lock list
+ *   oid(in): the object
+ */
+static bool
+lock_uncount_nested_transient (LK_TRAN_LOCK * tran_lock, const OID * oid)
+{
+  LK_NESTED_TRANSIENT *nested = tran_lock->nested_transient;
+  int last = tran_lock->nested_transient_count - 1;
+  int i;
+
+  for (i = last; i >= 0 && nested[i].scope >= tran_lock->transient_scope; i--)
+    {
+      if (OID_EQ (&nested[i].oid, oid))
+	{
+	  nested[i] = nested[last];
+	  tran_lock->nested_transient_count--;
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * lock_end_nested_transient () - Give back, or keep to commit, the requests the current nested scope counted
+ *   return: void
+ *   thread_p(in): thread entry
+ *   tran_lock(in/out): the transaction's lock list
+ *   release(in): give the requests back, rather than only forgetting them
+ */
+static void
+lock_end_nested_transient (THREAD_ENTRY * thread_p, LK_TRAN_LOCK * tran_lock, bool release)
+{
+  LK_NESTED_TRANSIENT *nested = tran_lock->nested_transient;
+  LK_ENTRY *entry_ptr;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  while (tran_lock->nested_transient_count > 0
+	 && nested[tran_lock->nested_transient_count - 1].scope >= tran_lock->transient_scope)
+    {
+      tran_lock->nested_transient_count--;
+      if (release)
+	{
+	  /* gone when an escalation reclaimed the class's instance locks */
+	  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, &nested[tran_lock->nested_transient_count].oid,
+						 false);
+	  if (entry_ptr != NULL)
+	    {
+	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
+	    }
+	}
+    }
+}
+#endif /* SERVER_MODE */
 
 
 /*
@@ -8263,6 +8376,39 @@ lock_is_held_only_by_writers (THREAD_ENTRY * thread_p, const OID * oid, const OI
   writers_only = lock_res_held_only_by_writers (res_ptr);
   pthread_mutex_unlock (&res_ptr->res_mutex);
   return writers_only;
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_class_has_other_writer () - does another transaction hold IX or a stronger lock on the class?
+ *
+ * Note: a writer keeps its class lock until it ends, so with no such holder no instance of the class has a change
+ *	 that another transaction has not committed.
+ */
+bool
+lock_class_has_other_writer (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+#if !defined (SERVER_MODE)
+  return false;
+#else /* !SERVER_MODE */
+  LK_RES_KEY search_key = lock_create_search_key (class_oid, oid_Root_class_oid);
+  LK_RES *res_ptr;
+  LK_ENTRY *holder;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  bool found = false;
+
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      return false;
+    }
+  /* find() leaves the resource mutex locked. */
+  for (holder = res_ptr->holder; holder != NULL && !found; holder = holder->next)
+    {
+      found = (holder->tran_index != tran_index && holder->granted_mode >= IX_LOCK);
+    }
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  return found;
 #endif /* !SERVER_MODE */
 }
 
@@ -9946,34 +10092,6 @@ lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock)
 }
 
 /*
- * lock_is_class_lock_escalated - check if class lock is escalated
- *
- * return: true if class lock is escalated, false otherwise
- *
- *   class_lock(in): class lock
- *   lock_escalation(in): lock escalation
- */
-static bool
-lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation)
-{
-#if !defined (SERVER_MODE)
-  return false;
-#else
-  if (class_lock < lock_escalation && !IS_WRITE_EXCLUSIVE_LOCK (class_lock))
-    {
-      return false;
-    }
-
-  if (class_lock == IX_LOCK && lock_escalation == S_LOCK)
-    {
-      return false;
-    }
-
-  return true;
-#endif
-}
-
-/*
  * lock_get_number_object_locks - Number of object lock entries
  *
  * return:
@@ -9989,123 +10107,6 @@ lock_get_number_object_locks (void)
 #else
   return (unsigned int) lk_Gl.m_obj_hash_table.get_element_count ();
 #endif
-}
-
-/*
- * lock_start_instant_lock_mode -
- *
- * return:
- *
- *   tran_index(in):
- */
-void
-lock_start_instant_lock_mode (int tran_index)
-{
-#if !defined (SERVER_MODE)
-  return;
-#else /* !SERVER_MODE */
-  LK_TRAN_LOCK *tran_lock;
-
-  tran_lock = &lk_Gl.tran_lock_table[tran_index];
-  tran_lock->is_instant_duration = true;
-  return;
-#endif /* !SERVER_MODE */
-}
-
-/*
- * lock_stop_instant_lock_mode -
- *
- * return:
- *
- *   tran_index(in):
- *   need_unlock(in):
- */
-void
-lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index, bool need_unlock)
-{
-#if !defined (SERVER_MODE)
-  return;
-#else /* !SERVER_MODE */
-  LK_TRAN_LOCK *tran_lock;
-  LK_ENTRY *entry_ptr, *next_ptr;
-  int count;
-
-  tran_lock = &lk_Gl.tran_lock_table[tran_index];
-
-  if (!tran_lock->is_instant_duration)
-    {
-      /* if already stopped, return */
-      return;
-    }
-
-  /* remove instance locks */
-  entry_ptr = tran_lock->inst_hold_list;
-  while (entry_ptr != NULL)
-    {
-      assert (tran_index == entry_ptr->tran_index);
-
-      next_ptr = entry_ptr->tran_next;
-      count = entry_ptr->instant_lock_count;
-      assert_release (count >= 0);
-      if (need_unlock)
-	{
-	  assert_release (count >= 0);
-	  while (count > 0)
-	    {
-	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, true);
-	      count--;
-	    }
-	}
-      entry_ptr->instant_lock_count = 0;
-      entry_ptr = next_ptr;
-    }
-
-  /* remove class locks */
-  entry_ptr = tran_lock->class_hold_list;
-  while (entry_ptr != NULL)
-    {
-      assert (tran_index == entry_ptr->tran_index);
-
-      next_ptr = entry_ptr->tran_next;
-      count = entry_ptr->instant_lock_count;
-      assert_release (count >= 0);
-      if (need_unlock)
-	{
-	  assert_release (count >= 0);
-	  while (count > 0)
-	    {
-	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, true);
-	      count--;
-	    }
-	}
-      entry_ptr->instant_lock_count = 0;
-      entry_ptr = next_ptr;
-    }
-
-  /* remove root class lock */
-  entry_ptr = tran_lock->root_class_hold;
-  if (entry_ptr != NULL)
-    {
-      assert (tran_index == entry_ptr->tran_index);
-
-      count = entry_ptr->instant_lock_count;
-      assert_release (count >= 0);
-      if (need_unlock)
-	{
-	  assert_release (count >= 0);
-	  while (count > 0)
-	    {
-	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, true);
-	      count--;
-	    }
-	}
-      entry_ptr->instant_lock_count = 0;
-    }
-
-  /* change locking phase as normal */
-  tran_lock->is_instant_duration = false;
-  return;
-#endif /* !SERVER_MODE */
 }
 
 /* lock_clear_deadlock_victim:
@@ -10134,26 +10135,6 @@ lock_clear_deadlock_victim (int tran_index)
       // reset its tran_abort_reason
       lock_set_tran_abort_reason (tran_index, TRAN_NORMAL);
     }
-#endif /* !SERVER_MODE */
-}
-
-/*
- * lock_is_instant_lock_mode -
- *
- * return:
- *
- *   tran_index(in):
- */
-bool
-lock_is_instant_lock_mode (int tran_index)
-{
-#if !defined (SERVER_MODE)
-  return false;
-#else /* !SERVER_MODE */
-  LK_TRAN_LOCK *tran_lock;
-
-  tran_lock = &lk_Gl.tran_lock_table[tran_index];
-  return tran_lock->is_instant_duration;
 #endif /* !SERVER_MODE */
 }
 
