@@ -49,7 +49,7 @@ namespace parallel_query
     public:
       explicit thread_safe_queue (std::size_t capacity = 1024);
       ~thread_safe_queue();
-      void push (const T &value, const interrupt &interrupt_check = interrupt());
+      bool push (const T &value, const interrupt &interrupt_check = interrupt());
       bool pop (T &value, const interrupt &interrupt_check = interrupt());
       bool try_push (const T &value);
       bool try_pop (T &value);
@@ -72,7 +72,7 @@ namespace parallel_query
 
       bool try_push_fast (const T &value);
       bool try_pop_fast (T &value);
-      void push_slow (const T &value, const interrupt &interrupt_check);
+      bool push_slow (const T &value, const interrupt &interrupt_check);
       bool pop_slow (T &value, const interrupt &interrupt_check);
   };
 }
