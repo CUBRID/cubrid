@@ -1004,11 +1004,12 @@ struct scan_bitmap_worker
   std::vector<std::uint32_t> tbl_start;	/* by partition: where its entries of tbl begin in tbl_order */
   std::vector<std::uint16_t> tbl_order;	/* tbl\'s entries grouped by partition, once the index step is over */
   QFILE_LIST_ID *over;    /* OIDs whose slot is beyond the width */
+  bool over_closed;		/* the index step ended and closed it: this worker does not touch it again */
   bool scans_over;		/* heap step: this worker reads the merged list */
   scan_bitmap_table heap_tbl;  /* heap step: the partition, or the part of it, being read */
   scan_bitmap_writer sub;      /* heap step: the parts of a partition wider than a table */
   std::vector<std::uint32_t> order;       /* heap step: heap_tbl's entries by page */
-  scan_bitmap_worker () : switched (false), over (nullptr), scans_over (false) {}
+  scan_bitmap_worker () : switched (false), over (nullptr), over_closed (false), scans_over (false) {}
 };
 
 

@@ -7541,6 +7541,7 @@ scan_bitmap_marks::end_marks (THREAD_ENTRY *thread_p, scan_bitmap_worker *w)
     {
       /* the list's last page is fixed by this thread */
       qfile_close_list (thread_p, w->over);
+      w->over_closed = true;
     }
   /* the table's entries by partition, so that a heap worker reads those of its partition only */
   w->tbl_start.assign (m_bm_nparts + 1, 0);
@@ -7737,8 +7738,10 @@ scan_bitmap_marks::next_over (THREAD_ENTRY *thread_p, OID *oid)
 void
 scan_bitmap_marks::close_worker (THREAD_ENTRY *thread_p, scan_bitmap_worker *w)
 {
-  if (w->over != nullptr)
+  if (w->over != nullptr && !w->over_closed)
     {
+      /* a worker stopped inside its index step: after end_marks () the list is the merging worker's, which appends
+       * to it and sorts it while this worker ends */
       qfile_close_list (thread_p, w->over);
     }
   if (w->scans_over)
@@ -7778,16 +7781,13 @@ scan_bitmap_marks::init (THREAD_ENTRY *thread_p, const VFID *heap_vfid, int nwor
       const size_t nsects = (size_t) collector.nsects;
       /* a table and its buckets take the memory of an index scan's key buffer; an entry is found by a 16-bit place */
       const size_t memory = (size_t) MAX (prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES), 1) * DB_PAGESIZE;
-      size_t buckets = 256;
+      size_t buckets;
       size_t units = 1;
 
-      while (buckets < 2 * (memory / 96) && buckets < 65536)
-	{
-	  buckets *= 2;
-	}
+      static_assert (sizeof (scan_bitmap_entry) == BITMAP_HEAP_ENTRY_SIZE, "the optimizer prices a table by this size");
+      BITMAP_HEAP_TABLE_BUCKETS (buckets, memory);
       m_bm_buckets = (int) buckets;
-      m_bm_cap = (int) ((memory - MIN (memory, buckets * sizeof (std::uint16_t))) / sizeof (scan_bitmap_entry));
-      m_bm_cap = MAX (MIN (m_bm_cap, m_bm_buckets / 2), DISK_SECTOR_NPAGES);
+      m_bm_cap = BITMAP_HEAP_TABLE_ENTRIES (memory, buckets);
 
       m_bm_sectors.assign (collector.partsect_ftab, collector.partsect_ftab + nsects);
       std::sort (m_bm_sectors.begin (), m_bm_sectors.end (),

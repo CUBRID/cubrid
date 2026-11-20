@@ -953,6 +953,26 @@ typedef enum
 } ACCESS_SPEC_FLAG;
 
 #define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)
+
+/* The table of one worker of a bitmap heap scan and its buckets take the memory of an index scan's key buffer; an
+ * entry (a page number and its slot bits) is found by a 16-bit place. The scan sizes its tables with these
+ * (scan_bitmap_marks::init ()), and the optimizer prices the records of a scan whose pages do not fit them
+ * (qo_plan_decide_bitmap_heap_scan ()). */
+#define BITMAP_HEAP_ENTRY_SIZE		88
+#define BITMAP_HEAP_MAX_BUCKETS		65536
+#define BITMAP_HEAP_TABLE_BUCKETS(buckets, memory) \
+  do \
+    { \
+      (buckets) = 256; \
+      while ((size_t) (buckets) < 2 * ((size_t) (memory) / 96) && (buckets) < BITMAP_HEAP_MAX_BUCKETS) \
+	{ \
+	  (buckets) *= 2; \
+	} \
+    } \
+  while (0)
+#define BITMAP_HEAP_TABLE_ENTRIES(memory, buckets) \
+  MAX (MIN ((int) (((size_t) (memory) - MIN ((size_t) (memory), (size_t) (buckets) * sizeof (unsigned short))) \
+		   / BITMAP_HEAP_ENTRY_SIZE), (int) (buckets) / 2), DISK_SECTOR_NPAGES)
 #define ACCESS_SPEC_SET_FLAG(spec, f)		(ACCESS_SPEC_FLAGS(spec) |= (int) (f))
 #define ACCESS_SPEC_UNSET_FLAG(spec, f)		(ACCESS_SPEC_FLAGS(spec) &= (int) ~(f))
 

@@ -3980,6 +3980,7 @@ qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp, bool key_order)
   PT_NODE *spec;
   BITSET_ITERATOR iter;
   double heap_rows, opages, pages, tables, lookup_cost, bitmap_cost;
+  size_t memory, buckets;
   int t, workers;
 
   if (planp->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN || planp->plan_un.scan.index == NULL)
@@ -4019,9 +4020,10 @@ qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp, bool key_order)
   opages = MAX (1.0, (double) QO_NODE_TCARD (nodep));
   /* the distinct pages heap_rows rows lie on (Mackert and Lohman's estimate without a cache) */
   pages = MIN (opages, (2.0 * opages * heap_rows) / (2.0 * opages + heap_rows));
-  /* page entries the workers' tables hold: a table takes an index scan's key buffer, 92 bytes an entry */
-  tables =
-    (double) workers *(double) prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES) * (double) DB_PAGESIZE / 92.0;
+  /* page entries the workers' tables hold, as the scan sizes them from the server's index scan key buffer */
+  memory = (size_t) MAX (prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES), 1) * DB_PAGESIZE;
+  BITMAP_HEAP_TABLE_BUCKETS (buckets, memory);
+  tables = (double) workers *(double) BITMAP_HEAP_TABLE_ENTRIES (memory, buckets);
 
   /* the lookup in key order as qo_iscan_cost () prices it: the pages its rows touch, each a random read, and a row */
   lookup_cost = MAX (1.0, qo_mackert_lohman_pages (opages, heap_rows)) * QO_COST_RANDOM_PAGE
