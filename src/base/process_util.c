@@ -34,6 +34,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/prctl.h>
 #include <signal.h>
 #endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -236,6 +237,7 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
 }
 #else
   int pid, rc;
+  pid_t parent_pid = getpid ();
 
   if (exit_status != NULL)
     {
@@ -269,6 +271,17 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
   if (pid == 0)
     {
       FILE *fp;
+
+      if (prctl (PR_SET_PDEATHSIG, SIGKILL) != 0)
+	{
+	  _exit (EXIT_FAILURE);
+	}
+
+      /* PR_SET_PDEATHSIG does not signal a child whose parent already exited. */
+      if (getppid () != parent_pid)
+	{
+	  _exit (EXIT_SUCCESS);
+	}
 
       if (stdin_file != NULL)
 	{
