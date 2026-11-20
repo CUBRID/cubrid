@@ -5059,7 +5059,9 @@ static bool qexec_hash_gby_selectivity_abandons (AGGREGATE_HASH_STATE state, int
  * their key's partition (the keys' hash split as the hash merge splits the leftovers, qexec_gby_merge_part_of (),
  * level 1) instead of one unsorted list and one partial list.  Once the input ends, each partition is folded by
  * itself, a table at a time (qexec_gby_hash_merge ()): a group is in one partition only, so the leftovers need
- * neither the sort nor the merge's own split of them.  Only where the order of the groups does not reach the result.
+ * neither the sort nor the merge's own split of them.  Where the order of the groups reaches the result, a partition's
+ * groups are collapsed to one first tuple and one partial entry each, and the sort takes those
+ * (qexec_gby_merge_leaf_collapse ()) instead of every entry the table let go.
  *
  * A table that stops hashing (a key that looks unique: qexec_hash_gby_abandon_cutoff ()) goes on as without the
  * partitions: what it let go so far joins the unsorted and the partial lists, and those and every later row go to
@@ -5091,8 +5093,8 @@ static bool qexec_gby_aggs_follow_row_order (AGGREGATE_TYPE * agg_list);
 static bool qexec_gby_order_reaches_result (const XASL_NODE * xasl);
 static void qexec_gby_spill_free (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * ctx);
 
-/* a hash GROUP BY of the row path (not a parallel worker's) keeps its leftovers by partition when the merge folds
- * them unsorted (qexec_gby_hash_merge ()): what the merge refuses sends them to the sort */
+/* a hash GROUP BY of the row path (not a parallel worker's) keeps its leftovers by partition where the merge can fold
+ * them (qexec_gby_hash_merge ()): what the merge refuses sends them to the sort */
 static int
 qexec_gby_spill_init (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
@@ -5102,7 +5104,7 @@ qexec_gby_spill_init (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   assert (ctx != NULL && ctx->spill == NULL);
   if (proc->g_with_rollup || proc->g_first_tuple == XASL_G_FIRST_TUPLE_OUTPUT
       || XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG) || qexec_gby_aggs_follow_row_order (proc->g_agg_list)
-      || !qexec_gby_keys_hash_as_compared (proc) || qexec_gby_order_reaches_result (xasl))
+      || !qexec_gby_keys_hash_as_compared (proc))
     {
       return NO_ERROR;
     }
