@@ -9116,6 +9116,33 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_
 
   /* get transaction table index */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  /* before the entrance, so that a call that releases nothing does not wait for an owner asleep */
+  if (force == false)
+    {
+      if (lock != S_LOCK)
+	{
+	  assert (lock != NULL_LOCK);
+	  /* These will not be released. */
+	  return;
+	}
+
+      isolation = logtb_find_isolation (tran_index);
+      switch (isolation)
+	{
+	case TRAN_SERIALIZABLE:
+	case TRAN_REPEATABLE_READ:
+	  return;		/* nothing to do */
+
+	case TRAN_READ_COMMITTED:
+	  break;
+
+	default:		/* TRAN_UNKNOWN_ISOLATION */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNKNOWN_ISOLATION, 2, isolation, tran_index);
+	  return;
+	}
+    }
+
   LK_RES_KEY row_key;
   LK_PENDING_RELEASE release;
   lock_pending_release_init (&release, LK_PENDING_UNLOCK, oid, class_oid, lock, force);
@@ -9147,38 +9174,17 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_
       return;
     }
 
-  /* force != true */
-  if (lock != S_LOCK)
-    {
-      assert (lock != NULL_LOCK);
-      /* These will not be released. */
-      return;
-    }
-
-  isolation = logtb_find_isolation (tran_index);
-  switch (isolation)
-    {
-    case TRAN_SERIALIZABLE:
-    case TRAN_REPEATABLE_READ:
-      return;			/* nothing to do */
-
-    case TRAN_READ_COMMITTED:
+  /* force != true: READ COMMITTED */
 #if defined(ENABLE_SYSTEMTAP)
-      CUBRID_LOCK_RELEASE_START (oid, class_oid, lock);
+  CUBRID_LOCK_RELEASE_START (oid, class_oid, lock);
 #endif /* ENABLE_SYSTEMTAP */
 
-      /* The intentional lock on the higher lock granule must be kept. */
-      lock_unlock_object_by_isolation (thread_p, tran_index, isolation, class_oid, oid);
+  /* The intentional lock on the higher lock granule must be kept. */
+  lock_unlock_object_by_isolation (thread_p, tran_index, TRAN_READ_COMMITTED, class_oid, oid);
 
 #if defined(ENABLE_SYSTEMTAP)
-      CUBRID_LOCK_RELEASE_END (oid, class_oid, lock);
+  CUBRID_LOCK_RELEASE_END (oid, class_oid, lock);
 #endif /* ENABLE_SYSTEMTAP */
-      break;
-
-    default:			/* TRAN_UNKNOWN_ISOLATION */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNKNOWN_ISOLATION, 2, isolation, tran_index);
-      break;
-    }
 
   return;
 #endif /* !SERVER_MODE */
@@ -9212,7 +9218,6 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE);
   isolation = logtb_find_isolation (tran_index);
 
   if (isolation == TRAN_SERIALIZABLE || isolation == TRAN_REPEATABLE_READ)
@@ -9234,6 +9239,7 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
       return;			/* Don't release the lock */
     }
 
+  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE);
   for (i = 0; i < lockset->num_reqobjs_processed; i++)
     {
       oid = &lockset->objects[i].oid;
@@ -9287,9 +9293,7 @@ lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE);
   isolation = logtb_find_isolation (tran_index);
-
   switch (isolation)
     {
     case TRAN_SERIALIZABLE:
@@ -9297,19 +9301,21 @@ lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
       return;			/* nothing to do */
 
     case TRAN_READ_COMMITTED:
-      for (i = 0; i < lockhint->num_classes; i++)
-	{
-	  if (OID_ISNULL (&lockhint->classes[i].oid) || lockhint->classes[i].lock == NULL_LOCK)
-	    {
-	      continue;
-	    }
-	  lock_unlock_inst_locks_of_class_by_isolation (thread_p, tran_index, isolation, &lockhint->classes[i].oid);
-	}
-      return;
+      break;
 
     default:			/* TRAN_UNKNOWN_ISOLATION */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNKNOWN_ISOLATION, 2, isolation, tran_index);
       return;
+    }
+
+  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE);
+  for (i = 0; i < lockhint->num_classes; i++)
+    {
+      if (OID_ISNULL (&lockhint->classes[i].oid) || lockhint->classes[i].lock == NULL_LOCK)
+	{
+	  continue;
+	}
+      lock_unlock_inst_locks_of_class_by_isolation (thread_p, tran_index, isolation, &lockhint->classes[i].oid);
     }
 #endif /* !SERVER_MODE */
 }
@@ -10138,13 +10144,13 @@ lock_notify_isolation_incons (THREAD_ENTRY * thread_p, bool (*fun) (const OID * 
   int rv;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE);
   isolation = logtb_find_isolation (tran_index);
   if (isolation == TRAN_REPEATABLE_READ || isolation == TRAN_SERIALIZABLE)
     {
       return;			/* Nothing was released */
     }
 
+  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   rv = pthread_mutex_lock (&tran_lock->non2pl_mutex);
 
