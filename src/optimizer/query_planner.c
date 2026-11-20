@@ -229,6 +229,7 @@ struct ndv_info
   double total_ndv;		/* product of the NDVs seen so far, never above max_ndv */
   double max_ndv;		/* the product saturates here: the caller takes no more than this */
   bool has_ndv;			/* true once a column with a known NDV is seen */
+  bool has_unknown;		/* true once a column without a known NDV is seen */
   BITSET seg_bitset;
 };
 typedef struct ndv_info NDV_INFO;
@@ -1613,14 +1614,16 @@ qo_get_group_ndv (QO_PLAN * plan, SORT_TYPE sort_type, double max_ndv)
   ndv_info.total_ndv = 1;
   ndv_info.max_ndv = max_ndv;
   ndv_info.has_ndv = false;
+  ndv_info.has_unknown = false;
   bitset_init (&ndv_info.seg_bitset, env);
   /* The NDV is simply extracted from column without considering the function, etc. and product of NDV of each column */
   parser_walk_tree (parser, nodes, qo_get_col_product_ndv, &ndv_info, NULL, NULL);
   bitset_delset (&ndv_info.seg_bitset);
 
-  if (!ndv_info.has_ndv)
+  if (!ndv_info.has_ndv || (ndv_info.has_unknown && ndv_info.total_ndv <= 1))
     {
-      /* a product of 1 does not tell this: a column that holds a single value makes one group */
+      /* a product of 1 does not tell this: columns that hold a single value make one group, but not when another
+       * column may hold any number of values */
       return -1;
     }
 
@@ -17379,7 +17382,8 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
 
 /*
  * qo_index_cardinality_with_dedup () - Determine if the attribute has an index with duplicate column checking
- *   return: cardinality of the index if the index exists, otherwise return 0
+ *   return: cardinality of the index if the index exists, 0 when it is not known,
+ *           -1 for a column already seen in seg_bitset
  *   env(in): optimizer environment
  *   attr(in): pt node for the attribute for which we want the index cardinality
  *   seg_bitset(in): segment bitset for checking if there are duplicate columns
@@ -17416,7 +17420,7 @@ qo_index_cardinality_with_dedup (QO_ENV * env, PT_NODE * attr, BITSET * seg_bits
     {
       if (BITSET_MEMBER (*seg_bitset, QO_SEG_IDX (segp)))
 	{
-	  return 0;
+	  return -1;
 	}
       else
 	{
@@ -18260,6 +18264,10 @@ qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int 
 	    {
 	      ndv_info->total_ndv *= ndv;
 	    }
+	}
+      else if (ndv == 0)
+	{
+	  ndv_info->has_unknown = true;
 	}
     }
 
