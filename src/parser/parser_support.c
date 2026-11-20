@@ -12938,6 +12938,9 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
   int error = NO_ERROR;
   int upd_cls_cnt = 0;
   int remote = 0, local = 0;
+  bool has_remote_spec = false;
+  bool *counted;
+  int i;
 
   PT_ASSIGNMENTS_HELPER ea;
   PT_NODE *node = NULL, *assignments, *spec;
@@ -12948,10 +12951,22 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
   while (spec)
     {
       upd_cls_cnt++;
+      if (spec->info.spec.remote_server_name)
+	{
+	  has_remote_spec = true;
+	}
       spec = spec->next;
     }
 
-  spec = statement->info.update.spec;
+  /* local_upd and remote_upd count target specs, not assignments: a spec counts once however many of its
+   * columns are assigned, the way DELETE counts its target classes. The dblink sinks read remote_upd == 1
+   * as "a single remote target". counted[i] is set once the i-th spec has been counted. */
+  counted = (bool *) parser_alloc (parser, upd_cls_cnt * sizeof (bool));
+  if (counted == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_FAILED;
+    }
 
   pt_init_assignments_helper (parser, &ea, assignments);
 
@@ -12961,9 +12976,11 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
       char *tbl_alias = NULL;
       char *lhs_name;
       bool found = false;
+      PT_NODE *target = NULL;	/* the spec this assignment updates */
+      int target_pos = 0;
 
       lhs_name = (char *) ea.lhs->info.name.original;
-      while (spec && !found)
+      for (spec = statement->info.update.spec, i = 0; spec && !found; spec = spec->next, i++)
 	{
 	  if (spec->info.spec.entity_name)
 	    {
@@ -12977,17 +12994,86 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
 		  || upd_cls_cnt == 1)
 		{
 		  found = true;
-		  if (spec->info.spec.remote_server_name)
-		    {
-		      remote++;
-		    }
-		  else
-		    {
-		      local++;
-		    }
+		  target = spec;
+		  target_pos = i;
 		}
 	    }
-	  spec = spec->next;
+	}
+
+      if (!found && has_remote_spec)
+	{
+	  /* unqualified column, before name binding (no spec_id to ask): a name some
+	   * local class owns is a local update; only a name no local spec knows is
+	   * assumed to target the remote table, whose columns are not fetched yet.
+	   * This only routes the rewrite - a name both sides own still fails at name
+	   * binding as ambiguous, like the native path. */
+	  er_stack_push ();
+	  for (spec = statement->info.update.spec, i = 0; spec && !found; spec = spec->next, i++)
+	    {
+	      /* DB_MAX_IDENTIFIER_LENGTH is the budget for the qualified form already:
+	       * DB_MAX_CLASS_LENGTH is derived from it as owner + '.' + class */
+	      char qualified_name[DB_MAX_IDENTIFIER_LENGTH];
+	      const char *owner, *cls_name;
+
+	      if (spec->info.spec.remote_server_name != NULL || spec->info.spec.entity_name == NULL
+		  || spec->info.spec.entity_name->node_type != PT_NAME)
+		{
+		  continue;
+		}
+
+	      owner = spec->info.spec.entity_name->info.name.resolved;
+	      cls_name = spec->info.spec.entity_name->info.name.original;
+
+	      if (owner != NULL && owner[0] != '\0')
+		{
+		  /* the owner is still in resolved, not in original: this rewrite runs before
+		   * name binding.  db_find_class () resolves a bare name in the connected user's
+		   * schema only, so another owner's class would be missed and its column taken
+		   * for a remote one. */
+		  if (snprintf (qualified_name, sizeof (qualified_name), "%s.%s", owner, cls_name)
+		      >= (int) sizeof (qualified_name))
+		    {
+		      /* longer than any class name can be, so no local class matches it */
+		      continue;
+		    }
+
+		  cls_name = qualified_name;
+		}
+
+	      if (db_get_attribute_by_name (cls_name, lhs_name) != NULL)
+		{
+		  found = true;
+		  target = spec;
+		  target_pos = i;
+		}
+	    }
+	  er_stack_pop ();
+
+	  if (!found)
+	    {
+	      /* which remote spec owns the name is unknown until its columns are fetched, so it is charged
+	       * to the first one and several remote specs can count as one. The sinks need a single
+	       * spec anyway, and name binding still resolves the real target. */
+	      found = true;
+	      for (target = statement->info.update.spec, target_pos = 0; target->info.spec.remote_server_name == NULL;
+		   target = target->next, target_pos++)
+		{
+		  ;
+		}
+	    }
+	}
+
+      if (found && !counted[target_pos])
+	{
+	  counted[target_pos] = true;
+	  if (target->info.spec.remote_server_name)
+	    {
+	      remote++;
+	    }
+	  else
+	    {
+	      local++;
+	    }
 	}
 
       if (!found && remote > 0 && local > 0)
@@ -14266,6 +14352,17 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  sub_sel->info.query.q.select.from = spec;
 	  list->info.spec.derived_table = sub_sel;
 	  list->info.spec.derived_table_type = PT_IS_SUBQUERY;
+
+	  /* The statement did not ask for this derived table - it is generated so that the
+	   * DML rewrite can treat the remote source as a subquery.  Mark both halves so the
+	   * name resolution can tell it apart from a subquery the statement wrote, and keep
+	   * it transparent to the remote invisible columns the statement references.
+	   *
+	   * Its star expansion carries invisible-marked names into the select list
+	   * (pt_dblink_spec_star_passes_invisible ()).  That mark is a bit of its own, so the
+	   * compiler's hidden-column readers never see it. */
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_DBLINK_DML_SRC);
+	  list->info.spec.flag = (PT_SPEC_FLAG) (list->info.spec.flag | PT_SPEC_FLAG_DBLINK_DML_SRC);
 	}
 
       if (sub_sel && sub_sel->node_type == PT_SELECT)
@@ -14829,6 +14926,15 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_UPDATE:
     case PT_MERGE:
       parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_dml, &snl);
+      if (pt_has_error (parser))
+	{
+	  return;
+	}
+
+      /* The rewrite above wrapped every remote source spec in a derived table the
+       * statement did not write, so the columns it references on those tables were left
+       * behind in the enclosing block.  Collect them now that the specs exist. */
+      pt_gather_dblink_cols_in_dml (parser, stmt);
       if (pt_has_error (parser))
 	{
 	  return;
@@ -15484,10 +15590,10 @@ pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
 	  && node->info.host_var.index < parser->host_var_count)
 	{
 	  /* a PL/CSQL variable replaced by pt_parameterize_for_static_sql (): the end of the name or the path
-	   * expression (e.g. rec.field) is kept in parser->static_sql_host_var_end, and the start is found from the
+	   * expression (e.g. rec.field) is kept in parser->static_sql_host_vars, and the start is found from the
 	   * tokens ending there */
-	  int end = (parser->static_sql_host_var_end != NULL)
-	    ? parser->static_sql_host_var_end[node->info.host_var.index] : -1;
+	  int end = (parser->static_sql_host_vars != NULL)
+	    ? parser->static_sql_host_vars[node->info.host_var.index].end : -1;
 	  int start = (end > 0) ? pt_static_sql_path_start (list, end, node->info.host_var.label) : -1;
 	  char *hv = NULL;
 
@@ -15913,14 +16019,23 @@ pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       qsort (list.edits, list.count, sizeof (PT_STATIC_SQL_EDIT), pt_static_sql_compare_edits);
 
-      /* the same insertion can be collected more than once */
+      /* the same edit can be collected more than once: an insertion, or a host variable copied by the parser
+       * (see pt_parameterize_for_static_sql ()) */
       for (i = 1, j = 0; i < list.count; i++)
 	{
 	  if (list.edits[i].start == list.edits[j].start && list.edits[i].end == list.edits[j].end
-	      && list.edits[i].host_var_index < 0 && list.edits[j].host_var_index < 0
-	      && strcmp (list.edits[i].text, list.edits[j].text) == 0)
+	      && list.edits[i].host_var_index == list.edits[j].host_var_index)
 	    {
-	      continue;
+	      if (list.edits[i].host_var_index >= 0)
+		{
+		  /* a host variable edit has the text made from its index (see pt_collect_static_sql_edits_pre ()) */
+		  assert (strcmp (list.edits[i].text, list.edits[j].text) == 0);
+		  continue;
+		}
+	      if (strcmp (list.edits[i].text, list.edits[j].text) == 0)
+		{
+		  continue;
+		}
 	    }
 	  list.edits[++j] = list.edits[i];
 	}
