@@ -15306,6 +15306,18 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 					{
 					  return S_SUCCESS;
 					}
+
+				      /* Evaluate analytic functions for tuples that don't satisfy instnum_pred yet, as without a scan
+				       * procedure block */
+				      if (ev_res == V_FALSE && !(xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_CHECK)
+					  && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+					{
+					  if (qexec_analytic_eval_in_processing (thread_p, xasl, xasl_state) !=
+					      NO_ERROR)
+					    {
+					      return S_ERROR;
+					    }
+					}
 				    }
 
 				  qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
@@ -21942,6 +21954,32 @@ qexec_execute_dblink_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STAT
   return NO_ERROR;
 }
 
+#if SERVER_MODE && !WINDOWS
+/*
+ * qexec_execute_ctes_first () - run the CTEs of a block that has a parallel subquery executor on this thread, before
+ *				  its first job: a sibling may read a CTE's list from a job, also from a subquery that a
+ *				  joined scan evaluates per row, so a reference to a CTE needs no serial statement
+ *   return: NO_ERROR, or the error of a CTE
+ *   xasl(in): the block
+ */
+static int
+qexec_execute_ctes_first (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  for (XASL_NODE * xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)
+    {
+      for (XASL_NODE * cte = xptr->aptr_list; cte != NULL; cte = cte->next)
+	{
+	  if (cte->type == CTE_PROC && IS_XASL_INITIAL_STATUS (cte->status)
+	      && qexec_execute_mainblock (thread_p, cte, xasl_state, NULL) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+#endif
+
 /*
  * qexec_execute_mainblock_internal () -
  *   return: NO_ERROR, or ER_code
@@ -22308,6 +22346,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  XASL_SET_FLAG (xasl->spec_list->s.list_node.xasl_node, XASL_LIST_BACKWARD);
 	}
 
+#if SERVER_MODE && !WINDOWS
+      if (xasl->px_executor != nullptr && qexec_execute_ctes_first (thread_p, xasl, xasl_state) != NO_ERROR)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  GOTO_EXIT_ON_ERROR;
+	}
+#endif
+
       /* evaluate all the aptr lists in all scans */
       for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
 	{
@@ -22462,6 +22508,23 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      else
 				{
 				  xasl->executed_parallelism = n_workers_to_reserve + 1 /* main thread */ ;
+				  if (xasl->px_executor != nullptr)
+				    {
+				      if (qexec_execute_ctes_first (thread_p, xasl, xasl_state) != NO_ERROR)
+					{
+					  if (tplrec.tpl)
+					    {
+					      db_private_free_and_init (thread_p, tplrec.tpl);
+					    }
+					  qexec_failure_line (__LINE__, xasl_state);
+					  GOTO_EXIT_ON_ERROR;
+					}
+				      if (!IS_XASL_INITIAL_STATUS (xptr2->status))
+					{
+					  /* a CTE that just ran */
+					  continue;
+					}
+				    }
 				}
 			    }
 			  else
@@ -30185,6 +30248,7 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
     {
       a_eval_list->current_values = NULL;
       a_eval_list->temp_values = NULL;
+      a_eval_list->input_recs = 0;
 
       for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
 	{
@@ -32915,8 +32979,9 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
       return ER_FAILED;
     }
 
-  if (xasl->list_id->tuple_cnt == 0)
+  if (a_eval_list->input_recs == 0)
     {
+      /* first input record; the rows the LIMIT offset skips come before the first row of the list */
       int key_idx = 0;
       for (SORT_LIST * tmp = a_eval_list->sort_list; tmp != NULL; tmp = tmp->next)
 	{
@@ -33061,6 +33126,8 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
       a_func_list->curr_group_tuple_count++;
       a_func_list->curr_sort_key_tuple_count++;
     }
+
+  a_eval_list->input_recs++;
 
   return NO_ERROR;
 }
