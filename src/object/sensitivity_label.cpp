@@ -583,13 +583,21 @@ find_attribute (const char *class_name, const char *att_name, MOP *class_mop, SM
       return error;
     }
 
-  /* unlike classobj_find_attribute (), a shared attribute is not found: its value is in the class, not in a row */
   *att = (SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST ((*class_)->attributes, att_name);
-  if (*att == NULL)
+  if (*att != NULL)
     {
-      ERROR_SET_ERROR_1ARG (error, ER_SM_ATTRIBUTE_NOT_FOUND, att_name);
+      return NO_ERROR;
     }
 
+  /* a shared or class attribute has its value in the class, not in a row */
+  if (SM_FIND_NAME_IN_COMPONENT_LIST ((*class_)->shared, att_name) != NULL
+      || SM_FIND_NAME_IN_COMPONENT_LIST ((*class_)->class_attributes, att_name) != NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_SM_ONLY_NORMAL_ATTRIBUTES, att_name);
+      return error;
+    }
+
+  ERROR_SET_ERROR_1ARG (error, ER_SM_ATTRIBUTE_NOT_FOUND, att_name);
   return error;
 }
 
@@ -1142,6 +1150,12 @@ sensitivity_label_drop_on_attribute (const char *class_name, const char *att_nam
 
   if (label == NULL)
     {
+      if (!is_label_allowed (class_))
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_NOT_ALLOWED, sm_ch_name ((MOBJ) class_));
+	  return error;
+	}
+
       ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NOT_FOUND, att->header.name, sm_ch_name ((MOBJ) class_));
       return error;
     }
