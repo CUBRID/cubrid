@@ -1786,7 +1786,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  for (i = 1; i < log_Gl.trantable.num_total_indices; i++)
 	    {
 	      tdes = log_Gl.trantable.all_tdes[i];
-	      if (tdes != NULL && tdes->trid != NULL_TRANID)
+	      /* a loose end has no connection to close (see logtb_count_not_allowed_clients_in_maintenance_mode) */
+	      if (tdes != NULL && tdes->trid != NULL_TRANID && !tdes->isloose_end)
 		{
 		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.get_host_name (), boot_Host_name,
 							       tdes->client.client_type))
@@ -1811,11 +1812,12 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	    {
 	      char msg[LINE_MAX];
 
-	      /* the change goes on. leave in the server error log why such clients are still connected */
-	      snprintf (msg, sizeof (msg), "changing to maintenance mode with %d client(s) not allowed in maintenance "
-			"mode still connected %d sec after they were requested to close", remaining,
-			LOGTB_SLAM_WAIT_SECONDS);
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, msg);
+	      /* the change goes on. leave in the server error log why such clients are still connected.
+	       * ER_BO_SERVER_STATUS, not ER_HA_GENERIC_ERROR: the latter is in the default
+	       * call_stack_dump_activation_list, and a call stack would make this notification look like a failure. */
+	      snprintf (msg, sizeof (msg), "maintenance, but %d client(s) not allowed in maintenance mode are still "
+			"connected %d sec after they were requested to close", remaining, LOGTB_SLAM_WAIT_SECONDS);
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_SERVER_STATUS, 1, msg);
 	    }
 	}
       break;

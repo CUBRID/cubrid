@@ -2027,6 +2027,9 @@ logtb_count_clients (THREAD_ENTRY * thread_p)
  *                        count number of transaction indices
  *                        connection not allowed client in maintenancemode.
  *   return: number of clients
+ *
+ * Note: a loose end (e.g. an XA transaction prepared and then left by its client) is not counted. It has no
+ *       connection to close, and it stays until a coordinator attaches to it.
  */
 int
 logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p)
@@ -2040,7 +2043,7 @@ logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p)
   for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
-      if (tdes != NULL && tdes->trid != NULL_TRANID)
+      if (tdes != NULL && tdes->trid != NULL_TRANID && !tdes->isloose_end)
 	{
 	  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.get_host_name (), boot_Host_name,
 						       tdes->client.client_type))
