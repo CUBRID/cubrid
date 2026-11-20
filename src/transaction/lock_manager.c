@@ -8127,7 +8127,7 @@ lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
   LOG_TDES *tdes;
-  UINT64 none = 0;
+  UINT64 due, none = 0;
 
   if (thread_p == NULL)
     {
@@ -8143,9 +8143,13 @@ lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p)
     {
       return;
     }
-  (void) __atomic_compare_exchange_n (&thread_p->deferred_wake.request.epoch_seen, &none,
-				      lk_Gl.tran_lock_table[tdes->tran_index].deferred_wake.due_epoch (), false,
-				      __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+  due = lk_Gl.tran_lock_table[tdes->tran_index].deferred_wake.due_epoch ();
+  /* none due: the CAS would only fence every row write */
+  if (due != 0)
+    {
+      (void) __atomic_compare_exchange_n (&thread_p->deferred_wake.request.epoch_seen, &none, due, false,
+					  __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
+    }
 #endif /* SERVER_MODE */
 }
 
