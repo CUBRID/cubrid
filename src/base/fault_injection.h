@@ -100,7 +100,7 @@ typedef enum
   FI_TEST_CONNECTION_WORKER_CLOSE_HOLD = 700003,	/* hold a close before it drains the worker's queue */
 
   /* HEAP MANAGER */
-  FI_TEST_HEAP_PREV_VERSION_WALK_HOLD = 800000,	/* hold a version walk under a non-transaction snapshot */
+  FI_TEST_HEAP_PREV_VERSION_WALK_HOLD = 900000,	/* hold a version walk under a non-transaction snapshot */
 
   /* etc .... */
 
