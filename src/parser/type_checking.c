@@ -5334,7 +5334,9 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
       PT_NODE *arg2_list = NULL;
 
       /* only the set of values matters to a range predicate.
-       * DISTINCT is set only where it keeps that set, see pt_try_set_subquery_distinct (). */
+       * DISTINCT is set only where it keeps that set, see pt_try_set_subquery_distinct (); a set operation folded
+       * with DISTINCT gives back its operand (pt_fold_union_unwrap ()). */
+      expr->info.expr.arg2 = arg2 = pt_fold_union_unwrap (parser, arg2);
       (void) pt_try_set_subquery_distinct (parser, arg2);
 
       arg2_list = pt_get_select_list (parser, arg2);
@@ -10572,6 +10574,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->type_enum = PT_TYPE_LOGICAL;
 	  if (pt_is_query (arg1))
 	    {
+	      /* only whether a row exists counts, which the duplicates a folded set operation removes do not change */
+	      node->info.expr.arg1 = arg1 = pt_fold_union_unwrap (parser, arg1);
 	      pt_chop_to_one_select_item (parser, arg1);
 	    }
 	}
