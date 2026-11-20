@@ -133,6 +133,9 @@
 #define BITMAP_HEAP_LOOKUP_OVERHEAD 1.92
 /* a worker's table and temp files, made once a scan */
 #define BITMAP_HEAP_START_OVERHEAD 340.0
+/* the heap's sectors, listed and put in file order once a scan: what 200 runs of a 2,000-row range take more on a
+ * heap of 38 thousand pages than on one of 9.5 thousand (0.3 million instructions a run, 446 sectors) */
+#define BITMAP_HEAP_SECTOR_OVERHEAD 0.5
 /* Switching the index scan of a nested-loop inner walked per outer row to another partition
  * (scan_switch_index_partition ()), as a share of the B+tree descent that follows it: about a quarter on the
  * release build (CBRD-27866) */
@@ -3956,7 +3959,7 @@ qo_plan_decide_bitmap_heap (QO_PLAN * planp, bool key_order)
  *
  * Note: An index scan looks its rows up in key order, one heap page fix a row. A bitmap heap scan first records
  *	 every row the index finds by heap page, then reads the recorded pages in file order, each once. Its cost
- *	 has one term a step: the tables and temp files made at its start, a mark a row, a record written and read a row when the workers' tables cannot hold
+ *	 has one term a step: the tables and temp files made at its start, the heap's sectors listed, a mark a row, a record written and read a row when the workers' tables cannot hold
  *	 the pages, the pages put in order, the pages read once each at a price between a random and a sequential
  *	 read (the denser they lie, the closer to sequential), a row lookup on the page held. The index part costs
  *	 the same both ways, so only the heap parts are compared. The rows leave in file order: a plan that uses
@@ -4020,7 +4023,8 @@ qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp, bool key_order)
   bitmap_cost += (heap_rows * (BITMAP_HEAP_MARK_OVERHEAD + BITMAP_HEAP_LOOKUP_OVERHEAD)
 		  + (pages > tables ? heap_rows * BITMAP_HEAP_RECORD_OVERHEAD : 0.0)
 		  + pages * BITMAP_HEAP_PAGE_OVERHEAD
-		  + (double) workers * BITMAP_HEAP_START_OVERHEAD) * (double) QO_CPU_WEIGHT;
+		  + (double) workers * BITMAP_HEAP_START_OVERHEAD
+		  + (opages / (double) DISK_SECTOR_NPAGES) * BITMAP_HEAP_SECTOR_OVERHEAD) * (double) QO_CPU_WEIGHT;
 
   if (bitmap_cost < lookup_cost)
     {
