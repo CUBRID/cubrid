@@ -305,9 +305,9 @@ mvcc_active_tran::copy_to (mvcc_active_tran &dest, copy_safety safety) const
       std::memcpy (dest.m_long_tran_mvccids, m_long_tran_mvccids, get_long_tran_memsize ());
     }
 
-  dest.m_bit_area_start_mvccid = m_bit_area_start_mvccid;
-  dest.m_bit_area_length = m_bit_area_length;
-  dest.m_long_tran_mvccids_length = m_long_tran_mvccids_length;
+  dest.m_bit_area_start_mvccid = m_bit_area_start_mvccid.load ();
+  dest.m_bit_area_length = m_bit_area_length.load ();
+  dest.m_long_tran_mvccids_length = m_long_tran_mvccids_length.load ();
 
   if (safety == copy_safety::THREAD_SAFE)
     {
