@@ -381,9 +381,6 @@ static PT_NODE *mq_generate_unique (PARSER_CONTEXT * parser, PT_NODE * name_list
 
 extern PT_NODE *mq_fetch_attributes (PARSER_CONTEXT * parser, PT_NODE * class_);
 
-extern PT_NODE *mq_lambda (PARSER_CONTEXT * parser, PT_NODE * tree_with_names, PT_NODE * name_node,
-			   PT_NODE * corresponding_tree);
-
 extern PT_NODE *mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 				 PT_NODE * corresponding_spec, PT_NODE * class_where_part, PT_NODE * class_check_part,
 				 PT_NODE * class_group_by_part, PT_NODE * class_having_part);

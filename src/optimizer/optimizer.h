@@ -113,6 +113,7 @@ struct qo_summary
   double fixed_cpu_cost, fixed_io_cost;
   double variable_cpu_cost, variable_io_cost;
   double cardinality;
+  int projected_size;
   xasl_node *xasl;
 };
 
@@ -140,6 +141,14 @@ typedef enum
   QO_PARAM_LEVEL,
   QO_PARAM_COST
 } QO_PARAM;
+
+/* the types a SEMI / ANTI JOIN spec may run as (qo_rewrite_semi_anti_join ()) */
+typedef enum
+{
+  SEMI_ANTI_JOIN,		/* the SEMI / ANTI JOIN */
+  SEMI_ANTI_DISTINCT,		/* an INNER JOIN over its rows with the duplicates removed */
+  SEMI_ANTI_EXISTS		/* its [NOT] EXISTS subquery in the WHERE */
+} SEMI_ANTI_TYPE;
 
 typedef struct qo_limit_info
 {
@@ -215,6 +224,10 @@ extern int qo_xasl_get_num_terms (QO_XASL_INDEX_INFO * info);
 extern PT_NODE **qo_xasl_get_terms (QO_XASL_INDEX_INFO *);
 extern PT_NODE *qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 extern bool qo_check_nullable_op (PT_NODE * node);
+extern bool qo_is_spec_in_hint (PT_NODE * node, PT_NODE * spec, PT_HINT_ENUM hint, PT_NODE * args);
+extern bool qo_is_distinct_inner_join_eligible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec);
+extern PT_NODE *qo_rewrite_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR spec_id,
+					   SEMI_ANTI_TYPE type);
 extern PT_NODE *mq_rewrite (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #if 0

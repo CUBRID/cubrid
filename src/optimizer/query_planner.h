@@ -366,8 +366,6 @@ struct qo_info
   double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost;
 				 * for semi/anti, the share of outer rows the join emits,
 				 * so the LIMIT estimate can tell how many outer rows to read for LIMIT rows */
-  bool is_distinct;		/* true only on an info built by qo_prepare_distinct_info (): the node read once
-				 * with the duplicates removed, so a join over it is an ordinary join */
 
   /*
    * One plan for each equivalence class, in each case the best we have
@@ -459,11 +457,6 @@ struct qo_planner
 
 
   QO_INFO **node_info;
-  QO_INFO **distinct_info;	/* per node: the plans that read it once with the duplicates removed, set for a
-				   SEMI JOIN inner that may be joined the other way round.  Kept apart from
-				   node_info because the two hold different numbers of rows; the join order
-				   search takes it in place of node_info only where it puts the node ahead of
-				   the side it depends on (qo_get_distinct_info_ahead ()) */
   QO_INFO **join_info;
   QO_INFO **cp_info;
   QO_INFO *best_info;
