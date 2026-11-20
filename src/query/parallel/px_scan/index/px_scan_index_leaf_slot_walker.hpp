@@ -109,6 +109,10 @@ namespace parallel_index_scan
       SCAN_CODE process_bitmap_row (THREAD_ENTRY *thread_p, OID *oid);
       /* ... and let the page go: a scan that does not keep its last page fixed ends with none */
       void release_bitmap_page (THREAD_ENTRY *thread_p);
+      bool keeps_bitmap_page () const
+      {
+	return m_scan_id->s.isid.bitmap_keep_page;
+      }
 
       /* a key record starts (a new slot, or a helper session on another key's overflow chain): a group by skip scan
        * compares its group key only here (CBRD-27664), and the covered key is decoded again */

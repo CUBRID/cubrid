@@ -13033,12 +13033,13 @@ qexec_execute_scan_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     }
 
   if (sq != NULL && sq->b.on && !sq->early && !sq->b.replaying && xasl->memoize_storage != NULL
-      && !xasl->memoize_storage->is_disabled () && xasl->memoize_storage->is_key_changed ()
-      && qexec_nl_batch_seen (&sq->b, (unsigned int) xasl->memoize_storage->key_hash () ^ 0x9e3779b9U)
-      && sq->b.n_rows > 0)
+      && !xasl->memoize_storage->is_disabled () && xasl->memoize_storage->is_key_changed () && sq->b.n_rows > 0
+      && (qexec_nl_batch_seen (&sq->b, (unsigned int) xasl->memoize_storage->key_hash () ^ 0x9e3779b9U)
+	  || xasl->memoize_storage->has_key ()))
     {
       /* a new outer row with the key of rows held for the subquery: they are joined first, so that their key is
-       * stored when it is looked up, as it is in the join taken a row at a time */
+       * stored when it is looked up, as it is in the join taken a row at a time. A key memoize already holds would
+       * hand its rows out ahead of the rows held for earlier outer rows: they are joined first too */
       sq->close_now = true;
       sq->early = true;
     }

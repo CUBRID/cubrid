@@ -35,6 +35,7 @@ namespace parallel_scan
       m_bm_worker (nullptr),
       m_bm_heap_step (false),
       m_bm_page_on (false),
+      m_bm_unfixed (false),
       m_bm_next_slot (0),
       m_bm_words (nullptr),
       m_bm_single (-1)
@@ -129,6 +130,7 @@ namespace parallel_scan
     m_bm_next_slot = 0;
     m_bm_heap_step = true;
     m_bm_page_on = true;
+    m_bm_unfixed = false;
 
     /* a page vacuum deallocated since the scan started is passed here */
     int error_code = m_slot_walker.fix_bitmap_page (thread_p, &m_bm_vpid, &m_bm_page_on);
@@ -180,6 +182,25 @@ namespace parallel_scan
 	oid.pageid = m_bm_vpid.pageid;
 	oid.slotid = (PGSLOTID) slot;
 
+	if (m_bm_unfixed)
+	  {
+	    /* the page was let go with the row before this one */
+	    bool is_fixed = false;
+
+	    if (m_slot_walker.fix_bitmap_page (thread_p, &m_bm_vpid, &is_fixed) != NO_ERROR)
+	      {
+		m_bm_page_on = false;
+		return S_ERROR;
+	      }
+	    if (!is_fixed)
+	      {
+		/* vacuum deallocated the page meanwhile: no row of it is visible */
+		m_bm_page_on = false;
+		return S_END;
+	      }
+	    m_bm_unfixed = false;
+	  }
+
 	SCAN_CODE scan = m_slot_walker.process_bitmap_row (thread_p, &oid);
 	if (scan == S_END)
 	  {
@@ -190,6 +211,12 @@ namespace parallel_scan
 	  {
 	    m_slot_walker.release_bitmap_page (thread_p);
 	    m_bm_page_on = false;
+	  }
+	else if (!m_slot_walker.keeps_bitmap_page ())
+	  {
+	    /* the row was copied: no page stays fixed while a block that may fix other pages works on it */
+	    m_slot_walker.release_bitmap_page (thread_p);
+	    m_bm_unfixed = true;
 	  }
 	return scan;
       }

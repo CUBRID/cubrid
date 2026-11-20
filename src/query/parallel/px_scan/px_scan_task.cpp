@@ -238,6 +238,10 @@ namespace parallel_scan
 		  {
 		    return err_code;
 		  }
+		/* the heap step of a bitmap heap scan keeps its page while the block takes a row only where the main thread
+		 * found the block may (qexec_open_scan (): the innermost scan, no subquery run for each row) */
+		m_scan_id->s.isid.bitmap_keep_page = (m_orig_xasl != nullptr && m_orig_xasl->spec_list != nullptr
+						      && m_orig_xasl->spec_list->s_id.s.isid.bitmap_keep_page);
 		/* the leaf walker drains every key's OIDs through the scan's OID buffer, covering or not */
 		err_code = scan_index_alloc_oid_buffer (&m_scan_id->s.isid);
 		if (err_code != NO_ERROR)

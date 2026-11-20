@@ -4570,6 +4570,12 @@ qo_add_hq_iterations_access_spec (QO_PLAN * plan, xasl_node * xasl)
   make_pred_from_plan (env, plan, &key_pred, &access_pred, index_info, NULL);
 
   xasl->spec_list = pt_to_spec_list (parser, class_spec, key_pred, access_pred, plan, index_info, NULL, NULL);
+  if (xasl->spec_list != NULL)
+    {
+      /* the scan of an iteration runs once a parent row: it reads no heap through a bitmap, whatever the plan of the
+       * START WITH scan it was made from chose */
+      ACCESS_SPEC_UNSET_FLAG (xasl->spec_list, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN);
+    }
 
   if_pred = make_if_pred_from_plan (env, plan);
   if (if_pred)

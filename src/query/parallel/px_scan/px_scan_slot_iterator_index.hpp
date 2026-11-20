@@ -111,6 +111,7 @@ namespace parallel_scan
       scan_bitmap_worker *m_bm_worker;
       bool m_bm_heap_step;	/* set_bitmap_page was called: the leaf walk is over */
       bool m_bm_page_on;	/* the page being read is fixed */
+      bool m_bm_unfixed;		/* ... and it was let go with the last row: fixed again for the next */
       int m_bm_next_slot;	/* its rows before this slot are looked up */
       VPID m_bm_vpid;
       const std::uint64_t *m_bm_words;
