@@ -28258,7 +28258,9 @@ pt_orderby_has_group_keys (PARSER_CONTEXT * parser, PT_NODE * select_node)
     }
   for (group = select_node->info.query.q.select.group_by; group != NULL; group = group->next)
     {
-      if (group->node_type != PT_SORT_SPEC)
+      /* a constant key is not looked up (pt_to_pos_descr () takes a value for a position number) */
+      if (group->node_type != PT_SORT_SPEC || group->info.sort_spec.expr == NULL
+	  || group->info.sort_spec.expr->node_type == PT_VALUE)
 	{
 	  return false;
 	}

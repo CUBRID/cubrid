@@ -6406,9 +6406,12 @@ qexec_gby_order_reaches_result (const XASL_NODE * xasl)
       return false;
     }
   /* the ORDER BY has every key: its sort orders the groups whole, where they come in no matter what order -- unless
-   * it is skipped for the order the GROUP BY's sort leaves */
+   * it is skipped for the order the GROUP BY's sort leaves: at generation (XASL_SKIP_ORDERBY_LIST), or at run time when
+   * the GROUP BY's output list is sorted on what the ORDER BY asks (qexec_orderby_distinct ()) */
   if ((proc->g_order_free & XASL_G_ORDER_FREE_ORDERBY) && !numbered && xasl->orderby_list != NULL
-      && !XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST))
+      && !XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)
+      && !(xasl->ordbynum_val == NULL && xasl->option != Q_DISTINCT
+	   && qfile_is_sort_list_covered (proc->after_groupby_list, xasl->orderby_list)))
     {
       return false;
     }
@@ -9302,8 +9305,11 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 
 	  return NO_ERROR;
 	}
-      else if (gbstate.agg_hash_context->part_list_id->tuple_cnt == 0 && !qexec_gby_order_reaches_result (xasl))
+      else if (gbstate.agg_hash_context->part_list_id->tuple_cnt == 0 && !qexec_gby_order_reaches_result (xasl)
+	       && qexec_gby_keys_hash_as_compared (buildlist))
 	{
+	  /* the groups as the table made them: keys whose hash does not follow their comparison (a collation with
+	   * expansions, JSON) may sit in two groups the sort would make one (qexec_gby_keys_hash_as_compared ()) */
 	  HENTRY_PTR head = gbstate.agg_hash_context->hash_table->act_head;
 	  AGGREGATE_HASH_VALUE *value = NULL;
 
