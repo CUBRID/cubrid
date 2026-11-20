@@ -20643,17 +20643,19 @@ do_drop_sensitivity_label_in_table (PARSER_CONTEXT * parser, PT_SENSITIVITY_LABE
  *   parser(in): parser context
  *   info(in/out): the statement
  *
- * Note: each class stays SCH-S locked to the end of the transaction, so it keeps its owner until then.
+ * Note: once fetched, each class stays SCH-S locked to the end of the transaction, so it keeps its owner until then.
  */
 static int
 do_drop_sensitivity_label_in_schema (PARSER_CONTEXT * parser, PT_SENSITIVITY_LABEL_INFO * info)
 {
   PT_NODE *schema;
+  PT_NODE *listed;
   DB_QUERY_RESULT *result = NULL;
   DB_VALUE value;
   MOP owner;
   MOP class_mop;
   SM_CLASS *class_;
+  char owner_name[DB_MAX_USER_LENGTH];
   int cursor;
   int error = NO_ERROR;
   int save;
@@ -20707,7 +20709,17 @@ do_drop_sensitivity_label_in_schema (PARSER_CONTEXT * parser, PT_SENSITIVITY_LAB
 	      goto end;
 	    }
 
-	  if (!ws_is_same_object (class_->owner, owner))
+	  /* the waited-for OWNER TO may have moved the class to another listed schema, whose query may already have
+	   * run; it renames the class too, so the qualifier of the class name is its owner */
+	  sm_qualifier_name (sm_ch_name ((MOBJ) class_), owner_name, DB_MAX_USER_LENGTH);
+	  for (listed = info->target_list; listed != NULL; listed = listed->next)
+	    {
+	      if (intl_identifier_casecmp (owner_name, PT_NAME_ORIGINAL (listed)) == 0)
+		{
+		  break;
+		}
+	    }
+	  if (listed == NULL)
 	    {
 	      continue;
 	    }
