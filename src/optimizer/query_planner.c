@@ -226,7 +226,9 @@ typedef enum
 struct ndv_info
 {
   QO_ENV *env;
-  INT64 total_ndv;
+  double total_ndv;		/* product of the NDVs seen so far, never above max_ndv */
+  double max_ndv;		/* the product saturates here: the caller takes no more than this */
+  bool has_ndv;			/* true once a column with a known NDV is seen */
   BITSET seg_bitset;
 };
 typedef struct ndv_info NDV_INFO;
@@ -323,7 +325,7 @@ static QO_SEGMENT *qo_term_seg_of_node (QO_TERM * term, QO_NODE * node, QO_SEGME
 static bool qo_node_matches_at_most_once (QO_ENV * env, QO_NODE * node, BITSET * from);
 static double qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double calls);
 static void qo_estimate_ngroups (QO_PLAN *, SORT_TYPE);
-static INT64 qo_get_group_ndv (QO_PLAN *, SORT_TYPE);
+static double qo_get_group_ndv (QO_PLAN *, SORT_TYPE, double);
 static double qo_estimate_ndv (double N, double p, double n);
 
 static QO_PLAN *qo_top_plan_new (QO_PLAN *);
@@ -1480,7 +1482,7 @@ qo_having_env_init (QO_HAVING_ENV * henv, QO_PLAN * plan, double group_size, dou
 static void
 qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
 {
-  INT64 group_ndv, estimate_ndv;
+  double group_ndv, estimate_ndv;
   double expected_nrows = plan->info->cardinality;
   double total_nrows = plan->info->total_rows;
   double estimate_rows;
@@ -1493,9 +1495,10 @@ qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
       having = tree->info.query.q.select.having;
     }
 
-  /* get NDV of GROUP BY */
-  group_ndv = MIN (qo_get_group_ndv (plan, sort_type), expected_nrows);
-  if (group_ndv == -1)
+  /* get NDV of GROUP BY: the product of the column NDVs, which stops growing at the number of input rows.
+   * The estimates below are kept in whole rows. */
+  group_ndv = qo_get_group_ndv (plan, sort_type, expected_nrows);
+  if (group_ndv < 0)
     {
       estimate_rows = expected_nrows;
       if (having != NULL)
@@ -1519,16 +1522,16 @@ qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
   else
     {
       /* estimate number of groups */
-      estimate_ndv = MAX (qo_estimate_ndv (total_nrows, expected_nrows, group_ndv), 1);
+      estimate_ndv = MAX (floor (qo_estimate_ndv (total_nrows, expected_nrows, group_ndv)), 1);
     }
 
-  estimate_ndv = MIN (expected_nrows, estimate_ndv);
+  estimate_ndv = floor (MIN (expected_nrows, estimate_ndv));
 
   if (having != NULL && estimate_ndv > 0)
     {
       /* only the groups that pass HAVING are returned */
       qo_having_env_init (&henv, plan, expected_nrows / estimate_ndv, (group_ndv > 0) ? total_nrows / group_ndv : 0.0);
-      estimate_ndv = MAX ((INT64) (estimate_ndv * qo_having_selectivity (&henv, having)), 1);
+      estimate_ndv = MAX (floor (estimate_ndv * qo_having_selectivity (&henv, having)), 1);
     }
 
   if (plan->info->group_rows > estimate_ndv)
@@ -1572,12 +1575,14 @@ qo_estimate_ndv (double N, double p, double n)
 }
 
 /*
- * qo_get_group_ndv () -
- *   return:
+ * qo_get_group_ndv () - product of the NDVs of the GROUP BY (or DISTINCT) columns
+ *   return: the product in whole rows, at most max_ndv; -1 when no column has a known NDV
  *   plan(in):
+ *   sort_type(in): SORT_GROUPBY reads the GROUP BY list, anything else the select list
+ *   max_ndv(in): the number of rows that are grouped; there cannot be more groups than this
  */
-static INT64
-qo_get_group_ndv (QO_PLAN * plan, SORT_TYPE sort_type)
+static double
+qo_get_group_ndv (QO_PLAN * plan, SORT_TYPE sort_type, double max_ndv)
 {
   PT_NODE *nodes;
   QO_ENV *env = NULL;
@@ -1606,16 +1611,20 @@ qo_get_group_ndv (QO_PLAN * plan, SORT_TYPE sort_type)
 
   ndv_info.env = env;
   ndv_info.total_ndv = 1;
+  ndv_info.max_ndv = max_ndv;
+  ndv_info.has_ndv = false;
   bitset_init (&ndv_info.seg_bitset, env);
   /* The NDV is simply extracted from column without considering the function, etc. and product of NDV of each column */
   parser_walk_tree (parser, nodes, qo_get_col_product_ndv, &ndv_info, NULL, NULL);
-  if (ndv_info.total_ndv == 1)
-    {
-      ndv_info.total_ndv = -1;
-    }
   bitset_delset (&ndv_info.seg_bitset);
 
-  return ndv_info.total_ndv;
+  if (!ndv_info.has_ndv)
+    {
+      /* a product of 1 does not tell this: a column that holds a single value makes one group */
+      return -1;
+    }
+
+  return floor (ndv_info.total_ndv);
 }
 
 /*
@@ -18237,7 +18246,21 @@ qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int 
   else if (pt_is_attr (tree))
     {
       ndv = qo_index_cardinality_with_dedup (ndv_info->env, pt_get_end_path_node (tree), &ndv_info->seg_bitset);
-      ndv_info->total_ndv *= (ndv == 0) ? 1 : ndv;
+      if (ndv > 0)
+	{
+	  ndv_info->has_ndv = true;
+
+	  /* divide before multiplying: with many columns the product itself does not fit in any integer type */
+	  if (ndv_info->total_ndv >= ndv_info->max_ndv / ndv)
+	    {
+	      ndv_info->total_ndv = ndv_info->max_ndv;
+	      *continue_walk = PT_STOP_WALK;
+	    }
+	  else
+	    {
+	      ndv_info->total_ndv *= ndv;
+	    }
+	}
     }
 
   return tree;
