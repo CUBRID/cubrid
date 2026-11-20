@@ -5867,6 +5867,11 @@ tr_check_commit_triggers (DB_TRIGGER_TIME time)
       return NO_ERROR;
     }
 
+  if (time == TR_TIME_AFTER)
+    {
+      tr_Trigger_cache_modified = 0;
+    }
+
   /*
    * Do we run the deferred activities before the commit triggers ?
    * If not, the commit trigger can schedule deferred activities as well.
@@ -5906,7 +5911,6 @@ tr_check_commit_triggers (DB_TRIGGER_TIME time)
    * clear this flag so we know when triggers are updated during a transaction
    */
   tr_User_triggers_modified = 0;
-  tr_Trigger_cache_modified = 0;
 
   return error;
 }
