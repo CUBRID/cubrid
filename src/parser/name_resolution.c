@@ -3657,6 +3657,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    downcase_owner_name[0] = '\0';
 	    char *generic_name = NULL;
 	    const char *owner_name = node->info.dot.arg1->info.name.original;
+	    const char *routine_name = node->info.dot.arg2->info.function.generic_name;
 
 	    /*
 	     * The parser bounds an identifier by DB_MAX_IDENTIFIER_LENGTH, which is far more than
@@ -3679,7 +3680,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		 * (see pt_routine_name_for_lookup ()). */
 		generic_name = pt_append_string (parser, owner_name, ".");
 	      }
-	    generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
+	    generic_name = pt_append_string (parser, generic_name, routine_name);
 
 	    sp_mop = NULL;
 	    if (jsp_resolve_routine (generic_name, true, &sp_mop) == ER_SP_AMBIGUOUS_NAME)
@@ -3706,6 +3707,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		if (node1 == NULL)
 		  {
+		    /* the statement in the error message is printed from this node: put back the names as written */
+		    node->info.dot.arg1->info.name.original = owner_name;
+		    node->info.dot.arg2->info.function.generic_name = routine_name;
 		    *continue_walk = PT_STOP_WALK;
 		    return node;
 		  }
@@ -3722,11 +3726,12 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  {
 	    /* <user>.<package>.<routine> (...), parsed as ((<user>.<package>).<routine> (...)) */
 	    PT_NODE *qualifier = node->info.dot.arg1;
+	    const char *routine_name = node->info.dot.arg2->info.function.generic_name;
 	    char *generic_name = pt_append_string (parser, qualifier->info.dot.arg1->info.name.original, ".");
 
 	    generic_name = pt_append_string (parser, generic_name, qualifier->info.dot.arg2->info.name.original);
 	    generic_name = pt_append_string (parser, generic_name, ".");
-	    generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
+	    generic_name = pt_append_string (parser, generic_name, routine_name);
 
 	    sp_mop = NULL;
 	    (void) jsp_resolve_routine (generic_name, true, &sp_mop);
@@ -3751,6 +3756,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		if (node1 == NULL)
 		  {
+		    /* the statement in the error message is printed from this node: put back the name as written */
+		    node->info.dot.arg2->info.function.generic_name = routine_name;
 		    *continue_walk = PT_STOP_WALK;
 		    return node;
 		  }
