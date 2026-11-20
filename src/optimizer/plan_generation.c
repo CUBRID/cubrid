@@ -3966,8 +3966,11 @@ qo_to_xasl (QO_PLAN * plan, xasl_node * xasl)
   if (plan && xasl && (env = (plan->info)->env))
     {
       qo_apply_parallel_index_scan_threshold (plan);
-      /* after it: the size of a bitmap's tables follows the scan's workers */
-      qo_plan_decide_bitmap_heap (plan);
+      /* after it: the size of a bitmap's tables follows the scan's workers. An analytic function that skipped its
+       * sort, or stops at a limit, reads the rows in the key order of the scan (decided before this, at
+       * pt_optimize_analytic_list ()) */
+      qo_plan_decide_bitmap_heap (plan, XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT)
+				  || XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT));
 
       if (qo_check_pass_through_wrapper (env, xasl))
 	{

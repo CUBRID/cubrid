@@ -479,7 +479,7 @@ static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * ter
 static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
 
 static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
-static void qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp);
+static void qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp, bool key_order);
 static int qo_check_groupby_iscan (QO_PLAN * plan, void *arg);
 static void qo_set_use_desc (QO_PLAN * plan);
 static int qo_set_orderby_skip (QO_PLAN * plan, void *arg);
@@ -3863,7 +3863,7 @@ qo_iscan_cost (QO_PLAN * planp)
  *	 to the end whatever the statement does with the result.
  */
 static void
-qo_plan_decide_bitmap_heap_scans (QO_PLAN * planp, bool to_end)
+qo_plan_decide_bitmap_heap_scans (QO_PLAN * planp, bool to_end, bool key_order)
 {
   while (planp != NULL)
     {
@@ -3877,7 +3877,12 @@ qo_plan_decide_bitmap_heap_scans (QO_PLAN * planp, bool to_end)
 	  if (planp->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN)
 	    {
 	      to_end = true;
-	      qo_plan_decide_bitmap_heap_scans (planp->plan_un.join.inner, true);
+	      qo_plan_decide_bitmap_heap_scans (planp->plan_un.join.inner, true, key_order);
+	    }
+	  else if (planp->plan_un.join.join_method == QO_JOINMETHOD_MERGE_JOIN && planp->plan_un.join.outer_sorted)
+	    {
+	      /* the merge reads the outer in the key order of its index scan: the sort of that input is skipped */
+	      key_order = true;
 	    }
 	  planp = planp->plan_un.join.outer;
 	}
@@ -3885,7 +3890,7 @@ qo_plan_decide_bitmap_heap_scans (QO_PLAN * planp, bool to_end)
 	{
 	  if (planp->plan_type == QO_PLANTYPE_SCAN && to_end)
 	    {
-	      qo_plan_decide_bitmap_heap_scan (planp);
+	      qo_plan_decide_bitmap_heap_scan (planp, key_order);
 	    }
 	  return;
 	}
@@ -3896,9 +3901,10 @@ qo_plan_decide_bitmap_heap_scans (QO_PLAN * planp, bool to_end)
  * qo_plan_decide_bitmap_heap () - decide which index scans of a statement's plan read their heap rows through a bitmap
  *   return: nothing
  *   planp(in): the statement's plan, after the parallelism of its driving scan was decided
+ *   key_order(in): the block reads its rows in the key order of its scan: every scan keeps the lookup in key order
  */
 void
-qo_plan_decide_bitmap_heap (QO_PLAN * planp)
+qo_plan_decide_bitmap_heap (QO_PLAN * planp, bool key_order)
 {
   QO_ENV *env;
   PT_NODE *tree;
@@ -3923,7 +3929,7 @@ qo_plan_decide_bitmap_heap (QO_PLAN * planp)
       /* an inst_num () predicate */
       to_end = QO_TERM_CLASS (&planp->info->planner->term[t]) != QO_TC_TOTALLY_AFTER_JOIN;
     }
-  qo_plan_decide_bitmap_heap_scans (planp, to_end);
+  qo_plan_decide_bitmap_heap_scans (planp, to_end, key_order);
 }
 
 /*
@@ -3940,7 +3946,7 @@ qo_plan_decide_bitmap_heap (QO_PLAN * planp)
  *	 the key order, or stops the scan by a key limit, keeps the lookup in key order.
  */
 static void
-qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp)
+qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp, bool key_order)
 {
   QO_NODE *nodep;
   QO_INDEX_ENTRY *index_entryp;
@@ -3965,7 +3971,7 @@ qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp)
   /* a serial scan is the one worker of its bitmap */
   workers =
     PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN) ? 1 : MAX (1, spec->info.spec.num_parallel_threads);
-  if (qo_is_index_covering_scan (planp) || qo_is_index_iss_scan (planp) || qo_is_index_loose_scan (planp)
+  if (key_order || qo_is_index_covering_scan (planp) || qo_is_index_iss_scan (planp) || qo_is_index_loose_scan (planp)
       || qo_plan_multi_range_opt (planp) || bitset_is_empty (&(planp->plan_un.scan.terms)) || index_entryp->orderby_skip
       || index_entryp->groupby_skip || index_entryp->key_limit != NULL)
     {
