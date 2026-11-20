@@ -1453,6 +1453,12 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
 	{
 	  decl = compile_response.java_signature.c_str ();
 	}
+      else if (err == ER_LK_UNILATERALLY_ABORTED || er_errid () == ER_LK_UNILATERALLY_ABORTED)
+	{
+	  /* kept, so the statement fails as aborted and the client ends the transaction too */
+	  err = ER_LK_UNILATERALLY_ABORTED;
+	  goto error_exit;
+	}
       else
 	{
 	  err = ER_SP_COMPILE_ERROR;
@@ -2278,6 +2284,12 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
       if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
 	{
 	  decl = compile_response.java_signature.c_str ();
+	}
+      else if (err == ER_LK_UNILATERALLY_ABORTED || er_errid () == ER_LK_UNILATERALLY_ABORTED)
+	{
+	  /* as in jsp_create_stored_procedure_internal () */
+	  err = ER_LK_UNILATERALLY_ABORTED;
+	  goto error;
 	}
       else
 	{

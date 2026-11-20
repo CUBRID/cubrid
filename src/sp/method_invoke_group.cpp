@@ -33,6 +33,7 @@
 #include "string_buffer.hpp"
 #include "pl_session.hpp"
 #include "network_callback_sr.hpp"
+#include "log_impl.h"
 
 #if defined (SA_MODE)
 #include "query_method.hpp"
@@ -185,6 +186,11 @@ namespace cubmethod
 	delete m_stack;
       }
 exit:
+    /* as in cubpl::executor::execute (): a method that ignored a deadlock error of its SQL */
+    if (error == NO_ERROR)
+      {
+	error = lock_group_fail_if_abort_deferred (logtb_get_current_tran_index ());
+      }
     return error;
   }
 

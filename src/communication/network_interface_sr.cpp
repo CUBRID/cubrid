@@ -13287,8 +13287,15 @@ splcsql_transfer_file (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
   unpacker.unpack_all (compile_request);
 
   cubmem::extensible_block ext_blk;
-  cubpl::compile_handler compile_handler;
-  error = compile_handler.compile (compile_request, ext_blk);
+  {
+    cubpl::compile_handler compile_handler;
+    error = compile_handler.compile (compile_request, ext_blk);
+  }
+  if (error == ER_LK_UNILATERALLY_ABORTED)
+    {
+      /* the deferred abort the compile failed on: done here, its stack popped, and its error sent as by any request */
+      (void) return_error_to_client (thread_p, rid);
+    }
 
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
