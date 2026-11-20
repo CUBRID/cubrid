@@ -34239,6 +34239,19 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
       insert_helper->is_unique_key_added_or_deleted = false;
 #if defined (SERVER_MODE)
       /* We don't want to unlock the object we will relocate. Others cannot delete it until we are finished. */
+      if (!OID_ISNULL (&insert_helper->saved_locked_oid)
+	  && locator_can_release_row_lock_at_statement_end (thread_p, &insert_helper->saved_locked_class_oid,
+							    STMT_ROW_CHANGE_UNCOMMITTED))
+	{
+	  /* finished is the statement's end: count the lock as its own row locks are, so that it also ends after the
+	   * undo of a statement that fails */
+	  if (lock_object_transient (thread_p, &insert_helper->saved_locked_oid,
+				     &insert_helper->saved_locked_class_oid, X_LOCK, LK_COND_LOCK) == LK_GRANTED)
+	    {
+	      lock_unlock_object_donot_move_to_non2pl (thread_p, &insert_helper->saved_locked_oid,
+						       &insert_helper->saved_locked_class_oid, X_LOCK);
+	    }
+	}
       OID_SET_NULL (&insert_helper->saved_locked_oid);
 #endif
     }
