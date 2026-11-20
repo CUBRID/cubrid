@@ -65,6 +65,7 @@
 #include "connection_support.hpp"
 #include "broker_process_size.h"
 #include "cas_ssl.h"
+#include "release_string.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -249,7 +250,7 @@ main (int argc, char *argv[])
   program_name = argv[0];
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
-      printf ("%s\n", makestring (BUILD_NUMBER));
+      printf ("%s\n", rel_build_number ());
       return 0;
     }
 #else /* !WINDOWS */
