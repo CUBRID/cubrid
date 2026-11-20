@@ -700,22 +700,40 @@ namespace cubload
 	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
 	RECDES *old_recdes = NULL;
 
-	if (heap_attrinfo_transform_to_disk_except_lob (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes)
-	    != S_SUCCESS)
+	// The record is as large as the row and is built holding no latch. An exception must not leave this
+	// function: the parser that called it rethrows, and the server ends in std::terminate ().
+	try
 	  {
+	    if (heap_attrinfo_transform_to_disk_except_lob (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes)
+		!= S_SUCCESS)
+	      {
+		m_error_handler.on_failure ();
+		return;
+	      }
+
+	    // Add the recdes to the collected array.
+	    if (!m_error_handler.current_line_has_error ())
+	      {
+		m_recdes_collected.push_back (std::move (new_recdes));
+	      }
+	    else
+	      {
+		// Don't insert the record since we had an error.
+		m_error_handler.set_error_on_current_line (false);
+	      }
+	  }
+	catch (const cubmem::bad_block_alloc &e)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, e.requested ());
 	    m_error_handler.on_failure ();
 	    return;
 	  }
-
-	// Add the recdes to the collected array.
-	if (!m_error_handler.current_line_has_error ())
+	catch (const std::bad_alloc &)
 	  {
-	    m_recdes_collected.push_back (std::move (new_recdes));
-	  }
-	else
-	  {
-	    // Don't insert the record since we had an error.
-	    m_error_handler.set_error_on_current_line (false);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		    (m_recdes_collected.size () + 1) * sizeof (record_descriptor));
+	    m_error_handler.on_failure ();
+	    return;
 	  }
       }
 

@@ -31,16 +31,24 @@
 
 namespace cubmem
 {
-  /* In the server, operator new is the no-throw one of memory_wrapper.hpp and returns NULL when it fails; throw
-   * instead, as new does in the client, so a block never records a size it does not have. */
+  /* In the server, operator new is the no-throw one of memory_wrapper.hpp and returns NULL when it fails; elsewhere it
+   * throws. Either way the caller gets the size, and a block never records a size it does not have. */
   static char *
   new_chars (size_t size)
   {
-    char *ptr = new char[size];
+    char *ptr = NULL;
 
+    try
+      {
+	ptr = new char[size];
+      }
+    catch (const std::bad_alloc &)
+      {
+	ptr = NULL;
+      }
     if (ptr == NULL)
       {
-	throw std::bad_alloc ();
+	throw bad_block_alloc (size);
       }
     return ptr;
   }

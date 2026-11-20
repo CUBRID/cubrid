@@ -470,6 +470,12 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 
 	    m_recdes_collected.push_back (std::move (new_recdes));
 	  }
+	catch (const cubmem::bad_block_alloc &e)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, e.requested ());
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto cleanup;
+	  }
 	catch (const std::bad_alloc &)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) bytes_consumed);

@@ -37,6 +37,7 @@
 
 #include <memory.h>
 #include <functional>
+#include <new>
 
 #include <cassert>
 #include <cinttypes>
@@ -119,6 +120,26 @@ namespace cubmem
   EXPORT_IMPORT extern const block_allocator STANDARD_BLOCK_ALLOCATOR;
   EXPORT_IMPORT extern const block_allocator EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR;
   EXPORT_IMPORT extern const block_allocator CSTYLE_BLOCK_ALLOCATOR;
+
+  // bad_block_alloc - thrown by the two standard block allocators when they cannot allocate; requested () is the size
+  //                   they asked for, for the error the caller reports
+  //
+  class bad_block_alloc : public std::bad_alloc
+  {
+    public:
+      explicit bad_block_alloc (size_t requested)
+	: m_requested (requested)
+      {
+      }
+
+      size_t requested () const
+      {
+	return m_requested;
+      }
+
+    private:
+      size_t m_requested;
+  };
 
   // single_block_allocator - maintains and allocates a single memory block
   //
