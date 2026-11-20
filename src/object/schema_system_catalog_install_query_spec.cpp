@@ -1047,7 +1047,7 @@ sm_define_view_histogram_spec (void)
 std::string
 sm_define_view_sensitivity_label_spec (void)
 {
-  char stmt [2048];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof(stmt),
@@ -1072,10 +1072,16 @@ sm_define_view_sensitivity_label_spec (void)
 	"WHERE "
 	  "[l].[class_of] = [c].[class_of] "
 	  "AND [a].[class_of] = [c] "
-	  "AND [a].[attr_id] = [l].[attr_id]",
+	  "AND [a].[attr_id] = [l].[attr_id] "
+	  "AND ("
+	    AUTH_CHECK_PRIVILEGE ("[c].[owner].[name]", "[c].[class_of]", "SELECT") " "
+	    /* DB_OBJECT_SENSITIVITY_LABEL */
+	    "OR " AUTH_CHECK_SYSTEM_OBJECT_PRIVILEGE ("%d", "SELECT")
+	  ")",
 	CT_SENSITIVITY_LABEL_NAME,
 	CT_CLASS_NAME,
-	CT_ATTRIBUTE_NAME);
+	CT_ATTRIBUTE_NAME,
+	DB_OBJECT_SENSITIVITY_LABEL);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
