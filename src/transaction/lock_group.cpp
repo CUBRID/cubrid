@@ -219,7 +219,7 @@ lock_group::give_back ()
 void
 lock_group::leave (THREAD_ENTRY *thread_p)
 {
-  LK_PENDING_RELEASE *release, *next;
+  LK_PENDING_RELEASE *release, *next, *handed;
 
   while (true)
     {
@@ -236,9 +236,17 @@ lock_group::leave (THREAD_ENTRY *thread_p)
 	}
       pthread_mutex_unlock (&m_mutex);
 
+      /* handed at the head: run in the order handed, so an instance is released before its class */
+      for (handed = NULL; release != NULL; release = next)
+	{
+	  next = release->next;
+	  release->next = handed;
+	  handed = release;
+	}
+
       /* each re-enters as the owner */
       m_depth = 1;
-      for (; release != NULL; release = next)
+      for (release = handed; release != NULL; release = next)
 	{
 	  next = release->next;
 	  switch (release->type)
