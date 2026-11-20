@@ -132,9 +132,10 @@ struct expr_pred
   DB_VALUE **arg3p;		/* LIKE escape, when present */
   REL_OP rel_op;
   DB_TYPE fast_type;		/* direct-compare type, or DB_TYPE_UNKNOWN -> the term's decided comparison */
-  /* comp leaves: the comparison the unpack decided for the term (COMP_EVAL_TERM.compare), which a leaf that is not a
-   * direct compare makes as eval_value_rel_cmp () does; NULL for a term left to its values and for a pinned literal
-   * (both sides are then of the left side's type) */
+  /* comp leaves: the comparison the unpack decided for the term (COMP_EVAL_TERM.compare), set on the server by
+   * expr_pred_bind (); a leaf that is not a direct compare makes it as eval_value_rel_cmp () does, a pinned literal
+   * compares in its target domain, and a pinned host variable is converted by its conv[1] into target[1] once per
+   * execution (expr_pred_pin_hostvar ()); NULL for a term left to its values */
   const DOMAIN_COMPARE *compare;
 
   /* scan-filter leaves (EXPR_PRED_COMP_FETCH): the operands are fetched per row through
@@ -3418,7 +3419,8 @@ expr_pred_pin_hostvars (EXPR_PRED * pred, cubthread::entry * thread_p, val_descr
   return error;
 }
 
-/* forget the executions the tree's pinned host variables hold values of, as expr_prog_reset () forgets its prologues */
+/* forget the executions the tree's pinned host variables hold values of, as expr_prog_reset () forgets its prologues --
+ * the value too, so that nothing reads the last execution's before the next one converts its own */
 static void
 expr_pred_pin_reset (EXPR_PRED * pred)
 {
@@ -3428,7 +3430,12 @@ expr_pred_pin_reset (EXPR_PRED * pred)
     {
       return;
     }
-  pred->pin_stamp_valid = false;
+  if (pred->rhs_pin_hostvar)
+    {
+      pred->pin_stamp_valid = false;
+      pr_clear_value (&pred->pinned_rhs);
+      db_make_null (&pred->pinned_rhs);
+    }
   expr_pred_pin_reset (pred->lhs);
   expr_pred_pin_reset (pred->rhs);
   for (i = 0; pred->kids != NULL && i < pred->n_kids; i++)
