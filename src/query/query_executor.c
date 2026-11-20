@@ -12920,6 +12920,7 @@ qexec_reset_regu_variable (REGU_VARIABLE * var)
       qexec_reset_regu_variable (var->value.arithptr->leftptr);
       qexec_reset_regu_variable (var->value.arithptr->rightptr);
       qexec_reset_regu_variable (var->value.arithptr->thirdptr);
+      qexec_reset_pred_expr (var->value.arithptr->pred);
       /* use arithptr */
       break;
     case TYPE_SP:
