@@ -332,6 +332,8 @@ static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
 static bool qo_node_is_multi_class (QO_NODE * node);
+static bool qo_outer_join_inner_scans_per_class (QO_PLAN * inner);
+static QO_PLAN *qo_outer_join_wrap_inner_scan (QO_PLAN * inner);
 static double qo_seg_ndv (QO_SEGMENT * seg);
 static bool qo_seg_has_unique_index (QO_SEGMENT * seg);
 static double qo_node_filtered_rows (QO_NODE * node);
@@ -5281,18 +5283,26 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
        */
       if (!VALID_INNER (inner))
 	{
-	  inner = qo_sort_new (inner, inner->order, SORT_TEMP);
+	  /* an outer join must not run the terms of an Object fetch inner before the NULL padding */
+	  if (IS_OUTER_JOIN_TYPE (join_type))
+	    {
+	      inner = qo_outer_join_wrap_inner_scan (inner);
+	    }
+	  else
+	    {
+	      inner = qo_sort_new (inner, inner->order, SORT_TEMP);
+	    }
 	}
       else if (IS_OUTER_JOIN_TYPE (join_type))
 	{
 	  /* for outer join, if inner plan is a scan of classes in hierarchy: the scan block iterator would return
 	   * the NULL row of each class. A partitioned table is walked per outer row instead, which returns it once
 	   * after the last partition (CBRD-27866), unless a class hierarchy scan of the query could follow it, which
-	   * only the iterator moves to its next class (gen_inner ()). */
-	  if (inner->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (inner->plan_un.scan.node)
-	      && !qo_nl_inner_partitions_walk_per_row (inner->plan_un.scan.node))
+	   * only the iterator moves to its next class (gen_inner ()). An Object fetch inner is judged by the scan under
+	   * it and only that scan goes to the temp list, so the terms of the fetch still run after the join. */
+	  if (qo_outer_join_inner_scans_per_class (inner))
 	    {
-	      inner = qo_sort_new (inner, inner->order, SORT_TEMP);
+	      inner = qo_outer_join_wrap_inner_scan (inner);
 	    }
 	}
 
@@ -5968,6 +5978,44 @@ qo_nl_inner_partitions_walk_per_row (QO_NODE * node)
     }
 
   return true;
+}
+
+/*
+ * qo_outer_join_inner_scans_per_class () - whether an outer join inner scans a class hierarchy class by class
+ *   return: bool
+ *   inner(in): the inner plan of the NL join
+ *
+ * Note: an Object fetch inner is driven by the scan at the bottom of its path.
+ */
+static bool
+qo_outer_join_inner_scans_per_class (QO_PLAN * inner)
+{
+  while (inner->plan_type == QO_PLANTYPE_FOLLOW)
+    {
+      inner = inner->plan_un.follow.head;
+    }
+
+  return (inner->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (inner->plan_un.scan.node)
+	  && !qo_nl_inner_partitions_walk_per_row (inner->plan_un.scan.node));
+}
+
+/*
+ * qo_outer_join_wrap_inner_scan () - put the plan under the Object fetches of an outer join inner into a temp list
+ *   return: the inner plan with the plan under its Object fetches read from a temp list
+ *   inner(in): the inner plan of the NL join
+ *
+ * Note: an Object fetch keeps its terms above the temp list, since they may reject a row only after the join.
+ */
+static QO_PLAN *
+qo_outer_join_wrap_inner_scan (QO_PLAN * inner)
+{
+  if (inner->plan_type == QO_PLANTYPE_FOLLOW)
+    {
+      return qo_follow_new (inner->info, qo_outer_join_wrap_inner_scan (inner->plan_un.follow.head),
+			    inner->plan_un.follow.path, &(inner->sarged_terms), &(inner->subqueries));
+    }
+
+  return qo_sort_new (inner, inner->order, SORT_TEMP);
 }
 
 /*
