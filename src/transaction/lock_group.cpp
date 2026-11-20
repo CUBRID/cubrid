@@ -638,8 +638,7 @@ lock_group::defer_abort (THREAD_ENTRY *thread_p, bool to_pl_caller)
 
   pthread_mutex_lock (&m_mutex);
   section = in_section ();
-  /* with no section, only a deadlock victim's abort: not that of a transaction a COMMIT under the PL has just
-   * ended and restarted (xtran_end_is_held_by_parallel_section ()) */
+  /* with no section, only a deadlock victim's abort, not one for another error such as ER_DB_NO_MODIFICATIONS */
   if (!section && ! (to_pl_caller && (lock_is_tran_deadlock_victim (m_tran_index) || is_abort_deferred ())))
     {
       pthread_mutex_unlock (&m_mutex);

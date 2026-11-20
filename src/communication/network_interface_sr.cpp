@@ -137,6 +137,7 @@ STATIC_INLINE int stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, i
     bool *can_end_transaction) __attribute__ ((ALWAYS_INLINE));
 
 static bool need_to_abort_tran (THREAD_ENTRY *thread_p, int *errid);
+static TRAN_STATE return_error_to_client_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool aborted);
 static int server_capabilities (void);
 static int check_client_capabilities (THREAD_ENTRY *thread_p, int client_cap, int rel_compare,
 				      REL_COMPATIBILITY *compatibility, const char *client_host);
@@ -193,7 +194,8 @@ stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool ret
   if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
     {
       /* Likely the commit failed.. somehow */
-      (void) return_error_to_client (thread_p, rid);
+      (void) return_error_to_client_internal (thread_p, rid, state == TRAN_UNACTIVE_ABORTED
+					      || state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);
     }
 
   *should_conn_reset = xtran_should_connection_reset (thread_p, has_updated);
@@ -393,6 +395,21 @@ need_to_abort_tran (THREAD_ENTRY *thread_p, int *errid)
 TRAN_STATE
 return_error_to_client (THREAD_ENTRY *thread_p, unsigned int rid)
 {
+  return return_error_to_client_internal (thread_p, rid, false);
+}
+
+/*
+ * return_error_to_client_internal - return_error_to_client (), or only the error for a request that has aborted the
+ *				     transaction itself
+ *
+ * return: state of operation
+ *
+ *   rid(in):
+ *   aborted(in): the request ended the transaction as an abort: one more would end the next transaction
+ */
+static TRAN_STATE
+return_error_to_client_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool aborted)
+{
   LOG_TDES *tdes;
   int errid;
   bool flag_abort = false;
@@ -414,7 +431,7 @@ return_error_to_client (THREAD_ENTRY *thread_p, unsigned int rid)
     {
       tran_state = tdes->state;
     }
-  flag_abort = need_to_abort_tran (thread_p, &errid);
+  flag_abort = need_to_abort_tran (thread_p, &errid) && !aborted;
 
   /* check some errors which require special actions */
   /*
@@ -3854,7 +3871,8 @@ stran_server_2pc_prepare (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
   if (state != TRAN_UNACTIVE_2PC_PREPARE && state != TRAN_UNACTIVE_COMMITTED)
     {
       /* the prepare failed. */
-      (void) return_error_to_client (thread_p, rid);
+      (void) return_error_to_client_internal (thread_p, rid, state == TRAN_UNACTIVE_ABORTED
+					      || state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);
     }
 
   (void) or_pack_int (reply, state);
@@ -3970,7 +3988,8 @@ stran_server_2pc_prepare_global_tran (THREAD_ENTRY *thread_p, unsigned int rid, 
   if (state != TRAN_UNACTIVE_2PC_PREPARE && state != TRAN_UNACTIVE_COMMITTED)
     {
       /* Likely the prepare failed.. somehow */
-      (void) return_error_to_client (thread_p, rid);
+      (void) return_error_to_client_internal (thread_p, rid, state == TRAN_UNACTIVE_ABORTED
+					      || state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);
     }
 
   (void) or_pack_int (reply, state);
