@@ -60,6 +60,7 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "locator_sr.h"
+#include "heap_pending_record.hpp"
 #include "log_lsa.hpp"
 #include "log_volids.hpp"
 #include "xserver_interface.h"
@@ -12920,6 +12921,7 @@ qexec_reset_regu_variable (REGU_VARIABLE * var)
       qexec_reset_regu_variable (var->value.arithptr->leftptr);
       qexec_reset_regu_variable (var->value.arithptr->rightptr);
       qexec_reset_regu_variable (var->value.arithptr->thirdptr);
+      qexec_reset_pred_expr (var->value.arithptr->pred);
       /* use arithptr */
       break;
     case TYPE_SP:
@@ -14600,6 +14602,7 @@ struct qexec_batch_trace
   bool on;
   UINT64 fetches;
   UINT64 ioreads;
+  OOS_READ_STATS oos_reads;
   TSC_TICKS tick;
   SCAN_STATS before;		/* the scan's stats at the stretch's start, when a partition takes its share */
 };
@@ -14611,6 +14614,7 @@ qexec_batch_trace_begin (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t, const S
     {
       t->fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
       t->ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      t->oos_reads = thread_p->oos_read_stats;
       tsc_getticks (&t->tick);
       if (s_id->partition_stats != NULL)
 	{
@@ -14632,6 +14636,7 @@ qexec_batch_trace_end (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t, SCAN_ID *
       TSC_ADD_TIMEVAL (s_id->scan_stats.elapsed_scan, tv_diff);
       s_id->scan_stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - t->fetches;
       s_id->scan_stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - t->ioreads;
+      scan_add_oos_read_stats (&s_id->scan_stats.oos_reads, &t->oos_reads, &thread_p->oos_read_stats);
       if (s_id->partition_stats != NULL)
 	{
 	  SCAN_STATS *part = s_id->partition_stats;
@@ -14640,6 +14645,7 @@ qexec_batch_trace_end (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t, SCAN_ID *
 	  perfmon_add_timeval (&part->elapsed_scan, &t->before.elapsed_scan, &now->elapsed_scan);
 	  part->num_fetches += now->num_fetches - t->before.num_fetches;
 	  part->num_ioreads += now->num_ioreads - t->before.num_ioreads;
+	  scan_add_oos_read_stats (&part->oos_reads, &t->before.oos_reads, &now->oos_reads);
 	  part->read_rows += now->read_rows - t->before.read_rows;
 	  part->qualified_rows += now->qualified_rows - t->before.qualified_rows;
 	  part->batch_pages += now->batch_pages - t->before.batch_pages;
@@ -15300,6 +15306,18 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				      if (xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP)
 					{
 					  return S_SUCCESS;
+					}
+
+				      /* Evaluate analytic functions for tuples that don't satisfy instnum_pred yet, as without a scan
+				       * procedure block */
+				      if (ev_res == V_FALSE && !(xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_CHECK)
+					  && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+					{
+					  if (qexec_analytic_eval_in_processing (thread_p, xasl, xasl_state) !=
+					      NO_ERROR)
+					    {
+					      return S_ERROR;
+					    }
 					}
 				    }
 
@@ -16270,8 +16288,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
 		      /* read lob attributes */
 		      scan_code =
-			heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
-						  NULL_CHN);
+			heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache,
+						  PEEK, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		      if (scan_code == S_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -17108,7 +17126,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  /* read lob attributes */
 		  scan_code =
 		    heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
-					      NULL_CHN);
+					      NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		  if (scan_code == S_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
@@ -17474,7 +17492,7 @@ qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   do
     {
       scan = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY, NULL_CHN,
-					  LOG_WARNING_IF_DELETED, false, true);
+					  LOG_WARNING_IF_DELETED, false, true, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (scan == S_DOESNT_EXIST)
 	{
 	  er_clear ();
@@ -17523,7 +17541,9 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 				     const HEAP_IDX_ELEMENTS_INFO * idx_info, int op_type, int pruning_type,
 				     PRUNING_CONTEXT * pcontext, int *removed_count)
 {
-  LC_COPYAREA *copyarea = NULL;
+  /* *INDENT-OFF* */
+  heap_pending_record pending;
+  /* *INDENT-ON* */
   RECDES new_recdes;
   int i = 0;
   int error_code = NO_ERROR;
@@ -17551,15 +17571,17 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, LOB_FLAG_EXCLUDE_LOB);
-  if (copyarea == NULL)
+  if (heap_attrinfo_prepare_record (thread_p, attr_info, NULL, &pending, false) != S_SUCCESS)
     {
       goto error_exit;
     }
+  /* *INDENT-OFF* */
+  new_recdes = pending.get_recdes ();
+  /* *INDENT-ON* */
 
   if (idx_info->has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &new_recdes, index_attr_info);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &new_recdes, index_attr_info, &pending);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -17592,7 +17614,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       HFID_COPY (&pruned_hfid, &class_hfid);
       BTID_COPY (&btid, &index->btid);
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
+				&pending);
       /* TODO: unique with prefix length */
       if (key_dbvalue == NULL)
 	{
@@ -17708,14 +17731,6 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	}
     }
 
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      new_recdes.data = NULL;
-      new_recdes.area_size = 0;
-    }
-
   return NO_ERROR;
 
 error_exit:
@@ -17723,14 +17738,6 @@ error_exit:
     {
       pr_clear_value (&dbvalue);
       key_dbvalue = NULL;
-    }
-
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      new_recdes.data = NULL;
-      new_recdes.area_size = 0;
     }
 
   return ER_FAILED;
@@ -17765,7 +17772,9 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 				   int pruning_type, PRUNING_CONTEXT * pcontext, OID * unique_oid_p,
 				   RECDES * unique_recdes_p, int op_type)
 {
-  LC_COPYAREA *copyarea = NULL;
+  /* *INDENT-OFF* */
+  heap_pending_record pending;
+  /* *INDENT-ON* */
   RECDES recdes;
   int i = 0;
   int error_code = NO_ERROR;
@@ -17799,15 +17808,17 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, LOB_FLAG_INCLUDE_LOB);
-  if (copyarea == NULL)
+  if (heap_attrinfo_prepare_record (thread_p, attr_info, NULL, &pending, true) != S_SUCCESS)
     {
       goto error_exit;
     }
+  /* *INDENT-OFF* */
+  recdes = pending.get_recdes ();
+  /* *INDENT-ON* */
 
   if (idx_info->has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &recdes, index_attr_info);
+      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &recdes, index_attr_info, &pending);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -17833,7 +17844,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       is_global_index = false;
 
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
+				&pending);
       if (key_dbvalue == NULL)
 	{
 	  goto error_exit;
@@ -17930,14 +17942,6 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 	}
     }
 
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      recdes.data = NULL;
-      recdes.area_size = 0;
-    }
-
   return NO_ERROR;
 
 error_exit:
@@ -17945,14 +17949,6 @@ error_exit:
     {
       pr_clear_value (&dbvalue);
       key_dbvalue = NULL;
-    }
-
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      recdes.data = NULL;
-      recdes.area_size = 0;
     }
 
   return ER_FAILED;
@@ -20047,7 +20043,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 
       /* fetch the object and the class oid */
       scan = locator_get_object (thread_p, &dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, lock_mode,
-				 PEEK, NULL_CHN);
+				 PEEK, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (scan != S_SUCCESS)
 	{
 	  /* setting ER_HEAP_UNKNOWN_OBJECT error for deleted or invisible objects should be replaced by a more clear
@@ -20732,7 +20728,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      scan_code =
 		locator_lock_and_get_object_with_evaluation (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
 							     NULL, &scan_cache, COPY, NULL_CHN, p_mvcc_reev_data,
-							     LOG_WARNING_IF_DELETED, true, true);
+							     LOG_WARNING_IF_DELETED, true, true,
+							     HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();
@@ -21972,6 +21969,32 @@ qexec_execute_dblink_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STAT
   return NO_ERROR;
 }
 
+#if SERVER_MODE && !WINDOWS
+/*
+ * qexec_execute_ctes_first () - run the CTEs of a block that has a parallel subquery executor on this thread, before
+ *				  its first job: a sibling may read a CTE's list from a job, also from a subquery that a
+ *				  joined scan evaluates per row, so a reference to a CTE needs no serial statement
+ *   return: NO_ERROR, or the error of a CTE
+ *   xasl(in): the block
+ */
+static int
+qexec_execute_ctes_first (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  for (XASL_NODE * xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)
+    {
+      for (XASL_NODE * cte = xptr->aptr_list; cte != NULL; cte = cte->next)
+	{
+	  if (cte->type == CTE_PROC && IS_XASL_INITIAL_STATUS (cte->status)
+	      && qexec_execute_mainblock (thread_p, cte, xasl_state, NULL) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+#endif
+
 /*
  * qexec_execute_mainblock_internal () -
  *   return: NO_ERROR, or ER_code
@@ -22338,6 +22361,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  XASL_SET_FLAG (xasl->spec_list->s.list_node.xasl_node, XASL_LIST_BACKWARD);
 	}
 
+#if SERVER_MODE && !WINDOWS
+      if (xasl->px_executor != nullptr && qexec_execute_ctes_first (thread_p, xasl, xasl_state) != NO_ERROR)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  GOTO_EXIT_ON_ERROR;
+	}
+#endif
+
       /* evaluate all the aptr lists in all scans */
       for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
 	{
@@ -22492,6 +22523,23 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      else
 				{
 				  xasl->executed_parallelism = n_workers_to_reserve + 1 /* main thread */ ;
+				  if (xasl->px_executor != nullptr)
+				    {
+				      if (qexec_execute_ctes_first (thread_p, xasl, xasl_state) != NO_ERROR)
+					{
+					  if (tplrec.tpl)
+					    {
+					      db_private_free_and_init (thread_p, tplrec.tpl);
+					    }
+					  qexec_failure_line (__LINE__, xasl_state);
+					  GOTO_EXIT_ON_ERROR;
+					}
+				      if (!IS_XASL_INITIAL_STATUS (xptr2->status))
+					{
+					  /* a CTE that just ran */
+					  continue;
+					}
+				    }
 				}
 			    }
 			  else
@@ -30215,6 +30263,7 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
     {
       a_eval_list->current_values = NULL;
       a_eval_list->temp_values = NULL;
+      a_eval_list->input_recs = 0;
 
       for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
 	{
@@ -32945,8 +32994,9 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
       return ER_FAILED;
     }
 
-  if (xasl->list_id->tuple_cnt == 0)
+  if (a_eval_list->input_recs == 0)
     {
+      /* first input record; the rows the LIMIT offset skips come before the first row of the list */
       int key_idx = 0;
       for (SORT_LIST * tmp = a_eval_list->sort_list; tmp != NULL; tmp = tmp->next)
 	{
@@ -33091,6 +33141,8 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
       a_func_list->curr_group_tuple_count++;
       a_func_list->curr_sort_key_tuple_count++;
     }
+
+  a_eval_list->input_recs++;
 
   return NO_ERROR;
 }

@@ -1242,6 +1242,8 @@ static int btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STAT
 static int btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level,
 						   bool * exhausted, int *count);
 static UINT64 btree_get_stats_hash_bytes (UINT64 hash, const void *bytes, size_t size);
+static UINT64 btree_get_stats_hash_finalize (UINT64 hash);
+static UINT64 btree_get_stats_value_hash (const DB_VALUE * value);
 static UINT64 btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value);
 static UINT64 btree_get_stats_prefix_value_hash (const DB_VALUE * value);
 static int btree_get_stats_compare_prefix_hash (const void *hash1, const void *hash2);
@@ -7161,7 +7163,7 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
 		  goto exit_on_error;
 		}
 	      val_hash = DB_IS_NULL (&elem) ? ~0ULL : btree_get_stats_prefix_value_hash (&elem);
-	      hash = hash * 1099511628211ULL + val_hash;
+	      hash = btree_get_stats_hash_finalize (hash + val_hash);
 	      env->prefix_sample[(size_t) k * BTREE_STATS_DUJ1_SAMPLE + slot] = hash;
 	      if (elem.need_clear == true)
 		{
@@ -7687,6 +7689,29 @@ btree_get_stats_hash_bytes (UINT64 hash, const void *bytes, size_t size)
 }
 
 /*
+ * btree_get_stats_hash_finalize () - spread every input bit over the whole 64-bit hash (fmix64 of MurmurHash3)
+ *   return: 64-bit hash
+ *   hash(in): hash to finalize
+ *
+ * Note: (CBRD-28213) FNV-1a ends with a multiplication by its prime, so two values that differ only in the low
+ * bytes keep hashes whose difference is linear in those bytes. The prefix hash used to add the element hash to
+ * the previous level multiplied by the same prime, and the two linear terms cancelled: the pairs of small
+ * integers (a, b) collided by the tens of thousands, and the Duj1 estimate of pkeys[1] fell more than ten times.
+ * The element hash and every level of the prefix hash are finalized so that no linear relation survives.
+ */
+static UINT64
+btree_get_stats_hash_finalize (UINT64 hash)
+{
+  hash ^= hash >> 33;
+  hash *= 0xff51afd7ed558ccdULL;
+  hash ^= hash >> 33;
+  hash *= 0xc4ceb9fe1a85ec53ULL;
+  hash ^= hash >> 33;
+
+  return hash;
+}
+
+/*
  * btree_get_stats_hash_string () - mix a CHAR or VARCHAR key element into a prefix hash so that
  *     the strings its collation compares equal hash alike
  *   return: 64-bit hash
@@ -7790,10 +7815,21 @@ btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
  * distinct values together: every fixed NUMERIC and most BIT strings hash to 0 because it stops at
  * the first zero byte, FLOAT, DOUBLE and MONETARY are truncated to integers, and ENUM hashes the
  * address of the DB_VALUE. The whole value is mixed here instead; strings follow the comparison of
- * their collation (btree_get_stats_hash_string ()).
+ * their collation (btree_get_stats_hash_string ()). The result is finalized (CBRD-28213).
  */
 static UINT64
 btree_get_stats_prefix_value_hash (const DB_VALUE * value)
+{
+  return btree_get_stats_hash_finalize (btree_get_stats_value_hash (value));
+}
+
+/*
+ * btree_get_stats_value_hash () - FNV-1a hash of one non-NULL key element, before the finalization
+ *   return: 64-bit hash
+ *   value(in): key element
+ */
+static UINT64
+btree_get_stats_value_hash (const DB_VALUE * value)
 {
   UINT64 hash = 14695981039346656037ULL;
 
@@ -32217,7 +32253,8 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   {
     HEAP_GET_CONTEXT context;
 
-    heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN);
+    heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN,
+			   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
     lock_result = locator_lock_object_unless_ours (thread_p, &context, find_fk_obj->lock_mode, false, true);
   }
   if (lock_result == LK_NOTGRANTED_HELD_BY_WRITERS)
