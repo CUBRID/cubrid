@@ -317,6 +317,8 @@ static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
 static bool qo_node_is_multi_class (QO_NODE * node);
+static bool qo_outer_join_inner_scans_per_class (QO_PLAN * inner);
+static QO_PLAN *qo_outer_join_wrap_inner_scan (QO_PLAN * inner);
 static double qo_seg_ndv (QO_SEGMENT * seg);
 static bool qo_seg_has_unique_index (QO_SEGMENT * seg);
 static double qo_node_filtered_rows (QO_NODE * node);
@@ -361,15 +363,19 @@ static QO_PLAN *qo_find_best_plan_on_info (QO_INFO *, QO_EQCLASS *, double);
 static bool qo_check_new_best_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_check_plan_on_info (QO_INFO *, QO_PLAN *);
 static PT_HINT_ENUM qo_join_hint_common_to_nodes (QO_INFO *);
-static int qo_examine_idx_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
+static bool qo_lenient_join_hint (QO_ENV *);
+static bool qo_node_idx_join_possible (QO_NODE *);
+static int qo_examine_idx_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
+				int *);
 static int qo_examine_nl_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
-			       BITSET *, int, BITSET *);
+			       BITSET *, int, int, BITSET *);
 static int qo_examine_merge_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
-				  BITSET *);
+				  BITSET *, int);
 static int qo_examine_hash_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
-				 BITSET *);
+				 BITSET *, int);
 static bool qo_is_hashable_term (QO_TERM * term);
-static int qo_examine_correlated_index (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
+static int qo_examine_correlated_index (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *,
+					int *);
 static int qo_examine_follow (QO_INFO *, QO_TERM *, QO_INFO *, BITSET *, BITSET *);
 static void qo_compute_projected_segs (QO_PLANNER *, BITSET *, BITSET *, BITSET *);
 static int qo_compute_projected_size (QO_PLANNER *, BITSET *);
@@ -383,7 +389,7 @@ static QO_PLAN *qo_search_planner (QO_PLANNER *);
 static void sort_partitions (QO_PLANNER *);
 static QO_PLAN *qo_combine_partitions (QO_PLANNER *, BITSET *);
 static int qo_generate_join_index_scan (QO_INFO *, JOIN_TYPE, QO_PLAN *, QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *,
-					BITSET *, BITSET *, BITSET *, BITSET *);
+					BITSET *, BITSET *, BITSET *, BITSET *, int *);
 static void qo_generate_seq_scan (QO_INFO *, QO_NODE *);
 static bool qo_node_using_index_forced (QO_NODE *);
 static int qo_generate_index_scan (QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *, int);
@@ -5065,18 +5071,26 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
        */
       if (!VALID_INNER (inner))
 	{
-	  inner = qo_sort_new (inner, inner->order, SORT_TEMP);
+	  /* an outer join must not run the terms of an Object fetch inner before the NULL padding */
+	  if (IS_OUTER_JOIN_TYPE (join_type))
+	    {
+	      inner = qo_outer_join_wrap_inner_scan (inner);
+	    }
+	  else
+	    {
+	      inner = qo_sort_new (inner, inner->order, SORT_TEMP);
+	    }
 	}
       else if (IS_OUTER_JOIN_TYPE (join_type))
 	{
 	  /* for outer join, if inner plan is a scan of classes in hierarchy: the scan block iterator would return
 	   * the NULL row of each class. A partitioned table is walked per outer row instead, which returns it once
 	   * after the last partition (CBRD-27866), unless a class hierarchy scan of the query could follow it, which
-	   * only the iterator moves to its next class (gen_inner ()). */
-	  if (inner->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (inner->plan_un.scan.node)
-	      && !qo_nl_inner_partitions_walk_per_row (inner->plan_un.scan.node))
+	   * only the iterator moves to its next class (gen_inner ()). An Object fetch inner is judged by the scan under
+	   * it and only that scan goes to the temp list, so the terms of the fetch still run after the join. */
+	  if (qo_outer_join_inner_scans_per_class (inner))
 	    {
-	      inner = qo_sort_new (inner, inner->order, SORT_TEMP);
+	      inner = qo_outer_join_wrap_inner_scan (inner);
 	    }
 	}
 
@@ -5752,6 +5766,44 @@ qo_nl_inner_partitions_walk_per_row (QO_NODE * node)
     }
 
   return true;
+}
+
+/*
+ * qo_outer_join_inner_scans_per_class () - whether an outer join inner scans a class hierarchy class by class
+ *   return: bool
+ *   inner(in): the inner plan of the NL join
+ *
+ * Note: an Object fetch inner is driven by the scan at the bottom of its path.
+ */
+static bool
+qo_outer_join_inner_scans_per_class (QO_PLAN * inner)
+{
+  while (inner->plan_type == QO_PLANTYPE_FOLLOW)
+    {
+      inner = inner->plan_un.follow.head;
+    }
+
+  return (inner->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (inner->plan_un.scan.node)
+	  && !qo_nl_inner_partitions_walk_per_row (inner->plan_un.scan.node));
+}
+
+/*
+ * qo_outer_join_wrap_inner_scan () - put the plan under the Object fetches of an outer join inner into a temp list
+ *   return: the inner plan with the plan under its Object fetches read from a temp list
+ *   inner(in): the inner plan of the NL join
+ *
+ * Note: an Object fetch keeps its terms above the temp list, since they may reject a row only after the join.
+ */
+static QO_PLAN *
+qo_outer_join_wrap_inner_scan (QO_PLAN * inner)
+{
+  if (inner->plan_type == QO_PLANTYPE_FOLLOW)
+    {
+      return qo_follow_new (inner->info, qo_outer_join_wrap_inner_scan (inner->plan_un.follow.head),
+			    inner->plan_un.follow.path, &(inner->sarged_terms), &(inner->subqueries));
+    }
+
+  return qo_sort_new (inner, inner->order, SORT_TEMP);
 }
 
 /*
@@ -10775,6 +10827,65 @@ qo_join_hint_common_to_nodes (QO_INFO * info)
 }
 
 /*
+ * qo_lenient_join_hint () - whether a join method hint that cannot be applied to a join is ignored for that join
+ *   return: true on the retry made after the optimization failed with every hint applied as written
+ *   env(in):
+ *
+ * Note: the first optimization applies the join method hints strictly: a join that cannot be made the hinted way is
+ *       left without a plan, so a join order where it happens is not chosen and the hints are kept as before.  Only
+ *       when no plan is found that way, xasl_generation.c retries with this set, so that such a hint is ignored for
+ *       that join alone instead of dropping every hint of the query (LEADING included).
+ */
+static bool
+qo_lenient_join_hint (QO_ENV * env)
+{
+  return PT_SELECT_INFO_IS_FLAGED (QO_ENV_PT_TREE (env), PT_SELECT_INFO_LENIENT_JOIN_HINT) != 0;
+}
+
+/*
+ * qo_node_idx_join_possible () - whether any join order could make an idx-join of the node
+ *   return: false when no usable index of the node has a term on its first key column
+ *   node(in):
+ *
+ * Note: an over-approximation of qo_generate_join_index_scan (): an index scan needs a term on the first key column.
+ *       Used where the join orders are chosen before the joins are examined (qo_get_distinct_info_ahead ()).
+ */
+static bool
+qo_node_idx_join_possible (QO_NODE * node)
+{
+  QO_NODE_INDEX *node_index = QO_NODE_INDEXES (node);
+  QO_INDEX_ENTRY *index_entry;
+  BITSET_ITERATOR iter;
+  int i, t;
+
+  for (i = 0; node_index != NULL && i < QO_NI_N (node_index); i++)
+    {
+      index_entry = QO_NI_ENTRY (node_index, i)->head;
+      if (index_entry->force < 0 || index_entry->nsegs <= 0)
+	{
+	  continue;
+	}
+
+      for (t = bitset_iterate (&(index_entry->seg_equal_terms[0]), &iter); t != -1; t = bitset_next_member (&iter))
+	{
+	  if (QO_TERM_CLASS (QO_ENV_TERM (QO_NODE_ENV (node), t)) != QO_TC_DUMMY_JOIN)
+	    {
+	      return true;
+	    }
+	}
+      for (t = bitset_iterate (&(index_entry->seg_other_terms[0]), &iter); t != -1; t = bitset_next_member (&iter))
+	{
+	  if (QO_TERM_CLASS (QO_ENV_TERM (QO_NODE_ENV (node), t)) != QO_TC_DUMMY_JOIN)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_examine_idx_join () -
  *   return:
  *   info(in):
@@ -10784,10 +10895,13 @@ qo_join_hint_common_to_nodes (QO_INFO * info)
  *   afj_terms(in):
  *   sarged_terms(in):
  *   pinned_subqueries(in):
+ *   hash_terms(in): the mergeable terms of this join; a merge join or a hash join is made only from them
+ *   idx_join_cand(out): the number of idx-join plans built for the hinted side (the inner, or the outer operand of a
+ *                       right outer join, whose sides are swapped below), see qo_examine_correlated_index ()
  */
 static int
 qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * afj_terms,
-		     BITSET * sarged_terms, BITSET * pinned_subqueries)
+		     BITSET * sarged_terms, BITSET * pinned_subqueries, BITSET * hash_terms, int *idx_join_cand)
 {
   int n = 0;
   QO_NODE *inner_node;
@@ -10820,13 +10934,21 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
     }
   else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
     {
-      /* join hint: force merge-join; skip idx-join */
-      goto exit;
+      /* join hint: force merge-join; skip idx-join.  A merge join is examined only when the join has a mergeable
+       * term: on the lenient retry (qo_lenient_join_hint ()) a hint without one is ignored for this join, instead of
+       * leaving the join without a plan, which fails the optimization and drops every hint of the query. */
+      if (!qo_lenient_join_hint (info->env) || !bitset_is_empty (hash_terms))
+	{
+	  goto exit;
+	}
     }
   else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
     {
-      /* join hint: force hash-join; skip idx-join */
-      goto exit;
+      /* join hint: force hash-join; skip idx-join.  Ignored when the join has no hash term, as for USE_MERGE. */
+      if (!qo_lenient_join_hint (info->env) || !bitset_is_empty (hash_terms))
+	{
+	  goto exit;
+	}
     }
   else
     {
@@ -10842,11 +10964,13 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
       /* if right outer join, select outer plan from the inner node and inner plan from the outer node, and do left
        * outer join
        */
-      n = qo_examine_correlated_index (info, JOIN_LEFT, inner, outer, afj_terms, sarged_terms, pinned_subqueries);
+      n = qo_examine_correlated_index (info, JOIN_LEFT, inner, outer, afj_terms, sarged_terms, pinned_subqueries,
+				       idx_join_cand);
     }
   else
     {
-      n = qo_examine_correlated_index (info, join_type, outer, inner, afj_terms, sarged_terms, pinned_subqueries);
+      n = qo_examine_correlated_index (info, join_type, outer, inner, afj_terms, sarged_terms, pinned_subqueries,
+				       idx_join_cand);
     }
 
 exit:
@@ -11042,6 +11166,7 @@ static QO_INFO *
 qo_get_distinct_info_ahead (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
 {
   QO_NODE *outer_node;
+  PT_HINT_ENUM join_hint;
   int i;
 
   if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_SEMI || planner->distinct_info == NULL
@@ -11050,9 +11175,15 @@ qo_get_distinct_info_ahead (QO_PLANNER * planner, QO_NODE * node, BITSET * visit
       return NULL;
     }
 
-  /* a join method hint on the node says how to join it as the inner, which it is not when placed first */
-  if (QO_NODE_HINT (node)
-      & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_USE_HASH | PT_HINT_NO_USE_HASH))
+  /* a join method hint on the node says how to join it as the inner, which it is not when placed first.  On the
+   * lenient retry a USE_IDX that no join order could apply is ignored here too (qo_lenient_join_hint ()). */
+  join_hint = QO_NODE_HINT (node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_USE_HASH
+				     | PT_HINT_NO_USE_HASH);
+  if (join_hint == PT_HINT_USE_IDX && qo_lenient_join_hint (planner->env) && !qo_node_idx_join_possible (node))
+    {
+      join_hint = PT_HINT_NONE;
+    }
+  if (join_hint != PT_HINT_NONE)
     {
       return NULL;
     }
@@ -11123,11 +11254,14 @@ qo_get_node_info (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
  *   sarged_terms(in):
  *   pinned_subqueries(in):
  *   idx_join_plan_n(in):
+ *   idx_join_cand(in): the number of idx-join plans built for the hinted side (the inner, or the outer operand of a
+ *                     right outer join); 0 when none, so that a USE_IDX hint on it cannot be applied to this join
+ *   hash_terms(in): the mergeable terms of this join; a merge join or a hash join is made only from them
  */
 static int
 qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * nl_join_terms,
 		    BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries,
-		    int idx_join_plan_n, BITSET * hash_terms)
+		    int idx_join_plan_n, int idx_join_cand, BITSET * hash_terms)
 {
   int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
@@ -11172,14 +11306,23 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	    {
 	      /* join hint: force nl-join */
 	    }
-	  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+	  else if ((QO_NODE_HINT (inner_node) & PT_HINT_USE_IDX)
+		   && (!qo_lenient_join_hint (info->env) || idx_join_cand > 0))
 	    {
-	      /* join hint: force idx-join, merge-join; skip nl-join */
+	      /* join hint: force idx-join; skip nl-join.  On the lenient retry a USE_IDX that no idx-join can be built
+	       * for is ignored and the hints below decide, see qo_lenient_join_hint () */
 	      goto exit;
 	    }
-	  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+	  else if ((QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
+		   && (!qo_lenient_join_hint (info->env) || !bitset_is_empty (hash_terms)))
 	    {
-	      /* join hint: force hash-join; skip nl-join */
+	      /* join hint: force merge-join; skip nl-join - unless ignored for a join without a mergeable term */
+	      goto exit;
+	    }
+	  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
+		   && (!qo_lenient_join_hint (info->env) || !bitset_is_empty (hash_terms)))
+	    {
+	      /* join hint: force hash-join; skip nl-join - unless ignored for a join without a hash term */
 	      goto exit;
 	    }
 	  else
@@ -11223,14 +11366,23 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	{
 	  /* join hint: force nl-join */
 	}
-      else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+      else if ((QO_NODE_HINT (inner_node) & PT_HINT_USE_IDX)
+	       && (!qo_lenient_join_hint (info->env) || idx_join_cand > 0))
 	{
-	  /* join hint: force idx-join, merge-join; skip nl-join */
+	  /* join hint: force idx-join; skip nl-join.  On the lenient retry a USE_IDX that no idx-join can be built
+	   * for is ignored and the hints below decide, see qo_lenient_join_hint () */
 	  goto exit;
 	}
-      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+      else if ((QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
+	       && (!qo_lenient_join_hint (info->env) || !bitset_is_empty (hash_terms)))
 	{
-	  /* join hint: force hash-join; skip nl-join */
+	  /* join hint: force merge-join; skip nl-join - unless ignored for a join without a mergeable term */
+	  goto exit;
+	}
+      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
+	       && (!qo_lenient_join_hint (info->env) || !bitset_is_empty (hash_terms)))
+	{
+	  /* join hint: force hash-join; skip nl-join - unless ignored for a join without a hash term */
 	  goto exit;
 	}
       else
@@ -11369,10 +11521,13 @@ exit:
  *   afj_terms(in):
  *   sarged_terms(in):
  *   pinned_subqueries(in):
+ *   idx_join_cand(in): the number of idx-join plans built for the hinted side, see qo_examine_nl_join (); for a
+ *                     right outer join that is the outer operand, not the inner whose hint is read here
  */
 static int
 qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * sm_join_terms,
-		       BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
+		       BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries,
+		       int idx_join_cand)
 {
   int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
@@ -11435,9 +11590,17 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
     {
       /* join hint: force m-join */
     }
-  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX))
+  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
     {
-      /* join hint: force nl-join, idx-join; skip m-join */
+      /* join hint: force nl-join; skip m-join */
+      goto exit;
+    }
+  else if ((QO_NODE_HINT (inner_node) & PT_HINT_USE_IDX)
+	   && (!qo_lenient_join_hint (info->env) || join_type == JOIN_RIGHT || idx_join_cand > 0))
+    {
+      /* join hint: force idx-join; skip m-join - unless, on the lenient retry, no idx-join can be built for the inner
+       * (qo_examine_nl_join ()); then the hint is ignored and the checks below decide, as without it.  A right outer
+       * join reads the hint of the other side for its idx-join, so it keeps skipping here. */
       goto exit;
     }
   else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
@@ -11573,10 +11736,13 @@ exit:
  *   afj_terms(in):
  *   sarged_terms(in):
  *   pinned_subqueries(in):
+ *   idx_join_cand(in): the number of idx-join plans the hinted side could be built into; 0 when a USE_IDX hint on it
+ *		       cannot be applied to this join, see qo_examine_nl_join ()
  */
 static int
 qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * hash_join_terms,
-		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
+		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries,
+		      int idx_join_cand)
 {
   QO_PLAN *outer_plan, *inner_plan;
   QO_NODE *outer_node, *inner_node;
@@ -11697,9 +11863,15 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
     {
       /* join hint: force hash-join */
     }
-  else if (hint & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+  else if (hint & (PT_HINT_USE_NL | PT_HINT_USE_MERGE))
     {
-      /* join hint: force nl-join, idx-join, m-join; skip hash-join */
+      /* join hint: force nl-join, m-join; skip hash-join */
+      goto exit;
+    }
+  else if ((hint & PT_HINT_USE_IDX) && (!qo_lenient_join_hint (info->env) || idx_join_cand > 0))
+    {
+      /* join hint: force idx-join; skip hash-join - unless, on the lenient retry, no idx-join can be built for the
+       * hinted side (qo_examine_nl_join ()) */
       goto exit;
     }
   else
@@ -11813,6 +11985,8 @@ qo_is_hashable_term (QO_TERM * term)
  *   sarged_terms(in): The residual terms to be evaluated at this level of
  *		       the plan tree
  *   pinned_subqueries(in): The subqueries to be pinned to plans at this node
+ *   idx_join_cand(out): The number of idx-join plans built here, whether or not they were kept; 0 means no idx-join
+ *			 can be built, so a USE_IDX hint on the inner cannot be applied to this join
  *
  * Note: Check whether we can build a nested loop join that implements
  *		the join term as a correlated index on the inner term.
@@ -11831,7 +12005,7 @@ qo_is_hashable_term (QO_TERM * term)
  */
 static int
 qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * afj_terms,
-			     BITSET * sarged_terms, BITSET * pinned_subqueries)
+			     BITSET * sarged_terms, BITSET * pinned_subqueries, int *idx_join_cand)
 {
   QO_NODE *nodep;
   QO_NODE_INDEX *node_indexp;
@@ -11933,7 +12107,6 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
       /* the index has terms which are a subset of the terms that we're interested in */
       if (bitset_intersects (&indexable_terms, &(index_entryp->terms)))
 	{
-
 	  if (!bitset_intersects (sarged_terms, &(index_entryp->terms)))
 	    {
 	      /* there is not join-edge, only inner sargs */
@@ -11944,18 +12117,20 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
 	  /* generate join index scan using 'ni_entryp' */
 	  n +=
 	    qo_generate_join_index_scan (info, join_type, outer_plan, inner, nodep, ni_entryp, &indexable_terms,
-					 afj_terms, sarged_terms, pinned_subqueries);
+					 afj_terms, sarged_terms, pinned_subqueries, idx_join_cand);
 	  if (par_outer_plan != NULL)
 	    {
 	      n +=
 		qo_generate_join_index_scan (info, join_type, par_outer_plan, inner, nodep, ni_entryp,
-					     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
+					     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries,
+					     idx_join_cand);
 	    }
 	  if (gby_outer_plan != NULL)
 	    {
 	      n +=
 		qo_generate_join_index_scan (info, join_type, gby_outer_plan, inner, nodep, ni_entryp,
-					     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
+					     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries,
+					     idx_join_cand);
 	    }
 	}
     }
@@ -11989,18 +12164,20 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
 		  /* generate join index scan using 'ni_entryp' */
 		  n +=
 		    qo_generate_join_index_scan (info, join_type, outer_plan, inner, nodep, ni_entryp, &indexable_terms,
-						 afj_terms, sarged_terms, pinned_subqueries);
+						 afj_terms, sarged_terms, pinned_subqueries, idx_join_cand);
 		  if (par_outer_plan != NULL)
 		    {
 		      n +=
 			qo_generate_join_index_scan (info, join_type, par_outer_plan, inner, nodep, ni_entryp,
-						     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
+						     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries,
+						     idx_join_cand);
 		    }
 		  if (gby_outer_plan != NULL)
 		    {
 		      n +=
 			qo_generate_join_index_scan (info, join_type, gby_outer_plan, inner, nodep, ni_entryp,
-						     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
+						     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries,
+						     idx_join_cand);
 		    }
 		}
 	    }
@@ -13440,6 +13617,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   {
     int kept = 0;
     int idx_join_plan_n = 0;
+    int idx_join_cand = 0;	/* idx-join plans built for the hinted side (the tail, or the head of a right outer join) */
     QO_INFO *sm_tail_info;
 
     /* for path-term, if join order is correct, we can use follow. */
@@ -13464,7 +13642,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  {
 	    idx_join_plan_n =
 	      qo_examine_idx_join (new_info, join_type, head_info, tail_info, &afj_terms, &sarged_terms,
-				   &pinned_subqueries);
+				   &pinned_subqueries, &sm_join_terms, &idx_join_cand);
 	    kept += idx_join_plan_n;
 	  }
 #endif /* CORRELATED_INDEX */
@@ -13476,7 +13654,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	/* mergeable term : equi-term, symmetrical term, e.g. TBL1.a = TBL2.a, function(TAB1.a) = function(TAB2.a) */
 	kept +=
 	  qo_examine_nl_join (new_info, join_type, head_info, tail_info, &nl_join_terms, &duj_terms, &afj_terms,
-			      &sarged_terms, &pinned_subqueries, idx_join_plan_n, &sm_join_terms);
+			      &sarged_terms, &pinned_subqueries, idx_join_plan_n, idx_join_cand, &sm_join_terms);
 
 	/* there is no semi/anti merge join: a SEMI JOIN inner is merge joined read with the duplicates removed
 	 * (distinct_info), before or after the side it depends on */
@@ -13496,7 +13674,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  {
 	    kept +=
 	      qo_examine_merge_join (new_info, join_type, head_info, sm_tail_info, &sm_join_terms, &duj_terms,
-				     &afj_terms, &sarged_terms, &pinned_subqueries);
+				     &afj_terms, &sarged_terms, &pinned_subqueries, idx_join_cand);
 	  }
 #endif /* MERGE_JOINS */
 
@@ -13513,7 +13691,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	     */
 	    kept +=
 	      qo_examine_hash_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
-				    &sarged_terms, &pinned_subqueries);
+				    &sarged_terms, &pinned_subqueries, idx_join_cand);
 	  }
 #endif /* HASH_JOINS */
       }
@@ -13916,11 +14094,12 @@ qo_planner_search (QO_ENV * env)
  *   afj_terms(in):
  *   sarged_terms(in):
  *   pinned_subqueries(in):
+ *   idx_join_cand(in/out): counts the idx-join plans built, whether or not they are kept
  */
 static int
 qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * outer_plan, QO_INFO * inner,
 			     QO_NODE * nodep, QO_NODE_INDEX_ENTRY * ni_entryp, BITSET * indexable_terms,
-			     BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
+			     BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries, int *idx_join_cand)
 {
   QO_ENV *env;
   QO_INDEX_ENTRY *index_entryp;
@@ -14085,6 +14264,9 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 
       if (inner_plan)
 	{
+	  /* an idx-join can be built from this index, whether or not the plan is kept below */
+	  (*idx_join_cand)++;
+
 	  /* now, key-filter is assigned; exclude key-range, key-filter terms from remaining terms */
 	  bitset_difference (&remaining_terms, &range_terms);
 	  bitset_difference (&remaining_terms, &(inner_plan->plan_un.scan.kf_terms));

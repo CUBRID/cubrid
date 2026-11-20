@@ -189,7 +189,8 @@ static MATCH_STATUS partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALU
 static MATCH_STATUS partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNING_OP op,
 					  const PRUNING_TERM * term, PRUNING_BITSET * pruned);
 static int partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_oid, RECDES * recdes,
-						OID * partition_oid, HFID * partition_hfid);
+						OID * partition_oid, HFID * partition_hfid,
+						const heap_pending_record * pending);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int partition_prune_heap_scan (PRUNING_CONTEXT * pinfo);
 static int partition_prune_index_scan (PRUNING_CONTEXT * pinfo);
@@ -4034,7 +4035,7 @@ partition_clear_spec_row_pruning (access_spec_node * spec)
  */
 static int
 partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_oid, RECDES * recdes,
-				     OID * partition_oid, HFID * partition_hfid)
+				     OID * partition_oid, HFID * partition_hfid, const heap_pending_record * pending)
 {
   PRUNING_BITSET pruned;
   PRUNING_BITSET_ITERATOR it;
@@ -4066,7 +4067,7 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
   repr_id = or_rep_id (recdes);
   or_set_rep_id (recdes, pinfo->root_repr_id);
 
-  error = heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid, recdes, &pinfo->attr_info);
+  error = heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid, recdes, &pinfo->attr_info, pending);
 
   or_set_rep_id (recdes, repr_id);
   if (error != NO_ERROR)
@@ -4173,7 +4174,7 @@ cleanup:
 int
 partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 			PRUNING_CONTEXT * pcontext, int pruning_type, OID * pruned_class_oid, HFID * pruned_hfid,
-			OID * superclass_oid)
+			OID * superclass_oid, const heap_pending_record * pending)
 {
   PRUNING_CONTEXT pinfo;
   bool keep_pruning_context = false;
@@ -4226,7 +4227,7 @@ partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES *
       goto cleanup;
     }
 
-  error = partition_find_partition_for_record (pcontext, class_oid, recdes, pruned_class_oid, pruned_hfid);
+  error = partition_find_partition_for_record (pcontext, class_oid, recdes, pruned_class_oid, pruned_hfid, pending);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -4423,6 +4424,7 @@ error_return:
  * pcontext (in)  : pruning context loaded with DB_PARTITION_CLASS
  * class_oid (in) : OID of that partition
  * recdes (in)	  : record to check
+ * pending (in)  : owner of the out-of-row values a pending record refers to, or NULL
  *
  * Note: Unlike partition_prune_insert, this function never clears the
  * pruning context, so the caller can check many records with one context
@@ -4433,7 +4435,8 @@ error_return:
  * only used to choose the error code of a record that does not belong to it.
  */
 int
-partition_check_record_for_partition (PRUNING_CONTEXT * pcontext, const OID * class_oid, RECDES * recdes)
+partition_check_record_for_partition (PRUNING_CONTEXT * pcontext, const OID * class_oid, RECDES * recdes,
+				      const heap_pending_record * pending)
 {
   OR_PARTITION *partitions = NULL;
   OID pruned_class_oid;
@@ -4465,7 +4468,8 @@ partition_check_record_for_partition (PRUNING_CONTEXT * pcontext, const OID * cl
 
       OID_SET_NULL (&pruned_class_oid);
       HFID_SET_NULL (&pruned_hfid);
-      error = partition_find_partition_for_record (pcontext, class_oid, recdes, &pruned_class_oid, &pruned_hfid);
+      error = partition_find_partition_for_record (pcontext, class_oid, recdes, &pruned_class_oid, &pruned_hfid,
+						   pending);
 
       pcontext->partitions = partitions;
       pcontext->count = count;
@@ -4494,7 +4498,7 @@ partition_check_record_for_partition (PRUNING_CONTEXT * pcontext, const OID * cl
   OID_SET_NULL (&pruned_class_oid);
   HFID_SET_NULL (&pruned_hfid);
 
-  error = partition_find_partition_for_record (pcontext, class_oid, recdes, &pruned_class_oid, &pruned_hfid);
+  error = partition_find_partition_for_record (pcontext, class_oid, recdes, &pruned_class_oid, &pruned_hfid, pending);
   if (pcontext->error_code != NO_ERROR)
     {
       goto internal_error;
@@ -4558,7 +4562,8 @@ error_return:
  */
 int
 partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes, PRUNING_CONTEXT * pcontext,
-			int pruning_type, OID * pruned_class_oid, HFID * pruned_hfid, OID * superclass_oid)
+			int pruning_type, OID * pruned_class_oid, HFID * pruned_hfid, OID * superclass_oid,
+			const heap_pending_record * pending)
 {
   PRUNING_CONTEXT pinfo;
   int error = NO_ERROR;
@@ -4638,7 +4643,7 @@ partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES *
       goto cleanup;
     }
 
-  error = partition_find_partition_for_record (pcontext, class_oid, recdes, pruned_class_oid, pruned_hfid);
+  error = partition_find_partition_for_record (pcontext, class_oid, recdes, pruned_class_oid, pruned_hfid, pending);
   if (error != NO_ERROR)
     {
       goto cleanup;
