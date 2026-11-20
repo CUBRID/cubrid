@@ -27,6 +27,7 @@
 #include "copy_binary_format.hpp"
 #include "copy_csv_decoder.hpp"
 #include "btree.h"
+#include "db_date.h"
 #include "dbtype.h"
 #include "error_manager.h"
 #include "heap_file.h"
@@ -38,11 +39,16 @@
 #include "language_support.h"
 #include "object_domain.h"
 #include "object_representation_sr.h"
+#include "query_executor.h"
 #include "record_descriptor.hpp"
 #include "session.h"
+#include "string_opfunc.h"
+#include "util_func.h"
 #include "xserver_interface.h"
 
+#include <algorithm>
 #include <cstring>
+#include <ctime>
 #include <new>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -68,12 +74,53 @@ static const std::size_t COPY_CARRY_STEP = 4 * 1024;
  * everything else in it; finish () notes how many went unlogged. */
 static const std::int64_t COPY_REJECTS_LOGGED = 100;
 
+/* The statement's time for the date and time defaults, read as qexec_execute_query () reads it for INSERT. */
+static int
+copy_statement_time (DB_DATETIME *datetime, DB_TIMESTAMP *epochtime)
+{
+  time_t sec;
+  int millisec;
+  struct tm tm_val;
+
+  util_get_second_and_ms_since_epoch (&sec, &millisec);
+  if (localtime_r (&sec, &tm_val) == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      return ER_DATE_CONVERSION;
+    }
+  *epochtime = (DB_TIMESTAMP) sec;
+
+  return db_datetime_encode (datetime, tm_val.tm_mon + 1, tm_val.tm_mday, tm_val.tm_year + 1900, tm_val.tm_hour,
+			     tm_val.tm_min, tm_val.tm_sec, millisec);
+}
+
+/* Cast a default into its attribute's domain, as INSERT does before it sets the value. */
+static int
+copy_cast_default (OR_ATTRIBUTE *attr, DB_VALUE *value)
+{
+  TP_DOMAIN_STATUS status = tp_value_cast (value, value, attr->domain, false);
+
+  if (status != DOMAIN_COMPATIBLE)
+    {
+      return tp_domain_status_er_set (status, ARG_FILE_LINE, value, attr->domain);
+    }
+  return NO_ERROR;
+}
+
 copy_session::copy_session ()
   : m_class_oid (OID_INITIALIZER)
   , m_hfid (HFID_INITIALIZER)
   , m_col_types ()
   , m_col_domains ()
   , m_attr_ids ()
+  , m_auto_incr_pos (-1)
+  , m_auto_incr_col (-1)
+  , m_auto_incr_serial_name ()
+  , m_omitted_pos ()
+  , m_sys_datetime ()
+  , m_sys_epochtime (0)
+  , m_uuid_last_ms (0)
+  , m_uuid_seq (0)
   , m_num_cols (0)
   , m_format (COPY_FORMAT_BINARY)
   , m_delimiter (',')
@@ -157,6 +204,15 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const COPY_CON
 	goto exit;
       }
 
+    for (int j = 0; j < n_attrs; j++)
+      {
+	if (attrs[j].is_autoincrement)
+	  {
+	    m_auto_incr_pos = j;
+	    break;
+	  }
+      }
+
     m_attr_ids.resize (m_num_cols);
     m_col_domains.resize (m_num_cols);
     m_col_notnull.resize (m_num_cols);
@@ -195,7 +251,28 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const COPY_CON
 	m_col_domains[i].codeset = (dom != NULL) ? (int) dom->codeset : (int) LANG_SYS_CODESET;
 	m_col_domains[i].collation_id = (dom != NULL) ? dom->collation_id : LANG_SYS_COLLATION;
 	m_col_domains[i].domain = dom;
-	m_col_notnull[i] = attrs[j].is_notnull ? 1 : 0;
+	if (j == m_auto_incr_pos)
+	  {
+	    m_auto_incr_col = i;
+	  }
+	/* NULL in an AUTO_INCREMENT column takes the next value, as in INSERT */
+	m_col_notnull[i] = (attrs[j].is_notnull && j != m_auto_incr_pos) ? 1 : 0;
+      }
+
+    /* the heap alone would fill a left-out column with its original default, not its current one */
+    for (int j = 0; j < n_attrs; j++)
+      {
+	if (j != m_auto_incr_pos
+	    && std::find (m_attr_ids.begin (), m_attr_ids.end (), attrs[j].id) == m_attr_ids.end ())
+	  {
+	    m_omitted_pos.push_back (j);
+	  }
+      }
+    if (!m_omitted_pos.empty ())
+      {
+	m_uuid_last_ms = thread_p->uuidv7_last_ms;
+	m_uuid_seq = thread_p->uuidv7_seq;
+	error = copy_statement_time (&m_sys_datetime, &m_sys_epochtime);
       }
   }
 
@@ -215,6 +292,16 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
   int pos = 0;
   HEAP_CACHE_ATTRINFO attrinfo;
   bool attrinfo_started = false;
+  HEAP_SCANCACHE serial_scancache;	/* heap_set_autoincrement_value () refuses NULL; a modify one fixes no page */
+  bool serial_scancache_started = false;
+  /* the attrinfo may point into these rather than copy them, so they outlive every record built from it */
+  std::vector<DB_VALUE> defaults (m_omitted_pos.size ());
+  UUID_STATE uuid_state = { &m_uuid_last_ms, &m_uuid_seq };	/* kept in the session: UUID (7)s stay in order */
+
+  for (DB_VALUE &value : defaults)
+    {
+      db_make_null (&value);
+    }
 
   if (data_len < 0)
     {
@@ -258,6 +345,22 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
       goto cleanup;
     }
   attrinfo_started = true;
+
+  if (m_auto_incr_pos >= 0)
+    {
+      error = heap_scancache_start_modify (thread_p, &serial_scancache, &m_hfid, &m_class_oid, SINGLE_ROW_INSERT, NULL);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      serial_scancache_started = true;
+    }
+
+  error = eval_statement_defaults (thread_p, attrinfo, defaults);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
 
   while (pos < data_len || !m_leftover.empty ())
     {
@@ -444,7 +547,29 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
       /* pack the row into a record_descriptor and queue it for batch insert */
       for (int i = 0; i < m_num_cols; i++)
 	{
+	  if (i == m_auto_incr_col && DB_IS_NULL (&vals[i]))
+	    {
+	      continue;
+	    }
 	  error = heap_attrinfo_set (&m_class_oid, m_attr_ids[i], &vals[i], &attrinfo);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	}
+
+      error = set_defaults (attrinfo, defaults, &uuid_state);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      if (m_auto_incr_pos >= 0)
+	{
+	  int is_set;
+
+	  error = heap_set_autoincrement_value (thread_p, &attrinfo, &serial_scancache, &is_set, m_auto_incr_pos,
+					      m_auto_incr_serial_name);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -508,9 +633,23 @@ cleanup:
     }
   db_private_free (thread_p, vals);
 
+  if (serial_scancache_started)
+    {
+      (void) heap_scancache_end (thread_p, &serial_scancache);
+    }
   if (attrinfo_started)
     {
       heap_attrinfo_end (thread_p, &attrinfo);
+    }
+  for (DB_VALUE &value : defaults)
+    {
+      pr_clear_value (&value);
+    }
+  if (m_uuid_last_ms > thread_p->uuidv7_last_ms
+      || (m_uuid_last_ms == thread_p->uuidv7_last_ms && m_uuid_seq > thread_p->uuidv7_seq))
+    {
+      thread_p->uuidv7_last_ms = m_uuid_last_ms;
+      thread_p->uuidv7_seq = m_uuid_seq;
     }
 
   return error;
@@ -529,6 +668,61 @@ copy_session::carry (const char *from, std::size_t len)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, m_leftover.size () + len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  return NO_ERROR;
+}
+
+int
+copy_session::eval_statement_defaults (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO &attrinfo,
+				       std::vector<DB_VALUE> &defaults)
+{
+  for (std::size_t d = 0; d < m_omitted_pos.size (); d++)
+    {
+      OR_ATTRIBUTE *attr = &attrinfo.last_classrepr->attributes[m_omitted_pos[d]];
+      DB_DEFAULT_EXPR_TYPE type = attr->current_default_value.default_expr.default_expr_type;
+
+      if (!DB_IS_DEFAULT_DETERMINE_BY_ROW (type))
+	{
+	  int error = qexec_eval_statement_default (thread_p, attr, &m_sys_datetime, &defaults[d]);
+
+	  /* a default value is kept in the attribute's domain; only an expression's is cast, as in INSERT */
+	  if (error == NO_ERROR && type != DB_DEFAULT_NONE)
+	    {
+	      error = copy_cast_default (attr, &defaults[d]);
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+
+int
+copy_session::set_defaults (HEAP_CACHE_ATTRINFO &attrinfo, std::vector<DB_VALUE> &defaults, UUID_STATE *uuid_state)
+{
+  for (std::size_t d = 0; d < m_omitted_pos.size (); d++)
+    {
+      OR_ATTRIBUTE *attr = &attrinfo.last_classrepr->attributes[m_omitted_pos[d]];
+      int error = NO_ERROR;
+
+      if (DB_IS_DEFAULT_DETERMINE_BY_ROW (attr->current_default_value.default_expr.default_expr_type))
+	{
+	  error = qexec_eval_row_default_expr (attr, &m_sys_datetime, m_sys_epochtime, uuid_state, &defaults[d]);
+	  if (error == NO_ERROR)
+	    {
+	      error = copy_cast_default (attr, &defaults[d]);
+	    }
+	}
+      if (error == NO_ERROR)
+	{
+	  error = heap_attrinfo_set (&m_class_oid, attr->id, &defaults[d], &attrinfo);
+	}
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
   return NO_ERROR;
 }

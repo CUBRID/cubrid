@@ -18547,65 +18547,16 @@ qexec_default_format_domain (void)
 }
 
 /*
- * qexec_generate_row_default_expr () - Generate a row-level default expression value
+ * qexec_default_expr_apply_op () - Finish a default expression's value: TO_CHAR it when the default names TO_CHAR
  *   return: NO_ERROR or ER_code
- *   attr(in): attribute metadata
- *   xasl_state(in): XASL state containing value descriptor
- *   uuid_state(in): UUID generation state
- *   out_val(out): generated value
- *   value_type(in): the type XASL generation decided the generator makes (INSERT_PROC_NODE default_types)
- *   conv(in): a value of that type into the attribute's domain, found at unpack
+ *   attr(in): the attribute whose default it is
+ *   value(in): the expression's value; cleared
+ *   out_val(out): the default, before the cast into the attribute's domain
  */
 static int
-qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, UUID_STATE * uuid_state,
-				 DB_VALUE * out_val, DB_TYPE value_type, TP_VALUE_CONVERTER conv)
+qexec_default_expr_apply_op (OR_ATTRIBUTE * attr, DB_VALUE * value, DB_VALUE * out_val)
 {
-  DB_VALUE new_val;
-  DB_DEFAULT_EXPR_TYPE expr_type;
-  int error = NO_ERROR;
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  assert (attr != NULL);
-  assert (out_val != NULL);
-
-  expr_type = attr->current_default_value.default_expr.default_expr_type;
-  assert (DB_IS_DEFAULT_DETERMINE_BY_ROW (expr_type));
-
-  pr_clear_value (out_val);
-  db_make_null (&new_val);
-
-  switch (expr_type)
-    {
-    case DB_DEFAULT_SYSGUID:
-      error = db_uuidv4 (&new_val);
-      break;
-
-    case DB_DEFAULT_UUIDV4:
-      error = db_uuid_bin (UUID_V4, NULL, 0, &new_val);
-      break;
-
-    case DB_DEFAULT_UUIDV7:
-      if (DATETIME_IS_NULL (&xasl_state->vd.sys_datetime) || xasl_state->vd.sys_epochtime == 0)
-	{
-	  qexec_failure_line (__LINE__, xasl_state);
-	  return ER_FAILED;
-	}
-      error =
-	db_uuid_bin (UUID_V7, uuid_state,
-		     ((uint64_t) xasl_state->vd.sys_epochtime * 1000ULL)
-		     + (uint64_t) (xasl_state->vd.sys_datetime.time % 1000), &new_val);
-      break;
-
-    default:
-      assert (false);
-      qexec_failure_line (__LINE__, xasl_state);
-      return ER_FAILED;
-    }
-
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  int error;
 
   if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
     {
@@ -18632,7 +18583,8 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
 
       if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr->domain)))
 	{
-	  if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&new_val)))
+	  /* TO_CHAR returns a string value, we need to pass an expected domain of the result */
+	  if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (value)))
 	    {
 	      result_domain = NULL;
 	    }
@@ -18650,22 +18602,263 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
 	  result_domain = attr->domain;
 	}
 
-      error = db_to_char (&new_val, &format_val, &lang_val, out_val, result_domain);
+      error = db_to_char (value, &format_val, &lang_val, out_val, result_domain);
 
       if (has_user_format)
 	{
 	  pr_clear_value (&format_val);
 	}
-      pr_clear_value (&new_val);
     }
   else
     {
-      error = pr_clone_value (&new_val, out_val);
-      pr_clear_value (&new_val);
+      error = pr_clone_value (value, out_val);
+    }
+  pr_clear_value (value);
+
+  return error;
+}
+
+/*
+ * qexec_eval_row_default_expr () - The value of a default expression that every row takes anew: SYS_GUID (), UUID ()
+ *   return: NO_ERROR or ER_code
+ *   attr(in): the attribute whose default it is
+ *   sys_datetime(in), sys_epochtime(in): the statement's time, which UUID (7) carries
+ *   uuid_state(in/out): UUID (7)'s sequence within that time
+ *   out_val(out): the default, before the cast into the attribute's domain
+ */
+int
+qexec_eval_row_default_expr (OR_ATTRIBUTE * attr, const DB_DATETIME * sys_datetime, DB_TIMESTAMP sys_epochtime,
+			     UUID_STATE * uuid_state, DB_VALUE * out_val)
+{
+  DB_VALUE new_val;
+  int error = NO_ERROR;
+
+  assert (DB_IS_DEFAULT_DETERMINE_BY_ROW (attr->current_default_value.default_expr.default_expr_type));
+
+  pr_clear_value (out_val);
+  db_make_null (&new_val);
+
+  switch (attr->current_default_value.default_expr.default_expr_type)
+    {
+    case DB_DEFAULT_SYSGUID:
+      error = db_uuidv4 (&new_val);
+      break;
+
+    case DB_DEFAULT_UUIDV4:
+      error = db_uuid_bin (UUID_V4, NULL, 0, &new_val);
+      break;
+
+    case DB_DEFAULT_UUIDV7:
+      if (DATETIME_IS_NULL (sys_datetime) || sys_epochtime == 0)
+	{
+	  return ER_FAILED;
+	}
+      error =
+	db_uuid_bin (UUID_V7, uuid_state, ((uint64_t) sys_epochtime * 1000ULL) + (uint64_t) (sys_datetime->time % 1000),
+		     &new_val);
+      break;
+
+    default:
+      assert (false);
+      return ER_FAILED;
     }
 
   if (error != NO_ERROR)
     {
+      return error;
+    }
+
+  return qexec_default_expr_apply_op (attr, &new_val, out_val);
+}
+
+/*
+ * qexec_eval_statement_default () - The default an attribute takes for the whole statement: its current default
+ *                                   value, or a default expression that is not made per row
+ *   return: NO_ERROR or ER_code
+ *   thread_p(in): a thread of the statement's transaction, whose user USER and CURRENT_USER name
+ *   attr(in): the attribute
+ *   sys_datetime(in): the statement's time
+ *   out_val(out): the default, NULL when there is none; an expression's before the cast into the attribute's domain
+ */
+int
+qexec_eval_statement_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, const DB_DATETIME * sys_datetime,
+			      DB_VALUE * out_val)
+{
+  DB_VALUE value;
+  int month, day, year, hour, minute, second, millisecond;
+  int error = NO_ERROR;
+
+  db_make_null (&value);
+
+  switch (attr->current_default_value.default_expr.default_expr_type)
+    {
+    case DB_DEFAULT_NONE:
+      if (attr->current_default_value.val_length > 0)
+	{
+	  error = qexec_get_attr_default (thread_p, attr, &value);
+	}
+      break;
+
+    case DB_DEFAULT_SYSTIME:
+      db_datetime_decode (sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
+      db_make_time (&value, hour, minute, second);
+      break;
+
+    case DB_DEFAULT_CURRENTTIME:
+      {
+	DB_TIME cur_time, db_time;
+	const char *t_source, *t_dest;
+	int len_source, len_dest;
+
+	t_source = tz_get_system_timezone ();
+	t_dest = tz_get_session_local_timezone ();
+	len_source = (int) strlen (t_source);
+	len_dest = (int) strlen (t_dest);
+	db_time = sys_datetime->time / 1000;
+	error = tz_conv_tz_time_w_zone_name (&db_time, t_source, len_source, t_dest, len_dest, &cur_time);
+	db_value_put_encoded_time (&value, &cur_time);
+      }
+      break;
+
+    case DB_DEFAULT_SYSDATE:
+      db_datetime_decode (sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
+      db_make_date (&value, month, day, year);
+      break;
+
+    case DB_DEFAULT_CURRENTDATE:
+      {
+	TZ_REGION system_tz_region, session_tz_region;
+	DB_DATETIME dest_dt;
+
+	tz_get_system_tz_region (&system_tz_region);
+	tz_get_session_tz_region (&session_tz_region);
+	error =
+	  tz_conv_tz_datetime_w_region (sys_datetime, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
+	db_value_put_encoded_date (&value, &dest_dt.date);
+      }
+      break;
+
+    case DB_DEFAULT_SYSDATETIME:
+      db_make_datetime (&value, sys_datetime);
+      break;
+
+    case DB_DEFAULT_SYSTIMESTAMP:
+      db_make_datetime (&value, sys_datetime);
+      error = db_datetime_to_timestamp (&value, &value);
+      break;
+
+    case DB_DEFAULT_CURRENTDATETIME:
+      {
+	TZ_REGION system_tz_region, session_tz_region;
+	DB_DATETIME dest_dt;
+
+	tz_get_system_tz_region (&system_tz_region);
+	tz_get_session_tz_region (&session_tz_region);
+	error =
+	  tz_conv_tz_datetime_w_region (sys_datetime, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
+	db_make_datetime (&value, &dest_dt);
+      }
+      break;
+
+    case DB_DEFAULT_CURRENTTIMESTAMP:
+      {
+	DB_DATE tmp_date;
+	DB_TIME tmp_time;
+	DB_TIMESTAMP tmp_timestamp;
+
+	tmp_date = sys_datetime->date;
+	tmp_time = sys_datetime->time / 1000;
+	db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
+	db_make_timestamp (&value, tmp_timestamp);
+      }
+      break;
+
+    case DB_DEFAULT_UNIX_TIMESTAMP:
+      db_make_datetime (&value, sys_datetime);
+      error = db_unix_timestamp (&value, &value);
+      break;
+
+    case DB_DEFAULT_USER:
+      {
+	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	LOG_TDES *tdes = NULL;
+	char *temp = NULL;
+
+	tdes = LOG_FIND_TDES (tran_index);
+	if (tdes)
+	  {
+	    size_t len = tdes->client.db_user.length () + tdes->client.host_name.length () + 2;
+	    temp = (char *) db_private_alloc (thread_p, len);
+	    if (temp == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len);
+		return ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
+	    else
+	      {
+		strcpy (temp, tdes->client.get_db_user ());
+		strcat (temp, "@");
+		strcat (temp, tdes->client.get_host_name ());
+	      }
+	  }
+
+	db_make_string (&value, temp);
+	value.need_clear = true;
+      }
+      break;
+
+    case DB_DEFAULT_CURR_USER:
+      {
+	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	LOG_TDES *tdes = NULL;
+	char *temp = NULL;
+
+	tdes = LOG_FIND_TDES (tran_index);
+	if (tdes != NULL)
+	  {
+	    temp = CONST_CAST (char *, tdes->client.get_db_user ());	// will not be modified
+	  }
+	db_make_string (&value, temp);
+      }
+      break;
+
+    default:
+      assert (false);
+      return ER_FAILED;
+    }
+
+  /* TO_CHAR's result stands even when the expression failed, as it always has for INSERT */
+  if (error != NO_ERROR && attr->current_default_value.default_expr.default_expr_op != T_TO_CHAR)
+    {
+      pr_clear_value (&value);
+      return error;
+    }
+
+  return qexec_default_expr_apply_op (attr, &value, out_val);
+}
+
+/*
+ * qexec_generate_row_default_expr () - Generate a row-level default expression value
+ *   return: NO_ERROR or ER_code
+ *   attr(in): attribute metadata
+ *   xasl_state(in): XASL state containing value descriptor
+ *   uuid_state(in): UUID generation state
+ *   out_val(out): generated value
+ *   value_type(in): the type XASL generation decided the generator makes (INSERT_PROC_NODE default_types)
+ *   conv(in): a value of that type into the attribute's domain, found at unpack
+ */
+static int
+qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, UUID_STATE * uuid_state,
+				 DB_VALUE * out_val, DB_TYPE value_type, TP_VALUE_CONVERTER conv)
+{
+  int error;
+  TP_DOMAIN_STATUS status;
+
+  error = qexec_eval_row_default_expr (attr, &xasl_state->vd.sys_datetime, xasl_state->vd.sys_epochtime, uuid_state,
+				       out_val);
+  if (error != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
       return error;
     }
 
@@ -18898,12 +19091,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   ODKU_INFO *odku_assignments = insert->odku;
   DB_VALUE oid_val;
   int is_autoincrement_set = 0;
-  int month, day, year, hour, minute, second, millisecond;
-  DB_VALUE insert_val, format_val, lang_val;
-  char *lang_str = NULL;
-  int flag;
-  TP_DOMAIN *result_domain;
-  bool has_user_format;
   char auto_incr_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0', };
   int auto_incr_pos = -1;
   // *INDENT-OFF*
@@ -19036,7 +19223,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       num_default_expr = 0;
     }
 
-  db_make_null (&insert_val);
   for (k = 0; k < num_default_expr; k++)
     {
       OR_ATTRIBUTE *attr;
@@ -19057,218 +19243,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       db_make_null (new_val);
       insert->vals[k] = new_val;
 
-      switch (attr->current_default_value.default_expr.default_expr_type)
+      if (!DB_IS_DEFAULT_DETERMINE_BY_ROW (attr->current_default_value.default_expr.default_expr_type))
 	{
-	case DB_DEFAULT_SYSTIME:
-	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	  db_make_time (&insert_val, hour, minute, second);
-	  break;
-
-	case DB_DEFAULT_CURRENTTIME:
-	  {
-	    DB_TIME cur_time, db_time;
-	    const char *t_source, *t_dest;
-	    int len_source, len_dest;
-
-	    t_source = tz_get_system_timezone ();
-	    t_dest = tz_get_session_local_timezone ();
-	    len_source = (int) strlen (t_source);
-	    len_dest = (int) strlen (t_dest);
-	    db_time = xasl_state->vd.sys_datetime.time / 1000;
-	    error = tz_conv_tz_time_w_zone_name (&db_time, t_source, len_source, t_dest, len_dest, &cur_time);
-	    db_value_put_encoded_time (&insert_val, &cur_time);
-	  }
-	  break;
-
-	case DB_DEFAULT_SYSDATE:
-	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	  db_make_date (&insert_val, month, day, year);
-	  break;
-
-	case DB_DEFAULT_CURRENTDATE:
-	  {
-	    TZ_REGION system_tz_region, session_tz_region;
-	    DB_DATETIME dest_dt;
-
-	    tz_get_system_tz_region (&system_tz_region);
-	    tz_get_session_tz_region (&session_tz_region);
-	    error =
-	      tz_conv_tz_datetime_w_region (&xasl_state->vd.sys_datetime, &system_tz_region, &session_tz_region,
-					    &dest_dt, NULL, NULL);
-	    db_value_put_encoded_date (&insert_val, &dest_dt.date);
-	  }
-	  break;
-
-	case DB_DEFAULT_SYSDATETIME:
-	  db_make_datetime (&insert_val, &xasl_state->vd.sys_datetime);
-	  break;
-
-	case DB_DEFAULT_SYSTIMESTAMP:
-	  db_make_datetime (&insert_val, &xasl_state->vd.sys_datetime);
-	  error = db_datetime_to_timestamp (&insert_val, &insert_val);
-	  break;
-
-	case DB_DEFAULT_CURRENTDATETIME:
-	  {
-	    TZ_REGION system_tz_region, session_tz_region;
-	    DB_DATETIME dest_dt;
-
-	    tz_get_system_tz_region (&system_tz_region);
-	    tz_get_session_tz_region (&session_tz_region);
-	    error =
-	      tz_conv_tz_datetime_w_region (&xasl_state->vd.sys_datetime, &system_tz_region, &session_tz_region,
-					    &dest_dt, NULL, NULL);
-	    db_make_datetime (&insert_val, &dest_dt);
-	  }
-	  break;
-
-	case DB_DEFAULT_CURRENTTIMESTAMP:
-	  {
-	    DB_DATE tmp_date;
-	    DB_TIME tmp_time;
-	    DB_TIMESTAMP tmp_timestamp;
-
-	    tmp_date = xasl_state->vd.sys_datetime.date;
-	    tmp_time = xasl_state->vd.sys_datetime.time / 1000;
-	    db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
-	    db_make_timestamp (&insert_val, tmp_timestamp);
-	  }
-	  break;
-
-	case DB_DEFAULT_UNIX_TIMESTAMP:
-	  db_make_datetime (&insert_val, &xasl_state->vd.sys_datetime);
-	  error = db_unix_timestamp (&insert_val, &insert_val);
-	  break;
-
-	case DB_DEFAULT_USER:
-	  {
-	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	    LOG_TDES *tdes = NULL;
-	    char *temp = NULL;
-
-	    tdes = LOG_FIND_TDES (tran_index);
-	    if (tdes)
-	      {
-		size_t len = tdes->client.db_user.length () + tdes->client.host_name.length () + 2;
-		temp = (char *) db_private_alloc (thread_p, len);
-		if (temp == NULL)
-		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len);
-		    GOTO_EXIT_ON_ERROR;
-		  }
-		else
-		  {
-		    strcpy (temp, tdes->client.get_db_user ());
-		    strcat (temp, "@");
-		    strcat (temp, tdes->client.get_host_name ());
-		  }
-	      }
-
-	    db_make_string (&insert_val, temp);
-	    insert_val.need_clear = true;
-	  }
-	  break;
-
-	case DB_DEFAULT_CURR_USER:
-	  {
-	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	    LOG_TDES *tdes = NULL;
-	    char *temp = NULL;
-
-	    tdes = LOG_FIND_TDES (tran_index);
-	    if (tdes != NULL)
-	      {
-		temp = CONST_CAST (char *, tdes->client.get_db_user ());	// will not be modified
-	      }
-	    db_make_string (&insert_val, temp);
-	  }
-	  break;
-
-	case DB_DEFAULT_SYSGUID:
-	case DB_DEFAULT_UUIDV4:
-	case DB_DEFAULT_UUIDV7:
-	  /*
-	   * SYS_GUID(), UUID() in DEFAULT does not evaluate value per statement
-	   *   - use 'qexec_evaluate_row_default_exprs'
-	   * You can prepare things here
-	   */
-	  break;
-
-	case DB_DEFAULT_NONE:
-	  if (attr->current_default_value.val_length <= 0)
-	    {
-	      /* leave default value as NULL */
-	      break;
-	    }
-	  else
-	    {
-	      error = qexec_get_attr_default (thread_p, attr, &insert_val);
-	      if (error != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	    }
-	  break;
-
-	default:
-	  assert (0);
-	  error = ER_FAILED;
-	  GOTO_EXIT_ON_ERROR;
-	  break;
+	  error = qexec_eval_statement_default (thread_p, attr, &xasl_state->vd.sys_datetime, insert->vals[k]);
 	}
-
-      if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
-	{
-	  assert (attr->current_default_value.default_expr.default_expr_type != DB_DEFAULT_NONE);
-	  if (attr->current_default_value.default_expr.default_expr_format != NULL)
-	    {
-	      db_make_string (&format_val, attr->current_default_value.default_expr.default_expr_format);
-	      has_user_format = 1;
-	    }
-	  else
-	    {
-	      db_make_null (&format_val);
-	      has_user_format = 0;
-	    }
-
-	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-	  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-	  db_make_int (&lang_val, flag);
-
-	  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr->domain)))
-	    {
-	      /* TO_CHAR returns a string value, we need to pass an expected domain of the result */
-	      if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&insert_val)))
-		{
-		  result_domain = NULL;
-		}
-	      else if (DB_IS_NULL (&format_val))
-		{
-		  result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
-		}
-	      else
-		{
-		  result_domain = qexec_default_format_domain ();
-		}
-	    }
-	  else
-	    {
-	      result_domain = attr->domain;
-	    }
-
-	  error = db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain);
-
-	  if (has_user_format)
-	    {
-	      pr_clear_value (&format_val);
-	    }
-	}
-      else
-	{
-	  pr_clone_value (&insert_val, insert->vals[k]);
-	}
-
-      pr_clear_value (&insert_val);
+      /* SYS_GUID () and UUID () take a value per row, in qexec_evaluate_row_default_exprs () */
 
       if (error != NO_ERROR)
 	{

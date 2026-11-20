@@ -36,6 +36,8 @@
 #include <string>
 #include <vector>
 
+typedef struct UUID_STATE UUID_STATE;
+
 class copy_session : public stream_session
 {
   public:
@@ -54,6 +56,11 @@ class copy_session : public stream_session
     int flush_batch (THREAD_ENTRY *thread_p);	/* flush m_recdes_collected to the heap */
     int reject_row (DB_VALUE *vals, std::int64_t row, int col, const char *reason);	/* ON_ERROR IGNORE */
     int format_error (const char *reason, std::int64_t row = -1, int col = -1) const;
+    /* the defaults of m_omitted_pos that hold for the whole COPY, once a chunk */
+    int eval_statement_defaults (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO &attrinfo,
+				 std::vector<DB_VALUE> &defaults);
+    /* sets every default of m_omitted_pos into a row, making the per-row ones */
+    int set_defaults (HEAP_CACHE_ATTRINFO &attrinfo, std::vector<DB_VALUE> &defaults, UUID_STATE *uuid_state);
     int carry (const char *from, std::size_t len);
 
     OID m_class_oid;
@@ -64,6 +71,14 @@ class copy_session : public stream_session
     std::vector<COPY_COL_DOMAIN> m_col_domains;
     std::vector<ATTR_ID> m_attr_ids;	/* attribute repr IDs in column order */
     std::vector<char> m_col_notnull;	/* column is NOT NULL, in column order */
+    int m_auto_incr_pos;		/* the AUTO_INCREMENT attribute in the representation, or -1 */
+    int m_auto_incr_col;		/* its column in this COPY, or -1 when the column list leaves it out */
+    char m_auto_incr_serial_name[DB_MAX_IDENTIFIER_LENGTH];	/* heap_set_autoincrement_value () fills it once */
+    std::vector<int> m_omitted_pos;	/* attributes the column list leaves out, but the AUTO_INCREMENT one */
+    DB_DATETIME m_sys_datetime;		/* the statement's time, which those defaults take */
+    DB_TIMESTAMP m_sys_epochtime;
+    UINT64 m_uuid_last_ms;		/* UUID (7)'s state across the chunks, which other threads may serve */
+    UINT8 m_uuid_seq;
     std::vector<char> m_leftover;		/* bytes at the tail of a receive_data
 					   call that form a partial row and need
 					   to be combined with the next chunk */
