@@ -80,8 +80,8 @@ struct mmon_debug_info
 #endif
 
 extern bool mmon_disabled;
-// true while mmon_add_stat () runs on this thread; the global operator new does not track then (memory_wrapper.cpp)
-extern THREAD_LOCAL_TRIVIAL bool mmon_in_add_stat;
+// true while the monitor allocates for itself on this thread; the global operator new does not track then
+extern THREAD_LOCAL_TRIVIAL bool mmon_untracked;
 
 namespace cubmem
 {
@@ -162,6 +162,7 @@ namespace cubmem
       // Entries of m_stat_name_map will not be deleted and the monitor is created once in a process,
       // so a stat id in mmon_stat_id_cache stays valid
       tbb::concurrent_unordered_map <std::string, int> m_stat_name_map;        // key: stat name, value: stat id
+      std::atomic <int> m_next_stat_id;
 #if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
       tbb::concurrent_unordered_map <intptr_t, MMON_DEBUG_INFO> m_error_tracking_map;
 #endif
@@ -310,7 +311,7 @@ inline bool mmon_is_memory_monitor_enabled ()
 inline void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line)
 {
   // add_stat () builds std::string keys, which come back into the global operator new
-  mmon_in_add_stat = true;
+  mmon_untracked = true;
   try
     {
       cubmem::mmon_Gl->add_stat (ptr, size, file, line);
@@ -319,7 +320,7 @@ inline void mmon_add_stat (char *ptr, const size_t size, const char *file, const
     {
       // no memory for the stat name: the block is left untracked, and the allocation still succeeds
     }
-  mmon_in_add_stat = false;
+  mmon_untracked = false;
 }
 
 inline void mmon_sub_stat (char *ptr)
