@@ -14221,13 +14221,13 @@ heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int paylo
 #define HEAP_OOS_MIN_RECS_PER_PAGE 4
 
 /*
- * heap_oos_inline_target_size () - Return the maximum inline record target used by OOS demotion
+ * heap_oos_auto_inline_target_size () - Return the automatic target: four aligned records and their slots must fit
+ *                                       in the usable heap page capacity
  *
- * Compute the PostgreSQL-style physical target: four aligned records and their slots must fit in the usable heap page
- * capacity. Heap unfill space is a page-selection policy and must not affect the OOS trigger or demotion target.
+ * The target does not depend on heap unfill space.
  */
 int
-heap_oos_inline_target_size (void)
+heap_oos_auto_inline_target_size (void)
 {
   const int page_capacity = heap_nonheader_page_capacity ();
   int target_size;
@@ -14243,6 +14243,47 @@ heap_oos_inline_target_size (void)
   assert (next_packed_size > page_capacity);
 
   return target_size;
+}
+
+/*
+ * heap_oos_check_trigger_threshold () - Reject an oos_trigger_threshold outside the range for this page size
+ *   return: NO_ERROR or ER_PRM_BAD_VALUE
+ *
+ * An explicit threshold may only raise the automatic target, up to the largest record a heap page holds.
+ * Call it after heap_manager_initialize, once the database page size is known.
+ */
+int
+heap_oos_check_trigger_threshold (void)
+{
+  const UINT64 oos_trigger_threshold = prm_get_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD);
+  if (oos_trigger_threshold != 0
+      && (oos_trigger_threshold < (UINT64) heap_oos_auto_inline_target_size ()
+	  || oos_trigger_threshold > (UINT64) heap_Maxslotted_reclength))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_OOS_TRIGGER_THRESHOLD));
+      return ER_PRM_BAD_VALUE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * heap_oos_inline_target_size () - Return the maximum inline record target used by OOS demotion
+ *   class_oid(in): class of the record being laid out
+ *
+ * A nonzero oos_trigger_threshold is the byte target for user classes. System classes always use the automatic
+ * target: some of their rows, such as _db_serial rows, are rewritten in place and must not grow back after their
+ * values moved to OOS under a lower target.
+ */
+int
+heap_oos_inline_target_size (const OID * class_oid)
+{
+  const UINT64 oos_trigger_threshold = prm_get_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD);
+  if (oos_trigger_threshold != 0 && !oid_is_system_class (class_oid))
+    {
+      return (int) oos_trigger_threshold;
+    }
+
+  return heap_oos_auto_inline_target_size ();
 }
 
 /*
@@ -14327,9 +14368,9 @@ try
   header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
 
   /* TODO: change the statistics */
-  /* Push the largest remaining variable column to OOS one by one until at least four resulting heap records can
-   * fit on a page (PG TOAST style), instead of pushing every eligible column. */
-  const int oos_inline_target_size = heap_oos_inline_target_size ();
+  /* Push the largest remaining variable column to OOS one by one until the record fits the OOS inline target,
+   * instead of pushing every eligible column. */
+  const int oos_inline_target_size = heap_oos_inline_target_size (&attr_info->class_oid);
   if (header_size + payload_size + mvcc_extra > oos_inline_target_size)
     {
       /* *INDENT-OFF* */

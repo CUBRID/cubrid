@@ -436,7 +436,7 @@ TEST_F (OosSqlDeferredWrite, WorkspaceFlushNearSizeGateReservesMvccHeadroom)
 {
   /* target - 48 is the smallest value whose row crosses the target once the full MVCC header is reserved; its
    * compact workspace record must still take the server preparation path. */
-  const int target = heap_oos_inline_target_size ();
+  const int target = heap_oos_auto_inline_target_size ();
   const int sizes[] = { target - 128, target - 48, target - 40, target + 16 };
   const int expected_oos[] = { 0, 1, 1, 1 };
   for (int i = 0; i < 4; ++i)
