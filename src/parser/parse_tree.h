@@ -2485,6 +2485,9 @@ struct pt_expr_info
   PT_TYPE_ENUM recursive_type;	/* common type for recursive expression arguments (like PT_GREATEST, PT_LEAST,...) */
   int coll_modifier;		/* collation modifier = collation + 1 */
   int pred_order;		/* for view-merge or predicate-push. pred is ordered by pred_order in qo_discover_edges */
+  UINT64 rand_execution;	/* a fixed-seed random call the client evaluates: the statement execution that seeded
+				 * rand_buf (parser->rand_execution), 0 for none; a copy starts with none */
+  struct drand48_data rand_buf;	/* that call's generator, as the server keeps one in the arithmetic node */
 };
 
 /* FILE PATH INFO */
@@ -4171,6 +4174,8 @@ struct parser_context
 
   long int lrand;		/* integer random value used by rand() */
   double drand;			/* floating-point random value used by drand() */
+  UINT64 rand_execution;	/* the statement execution running now, for the fixed-seed random calls' generators */
+  UINT64 rand_executions;	/* the last number given to a statement execution; never given twice */
   UINT64 uuidv7_last_ms;	/* last used millisecond timestamp for local UUIDv7 generation */
   UINT8 uuidv7_seq;		/* local UUIDv7 sequence within the same millisecond */
 

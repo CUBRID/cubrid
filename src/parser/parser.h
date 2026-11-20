@@ -295,6 +295,9 @@ extern "C"
   extern void pt_evaluate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_values, int values_count);
   extern void pt_evaluate_tree_having_serial (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_value,
 					      int vals_cnt);
+  extern bool pt_is_fixed_in_statement (PARSER_CONTEXT * parser, PT_NODE * expr);
+  extern UINT64 pt_start_rand_execution (PARSER_CONTEXT * parser);
+  extern void pt_end_rand_execution (PARSER_CONTEXT * parser, UINT64 outer);
   extern int pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE op, DB_VALUE * arg1,
 					DB_VALUE * arg2, DB_VALUE * arg3, DB_VALUE * result, TP_DOMAIN * domain,
 					PT_NODE * o1, PT_NODE * o2, PT_NODE * o3, PT_MISC_TYPE qualifier);

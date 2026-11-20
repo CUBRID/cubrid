@@ -13179,6 +13179,229 @@ pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_fixed_in_statement_pre () - stop at the first node whose value may change while the statement runs
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): bool, set when such a node is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_fixed_in_statement_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *varies = (bool *) arg;
+  PT_OP_TYPE op;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  switch (node->node_type)
+    {
+    case PT_DATA_TYPE:
+      /* names in a type are not column references */
+      *continue_walk = PT_LIST_WALK;
+      break;
+
+    case PT_NAME:
+      /* an interpreter parameter behaves like a constant */
+      if (node->info.name.meta_class != PT_PARAMETER)
+	{
+	  *varies = true;
+	}
+      break;
+
+    case PT_TUPLE_VALUE:
+    case PT_METHOD_CALL:
+      *varies = true;
+      break;
+
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      /* a subquery that reads no outer row runs once for the statement, whatever it computes */
+      if (PT_IS_CORRELATED_SUBQUERY (node))
+	{
+	  *varies = true;
+	}
+      else
+	{
+	  *continue_walk = PT_LIST_WALK;
+	}
+      break;
+
+    case PT_FUNCTION:
+      /* a value per group or row (GROUPBY_NUM is an aggregate or analytic one), or code the parser cannot see */
+      if (pt_is_aggregate_function (parser, node) || pt_is_analytic_function (parser, node)
+	  || node->info.function.function_type == PT_GENERIC || node->info.function.function_type == F_GENERIC)
+	{
+	  *varies = true;
+	}
+      break;
+
+    case PT_NODE_POINTER:
+      if (node->info.pointer.node != NULL)
+	{
+	  (void) parser_walk_tree (parser, node->info.pointer.node, pt_fixed_in_statement_pre, varies, NULL, NULL);
+	  *continue_walk = PT_LIST_WALK;
+	}
+      break;
+
+    case PT_EXPR:
+      op = node->info.expr.op;
+
+      switch (op)
+	{
+	case PT_RAND:
+	case PT_DRAND:
+	  /* without a seed it is one value for the statement; with one, a sequence or a value per row */
+	  if (node->info.expr.arg1 != NULL)
+	    {
+	      *varies = true;
+	    }
+	  break;
+
+	  /* another value, or a side effect, on every evaluation; or a state the statement's own execution changes
+	   * (ROW_COUNT () changes only after the statement) */
+	case PT_RANDOM:
+	case PT_DRANDOM:
+	case PT_SYS_GUID:
+	case PT_UUID:
+	case PT_INCR:
+	case PT_DECR:
+	case PT_DEFINE_VARIABLE:
+	case PT_LAST_INSERT_ID:
+	case PT_EXEC_STATS:
+	case PT_TRACE_STATS:
+	  *varies = true;
+	  break;
+
+	case PT_EVALUATE_VARIABLE:
+	  /* the value when it is first read, even if the statement also assigns the variable */
+	  break;
+
+	default:
+	  /* a row number, a value of the hierarchy row, or a serial */
+	  if (PT_IS_NUMBERING_AFTER_EXECUTION (op) || PT_REQUIRES_HIERARCHICAL_QUERY (op) || PT_IS_SERIAL (op))
+	    {
+	      *varies = true;
+	    }
+	  break;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  if (*varies)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * pt_is_fixed_in_statement () - does an expression keep one value while the statement runs?
+ *   return: false if it reads the row or may give another value on another evaluation
+ *   parser(in):
+ *   expr(in):
+ *
+ * Note: the seed of a seeded RAND, DRAND, RANDOM or DRANDOM call decides here, for the server (the call's third
+ *       operand, pt_make_regu_rand ()) and for the client evaluator. The lists the optimizer and the caches keep, e.g.
+ *       qo_is_unshareable_expr (), answer other questions (where an expression may be evaluated, whether one
+ *       evaluation can be reused) and differ from this one.
+ */
+bool
+pt_is_fixed_in_statement (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  bool varies = false;
+
+  assert (expr != NULL);
+
+  (void) parser_walk_tree (parser, expr, pt_fixed_in_statement_pre, &varies, NULL, NULL);
+
+  return !varies;
+}
+
+/*
+ * pt_start_rand_execution () - give a statement execution its own sequences of the fixed-seed random calls
+ *   return: the execution it interrupts, for pt_end_rand_execution ()
+ *   parser(in):
+ *
+ * Note: a number is never given twice, so no generator seeded in another execution matches it. A statement run inside
+ *       another on the same parser leaves the outer one's sequences as they were, as on the server, where each
+ *       statement has its own XASL.
+ */
+UINT64
+pt_start_rand_execution (PARSER_CONTEXT * parser)
+{
+  UINT64 outer = parser->rand_execution;
+
+  parser->rand_execution = ++parser->rand_executions;
+
+  return outer;
+}
+
+/*
+ * pt_end_rand_execution () - go back to the statement execution pt_start_rand_execution () interrupted
+ *   return: none
+ *   parser(in):
+ *   outer(in): what pt_start_rand_execution () returned
+ */
+void
+pt_end_rand_execution (PARSER_CONTEXT * parser, UINT64 outer)
+{
+  parser->rand_execution = outer;
+}
+
+/*
+ * pt_evaluate_seeded_rand () - the value of a seeded RAND, DRAND, RANDOM or DRANDOM call, by the server's rule
+ *   return: none
+ *   parser(in):
+ *   expr(in): the call
+ *   seed(in):
+ *   is_double(in): true for DRAND and DRANDOM
+ *   result(out):
+ */
+static void
+pt_evaluate_seeded_rand (PARSER_CONTEXT * parser, PT_NODE * expr, int seed, bool is_double, DB_VALUE * result)
+{
+  struct drand48_data local;
+  struct drand48_data *buf = &expr->info.expr.rand_buf;
+
+  /* only a fixed seed stamps the call, so a call stamped with this execution goes on with its sequence */
+  if (expr->info.expr.rand_execution != parser->rand_execution)
+    {
+      if (pt_is_fixed_in_statement (parser, expr->info.expr.arg1))
+	{
+	  /* the call keeps its generator for the rest of the statement execution */
+	  expr->info.expr.rand_execution = parser->rand_execution;
+	}
+      else
+	{
+	  buf = &local;
+	}
+      srand48_r ((long) seed, buf);
+    }
+
+  if (is_double)
+    {
+      double d;
+
+      drand48_r (buf, &d);
+      db_make_double (result, d);
+    }
+  else
+    {
+      long int r;
+
+      lrand48_r (buf, &r);
+      db_make_int (result, r);
+    }
+}
+
+/*
  * pt_evaluate_db_value_expr () - apply op to db_value opds & place it in result
  *   return: 1 if evaluation succeeded, 0 otherwise
  *   parser(in): handle to the parser context
@@ -15925,8 +16148,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       else
 	{
-	  srand48 (db_get_int (arg1));
-	  db_make_int (result, lrand48 ());
+	  pt_evaluate_seeded_rand (parser, expr, db_get_int (arg1), false, result);
 	}
       break;
 
@@ -15937,8 +16159,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       else
 	{
-	  srand48 (db_get_int (arg1));
-	  db_make_double (result, drand48 ());
+	  pt_evaluate_seeded_rand (parser, expr, db_get_int (arg1), true, result);
 	}
       break;
 
@@ -15951,12 +16172,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  struct timeval t;
 	  gettimeofday (&t, NULL);
 	  srand48 ((long) (t.tv_usec + lrand48 ()));
+	  db_make_int (result, lrand48 ());
 	}
       else
 	{
-	  srand48 (db_get_int (arg1));
+	  pt_evaluate_seeded_rand (parser, expr, db_get_int (arg1), false, result);
 	}
-      db_make_int (result, lrand48 ());
       break;
 
     case PT_DRANDOM:
@@ -15965,12 +16186,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  struct timeval t;
 	  gettimeofday (&t, NULL);
 	  srand48 ((long) (t.tv_usec + lrand48 ()));
+	  db_make_double (result, drand48 ());
 	}
       else
 	{
-	  srand48 (db_get_int (arg1));
+	  pt_evaluate_seeded_rand (parser, expr, db_get_int (arg1), true, result);
 	}
-      db_make_double (result, drand48 ());
       break;
 
     case PT_FLOOR:

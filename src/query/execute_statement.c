@@ -3464,6 +3464,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
   unsigned save_compile_uncached = parser->flag.compile_uncached;
+  UINT64 outer_rand_execution;
 
   /* what compiles here is not cached: a trigger action at every firing, a statement that cannot be prepared */
   parser->flag.compile_uncached = 1;
@@ -3473,6 +3474,9 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* If it is an internally created statement, set its host variable info again to search host variables at parent
    * parser */
   SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  /* a fixed-seed random call evaluated on the client starts its sequence again, as a server execution does */
+  outer_rand_execution = pt_start_rand_execution (parser);
 
   if (statement)
     {
@@ -3926,6 +3930,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 end:
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
+  pt_end_rand_execution (parser, outer_rand_execution);
   /* There may be parse tree fragments that were collected during the execution of the statement that should be freed
    * now. */
   pt_free_orphans (parser);
@@ -4211,6 +4216,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
+  UINT64 outer_rand_execution;
 
   assert (parser->query_id == NULL_QUERY_ID);
   /* save old read fetch instance version */
@@ -4219,6 +4225,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* If it is an internally created statement, set its host variable info again to search host variables at parent
    * parser */
   SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  /* a fixed-seed random call evaluated on the client starts its sequence again, as a server execution does */
+  outer_rand_execution = pt_start_rand_execution (parser);
 
   /* skip ddl execution in case of parameter or opt. level */
   if (pt_is_ddl_statement (statement) != 0)
@@ -4615,6 +4624,7 @@ end:
 
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
+  pt_end_rand_execution (parser, outer_rand_execution);
 
   /* There may be parse tree fragments that were collected during the execution of the statement that should be freed
    * now. */

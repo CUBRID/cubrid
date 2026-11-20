@@ -1339,10 +1339,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_DATE:
     case T_TIME:
     case T_ISNULL:
-    case T_RAND:
-    case T_DRAND:
-    case T_RANDOM:
-    case T_DRANDOM:
     case T_TYPEOF:
     case T_EXEC_STATS:
     case T_INET_ATON:
@@ -1362,6 +1358,24 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	{
 	  goto error;
+	}
+      break;
+
+    case T_RAND:
+    case T_DRAND:
+    case T_RANDOM:
+    case T_DRANDOM:
+      /* the seed, then for a seeded call whether every evaluation reseeds */
+      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (arithptr->thirdptr != NULL)
+	{
+	  if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_third) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       break;
 

@@ -992,6 +992,12 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
       new_node->info.delete_.bind_variant_key = NULL;
     }
 
+  /* a copy of a fixed-seed random call is another call, with a generator of its own */
+  if (new_node->node_type == PT_EXPR)
+    {
+      new_node->info.expr.rand_execution = 0;
+    }
+
   /* clone XASL_ID; aliasing old_node's would double-free in parser_free_node_resources () */
   new_node->xasl_id = NULL;
   if (old_node->xasl_id != NULL)

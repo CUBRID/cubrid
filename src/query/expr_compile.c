@@ -4988,10 +4988,6 @@ expr_generic_operand_spec (OPERATOR_TYPE op, const TP_DOMAIN * exec_domain)
     case T_DATE:
     case T_TIME:
     case T_ISNULL:
-    case T_RAND:
-    case T_DRAND:
-    case T_RANDOM:
-    case T_DRANDOM:
     case T_TYPEOF:
     case T_EXEC_STATS:
     case T_INET_ATON:
@@ -5008,6 +5004,13 @@ expr_generic_operand_spec (OPERATOR_TYPE op, const TP_DOMAIN * exec_domain)
     case T_ESTIMATED_DATA_FREE:
     case T_COLLECTION_TO_STRING:
       return "R";
+
+      /* the seed, then for a seeded call whether every evaluation reseeds */
+    case T_RAND:
+    case T_DRAND:
+    case T_RANDOM:
+    case T_DRANDOM:
+      return "Rt";
 
       /* the right operand; a fetch error of a CAST-wrapped operand is a date conversion error */
     case T_YEAR:
