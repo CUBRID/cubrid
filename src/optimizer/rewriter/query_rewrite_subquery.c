@@ -56,8 +56,6 @@ static bool qo_is_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * where, P
 static bool qo_has_key_limit (PT_NODE * using_index);
 static bool qo_is_index_term_on_column (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * spec, const char *col_name);
 static bool qo_is_idx_join_possible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec);
-static PT_NODE *qo_is_other_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
-					     int *continue_walk);
 static bool qo_is_conjunct_on_spec_only (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * spec);
 static PT_NODE *qo_make_semi_anti_exists_cond (PARSER_CONTEXT * parser, PT_NODE * spec);
 static PT_NODE *qo_rewrite_subquery_as_derived (PARSER_CONTEXT * parser, PT_NODE * cnf_node);
@@ -1231,31 +1229,6 @@ qo_is_idx_join_possible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec
 }
 
 /*
- * qo_is_other_spec_referenced () - set the spec id of the argument to 0 at a column of another spec
- *   return: the current node
- *   parser(in):
- *   node(in):
- *   void_arg(in/out): the address of the spec id
- *   continue_walk(in/out):
- */
-static PT_NODE *
-qo_is_other_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
-{
-  UINTPTR spec_id = *(UINTPTR *) void_arg;
-
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (node->node_type == PT_NAME && node->info.name.spec_id != spec_id && node->info.name.meta_class != PT_METHOD
-      && node->info.name.meta_class != PT_INDEX_NAME)
-    {
-      *(UINTPTR *) void_arg = 0;
-      *continue_walk = PT_STOP_WALK;
-    }
-
-  return node;
-}
-
-/*
  * qo_is_conjunct_on_spec_only () - does the conjunct read columns of the spec and no other, with no subquery and no
  *      INST_NUM / ROWNUM? Such a conjunct may move into a derived table over the spec: INST_NUM / ROWNUM would number
  *      the rows of the derived table there
@@ -1267,27 +1240,32 @@ qo_is_other_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void
 static bool
 qo_is_conjunct_on_spec_only (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * spec)
 {
+  PT_SEMI_ANTI_CONJUNCT_INFO info;
   PT_NODE *save_next;
-  UINTPTR ref, other_ref;
-  bool has_subquery = false, has_inst_num;
+  bool has_inst_num;
+
+  /* no from-list: a column of any spec but this one is of another spec */
+  info.inner_id = spec->info.spec.id;
+  info.from_list = NULL;
+  info.found_inner = false;
+  info.has_nested = false;
+  info.outer_id = 0;
+  info.multi_outer = false;
+  info.found_other = false;
 
   save_next = cnf->next;
   cnf->next = NULL;
 
-  ref = spec->info.spec.id;
-  (void) parser_walk_tree (parser, cnf, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
-  other_ref = spec->info.spec.id;
-  (void) parser_walk_tree (parser, cnf, qo_is_other_spec_referenced, &other_ref, pt_continue_walk, NULL);
-  (void) parser_walk_tree (parser, cnf, pt_check_subquery_pre, NULL, pt_check_subquery_post, &has_subquery);
+  (void) parser_walk_tree (parser, cnf, pt_semi_anti_conjunct_pre, &info, NULL, NULL);
   has_inst_num = pt_has_inst_num (parser, cnf);
 
   cnf->next = save_next;
 
-  return ref == 0 && other_ref != 0 && !has_subquery && !has_inst_num;
+  return info.found_inner && !info.found_other && !info.has_nested && !has_inst_num;
 }
 
 /*
- * qo_is_distinct_semi_inner () - can a SEMI JOIN spec be read once with its duplicates removed and
+ * qo_is_distinct_inner_join_eligible () - can a SEMI JOIN spec be read once with its duplicates removed and
  *      joined as an INNER JOIN instead (qo_rewrite_semi_anti_join ())?
  *   return: bool
  *   parser(in):
@@ -1304,7 +1282,7 @@ qo_is_conjunct_on_spec_only (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * s
  *   idx-join can apply, which is ignored for its join (CBRD-28089).
  */
 bool
-qo_is_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
+qo_is_distinct_inner_join_eligible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
 {
   PT_NODE *cnf, *save_next, *attr, *other_spec;
   UINTPTR ref;
@@ -1567,7 +1545,7 @@ qo_rewrite_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR spec
 	  on_cond = parser_append_node (cnf, on_cond);
 	}
       spec->info.spec.on_cond = on_cond;
-      assert (cols != NULL);	/* qo_is_distinct_semi_inner () found an equality */
+      assert (cols != NULL);	/* qo_is_distinct_inner_join_eligible () found an equality */
 
       new_spec = qo_rewrite_table_as_derived (parser, node, prev_spec, spec, cols, where, PT_DISTINCT);
       parser_free_tree (parser, cols);

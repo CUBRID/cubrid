@@ -34,6 +34,21 @@ typedef enum
   STATEMENT_SET_FOLD_AS_ARG2
 } STATEMENT_SET_FOLD;
 
+/*
+ * pt_semi_anti_conjunct_info - per-conjunct state of pt_semi_anti_conjunct_pre ()
+ */
+typedef struct pt_semi_anti_conjunct_info PT_SEMI_ANTI_CONJUNCT_INFO;
+struct pt_semi_anti_conjunct_info
+{
+  UINTPTR inner_id;		/* spec id of the semi/anti inner */
+  PT_NODE *from_list;		/* local from-list */
+  bool found_inner;		/* conjunct references the inner spec */
+  bool has_nested;		/* conjunct contains a nested query node */
+  UINTPTR outer_id;		/* first distinct local-outer spec referenced (0 = none) */
+  bool multi_outer;		/* >1 distinct local-outer spec referenced (third table in conjunct) */
+  bool found_other;		/* conjunct references a spec neither the inner nor of the local from-list */
+};
+
 extern int pt_class_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_class, const PT_NODE * s_class);
 
 extern PT_NODE *pt_type_cast_vclass_query_spec_column (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * col);
@@ -77,6 +92,7 @@ extern PT_NODE *pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, ST
 
 extern bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2);
 
+extern PT_NODE *pt_semi_anti_conjunct_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 extern bool pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, UINTPTR inner_id,
 						   PT_NODE * from_list);
 

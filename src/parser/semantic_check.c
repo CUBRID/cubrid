@@ -10971,23 +10971,9 @@ pt_semi_anti_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 }
 
 /*
- * pt_semi_anti_conjunct_info - per-conjunct state for the C1 direct-join-conjunct classifier
+ * pt_semi_anti_conjunct_pre () - classify one ON leaf conjunct: inner ref, nested query, distinct outers, other specs.
  */
-typedef struct pt_semi_anti_conjunct_info PT_SEMI_ANTI_CONJUNCT_INFO;
-struct pt_semi_anti_conjunct_info
-{
-  UINTPTR inner_id;		/* spec id of the semi/anti inner */
-  PT_NODE *from_list;		/* local from-list */
-  bool found_inner;		/* conjunct references the inner spec */
-  bool has_nested;		/* conjunct contains a nested query node */
-  UINTPTR outer_id;		/* first distinct local-outer spec referenced (0 = none) */
-  bool multi_outer;		/* >1 distinct local-outer spec referenced (third table in conjunct) */
-};
-
-/*
- * pt_semi_anti_conjunct_pre () - classify one ON leaf conjunct: inner ref, nested query, distinct outers.
- */
-static PT_NODE *
+PT_NODE *
 pt_semi_anti_conjunct_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_SEMI_ANTI_CONJUNCT_INFO *info = (PT_SEMI_ANTI_CONJUNCT_INFO *) arg;
@@ -11019,6 +11005,10 @@ pt_semi_anti_conjunct_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 	    {
 	      info->multi_outer = true;
 	    }
+	}
+      else
+	{
+	  info->found_other = true;
 	}
     }
 
@@ -11055,6 +11045,7 @@ pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, 
   info.has_nested = false;
   info.outer_id = 0;
   info.multi_outer = false;
+  info.found_other = false;
 
   /* inspect only THIS conjunct: detach ->next so the walk cannot spill into sibling conjuncts when a caller
    * passes one element of a CNF list. or_next stays (OR alternatives still seen); no-op for a pre-CNF tree. */

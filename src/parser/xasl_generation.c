@@ -22771,7 +22771,7 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
 
       n_types = 0;
-      can_distinct_inner = qo_is_distinct_semi_inner (parser, select_node, spec);
+      can_distinct_inner = qo_is_distinct_inner_join_eligible (parser, select_node, spec);
       /* there is no semi merge join: USE_MERGE naming the spec leaves it the INNER JOIN */
       is_merge_hinted = (can_distinct_inner
 			 && qo_is_spec_in_hint (select_node, spec, PT_HINT_USE_MERGE,
