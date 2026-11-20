@@ -1783,6 +1783,8 @@ perfmon_server_calc_stats (UINT64 * stats, bool need_pgbuf_stat)
   UINT64 lock_time_usec = 0;
   UINT64 hold_time_usec = 0;
   UINT64 total_promote_time = 0;
+  UINT64 total_promote_success = 0;
+  UINT64 total_promote_fail = 0;
   int i;
 
   for (module = PERF_MODULE_SYSTEM; module < PERF_MODULE_CNT; module++)
@@ -1936,11 +1938,11 @@ perfmon_server_calc_stats (UINT64 * stats, bool need_pgbuf_stat)
 			{
 			  if (success)
 			    {
-			      stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_SUCCESS].start_offset] += counter;
+			      total_promote_success += counter;
 			    }
 			  else
 			    {
-			      stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] += counter;
+			      total_promote_fail += counter;
 			    }
 			}
 		    }
@@ -1950,8 +1952,10 @@ perfmon_server_calc_stats (UINT64 * stats, bool need_pgbuf_stat)
     }
 
   stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC].start_offset] = 100 * total_promote_time / 1000;
-  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_SUCCESS].start_offset] *= 100;
-  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] *= 100;
+  /* Assign, not accumulate: this function may be called again on an array that already holds the computed values
+   * (the live per-transaction array, or a diff of two computed arrays). */
+  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_SUCCESS].start_offset] = 100 * total_promote_success;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] = 100 * total_promote_fail;
 
 #if defined (SERVER_MODE)
   if (need_pgbuf_stat)
