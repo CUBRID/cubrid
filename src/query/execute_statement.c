@@ -3439,7 +3439,7 @@ end:
 /* statement execution state; per connection (thread-local for multiple connections) */
 CUB_THREAD_LOCAL bool do_Trigger_involved;
 
-/* nesting depth of client UPDATEs that keep their rows in the workspace to check uniqueness at the statement end */
+/* nesting depth of client UPDATEs that keep rows changing a unique key in the workspace until the statement end */
 static CUB_THREAD_LOCAL int do_Unique_check_deferred = 0;
 
 /* do_Trigger_involved does not accurately distinguish
@@ -8130,6 +8130,7 @@ static int init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIEN
 static int do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLASS_INFO * cls);
 static int update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_NODE * statement,
 				      bool savepoint_started);
+static bool update_changes_unique_key (const CLIENT_UPDATE_CLASS_INFO * cls_info, int cls_count);
 static int update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, PT_NODE ** non_null_attrs,
 			     int has_uniques);
@@ -9004,6 +9005,46 @@ error_return:
 }
 
 /*
+ * update_changes_unique_key () - whether the assignments change an attribute that a unique index keys on
+ *   return: true if so
+ *   cls_info(in): classes updated on the client, each with its assignments
+ *   cls_count(in): number of classes
+ *
+ * Note: a spec may name classes that are not subclasses of one another (a class list, a union of views, multiple
+ *       inheritance), so every class is asked. A class that cannot be read counts as changing a unique key.
+ */
+static bool
+update_changes_unique_key (const CLIENT_UPDATE_CLASS_INFO * cls_info, int cls_count)
+{
+  const CLIENT_UPDATE_INFO *assign;
+  const PT_NODE *entity;
+  SM_CLASS *smclass;
+  SM_ATTRIBUTE *att;
+  int idx;
+
+  for (idx = 0; idx < cls_count; idx++)
+    {
+      for (assign = cls_info[idx].first_assign; assign != NULL; assign = assign->next)
+	{
+	  for (entity = cls_info[idx].spec->info.spec.flat_entity_list; entity != NULL; entity = entity->next)
+	    {
+	      if (au_fetch_class_force (entity->info.name.db_object, &smclass, AU_FETCH_READ) != NO_ERROR)
+		{
+		  return true;
+		}
+	      att = classobj_find_attribute (smclass, assign->upd_col_name->info.name.original, 0);
+	      if (att != NULL && classobj_has_unique_constraint (att->constraints))
+		{
+		  return true;
+		}
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * update_objs_for_list_file - Updates oid attributes for every oid
  *				in a list file
  *   return: Number of affected objects if success, otherwise an error code
@@ -9023,8 +9064,9 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
   int upd_cls_cnt = 0, vals_cnt = 0;
   CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL;
-  int turn_off_unique_check = 0;
+  int turn_off_unique_check;
   int turn_off_server_serializable_conflict_check;
+  bool keeps_unique_rows = false;
   CURSOR_ID cursor_id;
   DB_VALUE *dbvals = NULL;
   const char *savepoint_name = NULL;
@@ -9088,7 +9130,12 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
        * performed on the client */
       turn_off_unique_check = 1;
       turn_off_server_serializable_conflict_check = 1;
-      do_Unique_check_deferred++;
+      /* a row that changes no unique key can reach the server before the statement ends */
+      if (update_changes_unique_key (cls_info, upd_cls_cnt))
+	{
+	  keeps_unique_rows = true;
+	  do_Unique_check_deferred++;
+	}
     }
 
   /* open cursor */
@@ -9203,7 +9250,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
     }
 
 done:
-  if (turn_off_unique_check)
+  if (keeps_unique_rows)
     {
       do_Unique_check_deferred--;
     }
@@ -12805,7 +12852,7 @@ is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* Even if unique indexes are defined on the class, the operation could be performed on server. */
-  /* an action of a statement that defers its unique check cannot flush that statement's rows: stay on the client */
+  /* an action of a client UPDATE that keeps rows changing a unique key cannot flush them: stay on the client */
   if (!trigger_involved && !(do_Trigger_involved && do_Unique_check_deferred > 0))
     {
       statement->info.insert.server_allowed = SERVER_INSERT_IS_ALLOWED;
@@ -17820,7 +17867,7 @@ end:
 int
 do_flush_before_trigger (void)
 {
-  /* a client UPDATE that defers its unique check keeps its rows back until it ends */
+  /* a client UPDATE that changes a unique key keeps its rows back to check them together at its end */
   if (do_Unique_check_deferred > 0 || !ws_need_flush ())
     {
       return NO_ERROR;
