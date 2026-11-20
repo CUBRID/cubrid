@@ -93,7 +93,7 @@ struct btsort_run
   char *base;			/* sort buffer start */
   char *top;			/* sort buffer end (= output buffer) */
   BTSORT_CMP_FUNC *cmp_fn;
-  void *cmp_arg;		/* SORT_ARGS */
+  void *cmp_arg;		/* BTSORT_CMP_ARG */
   long numrecs;			/* records collected */
 
   /* sorter-private, kept here so a run needs no allocation */
