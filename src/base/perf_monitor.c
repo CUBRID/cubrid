@@ -455,8 +455,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_HOLD_ACQUIRE_TIME_10USEC, "Data_page_fix_hold_acquire_time_msec"),
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC, "Data_page_fix_acquire_time_msec"),
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_ALLOCATE_TIME_RATIO, "Data_page_allocate_time_ratio"),
-  PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_PROMOTE_SUCCESS, "Data_page_total_promote_success"),
-  PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_PROMOTE_FAILED, "Data_page_total_promote_fail"),
+  /* counts computed from the promote counters, not ratios: kept as plain integers */
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_PAGE_PROMOTE_SUCCESS, "Data_page_total_promote_success"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_PAGE_PROMOTE_FAILED, "Data_page_total_promote_fail"),
   PSTAT_METADATA_INIT_COMPUTED_RATIO (PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC, "Data_page_total_promote_time_msec"),
 
   /* Page buffer extended */
@@ -1954,8 +1955,8 @@ perfmon_server_calc_stats (UINT64 * stats, bool need_pgbuf_stat)
   stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_TOTAL_TIME_10USEC].start_offset] = 100 * total_promote_time / 1000;
   /* Assign, not accumulate: this function may be called again on an array that already holds the computed values
    * (the live per-transaction array, or a diff of two computed arrays). */
-  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_SUCCESS].start_offset] = 100 * total_promote_success;
-  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] = 100 * total_promote_fail;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_SUCCESS].start_offset] = total_promote_success;
+  stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] = total_promote_fail;
 
 #if defined (SERVER_MODE)
   if (need_pgbuf_stat)
@@ -3466,7 +3467,9 @@ perfmon_parallel_stats_needed (THREAD_ENTRY * thread_p)
  *
  * Note: counters are added and timers keep the larger maximum. Peek values are set from global state and
  *       ratios are computed when the statistics are read, so neither is merged, except the page fix time
- *       that is accumulated in a ratio's slot.
+ *       that is accumulated in a ratio's slot. The promote success/fail slots are added like counters but
+ *       are also computed when read; a worker never computes them, so its slots stay 0 and adding them
+ *       changes nothing. If a worker array were ever computed, this add would double count them.
  */
 void
 perfmon_merge_values (UINT64 * dst, const UINT64 * src)
