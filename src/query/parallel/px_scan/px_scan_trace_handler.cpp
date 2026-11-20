@@ -508,7 +508,7 @@ namespace parallel_scan
       }
     else if (r.why_not != NULL)
       {
-	fprintf (fp, " (batch: no (%s))", r.why_not);
+	fprintf (fp, " (batch skipped: %s)", r.why_not);
       }
   }
 

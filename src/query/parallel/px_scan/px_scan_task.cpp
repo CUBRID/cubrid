@@ -933,6 +933,12 @@ namespace parallel_scan
 			    m_scan_id->scan_stats.qualified_rows += hsidp->batch->n_sel;
 			  }
 		      }
+		    else if (rc == EXPR_BATCH_FALLBACK)
+		      {
+			/* the chunk's cause for the row path, the trace's "last:" (add_trace ()), as the serial scan
+			 * keeps it (scan_batch_iter_next ()) */
+			hsidp->batch_why_not = expr_batch_fallback_why (hsidp->batch_plan);
+		      }
 		  }
 		if (scan_code == S_ERROR || (rc != NO_ERROR && rc != EXPR_BATCH_FALLBACK))
 		  {

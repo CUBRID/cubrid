@@ -14406,7 +14406,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
   char *mem;
   size_t size;
 
-  *why_not = "the hash GROUP BY no longer takes rows";
+  *why_not = "hash GROUP BY not accepting rows";
   if (proc->agg_hash_context == NULL || proc->agg_hash_context->state != HS_ACCEPT_ALL || outptr == NULL)
     {
       return NULL;
@@ -14419,7 +14419,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
     {
       n_keys++;
     }
-  *why_not = "a GROUP BY without aggregates";
+  *why_not = "GROUP BY without aggregates";
   if (n_aggs == 0 || n_keys == 0)
     {
       return NULL;
@@ -14476,7 +14476,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
 	  {
 	    continue;
 	  }
-	*why_not = "an aggregate operand that is not a column of the scan's tuple";
+	*why_not = "aggregate operand not a tuple column";
 	if (agg->operands == NULL)
 	  {
 	    goto no_map;
@@ -14495,7 +14495,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
 	  }
 	if (c == n_cols)
 	  {
-	    *why_not = "an aggregate operand in a hidden column";
+	    *why_not = "aggregate operand in hidden column";
 	    goto no_map;	/* a hidden column's value, or one the batch does not see */
 	  }
 	if (prog != NULL && outptr->eval_prog_idx != NULL && outptr->eval_prog_idx[col_idx[c]] >= 0)
@@ -14508,7 +14508,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
 	  }
 	else
 	  {
-	    *why_not = "an aggregate operand the projection computes without a program";
+	    *why_not = "aggregate operand without program";
 	    goto no_map;
 	  }
 	/* the column's compiled domain: the projection writes the value it produces, uncast (CBRD-27583) */
@@ -14520,7 +14520,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
 
 	if (pos < 0 || pos >= n_cols || col[pos]->type != TYPE_CONSTANT)
 	  {
-	    *why_not = "a GROUP BY key that is not a plain column of the tuple";
+	    *why_not = "GROUP BY key not a plain column";
 	    goto no_map;
 	  }
 	key_slot[k] = col[pos]->value.dbvalptr;

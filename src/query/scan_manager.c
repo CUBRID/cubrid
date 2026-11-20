@@ -8089,28 +8089,28 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
   if (scan_id->type != S_HEAP_SCAN || scan_id->grouped || (scan_id->cached_scan && !cached_ok)
       || scan_id->direction != S_FORWARD || hsidp->recordinfo_regu_list != NULL)
     {
-      hsidp->batch_why_not = "a scan the batch does not take (grouped, cached, backward or record info)";
+      hsidp->batch_why_not = "grouped, cached, backward or record-info scan";
       return hsidp->batch_state;
     }
   if (!hsidp->scancache_inited)
     {
-      hsidp->batch_why_not = "a scan the batch does not take (not started)";
+      hsidp->batch_why_not = "scan not started";
       return hsidp->batch_state;
     }
   /* a class without MVCC has no snapshot to judge its rows by: heap_page_collect_visible () relies on this refusal */
   if (scan_id->mvcc_select_lock_needed || scan_id->scan_op_type != S_SELECT || hsidp->scan_cache.mvcc_disabled_class)
     {
-      hsidp->batch_why_not = "a scan the batch does not take (it locks, or not a SELECT)";
+      hsidp->batch_why_not = "locking or non-SELECT scan";
       return hsidp->batch_state;
     }
   if (scan_id->single_fetch != QPROC_NO_SINGLE_INNER)
     {
-      hsidp->batch_why_not = "a scan the batch does not take (single fetch)";
+      hsidp->batch_why_not = "single-fetch scan";
       return hsidp->batch_state;
     }
   if (scan_id->qualification != QPROC_QUALIFIED)
     {
-      hsidp->batch_why_not = "a scan the batch does not take (qualification)";
+      hsidp->batch_why_not = "non-qualifying scan";
       return hsidp->batch_state;
     }
   /* A consumer (an aggregate, a projection, a hash GROUP BY) reads the chunk's rows from the page the batch holds,
@@ -8498,7 +8498,7 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
 	}
       if (rc != NO_ERROR)
 	{
-	  hsidp->batch_why_not = "a record of a representation the batch does not decode";
+	  hsidp->batch_why_not = "unsupported record representation";
 	  return code;
 	}
       /* learned with nothing collected yet: the walk goes on from that record, now a row */
@@ -9925,7 +9925,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	    }
 	  else
 	    {
-	      fprintf (fp, " (batch: no (%s))", scan_id->s.hsid.batch_why_not);
+	      fprintf (fp, " (batch skipped: %s)", scan_id->s.hsid.batch_why_not);
 	    }
 	}
       break;

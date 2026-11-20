@@ -4365,7 +4365,7 @@ qdump_print_expr_batch_text (FILE * fp, ACCESS_SPEC_TYPE * spec, const GROUPBY_S
     {
       /* a consumer does not try the batch on such a scan, so the scan has no reason of its own: the one
        * scan_batch_open_internal () would give */
-      why = "a scan the batch does not take (it locks, or not a SELECT)";
+      why = "locking or non-SELECT scan";
     }
   if (!shape->built || s_id->scan_stats.batch_pages == 0)
     {
@@ -4387,8 +4387,7 @@ qdump_print_expr_batch_text (FILE * fp, ACCESS_SPEC_TYPE * spec, const GROUPBY_S
 	}
       else
 	{
-	  fprintf (fp, ", batch: row path (%s)",
-		   (shape->proj_why != NULL) ? shape->proj_why : "the batch does not compute this list");
+	  fprintf (fp, ", batch: row path (%s)", (shape->proj_why != NULL) ? shape->proj_why : "list not vectorized");
 	}
       break;
     case QDUMP_EXPR_BATCH_AGGREGATE:
@@ -4398,7 +4397,7 @@ qdump_print_expr_batch_text (FILE * fp, ACCESS_SPEC_TYPE * spec, const GROUPBY_S
 	}
       else
 	{
-	  fprintf (fp, ", batch: row path (the batch does not accumulate these aggregates)");
+	  fprintf (fp, ", batch: row path (aggregates not accumulated)");
 	}
       break;
     }
@@ -4739,6 +4738,10 @@ qdump_print_plan_detail_text (FILE * fp, xasl_node * xasl_p, int indent)
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
       /* the operands are the aptr list (qdump_print_stats_text ()) */
+      for (xptr = xasl_p->aptr_list; xptr != NULL; xptr = xptr->next)
+	{
+	  qdump_print_plan_detail_text (bfp, xptr, in);
+	}
       break;
     case MERGELIST_PROC:
       qdump_print_plan_detail_text (bfp, xasl_p->proc.mergelist.outer_xasl, in);
@@ -4762,9 +4765,13 @@ qdump_print_plan_detail_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   qdump_print_plan_detail_text (bfp, xasl_p->scan_ptr, in);
   qdump_print_plan_detail_text (bfp, xasl_p->connect_by_ptr, in);
-  for (xptr = xasl_p->aptr_list; xptr != NULL; xptr = xptr->next)
+  if (HAVE_SUBQUERY_PROC (xasl_p))
     {
-      qdump_print_plan_detail_text (bfp, xptr, in);
+      /* a join's aptr list holds its outer and inner, written above; a set operation's, its operands */
+      for (xptr = xasl_p->aptr_list; xptr != NULL; xptr = xptr->next)
+	{
+	  qdump_print_plan_detail_text (bfp, xptr, in);
+	}
     }
   for (xptr = xasl_p->dptr_list; xptr != NULL; xptr = xptr->next)
     {

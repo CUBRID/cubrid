@@ -268,7 +268,7 @@ extern int expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN 
  * version the page does not hold (EXPR_BATCH_WHY_OFF_PAGE).  Counting the pages, the plan gives up on the scan
  * when the row path keeps taking them for the plan's own declines: expr_batch_plan_gave_up () is true from then on,
  * and the scan's remaining pages go to the row path without a batch try. */
-#define EXPR_BATCH_WHY_OFF_PAGE "a record whose visible version is not on the page (relocated, overflow, or in the log)"
+#define EXPR_BATCH_WHY_OFF_PAGE "visible version off the page"
 extern void expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback, bool off_page);
 extern bool expr_batch_plan_gave_up (const EXPR_BATCH_PLAN * plan);
 /* why the last chunk went to the row path, or NULL */
