@@ -248,7 +248,7 @@ struct eb_leaf
   int col;			/* its index in the plan's columns */
   int vec2;			/* another column on the right instead of the constant ("a < b"), or -1 */
   int col2;
-  /* EB_STR: "= / <>" the constant (rel_op), or [NOT] LIKE a pattern */
+  /* EB_STR: "=", "<>" or an order ("<", "<=", ">", ">=") against the constant (rel_op), or [NOT] LIKE a pattern */
   unsigned char like;
   unsigned char negate;
   const char *k_str;		/* the constant's bytes for the current page */
@@ -283,7 +283,8 @@ struct eb_leaf
   /* EB_NUM: the constant brought to the column's scale, which may change the operator
    * ("n < 2.345" over scale 2 is "n <= 234") or settle it for every row ("n = 2.345") */
   unsigned char k_op;
-  unsigned char k_all;		/* EB_NUM: 0, or the result of every non-NULL row (EB_ALL_FALSE / EB_ALL_TRUE) */
+  unsigned char k_all;		/* EB_NUM, or an EB_STR order against the maximum string: 0, or the result of every
+				 * non-NULL row (EB_ALL_FALSE / EB_ALL_TRUE) */
   union
   {
     int64_t i;
@@ -1190,8 +1191,6 @@ eb_slot_lookup (const EB_BUILD * b, const DB_VALUE * slot, ATTR_ID * attrid, HEA
 /* ---------------------------------------------------------------------------------------- */
 /* the filter: the AND chain's terms in order, raw where "column op constant" */
 
-/* A raw leaf for one filter term: *out the leaf's index, or -1 when the term is not one the batch runs as a leaf
- * (the compiled filter runs it per row).  NO_ERROR, or an allocation error. */
 /* the leaf's REL_OP with the column on the left: "constant op column" reads as "column op' constant" */
 static int
 eb_rel_op_column_left (const EXPR_RAW_LEAF_INFO * info)
@@ -1215,6 +1214,8 @@ eb_rel_op_column_left (const EXPR_RAW_LEAF_INFO * info)
     }
 }
 
+/* A raw leaf for one filter term: *out the leaf's index, or -1 when the term is not one the batch runs as a leaf
+ * (the compiled filter runs it per row).  NO_ERROR, or an allocation error. */
 static int
 eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
 {
@@ -5561,8 +5562,9 @@ eb_run_chunk (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_
 	  return rc;
 	}
     }
-  /* the leaves' constants are literals, host variables and the filter's prologue: fixed for the scan, so the IN
-   * lists, their sort and the string matchers are set up at its first chunk only */
+  /* the leaves' constants are literals, host variables, the filter's prologue and the steps the row loop computes
+   * once per execution (computed here first -- CBRD-28249): fixed for the scan, so the IN lists, their sort and the
+   * string matchers are set up at its first chunk only */
   if (!plan->consts_loaded)
     {
       rc = eb_load_leaf_constants (plan, thread_p, vd);
