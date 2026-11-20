@@ -4217,6 +4217,11 @@ eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 	{
 	  return eb_fallback (plan, "a record of another representation");
 	}
+      /* an out-of-row value's variable-area bytes are its OOS reference, not the value */
+      if (OR_RECORD_HAS_OOS (recdes->data))
+	{
+	  return eb_fallback (plan, "a record with out-of-row values");
+	}
       repid = OR_GET_MVCC_REPID (recdes->data);
       while (ix < plan->n_reprs && plan->repids[ix] != repid)
 	{

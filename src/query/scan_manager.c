@@ -2725,8 +2725,8 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     HEAP_CACHE_ATTRINFO * cache_rest, SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
 		     regu_variable_list_node * regu_list_recordinfo, bool cached_scan)
 {
-  /* Guard: this function is shared by S_HEAP_SCAN, S_HEAP_SCAN_RECORD_INFO, and S_HEAP_SAMPLING_SCAN.
-   * Only plain heap scans may activate the cached scan; record-info and sampling scans never do,
+  /* Guard: this function is shared by S_HEAP_SCAN and S_HEAP_SCAN_RECORD_INFO.
+   * Only plain heap scans may activate the cached scan; record-info scans never do,
    * defense-in-depth on top of the caller-side eligibility predicate. */
   scan_id->cached_scan = cached_scan && (scan_type == S_HEAP_SCAN);
 
@@ -5536,6 +5536,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   SCAN_STATS old_scan_stats;
+  OOS_READ_STATS old_oos_reads;
 
   on_trace = thread_is_on_trace (thread_p);
   if (on_trace)
@@ -5544,6 +5545,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
       old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_oos_reads = thread_p->oos_read_stats;
 
       if (scan_id->partition_stats != NULL)
 	{
@@ -5638,6 +5640,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       scan_id->scan_stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
       scan_id->scan_stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      scan_add_oos_read_stats (&scan_id->scan_stats.oos_reads, &old_oos_reads, &thread_p->oos_read_stats);
 
       if (scan_id->partition_stats != NULL)
 	{
@@ -5645,6 +5648,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			       &scan_id->scan_stats.elapsed_scan);
 	  scan_id->partition_stats->num_fetches += scan_id->scan_stats.num_fetches - old_scan_stats.num_fetches;
 	  scan_id->partition_stats->num_ioreads += scan_id->scan_stats.num_ioreads - old_scan_stats.num_ioreads;
+	  scan_add_oos_read_stats (&scan_id->partition_stats->oos_reads, &old_scan_stats.oos_reads,
+				   &scan_id->scan_stats.oos_reads);
 
 	  switch (scan_id->type)
 	    {
@@ -6062,7 +6067,7 @@ scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		    {
 		      sp_scan =
 			heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
-				   &hsidp->scan_cache, is_peeking);
+				   &hsidp->scan_cache, is_peeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		    }
 		}
 	      else
@@ -6081,8 +6086,8 @@ scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  /* a query heap scan never runs backward; the page bitmap has no backward walk */
 		  assert (!hsidp->sector_order);
 		  sp_scan =
-		    heap_prev (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
-			       is_peeking);
+		    heap_prev (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
+			       &hsidp->scan_cache, is_peeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		}
 	      else
 		{
@@ -6180,7 +6185,8 @@ scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  sp_scan =
 	    locator_lock_and_get_object_with_evaluation (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache,
 							 is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED,
-							 scan_id->lock_ends_with_statement, true);
+							 scan_id->lock_ends_with_statement, true,
+							 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
 	    {
 	      continue;
@@ -6988,8 +6994,9 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       recdes.data = NULL;
     }
 
-  sp_scan = heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
-				      NULL_CHN);
+  sp_scan =
+    heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
+			      NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
   if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)
     {
       if (SCAN_IS_INDEX_COVERED (isidp))
@@ -7045,7 +7052,8 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       sp_scan = locator_lock_and_get_object_with_evaluation (thread_p, isidp->curr_oidp, NULL, &recdes,
 							     &isidp->scan_cache, scan_id->fixed, NULL_CHN,
 							     &mvcc_reev_data, LOG_WARNING_IF_DELETED,
-							     scan_id->lock_ends_with_statement, true);
+							     scan_id->lock_ends_with_statement, true,
+							     HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (sp_scan == S_SUCCESS)
 	{
 	  switch (mvcc_reev_data.filter_result)
@@ -9580,6 +9588,20 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
 }
 
 
+/*
+ * scan_add_oos_read_stats () - add to total the OOS reads counted between two readings of the same counters
+ */
+void
+scan_add_oos_read_stats (OOS_READ_STATS * total, const OOS_READ_STATS * since, const OOS_READ_STATS * now)
+{
+  struct timeval since_elapsed = since->elapsed;
+  struct timeval now_elapsed = now->elapsed;
+
+  perfmon_add_timeval (&total->elapsed, &since_elapsed, &now_elapsed);
+  total->fetches += now->fetches - since->fetches;
+  total->ioreads += now->ioreads - since->ioreads;
+}
+
 #if defined (SERVER_MODE)
 /*
  * scan_print_stats_json () -
@@ -9744,6 +9766,16 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
     default:
       trace_json_object_set_new (scan_stats, "noscan", scan);
       break;
+    }
+
+  if (scan_id->scan_stats.oos_reads.fetches > 0)
+    {
+      /* only a scan that read OOS values shows it, as a part of the figures above */
+      trace_json_object_set_new (scan_stats, "oos",
+				 trace_json_pack ("{s:i, s:I, s:I}", "time",
+						  TO_MSEC (scan_id->scan_stats.oos_reads.elapsed), "fetch",
+						  scan_id->scan_stats.oos_reads.fetches, "ioread",
+						  scan_id->scan_stats.oos_reads.ioreads));
     }
 }
 
@@ -9937,6 +9969,14 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     default:
       fprintf (fp, ")");
       break;
+    }
+
+  if (scan_id->scan_stats.oos_reads.fetches > 0)
+    {
+      /* only a scan that read OOS values shows it, as a part of the figures above */
+      fprintf (fp, " (oos time: %d, fetch: %llu, ioread: %llu)", TO_MSEC (scan_id->scan_stats.oos_reads.elapsed),
+	       (unsigned long long int) scan_id->scan_stats.oos_reads.fetches,
+	       (unsigned long long int) scan_id->scan_stats.oos_reads.ioreads);
     }
 }
 #endif /* SERVER_MODE */
