@@ -56,6 +56,7 @@
 #endif /* SERVER_MODE */
 
 #include <algorithm>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -6064,10 +6065,12 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 
 /*
  * qfile_list_cache_values_equal () - CBRD-27583: whether two values bound to position i of cached results are
- *   equal: by the position's comparison, NULLs equal (total order); two strings by their bytes
+ *   equal: by the position's comparison, NULLs equal (total order); two strings by their bytes, two JSON values by
+ *   their body text
  *
  * Note: a result may depend on a bound string's bytes (e.g., ascii (?), or ? itself in the select list), which
- *       the collation of the position may find equal for 'A' and 'a'.
+ *       the collation of the position may find equal for 'A' and 'a', or on a JSON value's own type
+ *       (json_type (?)), which the comparison finds equal for 1 and 1.0.
  */
 static bool
 qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_VALUE * val1, const DB_VALUE * val2)
@@ -6077,10 +6080,20 @@ qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_
       return true;
     }
 
-  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (val1)) && TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (val2))
-      && !DB_IS_NULL (val1) && !DB_IS_NULL (val2))
+  const DB_TYPE type1 = DB_VALUE_DOMAIN_TYPE (val1);
+  const DB_TYPE type2 = DB_VALUE_DOMAIN_TYPE (val2);
+
+  if (!DB_IS_NULL (val1) && !DB_IS_NULL (val2))
     {
-      return mht_compare_dbvalues_are_identical (val1, val2) != 0;
+      if (TP_IS_CHAR_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
+	{
+	  return mht_compare_strings_are_identical (val1, val2) != 0;
+	}
+
+      if (type1 == DB_TYPE_JSON && type2 == DB_TYPE_JSON)
+	{
+	  return mht_compare_jsons_are_identical (val1, val2) != 0;
+	}
     }
 
   /* other types and NULLs: the position's comparison (set by qfile_list_cache_key_of () for a key with values) */

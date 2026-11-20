@@ -133,7 +133,8 @@ typedef enum
 
 /* the Mersenne prime 2^61 - 1 of numeric_db_value_hash (): as 2^61 is 1 mod it, a reduction takes shifts and adds,
  * no division */
-#define NUMERIC_HASH_PRIME ((1ULL << 61) - 1)
+#define NUMERIC_HASH_PRIME_BITS (61)
+#define NUMERIC_HASH_PRIME ((1ULL << NUMERIC_HASH_PRIME_BITS) - 1)
 
 #define FIXED_TO_FLOAT_NUMERIC(value) \
   do { \
@@ -179,10 +180,12 @@ extern int numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT 
 extern void numeric_coerce_dec_str_to_num (const char *dec_str, DB_C_NUMERIC result, bool * is_value_negative);
 extern void numeric_coerce_num_to_dec_str (const DB_VALUE * num_value, char *dec_str);
 
-extern void numeric_coerce_num_to_double (const DB_VALUE * num_value, int scale, double *adouble);
+extern void numeric_coerce_num_to_double (const DB_VALUE * src, int scale, double *dest);
 extern int numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					   bool * is_value_negative);
 extern void numeric_shortest_digits (double x, bool is_float, int max_digits, char *buf, int *decpt, int *sign);
+
+extern void numeric_coerce_num_to_float (const DB_VALUE * src, int scale, float *dest);
 extern int numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					  bool * is_value_negative);
 
@@ -414,9 +417,9 @@ numeric_repr_write_disk (unsigned char *digits, const unsigned char *buf, int di
 STATIC_INLINE constexpr uint64_t
 numeric_hash_mod (uint128_t value)
 {
-  uint64_t residue = (uint64_t) (value & NUMERIC_HASH_PRIME) + (uint64_t) (value >> 61);
+  uint64_t residue = (uint64_t) (value & NUMERIC_HASH_PRIME) + (uint64_t) (value >> NUMERIC_HASH_PRIME_BITS);
 
-  residue = (residue & NUMERIC_HASH_PRIME) + (residue >> 61);
+  residue = (residue & NUMERIC_HASH_PRIME) + (residue >> NUMERIC_HASH_PRIME_BITS);
   return (residue >= NUMERIC_HASH_PRIME) ? residue - NUMERIC_HASH_PRIME : residue;
 }
 
@@ -443,7 +446,7 @@ STATIC_INLINE constexpr uint64_t
 numeric_hash_int64 (int64_t value)
 {
   /* the magnitude, INT64_MIN's (2^63) included */
-  const uint64_t residue = numeric_hash_mod (value < 0 ? 0 - (uint64_t) value : (uint64_t) value);
+  const uint64_t residue = numeric_hash_mod ((value < 0) ? 0 - (uint64_t) value : (uint64_t) value);
 
   /* negate a negative value, as numeric_db_value_hash () does */
   return (value < 0 && residue != 0) ? NUMERIC_HASH_PRIME - residue : residue;
@@ -480,7 +483,7 @@ numeric_db_value_hash (const DB_VALUE * value)
   int scale;
 
   /* Step 1: read the scale: a float NUMERIC keeps it in the value, a fixed one in its domain */
-  scale = (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION
+  scale = ((value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
 	   ? value->data.num.header.scale : value->domain.numeric_info.scale);
   assert (scale >= DB_MIN_NUMERIC_SCALE && scale <= DB_MAX_NUMERIC_SCALE);
 

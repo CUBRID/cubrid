@@ -4856,10 +4856,10 @@ tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp)
 }
 
 /*
- * tp_atof - Coerce a string to a double.
+ * tp_string_to_real - Coerce a string to a double or a float.
  *    return: NO_ERROR or error code.
  *    src(in): string DB_VALUE
- *    num_value(out): float container
+ *    num_value(out): double or float container
  *    data_stat(out): if overflow is detected, this is set to
  *		      DATA_STATUS_TRUNCATED. If there exists some characters
  *		      that are not numeric codes or spaces then it is set to
@@ -4867,14 +4867,18 @@ tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp)
  * Note:
  *    Accepts strings that are not null terminated. Don't call this unless
  *    src is a string db_value.
+ *    A float is read by strtof (): a float rounded from the double strtod () reads would round twice
+ *    ('1.0000000596046447753906250001' to 1.0, not to 1 + 2^-23).
  */
+/* *INDENT-OFF* */
+template <typename T>
 int
-tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
+tp_string_to_real (const DB_VALUE *src, T *num_value, DB_DATA_STATUS *data_stat)
 {
   char str[NUM_BUF_SIZE];
   const char *strp = NULL;
   bool do_alloc = false;
-  double d;
+  T d;
   const char *p, *end;
   int status = NO_ERROR;
   unsigned int size;
@@ -4933,16 +4937,21 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
   /* don't use atof() which cannot detect the error. */
   errno = 0;
   char *end_ptr = NULL;
-  d = string_to_double (strp, &end_ptr);
-
-  if (errno == ERANGE)
+  if constexpr (std::is_same<T, double>::value)
     {
-      if (d != 0)
-	{
-	  /* overflow */
-	  *data_stat = DATA_STATUS_TRUNCATED;
-	}
-      /* d == 0 is underflow, we don't have an error for this */
+      d = strtod (strp, &end_ptr);
+    }
+  else
+    {
+      static_assert (std::is_same<T, float>::value, "T is a double or a float");
+      d = strtof (strp, &end_ptr);
+    }
+
+  /* ERANGE is overflow (an infinity) or underflow (a zero or a subnormal), and only overflow is an error;
+   * strtod and strtof set it by the range of their own type, and std::isinf takes either, so one check covers both */
+  if (errno == ERANGE && std::isinf (d))
+    {
+      *data_stat = DATA_STATUS_TRUNCATED;
     }
 
   /* ignore trailing spaces */
@@ -4960,6 +4969,10 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 
   return status;
 }
+
+template int tp_string_to_real<double> (const DB_VALUE *, double *, DB_DATA_STATUS *);
+template int tp_string_to_real<float> (const DB_VALUE *, float *, DB_DATA_STATUS *);
+/* *INDENT-ON* */
 
 /*
  * tp_atobi - Coerce a string to a bigint.
@@ -5551,7 +5564,7 @@ tp_value_string_to_double (const DB_VALUE * value, DB_VALUE * result)
       return ER_FAILED;
     }
 
-  ret = tp_atof (value, &dbl, &data_stat);
+  ret = tp_string_to_real (value, &dbl, &data_stat);
   if (ret != NO_ERROR)
     {
       db_make_double (result, 0);

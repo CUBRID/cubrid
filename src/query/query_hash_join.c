@@ -2905,13 +2905,14 @@ hjoin_fetch_val_list (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASH
 }
 
 /* Two join column values once converted, compared as the compiler decided (tp_value_compare without coercion, with
- * coercion for two numbers hashed by value). No key compares by its values: the compiler reads an OBJECT column as OID
- * and decides no NULL or variable column (xts_pack_hash_join_keys).
+ * coercion for two types of one hash type hashed as they are and for JSON and collection keys, whose contents the
+ * join term's comparison coerces). No key compares by its values: the compiler reads an
+ * OBJECT column as OID and decides no NULL or variable column (xts_pack_hash_join_keys).
  *
  * The comparison is decided outer first (source[0] the outer type, source[1] the inner) and takes the outer value
  * first: it converts or coerces each side by its own source type. The build (value1) is the inner one where the inner
- * is the smaller, and then the values are swapped. The order matters only for two numbers of one
- * family hashed as they are (domain_decide_hash_join_key), whose types differ; every other pair is read in one type
+ * is the smaller, and then the values are swapped. The order matters only for two types of one
+ * hash type hashed as they are (domain_decide_hash_join_key), which differ; every other pair is read in one type
  * (the same type, or both converted to a common domain), source[0] == source[1], and keeps its order. Only DB_EQ is
  * asked for, so the swapped sign of a swapped pair does not matter. */
 static inline DB_VALUE_COMPARE_RESULT

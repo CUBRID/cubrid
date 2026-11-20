@@ -4601,7 +4601,9 @@ qo_hq_index_serves_child_lookup (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NOD
 /*
  * qo_hq_cast_walker () - detects a cast that can fail on a value it cannot
  *   convert: any cast written in the query, or a cast the compiler wrapped
- *   from a string to another type (its other wrapped casts only widen)
+ *   from a string to another type or from an ENUM to a type neither a string
+ *   nor a number, which reads its label as a string (its other wrapped casts
+ *   only widen)
  */
 static PT_NODE *
 qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -4612,13 +4614,29 @@ qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
     {
       *continue_walk = PT_LIST_WALK;
     }
-  else if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_CAST)
-	   && (!PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP)
-	       || (node->info.expr.arg1 != NULL && PT_IS_CHAR_STRING_TYPE (node->info.expr.arg1->type_enum)
-		   && !PT_IS_CHAR_STRING_TYPE (node->type_enum))))
+  else if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_CAST))
     {
-      *found = true;
-      *continue_walk = PT_STOP_WALK;
+      if (!PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
+	{
+	  /* one written in the query */
+	  *found = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      else
+	{
+	  const PT_NODE *arg = node->info.expr.arg1;
+	  const PT_TYPE_ENUM to = node->type_enum;
+	  assert (arg != NULL);
+
+	  /* one the compiler wrapped from a string to another type, or from an ENUM (by its label) to a type
+	   * neither a string nor a number (by its index) */
+	  if ((PT_IS_CHAR_STRING_TYPE (arg->type_enum) && !PT_IS_CHAR_STRING_TYPE (to))
+	      || (arg->type_enum == PT_TYPE_ENUMERATION && !PT_IS_CHAR_STRING_TYPE (to) && !PT_IS_NUMERIC_TYPE (to)))
+	    {
+	      *found = true;
+	      *continue_walk = PT_STOP_WALK;
+	    }
+	}
     }
 
   return node;

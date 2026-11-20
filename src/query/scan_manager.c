@@ -59,6 +59,7 @@
 #include "statistics.h"
 #include "px_scan.hpp"
 #include "bit.h"		/* bit64_count_ones */
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 

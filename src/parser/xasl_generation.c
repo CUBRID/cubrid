@@ -7293,57 +7293,14 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
 }
 
 /*
- * pt_hash_key_domain () - CBRD-27583: the domain a hash list scan hashes a build and a probe key's values in,
- *   so that the values the scan's predicate finds equal hash alike and none that it compares fails to hash
- *   return: false where no domain is (another type pair, a domain the execution fixes): the scan reads the list
- *   common(out): NULL to hash the values as they are - one type, strings of one collation (their hash is the
- *		  collation's, trailing spaces ignored), numbers of one family; else the domain both convert to
- *
- * Numbers of one hash type hash as they are (domain_hash_type): the exact ones (SMALLINT, INTEGER, BIGINT, NUMERIC
- * fixed or floating, of any scale) by value, the floating ones (FLOAT, DOUBLE, MONETARY) by the DOUBLE they equal.
- * A pair across the families hashes in the pair's common domain (domain_resolve_hash_key, the comparison's type).
- */
-static bool
-pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, const TP_DOMAIN ** common)
-{
-  *common = NULL;
-  if (!pt_regu_domain_is_fixed (build) || !pt_regu_domain_is_fixed (probe))
-    {
-      return false;
-    }
-  const TP_DOMAIN *domain[2] = { build->domain, probe->domain };
-  const DB_TYPE type[2] = { TP_DOMAIN_TYPE (domain[0]), TP_DOMAIN_TYPE (domain[1]) };
-  if (TP_IS_CHAR_TYPE (type[0]) && TP_IS_CHAR_TYPE (type[1]))
-    {
-      return domain[0]->collation_id == domain[1]->collation_id;
-    }
-  if (type[0] == type[1] && type[0] != DB_TYPE_NUMERIC)
-    {
-      /* an ENUM hashes its index: two ENUM types' equal strings would not */
-      return type[0] != DB_TYPE_NULL && type[0] != DB_TYPE_VOBJ
-	&& (type[0] != DB_TYPE_ENUMERATION || tp_domain_match (domain[0], domain[1], TP_EXACT_MATCH));
-    }
-  if (!TP_IS_NUMERIC_TYPE (type[0]) || !TP_IS_NUMERIC_TYPE (type[1]))
-    {
-      return false;
-    }
-  if (domain_hash_type (type[0]) == domain_hash_type (type[1]))
-    {
-      /* hashed as they are, by value; the scan's predicate compares the pair with coercion */
-      return true;
-    }
-  if (domain_resolve_hash_key (domain[0], domain[1], common) != NO_ERROR)
-    {
-      er_clear ();
-      return false;
-    }
-  return true;
-}
-
-/*
  * pt_decide_hash_list_keys () - CBRD-27583: each key pair of a hash list scan converted into the domain it
- *   hashes in (pt_hash_key_domain), on the key regus' fetch; a pair without one turns the scan's hash off
+ *   hashes in (domain_hashable_resolve ()), on the key regus' fetch, so that the values the scan's predicate finds
+ *   equal hash alike and none that it compares fails to hash; a pair without one turns the scan's hash off
  *   spec(in/out): a list scan spec
+ *
+ * A pair of two hash types (domain_hash_type ()) hashes in the pair's common domain, the comparison's type:
+ * numbers, an exact one and a floating one, or collections, a SET and a MULTISET, as type checking casts any other
+ * pair to one domain.
  */
 static void
 pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
@@ -7352,28 +7309,69 @@ pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
     {
       return;
     }
+
   REGU_VARIABLE_LIST build, probe;
   const TP_DOMAIN *common;
+
   /* every pair decides before any converts: a scan whose hash goes off keeps its keys as generated */
   for (build = spec->s.list_node.list_regu_list_build, probe = spec->s.list_node.list_regu_list_probe;
        build != NULL && probe != NULL; build = build->next, probe = probe->next)
     {
-      if (!pt_hash_key_domain (&build->value, &probe->value, &common)
-	  || (common != NULL && (build->value.original_domain != NULL || build->value.vfetch_to != NULL
-				 || probe->value.original_domain != NULL || probe->value.vfetch_to != NULL)))
+      const REGU_VARIABLE *const key[2] = { &build->value, &probe->value };
+
+      /* a domain the execution fixes */
+      if (!pt_regu_domain_is_fixed (key[0]) || !pt_regu_domain_is_fixed (key[1]))
 	{
 	  spec->s.list_node.hash_list_scan_yn = 0;
 	  return;
 	}
+
+      /* a pair of no domain that hashes alike (an OBJECT's values are OIDs on the server) */
+      if (!domain_hashable_resolve (domain_key_value_domain (key[0]->domain),
+				    domain_key_value_domain (key[1]->domain), &common))
+	{
+	  spec->s.list_node.hash_list_scan_yn = 0;
+	  return;
+	}
+
+      if (common == NULL)
+	{
+	  /* hashed as they are */
+	  continue;
+	}
+
+      /* a conversion onto a key that converts already; a key of the common domain does not convert */
+      for (int side = 0; side < 2; side++)
+	{
+	  if (key[side]->domain != common && (key[side]->original_domain != NULL || key[side]->vfetch_to != NULL))
+	    {
+	      spec->s.list_node.hash_list_scan_yn = 0;
+	      return;
+	    }
+	}
     }
+
   for (build = spec->s.list_node.list_regu_list_build, probe = spec->s.list_node.list_regu_list_probe;
        build != NULL && probe != NULL; build = build->next, probe = probe->next)
     {
-      (void) pt_hash_key_domain (&build->value, &probe->value, &common);
       REGU_VARIABLE *const key[2] = { &build->value, &probe->value };
+
+      if (!domain_hashable_resolve (domain_key_value_domain (key[0]->domain),
+				    domain_key_value_domain (key[1]->domain), &common))
+	{
+	  /* the pair hashed above: only the common domain's allocation fails here, and the keys serve only the hash */
+	  spec->s.list_node.hash_list_scan_yn = 0;
+	  return;
+	}
+
+      if (common == NULL)
+	{
+	  continue;
+	}
+
       for (int side = 0; side < 2; side++)
 	{
-	  if (common != NULL && key[side]->domain != common)
+	  if (key[side]->domain != common)
 	    {
 	      pt_set_operand_conversion (key[side], common, DOMAIN_CONVERT_IMPLICIT);
 	    }
@@ -15942,20 +15940,20 @@ pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
       /* a type keeps two keys apart only if it holds every key */
       switch (TP_DOMAIN_TYPE (decided.target[0]))
 	{
-	case DB_TYPE_DOUBLE:
-	case DB_TYPE_MONETARY:
-	  /* a DOUBLE, a MONETARY's amount too, keeps DBL_DIG decimal digits */
-	  is_lossless_conversion = (key_type == DB_TYPE_SHORT || key_type == DB_TYPE_INTEGER
-				    || key_type == DB_TYPE_FLOAT
-				    || (key_type == DB_TYPE_NUMERIC && key->precision <= DBL_DIG));
-	  break;
-
 	case DB_TYPE_FLOAT:
 	  /* a FLOAT keeps FLT_DIG decimal digits,
 	   * and its normal range holds a NUMERIC key only with a scale in 0..precision */
 	  is_lossless_conversion = (key_type == DB_TYPE_SHORT
 				    || (key_type == DB_TYPE_NUMERIC && key->precision <= FLT_DIG
 					&& key->scale >= 0 && key->scale <= key->precision));
+	  break;
+
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_MONETARY:
+	  /* a DOUBLE, a MONETARY's amount too, keeps DBL_DIG decimal digits */
+	  is_lossless_conversion = (key_type == DB_TYPE_SHORT || key_type == DB_TYPE_INTEGER
+				    || key_type == DB_TYPE_FLOAT
+				    || (key_type == DB_TYPE_NUMERIC && key->precision <= DBL_DIG));
 	  break;
 
 	default:

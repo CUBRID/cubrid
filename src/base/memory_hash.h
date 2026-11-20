@@ -102,14 +102,15 @@ extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size);
 extern unsigned int mht_valhash (const void *key, const unsigned int ht_size);
 STATIC_INLINE unsigned int mht_mixhash (unsigned int hash) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE unsigned int mht_mixhash64 (UINT64 hash) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE unsigned int mht_mixhash64_to_32 (UINT64 hash) __attribute__ ((ALWAYS_INLINE));
 extern int mht_compare_identifiers_equal (const void *key1, const void *key2);
 extern int mht_compare_strings_are_equal (const void *key1, const void *key2);
 extern int mht_compare_ints_are_equal (const void *key1, const void *key2);
 extern int mht_compare_logpageids_are_equal (const void *key1, const void *key2);
 extern int mht_compare_ptrs_are_equal (const void *key1, const void *key2);
 extern int mht_compare_dbvalues_are_equal (const void *key1, const void *key2);
-extern int mht_compare_dbvalues_are_identical (const void *key1, const void *key2);
+extern int mht_compare_strings_are_identical (const void *key1, const void *key2);
+extern int mht_compare_jsons_are_identical (const void *key1, const void *key2);
 
 extern MHT_TABLE *mht_create (const char *name, int est_size,
 			      unsigned int (*hash_func) (const void *key, unsigned int ht_size),
@@ -206,10 +207,11 @@ extern unsigned int mht_hls_slot_count (int est_size);
  *   return: hash value
  *   hash(in): the hash
  *
- * mht_valhash () mixes the hash of every value with it once, a value of 64 bits after mht_mixhash64 () cuts it to
- * 32 bits. The hash of a value keeps patterns of the value in its low bits: a DATE is its own hash, and the
- * multiplies of FNV-1a carry only into the high bits. The hash tables take the low bits (hash & mask in mht_put_hls ()), which the mix makes
- * depend on all the bits.
+ * mht_valhash () mixes the hash of every value with it once,
+ * a value of 64 bits after mht_mixhash64_to_32 () cuts it to 32 bits.
+ * The hash of a value keeps patterns of the value in its low bits:
+ * a DATE is its own hash, and the multiplies of FNV-1a carry only into the high bits.
+ * The hash tables take the low bits (hash & mask in mht_put_hls ()), which the mix makes depend on all the bits.
  */
 STATIC_INLINE unsigned int
 mht_mixhash (unsigned int hash)
@@ -224,7 +226,7 @@ mht_mixhash (unsigned int hash)
 }
 
 /*
- * mht_mixhash64 () - mix the bits of a 64-bit value by MurmurHash3's fmix64 and take the high 32 bits
+ * mht_mixhash64_to_32 () - mix the bits of a 64-bit value by MurmurHash3's fmix64 and take the high 32 bits
  *   return: hash value
  *   hash(in): the value
  *
@@ -232,7 +234,7 @@ mht_mixhash (unsigned int hash)
  * XOR to the same word, such as every (a << 32) | a.
  */
 STATIC_INLINE unsigned int
-mht_mixhash64 (UINT64 hash)
+mht_mixhash64_to_32 (UINT64 hash)
 {
   hash ^= hash >> 33;
   hash *= 0xff51afd7ed558ccdULL;

@@ -72,6 +72,7 @@
 #include <functional>
 #include <stdlib.h>
 #include <string.h>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -7753,7 +7754,7 @@ btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
  *
  * Note: (CBRD-27701) the Duj1 estimate counts distinct hashes, so the hash must be equal for equal
  * values and distinct for distinct ones. mht_valhash () is made for hash table buckets (32 bits,
- * a set by its first and last elements only). The whole value is mixed here instead;
+ * a collision costs only a comparison there). The whole value is mixed here instead into 64 bits;
  * strings follow the comparison of their collation (btree_get_stats_hash_string ()).
  */
 static UINT64
@@ -7763,9 +7764,26 @@ btree_get_stats_prefix_value_hash (const DB_VALUE * value)
 
   switch (DB_VALUE_TYPE (value))
     {
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-      return btree_get_stats_hash_string (hash, value);
+    case DB_TYPE_SHORT:
+      {
+	short sh = db_get_short (value);
+
+	return btree_get_stats_hash_bytes (hash, &sh, sizeof (sh));
+      }
+
+    case DB_TYPE_INTEGER:
+      {
+	int i = db_get_int (value);
+
+	return btree_get_stats_hash_bytes (hash, &i, sizeof (i));
+      }
+
+    case DB_TYPE_BIGINT:
+      {
+	DB_BIGINT bigint = db_get_bigint (value);
+
+	return btree_get_stats_hash_bytes (hash, &bigint, sizeof (bigint));
+      }
 
     case DB_TYPE_NUMERIC:
       {
@@ -7774,6 +7792,35 @@ btree_get_stats_prefix_value_hash (const DB_VALUE * value)
 
 	return btree_get_stats_hash_bytes (hash, &residue, sizeof (residue));
       }
+
+      /* FLOAT, DOUBLE and MONETARY: -0.0 equals 0.0, and a NaN every other NaN (MR_CMP_FLOATING ()) */
+    case DB_TYPE_FLOAT:
+      {
+	float f = db_get_float (value);
+
+	f = (isnan (f)) ? NAN : f + 0.0f;
+	return btree_get_stats_hash_bytes (hash, &f, sizeof (f));
+      }
+
+    case DB_TYPE_DOUBLE:
+      {
+	double d = db_get_double (value);
+
+	d = (isnan (d)) ? NAN : d + 0.0;
+	return btree_get_stats_hash_bytes (hash, &d, sizeof (d));
+      }
+
+    case DB_TYPE_MONETARY:
+      {
+	double d = db_get_monetary (value)->amount;
+
+	d = (isnan (d)) ? NAN : d + 0.0;
+	return btree_get_stats_hash_bytes (hash, &d, sizeof (d));
+      }
+
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      return btree_get_stats_hash_string (hash, value);
 
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
@@ -7784,86 +7831,11 @@ btree_get_stats_prefix_value_hash (const DB_VALUE * value)
 	return btree_get_stats_hash_bytes (hash, db_get_string (value), size);
       }
 
-      /* FLOAT, DOUBLE and MONETARY: -0.0 equals 0.0, and a NaN every other NaN (MR_CMP_FLOATING ()) */
-    case DB_TYPE_FLOAT:
-      {
-	float f = db_get_float (value);
-
-	f = isnan (f) ? NAN : f + 0.0f;
-	return btree_get_stats_hash_bytes (hash, &f, sizeof (f));
-      }
-
-    case DB_TYPE_DOUBLE:
-      {
-	double d = db_get_double (value);
-
-	d = isnan (d) ? NAN : d + 0.0;
-	return btree_get_stats_hash_bytes (hash, &d, sizeof (d));
-      }
-
-    case DB_TYPE_MONETARY:
-      {
-	double d = db_get_monetary (value)->amount;
-
-	d = isnan (d) ? NAN : d + 0.0;
-	return btree_get_stats_hash_bytes (hash, &d, sizeof (d));
-      }
-
-    case DB_TYPE_BIGINT:
-      {
-	DB_BIGINT bigint = db_get_bigint (value);
-
-	return btree_get_stats_hash_bytes (hash, &bigint, sizeof (bigint));
-      }
-
-    case DB_TYPE_DATETIME:
-    case DB_TYPE_DATETIMELTZ:
-    case DB_TYPE_DATETIMETZ:
-      {
-	/* the time zone of DATETIMETZ is not compared */
-	const DB_DATETIME *datetime = (DB_VALUE_TYPE (value) == DB_TYPE_DATETIMETZ)
-	  ? &db_get_datetimetz (value)->datetime : db_get_datetime (value);
-
-	hash = btree_get_stats_hash_bytes (hash, &datetime->date, sizeof (datetime->date));
-	return btree_get_stats_hash_bytes (hash, &datetime->time, sizeof (datetime->time));
-      }
-
-    case DB_TYPE_TIMESTAMPTZ:
-      {
-	/* the time zone of TIMESTAMPTZ is not compared */
-	DB_TIMESTAMP timestamp = db_get_timestamptz (value)->timestamp;
-
-	return btree_get_stats_hash_bytes (hash, &timestamp, sizeof (timestamp));
-      }
-
     case DB_TYPE_ENUMERATION:
       {
 	unsigned short index = db_get_enum_short (value);
 
 	return btree_get_stats_hash_bytes (hash, &index, sizeof (index));
-      }
-
-    case DB_TYPE_OID:
-      {
-	const OID *oid = db_get_oid (value);
-
-	hash = btree_get_stats_hash_bytes (hash, &oid->pageid, sizeof (oid->pageid));
-	hash = btree_get_stats_hash_bytes (hash, &oid->slotid, sizeof (oid->slotid));
-	return btree_get_stats_hash_bytes (hash, &oid->volid, sizeof (oid->volid));
-      }
-
-    case DB_TYPE_INTEGER:
-      {
-	int i = db_get_int (value);
-
-	return btree_get_stats_hash_bytes (hash, &i, sizeof (i));
-      }
-
-    case DB_TYPE_SHORT:
-      {
-	short sh = db_get_short (value);
-
-	return btree_get_stats_hash_bytes (hash, &sh, sizeof (sh));
       }
 
     case DB_TYPE_DATE:
@@ -7875,6 +7847,35 @@ btree_get_stats_prefix_value_hash (const DB_VALUE * value)
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
       return btree_get_stats_hash_bytes (hash, db_get_timestamp (value), sizeof (DB_TIMESTAMP));
+
+    case DB_TYPE_TIMESTAMPTZ:
+      {
+	/* the time zone of TIMESTAMPTZ is not compared */
+	DB_TIMESTAMP timestamp = db_get_timestamptz (value)->timestamp;
+
+	return btree_get_stats_hash_bytes (hash, &timestamp, sizeof (timestamp));
+      }
+
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
+      {
+	/* the time zone of DATETIMETZ is not compared */
+	const DB_DATETIME *datetime = (DB_VALUE_TYPE (value) == DB_TYPE_DATETIMETZ)
+	  ? &db_get_datetimetz (value)->datetime : db_get_datetime (value);
+
+	hash = btree_get_stats_hash_bytes (hash, &datetime->date, sizeof (datetime->date));
+	return btree_get_stats_hash_bytes (hash, &datetime->time, sizeof (datetime->time));
+      }
+
+    case DB_TYPE_OID:
+      {
+	const OID *oid = db_get_oid (value);
+
+	hash = btree_get_stats_hash_bytes (hash, &oid->pageid, sizeof (oid->pageid));
+	hash = btree_get_stats_hash_bytes (hash, &oid->slotid, sizeof (oid->slotid));
+	return btree_get_stats_hash_bytes (hash, &oid->volid, sizeof (oid->volid));
+      }
 
     default:
       return mht_valhash (value, UINT_MAX);

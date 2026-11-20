@@ -50,6 +50,7 @@
 #include "db.h"
 #endif /* !defined (SERVER_MODE) */
 #include "dbtype.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -3293,23 +3294,30 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
  * Trailing weights 0 are not hashed: strings that differ only in them hash alike, whether the compare function finds
  * them equal or tells them apart.
  *
- * Step 1: read the weight of the next code point.
- * Step 2: hash the weight, holding a weight 0 back.
+ * Step 1: leave out the trailing spaces, as weights 0 not hashed, without decoding them: a CHAR's pad.
+ * Step 2: read the weight of the next code point.
+ * Step 3: hash the weight, holding a weight 0 back.
  */
 static unsigned int
 lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
 {
   const COLL_DATA *coll_data = &(lang_coll->coll);
-  const unsigned int *weights = lang_coll->built_in ? coll_data->weights_ti : coll_data->weights;
+  const unsigned int *weights = (lang_coll->built_in) ? coll_data->weights_ti : coll_data->weights;
   const unsigned char *str_end = str + size;
   unsigned char *str_next;
   unsigned int hash_key = MHT_FNV_OFFSET;
   int zeros = 0;		/* weights 0 not hashed yet */
   unsigned int cp, weight;
 
+  /* Step 1: leave out the trailing spaces; a byte 0x20 of UTF-8 is a space */
+  while (str_end > str && str_end[-1] == ASCII_SPACE)
+    {
+      str_end--;
+    }
+
   while (str < str_end)
     {
-      /* Step 1: read the weight of the next code point */
+      /* Step 2: read the weight of the next code point */
       cp = intl_utf8_to_cp (str, CAST_BUFLEN (str_end - str), &str_next);
       str = str_next;
       weight = cp;
@@ -3318,7 +3326,7 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
 	  weight = (cp == ASCII_SPACE) ? 0 : weights[cp];
 	}
 
-      /* Step 2: hash the weight, holding a weight 0 back */
+      /* Step 3: hash the weight, holding a weight 0 back */
       lang_hash_weight (&hash_key, &zeros, weight, true);
     }
 

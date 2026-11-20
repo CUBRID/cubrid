@@ -1015,13 +1015,6 @@ template <typename T, typename V> inline void ATOMIC_STORE (volatile T *ptr, V a
 
 #endif /* defined(HAVE_ATOMIC_BUILTINS) */
 
-#if defined (WINDOWS)
-extern double strtod_win (const char *str, char **end_ptr);
-#define string_to_double(str, end_ptr) strtod_win((str), (end_ptr));
-#else
-#define string_to_double(str, end_ptr) strtod((str), (end_ptr))
-#endif
-
 extern INT64 timeval_diff_in_msec (const struct timeval *end_time, const struct timeval *start_time);
 extern int timeval_add_msec (struct timeval *added_time, const struct timeval *start_time, int msec);
 extern int timeval_to_timespec (struct timespec *to, const struct timeval *from);

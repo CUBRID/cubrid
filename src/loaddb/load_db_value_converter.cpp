@@ -876,14 +876,15 @@ namespace cubload
   int
   to_db_float (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    double d;
+    float f;
     char *str_ptr;
 
     db_make_float (val, (float) 0.0);
-    d = strtod (str, &str_ptr);
+    /* strtof (): a float rounded from the double strtod () reads would round twice */
+    f = strtof (str, &str_ptr);
 
     /* The ascii representation should be ok, check for overflow */
-    if (str_ptr == str || OR_CHECK_FLOAT_OVERFLOW (d))
+    if (str_ptr == str || OR_CHECK_FLOAT_OVERFLOW (f))
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
 		overflow_type_name (attr, DB_TYPE_FLOAT));
@@ -891,7 +892,7 @@ namespace cubload
       }
     else
       {
-	val->data.f = (float) d;
+	val->data.f = f;
       }
 
     return NO_ERROR;

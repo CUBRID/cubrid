@@ -3461,16 +3461,17 @@ error_exit:
 static int
 ldr_float_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 {
-  double d;
+  float f;
   char *str_ptr;
   int err = NO_ERROR;
 
   val->domain = ldr_float_tmpl.domain;
-  d = strtod (str, &str_ptr);
+  /* strtof (): a float rounded from the double strtod () reads would round twice */
+  f = strtof (str, &str_ptr);
 
   /* The ascii representation should be ok, check for overflow */
 
-  if (str_ptr == str || OR_CHECK_FLOAT_OVERFLOW (d))
+  if (str_ptr == str || OR_CHECK_FLOAT_OVERFLOW (f))
     {
       TP_DOMAIN *domain;
       DB_TYPE dom_type;
@@ -3485,7 +3486,7 @@ ldr_float_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val
     }
   else
     {
-      val->data.f = (float) d;
+      val->data.f = f;
     }
 
 error_exit:
