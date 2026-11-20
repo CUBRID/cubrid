@@ -6900,8 +6900,10 @@ pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
     {
       return parse_tree;
     }
-  /* a NULL producer column (a derived table whose query is false) types nothing */
+  /* a NULL producer column (a derived table whose query is false) types nothing, but a parse tree domain whose type
+   * or (CBRD-28134) collation is left to the values reads it: no value comes to decide them */
   if (TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE
+      || (TP_DOMAIN_TYPE (producer) == DB_TYPE_NULL && TP_DOMAIN_COLLATION_FLAG (parse_tree) != TP_DOMAIN_COLL_NORMAL)
       || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != DB_TYPE_NULL
 	  && TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree)))
     {
@@ -14552,6 +14554,11 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
   else if (plan->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (plan->plan_un.scan.node))
     {
       /* We cannot use the lower limit in a hierarchy */
+      limit_infop->lower = NULL;
+    }
+  else if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      /* We cannot use the lower limit with the analytic limit optimization: the skipped rows must be counted */
       limit_infop->lower = NULL;
     }
   else
