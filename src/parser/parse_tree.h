@@ -2027,6 +2027,16 @@ typedef enum
   PT_ATTR_INVISIBLE
 } PT_ATTR_INVISIBLE_SETTING;
 
+typedef enum
+{
+  PT_ATTR_STORAGE_UNSET,	/* clause omitted: preserve existing setting on MODIFY/CHANGE */
+  PT_ATTR_STORAGE_DEFAULT,
+  PT_ATTR_STORAGE_PREFER_OUTLINE,
+  PT_ATTR_STORAGE_PREFER_INLINE,	/* STORAGE PREFER_INLINE: lower OOS demotion priority */
+  PT_ATTR_STORAGE_FORCE_OUTLINE,	/* STORAGE FORCE_OUTLINE: bypass record gate for values larger than OOS stub */
+  PT_ATTR_STORAGE_FORCE_INLINE
+} PT_ATTR_STORAGE_SETTING;
+
 /* Info for ATTR_DEF */
 struct pt_attr_def_info
 {
@@ -2040,6 +2050,7 @@ struct pt_attr_def_info
   int size_constraint;		/* max length of STRING */
   short constrain_not_null;
   PT_ATTR_INVISIBLE_SETTING attr_invisible:2;	/* unchange | VISIBLE | INVISIBLE */
+  PT_ATTR_STORAGE_SETTING attr_storage:3;
 };
 
 /* Info for ALTER TABLE ADD COLUMN [FIRST | AFTER column_name ] */
@@ -2993,6 +3004,9 @@ struct pt_select_info
 #define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
 #define PT_SELECT_INFO_MINMAX_NULL_FILTERED 0x020000	/* a "col IS NOT NULL" term was added so the index-based
 							 * MIN/MAX scan may skip NULL keys (CBRD-24890) */
+#define PT_SELECT_INFO_LENIENT_JOIN_HINT  0x040000	/* retry of an optimization that failed with the join method
+							 * hints: ignore one that cannot be applied to a join for
+							 * that join only (CBRD-28089) */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
@@ -3037,6 +3051,12 @@ struct pt_query_info
 				 * do_replan_statement_with_bind_peek ()) restore the level to 0
 				 * first, so the subquery keeps its XASL_ZERO_CORR_LEVEL
 				 * (uncorrelated, parallel-executable) marking. */
+    unsigned stays_query:1;	/* a set operation of a statement typed again with its bound values
+				 * (db_execute_and_keep_statement_local ()): it folds into an empty operand,
+				 * never into a value (pt_check_union_is_foldable ()) */
+    unsigned folded_distinct:1;	/* a SELECT DISTINCT from a derived table of the operand a set operation
+				 * without ALL folded to (pt_fold_union_as_derived ()): where only the set of
+				 * its rows counts, the operand takes its place (pt_fold_union_unwrap ()) */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
