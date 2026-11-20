@@ -162,6 +162,7 @@ TR_DEFERRED_CONTEXT *tr_Deferred_activities_tail = NULL;
 
 static int tr_User_triggers_valid = 0;
 static int tr_User_triggers_modified = 0;
+static int tr_Trigger_cache_modified = 0;
 static TR_TRIGLIST *tr_User_triggers = NULL;
 
 static TR_TRIGLIST *tr_Uncommitted_triggers = NULL;
@@ -250,6 +251,8 @@ static void tr_finish (TR_STATE * state);
 static int its_deleted (DB_OBJECT * object);
 
 static int map_flush_helper (const void *key, void *data, void *args);
+static int reset_trigger_cache_helper (const void *key, void *data, void *args);
+static void reset_trigger_caches (void);
 static int define_trigger_classes (void);
 
 static TR_RECURSION_DECISION tr_check_recursivity (OID oid, OID stack[], int stack_size, bool is_statement);
@@ -5912,6 +5915,7 @@ tr_check_commit_triggers (DB_TRIGGER_TIME time)
    * clear this flag so we know when triggers are updated during a transaction
    */
   tr_User_triggers_modified = 0;
+  tr_Trigger_cache_modified = 0;
 
   return error;
 }
@@ -5979,6 +5983,12 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
       tr_User_triggers_valid = 0;
       tr_User_triggers_modified = 0;
     }
+
+  if (tr_Trigger_cache_modified)
+    {
+      reset_trigger_caches ();
+      tr_Trigger_cache_modified = 0;
+    }
 }
 
 /*
@@ -5991,6 +6001,11 @@ tr_check_partial_rollback_triggers (void)
   if (tr_User_triggers_modified)
     {
       tr_invalidate_user_cache ();
+    }
+
+  if (tr_Trigger_cache_modified)
+    {
+      reset_trigger_caches ();
     }
 }
 
@@ -7027,6 +7042,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
     }
 
   trigger->name = new_name;
+  tr_Trigger_cache_modified = 1;
 
 end:
   if (new_name != NULL && trigger->name != new_name)
@@ -7093,6 +7109,8 @@ tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_f
 	}
       else
 	{
+	  tr_Trigger_cache_modified = 1;
+
 	  /*
 	   * The schema manager maintains a flag indicating whether active triggers are defined for the class.
 	   * When the status of a trigger changes, we need to tell the schema manager to recalculate this flag.
@@ -7160,6 +7178,8 @@ tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api
 	}
       else
 	{
+	  tr_Trigger_cache_modified = 1;
+
 	  if (trigger->class_mop != NULL)
 	    {
 	      /*
@@ -7235,6 +7255,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
 	    }
 	  else
 	    {
+	      tr_Trigger_cache_modified = 1;
 	      if (oldcomment != NULL)
 		{
 		  free_and_init (oldcomment);
@@ -7334,6 +7355,57 @@ tr_init (void)
 
   /* create the object map */
   tr_object_map = mht_create ("Trigger object map", TR_EST_MAP_SIZE, mht_ptrhash, mht_compare_ptrs_are_equal);
+}
+
+/*
+ * reset_trigger_cache_helper() - Makes a cached trigger be read again on its next validation
+ *    return: NO_ERROR
+ *    key(in): trigger object
+ *    data(in): trigger structure
+ *    args(in): not used
+ */
+static int
+reset_trigger_cache_helper (const void *key, void *data, void *args)
+{
+  TR_TRIGGER *trigger = (TR_TRIGGER *) data;
+
+  if ((trigger->condition != NULL && trigger->condition->in_use > 0)
+      || (trigger->action != NULL && trigger->action->in_use > 0))
+    {
+      return NO_ERROR;
+    }
+
+  trigger->chn = NULL_CHN;
+
+  if (trigger->class_mop != NULL)
+    {
+      (void) sm_invalidate_trigger_cache (trigger->class_mop);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * reset_trigger_caches() - Makes the cached triggers be read again after a rollback of ALTER TRIGGER
+ *    return: none
+ *
+ * Note:
+ *    The rollback restores the trigger objects with their old cache coherency numbers,
+ *    so the triggers changed in the cache by ALTER TRIGGER would not be read again.
+ */
+static void
+reset_trigger_caches (void)
+{
+  int save;
+
+  er_stack_push ();
+  AU_DISABLE (save);
+
+  (void) mht_map (tr_object_map, reset_trigger_cache_helper, NULL);
+  tr_invalidate_user_cache ();
+
+  AU_ENABLE (save);
+  er_stack_pop ();
 }
 
 /* Helper routine for tr_final */
