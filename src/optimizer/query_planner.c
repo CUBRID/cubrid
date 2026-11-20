@@ -3855,21 +3855,24 @@ qo_iscan_cost (QO_PLAN * planp)
  *   return: nothing
  *   planp(in): a plan
  *   to_end(in): whoever reads this plan reads all its rows
+ *   inst_num(in): the statement stops its scans by an inst_num () predicate
  *
  * Note: The driving scan and the scans below both inputs of a hash join run once. The inner scan of a nested loop
  *	 join runs once an outer row: a bitmap built again for every outer row costs more than it saves. A bitmap
  *	 records every row of the key range before the first row leaves, so a scan the statement may stop early
  *	 (a row limit) keeps the lookup in key order; a sort or a hash join reads its input
- *	 to the end whatever the statement does with the result.
+ *	 to the end whatever the statement does with the result. An inst_num () predicate counts the rows
+ *	 below the statement's sort and stops the scans there, so only a hash join, which stores both inputs
+ *	 before the count, reads to the end under it.
  */
 static void
-qo_plan_decide_bitmap_heap_scans (QO_PLAN * planp, bool to_end, bool key_order)
+qo_plan_decide_bitmap_heap_scans (QO_PLAN * planp, bool to_end, bool inst_num, bool key_order)
 {
   while (planp != NULL)
     {
       if (planp->plan_type == QO_PLANTYPE_SORT)
 	{
-	  to_end = true;
+	  to_end = !inst_num;
 	  planp = planp->plan_un.sort.subplan;
 	}
       else if (planp->plan_type == QO_PLANTYPE_JOIN)
@@ -3877,7 +3880,8 @@ qo_plan_decide_bitmap_heap_scans (QO_PLAN * planp, bool to_end, bool key_order)
 	  if (planp->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN)
 	    {
 	      to_end = true;
-	      qo_plan_decide_bitmap_heap_scans (planp->plan_un.join.inner, true, key_order);
+	      inst_num = false;
+	      qo_plan_decide_bitmap_heap_scans (planp->plan_un.join.inner, true, false, key_order);
 	    }
 	  else if (planp->plan_un.join.join_method == QO_JOINMETHOD_MERGE_JOIN && planp->plan_un.join.outer_sorted)
 	    {
@@ -3908,7 +3912,7 @@ qo_plan_decide_bitmap_heap (QO_PLAN * planp, bool key_order)
 {
   QO_ENV *env;
   PT_NODE *tree;
-  bool to_end = true;
+  bool to_end = true, inst_num = false;
   int t;
 
   if (planp == NULL || planp->info == NULL || (env = planp->info->env) == NULL || (tree = QO_ENV_PT_TREE (env)) == NULL
@@ -3924,12 +3928,11 @@ qo_plan_decide_bitmap_heap (QO_PLAN * planp, bool key_order)
     {
       to_end = false;
     }
-  for (t = 0; to_end && t < (signed) planp->info->planner->T; t++)
+  for (t = 0; !inst_num && t < (signed) planp->info->planner->T; t++)
     {
-      /* an inst_num () predicate */
-      to_end = QO_TERM_CLASS (&planp->info->planner->term[t]) != QO_TC_TOTALLY_AFTER_JOIN;
+      inst_num = QO_TERM_CLASS (&planp->info->planner->term[t]) == QO_TC_TOTALLY_AFTER_JOIN;
     }
-  qo_plan_decide_bitmap_heap_scans (planp, to_end, key_order);
+  qo_plan_decide_bitmap_heap_scans (planp, to_end && !inst_num, inst_num, key_order);
 }
 
 /*
