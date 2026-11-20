@@ -129,6 +129,7 @@ struct locator_kept_children
   int n_read;			/* returned by locator_kept_read () since the last rewind */
   int mem_limit;		/* held in memory up to this many, then in a list file; 0 for the list file at once */
   bool no_child;		/* phase 1 found no entry of a restrict check's key that could be a child */
+  LOCK child_mode;		/* the lock asked for on a child, for wait diagnostics: X to act on it, S to check it */
   BTREE_FK_SEEN *inserts;	/* the entries phase 1 found being inserted, sorted by OID */
   int n_inserts;
   int inserts_cap;
@@ -240,7 +241,8 @@ static MVCC_SATISFIES_SNAPSHOT_RESULT locator_satisfies_child_of_locked_parent (
 										MVCC_REC_HEADER * rec_header,
 										MVCC_SNAPSHOT * snapshot);
 static MVCCID locator_header_writer (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * header);
-static int locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, MVCCID inserter);
+static int locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, LOCK mode,
+					  MVCCID inserter);
 static MVCC_SATISFIES_SNAPSHOT_RESULT locator_satisfies_child_being_written (THREAD_ENTRY * thread_p,
 									     MVCC_REC_HEADER * rec_header,
 									     MVCC_SNAPSHOT * snapshot);
@@ -4485,6 +4487,7 @@ locator_header_writer (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * header)
  *
  * return: NO_ERROR or error code
  *
+ *   mode(in): the lock the statement asks for on the child, for the diagnostics of the wait
  *   inserter(in): the active inserter phase 1 found writing the child, or MVCCID_NULL
  *
  * Note: a writer is found by its stamp, not by a row lock: an inserter takes none, and a READ COMMITTED updater
@@ -4495,12 +4498,11 @@ locator_header_writer (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * header)
  *	 phase 3 meets it and waits with no child of the key held (locator_try_lock_gathered_child ()).
  */
 static int
-locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, MVCCID inserter)
+locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, LOCK mode, MVCCID inserter)
 {
   HEAP_GET_CONTEXT context;
   MVCC_REC_HEADER header;
-  /* phase 3 takes the child's X */
-  LK_STAMP_SEEN writer = { MVCCID_NULL, 0, {*oid, *class_oid, X_LOCK} };
+  LK_STAMP_SEEN writer = { MVCCID_NULL, 0, {*oid, *class_oid, mode} };
   SCAN_CODE scan;
   int error_code;
 
@@ -5015,6 +5017,7 @@ locator_kept_init (LOCATOR_KEPT_CHILDREN * kept)
   kept->n_read = 0;
   kept->mem_limit = 0;
   kept->no_child = false;
+  kept->child_mode = NULL_LOCK;
   kept->inserts = NULL;
   kept->n_inserts = 0;
   kept->inserts_cap = 0;
@@ -5527,6 +5530,7 @@ locator_collect_children_of_key (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_V
       rs.n_saved = NULL;
       if (action == SM_FOREIGN_KEY_CASCADE || action == SM_FOREIGN_KEY_SET_NULL)
 	{
+	  collected[fk_i].child_mode = X_LOCK;
 	  rs.snapshot.snapshot_fnc = locator_satisfies_child_of_locked_parent;
 	  error_code = locator_scan_fk_key (thread_p, fkref, key, &rs, true, &oid_list, &collected[fk_i]);
 	  action_seen = true;
@@ -5537,6 +5541,7 @@ locator_collect_children_of_key (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_V
 	  /* the log applier skips the restrict check */
 	  continue;
 	}
+      collected[fk_i].child_mode = S_LOCK;
       /* with no action before this check nothing can turn into a child of the key, so the scan also tells whether a
        * committed child fails the statement or there is nothing for the check to find */
       rs.snapshot.snapshot_fnc = action_seen ? locator_satisfies_child_being_written : locator_satisfies_restrict_entry;
@@ -5606,8 +5611,9 @@ locator_wait_out_collected_writers (THREAD_ENTRY * thread_p, OR_INDEX * index, L
 	  error_code = locator_kept_read (thread_p, &collected[fk_i], oids, capacity, &n);
 	  for (i = 0; error_code == NO_ERROR && i < n; i++)
 	    {
-	      error_code = locator_wait_out_child_writer (thread_p, &oids[i], &fkref->self_oid,
-							  locator_gathered_inserter (&collected[fk_i], &oids[i]));
+	      error_code =
+		locator_wait_out_child_writer (thread_p, &oids[i], &fkref->self_oid, collected[fk_i].child_mode,
+					       locator_gathered_inserter (&collected[fk_i], &oids[i]));
 	    }
 	}
       while (error_code == NO_ERROR && n > 0);
