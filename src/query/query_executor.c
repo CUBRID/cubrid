@@ -12445,6 +12445,7 @@ struct qexec_nl_batch
   bool span;			/* the batch stays open while the scans above the outer move on: a held row carries
 				 * their value lists too, and the lists get back what they held when the rows were joined */
   bool drain;			/* ... and the outer, through with its own rows, only passes the held rows on */
+  bool ended;			/* the last held row was joined: the S_END that follows ends the batches below */
   XASL_NODE *outer;		/* the scan whose rows are held */
   VAL_LIST *lists[QEXEC_NL_BATCH_MAX_LISTS];	/* the outer's value list, then (span) those of the scans above it */
   int n_lists;
@@ -12614,6 +12615,34 @@ qexec_nl_batch_arm_worker (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
+ * qexec_nl_batch_drain_below () - the rows of a scan ended and its following scan holds none of them
+ *   return: true when a scan further below still holds rows across them: it is told to join them, and the scans
+ *	     between are told to pass them on
+ *   inner(in): the following scan
+ */
+static bool
+qexec_nl_batch_drain_below (XASL_NODE * inner)
+{
+  XASL_NODE *x, *y;
+
+  for (x = inner->scan_ptr; x != NULL && x->nl_batch != NULL && x->nl_batch->span; x = x->scan_ptr)
+    {
+      if (x->nl_batch->n_rows > 0)
+	{
+	  assert (!x->nl_batch->replaying);
+	  for (y = inner->scan_ptr; y != x; y = y->scan_ptr)
+	    {
+	      y->nl_batch->drain = true;
+	    }
+	  x->nl_batch->drain = true;
+	  x->nl_batch->flush = true;
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
  * qexec_nl_batch_flush_worker () - a parallel worker read its last row
  *   return: true when its following scan holds rows: the worker then calls qexec_execute_scan_ptr () for that scan
  *	     until S_END, as it does for a row
@@ -12624,9 +12653,13 @@ qexec_nl_batch_flush_worker (XASL_NODE * xasl)
 {
   QEXEC_NL_BATCH *batch = (xasl->scan_ptr != NULL) ? xasl->scan_ptr->nl_batch : NULL;
 
-  if (batch == NULL || !batch->on || batch->n_rows == 0)
+  if (batch == NULL || !batch->on)
     {
       return false;
+    }
+  if (batch->n_rows == 0)
+    {
+      return qexec_nl_batch_drain_below (xasl->scan_ptr);
     }
   assert (!batch->replaying);
   batch->flush = true;
@@ -13532,10 +13565,10 @@ qexec_execute_scan_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
 
   sc_scan = qexec_execute_scan_row (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
-  if (sc_scan == S_END && batch->n_rows > 0 && !batch->span)
+  if (sc_scan == S_END && !batch->span && (batch->n_rows > 0 || qexec_nl_batch_drain_below (inner)))
     {
       assert (!batch->replaying);
-      batch->flush = true;
+      batch->flush = (batch->n_rows > 0);
       sc_scan = (*next_scan_fnc) (thread_p, inner, xasl_state, ignore, next_scan_fnc + 1);
       if (sc_scan == S_SUCCESS)
 	{
@@ -13564,6 +13597,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   QEXEC_SQ_BATCH *sq = (xasl->nl_batch != NULL) ? xasl->nl_batch->sq : NULL;
   QEXEC_NL_BATCH *below = (xasl->scan_ptr != NULL) ? xasl->scan_ptr->nl_batch : NULL;
   SCAN_CODE sc_scan;
+  bool ended = false;
 
   if (below != NULL && below->drain)
     {
@@ -13580,13 +13614,19 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       sc_scan = qexec_execute_scan_join (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
       sq = (xasl->nl_batch != NULL) ? xasl->nl_batch->sq : NULL;
       below = (xasl->scan_ptr != NULL) ? xasl->scan_ptr->nl_batch : NULL;
-      if (sc_scan == S_END && below != NULL && below->span && below->n_rows > 0
-	  && (xasl->nl_batch == NULL || xasl->nl_batch->n_rows == 0))
+      if (sc_scan == S_END && xasl->nl_batch != NULL && xasl->nl_batch->ended)
 	{
-	  /* this scan holds no row of its own any more: the rows the following scan held across its rows are joined
-	   * before S_END goes up */
+	  ended = true;
+	  xasl->nl_batch->ended = false;
+	}
+      if (ended && below != NULL && below->span && xasl->nl_batch->n_rows == 0
+	  && (below->n_rows > 0 || qexec_nl_batch_drain_below (xasl->scan_ptr)))
+	{
+	  /* this scan joined the last row it held: the rows the following scan held across its rows are joined
+	   * before S_END goes up. A scan that held no row (it passes its outer rows on) ends nothing: the following
+	   * scan's batch stays open across them, until it is full or the scans above end */
 	  assert (!below->replaying);
-	  below->flush = true;
+	  below->flush = (below->n_rows > 0);
 	  below->drain = true;
 	  sc_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
 	  if (sc_scan != S_SUCCESS)
@@ -13695,6 +13735,7 @@ qexec_execute_scan_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		  return S_ERROR;
 		}
 	      qexec_nl_batch_drop_rows (thread_p, batch);
+	      batch->ended = true;
 	      return S_END;
 	    }
 	  qexec_nl_batch_read_ahead (thread_p, xasl, batch, batch->rows[batch->next_row].oid_start);
@@ -14226,10 +14267,10 @@ qexec_next_root_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       return S_END;
     }
   sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
-  if (sc_scan == S_END && batch->n_rows > 0)
+  if (sc_scan == S_END && (batch->n_rows > 0 || qexec_nl_batch_drain_below (inner)))
     {
       assert (!batch->replaying);
-      batch->flush = true;
+      batch->flush = (batch->n_rows > 0);
       batch->outer_ended = true;
       return S_SUCCESS;
     }
