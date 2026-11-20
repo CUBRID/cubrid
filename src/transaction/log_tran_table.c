@@ -1312,6 +1312,8 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
   if (tran_index != LOG_SYSTEM_TRAN_INDEX)
     {
+      lock_group_clear (tran_index);
+
       TR_TABLE_CS_ENTER (thread_p);
       tdes->trid = NULL_TRANID;
       tdes->client_id = -1;
@@ -1570,6 +1572,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   DB_VALUE *dbval;
   HL_HEAPID save_heap_id;
 
+  /* the execution token is not cleared: the request that ends the transaction still runs it */
   tdes->isloose_end = false;
   tdes->state = TRAN_ACTIVE;
   LSA_SET_NULL (&tdes->head_lsa);
@@ -1776,6 +1779,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
+
 }
 
 /*

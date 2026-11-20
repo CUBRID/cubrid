@@ -3867,6 +3867,23 @@ session_is_pl_session_running (THREAD_ENTRY * thread_p)
   return state_p->pl_session_p->is_sp_running ();
 }
 
+/*
+ * session_is_pl_callback () - whether the request of thread_p is a PL callback: the SQL of a PL call that another
+ *   request of the session waits for
+ */
+bool
+session_is_pl_callback (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  /* read as session_get_session_state () does, without the error it sets for a thread with no session */
+  SESSION_STATE *state_p = (thread_p->conn_entry != NULL) ? thread_p->conn_entry->session_p : NULL;
+
+  return state_p != NULL && state_p->pl_session_p != NULL && state_p->pl_session_p->is_callback_thread (thread_p);
+#else /* SERVER_MODE */
+  return false;
+#endif /* SERVER_MODE */
+}
+
 int
 session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr))
 {

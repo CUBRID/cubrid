@@ -846,6 +846,27 @@ net_server_init (void)
 }
 
 /*
+ * net_server_request_runs_alongside () - whether a client sends the request while another request of it runs: it
+ *   takes no execution token, or it would wait for the request it is to stop
+ */
+static bool
+net_server_request_runs_alongside (int request)
+{
+  switch (request)
+    {
+    case NET_SERVER_LOG_SET_INTERRUPT:
+    case NET_SERVER_LD_INTERRUPT:
+    case NET_SERVER_TM_WAIT_SERVER_ACTIVE_TRANS:	/* db_shutdown () from a signal or atexit handler */
+    case NET_SERVER_PING:
+    case NET_SERVER_PING_WITH_HANDSHAKE:
+    case NET_SERVER_SHUTDOWN:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * net_server_request () - The main server request dispatch handler
  *   return: error status
  *   thrd(in): this thread handle
@@ -871,6 +892,12 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
     {
       /* have nothing to do because the client has gone */
       goto end;
+    }
+
+  /* before any error path: return_error_to_client () may abort the transaction */
+  if (!net_server_request_runs_alongside (request))
+    {
+      logtb_exec_begin (thread_p);
     }
 
   if (buffer == NULL && size > 0)
@@ -991,6 +1018,8 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
     }
 
 end:
+  logtb_exec_end (thread_p);
+
   if (buffer != NULL && size > 0)
     {
       thread_p->release_packet (buffer);

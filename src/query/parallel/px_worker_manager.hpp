@@ -44,10 +44,7 @@ namespace parallel_query
       void release_workers ();
       void wait_workers ();
       void push_task (cubthread::entry_task *task);
-      void pop_task ()
-      {
-	m_active_tasks.fetch_sub (1, std::memory_order_release);
-      }
+      void pop_task ();
       int get_reserved_workers () const
       {
 	return m_reserved_workers;
@@ -56,6 +53,8 @@ namespace parallel_query
     private:
       std::atomic<int> m_active_tasks;
       int m_reserved_workers;
+      cubthread::entry *m_owner;	/* the reserving thread */
+      int m_tran_index;		/* the reserving thread's: its parallel section is open while workers are reserved */
 
       worker_manager (const worker_manager &) = delete;
       worker_manager &operator= (const worker_manager &) = delete;

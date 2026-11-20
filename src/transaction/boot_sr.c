@@ -3441,6 +3441,10 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 	}
 #endif /* SERVER_MODE */
 
+      /* no thread of the client is left to close a parallel section: one still open is leaked, and must not defer
+       * the abort below (lock_group_defer_abort ()) */
+      lock_group_clear (tran_index);
+
       /*
        * If the transaction is active only abort it.
        * Don't abort transactions in LOG_ISTRAN_2PC_PREPARE arbitrarily.
