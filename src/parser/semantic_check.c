@@ -16088,6 +16088,11 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
     }
 
   a_cnt = pt_length_of_list (attr_list);
+  if (stmt->node_type == PT_INSERT)
+    {
+      /* the last attributes that take the DEFAULTs of a view have no column in the source */
+      a_cnt -= pt_length_of_list (stmt->info.insert.default_values);
+    }
 
   for (crt_list = value_clauses; crt_list != NULL; crt_list = crt_list->next)
     {

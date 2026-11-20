@@ -12117,6 +12117,7 @@ static int check_for_cons (PARSER_CONTEXT * parser, int *has_unique, PT_NODE ** 
 			   const PT_NODE * attr_list, DB_OBJECT * class_obj);
 static int is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement);
+static int evaluate_given_defaults (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * result, bool constants);
 static int insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * values_list,
 				    PT_NODE * class_, const char **savepoint_name);
 static int is_attr_not_in_insert_list (const PARSER_CONTEXT * parser, PT_NODE * name_list, const char *name);
@@ -12173,6 +12174,44 @@ insert_object_attr (const PARSER_CONTEXT * parser, DB_OTMPL * otemplate, DB_VALU
 
       att = db_get_attribute (otemplate->classobj, name->info.name.original);
       error = dbt_dput_internal (otemplate, attr_desc, value);
+    }
+
+  return error;
+}
+
+/*
+ * evaluate_given_defaults () - evaluate the DEFAULTs of a view that an INSERT ... SELECT on the view gives to its last
+ *				attributes: the constants once before the rows, the others for each row as the server
+ *				does
+ *
+ * return	  : Error code.
+ * value (in)	  : the DEFAULTs (default_values of the insert).
+ * result (in/out) : one for each of them.
+ * constants (in) : the constants, or the others.
+ */
+static int
+evaluate_given_defaults (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * result, bool constants)
+{
+  PT_NODE *value_next;
+  int error = NO_ERROR;
+
+  for (; error == NO_ERROR && value != NULL; value = value->next, result++)
+    {
+      if ((value->node_type == PT_VALUE) != constants)
+	{
+	  continue;
+	}
+
+      pr_clear_value (result);
+      value_next = value->next;
+      value->next = NULL;
+      pt_evaluate_tree (parser, value, result, 1);
+      value->next = value_next;
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys (parser, PT_SEMANTIC);
+	  ASSERT_ERROR_AND_SET (error);
+	}
     }
 
   return error;
@@ -13998,6 +14037,8 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   DB_SEQ *seq = NULL;
   DB_VALUE db_value;
   DB_VALUE *value = NULL;
+  PT_NODE *given = NULL;
+  int num_given = 0;
 
   assert (parser != NULL);
 
@@ -14081,36 +14122,53 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	    }
 	}
 
+      if (statement->node_type == PT_INSERT)
+	{
+	  /* the DEFAULTs of a view the insert gives to its last attributes take the slots after the columns of the
+	   * source, and are put as the columns are */
+	  given = statement->info.insert.default_values;
+	  num_given = pt_length_of_list (given);
+	}
+
       /* insert subquery results into target class */
       if (cursor_open (&cursor_id, (QFILE_LIST_ID *) qry->etc, false, false))
 	{
 	  cursor_id.query_id = parser->query_id;
 
-	  vals = (DB_VALUE *) malloc (degree * sizeof (DB_VALUE));
+	  vals = (DB_VALUE *) malloc ((degree + num_given) * sizeof (DB_VALUE));
 	  if (vals == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, degree * sizeof (DB_VALUE));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (degree + num_given) * sizeof (DB_VALUE));
 	      cnt = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto cleanup;
 	    }
 
-	  for (i = 0; i < degree; i++)
+	  for (i = 0; i < degree + num_given; i++)
 	    {
 	      db_make_null (&vals[i]);
+	    }
+
+	  error = evaluate_given_defaults (parser, given, vals + degree, true);
+	  if (error != NO_ERROR)
+	    {
+	      cursor_close (&cursor_id);
+	      cnt = error;
+	      goto cleanup;
 	    }
 
 	  /* allocate attribute descriptor array */
 	  if (degree)
 	    {
-	      attr_descs = (DB_ATTDESC **) malloc ((degree) * sizeof (DB_ATTDESC *));
+	      attr_descs = (DB_ATTDESC **) malloc ((degree + num_given) * sizeof (DB_ATTDESC *));
 	      if (attr_descs == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  degree * sizeof (DB_ATTDESC *));
+			  (degree + num_given) * sizeof (DB_ATTDESC *));
 		  cnt = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto cleanup;
 		}
-	      for (i = 0; i < degree; i++)
+	      for (i = 0; i < degree + num_given; i++)
 		{
 		  attr_descs[i] = NULL;
 		}
@@ -14137,6 +14195,14 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		      break;
 		    }
 
+		  error = evaluate_given_defaults (parser, given, vals + degree, false);
+		  if (error != NO_ERROR)
+		    {
+		      cursor_close (&cursor_id);
+		      cnt = error;
+		      goto cleanup;
+		    }
+
 		  /* create an instance of the target class using templates */
 		  otemplate = dbt_create_object_internal (class_->info.name.db_object, false);
 		  if (otemplate == NULL)
@@ -14149,10 +14215,18 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		      obt_set_force_flush (otemplate);
 		    }
 		  /* update new instance with current tuple of subquery result */
-		  for (attr = attrs, val = vals, k = 0; attr != NULL && k < degree; attr = attr->next, val++, k++)
+		  for (attr = attrs, val = vals, k = 0; attr != NULL && k < degree + num_given;
+		       attr = attr->next, val++, k++)
 		    {
+		      if (attr->node_type != PT_NAME)
+			{
+			  /* the view translation has made the attributes names of the real class */
+			  assert (false);
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+			  error = ER_OBJ_INVALID_ARGUMENTS;
+			}
 		      /* if this is the first tuple, get the attr descriptor */
-		      if (attr_descs != NULL)
+		      else if (attr_descs != NULL)
 			{
 			  if (attr_descs[k] == NULL)
 			    {
@@ -14195,6 +14269,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		  error = do_evaluate_row_default_expr_for_otemplate (parser, otemplate);
 		  if (error != NO_ERROR)
 		    {
+		      cursor_close (&cursor_id);
 		      dbt_abort_object (otemplate);
 		      otemplate = NULL;
 		      cnt = error;
@@ -14353,7 +14428,7 @@ cleanup:
     }
   if (vals != NULL)
     {
-      for (val = vals, k = 0; k < degree; val++, k++)
+      for (val = vals, k = 0; k < degree + num_given; val++, k++)
 	{
 	  db_value_clear (val);
 	}
@@ -14362,7 +14437,7 @@ cleanup:
 
   if (attr_descs != NULL)
     {
-      for (i = 0; i < degree; i++)
+      for (i = 0; i < degree + num_given; i++)
 	{
 	  if (attr_descs[i] != NULL)
 	    {

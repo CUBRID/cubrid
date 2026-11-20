@@ -354,8 +354,9 @@ static PT_NODE *mq_reset_spec_distr_subpath_pre (PARSER_CONTEXT * parser, PT_NOD
 static PT_NODE *mq_reset_spec_distr_subpath_post (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg,
 						  int *continue_walk);
 static PT_NODE *mq_translate_paths (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * root_spec);
-static void mq_invert_insert_select (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * subquery);
+static void mq_invert_insert_values (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE ** value);
 static void mq_invert_insert_subquery (PARSER_CONTEXT * parser, PT_NODE ** attr, PT_NODE * subquery);
+static void mq_invert_insert_defaults (PARSER_CONTEXT * parser, PT_NODE * statement);
 static PT_NODE *mq_push_arg2 (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * dot_arg2);
 static PT_NODE *mq_lambda_node_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk);
 static PT_NODE *mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
@@ -11814,20 +11815,18 @@ mq_generate_unique (PARSER_CONTEXT * parser, PT_NODE * name_list)
 
 
 /*
- * mq_invert_insert_select() - invert sub-query select lists
+ * mq_invert_insert_values() - invert the values an insert gives to its attributes: a select list of its source, or
+ *			       the DEFAULTs of a view it gives to its last attributes
  *   return:
  *   parser(in):
- *   attr(in):
- *   subquery(in):
+ *   attr(in): the attribute of the first value
+ *   value(in/out): the values
  */
 static void
-mq_invert_insert_select (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * subquery)
+mq_invert_insert_values (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE ** value)
 {
-  PT_NODE **value;
   PT_NODE *value_next;
   PT_NODE *result;
-
-  value = &subquery->info.query.q.select.list;
 
   while (*value)
     {
@@ -11879,6 +11878,26 @@ mq_invert_insert_select (PARSER_CONTEXT * parser, PT_NODE * attr, PT_NODE * subq
 
 
 /*
+ * mq_invert_insert_defaults() - invert the DEFAULTs of a view that an INSERT ... SELECT gives to its last attributes,
+ *				 while the attributes are still the expressions of the real class
+ *   return:
+ *   parser(in):
+ *   statement(in/out): insert
+ */
+static void
+mq_invert_insert_defaults (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *attr = statement->info.insert.attr_list;
+  int skip = pt_length_of_list (attr) - pt_length_of_list (statement->info.insert.default_values);
+
+  for (; skip > 0 && attr != NULL; skip--)
+    {
+      attr = attr->next;
+    }
+  mq_invert_insert_values (parser, attr, &statement->info.insert.default_values);
+}
+
+/*
  * mq_invert_insert_subquery() - invert sub-query select lists
  *   return:
  *   parser(in):
@@ -11894,7 +11913,7 @@ mq_invert_insert_subquery (PARSER_CONTEXT * parser, PT_NODE ** attr, PT_NODE * s
   switch (subquery->node_type)
     {
     case PT_SELECT:
-      mq_invert_insert_select (parser, *attr, subquery);
+      mq_invert_insert_values (parser, *attr, &subquery->info.query.q.select.list);
       break;
 
     case PT_UNION:
@@ -12295,7 +12314,11 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 	  assert (crt_list->next == NULL);
 	  assert (crt_list->info.node_list.list->next == NULL);
 
-	  mq_invert_insert_subquery (parser, &statement->info.insert.attr_list, crt_list->info.node_list.list);
+	  mq_invert_insert_defaults (parser, statement);
+	  if (!pt_has_error (parser))
+	    {
+	      mq_invert_insert_subquery (parser, &statement->info.insert.attr_list, crt_list->info.node_list.list);
+	    }
 	}
       else
 	{
@@ -13072,7 +13095,11 @@ mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * d
 	  assert (crt_list->next == NULL);
 	  assert (crt_list->info.node_list.list->next == NULL);
 
-	  mq_invert_insert_subquery (parser, &statement->info.insert.attr_list, crt_list->info.node_list.list);
+	  mq_invert_insert_defaults (parser, statement);
+	  if (!pt_has_error (parser))
+	    {
+	      mq_invert_insert_subquery (parser, &statement->info.insert.attr_list, crt_list->info.node_list.list);
+	    }
 	}
       else
 	{

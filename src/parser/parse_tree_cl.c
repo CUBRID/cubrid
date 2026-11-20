@@ -13849,6 +13849,7 @@ pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.insert.odku_assignments, arg);
   PT_APPLY_WALK (parser, p->info.insert.odku_non_null_attrs, arg);
   PT_APPLY_WALK (parser, p->info.insert.non_null_attrs, arg);
+  PT_APPLY_WALK (parser, p->info.insert.default_values, arg);
   return p;
 }
 
@@ -13867,6 +13868,46 @@ pt_init_insert (PT_NODE * p)
 }
 
 /*
+ * pt_append_query_defaults () - append copies of the DEFAULTs of a view to the select list of each arm of a query,
+ *				 after its visible columns
+ *   return:
+ *   parser(in):
+ *   query(in/out): a copy of the source of an INSERT ... SELECT, to print
+ *   defaults(in): default_values of the insert
+ */
+static void
+pt_append_query_defaults (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * defaults)
+{
+  PT_NODE **link, *copy;
+
+  switch (query->node_type)
+    {
+    case PT_SELECT:
+      for (link = &query->info.query.q.select.list; *link != NULL && !(*link)->flag.is_hidden_column;
+	   link = &(*link)->next)
+	{
+	  ;
+	}
+      copy = parser_copy_tree_list (parser, defaults);
+      if (copy != NULL)
+	{
+	  *link = parser_append_node (*link, copy);
+	}
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      pt_append_query_defaults (parser, query->info.query.q.union_.arg1, defaults);
+      pt_append_query_defaults (parser, query->info.query.q.union_.arg2, defaults);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
  * pt_print_insert () -
  *   return:
  *   parser(in):
@@ -13877,7 +13918,8 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1, *r2;
   PT_NODE *crt_list = NULL;
-  bool is_first_list = true, multiple_values_insert = false;
+  PT_NODE *named_last = NULL, *defaulted = NULL, *entity;
+  bool is_first_list = true, multiple_values_insert = false, select_defaults = false;
   PT_PRINT_BUFFER print_buf = PT_PRINT_BUFFER_INITIALIZER;
 
   // TODO: [PL/CSQL] need refactoring
@@ -13886,6 +13928,29 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       parser->custom_print & ~PT_PRINT_ALIAS;
+    }
+
+  if (p->info.insert.default_values != NULL && (parser->custom_print & PT_PRINT_HOST_VAR_COUNT) == 0)
+    {
+      /* a text parsed again: on the view (the action of a trigger), it names only the attributes the statement named,
+       * and parsing it gives the DEFAULTs of the view again; translated (the text a PL/CSQL static SQL falls back to),
+       * the DEFAULTs go into the select list of the source, with nothing else to show them */
+      entity = p->info.insert.spec != NULL ? p->info.insert.spec->info.spec.entity_name : NULL;
+      if (entity != NULL && entity->node_type == PT_NAME && entity->info.name.db_object != NULL
+	  && db_is_vclass (entity->info.name.db_object) > 0)
+	{
+	  named_last = pt_get_node_from_list (p->info.insert.attr_list, pt_length_of_list (p->info.insert.attr_list)
+					      - pt_length_of_list (p->info.insert.default_values) - 1);
+	  if (named_last != NULL)
+	    {
+	      defaulted = named_last->next;
+	      named_last->next = NULL;
+	    }
+	}
+      else
+	{
+	  select_defaults = true;
+	}
     }
 
   r1 = pt_print_bytes (parser, p->info.insert.spec);
@@ -13974,6 +14039,10 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       b = pt_append_nulstring (parser, b, " ");
     }
+  if (named_last != NULL)
+    {
+      named_last->next = defaulted;
+    }
 
   for (crt_list = p->info.insert.value_clauses, is_first_list = true,
        multiple_values_insert = (crt_list != NULL && crt_list->next != NULL);
@@ -14014,8 +14083,20 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 		/* TODO why do we change is_subquery? What about PT_UNION and the rest? */
 		ptr_subquery->info.query.is_subquery = (PT_MISC_TYPE) 0;
 	      }
+	    if (select_defaults && ptr_subquery != NULL)
+	      {
+		ptr_subquery = parser_copy_tree (parser, ptr_subquery);
+		if (ptr_subquery != NULL)
+		  {
+		    pt_append_query_defaults (parser, ptr_subquery, p->info.insert.default_values);
+		  }
+	      }
 	    r1 = pt_print_bytes (parser, ptr_subquery);
 	    pt_print_buffer_append_varchar (parser, &print_buf, r1);
+	    if (select_defaults && ptr_subquery != NULL)
+	      {
+		parser_free_tree (parser, ptr_subquery);
+	      }
 	  }
 	  break;
 
@@ -14038,6 +14119,16 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
       /* an append failed; going on would start a new PARSER_VARCHAR
        * and print the statement without what came before */
       return NULL;
+    }
+
+  if (p->info.insert.default_values != NULL && (parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
+    {
+      /* the cache key text: the plan holds the DEFAULTs of the view the statement was written on, which no other
+       * part of the translated statement shows; a comment, as the text is shown with the plan */
+      r1 = pt_print_bytes_l (parser, p->info.insert.default_values);
+      b = pt_append_nulstring (parser, b, " /* view defaults (");
+      b = pt_append_varchar (parser, b, r1);
+      b = pt_append_nulstring (parser, b, ") */");
     }
 
   if (p->info.insert.into_var)

@@ -484,6 +484,8 @@ static int pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_N
 					     int **lock_listp, int **tcard_listp, int *nump, int *sizep);
 static PT_NODE *parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static XASL_NODE *pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type);
+static int pt_add_insert_given_defaults (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * statement,
+					 int num_source_vals);
 static int pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * spec, PT_NODE * non_null_attrs,
 				  PT_NODE * attr_list, int attr_offset);
 static XASL_NODE *pt_to_fetch_as_scan_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * join_term,
@@ -24540,6 +24542,72 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * pt_add_insert_given_defaults () - make an INSERT ... SELECT on a view read, with each row its source has made, the
+ *   DEFAULTs of the view for its last attributes
+ *   return: error code
+ *   parser(in):
+ *   xasl(in/out): INSERT_PROC reading the list of its source (pt_make_aptr_parent_node)
+ *   statement(in): translated insert
+ *   num_source_vals(in): the visible columns of the source
+ *
+ * Note: the scan of the list of the source evaluates the DEFAULTs after DISTINCT or a set operation has made the
+ *   rows. Their value slots follow the visible columns, as the insert reads its values in a row, before the slots of
+ *   the columns ON DUPLICATE KEY UPDATE reads, which are bound before (pt_to_odku_info).
+ */
+static int
+pt_add_insert_given_defaults (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * statement, int num_source_vals)
+{
+  PT_NODE *values = statement->info.insert.default_values;
+  ACCESS_SPEC_TYPE *spec = xasl->spec_list;
+  SYMBOL_INFO *save_symbols = parser->symbols;
+  VAL_LIST *slots;
+  REGU_VARIABLE_LIST regus = NULL;
+  QPROC_DB_VALUE_LIST *link, last;
+  int *offsets;
+  int i;
+
+  assert (spec != NULL && spec->type == TARGET_LIST && xasl->val_list != NULL);
+
+  parser->symbols = pt_symbol_info_alloc ();
+  slots = pt_make_val_list (parser, values);
+  offsets = pt_make_identity_offsets (values);
+  if (parser->symbols != NULL && slots != NULL && offsets != NULL)
+    {
+      regus = pt_to_regu_variable_list (parser, values, UNBOX_AS_VALUE, slots, offsets);
+    }
+  if (offsets != NULL)
+    {
+      free_and_init (offsets);
+    }
+  parser->symbols = save_symbols;
+  if (regus == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	}
+      return ER_FAILED;
+    }
+
+  for (link = &xasl->val_list->valp, i = 0; i < num_source_vals && *link != NULL; i++)
+    {
+      link = &(*link)->next;
+    }
+  for (last = slots->valp; last->next != NULL; last = last->next)
+    {
+      ;
+    }
+  last->next = *link;
+  *link = slots->valp;
+  xasl->val_list->val_cnt += slots->val_cnt;
+
+  /* the predicate list reads the columns by position (fetch_val_list); the DEFAULTs are the rest */
+  pt_merge_regu_var_lists (&spec->s.list_node.list_regu_list_rest, regus);
+
+  return NO_ERROR;
+}
+
+/*
  * pt_to_insert_xasl () - Converts an insert parse tree to an XASL tree for insert server execution.
  *
  * return	  : Xasl node.
@@ -24559,7 +24627,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj = NULL;
   SM_CLASS *smclass = NULL;
   HFID *hfid = NULL;
-  int num_vals, num_default_expr;
+  int num_vals, num_default_expr, num_given_defaults = 0;
   int a, i, has_uniques;
   int error = NO_ERROR;
   PT_NODE *hint_arg = NULL;
@@ -24633,6 +24701,9 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
+  /* an INSERT ... SELECT on a view: the DEFAULTs of the view for the last attributes (pt_add_insert_given_defaults) */
+  num_given_defaults = pt_length_of_list (statement->info.insert.default_values);
+
   error = pt_find_omitted_default_expr (parser, class_obj, attrs, &default_expr_attrs);
   if (error != NO_ERROR)
     {
@@ -24646,7 +24717,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       assert (PT_IS_QUERY (query));
 
-      num_vals = pt_length_of_select_list (pt_get_select_list (parser, query), EXCLUDE_HIDDEN_COLUMNS);
+      num_vals = pt_length_of_select_list (pt_get_select_list (parser, query), EXCLUDE_HIDDEN_COLUMNS)
+	+ num_given_defaults;
       /* also add columns referenced in assignments */
       if (PT_IS_SELECT (query) && statement->info.insert.odku_assignments != NULL)
 	{
@@ -24884,6 +24956,25 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       ASSERT_ERROR_AND_SET (error);
     }
 
+  if (xasl && statement->info.insert.odku_assignments)
+    {
+      /* before the DEFAULTs of a view take their value slots: the assignments read the source by its select list */
+      xasl->proc.insert.odku = pt_to_odku_info (parser, statement, xasl);
+      if (xasl->proc.insert.odku == NULL)
+	{
+	  if (pt_has_error (parser))
+	    {
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	    }
+	  return NULL;
+	}
+    }
+
+  if (xasl != NULL && error >= NO_ERROR && num_given_defaults > 0)
+    {
+      error = pt_add_insert_given_defaults (parser, xasl, statement, num_vals - num_given_defaults);
+    }
+
   if (xasl != NULL && error >= NO_ERROR)
     {
       error = pt_to_constraint_pred (parser, xasl, statement->info.insert.spec, non_null_attrs, attrs, 0);
@@ -24983,19 +25074,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      XASL_SET_FLAG (xasl, XASL_INCLUDES_TDE_CLASS);
 	    }
-	}
-    }
-
-  if (xasl && statement->info.insert.odku_assignments)
-    {
-      xasl->proc.insert.odku = pt_to_odku_info (parser, statement, xasl);
-      if (xasl->proc.insert.odku == NULL)
-	{
-	  if (pt_has_error (parser))
-	    {
-	      pt_report_to_ersys (parser, PT_SEMANTIC);
-	    }
-	  return NULL;
 	}
     }
 

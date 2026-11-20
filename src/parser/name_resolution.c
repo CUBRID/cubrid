@@ -8415,7 +8415,7 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *spec = NULL;
   PT_NODE *entity_name = NULL;
   PT_NODE *attr_list = NULL, *attr = NULL;
-  PT_NODE *value_clauses = NULL, *value_list = NULL;
+  PT_NODE *value_clauses = NULL;
   PT_NODE *crt_node = NULL;
   PT_NODE *rest_attrs = NULL, *rest_values = NULL;
   DB_OBJECT *db_obj = NULL;
@@ -8454,7 +8454,6 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   value_clauses = statement->info.insert.value_clauses;
-  value_list = value_clauses->info.node_list.list;
   attr_list = statement->info.insert.attr_list;
   if (!attr_list)
     {
@@ -8576,8 +8575,9 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   if (is_subqery)
     {
-      statement->info.insert.value_clauses->info.node_list.list =
-	pt_append_query_select_list (parser, value_list, rest_values);
+      /* the insert gives these DEFAULTs to the last attributes itself: appended to the select list of the source, a
+       * value would become a part of what DISTINCT or a set operation compares */
+      statement->info.insert.default_values = rest_values;
     }
 
   return statement;
