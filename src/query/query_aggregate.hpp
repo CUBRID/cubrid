@@ -41,6 +41,7 @@ struct mht_table;
 struct tp_domain;
 struct val_descr;
 struct agg_group_slab;
+struct qexec_gby_spill;
 
 namespace cubxasl
 {
@@ -60,6 +61,7 @@ namespace cubquery
     struct agg_group_slab *slab;	/* the slab block this group lives in (key and value in one), or NULL */
     int batch_slot;		/* the page batch GROUP BY node's cache slot that named this group last, or -1; a hint
 				 * only, checked against the slot's own value pointer (qexec_batch_gby_consume ()) */
+    unsigned int key_hash;	/* its key's qdata_hash_agg_hkey (), set by the row path's table that made it */
     cubxasl::aggregate_accumulator *accumulators;	/* function accumulators */
     qfile_tuple_record first_tuple;	/* first aggregated tuple */
   };
@@ -119,6 +121,10 @@ namespace cubquery
     struct agg_group_slab *slab;	/* the groups' blocks (qdata_slab_new_group ()), or NULL */
     unsigned char key_sketch[QDATA_KEY_SKETCH_REGS];
     bool key_sketch_partial;	/* rows went by the table (it stopped taking them): the sketch missed some keys */
+
+    /* the partitions the table let go whole, and the rows of theirs it did not take since (qexec_hash_gby_agg_tuple ());
+     * NULL when the table lets its groups go one by one instead */
+    struct qexec_gby_spill *spill;
   };
 
 
@@ -215,16 +221,23 @@ void qdata_key_sketch_add (unsigned char *regs, const cubquery::aggregate_hash_k
 void qdata_key_sketch_add_hashed (unsigned char *regs, unsigned int h);
 void qdata_key_sketch_merge (unsigned char *regs, const unsigned char *other);
 double qdata_key_sketch_estimate (const unsigned char *regs);
+/* CBRD-28181: a sort GROUP BY's COUNT (DISTINCT) values in memory (query_aggregate.cpp) */
+bool qdata_distinct_mem_eligible (const val_descr *vd, const cubxasl::aggregate_list_node *agg_p);
+void qdata_distinct_mem_clear (cubxasl::aggregate_list_node *agg_p);
+void qdata_distinct_mem_free (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p);
+/* key_hash: a first column of the key's hash (a hash GROUP BY's spilled partition, CBRD-28181), or NULL */
 int qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key,
 				   cubquery::aggregate_hash_value *value, DB_VALUE *temp_dbval_array,
-				   qfile_list_id *list_id);
+				   qfile_list_id *list_id, const unsigned int *key_hash = NULL);
+/* the key's hash an entry saved with one carries in its first column */
+unsigned int qdata_agg_hentry_tuple_hash (QFILE_TUPLE tuple, int hdr_size, int type_cnt);
 /* the key columns of a partial-list entry (qdata_load_agg_hentry_from_tuple ()) without its accumulators */
 int qdata_load_agg_hkey_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size, int type_cnt,
 				    cubquery::aggregate_hash_key *key, tp_domain **key_dom, bool copy);
 int qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size,
 				      cubquery::aggregate_hash_key *key,
 				      cubquery::aggregate_hash_value *value, tp_domain **key_dom,
-				      cubxasl::aggregate_accumulator_domain **acc_dom);
+				      cubxasl::aggregate_accumulator_domain **acc_dom, unsigned int *key_hash = NULL);
 SCAN_CODE qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_list_scan_id *list_scan_id,
     cubquery::aggregate_hash_key *key, cubquery::aggregate_hash_value *value,
     tp_domain **key_dom, cubxasl::aggregate_accumulator_domain **acc_dom);

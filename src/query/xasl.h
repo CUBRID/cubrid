@@ -347,6 +347,7 @@ struct buildlist_proc_node
   bool g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
   int g_hash_eligible;		/* eligible for hash aggregate evaluation */
   int g_first_tuple;		/* XASL_G_FIRST_TUPLE_*: where a hash GROUP BY keeps each group's first row */
+  int g_order_free;		/* XASL_G_ORDER_FREE_*: why the order of the groups may not reach the result */
   int g_hkey_size;		/* group by key size */
   int g_func_count;		/* aggregate function count */
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -566,6 +567,11 @@ struct cte_proc_node
 #define XASL_G_FIRST_TUPLE_KEEP     0	/* in its hash entry: the output reads more of the row than the keys */
 #define XASL_G_FIRST_TUPLE_OUTPUT   1	/* in the list as it is: WITH ROLLUP sorts every group's first row */
 #define XASL_G_FIRST_TUPLE_NONE     2	/* nowhere: the first row is aggregated like the others */
+
+/* buildlist_proc_node::g_order_free (CBRD-28181): the order of the groups does not reach the result, as long as nothing
+ * reads it before the result is made (a row or group number, a limit, analytics: qexec_gby_order_reaches_result ()) */
+#define XASL_G_ORDER_FREE_SET       0x1	/* the query of a set predicate (IN, EXISTS, ...) */
+#define XASL_G_ORDER_FREE_ORDERBY   0x2	/* the ORDER BY has every GROUP BY key: it orders the groups whole */
 
 #define XASL_G_GRBYNUM_FLAG_SCAN_CONTINUE   0x01
 #define XASL_G_GRBYNUM_FLAG_SCAN_CHECK      0x02

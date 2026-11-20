@@ -3007,6 +3007,8 @@ struct pt_select_info
 #define PT_SELECT_INFO_LENIENT_JOIN_HINT  0x040000	/* retry of an optimization that failed with the join method
 							 * hints: ignore one that cannot be applied to a join for
 							 * that join only (CBRD-28089) */
+#define PT_SELECT_INFO_GBY_ORDER_FREE     0x080000	/* the order of the GROUP BY's groups cannot reach the result:
+							 * the query of a set predicate (IN, EXISTS, ...) (CBRD-28181) */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
