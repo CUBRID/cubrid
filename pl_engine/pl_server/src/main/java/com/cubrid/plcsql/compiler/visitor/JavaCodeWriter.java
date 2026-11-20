@@ -1711,7 +1711,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  try {",
                 "    String dynSql_%'LEVEL'% = checkNotNull(",
                 "      %'+SQL'%, \"SQL part was evaluated to NULL\");",
-                "    pstmt_%'SQL-SERIAL-NO'% = %'PREPARE'%(dynSql_%'LEVEL'%);",
+                "    pstmt_%'SQL-SERIAL-NO'% = %'PREPARE'%;",
                 "    %'+BAN-INTO-CLAUSE'%",
                 "    %'+SET-USED-EXPR'%",
                 "    if (pstmt_%'SQL-SERIAL-NO'%.execute()) {",
@@ -1741,7 +1741,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      %'+SQL'%, \"SQL part was evaluated to NULL\");",
                 "    if (pstmt_%'SQL-SERIAL-NO'% == null) {",
                 // check if it is null to prepare the statement only once in the loop
-                "      pstmt_%'SQL-SERIAL-NO'% = %'PREPARE'%(dynSql_%'LEVEL'%);",
+                "      pstmt_%'SQL-SERIAL-NO'% = %'PREPARE'%;",
                 "    }",
                 "    %'+BAN-INTO-CLAUSE'%",
                 "    %'+SET-USED-EXPR'%",
@@ -1771,7 +1771,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    pstmt_%'SQL-SERIAL-NO'% = pstmtRef_%'SQL-SERIAL-NO'%[0];",
                 "    if (pstmt_%'SQL-SERIAL-NO'% == null) {",
                 // check if it is null to prepare the statement only once in the loop
-                "      pstmt_%'SQL-SERIAL-NO'% = %'PREPARE'%(dynSql_%'LEVEL'%);",
+                "      pstmt_%'SQL-SERIAL-NO'% = %'PREPARE'%;",
                 "      pstmtRef_%'SQL-SERIAL-NO'%[0] = pstmt_%'SQL-SERIAL-NO'%;",
                 "    }",
                 "    %'+BAN-INTO-CLAUSE'%",
@@ -1905,11 +1905,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         : node.usingRef()
                                 ? tmplStmtSql_inLoop_usingRef
                                 : tmplStmtSql_inLoop_notUsingRef;
-        // EXECUTE IMMEDIATE binds the USING values as IN only
+        // EXECUTE IMMEDIATE binds the USING values as IN only.
+        // sqlVar must match the dynSql_%'LEVEL'% variable declared in the templates.
+        String sqlVar = "dynSql_" + node.level;
         String prepare =
                 node.dynamic
-                        ? "((com.cubrid.jsp.jdbc.CUBRIDServerSideConnection) conn).prepareStatementInOnlyBind"
-                        : "conn.prepareStatement";
+                        ? "prepareDynamicSql(conn, " + sqlVar + ")"
+                        : "conn.prepareStatement(" + sqlVar + ")";
 
         return new CodeTemplate(
                 "StmtSql",
