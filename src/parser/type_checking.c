@@ -17203,21 +17203,21 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     case PT_CURRENT_DATE:
       {
 	TZ_REGION system_tz_region, session_tz_region;
-	DB_DATETIME *dest_dt, *tmp_datetime;
+	DB_DATETIME *tmp_datetime, dest_dt;
 	int err_status = 0;
 
 	db_value_domain_init (result, DB_TYPE_DATE, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	tz_get_system_tz_region (&system_tz_region);
 	tz_get_session_tz_region (&session_tz_region);
+	/* convert into a local; the statement clock must stay in the system time zone for later readers */
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
-	dest_dt = db_get_datetime (&parser->sys_datetime);
 	err_status =
-	  tz_conv_tz_datetime_w_region (tmp_datetime, &system_tz_region, &session_tz_region, dest_dt, NULL, NULL);
+	  tz_conv_tz_datetime_w_region (tmp_datetime, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
 	if (err_status != NO_ERROR)
 	  {
 	    return err_status;
 	  }
-	db_value_put_encoded_date (result, &dest_dt->date);
+	db_value_put_encoded_date (result, &dest_dt.date);
 
 	return 1;
       }
