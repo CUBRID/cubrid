@@ -5289,7 +5289,25 @@ qexec_gby_spill_unload (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * ctx, Q
 	    }
 	  while ((sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
 	    {
-	      rc = qfile_add_tuple_to_list (thread_p, to, tpl.tpl);
+	      if (k == 0)
+		{
+		  rc = qfile_add_tuple_to_list (thread_p, to, tpl.tpl);
+		}
+	      else
+		{
+		  /* a partition's partial entry carries its key's hash first: the partial list's layout has none */
+		  unsigned int h;
+
+		  rc =
+		    qdata_load_agg_hentry_from_tuple (thread_p, tpl.tpl, from->type_list.hdr_size, ctx->temp_part_key,
+						      ctx->temp_part_value, ctx->key_domains, ctx->accumulator_domains,
+						      &h);
+		  if (rc == NO_ERROR)
+		    {
+		      rc = qdata_save_agg_hentry_to_list (thread_p, ctx->temp_part_key, ctx->temp_part_value,
+							  ctx->temp_dbval_array, to);
+		    }
+		}
 	      if (rc != NO_ERROR)
 		{
 		  break;
@@ -5390,6 +5408,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   bool keep_first = (proc->g_first_tuple == XASL_G_FIRST_TUPLE_KEEP);
+  bool to_parts;
   int freed;
 
   if (context->state == HS_REJECT_ALL)
@@ -5659,8 +5678,11 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
        * value (qdata_save_agg_hentry_to_list ()), and measuring it after that took off more than was added, the
        * budget drifting up eviction by eviction */
       freed = qdata_get_agg_hkey_size (key) + value->curr_size;
+      /* where this group goes: its first tuple goes where its accumulators went, though the check after them may
+       * turn the partitions on for the next groups */
+      to_parts = (context->spill != NULL && context->spill->active);
 
-      if (context->spill != NULL && context->spill->active)
+      if (to_parts)
 	{
 	  /* into the lists of its key's partition (qexec_gby_spill_check ()) */
 	  rc = qexec_gby_spill_group (thread_p, context, groupby_list, key, value);
@@ -5680,7 +5702,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
 
       /* add first tuple of group to groupby list */
-      if ((context->spill == NULL || !context->spill->active) && value->first_tuple.tpl != NULL)
+      if (!to_parts && value->first_tuple.tpl != NULL)
 	{
 	  rc = qfile_add_tuple_to_list (thread_p, groupby_list, value->first_tuple.tpl);
 	  if (rc != NO_ERROR)
