@@ -1228,6 +1228,14 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
 
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
     {
+      /* retry ignoring only the join method hints that cannot be applied to their joins (CBRD-28089) */
+      PT_SELECT_INFO_SET_FLAG (select_node, PT_SELECT_INFO_LENIENT_JOIN_HINT);
+      plan = qo_optimize_query (parser, select_node);
+      PT_SELECT_INFO_CLEAR_FLAG (select_node, PT_SELECT_INFO_LENIENT_JOIN_HINT);
+    }
+
+  if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
+    {
       PT_NODE *leading, *use_nl, *use_idx, *index_ss, *index_ls, *use_merge, *no_use_hash, *use_hash;
       PT_HINT_ENUM hint;
       const char *alias_print;
@@ -6910,8 +6918,10 @@ pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
     {
       return parse_tree;
     }
-  /* a NULL producer column (a derived table whose query is false) types nothing */
+  /* a NULL producer column (a derived table whose query is false) types nothing, but a parse tree domain whose type
+   * or (CBRD-28134) collation is left to the values reads it: no value comes to decide them */
   if (TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE
+      || (TP_DOMAIN_TYPE (producer) == DB_TYPE_NULL && TP_DOMAIN_COLLATION_FLAG (parse_tree) != TP_DOMAIN_COLL_NORMAL)
       || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != DB_TYPE_NULL
 	  && TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree)))
     {
@@ -14703,6 +14713,11 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
       /* We cannot use the lower limit in a hierarchy */
       limit_infop->lower = NULL;
     }
+  else if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      /* We cannot use the lower limit with the analytic limit optimization: the skipped rows must be counted */
+      limit_infop->lower = NULL;
+    }
   else
     {
       /* a trivial select: we can keep the lower limit, but we must adjust the upper limit.
@@ -22459,7 +22474,23 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       return NULL;
     }
 
-  /* optimization fails, ignore join hint and retry optimization */
+  /* optimization fails with the join method hints as written: retry ignoring only those that cannot be applied to
+   * their joins, so that the other hints (LEADING included) are kept (CBRD-28089) */
+  if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
+    {
+      PT_SELECT_INFO_SET_FLAG (select_node, PT_SELECT_INFO_LENIENT_JOIN_HINT);
+      plan = qo_optimize_query (parser, select_node);
+      PT_SELECT_INFO_CLEAR_FLAG (select_node, PT_SELECT_INFO_LENIENT_JOIN_HINT);
+
+      if (!plan && pt_has_error (parser)
+	  && (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()) || ER_IS_SERVER_DOWN_ERROR (er_errid ())
+	      || er_errid () == ER_INTERRUPTED))
+	{
+	  return NULL;
+	}
+    }
+
+  /* optimization still fails, ignore join hint and retry optimization */
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
     {
       hint_ignored = true;
