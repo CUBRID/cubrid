@@ -158,6 +158,8 @@ bool qo_check_generate_single_tbl_connect_by (PARSER_CONTEXT * parser, PT_NODE *
 bool qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE ** wherep, int *seqno);
 void qo_insert_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * on_conds);
 void qo_reset_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query);
+PT_NODE *qo_rewrite_table_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * prev_spec, PT_NODE * spec,
+				      PT_NODE * cols, PT_NODE * where, PT_MISC_TYPE all_distinct);
 bool qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons);
 PT_NODE *qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 void qo_move_on_of_explicit_join_to_where (PARSER_CONTEXT * parser, PT_NODE ** fromp, PT_NODE ** wherep);

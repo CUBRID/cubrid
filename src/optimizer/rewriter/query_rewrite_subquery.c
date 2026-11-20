@@ -896,36 +896,6 @@ qo_make_semi_anti_exists_cond (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
- * qo_rewrite_semi_anti_as_exists () - replace a derived SEMI / ANTI JOIN spec with its [NOT] EXISTS in the WHERE
- *   return: none
- *   parser(in):
- *   node(in/out): the PT_SELECT
- *   spec(in): the spec, freed
- *   expr(in): the [NOT] EXISTS of the spec (qo_make_semi_anti_exists_cond ()), owned by the WHERE
- */
-void
-qo_rewrite_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec, PT_NODE * expr)
-{
-  PT_NODE *prev_spec, *next_spec;
-
-  /* cut off the spec; a SEMI / ANTI JOIN spec is never the first */
-  for (prev_spec = node->info.query.q.select.from; prev_spec->next != spec; prev_spec = prev_spec->next)
-    {
-      ;
-    }
-  prev_spec->next = next_spec = spec->next;
-  spec->next = NULL;
-
-  /* reset location */
-  qo_reset_spec_location (parser, next_spec, node);
-
-  node->info.query.q.select.where = parser_append_node (expr, node->info.query.q.select.where);
-
-  /* free spec */
-  parser_free_tree (parser, spec);
-}
-
-/*
  * qo_has_key_limit () - does an index of the USING INDEX list carry a KEYLIMIT?
  *   return: bool
  *   using_index(in): the USING INDEX list of a SELECT
@@ -1317,7 +1287,7 @@ qo_is_conjunct_on_spec_only (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * s
 
 /*
  * qo_is_distinct_semi_inner () - can a SEMI JOIN spec be read once with its duplicates removed and
- *      joined as an INNER JOIN instead (qo_rewrite_distinct_semi_inner ())?
+ *      joined as an INNER JOIN instead (qo_rewrite_semi_anti_join ())?
  *   return: bool
  *   parser(in):
  *   node(in): the PT_SELECT
@@ -1428,70 +1398,44 @@ qo_is_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * sp
 }
 
 /*
- * qo_rewrite_distinct_semi_inner () - join a SEMI JOIN spec as an INNER JOIN over its rows with the duplicates
- *      removed (qo_is_distinct_semi_inner ())
- *   return: the spec joined INNER; NULL on allocation failure
+ * qo_rewrite_table_as_derived () - put a derived table that selects columns of a table in the place of the table
+ *   return: the derived table spec; NULL on allocation failure
  *   parser(in):
  *   node(in/out): the PT_SELECT
- *   spec(in/out): the spec; a table moves into the derived table that takes its place
+ *   prev_spec(in): the spec before the table in the FROM; NULL if the table is the first
+ *   spec(in/out): the table, moved into the derived table
+ *   cols(in): the columns to select, all the ON of the table reads of it; copied
+ *   where(in): conditions on the table alone, the WHERE of the derived table
+ *   all_distinct(in): PT_DISTINCT or PT_ALL
  *
- * Note: a table is wrapped as qo_rewrite_inner_as_derived () wraps a subquery: SELECT DISTINCT of the columns the
- *   equalities of the ON read, FROM the table, WHERE the conditions of the ON on the table alone, and the ON reads the
- *   columns through the derived table.  It is flagged PT_SPEC_FLAG_UNNESTED_SUBQUERY as a derived table unnested from
- *   a subquery is: the plan charges its build (qo_sscan_cost ()), and its XASL is made once the query keeps it.  A
- *   USE_MERGE naming the table names the derived table.
+ * Note: the derived table takes the location, the join type and the ON of the table.
  */
 PT_NODE *
-qo_rewrite_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
+qo_rewrite_table_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * prev_spec, PT_NODE * spec,
+			     PT_NODE * cols, PT_NODE * where, PT_MISC_TYPE all_distinct)
 {
-  PT_NODE *subq, *prev_spec, *last_spec, *cnf, *next, *col, *hint;
-  PT_NODE *on_cond = NULL, *where = NULL, *cols = NULL, *new_spec = NULL, *new_attr = NULL;
-  UINTPTR spec_id = spec->info.spec.id;
+  PT_NODE *subq, *on_cond, *last_spec, *new_spec = NULL, *new_attr = NULL;
+  PT_JOIN_TYPE join_type;
   short location;
   int idx = 0;
 
-  if (spec->info.spec.derived_table != NULL)
+  /* take the table out of the FROM, without its ON: mq_make_derived_spec () gives the table a new id */
+  if (prev_spec == NULL)
     {
-      spec->info.spec.derived_table->info.query.all_distinct = PT_DISTINCT;
-      spec->info.spec.join_type = PT_JOIN_INNER;
-      return spec;
+      node->info.query.q.select.from = spec->next;
     }
-
-  for (cnf = spec->info.spec.on_cond; cnf != NULL; cnf = next)
+  else
     {
-      next = cnf->next;
-      cnf->next = NULL;
-
-      if (qo_is_conjunct_on_spec_only (parser, cnf, spec))
-	{
-	  where = parser_append_node (cnf, where);
-	  continue;
-	}
-
-      col = qo_get_eq_term_column (parser, cnf, spec);
-      if (col != NULL && pt_find_name (parser, col, cols) == NULL)
-	{
-	  cols = parser_append_node (parser_copy_tree (parser, col), cols);
-	}
-
-      on_cond = parser_append_node (cnf, on_cond);
+      prev_spec->next = spec->next;
     }
-  spec->info.spec.on_cond = NULL;
-  assert (cols != NULL);	/* qo_is_distinct_semi_inner () found an equality */
-
-  location = 0;
-  (void) parser_walk_tree (parser, where, pt_mark_location, &location, NULL, NULL);
-
-  /* take the table out of the FROM; a SEMI JOIN spec is never the first */
-  for (prev_spec = node->info.query.q.select.from; prev_spec->next != spec; prev_spec = prev_spec->next)
-    {
-      ;
-    }
-  prev_spec->next = spec->next;
   spec->next = NULL;
+  on_cond = spec->info.spec.on_cond;
+  spec->info.spec.on_cond = NULL;
   location = spec->info.spec.location;
+  join_type = spec->info.spec.join_type;
   spec->info.spec.location = 0;
   spec->info.spec.join_type = PT_JOIN_NONE;
+  (void) parser_walk_tree (parser, where, pt_mark_location, &spec->info.spec.location, NULL, NULL);
 
   subq = parser_new_node (parser, PT_SELECT);
   if (subq == NULL)
@@ -1505,44 +1449,154 @@ qo_rewrite_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
   /* the index hints and the plan hints for the whole query hold inside as well */
   subq->info.query.q.select.using_index = parser_copy_tree_list (parser, node->info.query.q.select.using_index);
   subq->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint & QO_UNNEST_QUERY_WIDE_HINTS);
-  subq->info.query.all_distinct = PT_DISTINCT;
+  subq->info.query.all_distinct = all_distinct;
   subq->info.query.is_subquery = PT_IS_SUBQUERY;
   subq->info.query.id = (UINTPTR) subq;
   subq->flag.is_system_generated_stmt = node->flag.is_system_generated_stmt;
 
   if (mq_make_derived_spec (parser, node, subq, &idx, &new_spec, &new_attr) == NULL)
     {
-      parser_free_tree (parser, cols);
       return NULL;
     }
 
   /* mq_make_derived_spec () appended the spec to the FROM: put it where the table was */
-  for (last_spec = node->info.query.q.select.from; last_spec->next != new_spec; last_spec = last_spec->next)
+  if (node->info.query.q.select.from == new_spec)
     {
-      ;
+      node->info.query.q.select.from = NULL;
     }
-  last_spec->next = NULL;
-  new_spec->next = prev_spec->next;
-  prev_spec->next = new_spec;
+  else
+    {
+      for (last_spec = node->info.query.q.select.from; last_spec->next != new_spec; last_spec = last_spec->next)
+	{
+	  ;
+	}
+      last_spec->next = NULL;
+    }
+  if (prev_spec == NULL)
+    {
+      new_spec->next = node->info.query.q.select.from;
+      node->info.query.q.select.from = new_spec;
+    }
+  else
+    {
+      new_spec->next = prev_spec->next;
+      prev_spec->next = new_spec;
+    }
 
   new_spec->info.spec.location = location;
-  new_spec->info.spec.join_type = PT_JOIN_INNER;
-  new_spec->info.spec.flag = (PT_SPEC_FLAG) (new_spec->info.spec.flag | PT_SPEC_FLAG_UNNESTED_SUBQUERY);
-
-  for (hint = node->info.query.q.select.use_merge; hint != NULL; hint = hint->next)
-    {
-      if (hint->info.name.spec_id == spec_id)
-	{
-	  hint->info.name.spec_id = new_spec->info.spec.id;
-	  hint->info.name.original = new_spec->info.spec.range_var->info.name.original;
-	}
-    }
-
+  new_spec->info.spec.join_type = join_type;
   new_spec->info.spec.on_cond = mq_lambda (parser, on_cond, cols, new_attr);
-  parser_free_tree (parser, cols);
   parser_free_tree (parser, new_attr);
 
   return new_spec;
+}
+
+/*
+ * qo_rewrite_semi_anti_join () - put a SEMI / ANTI JOIN spec in a type
+ *   return: what took the place of the spec, the spec joined INNER or the [NOT] EXISTS in the WHERE; NULL on failure
+ *   parser(in):
+ *   node(in/out): the PT_SELECT
+ *   spec_id(in): the id of the spec
+ *   type(in): SEMI_ANTI_DISTINCT or SEMI_ANTI_EXISTS
+ *   expr(in): the [NOT] EXISTS of the spec (qo_make_semi_anti_exists_cond ()) for SEMI_ANTI_EXISTS, owned by the WHERE
+ */
+PT_NODE *
+qo_rewrite_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR spec_id, SEMI_ANTI_TYPE type,
+			   PT_NODE * expr)
+{
+  PT_NODE *spec, *prev_spec, *new_spec, *cnf, *next, *col, *hint;
+  PT_NODE *on_cond = NULL, *where = NULL, *cols = NULL;
+
+  /* the spec and the one before it; a SEMI / ANTI JOIN spec is never the first */
+  for (prev_spec = NULL, spec = node->info.query.q.select.from; spec != NULL && spec->info.spec.id != spec_id;
+       prev_spec = spec, spec = spec->next)
+    {
+      ;
+    }
+  if (spec == NULL || prev_spec == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "rewrite");
+      return NULL;
+    }
+
+  switch (type)
+    {
+    case SEMI_ANTI_EXISTS:
+      if (expr == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "copy tree");
+	  return NULL;
+	}
+
+      /* cut off the spec */
+      prev_spec->next = spec->next;
+      spec->next = NULL;
+
+      /* reset location */
+      qo_reset_spec_location (parser, prev_spec->next, node);
+
+      node->info.query.q.select.where = parser_append_node (expr, node->info.query.q.select.where);
+
+      /* free spec */
+      parser_free_tree (parser, spec);
+      return expr;
+
+    case SEMI_ANTI_DISTINCT:
+      /* a derived table from a subquery: add DISTINCT */
+      if (spec->info.spec.derived_table != NULL)
+	{
+	  spec->info.spec.derived_table->info.query.all_distinct = PT_DISTINCT;
+	  spec->info.spec.join_type = PT_JOIN_INNER;
+	  return spec;
+	}
+
+      /* a table: SELECT DISTINCT of the columns the equalities of the ON read, WHERE the conditions on it alone */
+      for (cnf = spec->info.spec.on_cond; cnf != NULL; cnf = next)
+	{
+	  next = cnf->next;
+	  cnf->next = NULL;
+
+	  if (qo_is_conjunct_on_spec_only (parser, cnf, spec))
+	    {
+	      where = parser_append_node (cnf, where);
+	      continue;
+	    }
+
+	  col = qo_get_eq_term_column (parser, cnf, spec);
+	  if (col != NULL && pt_find_name (parser, col, cols) == NULL)
+	    {
+	      cols = parser_append_node (parser_copy_tree (parser, col), cols);
+	    }
+
+	  on_cond = parser_append_node (cnf, on_cond);
+	}
+      spec->info.spec.on_cond = on_cond;
+      assert (cols != NULL);	/* qo_is_distinct_semi_inner () found an equality */
+
+      new_spec = qo_rewrite_table_as_derived (parser, node, prev_spec, spec, cols, where, PT_DISTINCT);
+      parser_free_tree (parser, cols);
+      if (new_spec == NULL)
+	{
+	  return NULL;
+	}
+      new_spec->info.spec.join_type = PT_JOIN_INNER;
+      new_spec->info.spec.flag = (PT_SPEC_FLAG) (new_spec->info.spec.flag | PT_SPEC_FLAG_UNNESTED_SUBQUERY);
+
+      /* USE_MERGE naming the table names the derived table; mq_make_derived_spec () gave the table a new id */
+      for (hint = node->info.query.q.select.use_merge; hint != NULL; hint = hint->next)
+	{
+	  if (hint->info.name.spec_id == spec_id)
+	    {
+	      hint->info.name.spec_id = new_spec->info.spec.id;
+	      hint->info.name.original = new_spec->info.spec.range_var->info.name.original;
+	    }
+	}
+      return new_spec;
+
+    default:
+      assert (false);
+      return NULL;
+    }
 }
 
 
