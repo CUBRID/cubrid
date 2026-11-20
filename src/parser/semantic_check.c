@@ -13596,8 +13596,9 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	  if (merge_src_from != NULL && !pt_has_error (parser))
 	    {
 	      /* A remote MERGE with a local source sends its clauses as written. Type checking
-	       * below wraps a value in a CUBRID cast and folds a cast literal into a CUBRID
-	       * literal, which another vendor may not take. */
+	       * below wraps a value in a CUBRID cast, turns a SET literal into a CUBRID literal
+	       * of the column type, and computes a constant expression ahead. Another vendor
+	       * may not take the result. */
 	      node->info.merge.remote_stmt_as_written = parser_copy_tree (parser, node);
 	      if (node->info.merge.remote_stmt_as_written == NULL)
 		{
