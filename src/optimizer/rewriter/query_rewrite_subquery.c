@@ -59,6 +59,7 @@ static bool qo_is_idx_join_possible (PARSER_CONTEXT * parser, PT_NODE * node, PT
 static PT_NODE *qo_is_other_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 					     int *continue_walk);
 static bool qo_is_conjunct_on_spec_only (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * spec);
+static PT_NODE *qo_make_semi_anti_exists_cond (PARSER_CONTEXT * parser, PT_NODE * spec);
 static PT_NODE *qo_rewrite_subquery_as_derived (PARSER_CONTEXT * parser, PT_NODE * cnf_node);
 static bool qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node,
 				       QO_UNNEST_INFO * info);
@@ -839,7 +840,7 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
  *   so that it is auto-parameterized as the derived table is.  An IN form comes back as EXISTS: its ON holds the
  *   'lhs = select-list item' equality, and NOT IN was unnested only with both sides non-null.
  */
-PT_NODE *
+static PT_NODE *
 qo_make_semi_anti_exists_cond (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
   PT_NODE *subq, *on_cond, *expr;
@@ -1493,18 +1494,17 @@ qo_rewrite_table_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * 
 
 /*
  * qo_rewrite_semi_anti_join () - put a SEMI / ANTI JOIN spec in a type
- *   return: what took the place of the spec, the spec joined INNER or the [NOT] EXISTS in the WHERE; NULL on failure
+ *   return: what took the place of the spec, the spec joined INNER or the [NOT] EXISTS in the WHERE; NULL if the spec
+ *	     cannot be put in the type or on failure
  *   parser(in):
  *   node(in/out): the PT_SELECT
  *   spec_id(in): the id of the spec
  *   type(in): SEMI_ANTI_DISTINCT or SEMI_ANTI_EXISTS
- *   expr(in): the [NOT] EXISTS of the spec (qo_make_semi_anti_exists_cond ()) for SEMI_ANTI_EXISTS, owned by the WHERE
  */
 PT_NODE *
-qo_rewrite_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR spec_id, SEMI_ANTI_TYPE type,
-			   PT_NODE * expr)
+qo_rewrite_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR spec_id, SEMI_ANTI_TYPE type)
 {
-  PT_NODE *spec, *prev_spec, *new_spec, *cnf, *next, *col, *hint;
+  PT_NODE *spec, *prev_spec, *new_spec, *expr, *cnf, *next, *col, *hint;
   PT_NODE *on_cond = NULL, *where = NULL, *cols = NULL;
 
   /* the spec and the one before it; a SEMI / ANTI JOIN spec is never the first */
@@ -1522,22 +1522,18 @@ qo_rewrite_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR spec
   switch (type)
     {
     case SEMI_ANTI_EXISTS:
+      expr = qo_make_semi_anti_exists_cond (parser, spec);
       if (expr == NULL)
 	{
-	  PT_INTERNAL_ERROR (parser, "copy tree");
 	  return NULL;
 	}
 
       /* cut off the spec */
       prev_spec->next = spec->next;
       spec->next = NULL;
-
-      /* reset location */
       qo_reset_spec_location (parser, prev_spec->next, node);
 
       node->info.query.q.select.where = parser_append_node (expr, node->info.query.q.select.where);
-
-      /* free spec */
       parser_free_tree (parser, spec);
       return expr;
 

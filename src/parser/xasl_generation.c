@@ -473,8 +473,9 @@ static ANALYTIC_EVAL_TYPE *pt_build_analytic_eval_list (PARSER_CONTEXT * parser,
 static XASL_NODE *pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type);
 static XASL_NODE *pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type);
 static XASL_NODE *pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node);
-static QO_PLAN *pt_optimize_query_without_dump (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static bool pt_plan_query_summary (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static double pt_plan_semi_anti_type (PARSER_CONTEXT * parser, PT_NODE * select_node, PT_NODE * spec,
+				      SEMI_ANTI_TYPE type);
 static void pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * query_list);
@@ -22620,27 +22621,6 @@ exit:
 }
 
 /*
- * pt_optimize_query_without_dump () - plan the select without its plan dump
- *   return: the plan; NULL if none
- *   parser(in): context
- *   select_node(in): of PT_SELECT type
- *
- * Note: for a plan compared and discarded, not run: qo_env_new () dumps no plan of a system generated statement.
- */
-static QO_PLAN *
-pt_optimize_query_without_dump (PARSER_CONTEXT * parser, PT_NODE * select_node)
-{
-  QO_PLAN *plan;
-  const unsigned save_system_generated_stmt = select_node->flag.is_system_generated_stmt;
-
-  select_node->flag.is_system_generated_stmt = 1;
-  plan = qo_optimize_query (parser, select_node);
-  select_node->flag.is_system_generated_stmt = save_system_generated_stmt;
-
-  return plan;
-}
-
-/*
  * pt_plan_query_summary () - plan the select for its qo_summary only, as preserve_info () sets it, without its XASL
  *   return: false if the select has no plan or no summary
  *   parser(in): context
@@ -22651,8 +22631,12 @@ pt_plan_query_summary (PARSER_CONTEXT * parser, PT_NODE * select_node)
 {
   QO_PLAN *plan;
   QO_SUMMARY *summary;
+  const unsigned save_system_generated_stmt = select_node->flag.is_system_generated_stmt;
 
-  plan = pt_optimize_query_without_dump (parser, select_node);
+  /* qo_env_new () dumps no plan of a system generated statement */
+  select_node->flag.is_system_generated_stmt = 1;
+  plan = qo_optimize_query (parser, select_node);
+  select_node->flag.is_system_generated_stmt = save_system_generated_stmt;
   if (plan == NULL)
     {
       return false;
@@ -22676,6 +22660,79 @@ pt_plan_query_summary (PARSER_CONTEXT * parser, PT_NODE * select_node)
 }
 
 /*
+ * pt_plan_semi_anti_type () - plan a copy of the query with a SEMI / ANTI JOIN spec in a type
+ *   return: the cost of the plan, or -1.0 if the copy has no plan
+ *   parser(in): context
+ *   select_node(in): of PT_SELECT type
+ *   spec(in): the SEMI / ANTI JOIN spec of select_node
+ *   type(in): the type
+ */
+static double
+pt_plan_semi_anti_type (PARSER_CONTEXT * parser, PT_NODE * select_node, PT_NODE * spec, SEMI_ANTI_TYPE type)
+{
+  PT_NODE *query, *with, *node = NULL, *subq = NULL;
+  QO_PLAN *plan;
+  double cost = -1.0;
+
+  /* the copy reads the CTEs of the query, whose XASL is made, rather than copies of them */
+  with = select_node->info.query.with;
+  select_node->info.query.with = NULL;
+  query = parser_copy_tree (parser, select_node);
+  select_node->info.query.with = with;
+  if (query == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "copy tree");
+      return -1.0;
+    }
+  /* qo_env_new () dumps no plan of a system generated statement */
+  query->flag.is_system_generated_stmt = 1;
+
+  if (type == SEMI_ANTI_EXISTS)
+    {
+      node = qo_rewrite_semi_anti_join (parser, query, spec->info.spec.id, SEMI_ANTI_EXISTS);
+      if (node != NULL)
+	{
+	  /* the subquery of EXISTS, one level down under the NOT of NOT EXISTS */
+	  subq = node->info.expr.arg1;
+	  if (node->info.expr.op == PT_NOT)
+	    {
+	      subq = subq->info.expr.arg1;
+	    }
+	}
+    }
+  else if (type == SEMI_ANTI_DISTINCT)
+    {
+      node = qo_rewrite_semi_anti_join (parser, query, spec->info.spec.id, SEMI_ANTI_DISTINCT);
+      /* a derived table already DISTINCT keeps its summary when joined INNER */
+      if (node != NULL
+	  && (spec->info.spec.derived_table == NULL
+	      || spec->info.spec.derived_table->info.query.all_distinct != PT_DISTINCT))
+	{
+	  subq = node->info.spec.derived_table;
+	}
+    }
+
+  /* the plan of the copy reads the rows and the cost of the subquery from its summary */
+  if (subq != NULL && !pt_plan_query_summary (parser, subq))
+    {
+      node = NULL;
+    }
+
+  if (type == SEMI_ANTI_JOIN || node != NULL)
+    {
+      plan = qo_optimize_query (parser, query);
+      if (plan != NULL)
+	{
+	  cost = plan->fixed_cpu_cost + plan->fixed_io_cost + plan->variable_cpu_cost + plan->variable_io_cost;
+	  qo_plan_discard (plan);
+	}
+    }
+  parser_free_tree (parser, query);
+
+  return cost;
+}
+
+/*
  * pt_plan_semi_anti_joins () - put each SEMI / ANTI JOIN spec in the type the plan of the query costs least with
  *   return: none
  *   parser(in): context
@@ -22688,10 +22745,9 @@ static void
 pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 {
   SEMI_ANTI_TYPE types[3];
-  PT_NODE *spec, *next_spec, *subq, *expr, *expr_copy, *query, *with, *node;
+  PT_NODE *spec, *next_spec, *node, *subq;
   TABLE_INFO *table_info;
-  QO_PLAN *plan;
-  double cost, best_cost = 0.0;
+  double cost, best_cost;
   int n_types, best_idx, i;
   bool can_distinct_inner, is_merge_hinted, was_distinct;
 
@@ -22715,7 +22771,6 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
 
       n_types = 0;
-      expr = NULL;
       can_distinct_inner = qo_is_distinct_semi_inner (parser, select_node, spec);
       /* there is no semi merge join: USE_MERGE naming the spec leaves it the INNER JOIN */
       is_merge_hinted = (can_distinct_inner
@@ -22730,84 +22785,35 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	  types[n_types++] = SEMI_ANTI_DISTINCT;
 	}
 
-      /* the [NOT] EXISTS of a derived table unnested from a subquery, costed from the summary of its subquery */
+      /* the [NOT] EXISTS of a derived table unnested from a subquery, compared with the derived table planned */
       if (!is_merge_hinted && (spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)
 	  && spec->info.spec.derived_table->info.query.q.select.qo_summary != NULL
 	  && spec != select_node->info.query.q.select.from)
 	{
-	  expr = qo_make_semi_anti_exists_cond (parser, spec);
-	  if (expr != NULL)
-	    {
-	      /* the subquery of EXISTS, one level down under the NOT of NOT EXISTS */
-	      subq = expr->info.expr.arg1;
-	      if (expr->info.expr.op == PT_NOT)
-		{
-		  subq = subq->info.expr.arg1;
-		}
-	      if (pt_plan_query_summary (parser, subq))
-		{
-		  types[n_types++] = SEMI_ANTI_EXISTS;
-		}
-	    }
-	}
-
-      if (n_types == 1 && types[0] == SEMI_ANTI_JOIN)
-	{
-	  continue;
+	  types[n_types++] = SEMI_ANTI_EXISTS;
 	}
 
       /* a derived table already DISTINCT keeps its summary when joined INNER */
       was_distinct = (spec->info.spec.derived_table != NULL
 		      && spec->info.spec.derived_table->info.query.all_distinct == PT_DISTINCT);
 
-      best_idx = 0;
-      if (n_types > 1)
+      best_idx = -1;
+      best_cost = 0.0;
+      if (n_types == 1)
 	{
-	  best_idx = -1;
+	  /* one type: nothing to compare */
+	  best_idx = 0;
+	}
+      else
+	{
 	  for (i = 0; i < n_types && !pt_has_error (parser); i++)
 	    {
-	      /* the copy reads the CTEs of the query, whose XASL is made, rather than copies of them */
-	      with = select_node->info.query.with;
-	      select_node->info.query.with = NULL;
-	      query = parser_copy_tree (parser, select_node);
-	      select_node->info.query.with = with;
-	      if (query == NULL)
+	      cost = pt_plan_semi_anti_type (parser, select_node, spec, types[i]);
+	      if (cost >= 0.0 && (best_idx < 0 || cost < best_cost))
 		{
-		  PT_INTERNAL_ERROR (parser, "copy tree");
-		  return;
+		  best_cost = cost;
+		  best_idx = i;
 		}
-
-	      node = NULL;
-	      if (types[i] != SEMI_ANTI_JOIN)
-		{
-		  /* the WHERE of a copy owns a copy of the [NOT] EXISTS, freed with the copy */
-		  expr_copy = (types[i] == SEMI_ANTI_EXISTS) ? parser_copy_tree (parser, expr) : NULL;
-		  node = qo_rewrite_semi_anti_join (parser, query, spec->info.spec.id, types[i], expr_copy);
-
-		  /* the plan of the copy reads the rows and the cost of the derived table from its summary */
-		  if (node != NULL && types[i] == SEMI_ANTI_DISTINCT && !was_distinct
-		      && !pt_plan_query_summary (parser, node->info.spec.derived_table))
-		    {
-		      node = NULL;
-		    }
-		}
-
-	      if (types[i] == SEMI_ANTI_JOIN || node != NULL)
-		{
-		  plan = pt_optimize_query_without_dump (parser, query);
-		  if (plan != NULL)
-		    {
-		      cost =
-			plan->fixed_cpu_cost + plan->fixed_io_cost + plan->variable_cpu_cost + plan->variable_io_cost;
-		      if (best_idx < 0 || cost < best_cost)
-			{
-			  best_cost = cost;
-			  best_idx = i;
-			}
-		      qo_plan_discard (plan);
-		    }
-		}
-	      parser_free_tree (parser, query);
 	    }
 	}
 
@@ -22816,37 +22822,53 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	  continue;
 	}
 
-      node = qo_rewrite_semi_anti_join (parser, select_node, spec->info.spec.id, types[best_idx], expr);
-
-      /* the copies for the specs after this one read the rows of the derived table from its summary; the query itself
-       * plans it again for its XASL */
-      if (node != NULL && types[best_idx] == SEMI_ANTI_DISTINCT && !was_distinct)
-	{
-	  (void) pt_plan_query_summary (parser, node->info.spec.derived_table);
-	}
-    }
-
-  /* a derived table that took the place of a table has no symbol: the symbols of the FROM were made before
-   * (pt_push_symbol_info ()) */
-  for (spec = select_node->info.query.q.select.from; spec != NULL && !pt_has_error (parser); spec = spec->next)
-    {
-      if (!(spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)
-	  || pt_find_table_info (spec->info.spec.id, parser->symbols->table_info) != NULL)
+      node = qo_rewrite_semi_anti_join (parser, select_node, spec->info.spec.id, types[best_idx]);
+      if (node == NULL)
 	{
 	  continue;
 	}
 
-      table_info = pt_make_table_info (parser, spec);
-      if (table_info == NULL)
+      subq = NULL;
+      if (types[best_idx] == SEMI_ANTI_EXISTS)
 	{
-	  if (!pt_has_error (parser))
+	  /* the subquery of EXISTS, one level down under the NOT of NOT EXISTS */
+	  subq = node->info.expr.arg1;
+	  if (node->info.expr.op == PT_NOT)
 	    {
-	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      subq = subq->info.expr.arg1;
 	    }
-	  return;
 	}
-      table_info->next = parser->symbols->table_info;
-      parser->symbols->table_info = table_info;
+      else if (types[best_idx] == SEMI_ANTI_DISTINCT)
+	{
+	  /* a derived table that took the place of a table has no symbol: the symbols of the FROM were made before
+	   * (pt_push_symbol_info ()) */
+	  if (pt_find_table_info (node->info.spec.id, parser->symbols->table_info) == NULL)
+	    {
+	      table_info = pt_make_table_info (parser, node);
+	      if (table_info == NULL)
+		{
+		  if (!pt_has_error (parser))
+		    {
+		      PT_INTERNAL_ERROR (parser, "allocate new node");
+		    }
+		  return;
+		}
+	      table_info->next = parser->symbols->table_info;
+	      parser->symbols->table_info = table_info;
+	    }
+
+	  if (!was_distinct)
+	    {
+	      subq = node->info.spec.derived_table;
+	    }
+	}
+
+      /* the copies for the specs after this one read the rows and the cost of the subquery from its summary; the query
+       * itself plans it again for its XASL */
+      if (subq != NULL)
+	{
+	  (void) pt_plan_query_summary (parser, subq);
+	}
     }
 }
 
