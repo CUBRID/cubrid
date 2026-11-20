@@ -191,6 +191,7 @@ struct qo_plan
       bool index_cover;		/* covered index scan flag */
       bool index_iss;		/* index skip scan flag */
       bool index_loose;		/* loose index scan flag */
+      bool bitmap_heap;		/* the heap rows are read in file order, through a bitmap of the rows the index found */
       QO_NODE_INDEX_ENTRY *index;
       BITSET multi_col_range_segs;	/* range condition segs for multi_col_term */
       BITSET hash_terms;	/* hash_terms for hash list scan */
@@ -495,6 +496,7 @@ extern void qo_info_stats (FILE *);
 
 extern bool qo_is_seq_scan (QO_PLAN *);
 extern bool qo_is_func_index_cover_routed (QO_PLAN * plan);
+extern void qo_plan_decide_bitmap_heap (QO_PLAN * planp, bool key_order);
 extern bool qo_is_iscan (QO_PLAN *);
 extern bool qo_is_iscan_from_groupby (QO_PLAN *);
 extern bool qo_is_iscan_from_orderby (QO_PLAN *);

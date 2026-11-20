@@ -606,6 +606,7 @@ struct cte_proc_node
 							 * NL semi/anti inner in the scan chain: driven per outer row */
 #define XASL_PASS_THROUGH_WRAPPER	(0x1 << 29)	/* this proc takes over the list file its list scan would read, built by its last aptr (a hash join), as its own result when the join wrote this proc's out list (has_pass_through) */
 #define XASL_OUTPUT_READS_SCAN		(0x1 << 30)	/* a BUILDVALUE whose output reads a column of its scans (pt_buildvalue_output_reads_scan ()) */
+#define XASL_NO_ROW_BATCH		(0x1u << 31)	/* the block evaluates an expression whose value changes from row to row (pt_is_result_reuse_safe ()): its scans hold no rows to join later */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
@@ -945,11 +946,33 @@ typedef enum
   ACCESS_SPEC_FLAG_MERGEABLE_LIST = 0x1 << 3,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_BUILDVALUE_OPT = 0x1 << 4,	/* used with parallel heap scan buildvalue aggregate optimization. */
   ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5,	/* used with min/max aggregate. */
-  ACCESS_SPEC_FLAG_PRUNE_PER_ROW = 0x1 << 6	/* a partitioned NL inner walked per outer row prunes its partitions
+  ACCESS_SPEC_FLAG_PRUNE_PER_ROW = 0x1 << 6,	/* a partitioned NL inner walked per outer row prunes its partitions
 						 * by the outer row's join values (CBRD-27866) */
+  ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN = 0x1 << 7	/* an index scan reads its heap rows in file order, through a bitmap
+						 * of the rows the index found (CBRD-28032) */
 } ACCESS_SPEC_FLAG;
 
 #define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)
+
+/* The table of one worker of a bitmap heap scan and its buckets take the memory of an index scan's key buffer; an
+ * entry (a page number and its slot bits) is found by a 16-bit place. The scan sizes its tables with these
+ * (scan_bitmap_marks::init ()), and the optimizer prices the records of a scan whose pages do not fit them
+ * (qo_plan_decide_bitmap_heap_scan ()). */
+#define BITMAP_HEAP_ENTRY_SIZE		88
+#define BITMAP_HEAP_MAX_BUCKETS		65536
+#define BITMAP_HEAP_TABLE_BUCKETS(buckets, memory) \
+  do \
+    { \
+      (buckets) = 256; \
+      while ((size_t) (buckets) < 2 * ((size_t) (memory) / 96) && (buckets) < BITMAP_HEAP_MAX_BUCKETS) \
+	{ \
+	  (buckets) *= 2; \
+	} \
+    } \
+  while (0)
+#define BITMAP_HEAP_TABLE_ENTRIES(memory, buckets) \
+  MAX (MIN ((int) (((size_t) (memory) - MIN ((size_t) (memory), (size_t) (buckets) * sizeof (unsigned short))) \
+		   / BITMAP_HEAP_ENTRY_SIZE), (int) (buckets) / 2), DISK_SECTOR_NPAGES)
 #define ACCESS_SPEC_SET_FLAG(spec, f)		(ACCESS_SPEC_FLAGS(spec) |= (int) (f))
 #define ACCESS_SPEC_UNSET_FLAG(spec, f)		(ACCESS_SPEC_FLAGS(spec) &= (int) ~(f))
 
@@ -1443,6 +1466,9 @@ struct xasl_node
   int executed_parallelism;	/* parallelism of the query */
   memoize::storage *memoize_storage;
   // *INDENT-ON*
+  struct qexec_nl_batch *nl_batch;	/* outer rows a batched nested-loop join holds for this inner scan (run time) */
+  struct qexec_sq_batch *nl_sq_batch;	/* a correlated subquery: the rows its join step holds for it (run time, not
+					 * owned) */
   struct hjoin_runtime_filter *rtf;	/* a hash join's runtime filter on this input's outermost scan (not owned) */
   DB_VALUE *rtf_val;		/* ... and the value list cell its key is fetched into */
   INT64 rtf_rows;		/* ... and the rows this node checked against it and dropped (trace): the thread that

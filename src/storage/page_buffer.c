@@ -9323,7 +9323,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
  *       that read finds the page in the OS cache or on its way. The pages handed to the OS are counted
  *       (Num_data_page_read_ahead) while somebody watches the statistics.
  */
-void
+int
 pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count)
 {
   PGBUF_BUFFER_HASH *hash_anchor;
@@ -9401,6 +9401,7 @@ pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count)
     {
       perfmon_add_stat (thread_p, PSTAT_PB_NUM_READ_AHEAD, hinted);
     }
+  return hinted;
 }
 
 /*

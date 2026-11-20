@@ -75,7 +75,9 @@ namespace parallel_index_scan
       m_ahead_slot (0),
       m_ahead_end (false),
       m_ahead_skipped_keys (0),
-      m_ahead_interrupted (false)
+      m_ahead_interrupted (false),
+      m_bm_worker (nullptr),
+      m_bm_sector_hint (-1)
   {
     db_make_null (&m_slot_key);
     db_make_null (&m_ahead_last.key);
@@ -480,6 +482,12 @@ namespace parallel_index_scan
 	return S_SUCCESS;
       }
 
+    if (m_bm_worker != nullptr)
+      {
+	/* bitmap heap scan, index step: the heap step looks the row up */
+	return m_input_handler->bitmap ().mark (thread_p, m_bm_worker, oid, &m_bm_sector_hint) == NO_ERROR ? S_END : S_ERROR;
+      }
+
     /* Non-covering index path: read values from heap record */
     read_ahead (thread_p);
     if (m_ahead_interrupted)
@@ -487,6 +495,13 @@ namespace parallel_index_scan
 	return S_ERROR;
       }
 
+    return lookup_heap_row (thread_p, oid);
+  }
+
+  SCAN_CODE
+  leaf_slot_walker::lookup_heap_row (THREAD_ENTRY *thread_p, OID *oid)
+  {
+    INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
     RECDES heap_recdes = RECDES_INITIALIZER;
     if (m_scan_id->fixed == false)
       {
@@ -509,6 +524,14 @@ namespace parallel_index_scan
 	return S_ERROR;
       }
 
+    return finish_heap_row (thread_p, oid, &heap_recdes);
+  }
+
+  SCAN_CODE
+  leaf_slot_walker::finish_heap_row (THREAD_ENTRY *thread_p, OID *oid, RECDES *heap_recdes)
+  {
+    INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
+
     if (isidp->scan_pred.pr_eval_fnc != nullptr && isidp->scan_pred.pred_expr != nullptr)
       {
 	FILTER_INFO data_filter;
@@ -519,7 +542,7 @@ namespace parallel_index_scan
 	data_filter.val_descr = m_vd;
 	data_filter.class_oid = &isidp->cls_oid;
 
-	DB_LOGICAL ev_res = eval_data_filter (thread_p, oid, &heap_recdes, &isidp->scan_cache, &data_filter);
+	DB_LOGICAL ev_res = eval_data_filter (thread_p, oid, heap_recdes, &isidp->scan_cache, &data_filter);
 	ev_res = update_logical_result (thread_p, ev_res, (int *) &m_scan_id->qualification);
 	if (ev_res != V_TRUE)
 	  {
@@ -536,7 +559,7 @@ namespace parallel_index_scan
 
     if (isidp->rest_regu_list != nullptr)
       {
-	if (heap_attrinfo_read_dbvalues (thread_p, oid, &heap_recdes, isidp->rest_attrs.attr_cache) != NO_ERROR)
+	if (heap_attrinfo_read_dbvalues (thread_p, oid, heap_recdes, isidp->rest_attrs.attr_cache) != NO_ERROR)
 	  {
 	    return S_ERROR;
 	  }
@@ -552,6 +575,37 @@ namespace parallel_index_scan
       }
 
     return S_SUCCESS;
+  }
+
+  int
+  leaf_slot_walker::fix_bitmap_page (THREAD_ENTRY *thread_p, const VPID *vpid, bool *is_fixed)
+  {
+    return scan_fix_bitmap_heap_page (thread_p, &m_scan_id->s.isid.scan_cache, vpid, is_fixed);
+  }
+
+  SCAN_CODE
+  leaf_slot_walker::process_bitmap_row (THREAD_ENTRY *thread_p, OID *oid)
+  {
+    HEAP_SCANCACHE *scan_cache = &m_scan_id->s.isid.scan_cache;
+    const auto keep_page_save = scan_cache->cache_last_fix_page;
+    SCAN_CODE scan;
+
+    /* the lookup takes the page fix_bitmap_page holds from the scan cache and hands it back */
+    scan_cache->cache_last_fix_page = true;
+    scan = lookup_heap_row (thread_p, oid);
+    scan_cache->cache_last_fix_page = keep_page_save;
+    return scan;
+  }
+
+  void
+  leaf_slot_walker::release_bitmap_page (THREAD_ENTRY *thread_p)
+  {
+    HEAP_SCANCACHE *scan_cache = &m_scan_id->s.isid.scan_cache;
+
+    if (scan_cache->page_watcher.pgptr != NULL)
+      {
+	pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+      }
   }
 
   /* the slot's key failed: as the lookups reach it, the error is raised and the range's end signaled; looked at

@@ -3979,6 +3979,11 @@ qo_to_xasl (QO_PLAN * plan, xasl_node * xasl)
   if (plan && xasl && (env = (plan->info)->env))
     {
       qo_apply_parallel_index_scan_threshold (plan);
+      /* after it: the size of a bitmap's tables follows the scan's workers. An analytic function that skipped its
+       * sort, or stops at a limit, reads the rows in the key order of the scan (decided before this, at
+       * pt_optimize_analytic_list ()) */
+      qo_plan_decide_bitmap_heap (plan, XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT)
+				  || XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT));
 
       if (qo_check_pass_through_wrapper (env, xasl))
 	{
@@ -4578,6 +4583,12 @@ qo_add_hq_iterations_access_spec (QO_PLAN * plan, xasl_node * xasl)
   make_pred_from_plan (env, plan, &key_pred, &access_pred, index_info, NULL);
 
   xasl->spec_list = pt_to_spec_list (parser, class_spec, key_pred, access_pred, plan, index_info, NULL, NULL);
+  if (xasl->spec_list != NULL)
+    {
+      /* the scan of an iteration runs once a parent row: it reads no heap through a bitmap, whatever the plan of the
+       * START WITH scan it was made from chose */
+      ACCESS_SPEC_UNSET_FLAG (xasl->spec_list, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN);
+    }
 
   if_pred = make_if_pred_from_plan (env, plan);
   if (if_pred)

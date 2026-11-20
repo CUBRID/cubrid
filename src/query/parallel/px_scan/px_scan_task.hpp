@@ -136,6 +136,8 @@ namespace parallel_scan
        * scan_next_scan_local () counts a serial scan; the NL inner scans, dptr subqueries and result
        * writes a worker runs per row stay outside, as they do for a serial scan */
       scan_fixes m_scan_fixes;
+      scan_fixes m_bitmap_fixes;	/* the scan's own fixes of a bitmap heap scan's heap step */
+      bool m_bitmap_heap_step;	/* add_scan_fixes () counts into m_bitmap_fixes */
 
       worker_manager *m_worker_manager;
 
@@ -145,6 +147,7 @@ namespace parallel_scan
       void loop (cubthread::entry &thread_ref);
       SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
       SCAN_CODE row_body (cubthread::entry &thread_ref, bool &stop);
+      SCAN_CODE join_rows (cubthread::entry &thread_ref, bool &stop);
       static int emit_row (cubthread::entry *thread_p, void *arg);
       static int emit_row_body (cubthread::entry *thread_p, void *arg);
       static QFILE_LIST_ID *gby_list (void *arg);
@@ -153,6 +156,8 @@ namespace parallel_scan
       void add_scan_fixes (cubthread::entry &thread_ref, const scan_fixes &since);
       /* INDEX-only: after leaf supply exhausted, help drain remaining shared overflow chains. No-op otherwise. */
       void drain_late_joiner_chains (cubthread::entry &thread_ref, bool &stop);
+      /* INDEX-only, bitmap heap scan: read the heap pages the index step recorded. No-op otherwise. */
+      void bitmap_heap_step (cubthread::entry &thread_ref, bool &stop);
   };
 }
 

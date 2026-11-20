@@ -208,6 +208,10 @@ static SCAN_CODE scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * s
 static SCAN_CODE scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static int scan_index_bitmap_start (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static void scan_index_bitmap_free (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp);
+static SCAN_CODE scan_next_index_bitmap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, FILTER_INFO * data_filter,
+					 TRAN_ISOLATION isolation);
 static SCAN_CODE scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
 					      FILTER_INFO * data_filter, TRAN_ISOLATION isolation);
 static SCAN_CODE scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -333,6 +337,9 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_list *oid_lis
   isidp->not_vacuumed_res = DISK_VALID;
   isidp->parallel_pending = NULL;
   isidp->gby_skip = NULL;
+  isidp->bitmap_planned = false;
+  isidp->bitmap_keep_page = false;
+  isidp->bitmap = NULL;
 }
 
 /*
@@ -3256,6 +3263,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->ahead_distance = 0;
   isidp->ahead_limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
   isidp->ahead_single = false;
+  isidp->nl_slice_cnt = -1;
+  isidp->nl_slice = NULL;
 
   if (scan_init_indx_coverage (thread_p, coverage_enabled, output_val_list, regu_val_list, vd, query_id,
 			       root_header->node.max_key_len, func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
@@ -3675,6 +3684,8 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->ahead_distance = 0;
   isidp->ahead_limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
   isidp->ahead_single = false;
+  isidp->nl_slice_cnt = -1;
+  isidp->nl_slice = NULL;
 
   if (scan_init_indx_coverage (thread_p, false, NULL, NULL, vd, query_id, root_header->node.max_key_len,
 			       func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
@@ -4696,6 +4707,8 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	{
 	  INDX_COV *indx_cov_p;
 
+	  /* a scan read again starts its bitmap again */
+	  scan_index_bitmap_free (thread_p, &s_id->s.isid);
 	  /* the keys of a pass that stopped before its last key's end (CBRD-28203) */
 	  scan_clear_index_key_vals (&s_id->s.isid);
 	  s_id->s.isid.curr_oidno = -1;
@@ -5038,6 +5051,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       /* do not free attr_cache here. xs_clear_access_spec_list() will free attr_caches. */
 
+      scan_index_bitmap_free (thread_p, isidp);
       if (isidp->scancache_inited)
 	{
 	  (void) heap_scancache_end (thread_p, &isidp->scan_cache);
@@ -5174,6 +5188,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
 
+      scan_index_bitmap_free (thread_p, isidp);
 #if SERVER_MODE && !WINDOWS
       /* drop pending capture if start_scan never ran (open-then-abort path). */
       if (isidp->parallel_pending != NULL)
@@ -5695,6 +5710,20 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		scan_id->scan_stats.data_qualified_rows - old_scan_stats.data_qualified_rows;
 	      perfmon_add_timeval (&scan_id->partition_stats->elapsed_lookup, &old_scan_stats.elapsed_lookup,
 				   &scan_id->scan_stats.elapsed_lookup);
+	      if (scan_id->type == S_INDX_SCAN && scan_id->scan_stats.bitmap_heap != 0)
+		{
+		  /* a serial bitmap heap scan's heap step; a parallel scan's reaches the partition through its trace
+		   * storage */
+		  scan_id->partition_stats->bitmap_heap = 1;
+		  perfmon_add_timeval (&scan_id->partition_stats->bitmap_heap_time, &old_scan_stats.bitmap_heap_time,
+				       &scan_id->scan_stats.bitmap_heap_time);
+		  scan_id->partition_stats->bitmap_heap_fetches +=
+		    scan_id->scan_stats.bitmap_heap_fetches - old_scan_stats.bitmap_heap_fetches;
+		  scan_id->partition_stats->bitmap_heap_ioreads +=
+		    scan_id->scan_stats.bitmap_heap_ioreads - old_scan_stats.bitmap_heap_ioreads;
+		  scan_id->partition_stats->bitmap_heap_pages +=
+		    scan_id->scan_stats.bitmap_heap_pages - old_scan_stats.bitmap_heap_pages;
+		}
 	      break;
 
 	    default:
@@ -6565,6 +6594,176 @@ scan_gby_skip_note_key_start (INDX_GBY_SKIP * gby, int oidno)
 }
 
 /*
+ * scan_index_take_nl_slice () - the OID buffer of an outer row whose OIDs a batched nested-loop join read from the
+ *				 index when it collected the row: the index is not walked again
+ *   return: S_SUCCESS, or S_END when the row has no OID
+ *   isidp(in/out):
+ */
+static SCAN_CODE
+scan_index_take_nl_slice (INDX_SCAN_ID * isidp)
+{
+  int count = isidp->nl_slice_cnt;
+
+  isidp->nl_slice_cnt = -1;
+  isidp->oids_count = count;
+  isidp->oid_list->oid_cnt = count;
+  if (count == 0)
+    {
+      return S_END;
+    }
+  assert (count <= isidp->oid_list->capacity);
+  memcpy (isidp->oid_list->oidp, isidp->nl_slice, count * sizeof (OID));
+  /* the join told the OS about the pages of the whole batch */
+  isidp->ahead_next = INT_MAX;
+
+  return S_SUCCESS;
+}
+
+/*
+ * scan_index_nl_batch_ok () - can a batched nested-loop join read this inner scan's OIDs ahead of its heap lookups?
+ *   return: true for a plain index scan of one key or one range that looks its rows up in the heap
+ *   scan_id(in): the inner scan, rewound for an outer row
+ */
+bool
+scan_index_nl_batch_ok (const SCAN_ID * scan_id)
+{
+  const INDX_SCAN_ID *isidp = &scan_id->s.isid;
+
+  return (scan_id->type == S_INDX_SCAN && !scan_id->grouped && scan_id->position == S_BEFORE
+	  && scan_id->direction == S_FORWARD && !scan_id->mvcc_select_lock_needed && scan_id->scan_op_type == S_SELECT
+	  && !scan_id->single_fetched && !scan_id->scan_immediately_stop
+	  && isidp->oid_list != NULL && !SCAN_IS_INDEX_COVERED (isidp) && !isidp->multi_range_opt.use
+	  && !isidp->iss.use && !isidp->need_count_only && isidp->gby_skip == NULL
+	  && isidp->key_limit_upper == -1 && isidp->key_limit_lower == -1 && isidp->indx_info != NULL
+	  && (isidp->indx_info->range_type == R_KEY || isidp->indx_info->range_type == R_RANGE)
+	  /* a bitmap heap scan reads the index itself and would read it again after the batch */
+	  && !isidp->bitmap_planned && !isidp->scan_cache.mvcc_disabled_class);
+}
+
+/*
+ * scan_index_nl_batch_collect () - read the OIDs of the current outer row from the index, without its heap lookups
+ *   return: S_SUCCESS or S_ERROR
+ *   scan_id(in/out): the inner scan, rewound for the outer row
+ *   oids(out): the row's OIDs
+ *   room(in): OIDs that fit there
+ *   n_oids(out):
+ *   complete(out): false when the row has more OIDs than one buffer: nothing is copied, and the row scan reads the
+ *		    index itself
+ */
+SCAN_CODE
+scan_index_nl_batch_collect (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * oids, int room, int *n_oids,
+			     bool * complete)
+{
+  INDX_SCAN_ID *isidp = &scan_id->s.isid;
+  SCAN_CODE ret;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  UINT64 old_fetches = 0, old_ioreads = 0;
+  UINT64 old_read_keys = 0, old_qualified_keys = 0, old_key_qualified_rows = 0;
+  bool on_trace = thread_is_on_trace (thread_p);
+
+  *n_oids = 0;
+  *complete = false;
+
+  if (on_trace)
+    {
+      tsc_getticks (&start_tick);
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_read_keys = scan_id->scan_stats.read_keys;
+      old_qualified_keys = scan_id->scan_stats.qualified_keys;
+      old_key_qualified_rows = scan_id->scan_stats.key_qualified_rows;
+    }
+
+  ret = call_get_next_index_oidset (thread_p, scan_id, isidp, true);
+
+  if (on_trace)
+    {
+      UINT64 fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      UINT64 ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (scan_id->scan_stats.elapsed_scan, tv_diff);
+      scan_id->scan_stats.num_fetches += fetches;
+      scan_id->scan_stats.num_ioreads += ioreads;
+      if (scan_id->partition_stats != NULL)
+	{
+	  /* as scan_next_scan () does for the search of a row scan */
+	  TSC_ADD_TIMEVAL (scan_id->partition_stats->elapsed_scan, tv_diff);
+	  scan_id->partition_stats->num_fetches += fetches;
+	  scan_id->partition_stats->num_ioreads += ioreads;
+	  scan_id->partition_stats->read_keys += scan_id->scan_stats.read_keys - old_read_keys;
+	  scan_id->partition_stats->qualified_keys += scan_id->scan_stats.qualified_keys - old_qualified_keys;
+	  scan_id->partition_stats->key_qualified_rows +=
+	    scan_id->scan_stats.key_qualified_rows - old_key_qualified_rows;
+	}
+    }
+
+  if (ret == S_ERROR)
+    {
+      return S_ERROR;
+    }
+  if (ret == S_SUCCESS)
+    {
+      /* the caller takes a row while half of its array, one OID buffer, is free */
+      assert (isidp->oids_count <= room);
+      memcpy (oids, isidp->oid_list->oidp, isidp->oids_count * sizeof (OID));
+      *n_oids = isidp->oids_count;
+    }
+  if (!BTREE_END_OF_SCAN (&isidp->bt_scan))
+    {
+      return S_SUCCESS;
+    }
+  scan_id->scan_stats.nl_batch_rows++;
+  *complete = true;
+
+  return S_SUCCESS;
+}
+
+/*
+ * scan_index_nl_batch_read_ahead () - name the heap pages of a batch's OIDs to the OS before the lookups start
+ *   return: pages named; 0 when every page is in the buffer already
+ *   oids(in): in lookup order
+ *   count(in):
+ */
+int
+scan_index_nl_batch_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int count)
+{
+  VPID vpids[SCAN_INDEX_READ_AHEAD_DISTANCE];
+  int num_hinted = 0;
+  int n = 0;
+  int i;
+
+  if (count <= 1)
+    {
+      /* one page: the lookup reads it right now */
+      return 0;
+    }
+  for (i = 0; i < count; i++)
+    {
+      if (n > 0 && vpids[n - 1].pageid == oids[i].pageid && vpids[n - 1].volid == oids[i].volid)
+	{
+	  continue;
+	}
+      vpids[n].pageid = oids[i].pageid;
+      vpids[n].volid = oids[i].volid;
+      n++;
+      if (n == SCAN_INDEX_READ_AHEAD_DISTANCE)
+	{
+	  num_hinted += pgbuf_read_ahead (thread_p, vpids, n);
+	  n = 0;
+	}
+    }
+  if (n > 1 || (n == 1 && num_hinted > 0))
+    {
+      num_hinted += pgbuf_read_ahead (thread_p, vpids, n);
+    }
+
+  return num_hinted;
+}
+
+/*
  * scan_next_index_scan () - The scan is moved to the next index scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
@@ -6608,6 +6807,20 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
    * SCAN_DOESNT_EXIST error. */
 
   isolation = logtb_find_current_isolation (thread_p);
+
+  if (isidp->bitmap_planned)
+    {
+      /* a bitmap heap scan: every row the index finds is recorded first, then the heap is read in file order */
+      if (isidp->bitmap == NULL && scan_id->position == S_BEFORE
+	  && scan_index_bitmap_start (thread_p, scan_id) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      if (isidp->bitmap != NULL)
+	{
+	  return scan_next_index_bitmap (thread_p, scan_id, &data_filter, isolation);
+	}
+    }
 
   while (1)
     {
@@ -6662,7 +6875,14 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      /* Either we are not using ISS, or we are using it, and in this case, we are supposed to be here for the
 	       * first time */
 	      assert_release (!isidp->iss.use || isidp->iss.current_op == ISS_OP_NONE);
-	      ret = call_get_next_index_oidset (thread_p, scan_id, isidp, true);
+	      if (isidp->nl_slice_cnt >= 0)
+		{
+		  ret = scan_index_take_nl_slice (isidp);
+		}
+	      else
+		{
+		  ret = call_get_next_index_oidset (thread_p, scan_id, isidp, true);
+		}
 	      if (ret != S_SUCCESS)
 		{
 		  return ret;
@@ -6968,6 +7188,1076 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       return S_SUCCESS;
     }
+}
+
+// *INDENT-OFF*
+scan_bitmap_marks::~scan_bitmap_marks ()
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+  for (int i = 0; i < m_bm_nworkers; i++)
+    {
+      scan_bitmap_worker &w = m_bm_workers[i];
+
+      if (w.rec.tfile != nullptr)
+	{
+	  (void) qmgr_free_list_temp_file (thread_p, m_bm_query_id, w.rec.tfile);
+	}
+      if (w.sub.tfile != nullptr)
+	{
+	  (void) qmgr_free_list_temp_file (thread_p, m_bm_query_id, w.sub.tfile);
+	}
+      if (w.over != nullptr)
+	{
+	  qfile_destroy_list (thread_p, w.over);
+	  qfile_free_list_id (w.over);
+	}
+    }
+  delete[] m_bm_workers;
+}
+
+scan_bitmap_table::~scan_bitmap_table ()
+{
+  free (e);
+  free (b);
+}
+
+int
+scan_bitmap_table::init (int entries, int buckets)
+{
+  e = (scan_bitmap_entry *) malloc (sizeof (scan_bitmap_entry) * entries);
+  b = (std::uint16_t *) calloc (buckets, sizeof (std::uint16_t));
+  if (e == nullptr || b == nullptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (scan_bitmap_entry) * entries);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  n = 0;
+  cap = entries;
+  nb = buckets;
+  shift = 64 - __builtin_ctz ((unsigned int) buckets);
+  return NO_ERROR;
+}
+
+void
+scan_bitmap_table::clear ()
+{
+  n = 0;
+  memset (b, 0, nb * sizeof (std::uint16_t));
+}
+
+/* a temp page of records: the page header every temp page of a query has, then this header, then the records */
+struct bitmap_page_header
+{
+  VPID next;
+  std::int32_t n;
+  std::int32_t unused;
+};
+static const int SCAN_BITMAP_PAGE_HEADER = QFILE_PAGE_HEADER_SIZE;
+
+int
+scan_bitmap_marks::write (THREAD_ENTRY *thread_p, scan_bitmap_writer &wr)
+{
+  const int per_page = (DB_PAGESIZE - SCAN_BITMAP_PAGE_HEADER - (int) sizeof (bitmap_page_header))
+		       / (int) sizeof (scan_bitmap_record);
+  const int n = (int) wr.batch.size ();
+
+  if (n == 0)
+    {
+      return NO_ERROR;
+    }
+  if (wr.tfile == nullptr)
+    {
+      wr.tfile = qmgr_create_new_temp_file (thread_p, m_bm_query_id, TEMP_FILE_MEMBUF_NONE);
+      if (wr.tfile == nullptr)
+	{
+	  ASSERT_ERROR ();
+	  return er_errid ();
+	}
+    }
+
+  /* group the batch by chain in one pass each way */
+  wr.start.assign (wr.chain.size () + 1, 0);
+  for (int i = 0; i < n; i++)
+    {
+      wr.start[wr.where[i] + 1]++;
+    }
+  for (size_t k = 0; k < wr.chain.size (); k++)
+    {
+      wr.start[k + 1] += wr.start[k];
+    }
+  wr.order.resize (n);
+  for (int i = 0; i < n; i++)
+    {
+      wr.order[wr.start[wr.where[i]]++] = (std::uint16_t) i;
+    }
+
+  PAGE_PTR page = nullptr;
+  std::uint32_t cur = 0;
+  int error_code = NO_ERROR;
+
+  for (int i = 0; i < n; i++)
+    {
+      const scan_bitmap_record &r = wr.batch[wr.order[i]];
+      const std::uint32_t where = wr.where[wr.order[i]];
+
+      if (page != nullptr && where != cur)
+	{
+	  qmgr_set_dirty_page (thread_p, page, FREE, NULL, wr.tfile);
+	  page = nullptr;
+	}
+      cur = where;
+
+      scan_bitmap_chain &c = wr.chain[where];
+
+      if (page == nullptr && !VPID_ISNULL (&c.tail))
+	{
+	  page = qmgr_get_old_page (thread_p, &c.tail, wr.tfile);
+	  if (page == nullptr)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      break;
+	    }
+	}
+      if (page == nullptr || c.tail_n >= per_page)
+	{
+	  VPID vpid;
+	  PAGE_PTR fresh = qmgr_get_new_page (thread_p, &vpid, wr.tfile);
+
+	  if (fresh == nullptr)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      break;
+	    }
+	  if (page != nullptr)
+	    {
+	      ((bitmap_page_header *) (page + SCAN_BITMAP_PAGE_HEADER))->next = vpid;
+	      qmgr_set_dirty_page (thread_p, page, FREE, NULL, wr.tfile);
+	    }
+	  else
+	    {
+	      c.first = vpid;
+	    }
+	  bitmap_page_header *h = (bitmap_page_header *) (fresh + SCAN_BITMAP_PAGE_HEADER);
+
+	  VPID_SET_NULL (&h->next);
+	  h->n = 0;
+	  c.tail = vpid;
+	  c.tail_n = 0;
+	  page = fresh;
+	}
+      memcpy (page + SCAN_BITMAP_PAGE_HEADER + sizeof (bitmap_page_header) + (size_t) c.tail_n * sizeof (scan_bitmap_record), &r,
+	      sizeof (scan_bitmap_record));
+      c.tail_n++;
+      ((bitmap_page_header *) (page + SCAN_BITMAP_PAGE_HEADER))->n = c.tail_n;
+    }
+  if (page != nullptr)
+    {
+      qmgr_set_dirty_page (thread_p, page, FREE, NULL, wr.tfile);
+    }
+  wr.batch.clear ();
+  wr.where.clear ();
+  return error_code;
+}
+
+/* nobody writes the chain any more: its pages are read without a lock of ours */
+template <typename F>
+int
+scan_bitmap_marks::read_chain (THREAD_ENTRY *thread_p, const scan_bitmap_writer &wr, std::uint32_t chain,
+			  F &&each)
+{
+  if (chain >= wr.chain.size ())
+    {
+      return NO_ERROR;
+    }
+  for (VPID vpid = wr.chain[chain].first; !VPID_ISNULL (&vpid);)
+    {
+      PAGE_PTR page = qmgr_get_old_page_read_only (thread_p, &vpid, wr.tfile);
+      int error_code = NO_ERROR;
+
+      if (page == nullptr)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      const bitmap_page_header *h = (const bitmap_page_header *) (page + SCAN_BITMAP_PAGE_HEADER);
+      const scan_bitmap_record *recs = (const scan_bitmap_record *) (page + SCAN_BITMAP_PAGE_HEADER + sizeof (bitmap_page_header));
+
+      for (int k = 0; k < h->n && error_code == NO_ERROR; k++)
+	{
+	  error_code = each (recs[k].page, recs[k].word, recs[k].bits);
+	}
+      vpid = h->next;
+      qmgr_free_old_page (thread_p, page, wr.tfile);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  return NO_ERROR;
+}
+
+int
+scan_bitmap_marks::mark (THREAD_ENTRY *thread_p, scan_bitmap_worker *w, const OID *oid, int *sector_hint)
+{
+  const int sectid = SECTOR_FROM_PAGEID (oid->pageid);
+  int s = *sector_hint;
+
+  if (s < 0 || m_bm_sectors[s].vsid.sectid != sectid || m_bm_sectors[s].vsid.volid != oid->volid)
+    {
+      int low = 0;
+      int high = (int) m_bm_sectors.size () - 1;
+
+      s = -1;
+      while (low <= high)
+	{
+	  const int mid = (low + high) / 2;
+	  const VSID &vsid = m_bm_sectors[mid].vsid;
+
+	  if (vsid.volid == oid->volid && vsid.sectid == sectid)
+	    {
+	      s = mid;
+	      break;
+	    }
+	  if (vsid.volid < oid->volid || (vsid.volid == oid->volid && vsid.sectid < sectid))
+	    {
+	      low = mid + 1;
+	    }
+	  else
+	    {
+	      high = mid - 1;
+	    }
+	}
+      if (s < 0)
+	{
+	  /* a sector the heap got after the list was taken */
+	  return NO_ERROR;
+	}
+      *sector_hint = s;
+    }
+
+  const int page_offset = oid->pageid - SECTOR_FIRST_PAGEID (sectid);
+
+  if ((m_bm_sectors[s].page_bitmap & ((std::uint64_t) 1 << page_offset)) == 0)
+    {
+      /* a page the heap got after the list was taken */
+      return NO_ERROR;
+    }
+  if (oid->slotid >= SCAN_BITMAP_WORDS * 64)
+    {
+      DB_VALUE value;
+      DB_VALUE *value_p = &value;
+
+      if (w->over == nullptr)
+	{
+	  TP_DOMAIN *domain = &tp_Oid_domain;
+	  QFILE_TUPLE_VALUE_TYPE_LIST type_list;
+
+	  type_list.type_cnt = 1;
+	  type_list.domp = &domain;
+	  w->over = qfile_open_list (thread_p, &type_list, NULL, m_bm_query_id, 0, NULL);
+	  if (w->over == nullptr)
+	    {
+	      int error_code = er_errid ();
+
+	      return error_code == NO_ERROR ? ER_FAILED : error_code;
+	    }
+	}
+      db_make_oid (&value, oid);
+      return qfile_add_values_tuple_to_list (thread_p, w->over, &value_p, 1);
+    }
+
+  const std::uint32_t page = (std::uint32_t) s * DISK_SECTOR_NPAGES + page_offset;
+  const int word = oid->slotid >> 6;
+  const std::uint64_t bit = (std::uint64_t) 1 << (oid->slotid & 63);
+
+  if (!w->switched)
+    {
+      scan_bitmap_entry *p = w->tbl.get (page);
+
+      if (p != nullptr)
+	{
+	  p->w[word] |= bit;
+	  return NO_ERROR;
+	}
+      /* full for the first time: the entries outside the first partition's first part leave as records */
+      std::vector<scan_bitmap_entry> kept;
+
+      for (int i = 0; i < w->tbl.n; i++)
+	{
+	  const scan_bitmap_entry &x = w->tbl.e[i];
+
+	  if ((x.page >> 6) < m_bm_first_unit_sectors)
+	    {
+	      kept.push_back (x);
+	      continue;
+	    }
+	  const std::uint32_t part = unit_of (x.page) / m_bm_nsub;
+
+	  for (int k = 0; k < SCAN_BITMAP_WORDS; k++)
+	    {
+	      if (x.w[k] != 0)
+		{
+		  int error_code = add (thread_p, w->rec, part, x.page, k, x.w[k]);
+
+		  if (error_code != NO_ERROR)
+		    {
+		      return error_code;
+		    }
+		}
+	    }
+	}
+      w->tbl.clear ();
+      for (const scan_bitmap_entry &x : kept)
+	{
+	  memcpy (w->tbl.get (x.page)->w, x.w, sizeof (x.w));
+	}
+      w->switched = true;
+    }
+
+  if ((std::uint32_t) s < m_bm_first_unit_sectors)
+    {
+      scan_bitmap_entry *p = w->tbl.get (page);
+
+      if (p == nullptr)
+	{
+	  /* a part's pages fit a table: bitmap_init_on_main */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+      p->w[word] |= bit;
+      return NO_ERROR;
+    }
+  return add (thread_p, w->rec, unit_of (page) / m_bm_nsub, page, word, bit);
+}
+
+int
+scan_bitmap_marks::end_marks (THREAD_ENTRY *thread_p, scan_bitmap_worker *w)
+{
+  if (w->over != nullptr)
+    {
+      /* the list's last page is fixed by this thread */
+      qfile_close_list (thread_p, w->over);
+      w->over_closed = true;
+    }
+  /* the table's entries by partition, so that a heap worker reads those of its partition only */
+  w->tbl_start.assign (m_bm_nparts + 1, 0);
+  for (int i = 0; i < w->tbl.n; i++)
+    {
+      w->tbl_start[unit_of (w->tbl.e[i].page) / m_bm_nsub + 1]++;
+    }
+  for (std::uint32_t k = 0; k < m_bm_nparts; k++)
+    {
+      w->tbl_start[k + 1] += w->tbl_start[k];
+    }
+  w->tbl_order.resize (w->tbl.n);
+  for (int i = 0; i < w->tbl.n; i++)
+    {
+      w->tbl_order[w->tbl_start[unit_of (w->tbl.e[i].page) / m_bm_nsub]++] = (std::uint16_t) i;
+    }
+  /* each start moved to its partition's end, the next one's start */
+  for (std::uint32_t k = m_bm_nparts; k > 0; k--)
+    {
+      w->tbl_start[k] = w->tbl_start[k - 1];
+    }
+  w->tbl_start[0] = 0;
+  return write (thread_p, w->rec);
+}
+
+int
+scan_bitmap_marks::load (THREAD_ENTRY *thread_p, scan_bitmap_worker *w, std::uint32_t part, std::uint32_t sub)
+{
+  scan_bitmap_table &table = w->heap_tbl;
+  int error_code = NO_ERROR;
+  /* an entry of the part being read */
+  auto keep = [&table] (std::uint32_t page, int word, std::uint64_t bits) -> int
+  {
+    scan_bitmap_entry *p = table.get (page);
+
+    if (p == nullptr)
+      {
+	/* a part's pages fit a table: bitmap_init_on_main */
+	assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+    p->w[word] |= bits;
+    return NO_ERROR;
+  };
+
+  if (table.e == nullptr)
+    {
+      error_code = table.init (m_bm_cap, m_bm_buckets);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  table.clear ();
+
+  if (sub > 0)
+    {
+      error_code = read_chain (thread_p, w->sub, sub, keep);
+    }
+  else
+    {
+      /* the partition's first part stays here; the other parts go to this worker's own temp file */
+      auto put = [&] (std::uint32_t page, int word, std::uint64_t bits) -> int
+      {
+	const std::uint32_t to = m_bm_nsub > 1 ? unit_of (page) % m_bm_nsub : 0;
+
+	return to == 0 ? keep (page, word, bits) : add (thread_p, w->sub, to, page, word, bits);
+      };
+
+      if (m_bm_nsub > 1)
+	{
+	  /* shortcut: the pages the previous partition's parts took stay in the temp file until the scan ends,
+	   * reuse them when heaps of this size become common */
+	  w->sub.chain.assign (m_bm_nsub, scan_bitmap_chain { VPID_INITIALIZER, VPID_INITIALIZER, 0 });
+	}
+      for (int i = 0; i < m_bm_nworkers && error_code == NO_ERROR; i++)
+	{
+	  const scan_bitmap_worker &from = m_bm_workers[i];
+
+	  /* a worker that left the index step by an error has no entries in order, and the scan has stopped */
+	  for (std::uint32_t k = from.tbl_start.empty () ? 0 : from.tbl_start[part];
+	       !from.tbl_start.empty () && k < from.tbl_start[part + 1] && error_code == NO_ERROR; k++)
+	    {
+	      const scan_bitmap_entry &x = from.tbl.e[from.tbl_order[k]];
+
+	      for (int j = 0; j < SCAN_BITMAP_WORDS && error_code == NO_ERROR; j++)
+		{
+		  if (x.w[j] != 0)
+		    {
+		      error_code = put (x.page, j, x.w[j]);
+		    }
+		}
+	    }
+	  if (error_code == NO_ERROR && from.rec.tfile != nullptr)
+	    {
+	      error_code = read_chain (thread_p, from.rec, part, put);
+	    }
+	}
+      if (error_code == NO_ERROR)
+	{
+	  error_code = write (thread_p, w->sub);
+	}
+    }
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  w->order.resize (table.n);
+  for (int i = 0; i < table.n; i++)
+    {
+      w->order[i] = i;
+    }
+  std::sort (w->order.begin (), w->order.end (), [&table] (std::uint32_t x, std::uint32_t y)
+  {
+    return table.e[x].page < table.e[y].page;
+  });
+  return NO_ERROR;
+}
+
+bool
+scan_bitmap_marks::take_over (THREAD_ENTRY *thread_p, scan_bitmap_worker *taker, int *error_code)
+{
+  bool expected = false;
+  scan_bitmap_worker *base = nullptr;
+
+  *error_code = NO_ERROR;
+  if (!m_bm_over_taken.compare_exchange_strong (expected, true))
+    {
+      return false;
+    }
+  for (int i = 0; i < m_bm_nworkers; i++)
+    {
+      scan_bitmap_worker &w = m_bm_workers[i];
+
+      if (w.over == nullptr || w.over->tuple_cnt == 0)
+	{
+	  continue;
+	}
+      if (base == nullptr)
+	{
+	  base = &w;
+	  continue;
+	}
+      *error_code = qfile_append_list (thread_p, base->over, w.over);
+      if (*error_code != NO_ERROR)
+	{
+	  return false;
+	}
+    }
+  if (base == nullptr)
+    {
+      return false;
+    }
+  /* two keys of one row, or two workers, record the same OID twice */
+  if (qfile_sort_list (thread_p, base->over, NULL, Q_DISTINCT, true) == nullptr)
+    {
+      /* the sort destroyed the list's file; the list itself goes with its worker */
+      ASSERT_ERROR_AND_SET (*error_code);
+      return false;
+    }
+  if (qfile_open_list_scan (base->over, &m_bm_over_scan) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (*error_code);
+      return false;
+    }
+  m_bm_over_list = base->over;
+  taker->scans_over = true;
+  return true;
+}
+
+SCAN_CODE
+scan_bitmap_marks::next_over (THREAD_ENTRY *thread_p, OID *oid)
+{
+  DB_VALUE value;
+  bool is_null;
+  SCAN_CODE scan = qfile_scan_list_next (thread_p, &m_bm_over_scan, &m_bm_over_tuple, PEEK);
+
+  if (scan != S_SUCCESS)
+    {
+      return scan;
+    }
+  if (qfile_slot_read_column_value (&m_bm_over_tuple, 0, m_bm_over_list->type_list.domp[0], &value, false, &is_null)
+      != NO_ERROR || is_null)
+    {
+      assert (false);
+      return S_ERROR;
+    }
+  COPY_OID (oid, db_get_oid (&value));
+  return S_SUCCESS;
+}
+
+void
+scan_bitmap_marks::close_worker (THREAD_ENTRY *thread_p, scan_bitmap_worker *w)
+{
+  if (w->over != nullptr && !w->over_closed)
+    {
+      /* a worker stopped inside its index step: after end_marks () the list is the merging worker's, which appends
+       * to it and sorts it while this worker ends */
+      qfile_close_list (thread_p, w->over);
+    }
+  if (w->scans_over)
+    {
+      qfile_slot_clear (&m_bm_over_tuple);
+      qfile_close_scan (thread_p, &m_bm_over_scan);
+      w->scans_over = false;
+    }
+}
+
+bool
+scan_bitmap_marks::scan_qualifies (const INDX_SCAN_ID *isidp)
+{
+  return isidp->bitmap_planned && isidp->indx_info != nullptr && isidp->indx_info->coverage == 0
+	 && !isidp->need_count_only && isidp->gby_skip == nullptr && !isidp->multi_range_opt.use && !isidp->iss.use
+	 && !mvcc_is_mvcc_disabled_class (&isidp->cls_oid);
+}
+
+int
+scan_bitmap_marks::init (THREAD_ENTRY *thread_p, const VFID *heap_vfid, int nworkers, QUERY_ID query_id)
+{
+  FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
+  int error_code;
+
+  m_bm_query_id = query_id;
+  /* The sector list below misses every page allocated after it. With the statement's snapshot taken first, the
+   * rows on those pages all belong to transactions the snapshot does not see, so a mark outside the list is
+   * dropped. */
+  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
+      return ER_MVCC_CANT_GET_SNAPSHOT;
+    }
+  error_code = file_get_all_data_sectors (thread_p, heap_vfid, &collector);
+  if (error_code == NO_ERROR && collector.nsects > 0)
+    {
+      const size_t nsects = (size_t) collector.nsects;
+      /* a table and its buckets take the memory of an index scan's key buffer; an entry is found by a 16-bit place */
+      const size_t memory = (size_t) MAX (prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES), 1) * DB_PAGESIZE;
+      size_t buckets;
+      size_t units = 1;
+
+      static_assert (sizeof (scan_bitmap_entry) == BITMAP_HEAP_ENTRY_SIZE, "the optimizer prices a table by this size");
+      BITMAP_HEAP_TABLE_BUCKETS (buckets, memory);
+      m_bm_buckets = (int) buckets;
+      m_bm_cap = BITMAP_HEAP_TABLE_ENTRIES (memory, buckets);
+
+      m_bm_sectors.assign (collector.partsect_ftab, collector.partsect_ftab + nsects);
+      std::sort (m_bm_sectors.begin (), m_bm_sectors.end (),
+		 [] (const FILE_PARTIAL_SECTOR &a, const FILE_PARTIAL_SECTOR &b)
+      {
+	return a.vsid.volid != b.vsid.volid ? a.vsid.volid < b.vsid.volid : a.vsid.sectid < b.vsid.sectid;
+      });
+
+      /* a part is a run of whole sectors: the sectors of the largest one must fit a table. A small heap still gets
+       * a few partitions a worker, so that the heap step is shared as the index step is. */
+      while ((nsects + units - 1) / units * DISK_SECTOR_NPAGES > (size_t) m_bm_cap
+	     || (units < (size_t) MAX (nworkers, 1) * 4 && units < nsects))
+	{
+	  units *= 2;
+	}
+      m_bm_nparts = (std::uint32_t) MIN (units, (size_t) SCAN_BITMAP_MAX_PARTITIONS);
+      m_bm_nsub = (std::uint32_t) (units / m_bm_nparts);
+      m_bm_first_unit_sectors = (std::uint32_t) ((nsects + units - 1) / units);
+
+      m_bm_nworkers = MAX (nworkers, 1);
+      /* the memory wrapper's operator new returns NULL when out of memory */
+      m_bm_workers = new scan_bitmap_worker[m_bm_nworkers];
+      if (m_bm_workers == nullptr)
+	{
+	  m_bm_nworkers = 0;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (scan_bitmap_worker) * MAX (nworkers, 1));
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      for (int i = 0; i < m_bm_nworkers && error_code == NO_ERROR; i++)
+	{
+	  error_code = m_bm_workers[i].tbl.init (m_bm_cap, m_bm_buckets);
+	  m_bm_workers[i].rec.chain.assign (m_bm_nparts, scan_bitmap_chain { VPID_INITIALIZER, VPID_INITIALIZER, 0 });
+	  m_bm_workers[i].rec.batch.reserve (SCAN_BITMAP_BATCH);
+	  m_bm_workers[i].rec.where.reserve (SCAN_BITMAP_BATCH);
+	}
+      if (error_code == NO_ERROR)
+	{
+	  m_bm_on = true;
+	}
+    }
+  if (collector.partsect_ftab != NULL)
+    {
+      db_private_free_and_init (thread_p, collector.partsect_ftab);
+    }
+  return error_code;
+}
+
+// *INDENT-ON*
+
+/*
+ * scan_fix_bitmap_heap_page () - fix a heap page a bitmap heap scan recorded, before its rows are read
+ *   return: error code
+ *   scan_cache(in/out): the scan's cache: its page watcher gets the page
+ *   vpid(in):
+ *   is_fixed(out): false when the page is gone
+ *
+ * Note: The page was in the heap when the scan started; vacuum may have emptied and deallocated it since. A row
+ *	 lookup fixes its page as one that must exist, so the page is fixed here first; the lookup takes it from the
+ *	 scan cache.
+ */
+int
+scan_fix_bitmap_heap_page (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const VPID * vpid, bool * is_fixed)
+{
+  int error_code;
+
+  *is_fixed = false;
+  if (scan_cache->page_watcher.pgptr != NULL)
+    {
+      const VPID *held = pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr);
+
+      if (VPID_EQ (held, vpid))
+	{
+	  /* kept from the row before */
+	  *is_fixed = true;
+	  return NO_ERROR;
+	}
+      /* release the page of the previous lookup first: two heap pages are never held together here */
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+    }
+  error_code = pgbuf_ordered_fix (thread_p, vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
+				  &scan_cache->page_watcher);
+  if (scan_cache->page_watcher.pgptr == NULL)
+    {
+      if (error_code != NO_ERROR && error_code != ER_PB_BAD_PAGEID)
+	{
+	  return error_code;
+	}
+      er_clear ();
+      return NO_ERROR;
+    }
+  if (error_code != NO_ERROR)
+    {
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+      return error_code;
+    }
+  *is_fixed = true;
+  return NO_ERROR;
+}
+
+// *INDENT-OFF*
+/* a serial index scan run as a bitmap heap scan: the scan is the one worker of its marks */
+struct scan_index_bitmap
+{
+  scan_bitmap_marks marks;
+  scan_bitmap_worker *worker;
+  int sector_hint;		/* sector of the last mark */
+  bool heap_step;		/* the index step is over */
+  bool part_on;			/* a partition is being read */
+  std::uint32_t part;
+  std::uint32_t sub;		/* which part of it */
+  size_t entry;			/* place in worker->order of the page being read, or to read next */
+  bool entry_on;		/* that page's rows are being looked up */
+  int next_slot;		/* its slots before this one are done */
+  VPID vpid;
+  bool over_asked;		/* the lists were asked for */
+  bool over_on;			/* ... and are being read */
+  OID oid;			/* the row being looked up */
+};
+// *INDENT-ON*
+
+/*
+ * scan_index_bitmap_start () - whether a serial index scan the plan marked runs as a bitmap heap scan
+ *   return: error code
+ *   scan_id(in/out): its s.isid.bitmap is set when it does
+ *
+ * Note: A scan that locks the rows it reads, a grouped scan, a backward scan, a scan stopped by a key limit and a
+ *	 scan its block may stop at the first rows keep the lookup in key order.
+ */
+static int
+scan_index_bitmap_start (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  INDX_SCAN_ID *isidp = &scan_id->s.isid;
+  scan_index_bitmap *bm;
+  int error_code;
+
+  if (!scan_bitmap_marks::scan_qualifies (isidp) || scan_id->scan_op_type != S_SELECT
+      || scan_id->mvcc_select_lock_needed || scan_id->grouped || scan_id->direction != S_FORWARD
+      || isidp->key_limit_lower != -1 || isidp->key_limit_upper != -1 || isidp->check_not_vacuumed
+      || isidp->ahead_single)
+    {
+      return NO_ERROR;
+    }
+
+  /* the memory wrapper's operator new returns NULL when out of memory */
+  bm = new scan_index_bitmap ();
+  if (bm == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (scan_index_bitmap));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  /* the scan's own query: a nested statement may be the transaction's latest one */
+  error_code = bm->marks.init (thread_p, &isidp->hfid.vfid, 1,
+			       (scan_id->vd != NULL && scan_id->vd->xasl_state != NULL)
+			       ? scan_id->vd->xasl_state->query_id : qmgr_get_current_query_id (thread_p));
+  if (error_code != NO_ERROR || !bm->marks.on ())
+    {
+      /* an empty heap has nothing to record */
+      delete bm;
+      return error_code;
+    }
+  bm->worker = bm->marks.claim_worker ();
+  bm->sector_hint = -1;
+  bm->heap_step = false;
+  bm->part_on = false;
+  bm->part = 0;
+  bm->sub = 0;
+  bm->entry = 0;
+  bm->entry_on = false;
+  bm->next_slot = 0;
+  VPID_SET_NULL (&bm->vpid);
+  bm->over_asked = false;
+  bm->over_on = false;
+  OID_SET_NULL (&bm->oid);
+  isidp->bitmap = bm;
+  return NO_ERROR;
+}
+
+/*
+ * scan_index_bitmap_free () - end a serial bitmap heap scan: its page, its list pages, its temp files
+ */
+static void
+scan_index_bitmap_free (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp)
+{
+  scan_index_bitmap *bm = (scan_index_bitmap *) isidp->bitmap;
+
+  if (bm == NULL)
+    {
+      return;
+    }
+  if (isidp->scancache_inited && isidp->scan_cache.page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &isidp->scan_cache.page_watcher);
+    }
+  bm->marks.close_worker (thread_p, bm->worker);
+  delete bm;
+  isidp->bitmap = NULL;
+}
+
+/*
+ * scan_next_index_bitmap () - the next row of a serial bitmap heap scan
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   scan_id(in/out):
+ *   data_filter(in):
+ *   isolation(in):
+ *
+ * Note: The first call reads the whole key range and records every OID (index step). Every call then returns the
+ *	 next recorded row the snapshot sees and the data filter passes, partition by partition, page by page in file
+ *	 order (heap step), and at last the rows of the over-width list.
+ */
+static SCAN_CODE
+scan_next_index_bitmap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, FILTER_INFO * data_filter, TRAN_ISOLATION isolation)
+{
+  INDX_SCAN_ID *isidp = &scan_id->s.isid;
+  scan_index_bitmap *bm = (scan_index_bitmap *) isidp->bitmap;
+  const bool on_trace = thread_is_on_trace (thread_p);
+  UINT64 old_fetches = 0, old_ioreads = 0;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  SCAN_CODE status = S_SUCCESS;
+  int error_code;
+
+  if (scan_id->position == S_AFTER)
+    {
+      return S_END;
+    }
+
+  if (!bm->heap_step)
+    {
+      bool go_to_next_value = true;
+
+      assert (scan_id->position == S_BEFORE);
+      while (true)
+	{
+	  SCAN_CODE ret = call_get_next_index_oidset (thread_p, scan_id, isidp, go_to_next_value);
+
+	  if (ret == S_END)
+	    {
+	      break;
+	    }
+	  if (ret != S_SUCCESS)
+	    {
+	      return ret;
+	    }
+	  for (int i = 0; i < isidp->oids_count; i++)
+	    {
+	      if (bm->marks.mark (thread_p, bm->worker, GET_NTH_OID (isidp->oid_list->oidp, i), &bm->sector_hint)
+		  != NO_ERROR)
+		{
+		  return S_ERROR;
+		}
+	    }
+	  scan_id->scan_stats.key_qualified_rows += isidp->oids_count;
+	  if (BTREE_END_OF_SCAN (&isidp->bt_scan) && isidp->indx_info->range_type != R_RANGELIST
+	      && isidp->indx_info->range_type != R_KEYLIST)
+	    {
+	      break;
+	    }
+	  go_to_next_value = BTREE_END_OF_SCAN (&isidp->bt_scan)
+	    && (isidp->indx_info->range_type == R_KEY || isidp->indx_info->range_type == R_RANGE);
+	}
+      if (bm->marks.end_marks (thread_p, bm->worker) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      bm->heap_step = true;
+      scan_id->position = S_ON;
+      scan_id->scan_stats.bitmap_heap = 1;
+    }
+
+  /* the heap step is shown as a scan of its own: its time, page fixes and reads are counted apart */
+  if (on_trace)
+    {
+      tsc_getticks (&start_tick);
+      old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+    }
+
+  while (true)
+    {
+      bool is_fixed;
+      int slot = -1;
+
+      if (bm->entry_on)
+	{
+	  /* the next recorded slot of the page */
+	  const std::uint64_t * words = bm->worker->heap_tbl.e[bm->worker->order[bm->entry]].w;
+
+	  for (int bit = bm->next_slot; bit < SCAN_BITMAP_WORDS * 64;)
+	    {
+	      const std::uint64_t word = words[bit >> 6] >> (bit & 63);
+
+	      if (word != 0)
+		{
+		  slot = bit + __builtin_ctzll (word);
+		  break;
+		}
+	      bit = ((bit >> 6) + 1) << 6;
+	    }
+	  if (slot < 0)
+	    {
+	      bm->entry_on = false;
+	      bm->entry++;
+	      continue;
+	    }
+	  bm->next_slot = slot + 1;
+	}
+      else if (bm->part_on && bm->entry < bm->worker->order.size ())
+	{
+	  /* the next recorded page of the part */
+	  if ((bm->entry & (DISK_SECTOR_NPAGES - 1)) == 0)
+	    {
+	      /* the next pages are told to the OS together, wherever they lie */
+	      VPID vpids[DISK_SECTOR_NPAGES];
+	      int count = 0;
+
+	      if (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted (thread_p, true, &is_fixed))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+		  status = S_ERROR;
+		  break;
+		}
+	      for (size_t k = bm->entry; k < bm->worker->order.size () && count < DISK_SECTOR_NPAGES; k++)
+		{
+		  bm->marks.page_vpid (bm->worker->heap_tbl.e[bm->worker->order[k]].page, &vpids[count++]);
+		}
+	      (void) pgbuf_read_ahead (thread_p, vpids, count);
+	    }
+	  bm->marks.page_vpid (bm->worker->heap_tbl.e[bm->worker->order[bm->entry]].page, &bm->vpid);
+	  scan_id->scan_stats.bitmap_heap_pages++;
+	  bm->entry_on = true;
+	  bm->next_slot = 0;
+	  continue;
+	}
+      else if (bm->part_on)
+	{
+	  /* the partition's next part, or the partition is done */
+	  if (isidp->scan_cache.page_watcher.pgptr != NULL)
+	    {
+	      pgbuf_ordered_unfix (thread_p, &isidp->scan_cache.page_watcher);
+	    }
+	  if (++bm->sub < bm->marks.parts_of_partition ())
+	    {
+	      if (bm->marks.load (thread_p, bm->worker, bm->part, bm->sub) != NO_ERROR)
+		{
+		  status = S_ERROR;
+		  break;
+		}
+	      bm->entry = 0;
+	    }
+	  else
+	    {
+	      bm->part_on = false;
+	    }
+	  continue;
+	}
+      else if (!bm->over_asked && bm->marks.take_partition (&bm->part))
+	{
+	  bm->sub = 0;
+	  if (bm->marks.load (thread_p, bm->worker, bm->part, 0) != NO_ERROR)
+	    {
+	      status = S_ERROR;
+	      break;
+	    }
+	  bm->part_on = true;
+	  bm->entry = 0;
+	  continue;
+	}
+      else
+	{
+	  /* the rows whose slot is beyond an entry's width */
+	  if (!bm->over_asked)
+	    {
+	      bm->over_asked = true;
+	      bm->over_on = bm->marks.take_over (thread_p, bm->worker, &error_code);
+	      if (error_code != NO_ERROR)
+		{
+		  status = S_ERROR;
+		  break;
+		}
+	    }
+	  if (bm->over_on)
+	    {
+	      status = bm->marks.next_over (thread_p, &bm->oid);
+	    }
+	  if (!bm->over_on || status == S_END)
+	    {
+	      if (isidp->scan_cache.page_watcher.pgptr != NULL)
+		{
+		  pgbuf_ordered_unfix (thread_p, &isidp->scan_cache.page_watcher);
+		}
+	      scan_id->position = S_AFTER;
+	      status = S_END;
+	      break;
+	    }
+	  if (status != S_SUCCESS)
+	    {
+	      break;
+	    }
+	  if (bm->vpid.volid != bm->oid.volid || bm->vpid.pageid != bm->oid.pageid)
+	    {
+	      /* the list is in OID order: a page's rows follow each other */
+	      scan_id->scan_stats.bitmap_heap_pages++;
+	      bm->vpid.volid = bm->oid.volid;
+	      bm->vpid.pageid = bm->oid.pageid;
+	    }
+	  slot = bm->oid.slotid;
+	}
+
+      /* look the row up on its page, fixed as one that may be gone; the lookup takes the page from the scan cache */
+      error_code = scan_fix_bitmap_heap_page (thread_p, &isidp->scan_cache, &bm->vpid, &is_fixed);
+      if (error_code != NO_ERROR)
+	{
+	  status = S_ERROR;
+	  break;
+	}
+      if (!is_fixed)
+	{
+	  /* vacuum deallocated the page: no row of it is visible */
+	  if (bm->entry_on)
+	    {
+	      bm->entry_on = false;
+	      bm->entry++;
+	    }
+	  continue;
+	}
+      else
+	{
+	  const auto keep_page_save = isidp->scan_cache.cache_last_fix_page;
+
+	  bm->oid.volid = bm->vpid.volid;
+	  bm->oid.pageid = bm->vpid.pageid;
+	  bm->oid.slotid = (PGSLOTID) slot;
+	  isidp->curr_oidp = &bm->oid;
+	  isidp->scan_cache.cache_last_fix_page = true;
+	  status = scan_next_index_lookup_heap (thread_p, scan_id, isidp, data_filter, isolation);
+	  isidp->scan_cache.cache_last_fix_page = keep_page_save;
+	  if (!isidp->bitmap_keep_page && isidp->scan_cache.page_watcher.pgptr != NULL)
+	    {
+	      /* the row was copied: no page stays fixed while a block that may fix other pages works on it */
+	      pgbuf_ordered_unfix (thread_p, &isidp->scan_cache.page_watcher);
+	    }
+	}
+      if (status == S_DOESNT_EXIST)
+	{
+	  /* not visible or filtered out */
+	  status = S_SUCCESS;
+	  continue;
+	}
+      if (status == S_SUCCESS)
+	{
+	  scan_id->scan_stats.data_qualified_rows++;
+	}
+      break;
+    }
+
+  if (on_trace)
+    {
+      const UINT64 fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      const UINT64 ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (scan_id->scan_stats.bitmap_heap_time, tv_diff);
+      scan_id->scan_stats.bitmap_heap_fetches += fetches;
+      scan_id->scan_stats.bitmap_heap_ioreads += ioreads;
+      /* scan_next_scan_local () adds this call's fixes to the scan's own: taken off here, they show on the heap step's
+       * line only */
+      scan_id->scan_stats.num_fetches -= fetches;
+      scan_id->scan_stats.num_ioreads -= ioreads;
+    }
+  return status;
 }
 
 /*
@@ -9620,8 +10910,10 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
       return;
     }
 
-  scan = trace_json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (scan_id->scan_stats.elapsed_scan), "fetch",
-			  scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
+  /* the heap step of a scan through a bitmap is shown as a scan of its own ("bitmap heap") */
+  scan = trace_json_pack ("{s:i, s:I, s:I}", "time",
+			  TO_MSEC (scan_id->scan_stats.elapsed_scan) - TO_MSEC (scan_id->scan_stats.bitmap_heap_time),
+			  "fetch", scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
 
   switch (scan_id->type)
     {
@@ -9694,6 +10986,17 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
 	{
 	  trace_json_object_set_new (scan_stats, "covered", trace_json_true ());
 	}
+      else if (scan_id->scan_stats.bitmap_heap != 0)
+	{
+	  trace_json_t *heap;
+
+	  heap = trace_json_pack ("{s:i, s:I, s:I, s:I, s:I}", "time", TO_MSEC (scan_id->scan_stats.bitmap_heap_time),
+				  "fetch", scan_id->scan_stats.bitmap_heap_fetches,
+				  "ioread", scan_id->scan_stats.bitmap_heap_ioreads,
+				  "pages", scan_id->scan_stats.bitmap_heap_pages,
+				  "rows", scan_id->scan_stats.data_qualified_rows);
+	  trace_json_object_set_new (scan_stats, "bitmap heap", heap);
+	}
       else
 	{
 	  lookup = trace_json_pack ("{s:i, s:i}", "time", TO_MSEC (scan_id->scan_stats.elapsed_lookup), "rows",
@@ -9705,6 +11008,11 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
       if (scan_id->scan_stats.multi_range_opt == true)
 	{
 	  trace_json_object_set_new (scan_stats, "mro", trace_json_true ());
+	}
+
+      if (scan_id->scan_stats.nl_batch_rows != 0)
+	{
+	  trace_json_object_set_new (scan_stats, "nlbatch", trace_json_integer (scan_id->scan_stats.nl_batch_rows));
 	}
 
       if (scan_id->scan_stats.index_skip_scan == true)
@@ -9752,6 +11060,25 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
 						  scan_id->scan_stats.oos_reads.fetches, "ioread",
 						  scan_id->scan_stats.oos_reads.ioreads));
     }
+}
+
+/*
+ * scan_print_bitmap_heap_stats_text () - the heap step of an index scan that read the heap through a bitmap of the
+ *					  rows the index found: the second scan of the two the trace shows
+ *   return: void
+ *   fp(in):
+ *   scan_id(in): the index scan
+ */
+void
+scan_print_bitmap_heap_stats_text (FILE * fp, SCAN_ID * scan_id)
+{
+  fprintf (fp, "(heap time: %d, fetch: %llu, ioread: %llu, pages: %llu, rows: %llu",
+	   TO_MSEC (scan_id->scan_stats.bitmap_heap_time),
+	   (unsigned long long int) scan_id->scan_stats.bitmap_heap_fetches,
+	   (unsigned long long int) scan_id->scan_stats.bitmap_heap_ioreads,
+	   (unsigned long long int) scan_id->scan_stats.bitmap_heap_pages,
+	   (unsigned long long int) scan_id->scan_stats.data_qualified_rows);
+  fprintf (fp, ")");
 }
 
 /*
@@ -9837,7 +11164,8 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
     }
 
-  fprintf (fp, " time: %d, fetch: %llu, ioread: %llu", TO_MSEC (scan_id->scan_stats.elapsed_scan),
+  fprintf (fp, " time: %d, fetch: %llu, ioread: %llu",
+	   TO_MSEC (scan_id->scan_stats.elapsed_scan) - TO_MSEC (scan_id->scan_stats.bitmap_heap_time),
 	   (unsigned long long int) scan_id->scan_stats.num_fetches,
 	   (unsigned long long int) scan_id->scan_stats.num_ioreads);
 
@@ -9923,6 +11251,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	  fprintf (fp, ", mro: true");
 	}
 
+      if (scan_id->scan_stats.nl_batch_rows != 0)
+	{
+	  fprintf (fp, ", nlbatch: %llu", (unsigned long long) scan_id->scan_stats.nl_batch_rows);
+	}
+
       if (scan_id->scan_stats.index_skip_scan == true)
 	{
 	  fprintf (fp, ", iss: true");
@@ -9934,7 +11267,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	}
       fprintf (fp, ")");
 
-      if (scan_id->scan_stats.covered_index == false)
+      if (scan_id->scan_stats.covered_index == false && scan_id->scan_stats.bitmap_heap == 0)
 	{
 	  fprintf (fp, " (lookup time: %d, rows: %llu)", TO_MSEC (scan_id->scan_stats.elapsed_lookup),
 		   (unsigned long long int) scan_id->scan_stats.data_qualified_rows);

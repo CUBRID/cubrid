@@ -22,6 +22,18 @@
 
 #include "error_code.h"
 #include "error_manager.h"
+#include "heap_file.h"
+#include "list_file.h"
+#include "log_impl.h"
+#include "mvcc.h"
+#include "object_domain.h"
+#include "qfile_tuple_layout.h"
+#include "query_manager.h"
+#include "object_representation_sr.h"
+#include "system_parameter.h"
+
+#include <algorithm>
+#include <chrono>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -40,7 +52,53 @@ namespace parallel_scan
     m_leaf.init (&m_ranges);
     m_ovf.init (parallelism);
     m_parallelism = MAX (parallelism, 1);
-    return NO_ERROR;
+    return bitmap_init_on_main (thread_p, scan_id, parallelism);
+  }
+
+  input_handler_index::~input_handler_index ()
+  {
+  }
+
+  int
+  input_handler_index::bitmap_init_on_main (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, int parallelism)
+  {
+    int error_code;
+
+    /* the plan decides */
+    if (!scan_bitmap_marks::scan_qualifies (&scan_id->s.isid))
+      {
+	return NO_ERROR;
+      }
+    error_code = m_bm.init (thread_p, &scan_id->s.isid.hfid.vfid, parallelism, m_bm_query_id);
+    if (error_code == NO_ERROR && m_bm.on ())
+      {
+	m_bm_index_pending = parallelism;
+      }
+    return error_code;
+  }
+
+  void
+  input_handler_index::bitmap_leave_index_step ()
+  {
+    std::lock_guard<std::mutex> lock (m_bm_mutex);
+
+    if (--m_bm_index_pending == 0)
+      {
+	m_bm_cv.notify_all ();
+      }
+  }
+
+  bool
+  input_handler_index::bitmap_wait_index_step ()
+  {
+    std::unique_lock<std::mutex> lock (m_bm_mutex);
+
+    /* a worker that failed before its index step never leaves it: it raised the interrupt instead */
+    while (m_bm_index_pending > 0 && m_interrupt_p->get_code () == interrupt::interrupt_code::NO_INTERRUPT)
+      {
+	m_bm_cv.wait_for (lock, std::chrono::milliseconds (10));
+      }
+    return m_interrupt_p->get_code () == interrupt::interrupt_code::NO_INTERRUPT;
   }
 
   /* No-op: slot_iterator_index drives the leaf-page cursor directly. */

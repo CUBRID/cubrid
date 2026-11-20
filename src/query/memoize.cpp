@@ -689,6 +689,69 @@ namespace memoize
       }
   }
 
+  bool storage::has_key ()
+  {
+    if (disabled)
+      {
+	return false;
+      }
+
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
+    key *k = get_key();
+    bool found = false;
+
+    if (k != nullptr)
+      {
+	found = m_key_value_map.find (k) != m_key_value_map.end ();
+	k->~key();
+	m_key_fixed_allocator.deallocate (k);
+      }
+    db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+
+    return found;
+  }
+
+  size_t storage::key_hash ()
+  {
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
+    key *k = get_key();
+    size_t h = 0;
+
+    if (k != nullptr)
+      {
+	h = key::hash () (k);
+	k->~key();
+	m_key_fixed_allocator.deallocate (k);
+      }
+    db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+
+    return h;
+  }
+
+  bool storage::begin_key ()
+  {
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
+    bool found = false;
+
+    if (m_last_key != nullptr)
+      {
+	m_last_key->~key();
+	m_key_fixed_allocator.deallocate (m_last_key);
+	m_current_value_list.clear();
+      }
+    m_last_key = get_key();
+    key_changed = false;
+    has_range = false;
+    current_key_joined = false;
+    if (m_last_key != nullptr)
+      {
+	found = m_key_value_map.find (m_last_key) != m_key_value_map.end ();
+      }
+    db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+
+    return found;
+  }
+
   result_code storage::put()
   {
     HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
@@ -772,13 +835,12 @@ namespace memoize
 
     size_t size = get_current_size ();
 
-    /* Until the storage holds 60% of its budget every key has cost one miss at most, so a low hit ratio says
-     * nothing yet: keys that repeat but have not come round again look like distinct keys. Judging after a fixed
-     * 1,000 probes turned memoize off whenever the keys outnumbered ~630 (CBRD-27487).
-     * Once inserts have stopped, every miss is judged whatever the size: taking out the partial key in
-     * stop_insert () can bring the storage back under 60%, and it must not then be kept unjudged. */
-    if ((insert_stopped || size > m_max_storage_size * MEMOIZE_HIT_RATIO_CHECK_SIZE)
-	&& ((double) hit) / (hit + miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
+    /* While the storage has room every key has cost one miss at most, so a low hit ratio says nothing yet: keys
+     * that repeat but have not come round again look like distinct keys, whatever share of the budget they fill.
+     * Judging after a fixed 1,000 probes turned memoize off whenever the keys outnumbered ~630 (CBRD-27487), and
+     * judging at 60% of the budget turned it off for keys that come in turn (an outer scan in heap order) and
+     * fill between 60% and all of it (CBRD-28032). Once inserts have stopped, every miss is judged. */
+    if (insert_stopped && ((double) hit) / (hit + miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
       {
 	disabled = true;
 	return false;
