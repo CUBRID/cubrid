@@ -195,7 +195,6 @@ enum
 
 #define RBO_CHECK_COST 50
 #define RBO_CHECK_RATIO 1.2
-#define RBO_CHECK_LIMIT_RATIO 10
 
 /* NL inner memoize decision (qo_nl_inner_memoize_is_useless) */
 #define MEMOIZE_UNIQUE_KEY_RATIO 0.95	/* without a unique index, NDV >= 95% of the rows counts as near-unique */
@@ -406,7 +405,8 @@ static QO_PLAN *qo_find_best_parallel_driving_plan_on_info (QO_INFO *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_list_input (QO_PLAN *, QO_PLAN *, QO_PLAN_COMPARE_RESULT);
 static QO_PLAN *qo_find_best_list_input_on_info (QO_INFO * info, QO_EQCLASS * order);
 static bool qo_plan_drives_groupby_skip_only (QO_PLAN * plan);
-static QO_PLAN *qo_find_groupby_skip_outer_on_info (QO_INFO * info);
+static bool qo_plan_drives_orderby_skip (QO_PLAN * plan);
+static QO_PLAN *qo_find_skip_outer_on_info (QO_INFO * info);
 static QO_PLAN_COMPARE_RESULT qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b);
 static QO_PLAN_COMPARE_RESULT qo_index_covering_plans_cmp (QO_PLAN *, QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_order_by_skip_plans_cmp (QO_PLAN *, QO_PLAN *);
@@ -434,7 +434,8 @@ static PT_NODE *qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_N
 						   int *continue_walk);
 static double qo_analytic_sort_cost (QO_PLAN * plan);
 static QO_PLAN *qo_plan_top_scan (QO_PLAN * plan);
-static bool qo_plan_cmp_topn_sort_wins (QO_PLAN * skip_plan, QO_PLAN * sort_plan);
+static void qo_skip_limit_discount (QO_PLAN * plan, QO_PLAN * scan, double rows);
+static void qo_orderby_skip_limit_discount (QO_PLAN * plan);
 static bool qo_index_keeps_asc_key_order (QO_ENV * env, QO_NODE * node, QO_INDEX_ENTRY * index_entryp);
 static bool qo_key_seg_is_asc_column (QO_ENV * env, TP_DOMAIN * col_type, int seg_idx);
 static int qo_iscan_sort_segs (QO_PLAN * plan, int *seg_idxs, int max);
@@ -693,6 +694,7 @@ qo_plan_malloc (QO_ENV * env)
   plan->need_final_sort = false;
   plan->groupby_skip_join = false;
   plan->limit_nljoin_guessed_card = 0.0;
+  plan->limit_nljoin_outer_rows = 0.0;
   plan->iscan_index_rows = 0.0;
   plan->iscan_range_rows = 0.0;
   plan->iscan_heap_io = 0.0;
@@ -2209,6 +2211,18 @@ qo_top_plan_new (QO_PLAN * plan)
 	      else if (driving == plan && plan->plan_un.scan.index)
 		{
 		  plan->plan_un.scan.index->head->groupby_skip = true;
+
+		  if (plan->info->planner->groupby_limit_groups > 0.0)
+		    {
+		      /* the scan stops at the LIMIT groups (CBRD-28111) */
+		      double rows_per_group = qo_groupby_skip_rows_per_group (plan, tree);
+
+		      if (rows_per_group < DBL_MAX)
+			{
+			  qo_skip_limit_discount (plan, plan,
+						  plan->info->planner->groupby_limit_groups * rows_per_group);
+			}
+		    }
 		}
 	      else if (driving != plan && driving->plan_un.scan.index)
 		{
@@ -2220,6 +2234,9 @@ qo_top_plan_new (QO_PLAN * plan)
 		  /* the index entry is shared with the plans this join competes with: it is marked when the join is
 		   * chosen (qo_planner_search ()) */
 		  plan->groupby_skip_join = true;
+
+		  /* the driving scan stops at the LIMIT groups (CBRD-28111) */
+		  qo_skip_limit_discount (plan, driving, plan->limit_nljoin_outer_rows);
 		}
 	    }
 	  else
@@ -2313,7 +2330,16 @@ qo_top_plan_new (QO_PLAN * plan)
 	      {
 		bool yn = true;
 		qo_walk_plan_tree (plan, qo_set_orderby_skip, &yn);
+		/* and on the top plan itself, which a join is not: the chosen plan marks the index entries again
+		 * (qo_search_planner ()) */
+		plan->skip_orderby_opt = QO_PLAN_SKIP_ORDERBY_USE;
 	      }
+
+	      if (!plan->need_final_sort)
+		{
+		  /* the ordered scan stops at the LIMIT (CBRD-28111) */
+		  qo_orderby_skip_limit_discount (plan);
+		}
 
 	      if (plan->need_final_sort)
 		{
@@ -7189,10 +7215,13 @@ qo_nljoin_cost (QO_PLAN * planp)
 	  outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
 	  planp->limit_nljoin_guessed_card =
 	    MAX (1.0, MIN (limit_rows, guessed_result_cardinality * ((planp->info)->cardinality / outer_card)));
+	  /* the rows the driving scan reads; qo_orderby_skip_limit_discount () charges an ORDER BY skip scan for them */
+	  planp->limit_nljoin_outer_rows = guessed_result_cardinality;
 	}
       else if (outer->plan_type == QO_PLANTYPE_JOIN)
 	{
 	  guessed_result_cardinality = outer->limit_nljoin_guessed_card;
+	  planp->limit_nljoin_outer_rows = outer->limit_nljoin_outer_rows;
 	  outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
 	  /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card),
 	   * and never more than the LIMIT since the query stops there. */
@@ -8202,61 +8231,89 @@ qo_plan_top_scan (QO_PLAN * plan)
 }
 
 /*
- * qo_plan_cmp_topn_sort_wins () - does a top-N sort over another index's key range beat an ORDER BY skip plan by cost
- *   return: true when sort_plan is the ORDER BY sort of a LIMIT query (or a SORT-LIMIT) whose driving scan is an
- *	     index scan with key range terms, and its cost is below the cost of skip_plan by the rule-vs-cost band
- *	     (RBO_CHECK_COST and RBO_CHECK_RATIO)
- *   skip_plan(in): the ORDER BY skip plan (a scan, or a join whose outer is an ORDER BY skip candidate)
- *   sort_plan(in): the sort plan compared against it
+ * qo_skip_limit_discount () - charge the driving scan of a plan that skips its ORDER BY or GROUP BY with a LIMIT for
+ *			       the rows it reads before the LIMIT stops it, not for the whole key range
+ *   return:
+ *   plan(in/out): a top-level plan that skips its ORDER BY or GROUP BY: the ordered scan itself, or a nested loop
+ *		   join chain driven by one
+ *   scan(in): the driving scan
+ *   rows(in): the rows of the scan, after its filters, that the LIMIT stops at
  *
- * Note: CBRD-28111. qo_plan_cmp () prefers an ORDER BY skip plan over a sort plan by rule when the costs are within
- *   RBO_CHECK_LIMIT_RATIO, because the cost of the ordered scan does not know the LIMIT it stops at. Against a full
- *   scan with a top-N sort the rule keeps the ordered scan (CBRD-26354). Against a top-N sort over another index's
- *   key range the rows are already narrowed and both costs are what the plans read; when that sort is clearly
- *   cheaper, the rule only hides the cheaper plan and the comparison falls back to cost. Costs within the band
- *   still follow the rule, since the ordered scan may stop early (CBRD-25080).
+ * Note: CBRD-28111. The scan reads the key in the ORDER BY (GROUP BY) order and the query stops at the LIMIT rows
+ *   (groups) that passed every filter, so it reads rows / selectivity rows of the key range on the average, not the
+ *   range (uniform distribution of the filtered rows along the key, as every estimate assumes). qo_nljoin_cost ()
+ *   charges the inner of such a join for those outer rows only (CBRD-25080, CBRD-27685, limit_nljoin_outer_rows);
+ *   the scan was charged for the whole range, and the LIMIT comparisons of qo_plan_cmp () made it up with a rule (a
+ *   10 times wider cost band in which a skip plan beat a sort plan, removed with this), which hid the sort plan the
+ *   cost itself preferred when the filtered rows are a small part of the range. The scan's variable cost is in the
+ *   plan once, through the outer costs of the nested loop chain.
  */
-static bool
-qo_plan_cmp_topn_sort_wins (QO_PLAN * skip_plan, QO_PLAN * sort_plan)
+static void
+qo_skip_limit_discount (QO_PLAN * plan, QO_PLAN * scan, double rows)
 {
-  QO_PLAN *plan;
-  double skip_cost, sort_cost;
+  double scan_rows, fraction;
 
-  if (sort_plan == NULL || sort_plan->plan_type != QO_PLANTYPE_SORT || !QO_PLAN_HAS_LIMIT (sort_plan)
-      || (sort_plan->plan_un.sort.sort_type != SORT_ORDERBY && sort_plan->plan_un.sort.sort_type != SORT_LIMIT))
+  if (plan == NULL || scan == NULL || scan->plan_type != QO_PLANTYPE_SCAN || scan->info == NULL)
     {
-      return false;
+      return;
     }
 
-  plan = sort_plan->plan_un.sort.subplan;
-  while (plan != NULL)
+  scan_rows = MAX (1.0, (scan->info)->cardinality);
+  if (rows <= 0.0 || rows >= scan_rows)
     {
-      if (plan->plan_type == QO_PLANTYPE_SORT)
-	{
-	  plan = plan->plan_un.sort.subplan;
-	}
-      else if (plan->plan_type == QO_PLANTYPE_JOIN)
-	{
-	  plan = plan->plan_un.join.outer;
-	}
-      else
-	{
-	  break;
-	}
+      return;
     }
 
-  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN || !qo_is_interesting_order_scan (plan)
-      || bitset_is_empty (&(plan->plan_un.scan.terms)))
+  fraction = rows / scan_rows;
+  plan->variable_cpu_cost -= scan->variable_cpu_cost * (1.0 - fraction);
+  plan->variable_io_cost -= scan->variable_io_cost * (1.0 - fraction);
+  plan->variable_cpu_cost = MAX (0.0, plan->variable_cpu_cost);
+  plan->variable_io_cost = MAX (0.0, plan->variable_io_cost);
+}
+
+/*
+ * qo_orderby_skip_limit_discount () - qo_skip_limit_discount () for a plan that qo_top_plan_new () accepted to skip
+ *				      its ORDER BY
+ *   return:
+ *   plan(in/out):
+ */
+static void
+qo_orderby_skip_limit_discount (QO_PLAN * plan)
+{
+  QO_PLAN *scan = plan;
+  double rows;
+
+  if (plan == NULL || plan->info == NULL || !QO_PLAN_HAS_LIMIT (plan))
     {
-      return false;
+      return;
     }
 
-  skip_cost = skip_plan->fixed_cpu_cost + skip_plan->fixed_io_cost + skip_plan->variable_cpu_cost
-    + skip_plan->variable_io_cost;
-  sort_cost = sort_plan->fixed_cpu_cost + sort_plan->fixed_io_cost + sort_plan->variable_cpu_cost
-    + sort_plan->variable_io_cost;
+  while (scan->plan_type == QO_PLANTYPE_JOIN)
+    {
+      if (!QO_IS_NL_JOIN (scan))
+	{
+	  return;		/* a merge or hash join reads its outer whole */
+	}
+      scan = scan->plan_un.join.outer;
+    }
 
-  return (sort_cost + RBO_CHECK_COST <= skip_cost && sort_cost * RBO_CHECK_RATIO <= skip_cost);
+  if (scan->plan_type != QO_PLANTYPE_SCAN || !qo_is_interesting_order_scan (scan) || scan->plan_un.scan.index == NULL
+      || !scan->plan_un.scan.index->head->orderby_skip)
+    {
+      return;
+    }
+
+  if (plan->plan_type == QO_PLANTYPE_JOIN)
+    {
+      rows = plan->limit_nljoin_outer_rows;	/* the outer rows the join charged its inner for */
+    }
+  else
+    {
+      rows = QO_PLAN_HAS_CONSTANT_LIMIT (plan)
+	? (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (plan->info->env)) : GUESSED_BIND_LIMIT_CARD;
+    }
+
+  qo_skip_limit_discount (plan, scan, rows);
 }
 
 /*
@@ -8340,27 +8397,13 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       }
   }
 
-  if (ta > 0 && tb > 0 && QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
+  if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_RATIO <= tb))
     {
-      if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_LIMIT_RATIO <= tb))
-	{
-	  return PLAN_COMP_LT;
-	}
-      else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_LIMIT_RATIO))
-	{
-	  return PLAN_COMP_GT;
-	}
+      return PLAN_COMP_LT;
     }
-  else
+  else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_RATIO))
     {
-      if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_RATIO <= tb))
-	{
-	  return PLAN_COMP_LT;
-	}
-      else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_RATIO))
-	{
-	  return PLAN_COMP_GT;
-	}
+      return PLAN_COMP_GT;
     }
 
   if (qo_is_sort_limit (a))
@@ -8489,7 +8532,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
-      if (a->plan_un.scan.index && a->plan_un.scan.index->head->orderby_skip && !qo_plan_cmp_topn_sort_wins (a, b))
+      if (a->plan_un.scan.index && a->plan_un.scan.index->head->orderby_skip)
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
@@ -8532,7 +8575,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	      return PLAN_COMP_GT;
 	    }
-	  if (b->plan_un.scan.index && b->plan_un.scan.index->head->orderby_skip && !qo_plan_cmp_topn_sort_wins (b, a))
+	  if (b->plan_un.scan.index && b->plan_un.scan.index->head->orderby_skip)
 	    {
 	      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	      return PLAN_COMP_GT;
@@ -8606,11 +8649,10 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	}
     }
 
-  /* prefer order by skip plan over sort plan, unless a top-N over another index's key range is clearly cheaper
-   * (CBRD-28111) */
+  /* prefer order by skip plan over sort plan */
   if (a->plan_type == QO_PLANTYPE_JOIN && b->plan_type == QO_PLANTYPE_SORT)
     {
-      if (qo_plan_is_orderby_skip_candidate (a->plan_un.join.outer) && !qo_plan_cmp_topn_sort_wins (a, b))
+      if (qo_plan_is_orderby_skip_candidate (a->plan_un.join.outer))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
@@ -8618,7 +8660,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     }
   else if (b->plan_type == QO_PLANTYPE_JOIN && a->plan_type == QO_PLANTYPE_SORT)
     {
-      if (qo_plan_is_orderby_skip_candidate (b->plan_un.join.outer) && !qo_plan_cmp_topn_sort_wins (b, a))
+      if (qo_plan_is_orderby_skip_candidate (b->plan_un.join.outer))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
@@ -9808,6 +9850,20 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 	   * replace each other (qo_plan_drives_groupby_skip_only ()) */
 	  cmp = PLAN_COMP_UNK;
 	}
+      else if (cmp == PLAN_COMP_LT || cmp == PLAN_COMP_GT)
+	{
+	  /* a plan that can drive an ORDER BY skip of the joins above is kept beside the plan it loses to
+	   * (qo_plan_drives_orderby_skip ()), unless that is a SORT-LIMIT plan over such a scan, which drives them in
+	   * its place */
+	  QO_PLAN *loser = (cmp == PLAN_COMP_LT) ? plan : planvec->plan[i];
+	  QO_PLAN *winner = (cmp == PLAN_COMP_LT) ? planvec->plan[i] : plan;
+
+	  if (qo_plan_drives_orderby_skip (loser) && !qo_plan_drives_orderby_skip (winner)
+	      && !(qo_is_sort_limit (winner) && qo_plan_drives_orderby_skip (winner->plan_un.sort.subplan)))
+	    {
+	      cmp = PLAN_COMP_UNK;
+	    }
+	}
 
       /* cmp : PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT */
       if (cmp == PLAN_COMP_GT)
@@ -10186,7 +10242,7 @@ qo_find_best_parallel_driving_plan_on_info (QO_INFO * info)
  * Note: such a plan is worth something only as the outer of the nested loops above it, which stop at the LIMIT
  *	 groups (CBRD-27685). Like a plan that drives a parallel block (qo_plan_cmp_parallel_drive ()), it is kept beside
  *	 the others instead of replacing them, is not the best plan of its info, and the nested-loop joins also try it
- *	 as their outer (qo_find_groupby_skip_outer_on_info ()). The top plan is compared as any other.
+ *	 as their outer (qo_find_skip_outer_on_info ()). The top plan is compared as any other.
  */
 static bool
 qo_plan_drives_groupby_skip_only (QO_PLAN * plan)
@@ -10205,12 +10261,42 @@ qo_plan_drives_groupby_skip_only (QO_PLAN * plan)
 }
 
 /*
- * qo_find_groupby_skip_outer_on_info () - the cheapest unordered plan kept only to drive a GROUP BY skip
+ * qo_plan_drives_orderby_skip () - can a plan of a part of the join drive an ORDER BY skip of the nested loops above
+ *   return: true when the query has a LIMIT and the outermost scan of its nested loops is an index scan in the
+ *	     ORDER BY order (qo_plan_is_orderby_skip_candidate ())
+ *   plan(in):
+ *
+ * Note: CBRD-28111. Such a scan costs its whole key range until the top plan charges it for the rows read before the
+ *	 LIMIT (qo_orderby_skip_limit_discount ()), so below the top it may lose to the cheapest scan by cost, and the
+ *	 nested loops it should drive would never be built. Like a plan kept to drive a GROUP BY skip
+ *	 (qo_plan_drives_groupby_skip_only ()), it is kept beside the plan it loses to (qo_check_planvec ()) and the
+ *	 nested-loop joins also try it as their outer (qo_find_skip_outer_on_info ()); unlike that plan it is the best
+ *	 plan of its info when it wins. The top plan is compared as any other.
+ */
+static bool
+qo_plan_drives_orderby_skip (QO_PLAN * plan)
+{
+  if (plan == NULL || plan->top_rooted || plan->info == NULL || !QO_PLAN_HAS_LIMIT (plan))
+    {
+      return false;
+    }
+
+  while (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
+    {
+      plan = plan->plan_un.join.outer;
+    }
+
+  return (plan->plan_type == QO_PLANTYPE_SCAN && qo_is_interesting_order_scan (plan)
+	  && qo_plan_is_orderby_skip_candidate (plan));
+}
+
+/*
+ * qo_find_skip_outer_on_info () - the cheapest unordered plan kept to drive a GROUP BY or an ORDER BY skip
  *   return: the plan, or NULL when none is kept
  *   info(in):
  */
 static QO_PLAN *
-qo_find_groupby_skip_outer_on_info (QO_INFO * info)
+qo_find_skip_outer_on_info (QO_INFO * info)
 {
   QO_PLANVEC *pv = &info->best_no_order;
   QO_PLAN *best_plan = NULL;
@@ -10219,7 +10305,7 @@ qo_find_groupby_skip_outer_on_info (QO_INFO * info)
 
   for (i = 0; i < pv->nplans; i++)
     {
-      if (!qo_plan_drives_groupby_skip_only (pv->plan[i]))
+      if (!qo_plan_drives_groupby_skip_only (pv->plan[i]) && !qo_plan_drives_orderby_skip (pv->plan[i]))
 	{
 	  continue;
 	}
@@ -11296,7 +11382,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
   {
     QO_PLAN *par_outer_plan = qo_find_best_parallel_driving_plan_on_info (outer_plan->info);
 
-    QO_PLAN *gby_outer_plan = qo_find_groupby_skip_outer_on_info (outer_plan->info);
+    QO_PLAN *skip_outer_plan = qo_find_skip_outer_on_info (outer_plan->info);
     QO_INFO *inner_info = inner_plan->info;
 
     if (par_outer_plan != NULL && par_outer_plan != outer_plan)
@@ -11312,15 +11398,15 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  }
       }
 
-    /* and from the outer kept to drive a GROUP BY skip (qo_plan_drives_groupby_skip_only ()) */
-    if (gby_outer_plan != NULL && gby_outer_plan != outer_plan)
+    /* and from the outer kept to drive a GROUP BY or an ORDER BY skip (qo_find_skip_outer_on_info ()) */
+    if (skip_outer_plan != NULL && skip_outer_plan != outer_plan)
       {
-	inner_plan = qo_find_best_nljoin_inner_plan_on_info (gby_outer_plan, inner_info, join_type, idx_join_plan_n);
+	inner_plan = qo_find_best_nljoin_inner_plan_on_info (skip_outer_plan, inner_info, join_type, idx_join_plan_n);
 	if (inner_plan != NULL)
 	  {
 	    n +=
 	      qo_check_plan_on_info (info,
-				     qo_join_new (info, join_type, QO_JOINMETHOD_NL_JOIN, gby_outer_plan, inner_plan,
+				     qo_join_new (info, join_type, QO_JOINMETHOD_NL_JOIN, skip_outer_plan, inner_plan,
 						  nl_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
 						  hash_terms));
 	  }
@@ -11792,7 +11878,7 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
   QO_NODE_INDEX *node_indexp;
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_INDEX_ENTRY *index_entryp;
-  QO_PLAN *outer_plan, *par_outer_plan, *gby_outer_plan;
+  QO_PLAN *outer_plan, *par_outer_plan, *skip_outer_plan;
   int i, n = 0;
   BITSET_ITERATOR iter;
   int t;
@@ -11815,11 +11901,11 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
       par_outer_plan = NULL;
     }
 
-  /* and from the outer kept to drive a GROUP BY skip (qo_plan_drives_groupby_skip_only ()) */
-  gby_outer_plan = qo_find_groupby_skip_outer_on_info (outer);
-  if (gby_outer_plan == outer_plan)
+  /* and from the outer kept to drive a GROUP BY or an ORDER BY skip (qo_find_skip_outer_on_info ()) */
+  skip_outer_plan = qo_find_skip_outer_on_info (outer);
+  if (skip_outer_plan == outer_plan)
     {
-      gby_outer_plan = NULL;
+      skip_outer_plan = NULL;
     }
 
 #if 0				/* JOIN_FOLLOW_RESTRICTION */
@@ -11906,10 +11992,10 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
 		qo_generate_join_index_scan (info, join_type, par_outer_plan, inner, nodep, ni_entryp,
 					     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
 	    }
-	  if (gby_outer_plan != NULL)
+	  if (skip_outer_plan != NULL)
 	    {
 	      n +=
-		qo_generate_join_index_scan (info, join_type, gby_outer_plan, inner, nodep, ni_entryp,
+		qo_generate_join_index_scan (info, join_type, skip_outer_plan, inner, nodep, ni_entryp,
 					     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
 	    }
 	}
@@ -11951,10 +12037,10 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
 			qo_generate_join_index_scan (info, join_type, par_outer_plan, inner, nodep, ni_entryp,
 						     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
 		    }
-		  if (gby_outer_plan != NULL)
+		  if (skip_outer_plan != NULL)
 		    {
 		      n +=
-			qo_generate_join_index_scan (info, join_type, gby_outer_plan, inner, nodep, ni_entryp,
+			qo_generate_join_index_scan (info, join_type, skip_outer_plan, inner, nodep, ni_entryp,
 						     &indexable_terms, afj_terms, sarged_terms, pinned_subqueries);
 		    }
 		}
@@ -14852,6 +14938,38 @@ qo_search_planner (QO_PLANNER * planner)
       assert (driving != NULL && driving->plan_un.scan.index != NULL);
       driving->plan_un.scan.index->head->groupby_skip = true;
     }
+
+  /* an index entry is shared by the plans of its node, and every top plan accepted to skip the ORDER BY marked the
+   * entries of its scans (qo_set_orderby_skip ()), the ones a chosen sort plan reads among them (a scan so marked is
+   * not read in parallel, and reverses a key list of a descending ORDER BY); the chosen plan alone marks them
+   * (CBRD-28111) */
+  {
+    QO_ENV *env = planner->env;
+    QO_NODE_INDEX *ni;
+    QO_INDEX_ENTRY *entry;
+    QO_PLAN *top;
+    int n, j;
+    bool yn = true;
+
+    for (n = 0; n < env->Nnodes; n++)
+      {
+	ni = QO_NODE_INDEXES (QO_ENV_NODE (env, n));
+	for (j = 0; ni != NULL && j < QO_NI_N (ni); j++)
+	  {
+	    for (entry = QO_NI_ENTRY (ni, j)->head; entry != NULL; entry = entry->next)
+	      {
+		entry->orderby_skip = false;
+	      }
+	  }
+      }
+
+    for (top = plan; top != NULL && top->plan_type == QO_PLANTYPE_SORT; top = top->plan_un.sort.subplan)
+      ;
+    if (top != NULL && top->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE)	/* accepted by qo_top_plan_new () */
+      {
+	qo_walk_plan_tree (top, qo_set_orderby_skip, &yn);
+      }
+  }
 
 end:
 
