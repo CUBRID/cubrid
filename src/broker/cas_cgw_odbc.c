@@ -27,6 +27,8 @@
 #include <inttypes.h>
 #endif
 
+#include <ctype.h>
+
 #include "cas_cgw_odbc.h"
 #include "cas_util.h"
 #include "cas_log.h"
