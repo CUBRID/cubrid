@@ -35,7 +35,7 @@
 #include <atomic>
 #include <pthread.h>
 
-/* the releases called with a page fixed, which a thread hands to the entrance owner asleep (lock_group_guard) */
+/* the releases called with a page fixed, which a thread hands to the entrance owner asleep (lock_group::enter ()) */
 typedef enum
 {
   LK_PENDING_UNLOCK,		/* lock_unlock_object () */
@@ -69,7 +69,7 @@ lock_group_acquire_request (int cond_flag)
 
 /*
  * The threads of one transaction in the lock manager. While a parallel section of the transaction is open, they
- * enter it one at a time (lock_group_guard), so the transaction's lock state keeps a single writer.
+ * enter it one at a time (enter ()), so the transaction's lock state keeps a single writer.
  */
 class lock_group
 {
@@ -132,11 +132,19 @@ class lock_group
   private:
     friend class lock_group_guard;
 
-    /* the threads take turns only in a section; true here would make them take turns always */
+    /* the threads take turns only in a section. Group 0, the system transaction's, never opens one, and a change
+     * here must keep it ungated */
     bool is_gated () const
     {
       return in_section ();
     }
+    /* a lock call of the transaction while it is gated (lock_group_guard) */
+    int enter (THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const LK_RES_KEY *guest_key,
+	       const LK_PENDING_RELEASE *release);
+    int enter_object (THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const OID *oid, const OID *class_oid);
+    int enter_release (THREAD_ENTRY *thread_p, LK_PENDING_RELEASE_TYPE type, const OID *oid, const OID *class_oid,
+		       LOCK lock, bool force);
+    void exit (THREAD_ENTRY *thread_p);
     bool try_own (THREAD_ENTRY *thread_p);
     bool spin_to_own (THREAD_ENTRY *thread_p);
     void timed_wait ();
@@ -179,13 +187,65 @@ class lock_group
 #endif
 };
 
+/* a lock call's pass through the entrance: inline, so that with no section open it costs a load and a branch */
 class lock_group_guard
 {
   public:
-    /* guest_key: the resource, for a request that may enter as the guest; release: a release that may be handed */
-    lock_group_guard (THREAD_ENTRY *thread_p, int tran_index, LK_GROUP_REQUEST request,
-		      const LK_RES_KEY *guest_key = NULL, const LK_PENDING_RELEASE *release = NULL);
-    ~lock_group_guard ();
+    /* guest_key: the resource, for a request that may enter as the guest */
+    lock_group_guard (lock_group *group, THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request,
+		      const LK_RES_KEY *guest_key = NULL)
+      : lock_group_guard (group, thread_p)
+    {
+      if (m_group->is_gated ())
+	{
+	  admit (m_group->enter (m_thread_p, request, guest_key, NULL));
+	}
+      else
+	{
+	  solo ();
+	}
+    }
+    /* an acquisition of an object */
+    lock_group_guard (lock_group *group, THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const OID *oid,
+		      const OID *class_oid)
+      : lock_group_guard (group, thread_p)
+    {
+      if (m_group->is_gated ())
+	{
+	  admit (m_group->enter_object (m_thread_p, request, oid, class_oid));
+	}
+      else
+	{
+	  solo ();
+	}
+    }
+    /* a release of an object, which may be handed to the owner */
+    lock_group_guard (lock_group *group, THREAD_ENTRY *thread_p, LK_PENDING_RELEASE_TYPE type, const OID *oid,
+		      const OID *class_oid, LOCK lock, bool force)
+      : lock_group_guard (group, thread_p)
+    {
+      if (m_group->is_gated ())
+	{
+	  admit (m_group->enter_release (m_thread_p, type, oid, class_oid, lock, force));
+	}
+      else
+	{
+	  solo ();
+	}
+    }
+    ~lock_group_guard ()
+    {
+      if (m_state == ENTERED)
+	{
+	  m_group->exit (m_thread_p);
+	}
+#if !defined (NDEBUG)
+      else if (m_state == SOLO)
+	{
+	  m_group->solo_leave ();
+	}
+#endif
+    }
 
     /* false also for a release handed to the owner, which runs it before it leaves */
     bool admitted () const
@@ -207,6 +267,31 @@ class lock_group_guard
       ENTERED
     };
 
+    lock_group_guard (lock_group *group, THREAD_ENTRY *thread_p)
+      : m_group (group)
+      , m_thread_p (thread_p)
+      , m_state (NOT_NEEDED)
+      , m_lock_result (LK_GRANTED)
+    {
+    }
+    void admit (int lock_result)
+    {
+      m_lock_result = lock_result;
+      if (lock_result == LK_GRANTED)
+	{
+	  m_state = ENTERED;
+	}
+    }
+    void solo ()
+    {
+#if !defined (NDEBUG)
+      if (m_group->solo_enter (m_thread_p))
+	{
+	  m_state = SOLO;
+	}
+#endif
+    }
+
     lock_group *m_group;
     THREAD_ENTRY *m_thread_p;
     state m_state;
@@ -214,10 +299,6 @@ class lock_group_guard
 };
 
 extern void lock_group_set_abort_error (int tran_index, int error);
-extern void lock_pending_release_init (LK_PENDING_RELEASE * release, LK_PENDING_RELEASE_TYPE type, const OID * oid,
-				       const OID * class_oid, LOCK lock, bool force);
-extern const LK_RES_KEY *lock_group_dir_oid_key (const OID * oid, const OID * class_oid, LK_RES_KEY * key);
-extern const LK_RES_KEY *lock_group_row_release_key (const OID * oid, const OID * class_oid, LK_RES_KEY * key);
 
 /* from lock_manager.c */
 extern lock_group *lock_get_tran_group (int tran_index);
