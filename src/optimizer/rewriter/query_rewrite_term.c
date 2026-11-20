@@ -758,6 +758,83 @@ qo_unmark_constant_function_index (PARSER_CONTEXT * parser, PT_NODE * node, void
   return node;
 }
 
+/* the column an equality substitution is about to replace, see qo_unmark_substituted_function_index () */
+typedef struct qo_substituted_column QO_SUBSTITUTED_COLUMN;
+struct qo_substituted_column
+{
+  PT_NODE *name;		/* the column */
+  bool loc_check;		/* the substitution replaces only at the location of the column */
+  bool found;
+};
+
+/*
+ * qo_find_substituted_column_pre () - whether a tree reads the column the substitution replaces
+ *
+ * Note: the conditions are those of pt_lambda_node ().
+ */
+static PT_NODE *
+qo_find_substituted_column_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_SUBSTITUTED_COLUMN *column = (QO_SUBSTITUTED_COLUMN *) arg;
+
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  if (node->node_type != PT_NAME || PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_DOT_SPEC))
+    {
+      return node;
+    }
+  if (column->loc_check
+      && (node->info.name.location == 0 || node->info.name.location != column->name->info.name.location))
+    {
+      return node;
+    }
+  if (pt_name_equal (parser, node, column->name))
+    {
+      column->found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * qo_unmark_substituted_function_index () - clear the function index mark of an expression the equality substitution
+ *					      is about to put a constant into
+ *   arg(in): the column the substitution replaces (QO_SUBSTITUTED_COLUMN)
+ *
+ * Note: the mark says the expression is the one an index is built on.  With a constant in place of one of its
+ *	 columns it is not that expression any more, whether or not another column is left in it: an index on
+ *	 concat (a, b) does not hold concat ('x', b).  To be called before the substitution, while the column is
+ *	 still there to be found.
+ */
+static PT_NODE *
+qo_unmark_substituted_function_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_SUBSTITUTED_COLUMN *column = (QO_SUBSTITUTED_COLUMN *) arg;
+  PT_NODE *save_next;
+
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  if (node->node_type == PT_EXPR && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_FUNCTION_INDEX))
+    {
+      column->found = false;
+      save_next = node->next;
+      node->next = NULL;
+      (void) parser_walk_tree (parser, node, qo_find_substituted_column_pre, column, NULL, NULL);
+      node->next = save_next;
+      if (column->found)
+	{
+	  PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_FUNCTION_INDEX);
+	}
+    }
+  return node;
+}
+
 /*
  * qo_reduce_equality_terms () -
  *   return:
@@ -1268,6 +1345,15 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, arg1, arg2,
 							       (temp->info.name.location > 0 ? true : false), 1,
 							       true /* dont_replace */ );
+	}
+      if (temp->node_type == PT_NAME)
+	{
+	  QO_SUBSTITUTED_COLUMN column;
+
+	  column.name = temp;
+	  column.loc_check = (temp->info.name.location > 0 ? true : false);
+	  column.found = false;
+	  (void) parser_walk_tree (parser, *wherep, qo_unmark_substituted_function_index, &column, NULL, NULL);
 	}
       *wherep = pt_lambda_with_arg (parser, *wherep, arg1, arg2, (temp->info.name.location > 0 ? true : false), 1,
 				    false /* dont_replace: DEFAULT */ );
