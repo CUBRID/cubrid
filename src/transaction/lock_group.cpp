@@ -130,7 +130,7 @@ lock_group::abort_reason () const
 
 /*
  * the entrance taken as the owner: only a CAS from NULL, so a thread that finds the owner gone takes it with no mutex
- * (lock_group_guard), and every other taker, holding the mutex or not, competes the same way
+ * (enter ()), and every other taker, holding the mutex or not, competes the same way
  */
 inline bool
 lock_group::try_own (THREAD_ENTRY *thread_p)
@@ -490,9 +490,20 @@ bool
 lock_group::solo_enter (THREAD_ENTRY *thread_p)
 {
   THREAD_ENTRY *expected = NULL;
-  THREAD_ENTRY *owner = m_owner.load (std::memory_order_acquire);
-  THREAD_ENTRY *guest = m_guest.load (std::memory_order_acquire);
-  THREAD_ENTRY *inside = (owner != NULL && owner != thread_p) ? owner : ((guest != thread_p) ? guest : NULL);
+  THREAD_ENTRY *owner, *guest, *inside;
+
+  if (m_tran_index <= LOG_SYSTEM_TRAN_INDEX)
+    {
+      /* the system transaction is many threads' and opens no section */
+      return false;
+    }
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  owner = m_owner.load (std::memory_order_acquire);
+  guest = m_guest.load (std::memory_order_acquire);
+  inside = (owner != NULL && owner != thread_p) ? owner : ((guest != thread_p) ? guest : NULL);
 
   /* a pool thread runs only while its leader's section is open */
   assert (!thread_is_px_worker (thread_p));
@@ -659,48 +670,34 @@ lock_group::defer_abort (THREAD_ENTRY *thread_p, bool to_pl_caller)
   return true;
 }
 
-lock_group_guard::lock_group_guard (THREAD_ENTRY *thread_p, int tran_index, LK_GROUP_REQUEST request,
-				    const LK_RES_KEY *guest_key, const LK_PENDING_RELEASE *release)
-  : m_group (NULL)
-  , m_thread_p (thread_p)
-  , m_state (NOT_NEEDED)
-  , m_lock_result (LK_GRANTED)
+/*
+ * enter () - a lock call of the transaction while it is gated
+ *   return: LK_GRANTED once inside, or why not: LK_NOTGRANTED_DUE_ABORTED or _ERROR with the error set,
+ *	     LK_NOTGRANTED_DUE_TIMEOUT with none for a conditional request that met the owner asleep, or LK_NOTGRANTED
+ *	     for a release handed to the owner, which runs it before it leaves
+ *   guest_key(in): the resource, for a request that may enter as the guest
+ *   release(in): a release that may be handed to the owner
+ */
+int
+lock_group::enter (THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const LK_RES_KEY *guest_key,
+		   const LK_PENDING_RELEASE *release)
 {
   LK_PENDING_RELEASE *handed = NULL;
   int error;
 
-  if (tran_index <= LOG_SYSTEM_TRAN_INDEX)
+  if (thread_p == NULL)
     {
-      /* the system transaction is many threads' and opens no section */
-      return;
+      thread_p = thread_get_thread_entry_info ();
     }
-  if (m_thread_p == NULL)
+  if (is_owner (thread_p))
     {
-      m_thread_p = thread_get_thread_entry_info ();
+      m_depth++;
+      return LK_GRANTED;
     }
-  m_group = lock_get_tran_group (tran_index);
-
-  if (!m_group->is_gated ())
+  if (is_guest (thread_p))
     {
-#if !defined (NDEBUG)
-      if (m_group->solo_enter (m_thread_p))
-	{
-	  m_state = SOLO;
-	}
-#endif
-      return;
-    }
-  if (m_group->is_owner (m_thread_p))
-    {
-      m_group->m_depth++;
-      m_state = ENTERED;
-      return;
-    }
-  if (m_group->is_guest (m_thread_p))
-    {
-      m_group->m_guest_depth++;
-      m_state = ENTERED;
-      return;
+      m_guest_depth++;
+      return LK_GRANTED;
     }
 
   /*
@@ -709,23 +706,20 @@ lock_group_guard::lock_group_guard (THREAD_ENTRY *thread_p, int tran_index, LK_G
    * checks for an abort again once it is the owner: a deferred abort can land between the check and the CAS, the spin
    * widening that window, and lock_group_defer_abort () has returned by then.
    */
-  if ((request == LK_GROUP_RELEASE || m_group->abort_reason () == NO_ERROR)
-      && (m_group->try_own (m_thread_p) || m_group->spin_to_own (m_thread_p)))
+  if ((request == LK_GROUP_RELEASE || abort_reason () == NO_ERROR) && (try_own (thread_p) || spin_to_own (thread_p)))
     {
-      error = (request == LK_GROUP_RELEASE) ? NO_ERROR : m_group->abort_reason ();
+      error = (request == LK_GROUP_RELEASE) ? NO_ERROR : abort_reason ();
       if (error != NO_ERROR)
 	{
-	  m_group->give_back ();
-	  lock_group_set_abort_error (tran_index, error);
-	  m_lock_result = (error == ER_INTERRUPTED) ? LK_NOTGRANTED_DUE_ERROR : LK_NOTGRANTED_DUE_ABORTED;
-	  return;
+	  give_back ();
+	  lock_group_set_abort_error (m_tran_index, error);
+	  return (error == ER_INTERRUPTED) ? LK_NOTGRANTED_DUE_ERROR : LK_NOTGRANTED_DUE_ABORTED;
 	}
-      m_group->m_depth = 1;
-      m_state = ENTERED;
-      return;
+      m_depth = 1;
+      return LK_GRANTED;
     }
 
-  if (release != NULL && pgbuf_has_perm_pages_fixed (m_thread_p))
+  if (release != NULL && pgbuf_has_perm_pages_fixed (thread_p))
     {
       /* allocated before the mutex, under which no other lock is taken */
       handed = (LK_PENDING_RELEASE *) malloc (sizeof (LK_PENDING_RELEASE));
@@ -735,107 +729,96 @@ lock_group_guard::lock_group_guard (THREAD_ENTRY *thread_p, int tran_index, LK_G
 	}
     }
 
-  pthread_mutex_lock (&m_group->m_mutex);
+  pthread_mutex_lock (&m_mutex);
   while (true)
     {
-      if (request != LK_GROUP_RELEASE && m_group->in_section ())
+      if (request != LK_GROUP_RELEASE && in_section ())
 	{
 	  /* also when nothing was waited for: a sibling may have left the entrance as a victim */
-	  error = m_group->abort_reason ();
+	  error = abort_reason ();
 	  if (error != NO_ERROR)
 	    {
-	      pthread_mutex_unlock (&m_group->m_mutex);
-	      lock_group_set_abort_error (tran_index, error);
-	      m_lock_result = (error == ER_INTERRUPTED) ? LK_NOTGRANTED_DUE_ERROR : LK_NOTGRANTED_DUE_ABORTED;
-	      return;
+	      pthread_mutex_unlock (&m_mutex);
+	      lock_group_set_abort_error (m_tran_index, error);
+	      return (error == ER_INTERRUPTED) ? LK_NOTGRANTED_DUE_ERROR : LK_NOTGRANTED_DUE_ABORTED;
 	    }
 	}
-      if (m_group->try_own (m_thread_p))
+      if (try_own (thread_p))
 	{
-	  m_group->m_depth = 1;
+	  m_depth = 1;
 	  break;
 	}
-      if (m_group->m_owner_sleeping.load (std::memory_order_relaxed) && guest_key != NULL
-	  && m_group->m_guest.load (std::memory_order_relaxed) == NULL
-	  && lock_res_key_compare ((void *) guest_key, &m_group->m_owner_wait_key) != 0
-	  && (guest_key->type != LOCK_RESOURCE_INSTANCE
-	      || lock_pack_row_oid (&guest_key->oid) != m_group->m_owner_held_row))
+      if (m_owner_sleeping.load (std::memory_order_relaxed) && guest_key != NULL
+	  && m_guest.load (std::memory_order_relaxed) == NULL
+	  && lock_res_key_compare ((void *) guest_key, &m_owner_wait_key) != 0
+	  && (guest_key->type != LOCK_RESOURCE_INSTANCE || lock_pack_row_oid (&guest_key->oid) != m_owner_held_row))
 	{
-	  m_group->m_guest.store (m_thread_p, std::memory_order_release);
-	  m_group->m_guest_depth = 1;
+	  m_guest.store (thread_p, std::memory_order_release);
+	  m_guest_depth = 1;
 	  break;
 	}
       /* the owner awake but waiting for a guest asleep behind a catalog updater is no shorter a wait */
-      if (m_group->m_owner_blocked.load (std::memory_order_acquire))
+      if (m_owner_blocked.load (std::memory_order_acquire))
 	{
 	  if (request == LK_GROUP_ACQUIRE_COND)
 	    {
 	      /* the owner's sleep is another transaction's to end; a conditional request does not share it */
-	      pthread_mutex_unlock (&m_group->m_mutex);
-	      m_lock_result = LK_NOTGRANTED_DUE_TIMEOUT;
+	      pthread_mutex_unlock (&m_mutex);
 	      free (handed);
 #if !defined (NDEBUG)
 	      er_print_callstack (ARG_FILE_LINE, "lock_group: tran %d: conditional request met the owner asleep\n",
-				  tran_index);
+				  m_tran_index);
 #endif
-	      return;
+	      return LK_NOTGRANTED_DUE_TIMEOUT;
 	    }
 	  /* the deadlock detector would not see a page fixed while waiting for an owner asleep */
 	  if (handed != NULL)
 	    {
-	      handed->next = m_group->m_pending_release.load (std::memory_order_relaxed);
-	      m_group->m_pending_release.store (handed, std::memory_order_release);
-	      pthread_mutex_unlock (&m_group->m_mutex);
-	      m_lock_result = LK_NOTGRANTED;
-	      return;
+	      handed->next = m_pending_release.load (std::memory_order_relaxed);
+	      m_pending_release.store (handed, std::memory_order_release);
+	      pthread_mutex_unlock (&m_mutex);
+	      return LK_NOTGRANTED;
 	    }
 	  /* a guest-family request waits behind the guest, or the owner on its own resource: a catalog updater that
 	   * needs no user page, as lock_is_safe_lock_with_page () assumes */
-	  assert (request == LK_GROUP_RELEASE || guest_key != NULL || !pgbuf_has_perm_pages_fixed (m_thread_p));
+	  assert (request == LK_GROUP_RELEASE || guest_key != NULL || !pgbuf_has_perm_pages_fixed (thread_p));
 	}
-      (void) m_group->wait_for_owner ();
+      (void) wait_for_owner ();
     }
-  assert (m_group->m_guest.load (std::memory_order_relaxed) == NULL
-	  || m_group->m_owner.load (std::memory_order_acquire) != NULL);
-  pthread_mutex_unlock (&m_group->m_mutex);
-  m_state = ENTERED;
+  assert (m_guest.load (std::memory_order_relaxed) == NULL || m_owner.load (std::memory_order_acquire) != NULL);
+  pthread_mutex_unlock (&m_mutex);
   free (handed);
+  return LK_GRANTED;
 }
 
-lock_group_guard::~lock_group_guard ()
+/* by the role held now: a deadlock victim may come back in the other one (lock_suspend_internal ()) */
+void
+lock_group::exit (THREAD_ENTRY *thread_p)
 {
-#if !defined (NDEBUG)
-  if (m_state == SOLO)
+  if (thread_p == NULL)
     {
-      m_group->solo_leave ();
-      return;
+      thread_p = thread_get_thread_entry_info ();
     }
-#endif
-  if (m_state != ENTERED)
+  if (is_owner (thread_p))
     {
-      return;
-    }
-  /* by the role held now: a deadlock victim may come back in the other one (lock_suspend_internal ()) */
-  if (m_group->is_owner (m_thread_p))
-    {
-      if (--m_group->m_depth > 0)
+      if (--m_depth > 0)
 	{
 	  return;
 	}
       /* no release can be handed over from here on: the owner is awake with no guest, so not blocked */
-      if (m_group->m_pending_release.load (std::memory_order_acquire) != NULL)
+      if (m_pending_release.load (std::memory_order_acquire) != NULL)
 	{
-	  m_group->leave (m_thread_p);
+	  leave (thread_p);
 	  return;
 	}
-      m_group->give_back ();
+      give_back ();
     }
   else
     {
-      assert (m_group->is_guest (m_thread_p));
-      if (--m_group->m_guest_depth == 0)
+      assert (is_guest (thread_p));
+      if (--m_guest_depth == 0)
 	{
-	  m_group->guest_leave ();
+	  guest_leave ();
 	}
     }
 }
@@ -853,7 +836,7 @@ lock_group_set_abort_error (int tran_index, int error)
     }
 }
 
-void
+static void
 lock_pending_release_init (LK_PENDING_RELEASE * release, LK_PENDING_RELEASE_TYPE type, const OID * oid,
 			   const OID * class_oid, LOCK lock, bool force)
 {
@@ -872,8 +855,8 @@ lock_pending_release_init (LK_PENDING_RELEASE * release, LK_PENDING_RELEASE_TYPE
   release->force = force;
 }
 
-/* the key of a catalog directory OID lock, which may enter as the guest (lock_group_guard), or NULL */
-const LK_RES_KEY *
+/* the key of a catalog directory OID lock, which may enter as the guest, or NULL */
+static const LK_RES_KEY *
 lock_group_dir_oid_key (const OID * oid, const OID * class_oid, LK_RES_KEY * key)
 {
   if (oid == NULL || class_oid == NULL || !OID_IS_VIRTUAL_CLASS_OF_DIR_OID (class_oid))
@@ -888,7 +871,7 @@ lock_group_dir_oid_key (const OID * oid, const OID * class_oid, LK_RES_KEY * key
  * the key of a row whose release may enter as the guest, or NULL for a class: a release of one instance entry frees
  * no class entry, only lowers its granule count, and escalates nothing
  */
-const LK_RES_KEY *
+static const LK_RES_KEY *
 lock_group_row_release_key (const OID * oid, const OID * class_oid, LK_RES_KEY * key)
 {
   if (oid == NULL || class_oid == NULL || OID_IS_ROOTOID (oid) || OID_IS_ROOTOID (class_oid))
@@ -897,6 +880,29 @@ lock_group_row_release_key (const OID * oid, const OID * class_oid, LK_RES_KEY *
     }
   *key = lock_create_search_key (oid, class_oid);
   return key;
+}
+
+/* enter () for an acquisition of an object; its guest key is made here, only while the transaction is gated */
+int
+lock_group::enter_object (THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const OID *oid, const OID *class_oid)
+{
+  LK_RES_KEY key;
+
+  return enter (thread_p, request, lock_group_dir_oid_key (oid, class_oid, &key), NULL);
+}
+
+/* enter () for a release of an object; a transient one changes the statement's counts and never enters as the guest */
+int
+lock_group::enter_release (THREAD_ENTRY *thread_p, LK_PENDING_RELEASE_TYPE type, const OID *oid, const OID *class_oid,
+			   LOCK lock, bool force)
+{
+  LK_PENDING_RELEASE release;
+  LK_RES_KEY key;
+
+  lock_pending_release_init (&release, type, oid, class_oid, lock, force);
+  return enter (thread_p, LK_GROUP_RELEASE,
+		(type == LK_PENDING_UNLOCK_TRANSIENT) ? NULL : lock_group_row_release_key (oid, class_oid, &key),
+		&release);
 }
 #endif /* SERVER_MODE */
 

@@ -2578,6 +2578,13 @@ lock_get_tran_group (int tran_index)
   return &lk_Gl.tran_lock_table[tran_index].group;
 }
 
+/* the group a lock call's guard passes, inline; an index not above the system transaction's gets that one's */
+static inline lock_group *
+lock_guard_group (int tran_index)
+{
+  return &lk_Gl.tran_lock_table[(tran_index > LOG_SYSTEM_TRAN_INDEX) ? tran_index : LOG_SYSTEM_TRAN_INDEX].group;
+}
+
 /* whether the transaction lock table is initialized up to tran_index */
 bool
 lock_has_tran_lock (int tran_index)
@@ -5121,7 +5128,7 @@ lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock, LOC
   int tran_index;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE);
 
   entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, true);
   if (entry_ptr == NULL)
@@ -5430,7 +5437,7 @@ lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index, const OID *
 {
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *curr, *next;
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE);
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   tran_lock->reclaimed_only_transient = true;
@@ -7024,7 +7031,6 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
   LOCK new_class_lock;
   LOCK old_class_lock;
   int granted;
-  LK_RES_KEY dir_oid_key;
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL, *superclass_entry = NULL;
   LK_ENTRY *inst_entry = NULL;
@@ -7095,8 +7101,8 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_group_guard guard (thread_p, tran_index, lock_group_acquire_request (cond_flag),
-			  lock_group_dir_oid_key (oid, class_oid, &dir_oid_key));
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, lock_group_acquire_request (cond_flag), oid,
+			  class_oid);
   if (!guard.admitted ())
     {
       return guard.lock_result ();
@@ -7312,7 +7318,7 @@ lock_transient_scope_start (THREAD_ENTRY * thread_p)
   return true;
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
-  lock_group_guard guard (thread_p, tran_lock->group.get_tran_index (), LK_GROUP_RELEASE);
+  lock_group_guard guard (&tran_lock->group, thread_p, LK_GROUP_RELEASE);
   int scope;
 
   /* a job worker would end a statement's scope at its own end, not the statement's */
@@ -7360,7 +7366,7 @@ lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release)
   return;
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
-  lock_group_guard guard (thread_p, tran_lock->group.get_tran_index (), LK_GROUP_RELEASE);
+  lock_group_guard guard (&tran_lock->group, thread_p, LK_GROUP_RELEASE);
 
   assert (tran_lock->transient_scope > 0);
   /* the thread that opened the scope closes it, so scopes nest as their statements do */
@@ -7408,11 +7414,10 @@ lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OI
 #else /* !SERVER_MODE */
   LK_ENTRY *entry_ptr;
   int tran_index;
-  LK_PENDING_RELEASE release;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_pending_release_init (&release, LK_PENDING_UNLOCK_TRANSIENT, oid, class_oid, lock, false);
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE, NULL, &release);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_PENDING_UNLOCK_TRANSIENT, oid, class_oid, lock,
+			  false);
   if (!guard.admitted ())
     {
       /* handed to the entrance owner */
@@ -7648,8 +7653,8 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
   /* an S request is a wait: it reads the wake generation lock_wait_transaction_mvccid () sets */
   assert (lock != S_LOCK);
   LK_RES_KEY mvccid_key = lock_create_mvccid_search_key (mvccid);
-  lock_group_guard guard (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), lock_group_acquire_request (cond_flag),
-			  &mvccid_key);
+  lock_group_guard guard (lock_guard_group (LOG_FIND_THREAD_TRAN_INDEX (thread_p)), thread_p,
+			  lock_group_acquire_request (cond_flag), &mvccid_key);
   if (!guard.admitted ())
     {
       return guard.lock_result ();
@@ -7719,7 +7724,7 @@ lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK loc
 
   /* Build the TRANSACTION-typed search key directly from the MVCCID (full 64-bit, no OID packing). */
   search_key = lock_create_mvccid_search_key (mvccid);
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE, &search_key);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE, &search_key);
 
   res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
   if (res_ptr == NULL)
@@ -7956,7 +7961,7 @@ lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * see
   /* logtb_wait_for_tran_end_on_row (), the only caller, resolves a NULL one */
   assert (thread_p != NULL);
 
-  lock_group_guard guard (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), LK_GROUP_ACQUIRE);
+  lock_group_guard guard (lock_guard_group (LOG_FIND_THREAD_TRAN_INDEX (thread_p)), thread_p, LK_GROUP_ACQUIRE);
   if (!guard.admitted ())
     {
       return guard.lock_result ();
@@ -8096,7 +8101,7 @@ lock_deferred_wake_mark (THREAD_ENTRY * thread_p, int tran_index)
 {
 #if defined (SERVER_MODE)
   LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE);
 
   if (tdes == NULL || !MVCCID_IS_NORMAL (tdes->mvccinfo.id))
     {
@@ -8616,7 +8621,7 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
 #endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_group_guard guard (thread_p, tran_index, lock_group_acquire_request (cond_flag));
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, lock_group_acquire_request (cond_flag));
   if (!guard.admitted ())
     {
       return guard.lock_result ();
@@ -8709,9 +8714,8 @@ lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
   return LK_GRANTED;
 #else /* !SERVER_MODE */
   int old_wait_msecs, lock_result;
-  LK_RES_KEY dir_oid_key;
-  lock_group_guard guard (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), lock_group_acquire_request (cond_flag),
-			  lock_group_dir_oid_key (oid, class_oid, &dir_oid_key));
+  lock_group_guard guard (lock_guard_group (LOG_FIND_THREAD_TRAN_INDEX (thread_p)), thread_p,
+			  lock_group_acquire_request (cond_flag), oid, class_oid);
 
   if (!guard.admitted ())
     {
@@ -8769,7 +8773,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
 #endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_group_guard guard (thread_p, tran_index, lock_group_acquire_request (cond_flag));
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, lock_group_acquire_request (cond_flag));
   if (!guard.admitted ())
     {
       return guard.lock_result ();
@@ -8875,7 +8879,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 #endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_ACQUIRE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_ACQUIRE);
   if (!guard.admitted ())
     {
       return guard.lock_result ();
@@ -9045,11 +9049,8 @@ lock_unlock_object_lock_internal (THREAD_ENTRY * thread_p, const OID * oid, cons
 
   /* get transaction table index */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  LK_RES_KEY row_key;
-  LK_PENDING_RELEASE release;
-  lock_pending_release_init (&release, LK_PENDING_UNLOCK_DONOT_MOVE, oid, class_oid, lock, false);
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE,
-			  lock_group_row_release_key (oid, class_oid, &row_key), &release);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_PENDING_UNLOCK_DONOT_MOVE, oid, class_oid,
+			  lock, false);
   if (!guard.admitted ())
     {
       /* handed to the entrance owner */
@@ -9143,11 +9144,7 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_
 	}
     }
 
-  LK_RES_KEY row_key;
-  LK_PENDING_RELEASE release;
-  lock_pending_release_init (&release, LK_PENDING_UNLOCK, oid, class_oid, lock, force);
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE,
-			  lock_group_row_release_key (oid, class_oid, &row_key), &release);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_PENDING_UNLOCK, oid, class_oid, lock, force);
   if (!guard.admitted ())
     {
       /* handed to the entrance owner */
@@ -9239,7 +9236,7 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
       return;			/* Don't release the lock */
     }
 
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE);
   for (i = 0; i < lockset->num_reqobjs_processed; i++)
     {
       oid = &lockset->objects[i].oid;
@@ -9308,7 +9305,7 @@ lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
       return;
     }
 
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE);
   for (i = 0; i < lockhint->num_classes; i++)
     {
       if (OID_ISNULL (&lockhint->classes[i].oid) || lockhint->classes[i].lock == NULL_LOCK)
@@ -10150,7 +10147,7 @@ lock_notify_isolation_incons (THREAD_ENTRY * thread_p, bool (*fun) (const OID * 
       return;			/* Nothing was released */
     }
 
-  lock_group_guard guard (thread_p, tran_index, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   rv = pthread_mutex_lock (&tran_lock->non2pl_mutex);
 
@@ -11262,7 +11259,7 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock,
   int max_oids;
   bool need_free;
   int ret = NO_ERROR;
-  lock_group_guard guard (thread_p, comp_lock->lockcomp.tran_index, LK_GROUP_ACQUIRE);
+  lock_group_guard guard (lock_guard_group (comp_lock->lockcomp.tran_index), thread_p, LK_GROUP_ACQUIRE);
 
   if (!guard.admitted ())
     {
@@ -11420,7 +11417,7 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_
   LK_LOCKCOMP_CLASS *lockcomp_class;
   LK_ENTRY *dummy;
   int i, value = LK_GRANTED;
-  lock_group_guard guard (thread_p, comp_lock->lockcomp.tran_index, LK_GROUP_ACQUIRE);
+  lock_group_guard guard (lock_guard_group (comp_lock->lockcomp.tran_index), thread_p, LK_GROUP_ACQUIRE);
 
   if (!guard.admitted ())
     {
@@ -11534,7 +11531,7 @@ lock_clear_deadlock_victim (int tran_index)
   return;
 #else /* !SERVER_MODE */
   int rv;
-  lock_group_guard guard (NULL, tran_index, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), NULL, LK_GROUP_RELEASE);
 
   /* a sibling in the section may be returning on the victim state this clears */
   assert (!lk_Gl.tran_lock_table[tran_index].group.in_section ());
@@ -12251,7 +12248,7 @@ lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag)
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_group_guard guard (thread_p, tran_index, lock_group_acquire_request (cond_flag));
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, lock_group_acquire_request (cond_flag));
   if (!guard.admitted ())
     {
       return ER_FAILED;
