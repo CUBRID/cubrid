@@ -325,6 +325,8 @@ struct la_info
   int last_server_state;
   bool is_role_changed;
   bool is_failing_over;		/* the local server is to-be-active: heartbeat fails over to it */
+  bool last_is_failing_over;
+  time_t failing_over_asked_time;	/* when the local server was last asked for is_failing_over */
 
   /* _db_ha_apply_info */
   LOG_LSA append_lsa;		/* append lsa of active log header */
@@ -6543,7 +6545,8 @@ la_change_state (void)
 
   if (la_Info.last_server_state == la_Info.act_log.log_hdr->ha_server_state
       && la_Info.last_file_state == la_Info.act_log.log_hdr->ha_file_status
-      && la_Info.last_is_end_of_record == la_Info.is_end_of_record)
+      && la_Info.last_is_end_of_record == la_Info.is_end_of_record
+      && la_Info.last_is_failing_over == la_Info.is_failing_over)
     {
       /* there are no need to change */
       return NO_ERROR;
@@ -6560,6 +6563,7 @@ la_change_state (void)
   la_Info.last_server_state = la_Info.act_log.log_hdr->ha_server_state;
   la_Info.last_file_state = la_Info.act_log.log_hdr->ha_file_status;
   la_Info.last_is_end_of_record = la_Info.is_end_of_record;
+  la_Info.last_is_failing_over = la_Info.is_failing_over;
 
   /* check log file status. while heartbeat fails over from a dead source, no more log arrives, so the record end in
    * the received pages is the end also when the header is not synchronized (la_is_received_log_end ()) */
@@ -8461,14 +8465,22 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	  memcpy ((void *) &final_log_hdr, la_Info.act_log.log_hdr, sizeof (LOG_HEADER));
 
 	  /* the received pages are all the applier gets only while heartbeat fails over to the local server
-	   * (la_is_received_log_end ()). ask the local server only when the header could need it */
-	  la_Info.is_failing_over = false;
+	   * (la_is_received_log_end ()). ask the local server only when the header could need it, once a second */
 	  if (final_log_hdr.ha_server_state == HA_SERVER_STATE_DEAD
 	      && final_log_hdr.ha_file_status != LOG_HA_FILESTAT_SYNCHRONIZED)
 	    {
-	      /* HA_SERVER_STATE_NA asks the current state without changing it */
-	      la_Info.is_failing_over =
-		(boot_change_ha_mode (HA_SERVER_STATE_NA, false, 0) == HA_SERVER_STATE_TO_BE_ACTIVE);
+	      now = time (NULL);
+	      if (now != la_Info.failing_over_asked_time)
+		{
+		  /* HA_SERVER_STATE_NA asks the current state without changing it */
+		  la_Info.is_failing_over =
+		    (boot_change_ha_mode (HA_SERVER_STATE_NA, false, 0) == HA_SERVER_STATE_TO_BE_ACTIVE);
+		  la_Info.failing_over_asked_time = now;
+		}
+	    }
+	  else
+	    {
+	      la_Info.is_failing_over = false;
 	    }
 
 	  if (prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS) >= 0)
