@@ -903,6 +903,18 @@ struct qo_fk_join_info
 };
 typedef struct qo_fk_join_info QO_FK_JOIN_INFO;
 
+/*
+ * A parse tree link cut for the moment. It lives in the frame of the function that cut the link,
+ * which is still there when qo_abort() is called beneath it.
+ */
+typedef struct qo_detached_link QO_DETACHED_LINK;
+struct qo_detached_link
+{
+  PT_NODE **slot;		/* where the link is */
+  PT_NODE *saved;		/* what it pointed to */
+  QO_DETACHED_LINK *prev;	/* the link cut before this one */
+};
+
 struct qo_env
 {
   /*
@@ -943,6 +955,13 @@ struct qo_env
    * (void * because QO_IMPLIED_JOIN_PAIR is private to query_graph.c.)
    */
   void *implied_pairs;
+
+  /*
+   * The parse tree links the optimizer has cut for the moment and is to put back, innermost first.
+   * qo_abort() puts them back before it leaves, so that the statement which then runs without a plan
+   * runs on the tree it was given. See qo_detach_link().
+   */
+  QO_DETACHED_LINK *detached_links;
 
   /*
    * The final plan produced by the optimizer.
