@@ -129,6 +129,7 @@ struct locator_kept_children
   int n_read;			/* returned by locator_kept_read () since the last rewind */
   int mem_limit;		/* held in memory up to this many, then in a list file; 0 for the list file at once */
   bool no_child;		/* phase 1 found no entry of a restrict check's key that could be a child */
+  bool fails_on_child;		/* a restrict check no action precedes: any committed child fails the statement */
   BTREE_FK_SEEN *inserts;	/* the entries phase 1 found being inserted, sorted by OID */
   int n_inserts;
   int inserts_cap;
@@ -281,7 +282,9 @@ static int locator_collect_children_of_key (THREAD_ENTRY * thread_p, OR_INDEX * 
 					    bool on_update, LOCATOR_KEPT_CHILDREN ** collected_p, int *n_fk_p,
 					    int *fails_fk_p);
 static int locator_wait_out_collected_writers (THREAD_ENTRY * thread_p, OR_INDEX * index,
-					       LOCATOR_KEPT_CHILDREN * collected, int from_fk_i);
+					       LOCATOR_KEPT_CHILDREN * collected, int from_fk_i, int *fails_fk_p);
+static int locator_is_committed_child (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, MVCCID inserter,
+				       bool * committed);
 static void locator_kept_init (LOCATOR_KEPT_CHILDREN * kept);
 static void locator_kept_clear (THREAD_ENTRY * thread_p, LOCATOR_KEPT_CHILDREN * kept);
 static int locator_kept_add (THREAD_ENTRY * thread_p, LOCATOR_KEPT_CHILDREN * kept, const OID * oids, int n);
@@ -4979,7 +4982,7 @@ locator_wait_out_child_conflict (THREAD_ENTRY * thread_p, OR_INDEX * index, LOCA
   locator_kept_rewind (thread_p, &collected[fk_i]);
   if (++(*n_restart) == LOCATOR_CHILD_RESTART_MAX)
     {
-      return locator_wait_out_collected_writers (thread_p, index, collected, fk_i);
+      return locator_wait_out_collected_writers (thread_p, index, collected, fk_i, NULL);
     }
   return NO_ERROR;
 }
@@ -5011,6 +5014,7 @@ locator_kept_init (LOCATOR_KEPT_CHILDREN * kept)
   kept->n_read = 0;
   kept->mem_limit = 0;
   kept->no_child = false;
+  kept->fails_on_child = false;
   kept->inserts = NULL;
   kept->n_inserts = 0;
   kept->inserts_cap = 0;
@@ -5454,9 +5458,10 @@ locator_check_restrict_in_place (THREAD_ENTRY * thread_p, OR_FOREIGN_KEY * fkref
  *		       list marked no_child had nothing that could be a child, so its check is skipped
  *   n_fk_p(out): the number of lists
  *
- *   fails_fk_p(out): the restrict foreign key whose committed child fails the statement, so that phase 2 is skipped;
- *		      -1 when there is none. If that child is gone by its check, the caller waits for the writers of the
- *		      lists after it (locator_wait_out_collected_writers ()).
+ *   fails_fk_p(out): the restrict foreign key whose committed child fails the statement, found in phase 1 (phase 2
+ *		      is skipped) or left by a writer phase 2 waited for (phase 2 stops there); -1 when there is none.
+ *		      If that child is gone by its check, the caller waits for the writers of the lists after it
+ *		      (locator_wait_out_collected_writers ()).
  *
  * Note: the caller acts on these lists only.  A writer that publishes an entry of the key after they are read meets
  *	 the mark and waits on this transaction, so waiting for it in turn would close a cycle.
@@ -5550,6 +5555,7 @@ locator_collect_children_of_key (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_V
 	}
       /* a row loaded without the check (loaddb) and committed since would not be found either */
       collected[fk_i].no_child = !action_seen && !rs.committed_child && collected[fk_i].n_held == 0;
+      collected[fk_i].fails_on_child = !action_seen;
       assert (fk_i != *fails_fk_p || !collected[fk_i].no_child);
     }
 
@@ -5557,9 +5563,45 @@ locator_collect_children_of_key (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_V
   db_private_free_and_init (thread_p, inserters);
   if (error_code == NO_ERROR && !fails)
     {
-      error_code = locator_wait_out_collected_writers (thread_p, index, collected, 0);
+      error_code = locator_wait_out_collected_writers (thread_p, index, collected, 0, fails_fk_p);
     }
   return error_code;
+}
+
+/*
+ * locator_is_committed_child () - whether a row phase 1 gathered is, now that its writer has ended, a committed child
+ *				    no other active transaction is writing
+ *
+ * return: NO_ERROR or error code
+ *
+ * Note: the restrict check in phase 3 decides; a row that moved to another key since only makes phase 2 stop early.
+ */
+static int
+locator_is_committed_child (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, MVCCID inserter,
+			    bool * committed)
+{
+  HEAP_GET_CONTEXT context;
+  MVCC_REC_HEADER header;
+  SCAN_CODE scan;
+  int error_code;
+
+  *committed = false;
+  heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN);
+  context.latch_mode = PGBUF_LATCH_READ;
+  scan = locator_peek_last_header (thread_p, &context, &header);
+  if (scan == S_ERROR && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  if (scan != S_SUCCESS)
+    {
+      er_clear ();
+      return NO_ERROR;
+    }
+  *committed = (!locator_is_other_row (&header, inserter)
+		&& mvcc_satisfies_delete (thread_p, &header) == DELETE_RECORD_CAN_DELETE);
+  return NO_ERROR;
 }
 
 /*
@@ -5567,10 +5609,17 @@ locator_collect_children_of_key (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_V
  *					    wait for their writers while no child of the key is locked
  *
  * return: NO_ERROR or error code
+ *
+ *   fails_fk_p(out): when a writer's end leaves a committed child in a list that fails on one, that list, and the
+ *		      waits stop there: the statement fails without the writers after it, one of which may be waiting
+ *		      on our mark. NULL to wait for every writer.
+ *
+ * Note: the lists are waited for in order, one writer at a time, so a committed child is seen only after the writer
+ *	 waited for before it has ended. If that writer is waiting on our mark, the cycle stays.
  */
 static int
 locator_wait_out_collected_writers (THREAD_ENTRY * thread_p, OR_INDEX * index, LOCATOR_KEPT_CHILDREN * collected,
-				    int from_fk_i)
+				    int from_fk_i, int *fails_fk_p)
 {
   OR_FOREIGN_KEY *fkref;
   OID *oids;
@@ -5602,8 +5651,22 @@ locator_wait_out_collected_writers (THREAD_ENTRY * thread_p, OR_INDEX * index, L
 	  error_code = locator_kept_read (thread_p, &collected[fk_i], oids, capacity, &n);
 	  for (i = 0; error_code == NO_ERROR && i < n; i++)
 	    {
-	      error_code = locator_wait_out_child_writer (thread_p, &oids[i], &fkref->self_oid,
-							  locator_gathered_inserter (&collected[fk_i], &oids[i]));
+	      MVCCID inserter = locator_gathered_inserter (&collected[fk_i], &oids[i]);
+	      bool committed = false;
+
+	      error_code = locator_wait_out_child_writer (thread_p, &oids[i], &fkref->self_oid, inserter);
+	      if (error_code == NO_ERROR && fails_fk_p != NULL && collected[fk_i].fails_on_child)
+		{
+		  error_code = locator_is_committed_child (thread_p, &oids[i], &fkref->self_oid, inserter, &committed);
+		}
+	      if (committed)
+		{
+		  assert (!collected[fk_i].no_child);
+		  *fails_fk_p = fk_i;
+		  locator_kept_rewind (thread_p, &collected[fk_i]);
+		  db_private_free_and_init (thread_p, oids);
+		  return NO_ERROR;
+		}
 	    }
 	}
       while (error_code == NO_ERROR && n > 0);
@@ -5700,8 +5763,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		}
 	      if (fk_i == fails_fk)
 		{
-		  /* the committed child that skipped phase 2 is gone: wait for the writers of the lists after it */
-		  error_code = locator_wait_out_collected_writers (thread_p, index, collected, fk_i + 1);
+		  /* the committed child that ended or skipped phase 2 is gone: wait for the writers of the lists after it */
+		  error_code = locator_wait_out_collected_writers (thread_p, index, collected, fk_i + 1, &fails_fk);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error3;
@@ -6101,8 +6164,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		}
 	      if (fk_i == fails_fk)
 		{
-		  /* the committed child that skipped phase 2 is gone: wait for the writers of the lists after it */
-		  error_code = locator_wait_out_collected_writers (thread_p, index, collected, fk_i + 1);
+		  /* the committed child that ended or skipped phase 2 is gone: wait for the writers of the lists after it */
+		  error_code = locator_wait_out_collected_writers (thread_p, index, collected, fk_i + 1, &fails_fk);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error3;
