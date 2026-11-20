@@ -3917,7 +3917,7 @@ qo_plan_decide_bitmap_heap (QO_PLAN * planp, bool key_order)
 {
   QO_ENV *env;
   PT_NODE *tree;
-  bool to_end = true, inst_num = false;
+  bool to_end = true, inst_num = false, calls = false;
   int t;
 
   if (planp == NULL || planp->info == NULL || (env = planp->info->env) == NULL)
@@ -3945,6 +3945,13 @@ qo_plan_decide_bitmap_heap (QO_PLAN * planp, bool key_order)
   if (tree->info.query.correlation_level != 0)
     {
       /* a correlated subquery runs once an outer row: a bitmap made again for every run costs more than it saves */
+      return;
+    }
+  (void) parser_walk_tree (QO_ENV_PARSER (env), tree, pt_is_method_call_node, &calls, NULL, NULL);
+  if (calls)
+    {
+      /* a stored procedure or a method the block calls may run a statement between two rows, which takes a new
+       * snapshot under READ COMMITTED: the rows recorded under the old one would be read under the new one */
       return;
     }
   if (tree->info.query.limit != NULL && tree->info.query.order_by == NULL
