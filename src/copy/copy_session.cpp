@@ -40,7 +40,8 @@
 #include "object_domain.h"
 #include "object_representation_sr.h"
 #include "query_executor.h"
-#include "record_descriptor.hpp"
+#include "heap_oos.hpp"
+#include "heap_pending_record.hpp"
 #include "session.h"
 #include "string_opfunc.h"
 #include "util_func.h"
@@ -544,7 +545,7 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	  }
       }
 
-      /* pack the row into a record_descriptor and queue it for batch insert */
+      /* pack the row into a record and queue it for batch insert */
       for (int i = 0; i < m_num_cols; i++)
 	{
 	  if (i == m_auto_incr_col && DB_IS_NULL (&vals[i]))
@@ -577,33 +578,27 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	}
 
       {
-	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
-	RECDES *old_recdes = NULL;
+	heap_pending_record record;
 
-	/* the record is as large as the row the client sent, and building it holds no latch */
+	/* the record is as large as the row; a failed allocation comes back as an error, with its size */
+	if (heap_attrinfo_prepare_record (thread_p, &attrinfo, NULL, &record, false) != S_SUCCESS)
+	  {
+	    error = er_errid ();
+	    if (error == NO_ERROR)
+	      {
+		error = ER_FAILED;
+	      }
+	    goto cleanup;
+	  }
+
+	const std::size_t record_bytes = record.retained_bytes ();
 	try
 	  {
-	    if (heap_attrinfo_transform_to_disk_except_lob (thread_p, &attrinfo, old_recdes, &new_recdes) != S_SUCCESS)
-	      {
-		error = er_errid ();
-		if (error == NO_ERROR)
-		  {
-		    error = ER_FAILED;
-		  }
-		goto cleanup;
-	      }
-
-	    m_recdes_collected.push_back (std::move (new_recdes));
-	  }
-	catch (const cubmem::bad_block_alloc &e)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, e.requested ());
-	    error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto cleanup;
+	    m_recdes_collected.push_back (std::move (record));
 	  }
 	catch (const std::bad_alloc &)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) bytes_consumed);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, record_bytes);
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto cleanup;
 	  }
@@ -827,6 +822,7 @@ copy_session::flush_batch (THREAD_ENTRY *thread_p)
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  (void) heap_oos_begin_insert_publication (thread_p);
 	  log_sysop_abort (thread_p);
 	  goto done;
 	}
@@ -843,10 +839,12 @@ copy_session::flush_batch (THREAD_ENTRY *thread_p)
 	  RECDES local_record = m_recdes_collected[i].get_recdes ();
 	  error = locator_insert_force (thread_p, &m_hfid, &m_class_oid, &dummy_oid, &local_record, true,
 					MULTI_ROW_INSERT, &scancache, &force_count, DB_NOT_PARTITIONED_CLASS,
-					NULL, NULL, UPDATE_INPLACE_NONE, NULL, has_BU_lock, false, false);
+					NULL, NULL, UPDATE_INPLACE_NONE, NULL, LC_FORCE_FLAG_NONE, false,
+					&m_recdes_collected[i]);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
+	      (void) heap_oos_begin_insert_publication (thread_p);
 	      log_sysop_abort (thread_p);
 	      goto done;
 	    }

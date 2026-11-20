@@ -1712,6 +1712,7 @@ typedef struct parser_varchar PARSER_VARCHAR;
 typedef struct parser_context PARSER_CONTEXT;
 typedef struct pt_static_sql_edit PT_STATIC_SQL_EDIT;
 typedef struct pt_static_sql_star PT_STATIC_SQL_STAR;
+typedef struct pt_static_sql_host_var PT_STATIC_SQL_HOST_VAR;
 
 typedef struct parser_node PT_NODE;
 
@@ -2029,6 +2030,16 @@ typedef enum
   PT_ATTR_INVISIBLE
 } PT_ATTR_INVISIBLE_SETTING;
 
+typedef enum
+{
+  PT_ATTR_STORAGE_UNSET,	/* clause omitted: preserve existing setting on MODIFY/CHANGE */
+  PT_ATTR_STORAGE_DEFAULT,
+  PT_ATTR_STORAGE_PREFER_OUTLINE,
+  PT_ATTR_STORAGE_PREFER_INLINE,	/* STORAGE PREFER_INLINE: lower OOS demotion priority */
+  PT_ATTR_STORAGE_FORCE_OUTLINE,	/* STORAGE FORCE_OUTLINE: bypass record gate for values larger than OOS stub */
+  PT_ATTR_STORAGE_FORCE_INLINE
+} PT_ATTR_STORAGE_SETTING;
+
 /* Info for ATTR_DEF */
 struct pt_attr_def_info
 {
@@ -2042,6 +2053,7 @@ struct pt_attr_def_info
   int size_constraint;		/* max length of STRING */
   short constrain_not_null;
   PT_ATTR_INVISIBLE_SETTING attr_invisible:2;	/* unchange | VISIBLE | INVISIBLE */
+  PT_ATTR_STORAGE_SETTING attr_storage:3;
 };
 
 /* Info for ALTER TABLE ADD COLUMN [FIRST | AFTER column_name ] */
@@ -2995,6 +3007,9 @@ struct pt_select_info
 #define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
 #define PT_SELECT_INFO_MINMAX_NULL_FILTERED 0x020000	/* a "col IS NOT NULL" term was added so the index-based
 							 * MIN/MAX scan may skip NULL keys (CBRD-24890) */
+#define PT_SELECT_INFO_LENIENT_JOIN_HINT  0x040000	/* retry of an optimization that failed with the join method
+							 * hints: ignore one that cannot be applied to a join for
+							 * that join only (CBRD-28089) */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
@@ -3039,6 +3054,12 @@ struct pt_query_info
 				 * do_replan_statement_with_bind_peek ()) restore the level to 0
 				 * first, so the subquery keeps its XASL_ZERO_CORR_LEVEL
 				 * (uncorrelated, parallel-executable) marking. */
+    unsigned stays_query:1;	/* a set operation of a statement typed again with its bound values
+				 * (db_execute_and_keep_statement_local ()): it folds into an empty operand,
+				 * never into a value (pt_check_union_is_foldable ()) */
+    unsigned folded_distinct:1;	/* a SELECT DISTINCT from a derived table of the operand a set operation
+				 * without ALL folded to (pt_fold_union_as_derived ()): where only the set of
+				 * its rows counts, the operand takes its place (pt_fold_union_unwrap ()) */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
@@ -4068,6 +4089,13 @@ typedef enum
   PT_SS_MERGE_INSERT_COLUMNS	/* INSERT of MERGE without a column list; pos is not used */
 } PT_STATIC_SQL_STAR_KIND;
 
+/* a PL/CSQL variable of a static SQL statement replaced with a host variable (see pt_parameterize_for_static_sql ()) */
+struct pt_static_sql_host_var
+{
+  int end;			/* end of the name or the path expression in the original text, -1 if unknown */
+  const char *label;		/* the name or the path expression, NULL if unknown */
+};
+
 struct pt_static_sql_star
 {
   PT_STATIC_SQL_STAR_KIND kind;
@@ -4199,7 +4227,7 @@ struct parser_context
   PT_STATIC_SQL_EDIT *static_sql_edits;
   int static_sql_edit_count;
   int static_sql_edit_status;	/* 0: not collected, 1: collected, -1: can not be expressed as text edits */
-  int *static_sql_host_var_end;	/* end in the text of each PL/CSQL variable replaced with a host variable */
+  PT_STATIC_SQL_HOST_VAR *static_sql_host_vars;	/* each PL/CSQL variable replaced with a host variable */
   PT_STATIC_SQL_STAR *static_sql_stars;	/* column lists implied in the text */
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 

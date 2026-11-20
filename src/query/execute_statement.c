@@ -145,6 +145,7 @@
 
 static void do_set_trace_to_query_flag (QUERY_FLAG * query_flag);
 static void do_send_plan_trace_to_session (PARSER_CONTEXT * parser);
+static int do_set_lock_timeout_hint (PT_HINT_ENUM hint, PT_NODE * hint_arg);
 static int do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class_,
 			     PT_NODE ** update, PT_NODE * values);
@@ -9774,9 +9775,7 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
       QFILE_LIST_ID *oid_list = NULL;
       int no_vals = 0;
       int no_consts = 0;
-      int wait_msecs = -2;
       int old_wait_msecs = -2;
-      float hint_waitsecs;
 
       /* do update on client */
       lhs = statement->info.update.assignment->info.expr.arg1;
@@ -9787,29 +9786,10 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
       if (lhs->info.name.meta_class != PT_META_ATTR)
 	{
 	  QUERY_ID query_id_self;
-	  PT_NODE *hint_arg;
 
 	  query_id_self = parser->query_id;
 	  parser->query_id = NULL_QUERY_ID;
 
-	  hint_arg = statement->info.update.waitsecs_hint;
-	  if (statement->info.update.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
-	    {
-	      hint_waitsecs = (float) atof (hint_arg->info.name.original);
-	      if (hint_waitsecs > 0)
-		{
-		  wait_msecs = (int) (hint_waitsecs * 1000);
-		}
-	      else
-		{
-		  wait_msecs = (int) hint_waitsecs;
-		}
-	      if (wait_msecs >= -1)
-		{
-		  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-		  (void) tran_reset_wait_times (wait_msecs);
-		}
-	    }
 	  if (error == NO_ERROR)
 	    {
 	      error =
@@ -9819,6 +9799,10 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
 		{
 		  goto exit_on_error;
 		}
+
+	      old_wait_msecs =
+		do_set_lock_timeout_hint (statement->info.update.hint, statement->info.update.waitsecs_hint);
+
 	      /* get the oid's and new values */
 	      oid_list =
 		get_select_list_to_update (parser, statement->info.update.spec, select_names, select_values,
@@ -9830,6 +9814,13 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
 	      /* restore tree structure */
 	      pt_restore_assignment_links (statement->info.update.assignment, links, -1);
 	    }
+
+	  if (oid_list)
+	    {
+	      /* update each oid */
+	      error = update_objs_for_list_file (parser, oid_list, statement, savepoint_started);
+	    }
+	  /* the hint covers the update step too: a view of several queries locks the rows of its later queries there */
 	  if (old_wait_msecs >= -1)
 	    {
 	      (void) tran_reset_wait_times (old_wait_msecs);
@@ -9842,9 +9833,6 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
 	      error = ER_GENERIC_ERROR;
 	      goto exit_on_error;
 	    }
-
-	  /* update each oid */
-	  error = update_objs_for_list_file (parser, oid_list, statement, savepoint_started);
 
 	  cursor_free_self_list_id (oid_list);
 	  pt_end_query (parser, query_id_self);
@@ -10505,9 +10493,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
   int au_save;
-  int wait_msecs = -2, old_wait_msecs = -2;
-  float hint_waitsecs;
-  PT_NODE *hint_arg;
+  int old_wait_msecs = -2;
   QUERY_ID query_id_self = parser->query_id;
   bool savepoint_started = false;
 
@@ -10551,6 +10537,12 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  statement->etc = NULL;
 	  err = NO_ERROR;
 	  continue;		/* continue to next UPDATE statement */
+	}
+
+      /* a client-side UPDATE locks its target rows in the SELECT below, so the LOCK_TIMEOUT hint must cover it */
+      if (!statement->info.update.server_update)
+	{
+	  old_wait_msecs = do_set_lock_timeout_hint (statement->info.update.hint, statement->info.update.waitsecs_hint);
 	}
 
       /*
@@ -10642,24 +10634,6 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (!statement->info.update.server_update)
 	{
-	  hint_arg = statement->info.update.waitsecs_hint;
-	  if (statement->info.update.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
-	    {
-	      hint_waitsecs = (float) atof (hint_arg->info.name.original);
-	      if (hint_waitsecs > 0)
-		{
-		  wait_msecs = (int) (hint_waitsecs * 1000);
-		}
-	      else
-		{
-		  wait_msecs = (int) hint_waitsecs;
-		}
-	      if (wait_msecs >= -1)
-		{
-		  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-		  (void) tran_reset_wait_times (wait_msecs);
-		}
-	    }
 	  AU_SAVE_AND_DISABLE (au_save);	/* this prevents authorization checking during execution */
 	  if (statement->info.update.do_class_attrs)
 	    {
@@ -10676,6 +10650,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (old_wait_msecs >= -1)
 	    {
 	      (void) tran_reset_wait_times (old_wait_msecs);
+	      old_wait_msecs = -2;
 	    }
 	}
 
@@ -10750,6 +10725,12 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number,
 			   er_msg (), NULL);
 	}
+    }
+
+  /* a break above skips the restore after the update step */
+  if (old_wait_msecs >= -1)
+    {
+      (void) tran_reset_wait_times (old_wait_msecs);
     }
 
   /* If error and a savepoint was created, rollback to savepoint. No need to rollback if the TM aborted the
@@ -11033,7 +11014,7 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID
 	  error = db_is_deleted (mop);
 	  if (error < 0)
 	    {
-	      return error;
+	      goto cleanup;
 	    }
 	  if (error > 0)
 	    {
@@ -11294,9 +11275,8 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
   int trigger_involved = 0;
   MOBJ class_;
   DB_OBJECT *class_obj;
-  int wait_msecs = -2, old_wait_msecs = -2;
-  float hint_waitsecs;
-  PT_NODE *hint_arg = NULL, *spec = NULL;
+  int old_wait_msecs = -2;
+  PT_NODE *spec = NULL;
   bool has_virt_object = false;
 
   /* delete a "real" class in this database */
@@ -11345,24 +11325,7 @@ delete_real_class (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_id_self = parser->query_id;
       parser->query_id = NULL_QUERY_ID;
 
-      hint_arg = statement->info.delete_.waitsecs_hint;
-      if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
-	{
-	  hint_waitsecs = (float) atof (hint_arg->info.name.original);
-	  if (hint_waitsecs > 0)
-	    {
-	      wait_msecs = (int) (hint_waitsecs * 1000);
-	    }
-	  else
-	    {
-	      wait_msecs = (int) hint_waitsecs;
-	    }
-	  if (wait_msecs >= -1)
-	    {
-	      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-	      (void) tran_reset_wait_times (wait_msecs);
-	    }
-	}
+      old_wait_msecs = do_set_lock_timeout_hint (statement->info.delete_.hint, statement->info.delete_.waitsecs_hint);
       if (error >= NO_ERROR)
 	{
 	  /* get the oid's and new values */
@@ -11853,9 +11816,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
   int au_save;
-  int wait_msecs = -2, old_wait_msecs = -2;
-  float hint_waitsecs;
-  PT_NODE *hint_arg;
+  int old_wait_msecs = -2;
   int query_flag;
   QUERY_ID query_id_self = parser->query_id;
   bool savepoint_started = false;
@@ -11960,6 +11921,13 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 	}
 
+      /* a client-side DELETE locks its target rows in the SELECT below, so the LOCK_TIMEOUT hint must cover it */
+      if (!statement->info.delete_.server_delete)
+	{
+	  old_wait_msecs =
+	    do_set_lock_timeout_hint (statement->info.delete_.hint, statement->info.delete_.waitsecs_hint);
+	}
+
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
       assert (parser->query_id == NULL_QUERY_ID);
@@ -11978,33 +11946,17 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      hint_arg = statement->info.delete_.waitsecs_hint;
-	      if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
-		{
-		  hint_waitsecs = (float) atof (hint_arg->info.name.original);
-		  if (hint_waitsecs > 0)
-		    {
-		      wait_msecs = (int) (hint_waitsecs * 1000);
-		    }
-		  else
-		    {
-		      wait_msecs = (int) hint_waitsecs;
-		    }
-		  if (wait_msecs >= -1)
-		    {
-		      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-		      (void) tran_reset_wait_times (wait_msecs);
-		    }
-		}
 	      AU_SAVE_AND_DISABLE (au_save);	/* this prevents authorization checking during execution */
 	      /* delete each oid */
 	      err = delete_list_by_oids (parser, statement, list_id, savepoint_started);
 	      AU_RESTORE (au_save);
-	      if (old_wait_msecs >= -1)
-		{
-		  (void) tran_reset_wait_times (old_wait_msecs);
-		}
 	    }
+	}
+
+      if (old_wait_msecs >= -1)
+	{
+	  (void) tran_reset_wait_times (old_wait_msecs);
+	  old_wait_msecs = -2;
 	}
 
       /* free returned QFILE_LIST_ID */
@@ -13497,9 +13449,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   PT_NODE *update = NULL;
   DB_ATTDESC **attr_descs = NULL;
   int i, degree, row_count = 0;
-  int wait_msecs = -2, old_wait_msecs = -2;
-  float hint_waitsecs;
-  PT_NODE *hint_arg;
+  int old_wait_msecs = -2;
   int pruning_type = DB_NOT_PARTITIONED_CLASS;
   PT_NODE *value_clauses = statement->info.insert.value_clauses;
   PT_NODE *value_list = NULL;
@@ -13584,6 +13534,9 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   else if (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY
 	   && (vc = value_clauses->info.node_list.list) != NULL)
     {
+      /* the rows are inserted one by one on the client, so the LOCK_TIMEOUT hint must cover them as for VALUES */
+      old_wait_msecs = do_set_lock_timeout_hint (statement->info.insert.hint, statement->info.insert.waitsecs_hint);
+
       /* execute sub-query & insert its results into target class */
       row_count = insert_subquery_results (parser, statement, value_clauses, class_, savepoint_name);
       error = (row_count < 0) ? row_count : NO_ERROR;
@@ -13681,25 +13634,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 		}
 	    }
 
-	  hint_arg = statement->info.insert.waitsecs_hint;
-	  if (statement->info.insert.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
-	    {
-	      hint_waitsecs = (float) atof (hint_arg->info.name.original);
-	      if (hint_waitsecs > 0)
-		{
-		  wait_msecs = (int) (hint_waitsecs * 1000);
-		}
-	      else
-		{
-		  wait_msecs = (int) hint_waitsecs;
-		}
-	      if (wait_msecs >= -1)
-		{
-		  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-
-		  (void) tran_reset_wait_times (wait_msecs);
-		}
-	    }
+	  old_wait_msecs = do_set_lock_timeout_hint (statement->info.insert.hint, statement->info.insert.waitsecs_hint);
 	  i = 0;
 	  while (attr && vc)
 	    {
@@ -13891,6 +13826,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	  if (old_wait_msecs >= -1)
 	    {
 	      (void) tran_reset_wait_times (old_wait_msecs);
+	      old_wait_msecs = -2;
 	    }
 	}
     }
@@ -13968,6 +13904,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
     }
 
 cleanup:
+  /* the only restore of INSERT ... SELECT, and of a VALUES row that ended in an error */
+  if (old_wait_msecs >= -1)
+    {
+      (void) tran_reset_wait_times (old_wait_msecs);
+    }
+
   /* free attribute descriptors */
   if (attr_descs)
     {
@@ -18269,13 +18211,11 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *const_names = NULL, *const_values = NULL;
   PT_NODE *flat, *values_list = NULL;
   PT_NODE **links = NULL;
-  PT_NODE *hint_arg;
   QUERY_ID ins_query_id = NULL_QUERY_ID;
   QUERY_ID upd_query_id = NULL_QUERY_ID;
   QUERY_ID query_id_self = parser->query_id;
   int no_vals, no_consts;
-  int wait_msecs = -2, old_wait_msecs = -2;
-  float hint_waitsecs;
+  int old_wait_msecs = -2;
   int result = 0;
   int au_save = 0;
   int outer_au_save = 0;
@@ -18398,6 +18338,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
     }
+
+  /* the LOCK_TIMEOUT hint covers every query below, including the SELECT that locks the target rows to update */
+  old_wait_msecs = do_set_lock_timeout_hint (statement->info.merge.hint, statement->info.merge.waitsecs_hint);
 
   /* check insert part */
   if (statement->info.merge.insert.value_clauses)
@@ -18526,25 +18469,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  hint_arg = statement->info.merge.waitsecs_hint;
-  if ((statement->info.merge.hint & PT_HINT_LK_TIMEOUT) && PT_IS_HINT_NODE (hint_arg))
-    {
-      hint_waitsecs = (float) atof (hint_arg->info.name.original);
-      if (hint_waitsecs > 0)
-	{
-	  wait_msecs = (int) (hint_waitsecs * 1000);
-	}
-      else
-	{
-	  wait_msecs = (int) hint_waitsecs;
-	}
-      if (wait_msecs >= -1)
-	{
-	  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-	  (void) tran_reset_wait_times (wait_msecs);
-	}
-    }
-
   /* do update part */
   if (statement->info.merge.update.assignment && !insert_only)
     {
@@ -18610,11 +18534,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* pt_end_query() already called by insert_subquery_results() */
     }
 
-  if (old_wait_msecs >= -1)
-    {
-      (void) tran_reset_wait_times (old_wait_msecs);
-    }
-
   if (err >= NO_ERROR)
     {
       err = db_is_vclass (class_obj);
@@ -18625,6 +18544,11 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
 exit:
+  if (old_wait_msecs >= -1)
+    {
+      (void) tran_reset_wait_times (old_wait_msecs);
+    }
+
   if (upd_select_stmt != NULL)
     {
       parser_free_tree (parser, upd_select_stmt);
@@ -19133,9 +19057,8 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id = NULL;
   int au_save;
-  int wait_msecs = -2, old_wait_msecs = -2;
-  float hint_waitsecs;
-  PT_NODE *ins_select_stmt = NULL, *hint_arg;
+  int old_wait_msecs = -2;
+  PT_NODE *ins_select_stmt = NULL;
   QUERY_ID ins_query_id = NULL_QUERY_ID;
   QUERY_ID query_id_self = parser->query_id;
   bool insert_only = (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
@@ -19281,6 +19204,9 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       /* client side execution */
 
+      /* the LOCK_TIMEOUT hint covers every query below, including the SELECT that locks the target rows to update */
+      old_wait_msecs = do_set_lock_timeout_hint (statement->info.merge.hint, statement->info.merge.waitsecs_hint);
+
       if (statement->info.merge.update.assignment && !insert_only && !statement->info.merge.update.do_class_attrs)
 	{
 	  int query_flag = DEFAULT_EXEC_MODE;
@@ -19364,25 +19290,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  err = ER_GENERIC_ERROR;
 		}
 	      goto exit;
-	    }
-	}
-
-      hint_arg = statement->info.merge.waitsecs_hint;
-      if ((statement->info.merge.hint & PT_HINT_LK_TIMEOUT) && PT_IS_HINT_NODE (hint_arg))
-	{
-	  hint_waitsecs = (float) atof (hint_arg->info.name.original);
-	  if (hint_waitsecs > 0)
-	    {
-	      wait_msecs = (int) (hint_waitsecs * 1000);
-	    }
-	  else
-	    {
-	      wait_msecs = (int) hint_waitsecs;
-	    }
-	  if (wait_msecs >= -1)
-	    {
-	      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-	      (void) tran_reset_wait_times (wait_msecs);
 	    }
 	}
 
@@ -19473,11 +19380,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  ins_select_stmt = NULL;
 	}
 
-      if (old_wait_msecs >= -1)
-	{
-	  (void) tran_reset_wait_times (old_wait_msecs);
-	}
-
       if (err >= NO_ERROR)
 	{
 	  err = db_is_vclass (class_obj);
@@ -19489,6 +19391,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
 exit:
+  if (old_wait_msecs >= -1)
+    {
+      (void) tran_reset_wait_times (old_wait_msecs);
+    }
+
   if (ins_select_stmt != NULL)
     {
       if (ins_select_stmt->etc != NULL)
@@ -21800,6 +21707,43 @@ end:
 
   return error;
 #undef QUERY_BUF_SIZE
+}
+
+/*
+ * do_set_lock_timeout_hint() - make the LOCK_TIMEOUT hint of a DML the lock wait time of the transaction
+ *   return: the wait time to restore, or -2 if the statement has no valid hint
+ *   hint(in): hint flags of the statement
+ *   hint_arg(in): argument of the LOCK_TIMEOUT hint, in seconds
+ */
+static int
+do_set_lock_timeout_hint (PT_HINT_ENUM hint, PT_NODE * hint_arg)
+{
+  float hint_waitsecs;
+  int wait_msecs;
+  int old_wait_msecs;
+
+  if (!(hint & PT_HINT_LK_TIMEOUT) || !PT_IS_HINT_NODE (hint_arg))
+    {
+      return -2;
+    }
+
+  hint_waitsecs = (float) atof (hint_arg->info.name.original);
+  if (hint_waitsecs > 0)
+    {
+      wait_msecs = (int) (hint_waitsecs * 1000);
+    }
+  else
+    {
+      wait_msecs = (int) hint_waitsecs;
+    }
+  if (wait_msecs < -1)
+    {
+      return -2;
+    }
+
+  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+  (void) tran_reset_wait_times (wait_msecs);
+  return old_wait_msecs;
 }
 
 /*

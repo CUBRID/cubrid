@@ -5774,7 +5774,7 @@ stx_build_element_compares (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM *
    * which compares nothing: the term is UNKNOWN, or an empty subquery decides it (CBRD-27574) */
 #if !defined (NDEBUG)
   const TP_DOMAIN *column = term->elemset == NULL ? NULL : term->elemset->type == TYPE_LIST_ID
-    ? domain_list_column_compared (term->elemset->xasl, 0) : term->elemset->domain;
+    ? domain_list_column_of (term->elemset->xasl, 0) : term->elemset->domain;
 #endif
   assert (term->elem == NULL || term->elemset == NULL || kind != 0
 	  || (term->elem->domain != NULL && TP_DOMAIN_TYPE (term->elem->domain) == DB_TYPE_NULL)
@@ -6150,6 +6150,9 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 
   ptr = or_unpack_int (ptr, &access_spec->pruning_type);
   access_spec->batch_keep = NULL;	/* the struct is not allocated zeroed (stx_alloc_struct ()) */
+  access_spec->page_list_keep.npages = 0;
+  access_spec->page_list_keep.nsects = 0;
+  access_spec->page_list_keep.partsect_ftab = NULL;
   access_spec->parts = NULL;
   access_spec->curent = NULL;
   access_spec->row_pruning = NULL;

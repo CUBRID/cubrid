@@ -27,7 +27,7 @@
 #include "dbtype_def.h"
 #include "heap_file.h"
 #include "oid.h"
-#include "record_descriptor.hpp"
+#include "heap_pending_record.hpp"
 #include "thread_compat.hpp"
 #include "copy_stream_kind.h"
 #include "stream_session.hpp"
@@ -97,7 +97,7 @@ class copy_session : public stream_session
     std::int64_t m_row_number;		/* rows seen, decoded or not: what an error reports */
 
     /* rows packed and queued for batch insert (flushed every COPY_FLUSH_BATCH_ROWS) */
-    std::vector<record_descriptor> m_recdes_collected;
+    std::vector<heap_pending_record> m_recdes_collected;
 
     /* reused per-row scratch for CSV field strings; keeps VARCHAR bytes alive
      * through the row insert (out_vals point into it) */
