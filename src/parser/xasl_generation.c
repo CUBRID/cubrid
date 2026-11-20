@@ -22710,10 +22710,7 @@ pt_plan_query_summary (PARSER_CONTEXT * parser, PT_NODE * select_node)
  *   select_node(in/out): of PT_SELECT type
  *   specs(in): the specs, each put in its types[type_idx]
  *   n_specs(in): the number of specs
- *   is_copy(in): select_node is a copy of the query, which takes a copy of the [NOT] EXISTS of a spec
- *
- * Note: in a copy, the derived table of a spec joined INNER is planned for its rows and its cost, which the plan of
- *   the copy reads from its summary (qo_add_node (), qo_sscan_cost ()).
+ *   is_copy(in): select_node is a copy of the query, planned for its cost
  */
 static bool
 pt_rewrite_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI_ANTI_INFO * specs, int n_specs,
@@ -22762,8 +22759,8 @@ pt_rewrite_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI
 	  return false;
 	}
 
-      /* the query itself has the summary made with the XASL of the derived table, and a derived table already
-       * DISTINCT keeps the one pt_plan_semi_anti_joins () made, copied with the query */
+      /* the plan of a copy reads the rows and the cost of the derived table from its summary.  The query itself gets
+       * the summary with the XASL of the derived table, and one already DISTINCT has the one copied with the query */
       if (is_copy && !was_distinct && !pt_plan_query_summary (parser, spec->info.spec.derived_table))
 	{
 	  return false;
@@ -22779,31 +22776,22 @@ pt_rewrite_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI
  *   parser(in): context
  *   select_node(in/out): of PT_SELECT type
  *
- * Note: a SEMI / ANTI JOIN inner is searched once per outer row, behind the specs its ON reads.  A SEMI JOIN may also
- *   be read once with the duplicates removed and joined as an INNER JOIN, which may come first (CBRD-27397,
- *   qo_is_distinct_semi_inner ()), and a spec unnested from a subquery over several tables may run as that
- *   subquery once per outer row instead of building its derived table (CBRD-27929, qo_make_semi_anti_exists_cond ()).
- *   Each combination of the types is planned as a copy of the whole query and the cheapest is kept, up to
- *   SEMI_ANTI_MAX_PLANS combinations.  USE_MERGE naming a SEMI JOIN spec leaves it the INNER JOIN, the one type
- *   a merge join applies to.
- *
- *   Chosen before the XASL of the derived tables is made, so that only the type run has its XASL and its plan output.
- *   A subquery put back has its XASL made with the other subqueries of the WHERE.
+ * Note: chosen before the XASL of the derived tables is made, so that only the type run has its XASL and its plan
+ *   output.
  */
 static void
 pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 {
   SEMI_ANTI_INFO specs[SEMI_ANTI_MAX_SPECS];
   SEMI_ANTI_INFO *curr;
-  PT_NODE *prev_spec, *spec, *subq, *query, *with;
+  PT_NODE *spec, *subq, *query, *with;
   TABLE_INFO *table_info;
   QO_PLAN *plan;
   double cost, best_cost = 0.0;
   int n_specs = 0, n_plans = 1, i;
   bool has_summary, can_distinct_inner, is_merge_hinted, has_best = false;
 
-  for (prev_spec = NULL, spec = select_node->info.query.q.select.from; spec != NULL && !pt_has_error (parser);
-       prev_spec = spec, spec = spec->next)
+  for (spec = select_node->info.query.q.select.from; spec != NULL && !pt_has_error (parser); spec = spec->next)
     {
       /* the plan of a copy reads the rows of a derived table unnested from a subquery from its summary
        * (qo_add_node ()), also when the spec is not compared */
@@ -22822,7 +22810,11 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
       curr->n_types = 0;
       curr->type_idx = 0;
       curr->best_type_idx = 0;
-      can_distinct_inner = qo_is_distinct_semi_inner (parser, select_node, spec, &is_merge_hinted);
+      can_distinct_inner = qo_is_distinct_semi_inner (parser, select_node, spec);
+      /* there is no semi merge join: USE_MERGE naming the spec leaves it the INNER JOIN */
+      is_merge_hinted = (can_distinct_inner
+			 && qo_is_spec_in_hint (select_node, spec, PT_HINT_USE_MERGE,
+						select_node->info.query.q.select.use_merge));
       if (!is_merge_hinted)
 	{
 	  curr->types[curr->n_types++] = SEMI_ANTI_JOIN;
@@ -22831,7 +22823,7 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  curr->types[curr->n_types++] = SEMI_ANTI_DISTINCT;
 	}
-      if (!is_merge_hinted && has_summary && prev_spec != NULL)
+      if (!is_merge_hinted && has_summary && spec != select_node->info.query.q.select.from)
 	{
 	  curr->types[curr->n_types++] = SEMI_ANTI_EXISTS;
 	}

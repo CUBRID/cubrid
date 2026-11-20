@@ -1680,8 +1680,7 @@ typedef enum
 						 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
   PT_SPEC_FLAG_UNNESTED_SUBQUERY = 0x80000	/* derived SEMI/ANTI spec unnested from a [NOT] EXISTS / [NOT] IN subquery
 						 * over several tables, or the derived table that reads a SEMI JOIN table with its
-						 * duplicates removed.  Its XASL is made once the query keeps it; before, the plan reads
-						 * its rows from its summary (qo_add_node ()) and charges its build (qo_sscan_cost ()) */
+						 * duplicates removed.  Its XASL is made once the query keeps it */
 } PT_SPEC_FLAG;
 
 typedef enum

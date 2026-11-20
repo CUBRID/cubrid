@@ -54,7 +54,6 @@ static PT_NODE *qo_get_eq_term_column (PARSER_CONTEXT * parser, PT_NODE * cnf, P
 static bool qo_check_eq_term_on_column (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec, const char *col_name);
 static bool qo_is_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec);
 static bool qo_has_key_limit (PT_NODE * using_index);
-static bool qo_is_spec_in_hint (PT_NODE * node, PT_NODE * spec, PT_HINT_ENUM hint, PT_NODE * args);
 static bool qo_is_index_term_on_column (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * spec, const char *col_name);
 static bool qo_is_idx_join_possible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec);
 static PT_NODE *qo_is_other_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
@@ -1122,7 +1121,7 @@ qo_is_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spe
  *   hint(in): the hint bit
  *   args(in): the argument list of 'hint' in 'node'
  */
-static bool
+bool
 qo_is_spec_in_hint (PT_NODE * node, PT_NODE * spec, PT_HINT_ENUM hint, PT_NODE * args)
 {
   PT_NODE *arg;
@@ -1323,28 +1322,22 @@ qo_is_conjunct_on_spec_only (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * s
  *   parser(in):
  *   node(in): the PT_SELECT
  *   spec(in): the spec
- *   is_merge_hinted(out): USE_MERGE names the spec
  *
  * Note: a SEMI JOIN returns an outer row once however many inner rows match it, an INNER JOIN once per match.  They
- *   return the same rows when one inner row at most matches an outer row: every column the inner keeps is equated by
- *   the ON with something not of the inner, in its own data type, and the inner keeps one row per distinct value of
- *   those columns.  A table is wrapped into a derived table that keeps the columns the equalities read, with the
- *   conditions of the ON on the table alone; a derived table unnested from a subquery (CBRD-27376) keeps the columns
- *   its ON reads, so each of them has to be equated.
+ *   return the same rows when every column the inner keeps is equated by the ON with something not of the inner, in
+ *   its own data type, and the inner keeps one row per distinct value of those columns.  A derived table unnested
+ *   from a subquery keeps every column its ON reads, so each of them has to be equated.
  *
  *   The join order and the join methods hinted are written for the SEMI JOIN, so ORDERED, LEADING, KEYLIMIT and a join
- *   method hint naming the spec keep it, but USE_MERGE: there is no semi merge join, so the INNER JOIN is the only
- *   type USE_MERGE applies to.  A USE_IDX that no idx-join can apply is ignored for its join (CBRD-28089), so it does
- *   not keep the SEMI JOIN either.
+ *   method hint naming the spec keep it, but USE_MERGE, which only the INNER JOIN can take, and a USE_IDX that no
+ *   idx-join can apply, which is ignored for its join (CBRD-28089).
  */
 bool
-qo_is_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec, bool * is_merge_hinted)
+qo_is_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
 {
   PT_NODE *cnf, *save_next, *attr, *other_spec;
   UINTPTR ref;
   bool has_eq = false;
-
-  *is_merge_hinted = false;
 
   /* the inner of a SEMI JOIN, which is never the first spec */
   if (spec->info.spec.join_type != PT_JOIN_SEMI || spec == node->info.query.q.select.from)
@@ -1430,8 +1423,6 @@ qo_is_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * sp
 	    }
 	}
     }
-
-  *is_merge_hinted = qo_is_spec_in_hint (node, spec, PT_HINT_USE_MERGE, node->info.query.q.select.use_merge);
 
   return true;
 }

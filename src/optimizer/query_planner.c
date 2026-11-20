@@ -2792,6 +2792,7 @@ qo_seq_scan_new (QO_INFO * info, QO_NODE * node)
   return plan;
 }
 
+
 /*
  * qo_sscan_cost () -
  *   return:
@@ -2802,7 +2803,6 @@ qo_sscan_cost (QO_PLAN * planp)
 {
   QO_NODE *nodep;
   PT_NODE *spec;
-  double subq_cpu_cost, subq_io_cost;
 
   nodep = planp->plan_un.scan.node;
   planp->fixed_cpu_cost = 0.0;
@@ -2811,9 +2811,7 @@ qo_sscan_cost (QO_PLAN * planp)
   spec = QO_NODE_ENTITY_SPEC (nodep);
   if (spec != NULL && (spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY))
     {
-      qo_plan_compute_subquery_cost (spec->info.spec.derived_table, &subq_cpu_cost, &subq_io_cost);
-      planp->fixed_cpu_cost = subq_cpu_cost;
-      planp->fixed_io_cost = subq_io_cost;
+      qo_plan_compute_subquery_cost (spec->info.spec.derived_table, &planp->fixed_cpu_cost, &planp->fixed_io_cost);
     }
   if (QO_NODE_NCARD (nodep) == 0)
     {
