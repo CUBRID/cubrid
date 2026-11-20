@@ -18934,6 +18934,16 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 		}
 	    }
 
+	  /* a session variable, a serial, a random number or a non-deterministic stored function is evaluated in the
+	   * order of the rows: a scan that held rows would evaluate its key before the rows ahead of it were output */
+	  if (xasl->scan_ptr != NULL && !pt_is_result_reuse_safe (parser, select_node))
+	    {
+	      XASL_NODE *ptr;
+	      for (ptr = xasl; ptr; ptr = ptr->scan_ptr)
+		{
+		  XASL_SET_FLAG (ptr, XASL_NO_ROW_BATCH);
+		}
+	    }
 	}
     }
 

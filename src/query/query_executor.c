@@ -12546,7 +12546,7 @@ qexec_nl_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * outer, XASL_NODE * inne
 
   /* a semi or anti join step is batched as any other; a partitioned one and the steps after it are driven a row at
    * a time by their partition walk */
-  if (XASL_IS_FLAGED (inner, XASL_NL_FOLLOWING_JOIN) || spec == NULL
+  if (XASL_IS_FLAGED (inner, XASL_NL_FOLLOWING_JOIN) || XASL_IS_FLAGED (inner, XASL_NO_ROW_BATCH) || spec == NULL
       || (XASL_IS_NL_SEMI_OR_ANTI (inner) && spec->parts != NULL) || spec->type != TARGET_CLASS
       || spec->access != ACCESS_METHOD_INDEX || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE)
       || outer->val_list == NULL || outer->dptr_list != NULL || outer->bptr_list != NULL || outer->fptr_list != NULL
@@ -13749,7 +13749,7 @@ qexec_sq_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   batch->sq_armed = true;
 
   if (sq_xasl == NULL || sq_xasl->next != NULL || !XASL_IS_FLAGED (sq_xasl, XASL_LINK_TO_REGU_VARIABLE)
-      || XASL_IS_PER_OUTER_ROW (xasl) || xasl->bptr_list != NULL
+      || XASL_IS_PER_OUTER_ROW (xasl) || XASL_IS_FLAGED (xasl, XASL_NO_ROW_BATCH) || xasl->bptr_list != NULL
       || xasl->fptr_list != NULL || xasl->val_list == NULL || xasl->scan_op_type != S_SELECT
       || xasl->spec_list == NULL || xasl->spec_list->next != NULL || xasl->spec_list->parts != NULL
       || xasl->spec_list->single_fetch != QPROC_NO_SINGLE_INNER || xasl->curr_spec == NULL
