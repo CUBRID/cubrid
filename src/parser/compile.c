@@ -1387,6 +1387,9 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
       else
 	{
 	  statement->info.scope.stmt->info.trigger_action.expression = mq_translate (parser, expression);
+
+	  /* a WITH CHECK OPTION predicate or a base class DEFAULT brought in by the translation may read the clock */
+	  pt_mark_translated_si_datetime (parser, statement->info.scope.stmt->info.trigger_action.expression);
 	}
       /*
        * Trigger statement node must use the datetime information of the

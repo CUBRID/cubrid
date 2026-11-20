@@ -24596,3 +24596,219 @@ pt_to_variable_size_type (PT_TYPE_ENUM type_enum)
       return type_enum;
     }
 }
+
+/*
+ * pt_expr_needs_sys_datetime () - does the client evaluator read the statement clock (parser->sys_datetime,
+ *				   parser->sys_epochtime) to compute this expression node?
+ *   return: true if the node is an operation computed from the statement clock
+ *   node(in): any parse tree node
+ *
+ * Note: keep in step with pt_evaluate_db_value_expr () and pt_evaluate_tree_having_serial ().
+ */
+static bool
+pt_expr_needs_sys_datetime (const PT_NODE * node)
+{
+  const PT_NODE *arg1;
+
+  if (node == NULL || node->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  arg1 = node->info.expr.arg1;
+
+  switch (node->info.expr.op)
+    {
+    case PT_SYS_DATE:
+    case PT_CURRENT_DATE:
+    case PT_UTC_DATE:
+    case PT_SYS_TIME:
+    case PT_CURRENT_TIME:
+    case PT_UTC_TIME:
+    case PT_SYS_TIMESTAMP:
+    case PT_CURRENT_TIMESTAMP:
+    case PT_UTC_TIMESTAMP:
+    case PT_SYS_DATETIME:
+    case PT_CURRENT_DATETIME:
+    case PT_TZ_OFFSET:
+      return true;
+
+    case PT_UNIX_TIMESTAMP:
+      /* only the form without an argument converts the statement clock */
+      return arg1 == NULL;
+
+    case PT_UUID:
+      /* only version 7 is time based; a version that is not a literal is known at evaluation */
+      if (arg1 == NULL)
+	{
+	  return false;
+	}
+      if (arg1->node_type == PT_VALUE && arg1->type_enum == PT_TYPE_INTEGER)
+	{
+	  return arg1->info.value.data_value.i == 7;
+	}
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * pt_find_sys_datetime_expr_pre () - stop the walk at the first operation that reads the statement clock
+ *   arg(out): bool, set to true when found
+ */
+static PT_NODE *
+pt_find_sys_datetime_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (*found)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      /* a subquery runs as its own plan, with the clock of the server */
+      *continue_walk = PT_LIST_WALK;
+    }
+  else if (pt_expr_needs_sys_datetime (node))
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      /* the list after a skipped subquery is entered with PT_LIST_WALK left over */
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * pt_spec_has_sys_datetime_default () - does a class of the spec have an attribute whose DEFAULT reads the statement
+ *					 clock?
+ *   return: true if so
+ *   spec(in): the translated target spec of an INSERT or MERGE
+ */
+static bool
+pt_spec_has_sys_datetime_default (const PT_NODE * spec)
+{
+  const PT_NODE *name;
+  SM_CLASS *smclass;
+  SM_ATTRIBUTE *attr;
+
+  if (spec == NULL || spec->node_type != PT_SPEC)
+    {
+      return false;
+    }
+
+  for (name = spec->info.spec.flat_entity_list; name != NULL; name = name->next)
+    {
+      smclass = NULL;
+      if (name->node_type != PT_NAME || name->info.name.db_object == NULL
+	  || au_fetch_class_force (name->info.name.db_object, &smclass, AU_FETCH_READ) != NO_ERROR || smclass == NULL)
+	{
+	  continue;
+	}
+
+      for (attr = smclass->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
+	{
+	  if (DB_IS_DEFAULT_DATETIME_EXPR (attr->default_value.default_expr.default_expr_type)
+	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (attr->default_value.default_expr.default_expr_type))
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
+ * pt_mark_check_option_sys_datetime_pre () - set si_datetime of the top statement when a WITH CHECK OPTION
+ *					      predicate of an INSERT, UPDATE or MERGE, or a DEFAULT of the
+ *					      translated INSERT target, reads the statement clock
+ *   arg(in/out): the top statement
+ */
+static PT_NODE *
+pt_mark_check_option_sys_datetime_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *statement = (PT_NODE *) arg;
+  PT_NODE *check_where = NULL;
+  PT_NODE *insert_spec = NULL;
+  bool found = false;
+
+  if (statement->flag.si_datetime)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      check_where = node->info.insert.where;
+      insert_spec = node->info.insert.spec;
+      break;
+    case PT_UPDATE:
+      check_where = node->info.update.check_where;
+      break;
+    case PT_MERGE:
+      check_where = node->info.merge.check_where;
+      if (node->info.merge.insert.value_clauses != NULL)
+	{
+	  insert_spec = node->info.merge.into;
+	}
+      break;
+    default:
+      return node;
+    }
+
+  if (check_where != NULL)
+    {
+      (void) parser_walk_tree (parser, check_where, pt_find_sys_datetime_expr_pre, &found, NULL, NULL);
+    }
+
+  /* name resolution saw the view, which does not show the DEFAULT of a base class attribute left out of the view */
+  if (found || pt_spec_has_sys_datetime_default (insert_spec))
+    {
+      statement->flag.si_datetime = 1;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * pt_mark_translated_si_datetime () - a view translation adds the view's WITH CHECK OPTION predicate to the
+ *				       statement and replaces the target with the base class, and the client may
+ *				       evaluate that predicate and the DEFAULTs of the base class. The statement
+ *				       text does not show a clock function of the view or of a hidden attribute, so
+ *				       mark the translated statement to have the statement clock fetched before it
+ *				       executes.
+ *   return: none
+ *   parser(in):
+ *   statement(in/out): a translated statement
+ */
+void
+pt_mark_translated_si_datetime (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  if (statement == NULL || statement->flag.si_datetime)
+    {
+      return;
+    }
+
+  switch (statement->node_type)
+    {
+    case PT_INSERT:
+    case PT_UPDATE:
+    case PT_MERGE:
+      /* the walk also reaches a nested INSERT in a value clause */
+      (void) parser_walk_tree (parser, statement, pt_mark_check_option_sys_datetime_pre, statement, NULL, NULL);
+      break;
+    default:
+      break;
+    }
+}
