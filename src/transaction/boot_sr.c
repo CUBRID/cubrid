@@ -2321,6 +2321,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+  /* Refuse a database of another storage format before any other page is read, or rewritten by the double write
+   * buffer or log recovery. */
+  error_code = disk_check_storage_format (thread_p, LOG_DBFIRST_VOLID);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* Find the location of the database parameters and read them */
   if (disk_get_boot_hfid (thread_p, LOG_DBFIRST_VOLID, &boot_Db_parm->hfid) == NULL)
     {
@@ -3283,6 +3291,19 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
       intl_identifier_upper (client_credential->get_db_user (), db_user_upper);
       client_credential->db_user = db_user_upper;
     }
+
+#if defined (SERVER_MODE)
+  /* the declared user is trusted only once this connection proved its
+   * password, so check it before a transaction index is given out */
+  if (BOOT_PASSWORD_PROOF_CLIENT_TYPE (client_credential->client_type)
+      && !css_consume_auth_proof (thread_p->conn_entry, client_credential->get_db_user ()))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_PASSWORD, 0);
+      *tran_state = TRAN_UNACTIVE_UNKNOWN;
+      client_credential->db_user = db_user_save;
+      return NULL_TRAN_INDEX;
+    }
+#endif /* SERVER_MODE */
 
   /* Assign a transaction index to the client */
   tran_index =
@@ -5543,6 +5564,13 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
 
   /* Mount the data volume */
   error_code = boot_mount (thread_p, LOG_DBFIRST_VOLID, boot_Db_full_name, NULL);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* The emergency patch reads catalogs and may recreate the log; refuse another storage format first. */
+  error_code = disk_check_storage_format (thread_p, LOG_DBFIRST_VOLID);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
