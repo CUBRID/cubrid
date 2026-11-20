@@ -278,6 +278,7 @@ extern int db_open_buffer_and_compile_first_statement (const char *CSQL_query, D
 extern int db_compile_and_execute_local (const char *CSQL_query, void *result, DB_QUERY_ERROR * query_error);
 extern int db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, DB_QUERY_ERROR * query_error,
 						    int include_oid, int execute, bool is_new_statement);
+extern int db_execute_internal_query (const char *sql, DB_VALUE * values, int count, DB_QUERY_RESULT ** result);
 extern int db_set_system_generated_statement (DB_SESSION * session);
 extern void db_close_session_local (DB_SESSION * session);
 extern int db_savepoint_transaction_internal (const char *savepoint_name);

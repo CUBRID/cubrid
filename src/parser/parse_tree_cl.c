@@ -3927,6 +3927,12 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "info_type";
     case PT_SENSITIVITY_LABEL_SOURCE:
       return "source";
+    case PT_SENSITIVITY_LABEL_COLUMN:
+      return "on column";
+    case PT_SENSITIVITY_LABEL_TABLE:
+      return "on all columns in table";
+    case PT_SENSITIVITY_LABEL_SCHEMA:
+      return "on all columns in schema";
     default:
       return "MISC_TYPE: type unknown";
     }
@@ -21325,6 +21331,10 @@ pt_apply_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *a
   PT_APPLY_WALK (parser, p->info.sensitivity_label.name, arg);
   PT_APPLY_WALK (parser, p->info.sensitivity_label.level, arg);
   PT_APPLY_WALK (parser, p->info.sensitivity_label.comment, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.target_list, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.grade, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.info_type, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.source, arg);
   return p;
 }
 
@@ -21342,6 +21352,8 @@ static PT_NODE *
 pt_apply_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.sensitivity_label.name, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.target_list, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.dropped_columns, arg);
   return p;
 }
 
@@ -21350,10 +21362,44 @@ pt_print_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
 
-  r1 = pt_print_bytes (parser, p->info.sensitivity_label.name);
-  q = pt_append_nulstring (parser, q, "create sensitivity label ");
+  q = pt_append_nulstring (parser, q, "create ");
+  if (p->info.sensitivity_label.or_replace)
+    {
+      q = pt_append_nulstring (parser, q, "or replace ");
+    }
+  q = pt_append_nulstring (parser, q, "sensitivity label ");
   q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sensitivity_label.kind));
   q = pt_append_nulstring (parser, q, " ");
+
+  if (p->info.sensitivity_label.kind == PT_SENSITIVITY_LABEL_COLUMN)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.sensitivity_label.target_list);
+      q = pt_append_varchar (parser, q, r1);
+
+      r1 = pt_print_bytes (parser, p->info.sensitivity_label.grade);
+      q = pt_append_nulstring (parser, q, " (grade = ");
+      q = pt_append_varchar (parser, q, r1);
+
+      if (p->info.sensitivity_label.info_type != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.sensitivity_label.info_type);
+	  q = pt_append_nulstring (parser, q, ", info_type = ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      if (p->info.sensitivity_label.source != NULL)
+	{
+	  r1 = pt_print_bytes (parser, p->info.sensitivity_label.source);
+	  q = pt_append_nulstring (parser, q, ", source = ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      q = pt_append_nulstring (parser, q, ")");
+
+      return q;
+    }
+
+  r1 = pt_print_bytes (parser, p->info.sensitivity_label.name);
   q = pt_append_varchar (parser, q, r1);
 
   if (p->info.sensitivity_label.level != NULL)
@@ -21412,10 +21458,25 @@ static PARSER_VARCHAR *
 pt_print_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
+  PT_MISC_TYPE kind = p->info.sensitivity_label.kind;
 
-  r1 = pt_print_bytes (parser, p->info.sensitivity_label.name);
+  if (p->info.sensitivity_label.dropped_columns != NULL)
+    {
+      /* after execution, print what it dropped as DROP ... ON COLUMN: HA replicates this text */
+      kind = PT_SENSITIVITY_LABEL_COLUMN;
+      r1 = pt_print_bytes_l (parser, p->info.sensitivity_label.dropped_columns);
+    }
+  else if (p->info.sensitivity_label.target_list != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.sensitivity_label.target_list);
+    }
+  else
+    {
+      r1 = pt_print_bytes (parser, p->info.sensitivity_label.name);
+    }
+
   q = pt_append_nulstring (parser, q, "drop sensitivity label ");
-  q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sensitivity_label.kind));
+  q = pt_append_nulstring (parser, q, pt_show_misc_type (kind));
   q = pt_append_nulstring (parser, q, " ");
   q = pt_append_varchar (parser, q, r1);
 

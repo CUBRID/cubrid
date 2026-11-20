@@ -1508,8 +1508,11 @@ $ LOADDB
 1393 Sensitivity label %1$s "%2$s"이(가) 존재하지 않습니다.
 1394 Sensitivity label %1$s "%2$s"을(를) 참조하는 라벨이 있습니다.
 1395 Sensitivity label grade level %1$d이(가) 이미 존재합니다.
+1396 "%2$s"의 컬럼 "%1$s"에 이미 sensitivity label이 있습니다.
+1397 "%2$s"의 컬럼 "%1$s"에 sensitivity label이 없습니다.
+1398 "%1$s"은(는) 시스템 클래스, 뷰 또는 파티션이므로 sensitivity label을 가질 수 없습니다.
 
-1396 마지막 에러
+1399 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -2028,6 +2031,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
 345 ALTER SENSITIVITY LABEL에 대해 지정된 옵션이 없습니다.
 346 sensitivity label grade의 level은 1 이상이어야 합니다.
+347 sensitivity label에 %1$s이(가) 두 번 이상 지정되었습니다.
+348 sensitivity label에는 GRADE를 지정해야 합니다.
+349 sensitivity label에 "%2$s"의 컬럼 "%1$s"이(가) 두 번 이상 지정되었습니다.
 
 
 

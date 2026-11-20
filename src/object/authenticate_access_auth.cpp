@@ -184,64 +184,6 @@ find_object_of (DB_OBJECT_TYPE obj_type, MOP obj_mop, MOP *object_of)
   return NO_ERROR;
 }
 
-/*
- * execute_internal_query - run sql and close its session
- *   return: the number of rows (NO_ERROR if result is NULL), or an error code if negative
- *   sql(in): the query
- *   values(in): its host variables
- *   count(in): the number of values
- *   result(out): the result for the caller to end with db_query_end, or NULL to end it here
- */
-static int
-execute_internal_query (const char *sql, DB_VALUE *values, int count, DB_QUERY_RESULT **result)
-{
-  DB_SESSION *session;
-  DB_QUERY_RESULT *query_result = NULL;
-  STATEMENT_ID stmt_id;
-  int error;
-
-  session = db_open_buffer_local (sql);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_push_values (session, count, values);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &query_result);
-  if (result != NULL)
-    {
-      *result = query_result;
-    }
-  else if (error >= 0)
-    {
-      error = db_query_end (query_result);
-    }
-
-exit:
-  db_close_session (session);
-
-  return error;
-}
-
 int
 au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor, MOP user, MOP object_of,
 				DB_AUTH auth_type, bool grant_option)
@@ -392,7 +334,7 @@ au_auth_accessor::find_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP
     }
   db_make_string (&val[INDEX_FOR_AUTH_TYPE], AU_TYPE_SET[i]);
 
-  error = execute_internal_query (obj_fetch_query, val, COUNT_FOR_VARIABLES, &result);
+  error = db_execute_internal_query (obj_fetch_query, val, COUNT_FOR_VARIABLES, &result);
 
   /* The error value is row count if it's not negative value. */
   if (error == 0)
@@ -612,7 +554,7 @@ au_delete_auth_of_dropping_user (MOP user)
   assert (user != NULL);
 
   db_make_object (&val, user);
-  error = execute_internal_query (sql_query, &val, 1, NULL);
+  error = db_execute_internal_query (sql_query, &val, 1, NULL);
 
   pr_clear_value (&val);
 
@@ -657,7 +599,7 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
     }
 
   db_make_string (&val, name);
-  error = execute_internal_query (obj_fetch_query, &val, 1, NULL);
+  error = db_execute_internal_query (obj_fetch_query, &val, 1, NULL);
 
 exit:
   pr_clear_value (&val);
@@ -685,7 +627,7 @@ au_delete_authorizartion_of_dropping_user (MOP user)
   assert (user != NULL);
 
   db_make_object (&val, user);
-  error = execute_internal_query (sql_query, &val, 1, NULL);
+  error = db_execute_internal_query (sql_query, &val, 1, NULL);
 
   pr_clear_value (&val);
 
@@ -761,7 +703,7 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 
   db_make_string (&val[1], unique_name);
 
-  error = execute_internal_query (obj_fetch_query, val, 2, &result);
+  error = db_execute_internal_query (obj_fetch_query, val, 2, &result);
 
   /* The error value is row count if it's not negative value. */
   if (error == 0)
@@ -938,7 +880,7 @@ au_user_revoke_all_privileges (MOP user_mop)
       goto exit;
     }
 
-  error = execute_internal_query (sql_query, &name, 1, &result);
+  error = db_execute_internal_query (sql_query, &name, 1, &result);
 
   /* The error value is row count if it's not negative value. */
   if (error == 0)
@@ -1202,7 +1144,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
   /* Prepare DB_VALUEs for host variables */
   db_make_string (&val, unique_name);
 
-  error = execute_internal_query (obj_fetch_query, &val, 1, &result);
+  error = db_execute_internal_query (obj_fetch_query, &val, 1, &result);
 
   /* The error value is row count if it's not negative value. */
   if (error == 0)
@@ -1430,7 +1372,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
   /* Prepare DB_VALUEs for host variables */
   db_make_string (&val, unique_name);
 
-  error = execute_internal_query (obj_fetch_query, &val, 1, &result);
+  error = db_execute_internal_query (obj_fetch_query, &val, 1, &result);
 
   /* The error value is row count if it's not negative value. */
   if (error == 0)

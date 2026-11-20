@@ -114,6 +114,8 @@ extern int yylex(void);
 
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
 static void pt_fill_sp_option_container(PARSER_CONTEXT *parser, int buffer_pos, container_3 *ctn, container_2 info);
+static void pt_fill_sensitivity_label_component_container (PARSER_CONTEXT * parser, container_3 * ctn,
+							   container_2 component);
 /*%CODE_END%*/%}
 
 %{
@@ -722,6 +724,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> opt_alter_synonym
 %type <node> sensitivity_label_name
 %type <node> opt_sensitivity_label_level
+%type <node> sensitivity_label_on_column
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
@@ -1045,6 +1048,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> pl_language_spec
 %type <node> opt_sp_default_value
 %type <node> table_column
+%type <node> table_column_list
 
 /*}}}*/
 
@@ -1077,6 +1081,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <c3> of_serial_owner_clause
 %type <c3> delete_from_using
 %type <c3> trigger_status_or_priority_or_change_owner
+%type <c3> sensitivity_label_component_list
 
 %type <c2> sp_return_type
 %type <c2> extended_table_spec_list
@@ -1103,6 +1108,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <c2> connect_item
 %type <c2> alter_server_item
 %type <c2> opt_create_synonym
+%type <c2> sensitivity_label_component
 %type <c2> class_name_with_server_name
 %type <number> opt_index_with_clause
 %type <number> index_with_item_list
@@ -3318,6 +3324,23 @@ create_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| CREATE SENSITIVITY LABEL sensitivity_label_on_column
+		{{
+			$$ = $4;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| CREATE OR REPLACE SENSITIVITY LABEL sensitivity_label_on_column
+		{{
+			PT_NODE *node = $6;
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.or_replace = 1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	;
 
 class_name_for_synonym
@@ -4816,6 +4839,45 @@ drop_stmt
 			  {
 			    node->info.sensitivity_label.kind = $4;
 			    node->info.sensitivity_label.name = $5;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| DROP SENSITIVITY LABEL ON_ COLUMN table_column_list
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = PT_SENSITIVITY_LABEL_COLUMN;
+			    node->info.sensitivity_label.target_list = $6;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| DROP SENSITIVITY LABEL ON_ ALL COLUMNS IN_ TABLE class_name_list
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = PT_SENSITIVITY_LABEL_TABLE;
+			    node->info.sensitivity_label.target_list = $9;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| DROP SENSITIVITY LABEL ON_ ALL COLUMNS IN_ SCHEMA identifier_list
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = PT_SENSITIVITY_LABEL_SCHEMA;
+			    node->info.sensitivity_label.target_list = $9;
 			  }
 
 			$$ = node;
@@ -12180,6 +12242,19 @@ table_column
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
         ;
+
+table_column_list
+	: table_column_list ',' table_column
+		{{
+			$$ = parser_make_link ($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| table_column
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
 
 opt_sp_in_out
 	: opt_in_out
@@ -22942,6 +23017,58 @@ opt_sensitivity_label_level
 		}}
 	;
 
+sensitivity_label_on_column
+	: ON_ COLUMN table_column_list '(' sensitivity_label_component_list ')'
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = PT_SENSITIVITY_LABEL_COLUMN;
+			    node->info.sensitivity_label.target_list = $3;
+			    node->info.sensitivity_label.grade = CONTAINER_AT_0 ($5);
+			    node->info.sensitivity_label.info_type = CONTAINER_AT_1 ($5);
+			    node->info.sensitivity_label.source = CONTAINER_AT_2 ($5);
+
+			    if (node->info.sensitivity_label.grade == NULL)
+			      {
+				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_SENSITIVITY_LABEL_GRADE_REQUIRED);
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
+sensitivity_label_component_list
+	: sensitivity_label_component_list ',' sensitivity_label_component
+		{{
+			container_3 ctn = $1;
+
+			pt_fill_sensitivity_label_component_container (this_parser, &ctn, $3);
+			$$ = ctn;
+		}}
+	| sensitivity_label_component
+		{{
+			container_3 ctn;
+			SET_CONTAINER_3 (ctn, NULL, NULL, NULL);
+
+			pt_fill_sensitivity_label_component_container (this_parser, &ctn, $1);
+			$$ = ctn;
+		}}
+	;
+
+sensitivity_label_component
+	: sensitivity_label_kind '=' sensitivity_label_name
+		{{
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER ($1), $3);
+			$$ = ctn;
+		}}
+	;
+
 %%
 
 END_SUPPRESS_WARNING_BISON_FLEX
@@ -26292,6 +26419,48 @@ pt_fill_sp_option_container(PARSER_CONTEXT *parser,  int buffer_pos, container_3
 
     set_bits |= (0x01 << TO_NUMBER (CONTAINER_AT_0(info)));
     ctn->c3 = FROM_NUMBER(set_bits);
+}
+
+static void
+pt_fill_sensitivity_label_component_container (PARSER_CONTEXT * parser, container_3 * ctn, container_2 component)
+{
+  /* container order
+   * 1: GRADE
+   * 2: INFO_TYPE
+   * 3: SOURCE
+   */
+  PT_NODE *name = CONTAINER_AT_1 (component);
+
+  switch (TO_NUMBER (CONTAINER_AT_0 (component)))
+    {
+    case PT_SENSITIVITY_LABEL_GRADE:
+      if (ctn->c1 != NULL)
+	{
+	  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SENSITIVITY_LABEL_DUPLICATE_COMPONENT,
+		      "GRADE");
+	}
+      ctn->c1 = name;
+      break;
+    case PT_SENSITIVITY_LABEL_INFO_TYPE:
+      if (ctn->c2 != NULL)
+	{
+	  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SENSITIVITY_LABEL_DUPLICATE_COMPONENT,
+		      "INFO_TYPE");
+	}
+      ctn->c2 = name;
+      break;
+    case PT_SENSITIVITY_LABEL_SOURCE:
+      if (ctn->c3 != NULL)
+	{
+	  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SENSITIVITY_LABEL_DUPLICATE_COMPONENT,
+		      "SOURCE");
+	}
+      ctn->c3 = name;
+      break;
+    default:
+      assert (0);
+      break;
+    }
 }
 
 static bool

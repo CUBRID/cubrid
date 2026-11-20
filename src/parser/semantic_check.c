@@ -9564,6 +9564,7 @@ static void
 pt_check_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_SENSITIVITY_LABEL_INFO *info = &node->info.sensitivity_label;
+  PT_NODE *target, *other;
 
   if (info->level != NULL && info->level->info.value.data_value.i < 1)
     {
@@ -9575,6 +9576,31 @@ pt_check_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * node)
       && info->comment == NULL)
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SENSITIVITY_LABEL_ALTER_NO_OPTION);
+      return;
+    }
+
+  if (info->kind != PT_SENSITIVITY_LABEL_COLUMN)
+    {
+      return;
+    }
+
+  /* pt_set_user_specified_name () has put the current user on each class name written without an owner, so t.a and
+   * <current user>.t.a compare equal */
+  for (target = info->target_list; target != NULL; target = target->next)
+    {
+      for (other = target->next; other != NULL; other = other->next)
+	{
+	  if (!pt_str_compare (PT_NAME_ORIGINAL (target->info.dot.arg1), PT_NAME_ORIGINAL (other->info.dot.arg1),
+			       CASE_INSENSITIVE)
+	      && !pt_str_compare (PT_NAME_ORIGINAL (target->info.dot.arg2), PT_NAME_ORIGINAL (other->info.dot.arg2),
+				  CASE_INSENSITIVE))
+	    {
+	      PT_ERRORmf2 (parser, other, MSGCAT_SET_PARSER_SEMANTIC,
+			   MSGCAT_SEMANTIC_SENSITIVITY_LABEL_DUPLICATE_COLUMN, PT_NAME_ORIGINAL (other->info.dot.arg2),
+			   PT_NAME_ORIGINAL (other->info.dot.arg1));
+	      return;
+	    }
+	}
     }
 }
 

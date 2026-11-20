@@ -65,6 +65,7 @@
 #include "network_interface_cl.h"
 #include "parser.h"
 #include "trigger_manager.h"
+#include "sensitivity_label.hpp"
 #include "oid.h"
 #include "storage_common.h"
 #include "transform.h"
@@ -12425,6 +12426,13 @@ install_new_representation (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
       assign_method_id (class_, m, 1);
     }
 
+  /* the attribute ids are final now and nothing is installed yet: an error here leaves the class as it was */
+  error = sensitivity_label_drop_of_removed_attributes (classop, class_, flat);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   /* if the representation changed but there have been no objects created with the previous representation, don't
    * create a new one, otherwise, flush all resident instances */
   newrep = 0;
@@ -13937,6 +13945,12 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 
   /* now delete _db_auth tuples refers to the table */
   error = au_delete_auth_of_dropping_database_object (DB_OBJECT_CLASS, table_name);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = sensitivity_label_drop_of_dropped_class (class_);
   if (error != NO_ERROR)
     {
       goto end;
