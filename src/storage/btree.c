@@ -32215,7 +32215,8 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   {
     HEAP_GET_CONTEXT context;
 
-    heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN);
+    heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN,
+			   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
     lock_result = locator_lock_object_unless_ours (thread_p, &context, find_fk_obj->lock_mode, false, true);
   }
   if (lock_result == LK_NOTGRANTED_HELD_BY_WRITERS)
