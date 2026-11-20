@@ -74,13 +74,6 @@ typedef enum
   /* FILE MANAGER */
   FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER = 200000,	/* unused */
   FI_TEST_FILE_MANAGER_DESTROY_HOLD = 200001,	/* hold a destroy after its pages are discarded, before its sectors are freed */
-  
-  /* HEAP MANAGER (200100 ~ 200199) */
-  FI_TEST_HEAP_PREV_VERSION_WALK_HOLD = 200100,	/* hold a version walk under a non-transaction snapshot */
- 
-  /* VACUUM (200500 ~ 200999) */
-  FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT = 200500,	/* vacuum's wait for a busy heap header fails at once as a latch
-							 * timeout; arg is the header VPID */
 
   /* BTREE MANAGER */
   FI_TEST_BTREE_MANAGER_RANDOM_EXIT = 300000,
@@ -105,6 +98,13 @@ typedef enum
   FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL = 700001,	/* epoll registration of a connection moved in */
   FI_TEST_CONNECTION_WORKER_QUEUE_TIMER_STOP_FAIL = 700002,	/* disarming the queue timer */
   FI_TEST_CONNECTION_WORKER_CLOSE_HOLD = 700003,	/* hold a close before it drains the worker's queue */
+
+  /* VACUUM */
+  FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT = 800000,	/* vacuum's wait for a busy heap header fails at once as a latch
+							 * timeout; arg is the header VPID */
+
+  /* HEAP MANAGER */
+  FI_TEST_HEAP_PREV_VERSION_WALK_HOLD = 900000,	/* hold a version walk under a non-transaction snapshot */
 
   /* etc .... */
 

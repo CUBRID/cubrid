@@ -73,8 +73,6 @@ FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_FILE_IO_WRITE_PARTS2, fi_handler_random_exit, FI_INIT_STATE},
   {FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_FILE_MANAGER_DESTROY_HOLD, fi_handler_hold, FI_INIT_STATE},
-  {FI_TEST_HEAP_PREV_VERSION_WALK_HOLD, fi_handler_hold, FI_INIT_STATE}
-  {FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT, fi_handler_page_latch_timeout, FI_INIT_STATE},
   {FI_TEST_BTREE_MANAGER_RANDOM_EXIT, fi_handler_random_exit, FI_INIT_STATE},
   {FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_RUN_POSTPONE, fi_handler_random_exit, FI_INIT_STATE},
   {FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, fi_handler_random_exit, FI_INIT_STATE},
@@ -90,6 +88,10 @@ FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL, fi_handler_fail, FI_INIT_STATE},
   {FI_TEST_CONNECTION_WORKER_QUEUE_TIMER_STOP_FAIL, fi_handler_fail, FI_INIT_STATE},
   {FI_TEST_CONNECTION_WORKER_CLOSE_HOLD, fi_handler_hold, FI_INIT_STATE},
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  {FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT, fi_handler_page_latch_timeout, FI_INIT_STATE},
+#endif /* SERVER_MODE || SA_MODE */
+  {FI_TEST_HEAP_PREV_VERSION_WALK_HOLD, fi_handler_hold, FI_INIT_STATE},
 };
 
 const FI_TEST_CODE fi_Group_none[] = {
