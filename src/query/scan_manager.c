@@ -6638,7 +6638,8 @@ scan_index_nl_batch_ok (const SCAN_ID * scan_id)
 	  && !isidp->iss.use && !isidp->need_count_only && isidp->gby_skip == NULL
 	  && isidp->key_limit_upper == -1 && isidp->key_limit_lower == -1 && isidp->indx_info != NULL
 	  && (isidp->indx_info->range_type == R_KEY || isidp->indx_info->range_type == R_RANGE)
-	  && !isidp->scan_cache.mvcc_disabled_class);
+	  /* a bitmap heap scan reads the index itself and would read it again after the batch */
+	  && !isidp->bitmap_planned && !isidp->scan_cache.mvcc_disabled_class);
 }
 
 /*
@@ -7938,7 +7939,10 @@ scan_index_bitmap_start (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (scan_index_bitmap));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  error_code = bm->marks.init (thread_p, &isidp->hfid.vfid, 1, qmgr_get_current_query_id (thread_p));
+  /* the scan's own query: a nested statement may be the transaction's latest one */
+  error_code = bm->marks.init (thread_p, &isidp->hfid.vfid, 1,
+			       (scan_id->vd != NULL && scan_id->vd->xasl_state != NULL)
+			       ? scan_id->vd->xasl_state->query_id : qmgr_get_current_query_id (thread_p));
   if (error_code != NO_ERROR || !bm->marks.on ())
     {
       /* an empty heap has nothing to record */

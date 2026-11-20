@@ -3915,7 +3915,21 @@ qo_plan_decide_bitmap_heap (QO_PLAN * planp, bool key_order)
   bool to_end = true, inst_num = false;
   int t;
 
-  if (planp == NULL || planp->info == NULL || (env = planp->info->env) == NULL || (tree = QO_ENV_PT_TREE (env)) == NULL
+  if (planp == NULL || planp->info == NULL || (env = planp->info->env) == NULL)
+    {
+      return;
+    }
+  /* a tree planned again decides again: a scan this plan does not decide for keeps no mark of an earlier plan */
+  for (t = 0; t < (signed) env->nnodes; t++)
+    {
+      PT_NODE *spec = QO_NODE_ENTITY_SPEC (QO_ENV_NODE (env, t));
+
+      if (spec != NULL)
+	{
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag & ~PT_SPEC_FLAG_BITMAP_HEAP_SCAN);
+	}
+    }
+  if ((tree = QO_ENV_PT_TREE (env)) == NULL
       || !PT_IS_SELECT (tree) || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_FOR_UPDATE)
       || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_MVCC_LOCK_NEEDED)
       || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_UPD_DEL_QUERY))
@@ -3969,8 +3983,6 @@ qo_plan_decide_bitmap_heap_scan (QO_PLAN * planp, bool key_order)
     {
       return;
     }
-  /* a tree planned again decides again */
-  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag & ~PT_SPEC_FLAG_BITMAP_HEAP_SCAN);
   /* a serial scan is the one worker of its bitmap */
   workers =
     PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN) ? 1 : MAX (1, spec->info.spec.num_parallel_threads);

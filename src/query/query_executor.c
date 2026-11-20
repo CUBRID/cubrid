@@ -12892,7 +12892,9 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
 	}
     }
 
-  if (closed || batch->n_oids >= batch->oid_target || batch->bytes >= (INT64) batch->oid_target * (INT64) sizeof (OID))
+  /* rows that copy no value and find no OID still count: the batch does not grow to the whole outer */
+  if (closed || batch->n_oids >= batch->oid_target || batch->n_rows >= batch->oid_target
+      || batch->bytes >= (INT64) batch->oid_target * (INT64) sizeof (OID))
     {
       batch->oid_target = MIN (batch->oid_target * 2, batch->oid_cap / 2);
       return S_END;
@@ -14048,7 +14050,8 @@ hold:
       closed = true;
     }
 
-  if (closed || b->n_oids >= b->oid_target || b->bytes >= (INT64) b->oid_target * (INT64) sizeof (OID))
+  if (closed || b->n_oids >= b->oid_target || b->n_rows >= b->oid_target
+      || b->bytes >= (INT64) b->oid_target * (INT64) sizeof (OID))
     {
       b->oid_target = MIN (b->oid_target * 2, b->oid_cap / 2);
       return S_END;
