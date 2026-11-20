@@ -403,8 +403,8 @@ namespace cubpl
 	return false;
       }
     cubthread::entry *outermost = it->second->get_thread_entry ();
-    assert (outermost == NULL || outermost->tran_index == thread_p->tran_index);
-    return outermost != thread_p;
+    /* an outermost call of another transaction came through another connection and waits for no reply of this one */
+    return outermost != thread_p && (outermost == NULL || outermost->tran_index == thread_p->tran_index);
   }
 
   bool
