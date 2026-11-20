@@ -259,8 +259,6 @@ struct qo_plan
   /* Rows this NL join is expected to emit under LIMIT: the LIMIT itself, or fewer when the outer runs out
    * first. Used as the next join level's driving row count and for the plan dump. */
   double limit_nljoin_guessed_card;
-  double limit_nljoin_outer_rows;	/* rows the driving scan of a nested loop chain reads before the LIMIT stops
-					 * the query (qo_nljoin_cost ()); 0 when the join does not stop at a LIMIT */
   double iscan_index_rows;	/* index-condition-only rows per probe (before non-index filters); set by
 				   qo_iscan_cost, consumed by qo_nljoin_cost for the repeated-probe N */
   double iscan_range_rows;	/* rows in the key range per probe, covering scans included; set by
