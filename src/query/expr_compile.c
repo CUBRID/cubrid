@@ -1491,6 +1491,27 @@ expr_k_fetch (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
+/* Copy a value into a step's own slot, failing when the copy fails.  pr_clone_value () drops the error of the type's
+ * setval (the allocation of a string's copy) and answers NO_ERROR with the slot left NULL -- a value the step would
+ * publish, and a step that computes once per execution would keep, where the interpreter, which reads the node's
+ * value in place, copies nothing and cannot fail. */
+static int
+expr_slot_clone (const DB_VALUE * src, DB_VALUE * slot)
+{
+  const PR_TYPE *type = (src != NULL && !DB_IS_NULL (src)) ? pr_type_from_id (DB_VALUE_DOMAIN_TYPE (src)) : NULL;
+
+  if (type == NULL)
+    {
+      return pr_clone_value (src, slot);	/* a NULL keeps its domain: nothing to allocate */
+    }
+  if (type->setval (slot, src, true) != NO_ERROR)
+    {
+      pr_clear_value (slot);
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
 /* A COLLATE-flagged arithmetic node (REGU_VARIABLE_APPLY_COLLATION): the interpreted path does not cast the value but
  * re-labels its codeset and collation with the node's domain (fetch_peek_dbval_slow ()'s epilogue).  The step clones
  * the node's value into its own slot before the relabel: the producing step's slot may serve another reader through
@@ -1501,7 +1522,7 @@ expr_k_relabel (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   const TP_DOMAIN *collate = regu_produced_domain (step->regu);
 
   pr_clear_value (step->out);
-  if (pr_clone_value (*step->arg1p, step->out) != NO_ERROR)
+  if (expr_slot_clone (*step->arg1p, step->out) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1605,9 +1626,9 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   if (step->out != NULL)
     {
       pr_clear_value (step->out);
-      if (pr_clone_value (a.arithptr->value, step->out) != NO_ERROR)
+      if (expr_slot_clone (a.arithptr->value, step->out) != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  return ER_FAILED;	/* the copy failed: nothing is kept for the execution */
 	}
       step->once_exec = ctx->prog->n_executions;
       return NO_ERROR;
