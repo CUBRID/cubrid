@@ -9150,6 +9150,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
   FILEIO_RESTORE_PAGE_BITMAP_LIST page_bitmap_list;
   FILEIO_RESTORE_PAGE_BITMAP *page_bitmap = NULL;
+  FILEIO_RESTORE_PAGE_BITMAP *format_failed_bitmap = NULL;	/* the volume whose unrestored pages could not be formatted */
   DKNPAGES total_pages;
 
   FILEIO_BACKUP_LEVEL try_level, start_level;
@@ -9526,7 +9527,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		  page_bitmap = fileio_page_bitmap_list_find (&page_bitmap_list, to_volid);
 		  if (page_bitmap == NULL)
 		    {
-		      page_bitmap = fileio_page_bitmap_create (to_volid, total_pages);
+		      page_bitmap = fileio_page_bitmap_create (to_volid, total_pages, volume_name_p);
 		      if (page_bitmap == NULL)
 			{
 			  goto error;
@@ -9640,6 +9641,18 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
       try_level = (FILEIO_BACKUP_LEVEL) (try_level - 1);
     }
 
+  if (success == NO_ERROR && start_level > FILEIO_BACKUP_FULL_LEVEL)
+    {
+      /* pages of volumes added or extended after a lower level backup may be in no level at all */
+      success = fileio_restore_format_unrestored_pages (thread_p, &page_bitmap_list, &format_failed_bitmap);
+      if (success != NO_ERROR)
+	{
+	  error_code = success;
+	  LOG_CS_EXIT (thread_p);
+	  goto error;
+	}
+    }
+
   // Incremental backup volumes often do not include volume header pages.
   // Accordingly, it is necessary to set unlinked volumes after all volume header pages are restored.
   // *INDENT-OFF*
@@ -9731,10 +9744,20 @@ error:
        * and therefore they need to be sure and try another restore until
        * they succeed.
        */
-      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_READ_ERROR_DURING_RESTORE),
-	       session->bkup.name,
-	       ((session->bkup.bkuphdr == NULL) ? FILEIO_INITIAL_BACKUP_UNITS : session->bkup.bkuphdr->unit_num),
-	       to_volname, session->dbfile.volid);
+      if (format_failed_bitmap != NULL)
+	{
+	  /* no backup volume is being read: name the volume whose pages could not be formatted */
+	  fprintf (stdout,
+		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_FORMAT_ERROR_DURING_RESTORE),
+		   format_failed_bitmap->vol_label, format_failed_bitmap->vol_id);
+	}
+      else
+	{
+	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_READ_ERROR_DURING_RESTORE),
+		   session->bkup.name,
+		   ((session->bkup.bkuphdr == NULL) ? FILEIO_INITIAL_BACKUP_UNITS : session->bkup.bkuphdr->unit_num),
+		   to_volname, session->dbfile.volid);
+	}
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MAYNEED_MEDIA_RECOVERY, 1, log_Name_bkupinfo);
       error_code = ER_LOG_MAYNEED_MEDIA_RECOVERY;

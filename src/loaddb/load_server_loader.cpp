@@ -24,6 +24,7 @@
 
 #include "btree.h"
 #include "dbtype.h"
+#include "heap_oos.hpp"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
 #include "load_driver.hpp"
@@ -32,7 +33,7 @@
 #include "locator_sr.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
-#include "record_descriptor.hpp"
+#include "partition_sr.h"
 #include "set_object.h"
 #include "string_opfunc.h"
 #include "schema_system_catalog.hpp"
@@ -41,6 +42,7 @@
 #include "schema_system_catalog_constants.h"
 
 #include <cstring>
+#include <new>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -77,8 +79,14 @@ namespace cubload
     to_lowercase_identifier (class_name, eb);
 
     const char *lower_case_class_name = eb.get_read_ptr ();
+    LC_FIND_CLASSNAME found = locate_class (lower_case_class_name, class_oid);
 
-    if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
+    if (found == LC_CLASSNAME_ERROR)
+      {
+	// e.g. the BU lock could not be granted
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+      }
+    else if (found != LC_CLASSNAME_EXIST)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
       }
@@ -157,7 +165,7 @@ namespace cubload
 	intl_identifier_lower (user_specified_name, realname);
 
 	found = xlocator_find_class_oid (&thread_ref, realname, &class_oid, BU_LOCK);
-	if (found == LC_CLASSNAME_EXIST)
+	if (found == LC_CLASSNAME_EXIST || found == LC_CLASSNAME_ERROR)
 	  {
 	    return found;
 	  }
@@ -238,10 +246,13 @@ namespace cubload
 
     while (true)
       {
-	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
+	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK,
+			       HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	if (scan_code == S_SUCCESS)
 	  {
-	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache, PEEK, NULL_CHN);
+	    // record is consumed only through the attribute layer (CBRD-26847)
+	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache,
+						  PEEK, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	    if (scan_code == S_SNAPSHOT_NOT_SATISFIED || scan_code == S_DOESNT_EXIST)
 	      {
 		continue;
@@ -360,7 +371,15 @@ namespace cubload
 	return;
       }
 
-    if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
+    LC_FIND_CLASSNAME found = locate_class (lower_case_class_name, class_oid);
+    if (found == LC_CLASSNAME_ERROR)
+      {
+	// e.g. the BU lock could not be granted
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	return;
+      }
+
+    if (found != LC_CLASSNAME_EXIST)
       {
 	if (is_syntax_check_only)
 	  {
@@ -381,6 +400,34 @@ namespace cubload
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
+      }
+
+    // Load workers borrow the session transaction's locks. Acquire destination
+    // BU locks here, before any worker routes a row to a child heap.
+    if (attrinfo.last_classrepr->has_partition_info)
+      {
+	OR_PARTITION *parts = nullptr;
+	int count = 0;
+	error_code = heap_get_class_partitions (&thread_ref, &class_oid, &parts, &count);
+	if (error_code == NO_ERROR)
+	  {
+	    for (int i = 0; i < count; ++i)
+	      {
+		if (lock_object (&thread_ref, &parts[i].class_oid, oid_Root_class_oid, BU_LOCK,
+				 LK_UNCOND_LOCK) != LK_GRANTED)
+		  {
+		    error_code = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+		    break;
+		  }
+	      }
+	  }
+	heap_clear_partition_info (&thread_ref, parts, count);
+	if (error_code != NO_ERROR)
+	  {
+	    heap_attrinfo_end (&thread_ref, &attrinfo);
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    return;
+	  }
       }
 
     heap_scancache_quick_start_root_hfid (&thread_ref, &scancache);
@@ -580,12 +627,17 @@ namespace cubload
     , m_attrinfo ()
     , m_db_values ()
     , m_recdes_collected ()
+    , m_retained_bytes (0)
+    , m_pruning_type (DB_NOT_PARTITIONED_CLASS)
     , m_scancache_started (false)
     , m_scancache ()
+    , m_pcontext ()
+    , m_pcontext_loaded (false)
+    , m_is_partitioned_class (false)
     , m_rows (0)
     , m_row_reported (false)
   {
-    //
+    partition_init_pruning_context (&m_pcontext);
   }
 
   void
@@ -596,12 +648,33 @@ namespace cubload
 
     assert (m_class_entry == NULL);
     m_class_entry = m_session.get_class_registry ().get_class_entry (clsid);
-    if (m_class_entry == NULL)
+    if (m_class_entry == NULL || m_class_entry->is_ignored ())
       {
 	return;
       }
 
     const OID &class_oid = m_class_entry->get_class_oid ();
+
+    if (!m_session.get_args ().syntax_check)
+      {
+	// The session holds BU on the class but no lock on its partitioned class, so the definition of the partitioned
+	// class is read again for every batch, into a private copy. While BU is held, the definition of the class itself
+	// cannot change.
+	int pruning_type = DB_NOT_PARTITIONED_CLASS;
+
+	int error_code = partition_load_uncached_pruning_context (m_thread_ref, &class_oid, &pruning_type, &m_pcontext);
+	if (error_code != NO_ERROR)
+	  {
+	    // Fail the session even if the error code is in the error control file: the batch is not started, so it
+	    // would be skipped silently.
+	    m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
+	    m_session.fail ();
+	    return;
+	  }
+
+	m_pcontext_loaded = (pruning_type == DB_PARTITION_CLASS);
+	m_is_partitioned_class = (pruning_type == DB_PARTITIONED_CLASS);
+      }
 
     start_scancache (class_oid);
     start_attrinfo (class_oid);
@@ -617,6 +690,15 @@ namespace cubload
     stop_scancache ();
 
     m_recdes_collected.clear ();
+    m_retained_bytes = 0;
+
+    if (m_pcontext_loaded)
+      {
+	partition_clear_pruning_context (&m_pcontext);
+	partition_init_pruning_context (&m_pcontext);
+	m_pcontext_loaded = false;
+      }
+    m_is_partitioned_class = false;
 
     m_clsid = NULL_CLASS_ID;
     m_class_entry = NULL;
@@ -692,33 +774,76 @@ namespace cubload
       {
 	return;
       }
-
-    bool is_syntax_check_only = m_session.get_args ().syntax_check;
-    if (!is_syntax_check_only)
+    if (!m_session.get_args ().syntax_check)
       {
-	// Create the record and add it to the array of collected records.
-	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
-	RECDES *old_recdes = NULL;
+	bool is_record_valid = true;
+	heap_pending_record record;
 
-	if (heap_attrinfo_transform_to_disk_except_lob (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes)
-	    != S_SUCCESS)
+	if (m_error_handler.current_line_has_error ())
+	  {
+	    is_record_valid = false;
+	  }
+	else if (heap_attrinfo_prepare_record (m_thread_ref, &m_attrinfo, nullptr, &record, false) != S_SUCCESS)
 	  {
 	    m_error_handler.on_failure ();
+	    is_record_valid = false;
+	  }
+	else if (m_is_partitioned_class)
+	  {
+	    // The record would be inserted into the heap of the partitioned class itself, where no query finds it.
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_PARTITIONED_CLASS_NOT_SUPPORTED, 0);
+	    m_error_handler.on_failure ();
+	    is_record_valid = false;
+	  }
+	else if (m_pcontext_loaded)
+	  {
+	    // A row loaded into a partition must belong to that partition. The partition key may be one of the
+	    // record's out-of-row values, so the check reads them from the pending record.
+	    RECDES recdes = record.get_recdes ();
+	    const OID &class_oid = m_class_entry->get_class_oid ();
+	    if (partition_check_record_for_partition (&m_pcontext, &class_oid, &recdes, &record) != NO_ERROR)
+	      {
+		m_error_handler.on_failure ();
+		is_record_valid = false;
+	      }
+	  }
+
+	if (m_session.is_failed ())
+	  {
 	    return;
 	  }
 
-	// Add the recdes to the collected array.
-	if (!m_error_handler.current_line_has_error ())
+	// A failure that is filtered by the error control file is not fatal; it marks the current line, and the mark
+	// must be cleared so that the next line is not dropped as well.
+	if (!is_record_valid)
 	  {
-	    m_recdes_collected.push_back (std::move (new_recdes));
+	    m_error_handler.set_error_on_current_line (false);
 	  }
 	else
 	  {
-	    // Don't insert the record since we had an error.
-	    m_error_handler.set_error_on_current_line (false);
+	    const std::size_t record_bytes = record.retained_bytes ();
+	    try
+	      {
+		m_recdes_collected.push_back (std::move (record));
+	      }
+	    catch (const std::bad_alloc &)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, record_bytes);
+		m_error_handler.on_failure ();
+		m_error_handler.set_error_on_current_line (false);
+		clear_db_values ();
+		return;
+	      }
+	    m_retained_bytes += record_bytes;
+	    // Bound the queue by both compact records and out-of-row payloads.
+	    // A single large input may exceed the limit and is flushed immediately.
+	    constexpr std::size_t retained_limit = 8 * 1024 * 1024;
+	    if (m_retained_bytes + m_recdes_collected.capacity () * sizeof (heap_pending_record) >= retained_limit)
+	      {
+		flush_records ();
+	      }
 	  }
       }
-
     int64_t lineno = m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1;
     m_session.stats_update_current_line (lineno);
     clear_db_values ();
@@ -728,12 +853,13 @@ namespace cubload
   server_object_loader::flush_records ()
   {
     int force_count = 0;
-    int pruning_type = 0;
+    int pruning_type = m_pruning_type;
     int op_type = MULTI_ROW_INSERT;
-    int records_inserted = 0;
     bool insert_errors_filtered = false;
     OID dummy_oid;
     bool has_BU_lock = lock_has_lock_on_object (&m_scancache.node.class_oid, oid_Root_class_oid, BU_LOCK);
+    // loaddb has already verified the foreign keys; skip re-checking them at force time.
+    int force_flags = LC_FORCE_FLAG_DONT_CHECK_FK | (has_BU_lock ? LC_FORCE_FLAG_HAS_BU_LOCK : LC_FORCE_FLAG_NONE);
 
     // First check if we have any errors set.
     if (m_session.is_failed ())
@@ -763,30 +889,44 @@ namespace cubload
     insert_errors_filtered = has_errors_filtered_for_insert (m_session.get_args().m_ignored_errors);
 
     /* The locator_multi_insert_force() sometimes creates the data page-based log record instead of the record-based log record. In HA, it means that the replication log cannot have an accurate LSA for each insert by loaddb. */
-    if (insert_errors_filtered || !HA_DISABLED ())
+    if (insert_errors_filtered || !HA_DISABLED () || pruning_type != DB_NOT_PARTITIONED_CLASS)
       {
 	// In case of possible errors filtered for insert we disable the unique optimization
+	// A routed row uses a partition scan cache whose multi-row unique stats are discarded with the pruning
+	// context, so partitioned classes report unique stats per row instead.
+	const int row_op_type = pruning_type == DB_NOT_PARTITIONED_CLASS ? op_type : SINGLE_ROW_INSERT;
 	for (size_t i = 0; i < m_recdes_collected.size (); i++)
 	  {
 	    log_sysop_start (m_thread_ref);
 	    RECDES local_record = m_recdes_collected[i].get_recdes ();
-	    int error_code = locator_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
-						   &dummy_oid, &local_record, true, op_type, &m_scancache, &force_count,
-						   pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, NULL, has_BU_lock,
-						   true, false);
+	    OID destination = m_class_entry->get_class_oid ();
+	    HFID destination_heap = m_scancache.node.hfid;
+	    PRUNING_CONTEXT pruning;
+	    partition_init_pruning_context (&pruning);
+	    int error_code = locator_insert_force (m_thread_ref, &destination_heap, &destination,
+						   &dummy_oid, &local_record, true, row_op_type,
+						   &m_scancache,
+						   &force_count,
+						   pruning_type,
+						   pruning_type == DB_NOT_PARTITIONED_CLASS ? nullptr : &pruning,
+						   NULL, UPDATE_INPLACE_NONE, NULL, force_flags,
+						   false, &m_recdes_collected[i]);
+	    partition_clear_pruning_context (&pruning);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
+		(void) heap_oos_begin_insert_publication (m_thread_ref);
 		m_error_handler.on_failure ();
 		log_sysop_abort (m_thread_ref);
 
-		if (er_has_error ())
+		if (m_session.is_failed ())
 		  {
 		    // Error was not filtered, we abort everything.
 		    return;
 		  }
 
 		// Error was filtered so we can continue.
+		m_error_handler.set_error_on_current_line (false);
 		continue;
 	      }
 
@@ -794,6 +934,8 @@ namespace cubload
 	    log_sysop_attach_to_outer (m_thread_ref);
 	    ++m_rows;
 	  }
+	m_recdes_collected.clear ();
+	m_retained_bytes = 0;
       }
     else
       {
@@ -804,6 +946,7 @@ namespace cubload
 	if (error_code != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();
+	    (void) heap_oos_begin_insert_publication (m_thread_ref);
 	    m_error_handler.on_failure ();
 	    log_sysop_abort (m_thread_ref);
 	    return;
@@ -812,6 +955,8 @@ namespace cubload
 	  {
 	    log_sysop_attach_to_outer (m_thread_ref);
 	    m_rows += m_recdes_collected.size ();
+	    m_recdes_collected.clear ();
+	    m_retained_bytes = 0;
 	  }
       }
   }
@@ -1204,6 +1349,18 @@ namespace cubload
       }
 
     m_attrinfo_started = true;
+    m_pruning_type = DB_NOT_PARTITIONED_CLASS;
+    if (m_attrinfo.last_classrepr->has_partition_info)
+      {
+	OID root_oid;
+	error_code = partition_find_root_class_oid (m_thread_ref, &class_oid, &root_oid);
+	if (error_code != NO_ERROR)
+	  {
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    return;
+	  }
+	m_pruning_type = OID_EQ (&root_oid, &class_oid) ? DB_PARTITIONED_CLASS : DB_PARTITION_CLASS;
+      }
   }
 
   void
