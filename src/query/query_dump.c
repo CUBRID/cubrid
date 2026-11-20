@@ -132,6 +132,7 @@ static void qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int 
 static void qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent);
 static void qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor,
 						trace_json_t * parent);
+static void qdump_print_px_subquery_stats_text (FILE * fp, parallel_query_execute::query_executor * px_executor);
 
 /*
  * qdump_print_xasl_type () -
@@ -3621,12 +3622,31 @@ qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_
 {
   trace_json_t *input;
   input = trace_json_object ();
-  trace_json_object_set_new (input, "parallel_workers", trace_json_integer (px_executor->get_parallelism () + 1));
+  if (px_executor->get_executed_parallelism () > 1)
+    {
+      trace_json_object_set_new (input, "parallel_workers",
+				 trace_json_integer (px_executor->get_executed_parallelism ()));
+    }
   trace_json_object_set_new (input, "time", trace_json_integer (TO_MSEC (px_executor->get_stats ().elapsed_time)));
   trace_json_object_set_new (input, "fetch", trace_json_integer (px_executor->get_stats ().fetches));
   trace_json_object_set_new (input, "fetch_time", trace_json_integer (px_executor->get_stats ().fetch_time));
   trace_json_object_set_new (input, "ioread", trace_json_integer (px_executor->get_stats ().ioreads));
   trace_json_object_set_new (parent, "parallel subquery execution", input);
+}
+
+/* the executor's statistics in parentheses; "parallel workers" only when other threads could run its jobs */
+static void
+qdump_print_px_subquery_stats_text (FILE * fp, parallel_query_execute::query_executor * px_executor)
+{
+  XASL_STATS stats = px_executor->get_stats ();
+
+  fprintf (fp, "(");
+  if (px_executor->get_executed_parallelism () > 1)
+    {
+      fprintf (fp, "parallel workers: %d, ", px_executor->get_executed_parallelism ());
+    }
+  fprintf (fp, "time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)", TO_MSEC (stats.elapsed_time),
+	   (long long int) stats.fetches, (long long int) stats.fetch_time, (long long int) stats.ioreads);
 }
 
 /*
@@ -4500,12 +4520,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       if (xasl_p->px_executor)
 	{
 	  int len = strlen (qdump_xasl_type_string (xasl_p));
-	  fprintf (fp, "%*c (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
-		   indent + len, ' ', xasl_p->px_executor->get_parallelism () + 1,
-		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
-		   (long long int) xasl_p->px_executor->get_stats ().fetches,
-		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
-		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
+	  fprintf (fp, "%*c ", indent + len, ' ');
+	  qdump_print_px_subquery_stats_text (fp, xasl_p->px_executor);
+	  fprintf (fp, "\n");
 	}
 
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
@@ -4523,12 +4540,8 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	}
       if (xasl_p->px_executor)
 	{
-	  fprintf (fp, " (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)",
-		   xasl_p->px_executor->get_parallelism () + 1,
-		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
-		   (long long int) xasl_p->px_executor->get_stats ().fetches,
-		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
-		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
+	  fprintf (fp, " ");
+	  qdump_print_px_subquery_stats_text (fp, xasl_p->px_executor);
 	}
       fprintf (fp, "\n");
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.outer_xasl, indent);
@@ -4763,13 +4776,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
 	  if (xasl_p->px_executor)
 	    {
-	      fprintf (fp,
-		       "%*c         (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
-		       indent, ' ', xasl_p->px_executor->get_parallelism () + 1,
-		       TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
-		       (long long int) xasl_p->px_executor->get_stats ().fetches,
-		       (long long int) xasl_p->px_executor->get_stats ().fetch_time,
-		       (long long int) xasl_p->px_executor->get_stats ().ioreads);
+	      fprintf (fp, "%*c         ", indent, ' ');
+	      qdump_print_px_subquery_stats_text (fp, xasl_p->px_executor);
+	      fprintf (fp, "\n");
 	    }
 	}
 
@@ -5025,13 +5034,9 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
       if (xasl_p->px_executor)
 	{
-	  fprintf (fp,
-		   "%*c         (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
-		   indent, ' ', xasl_p->px_executor->get_parallelism () + 1,
-		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
-		   (long long int) xasl_p->px_executor->get_stats ().fetches,
-		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
-		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
+	  fprintf (fp, "%*c         ", indent, ' ');
+	  qdump_print_px_subquery_stats_text (fp, xasl_p->px_executor);
+	  fprintf (fp, "\n");
 	}
 
       qdump_print_stats_text (fp, outer_xasl, indent);
