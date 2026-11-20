@@ -1,0 +1,26 @@
+# Copy consumer inputs only; Source/Build/Stamp remain in the producer tree.
+set(source "@CMAKE_BINARY_DIR@/3rdparty")
+set(prefix "@CMAKE_INSTALL_PREFIX@")
+file(MAKE_DIRECTORY "${prefix}/include" "${prefix}/lib/cmake/CubridThirdParty")
+file(COPY "${source}/include/" DESTINATION "${prefix}/include")
+file(COPY "${source}/Source/rapidjson/include/" DESTINATION "${prefix}/include")
+file(COPY "${source}/Source/libtbb/include/" DESTINATION "${prefix}/include")
+file(COPY "${source}/Source/re2/re2" "${source}/Source/re2/util"
+  DESTINATION "${prefix}/include" FILES_MATCHING PATTERN "*.h")
+file(GLOB lz4_headers "${source}/Source/lz4/lib/*.h")
+file(COPY ${lz4_headers} DESTINATION "${prefix}/include")
+file(COPY "${source}/lib/" DESTINATION "${prefix}/lib"
+  FILES_MATCHING PATTERN "*.a" PATTERN "*.so*")
+file(COPY "${source}/Source/lz4/lib/liblz4.a" "${source}/Source/re2/obj/libre2.a"
+  DESTINATION "${prefix}/lib")
+file(COPY "@CUBRID_SOURCE_ROOT@/3rdparty/license/" DESTINATION "${prefix}/licenses")
+file(COPY "@thirdparty_catch2_SOURCE_DIR@/single_include/catch2" DESTINATION "${prefix}/include")
+file(COPY "@thirdparty_catch2_SOURCE_DIR@/LICENSE.txt" DESTINATION "${prefix}/licenses/catch2")
+file(MAKE_DIRECTORY "${prefix}/sources/unixODBC")
+file(COPY "@CMAKE_BINARY_DIR@/downloads/@THIRDPARTY_UNIXODBC_ARCHIVE@"
+  DESTINATION "${prefix}/sources/unixODBC")
+file(COPY_FILE "@CMAKE_BINARY_DIR@/unixODBC-README.txt"
+  "${prefix}/sources/unixODBC/README.txt" ONLY_IF_DIFFERENT)
+file(COPY "@CMAKE_BINARY_DIR@/CubridThirdPartyConfig.cmake"
+  DESTINATION "${prefix}/lib/cmake/CubridThirdParty")
+message(STATUS "Third-party prefix: ${prefix}")
