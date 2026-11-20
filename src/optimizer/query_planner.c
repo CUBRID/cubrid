@@ -3940,6 +3940,11 @@ qo_plan_decide_bitmap_heap (QO_PLAN * planp, bool key_order)
       /* a scan that locks the rows it reads looks them up in key order */
       return;
     }
+  if (tree->info.query.correlation_level != 0)
+    {
+      /* a correlated subquery runs once an outer row: a bitmap made again for every run costs more than it saves */
+      return;
+    }
   if (tree->info.query.limit != NULL && tree->info.query.order_by == NULL
       && tree->info.query.q.select.group_by == NULL && !PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_HAS_AGG))
     {
