@@ -2238,8 +2238,10 @@ namespace parallel_scan
 	    continue;
 	  }
 
+	/* interpolation funcs must cast the value to the function domain first, so accumulate_node handles them */
 	if (agg_node->option == Q_DISTINCT
-	    && agg_node->function != PT_MIN && agg_node->function != PT_MAX)
+	    && agg_node->function != PT_MIN && agg_node->function != PT_MAX
+	    && !QPROC_IS_INTERPOLATION_FUNC (agg_node))
 	  {
 	    /* DISTINCT inserts only the first operand (the aggregated value) into the
 	     * distinct list file. Additional operands (e.g. the GROUP_CONCAT separator)

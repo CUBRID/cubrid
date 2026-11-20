@@ -55,6 +55,8 @@ static bool qo_check_eq_term_on_column (PARSER_CONTEXT * parser, PT_NODE * where
 static bool qo_is_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec);
 static bool qo_has_key_limit (PT_NODE * using_index);
 static bool qo_is_spec_in_hint (PT_NODE * node, PT_NODE * spec, PT_HINT_ENUM hint, PT_NODE * args);
+static bool qo_is_index_term_on_column (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * spec, const char *col_name);
+static bool qo_is_idx_join_possible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec);
 static PT_NODE *qo_is_other_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 					     int *continue_walk);
 static bool qo_is_conjunct_on_spec_only (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * spec);
@@ -1147,6 +1149,118 @@ qo_is_spec_in_hint (PT_NODE * node, PT_NODE * spec, PT_HINT_ENUM hint, PT_NODE *
 }
 
 /*
+ * qo_is_index_term_on_column () - can an index on this column of the spec search by the conjunct: is it a comparison
+ *      the optimizer can use an index for (qo_analyze_term ()), with the column on one side and nothing of the spec
+ *      on the other?
+ *   return: bool
+ *   parser(in):
+ *   cnf(in): the conjunct
+ *   spec(in): the spec
+ *   col_name(in): attribute name of the spec's class
+ */
+static bool
+qo_is_index_term_on_column (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * spec, const char *col_name)
+{
+  PT_NODE *mine, *other;
+  UINTPTR ref;
+
+  if (cnf->node_type != PT_EXPR || cnf->or_next != NULL)
+    {
+      return false;
+    }
+
+  mine = cnf->info.expr.arg1;
+  other = cnf->info.expr.arg2;
+  switch (cnf->info.expr.op)
+    {
+    case PT_EQ:
+    case PT_LT:
+    case PT_LE:
+    case PT_GT:
+    case PT_GE:
+      if (mine == NULL || mine->node_type != PT_NAME || mine->info.name.spec_id != spec->info.spec.id)
+	{
+	  mine = cnf->info.expr.arg2;
+	  other = cnf->info.expr.arg1;
+	}
+      break;
+
+    case PT_BETWEEN:
+    case PT_RANGE:
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+      break;
+
+    default:
+      return false;
+    }
+
+  if (mine == NULL || mine->node_type != PT_NAME || mine->info.name.spec_id != spec->info.spec.id
+      || mine->info.name.original == NULL || intl_identifier_casecmp (mine->info.name.original, col_name) != 0)
+    {
+      return false;
+    }
+
+  ref = spec->info.spec.id;
+  (void) parser_walk_tree (parser, other, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
+
+  return ref != 0;
+}
+
+/*
+ * qo_is_idx_join_possible () - can an idx-join read the spec: does its ON hold a term on the first key column of one
+ *      of its indexes (qo_is_index_term_on_column ())?
+ *   return: bool
+ *   parser(in):
+ *   node(in): the PT_SELECT
+ *   spec(in): the spec
+ *
+ * Note: the inner index scan of an idx-join is built from a join term or from a term on the spec alone.  A filter
+ *   index counts only with a USING INDEX clause, as qo_is_usable_index () has it, and a function index whose first
+ *   key is the function always counts.
+ */
+static bool
+qo_is_idx_join_possible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
+{
+  DB_OBJECT *classop;
+  SM_CLASS_CONSTRAINT *cons;
+  PT_NODE *cnf;
+
+  classop = NULL;
+  PT_SPEC_GET_DB_OBJECT (spec, classop);
+  if (classop == NULL)
+    {
+      return false;
+    }
+
+  for (cons = sm_class_constraints (classop); cons != NULL; cons = cons->next)
+    {
+      if (!SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) || cons->index_status != SM_NORMAL_INDEX
+	  || cons->attributes == NULL || cons->attributes[0] == NULL
+	  || (cons->filter_predicate != NULL && node->info.query.q.select.using_index == NULL))
+	{
+	  continue;
+	}
+
+      /* attributes[] of a function index skip the function key, which is the first key here */
+      if (cons->func_index_info != NULL && cons->func_index_info->col_id == 0)
+	{
+	  return true;
+	}
+
+      for (cnf = spec->info.spec.on_cond; cnf != NULL; cnf = cnf->next)
+	{
+	  if (qo_is_index_term_on_column (parser, cnf, spec, cons->attributes[0]->header.name))
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_is_other_spec_referenced () - set the spec id of the argument to 0 at a column of another spec
  *   return: the current node
  *   parser(in):
@@ -1220,7 +1334,8 @@ qo_is_conjunct_on_spec_only (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * s
  *
  *   The join order and the join methods hinted are written for the SEMI JOIN, so ORDERED, LEADING, KEYLIMIT and a join
  *   method hint naming the spec keep it, but USE_MERGE: there is no semi merge join, so the INNER JOIN is the only
- *   type USE_MERGE applies to.
+ *   type USE_MERGE applies to.  A USE_IDX that no idx-join can apply is ignored for its join (CBRD-28089), so it does
+ *   not keep the SEMI JOIN either.
  */
 bool
 qo_is_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec, bool * is_merge_hinted)
@@ -1247,7 +1362,8 @@ qo_is_distinct_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * sp
 
   if ((node->info.query.q.select.hint & (PT_HINT_ORDERED | PT_HINT_LEADING))
       || qo_is_spec_in_hint (node, spec, PT_HINT_USE_NL, node->info.query.q.select.use_nl)
-      || qo_is_spec_in_hint (node, spec, PT_HINT_USE_IDX, node->info.query.q.select.use_idx)
+      || (qo_is_spec_in_hint (node, spec, PT_HINT_USE_IDX, node->info.query.q.select.use_idx)
+	  && qo_is_idx_join_possible (parser, node, spec))
       || qo_is_spec_in_hint (node, spec, PT_HINT_USE_HASH, node->info.query.q.select.use_hash)
       || qo_is_spec_in_hint (node, spec, PT_HINT_NO_USE_HASH, node->info.query.q.select.no_use_hash)
       || qo_is_spec_in_hint (node, spec, PT_HINT_INDEX_SS, node->info.query.q.select.index_ss)
