@@ -947,8 +947,7 @@ namespace
   {
     copy_session_registrar ()
     {
-      /* COPY's END is the end of the statement: the transfer is the whole of it. No client half: a statement
-       * opens it, after its own privilege check, so a driver may not. */
+      /* COPY's END is the end of the statement: the transfer is the whole of it */
       stream_kind_desc desc = { STREAM_UPLOAD, copy_session_create, NULL, true, COPY_CONFIG_VERSION };
 
       if (stream_kind_register (STREAM_KIND_COPY, desc) != NO_ERROR)

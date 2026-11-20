@@ -12702,6 +12702,27 @@ copy_from_init (const COPY_CONFIG * config)
 #endif /* !CS_MODE */
 }
 
+// *INDENT-OFF*
+namespace
+{
+  /* COPY's client half: only its statement opens it, after the statement's own privilege check */
+  struct copy_client_registrar
+  {
+    copy_client_registrar ()
+    {
+      stream_kind_client_desc desc = { false, NULL };
+
+      if (stream_kind_client_register (STREAM_KIND_COPY, desc) != NO_ERROR)
+	{
+	  assert (false);
+	}
+    }
+  };
+
+  copy_client_registrar copy_client_registrar_instance;
+}
+// *INDENT-ON*
+
 /*
  * file_clean_invalid_file -
  *
