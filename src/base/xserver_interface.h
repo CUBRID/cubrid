@@ -196,6 +196,8 @@ extern BTREE_SEARCH xbtree_find_unique_unlocked (THREAD_ENTRY * thread_p, BTID *
 extern int xbtree_class_test_unique (THREAD_ENTRY * thread_p, char *buf, int buf_size);
 extern int xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, INT64 * keys_compacted,
 				    INT64 * pages_freed, INT64 * pairs_skipped);
+extern BTREE_SEARCH xbtree_find_unique_fk_existence (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
+						     OID * class_oid, OID * oid, bool is_all_class_srch);
 extern BTREE_SEARCH xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid, int pruning_type, BTID * btids,
 					       DB_VALUE * values, int count, SCAN_OPERATION_TYPE op_type, OID ** oids,
 					       int *oids_count);
@@ -266,7 +268,7 @@ extern int xboot_heap_compact (THREAD_ENTRY * thread_p, OID * class_oid);
 extern int xboot_compact_start (THREAD_ENTRY * thread_p);
 extern int xboot_compact_stop (THREAD_ENTRY * thread_p);
 
-extern int xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int att_id);
+extern int xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int att_id, bool check_only);
 
 extern int xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * id, char *secret);
 extern int xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id, const char *secret);
