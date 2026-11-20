@@ -21506,7 +21506,6 @@ exit_on_error:
 }
 
 /* COMMON_PREFIX_PAGE_SIZE_RESET forgets the leaf whenever it is unfixed, so it is unchanged while decided */
-#define BTREE_UPPER_KEY_PAGE_IS_DECIDED(bts) VPID_EQ (&(bts)->upper_key_page_vpid, &(bts)->C_vpid)
 
 /*
  * btree_range_scan_compare_upper_key () - Compare the upper key of the range with a leaf key, in scan order.
@@ -21616,7 +21615,6 @@ btree_range_scan_compare_upper_key_at_slot (THREAD_ENTRY * thread_p, BTREE_SCAN 
 static int
 btree_range_scan_find_upper_key_end (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
-  int end = bts->use_desc_index ? bts->slot_id + 1 : bts->slot_id - 1;	/* no key decided */
   int last;
   int c;
   RECDES rec;
@@ -21640,7 +21638,7 @@ btree_range_scan_find_upper_key_end (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       last += bts->use_desc_index ? 1 : -1;
     }
 
-  if (last != end)
+  if (last != bts->slot_id)
     {
       error_code = btree_range_scan_compare_upper_key_at_slot (thread_p, bts, last, &c);
       if (error_code != NO_ERROR)
@@ -21649,13 +21647,17 @@ btree_range_scan_find_upper_key_end (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	}
       if (c > 0)
 	{
-	  end = last;
+	  /* the keys from the current one to the last one */
+	  bts->upper_key_keys_decided = (bts->use_desc_index ? bts->slot_id - last : last - bts->slot_id) + 1;
 	}
     }
 
+  /* decided, even when no key is: the leaf is not decided again */
+  bts->upper_key_keys_to_check = -1;
+#if !defined (NDEBUG)
   VPID_COPY (&bts->upper_key_page_vpid, &bts->C_vpid);
   LSA_COPY (&bts->upper_key_page_lsa, pgbuf_get_lsa (bts->C_page));
-  bts->upper_key_end_slot = end;
+#endif
   return NO_ERROR;
 }
 
@@ -21695,23 +21697,21 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
     {
       /* the first keys of a range are compared one by one, so a range that ends within them (an equality, say) reads
        * no other key; past them each leaf is decided once, before its keys are compared */
-      bool is_decided = BTREE_UPPER_KEY_PAGE_IS_DECIDED (bts);
-
-      if (!is_decided && bts->upper_key_keys_to_check == 0)
+      if (bts->upper_key_keys_decided == 0 && bts->upper_key_keys_to_check == 0)
 	{
 	  ret = btree_range_scan_find_upper_key_end (thread_p, bts);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
-	  is_decided = BTREE_UPPER_KEY_PAGE_IS_DECIDED (bts);
 	}
 
-      if (is_decided
-	  && (bts->use_desc_index ? bts->slot_id >= bts->upper_key_end_slot : bts->slot_id <= bts->upper_key_end_slot))
+      if (bts->upper_key_keys_decided > 0)
 	{
 	  /* decided for this leaf by btree_range_scan_find_upper_key_end */
+	  assert (VPID_EQ (&bts->upper_key_page_vpid, &bts->C_vpid));
 	  assert (LSA_EQ (&bts->upper_key_page_lsa, pgbuf_get_lsa (bts->C_page)));
+	  bts->upper_key_keys_decided--;
 	  *is_key_range_satisfied = true;
 	}
       else
