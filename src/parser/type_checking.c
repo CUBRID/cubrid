@@ -5902,12 +5902,17 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 		      arg2_type = common_type;
 		    }
 		}
-	      /* we're not casting collection types in this context but we should "propagate" types */
-	      if (arg2_type != PT_TYPE_NONE)
+	      /* we're not casting collection types in this context but we should "propagate" types -- to an operation
+	       * whose result is a collection.  CBRD-28066: a comparison's result is a logical value; the element types
+	       * of its operands are not its data type (the result column's domain is built from it, and an element
+	       * domain whose collation a bound value decides failed the query type copy) */
+	      const bool logical_result = (sig.return_type.type == pt_arg_type::NORMAL
+					   && sig.return_type.val.type == PT_TYPE_LOGICAL);
+	      if (arg2_type != PT_TYPE_NONE && !logical_result)
 		{
 		  pt_propagate_types (parser, expr, PT_NODE_DATA_TYPE (arg1), PT_NODE_DATA_TYPE (arg2));
 		}
-	      if (arg3_type != PT_TYPE_NONE)
+	      if (arg3_type != PT_TYPE_NONE && !logical_result)
 		{
 		  pt_propagate_types (parser, expr, PT_NODE_DATA_TYPE (arg2), PT_NODE_DATA_TYPE (arg3));
 		}
