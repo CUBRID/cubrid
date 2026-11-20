@@ -88,6 +88,7 @@ OID *oid_Serial_class_oid = &oid_Serial_class;
 OID *oid_Partition_class_oid = &oid_Partition_class;
 OID *oid_User_class_oid = &oid_User_class;
 OID *oid_Sp_code_class_oid = &oid_Stored_proc_code_class;
+OID *oid_Pkg_code_class_oid = &oid_Package_code_class;
 OID *oid_histogram_class_oid = &oid_Histogram_class;
 
 const OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {

@@ -967,6 +967,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> simple_path_id_list
 %type <node> generic_function
 %type <node> generic_function_for_call
+%type <node> routine_name_for_call
 %type <node> opt_on_target
 %type <node> generic_function_id
 %type <node> pred_lhs
@@ -17695,8 +17696,37 @@ generic_function
 		}}
 	;
 
+routine_name_for_call
+	: procedure_or_function_name
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| identifier DOT identifier DOT identifier
+		{{
+			/* <user>.<package>.<routine>, held whole as the unique name of a package routine is */
+			PT_NODE *user = $1;
+			PT_NODE *pkg = $3;
+			PT_NODE *name = $5;
+
+			if (user && pkg && name)
+			  {
+			    char *full_name = pt_append_string (this_parser, user->info.name.original, ".");
+			    full_name = pt_append_string (this_parser, full_name, pkg->info.name.original);
+			    full_name = pt_append_string (this_parser, full_name, ".");
+			    full_name = pt_append_string (this_parser, full_name, name->info.name.original);
+			    name->info.name.original = full_name;
+			    parser_free_tree (this_parser, user);
+			    parser_free_tree (this_parser, pkg);
+			  }
+
+			$$ = name;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
 generic_function_for_call        
-	: procedure_or_function_name 
+	: routine_name_for_call
         {
             if (pwd_info.parser_call_check)
             {

@@ -4578,22 +4578,54 @@ error_exit:
 }
 
 /*
- * jsp_find_standalone_routine - find the routine that ALTER PROCEDURE/FUNCTION, change_sp_owner or
- *                               GRANT/REVOKE ... ON PROCEDURE names
+ * jsp_is_function - is the routine a function?
+ *   return: true if it is a function, false if it is a procedure or its type cannot be read
+ *   sp_mop(in): a routine
+ */
+static bool
+jsp_is_function (MOP sp_mop)
+{
+  DB_VALUE sp_type_val;
+  int save;
+  bool is_function = false;
+
+  AU_SAVE_AND_DISABLE (save);
+  if (db_get (sp_mop, SP_ATTR_SP_TYPE, &sp_type_val) == NO_ERROR)
+    {
+      is_function = (db_get_int (&sp_type_val) == SP_TYPE_FUNCTION);
+    }
+  else
+    {
+      er_clear ();
+    }
+  AU_RESTORE (save);
+
+  return is_function;
+}
+
+/*
+ * jsp_resolve_routine - find the routine that a name written by the user refers to
  *   return: error code
  *   name(in): the routine name as given: <routine>, <a>.<b>, or <user>.<package>.<routine>
- *   op_name(in): the operation, for the error message
+ *   functions_only(in): count functions only. A routine called in an expression must be a function
  *   sp_mop_p(out): the routine found
  *
  * Note: <a>.<b> reads as <user>.<routine> or as <package>.<routine> of the current user, the two
  *       readings that get_user_defined_routine_info () in method_callback.cpp tries too. A name
- *       matching both is ambiguous. A package routine cannot be altered or granted on its own.
+ *       matching both is ambiguous. The routines are counted whether or not the current user may
+ *       execute them, so that the name refers to the same routine for every user.
+ *
+ *       With functions_only, a procedure is not counted. If no function is found but a procedure
+ *       is, the procedure is returned so that the caller can report that a procedure cannot be
+ *       called in an expression.
+ *
+ *       If no routine is found, the error of looking the name up as <user>.<routine> is set.
  */
 int
-jsp_find_standalone_routine (const char *name, const char *op_name, MOP *sp_mop_p)
+jsp_resolve_routine (const char *name, bool functions_only, MOP *sp_mop_p)
 {
   const char *dot = strchr (name, '.');
-  MOP sp_mop, pkg_routine_mop = NULL, pkg_mop = NULL;
+  MOP sp_mop, pkg_routine_mop = NULL;
   int err;
 
   *sp_mop_p = NULL;
@@ -4626,7 +4658,7 @@ jsp_find_standalone_routine (const char *name, const char *op_name, MOP *sp_mop_
       free_and_init (user_pkg_name);
     }
 
-  // <routine>, or <user>.<routine>
+  // <routine>, <user>.<routine>, or <user>.<package>.<routine>
   sp_mop = jsp_find_stored_procedure (name);
   if (sp_mop == NULL)
     {
@@ -4636,12 +4668,71 @@ jsp_find_standalone_routine (const char *name, const char *op_name, MOP *sp_mop_
 	  return err;
 	}
       er_clear ();
-      sp_mop = pkg_routine_mop;
     }
-  else if (pkg_routine_mop != NULL)
+
+  if (sp_mop == pkg_routine_mop)
+    {
+      // both readings are the same routine: dbms_output.<routine> of the user public
+      pkg_routine_mop = NULL;
+    }
+
+  if (sp_mop != NULL && pkg_routine_mop != NULL && functions_only)
+    {
+      bool is_function = jsp_is_function (sp_mop);
+      bool is_pkg_function = jsp_is_function (pkg_routine_mop);
+
+      if (is_function != is_pkg_function)
+	{
+	  // only one of them is a function
+	  if (is_pkg_function)
+	    {
+	      sp_mop = NULL;
+	    }
+	  else
+	    {
+	      pkg_routine_mop = NULL;
+	    }
+	}
+      else if (!is_function)
+	{
+	  // two procedures: report the one read as <user>.<routine>, which cannot be called here either
+	  pkg_routine_mop = NULL;
+	}
+    }
+
+  if (sp_mop != NULL && pkg_routine_mop != NULL)
     {
       err = ER_SP_AMBIGUOUS_NAME;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, name);
+      return err;
+    }
+
+  *sp_mop_p = (sp_mop != NULL) ? sp_mop : pkg_routine_mop;
+  return NO_ERROR;
+}
+
+/*
+ * jsp_find_standalone_routine - find the routine that ALTER PROCEDURE/FUNCTION, change_sp_owner or
+ *                               GRANT/REVOKE ... ON PROCEDURE names
+ *   return: error code
+ *   name(in): the routine name as given: <routine>, <a>.<b>, or <user>.<package>.<routine>
+ *   op_name(in): the operation, for the error message
+ *   sp_mop_p(out): the routine found
+ *
+ * Note: the name is read as jsp_resolve_routine () reads it. A package routine cannot be
+ *       altered or granted on its own.
+ */
+int
+jsp_find_standalone_routine (const char *name, const char *op_name, MOP *sp_mop_p)
+{
+  MOP sp_mop, pkg_mop = NULL;
+  int err;
+
+  *sp_mop_p = NULL;
+
+  err = jsp_resolve_routine (name, false, &sp_mop);
+  if (err != NO_ERROR)
+    {
       return err;
     }
 
@@ -5833,6 +5924,9 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	      }
 	    if (!DB_IS_NULL (&pkg_code))
 	      {
+		// the code of a package member called directly from SQL is read from this row
+		// (see sp_get_code_attr ())
+		sig.ext.sp.code_oid = *WS_OID (db_get_object (&pkg_code));
 		error = db_get (db_get_object (&pkg_code), PKG_CODE_ATTR_COMPILE_ID, &cid);
 		pr_clear_value (&pkg_code);
 		if (error != NO_ERROR)
