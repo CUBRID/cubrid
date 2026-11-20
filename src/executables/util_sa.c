@@ -6292,7 +6292,9 @@ delvoldb (UTIL_FUNCTION_ARG * arg)
 	{
 	  /* nothing to delete is not an error */
 	  fputs (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_NO_VOLUME), stdout);
-	  goto cancel_exit;
+	  db_abort_transaction ();
+	  db_shutdown ();
+	  return EXIT_SUCCESS;
 	}
 
       switch (status)
@@ -6372,9 +6374,10 @@ delvoldb (UTIL_FUNCTION_ARG * arg)
   return EXIT_SUCCESS;
 
 cancel_exit:
+  /* the volume was not deleted; a caller that cannot answer the prompt (e.g. stdin at end) must see a failure */
   db_abort_transaction ();
   db_shutdown ();
-  return EXIT_SUCCESS;
+  return EXIT_FAILURE;
 
 print_delvol_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_USAGE),

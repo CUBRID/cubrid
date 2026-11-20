@@ -371,6 +371,7 @@ static int disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol
 static bool disk_cache_load_all_volumes (THREAD_ENTRY * thread_p);
 static bool disk_cache_load_volume (THREAD_ENTRY * thread_p, INT16 volid, void *ignore);
 static void disk_rv_finish_pending_delete_volume (THREAD_ENTRY * thread_p, VOLID volid);
+static void disk_cache_remove_volume (THREAD_ENTRY * thread_p, VOLID volid);
 
 static const char *disk_purpose_to_string (DISK_VOLPURPOSE purpose);
 static const char *disk_type_to_string (DB_VOLTYPE voltype);
@@ -1265,63 +1266,9 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   if (!LOG_ISRESTARTED () && volid == disk_Cache->nvols_perm - 1)
     {
-      VPID vpid_volheader;
-      PAGE_PTR page_volheader = NULL;
-      DKNSECTS total = 0, max = 0;
-      DKNSECTS free = 0;
-
       /* case 3. remove volume from disk cache completely. */
-
-      er_stack_push ();
-
-      /* we need page to remove total/max from disk cache. however, it must be allocated. */
-      vpid_volheader.volid = volid;
-      vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
-      ret = pgbuf_fix_if_not_deallocated (thread_p, &vpid_volheader, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
-					  &page_volheader);
-      if (ret != NO_ERROR)
-	{
-	  /* what is this error?? */
-	  assert_release (false);
-	}
-      else if (page_volheader == NULL)
-	{
-	  /* volume was not created. fall through. */
-	  assert (disk_Cache->vols[volid].nsect_free == 0);
-	}
-      else
-	{
-	  /* get total/max from header */
-	  DISK_VOLUME_HEADER *volheader = (DISK_VOLUME_HEADER *) page_volheader;
-	  total = volheader->nsect_total;
-	  max = volheader->nsect_max;
-
-	  pgbuf_unfix (thread_p, page_volheader);
-	}
-
-      er_stack_pop ();
-
-      /* volume was added to cache. now remove it */
-      free = disk_Cache->vols[volid].nsect_free;
-      disk_cache_lock_reserve_for_purpose (disk_Cache->vols[volid].purpose);
-      disk_cache_update_vol_free (volid, -disk_Cache->vols[volid].nsect_free);
-      disk_cache_unlock_reserve_for_purpose (disk_Cache->vols[volid].purpose);
-
-      assert (disk_Cache->vols[volid].nsect_free == 0);
-      disk_Cache->nvols_perm--;
-      disk_Cache->vols[volid].purpose = DISK_UNKNOWN_PURPOSE;
-
-      disk_Cache->perm_purpose_info.extend_info.nsect_total -= total;
-      disk_Cache->perm_purpose_info.extend_info.nsect_max -= max;
-
-      if (disk_Cache->perm_purpose_info.extend_info.volid_extend == volid)
-	{
-	  /* no longer true */
-	  disk_Cache->perm_purpose_info.extend_info.volid_extend = NULL_VOLID;
-	}
-
-      disk_log ("disk_rv_undo_format", "remove volume %d from cache (free = %d, total = %d, max = %d).",
-		volid, free, total, max);
+      assert (disk_Cache->vols[volid].purpose != DISK_UNKNOWN_PURPOSE);
+      disk_cache_remove_volume (thread_p, volid);
     }
   else
     {
@@ -1395,8 +1342,16 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       disk_Cache->vols[volheader->volid].purpose = volheader->purpose;
       disk_Cache->vols[volheader->volid].nsect_free = 0;
 
-      disk_Cache->perm_purpose_info.extend_info.nsect_total += volheader->nsect_total;
-      disk_Cache->perm_purpose_info.extend_info.nsect_max += volheader->nsect_max;
+      /* as disk_cache_load_volume; disk_cache_remove_volume reverses it */
+      if (volheader->purpose == DB_PERMANENT_DATA_PURPOSE)
+	{
+	  disk_Cache->perm_purpose_info.extend_info.nsect_total += volheader->nsect_total;
+	  disk_Cache->perm_purpose_info.extend_info.nsect_max += volheader->nsect_max;
+	}
+      else
+	{
+	  disk_Cache->temp_purpose_info.nsect_perm_total += volheader->nsect_total;
+	}
     }
 
   /* fix cache... */
@@ -2583,6 +2538,7 @@ disk_volume_is_empty (THREAD_ENTRY * thread_p, VOLID volid)
  * finished; otherwise the deletion was rolled back and the volume is mounted and cached again. when redo meets the
  * creation of a new volume with the same id first, that proves the deletion was decided, so it is finished right there
  * (disk_rv_redo_dboutside_newvol).
+
  */
 
 typedef struct disk_delvol_pending DISK_DELVOL_PENDING;
@@ -2598,10 +2554,10 @@ static int disk_Delvol_pending_count = 0;
 /* a pending deletion was finished during redo; the volume information file is recreated at the end of recovery */
 static bool disk_Delvol_volinfo_stale = false;
 
-static void disk_cache_remove_volume (THREAD_ENTRY * thread_p, VOLID volid);
 static void disk_delete_volume_finish (THREAD_ENTRY * thread_p, VOLID volid, const char *vol_fullname,
 				       bool recreate_volinfo);
 static int disk_delete_volume_rollback (THREAD_ENTRY * thread_p, VOLID volid, const char *vol_fullname);
+static int disk_delvol_pending_compare_desc (const void *a, const void *b);
 
 /*
  * disk_check_delete_volume () - check whether a permanent volume can be deleted by delvoldb
@@ -2619,6 +2575,7 @@ disk_check_delete_volume (THREAD_ENTRY * thread_p, VOLID volid, DISK_DELVOL_STAT
   DISK_VOLUME_HEADER *volheader = NULL;
   PAGE_PTR page_volheader = NULL;
   DKNSECTS nsect_free = 0;
+  DKNSECTS nsect_unused = 0;
   int error_code = NO_ERROR;
 
   assert (status != NULL && info != NULL);
@@ -2649,6 +2606,8 @@ disk_check_delete_volume (THREAD_ENTRY * thread_p, VOLID volid, DISK_DELVOL_STAT
   info->purpose = (DISK_VOLPURPOSE) volheader->purpose;
   info->npages_total = DISK_SECTS_NPAGES (volheader->nsect_total);
   error_code = disk_stab_iterate_units_all (thread_p, volheader, PGBUF_LATCH_READ, disk_stab_count_free, &nsect_free);
+  /* the system sectors are never freed; every other sector is free when the volume is empty */
+  nsect_unused = volheader->nsect_total - (SECTOR_FROM_PAGEID (volheader->sys_lastpage) + 1);
   pgbuf_unfix_and_init (thread_p, page_volheader);
   if (error_code != NO_ERROR)
     {
@@ -2671,7 +2630,7 @@ disk_check_delete_volume (THREAD_ENTRY * thread_p, VOLID volid, DISK_DELVOL_STAT
     {
       *status = DISK_DELVOL_NOT_LAST;
     }
-  else if (!disk_volume_is_empty (thread_p, volid))
+  else if (nsect_free != nsect_unused)
     {
       *status = DISK_DELVOL_NOT_EMPTY;
     }
@@ -2794,21 +2753,23 @@ error:
 }
 
 /*
- * disk_cache_remove_volume () - remove a permanent volume from disk cache (reverse of disk_cache_load_volume)
+ * disk_cache_remove_volume () - remove the last cached permanent volume from disk cache (reverse of
+ *                               disk_cache_load_volume)
  *
  * return        : void
  * thread_p (in) : thread entry
  * volid (in)    : volume identifier
  *
- * note: the volume must still be mounted if it is cached.
+ * note: the volume must still be mounted if it is cached. used by delvoldb and by the undo of a volume creation.
  */
 static void
 disk_cache_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
 {
   DB_VOLPURPOSE purpose = disk_Cache->vols[volid].purpose;
-  DISK_VOLUME_HEADER *volheader = NULL;
+  VPID vpid_volheader;
   PAGE_PTR page_volheader = NULL;
-  DKNSECTS nsect_total = 0, nsect_max = 0;
+  DKNSECTS nsect_total = 0, nsect_max = 0, nsect_free = 0;
+  int error_code;
 
   if (purpose == DISK_UNKNOWN_PURPOSE)
     {
@@ -2816,21 +2777,41 @@ disk_cache_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
       return;
     }
 
-  if (disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &page_volheader, &volheader) == NO_ERROR)
+  /* disk_get_voltype, used by disk_cache_update_vol_free, depends on the volume being the last permanent one */
+  assert (volid == disk_Cache->nvols_perm - 1);
+
+  er_stack_push ();
+
+  /* the header page is not allocated yet if the creation of the volume is undone before it was formatted */
+  vpid_volheader.volid = volid;
+  vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
+  error_code = pgbuf_fix_if_not_deallocated (thread_p, &vpid_volheader, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
+					     &page_volheader);
+  if (error_code != NO_ERROR)
     {
+      assert_release (false);
+    }
+  else if (page_volheader == NULL)
+    {
+      /* volume was not created */
+      assert (disk_Cache->vols[volid].nsect_free == 0);
+    }
+  else
+    {
+      DISK_VOLUME_HEADER *volheader = (DISK_VOLUME_HEADER *) page_volheader;
+
       nsect_total = volheader->nsect_total;
       nsect_max = volheader->nsect_max;
       pgbuf_unfix_and_init (thread_p, page_volheader);
     }
-  else
-    {
-      assert_release (false);
-      er_clear ();
-    }
 
+  er_stack_pop ();
+
+  nsect_free = disk_Cache->vols[volid].nsect_free;
   disk_cache_lock_reserve_for_purpose (purpose);
-  disk_cache_update_vol_free (volid, -disk_Cache->vols[volid].nsect_free);
+  disk_cache_update_vol_free (volid, -nsect_free);
   disk_cache_unlock_reserve_for_purpose (purpose);
+  assert (disk_Cache->vols[volid].nsect_free == 0);
 
   if (purpose == DB_PERMANENT_DATA_PURPOSE)
     {
@@ -2849,8 +2830,8 @@ disk_cache_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
   disk_Cache->vols[volid].purpose = DISK_UNKNOWN_PURPOSE;
   disk_Cache->nvols_perm--;
 
-  disk_log ("disk_cache_remove_volume", "removed volume %d from cache (total = %d, max = %d)", volid, nsect_total,
-	    nsect_max);
+  disk_log ("disk_cache_remove_volume", "removed volume %d from cache (free = %d, total = %d, max = %d)", volid,
+	    nsect_free, nsect_total, nsect_max);
 }
 
 /*
@@ -2902,6 +2883,19 @@ disk_delete_volume_finish (THREAD_ENTRY * thread_p, VOLID volid, const char *vol
     }
 
   disk_log ("disk_delete_volume_finish", "volume %d (%s) is deleted", volid, target_fullname);
+}
+
+/*
+ * disk_delvol_pending_compare_desc () - order pending deletions by volume id, the largest first. a volume leaves the
+ *                                       disk cache only as the last permanent one (disk_cache_remove_volume).
+ */
+static int
+disk_delvol_pending_compare_desc (const void *a, const void *b)
+{
+  const DISK_DELVOL_PENDING *pa = (const DISK_DELVOL_PENDING *) a;
+  const DISK_DELVOL_PENDING *pb = (const DISK_DELVOL_PENDING *) b;
+
+  return (int) pb->volid - (int) pa->volid;
 }
 
 /*
@@ -3009,24 +3003,30 @@ disk_rv_redo_delete_volume (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 static void
 disk_rv_finish_pending_delete_volume (THREAD_ENTRY * thread_p, VOLID volid)
 {
-  int i = 0;
+  int i, nfinish = 0;
 
-  while (i < disk_Delvol_pending_count)
+  if (disk_Delvol_pending_count == 0)
     {
-      if (disk_Delvol_pending[i].volid >= volid)
-	{
-	  disk_delete_volume_finish (thread_p, disk_Delvol_pending[i].volid, disk_Delvol_pending[i].vol_fullname,
-				     false);
-	  disk_Delvol_volinfo_stale = true;
+      return;
+    }
 
-	  /* drop the entry */
-	  disk_Delvol_pending[i] = disk_Delvol_pending[disk_Delvol_pending_count - 1];
-	  disk_Delvol_pending_count--;
-	}
-      else
-	{
-	  i++;
-	}
+  /* the largest id first; the entries to finish come before the others */
+  qsort (disk_Delvol_pending, disk_Delvol_pending_count, sizeof (DISK_DELVOL_PENDING),
+	 disk_delvol_pending_compare_desc);
+
+  for (i = 0; i < disk_Delvol_pending_count && disk_Delvol_pending[i].volid >= volid; i++)
+    {
+      disk_delete_volume_finish (thread_p, disk_Delvol_pending[i].volid, disk_Delvol_pending[i].vol_fullname, false);
+      disk_Delvol_volinfo_stale = true;
+      nfinish++;
+    }
+
+  if (nfinish > 0)
+    {
+      /* drop the finished entries */
+      memmove (disk_Delvol_pending, disk_Delvol_pending + nfinish,
+	       sizeof (DISK_DELVOL_PENDING) * (disk_Delvol_pending_count - nfinish));
+      disk_Delvol_pending_count -= nfinish;
     }
 }
 
@@ -3073,6 +3073,10 @@ disk_rv_complete_delete_volume (THREAD_ENTRY * thread_p)
 
   last_volid = xboot_find_last_permanent (thread_p);
 
+  /* the largest id first: a volume leaves the disk cache only as the last permanent one */
+  qsort (disk_Delvol_pending, disk_Delvol_pending_count, sizeof (DISK_DELVOL_PENDING),
+	 disk_delvol_pending_compare_desc);
+
   for (i = 0; i < disk_Delvol_pending_count; i++)
     {
       DISK_DELVOL_PENDING *entry = &disk_Delvol_pending[i];
@@ -3083,9 +3087,11 @@ disk_rv_complete_delete_volume (THREAD_ENTRY * thread_p)
 	}
       else if (disk_delete_volume_rollback (thread_p, entry->volid, entry->vol_fullname) != NO_ERROR)
 	{
-	  /* restart checks the number of volumes and fails if the volume cannot be found */
-	  assert_release (false);
-	  er_clear ();
+	  /* the volume stays in boot_Db_parm but is not mounted or cached. mount and disk cache were set up before
+	   * recovery and nothing checks them again, so the database must not start like this */
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "disk_rv_complete_delete_volume: volume %d (%s) cannot be "
+			     "put back after its deletion was rolled back", entry->volid, entry->vol_fullname);
+	  return;
 	}
     }
 

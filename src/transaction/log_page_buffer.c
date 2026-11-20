@@ -1708,6 +1708,7 @@ void
 logpb_reset_backup_lsa (THREAD_ENTRY * thread_p, bool flush)
 {
   bool own_cs = LOG_CS_OWN_WRITE_MODE (thread_p);
+  int i;
 
   if (!own_cs)
     {
@@ -1717,6 +1718,12 @@ logpb_reset_backup_lsa (THREAD_ENTRY * thread_p, bool flush)
   LSA_SET_NULL (&log_Gl.hdr.bkup_level0_lsa);
   LSA_SET_NULL (&log_Gl.hdr.bkup_level1_lsa);
   LSA_SET_NULL (&log_Gl.hdr.bkup_level2_lsa);
+  /* the times and metrics of those backups go with them, or backupdb and diagdb would still report them */
+  for (i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
+    {
+      log_Gl.hdr.bkinfo[i].bkup_attime = 0;
+    }
+  logpb_initialize_backup_info (&log_Gl.hdr);
 
   if (flush)
     {
