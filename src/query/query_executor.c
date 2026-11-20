@@ -8916,6 +8916,19 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
     ? (int) parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT,
 						     (UINT64) list_id->page_cnt + partials->page_cnt,
 						     xasl->parallelism) : 1;
+  if (px_degree > 1 && sort_px && !(order_free && groups >= QEXEC_GBY_PX_MIN_GROUPS))
+    {
+      /* the merge is had for its workers here: a GROUP BY they cannot read (qexec_gby_px_reader_make ()) leaves the
+       * lists to the sort, which takes workers for any */
+      QEXEC_GBY_PX_READER probe;
+      const char *why;
+
+      if (!qexec_gby_px_reader_make (thread_p, gbstate, &probe, &why))
+	{
+	  return NO_ERROR;
+	}
+      qexec_gby_px_reader_free (thread_p, &probe);
+    }
 #else /* SERVER_MODE */
   sort_px = false;
   px_degree = 1;
