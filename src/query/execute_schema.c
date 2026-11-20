@@ -324,6 +324,7 @@ static int check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * at
 
 static int get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE ** default_value,
 				     const char *classname);
+static int do_check_kept_default_expr (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * attribute);
 
 static int do_update_new_notnull_cols_without_default (PARSER_CONTEXT * parser, PT_NODE * alter, MOP class_mop);
 
@@ -11911,6 +11912,39 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   /* default_value is either NULL or pointing to address of stack_value */
   assert (default_value == NULL || default_value == &stack_value);
   new_default = default_value;
+
+  /* without a DEFAULT / ON UPDATE clause the old expression is kept: it must fit the new type as in CREATE */
+  if (attr_chg_prop->name_space == ID_ATTRIBUTE
+      && !is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_UNCHANGED)
+      && (attribute->info.attr_def.data_default == NULL || attribute->info.attr_def.on_update == DB_DEFAULT_NONE))
+    {
+      SM_ATTRIBUTE *old_att = NULL;
+
+      error = smt_find_attribute (ctemplate, attr_name, 0, &old_att);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+      if (attribute->info.attr_def.data_default == NULL)
+	{
+	  error = do_check_kept_default_expr (parser, old_att, attribute);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+      if (attribute->info.attr_def.on_update == DB_DEFAULT_NONE)
+	{
+	  attribute->info.attr_def.on_update = old_att->on_update_default_expr;
+	  error = check_default_on_update_clause (parser, attribute);
+	  attribute->info.attr_def.on_update = DB_DEFAULT_NONE;
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+    }
+
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &new_default_expr);
 
   attr_db_domain = pt_node_to_db_domain (parser, attribute, ctemplate->name);
@@ -14554,6 +14588,63 @@ exit_on_coerce_error:
   return error;
 }
 
+
+/*
+ * do_check_kept_default_expr () - check the default expression an attribute keeps through MODIFY / CHANGE
+ *	without a DEFAULT clause against its new type, the way CREATE checks a DEFAULT it is given
+ *   return: error code
+ *   parser(in): parser context
+ *   att(in): the attribute as it is before the change
+ *   attribute(in): its PT_ATTR_DEF, of the new type and without a DEFAULT clause
+ */
+static int
+do_check_kept_default_expr (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * attribute)
+{
+  PT_NODE *expr, *data_default;
+  DB_VALUE value;
+  DB_VALUE *value_p = &value;
+  int error;
+
+  assert (attribute->info.attr_def.data_default == NULL);
+
+  if (att->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
+    {
+      return NO_ERROR;
+    }
+
+  expr = pt_make_default_value_tree_from_default_expr (parser, &att->default_value.default_expr);
+  if (expr == NULL)
+    {
+      PT_ERRORm (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      return er_errid ();
+    }
+
+  /* the rebuilt tree has no source position: report its errors at the column */
+  expr->buffer_pos = attribute->buffer_pos;
+  expr->line_number = attribute->line_number;
+  expr->column_number = attribute->column_number;
+
+  data_default = pt_make_data_default_expr_node (parser, expr);
+  if (data_default == NULL)
+    {
+      parser_free_tree (parser, expr);
+      PT_ERRORm (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      return er_errid ();
+    }
+  data_default->info.data_default.default_expr_type = att->default_value.default_expr.default_expr_type;
+
+  /* the check only: the attribute keeps its stored default expression */
+  db_make_null (&value);
+  attribute->info.attr_def.data_default = data_default;
+  error = get_att_default_from_def (parser, attribute, &value_p, NULL);
+  attribute->info.attr_def.data_default = NULL;
+  pr_clear_value (&value);
+  parser_free_tree (parser, data_default);
+
+  return error;
+}
 
 /*
  * get_hard_default_for_type() - Get a hard-coded default value for the given
