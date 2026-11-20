@@ -8546,6 +8546,7 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement, UPDATE_TYPE 
       DB_VALUE *dbvals = NULL;
       PT_ASSIGNMENTS_HELPER ea;
       PT_NODE *rhs = NULL, *lhs = NULL;
+      bool was_dirty = WS_ISDIRTY (oid);
 
       /* Before we start evaluating assignments, we need to first lock the object. Assignments may depend on current
        * object values which cannot be modified by others. */
@@ -8554,6 +8555,11 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement, UPDATE_TYPE 
 	{
 	  PT_INTERNAL_ERROR (parser, "update_object_by_oid failed to lock object.");
 	  return error;
+	}
+      /* the lock marks the row dirty before it changes: a flush during the assignments need not write it */
+      if (!was_dirty && !oid->is_vid)
+	{
+	  ws_clean (oid);
 	}
 
       /* load structures for update */
