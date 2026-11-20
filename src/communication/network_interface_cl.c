@@ -93,6 +93,7 @@
 #include "locator_cl.h"
 #include "execute_schema.h"
 #include "authenticate.h"
+#include "copy_stream_kind.h"
 #include "stream_client.h"
 #include "stream_session.hpp"
 
@@ -12807,6 +12808,87 @@ stream_from_init (int stream_kind, const char *config, int config_len, int flags
   return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
+
+/*
+ * copy_from_init () - Open COPY's upload: pack its open request and hand it to stream_from_init ()
+ *   return: error code
+ *   config(in): what the statement resolved; copy_stream_kind.h gives the order on the wire
+ */
+int
+copy_from_init (const COPY_CONFIG * config)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  int config_size;
+  char *blob = NULL;
+  char *ptr;
+  INT64 reject_limit = config->reject_limit;
+
+  config_size = OR_INT_SIZE + or_packed_string_length (config->table_name, NULL) + (OR_INT_SIZE * 6)
+    + or_packed_string_length (config->null_str, NULL) + OR_INT_SIZE + OR_INT64_SIZE
+    + (config->num_cols * OR_INT_SIZE * 2);
+
+  blob = (char *) malloc (config_size);
+  if (blob == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) config_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_int (blob, COPY_CONFIG_VERSION);
+  ptr = or_pack_string (ptr, config->table_name);
+  ptr = or_pack_int (ptr, config->num_cols);
+  ptr = or_pack_int (ptr, config->format);
+  ptr = or_pack_int (ptr, config->delimiter);
+  ptr = or_pack_int (ptr, config->quote);
+  ptr = or_pack_int (ptr, config->header);
+  ptr = or_pack_int (ptr, config->bulk);
+  ptr = or_pack_string (ptr, config->null_str);
+  ptr = or_pack_int (ptr, config->on_error_ignore);
+  OR_PUT_INT64 (ptr, &reject_limit);
+  ptr += OR_INT64_SIZE;
+  for (int i = 0; i < config->num_cols; i++)
+    {
+      ptr = or_pack_int (ptr, (int) config->col_types[i]);
+    }
+  for (int i = 0; i < config->num_cols; i++)
+    {
+      ptr = or_pack_int (ptr, config->attr_ids[i]);
+    }
+
+  rc = stream_from_init (STREAM_KIND_COPY, blob, CAST_BUFLEN (ptr - blob));
+
+  free_and_init (blob);
+
+  return rc;
+#else /* CS_MODE */
+  /* The stream transport is a client->server network path; standalone mode has
+   * no server to stream to, so report it instead of silently loading nothing. */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, "COPY FROM STDIN in standalone mode");
+  return ER_COPY_NOT_SUPPORTED;
+#endif /* !CS_MODE */
+}
+
+// *INDENT-OFF*
+namespace
+{
+  /* COPY's client half: only its statement opens it, after the statement's own privilege check */
+  struct copy_client_registrar
+  {
+    copy_client_registrar ()
+    {
+      stream_kind_client_desc desc = { false, NULL };
+
+      if (stream_kind_client_register (STREAM_KIND_COPY, desc) != NO_ERROR)
+	{
+	  assert (false);
+	}
+    }
+  };
+
+  copy_client_registrar copy_client_registrar_instance;
+}
+// *INDENT-ON*
 
 /*
  * file_clean_invalid_file -

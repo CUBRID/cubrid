@@ -149,6 +149,7 @@ static void pt_fill_sp_option_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #include "storage_common.h"
 #include "sp_constants.hpp"
 #include "db_function.hpp"
+#include "copy_stream_kind.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -994,6 +995,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> limit_options
 %type <node> opt_upd_del_limit_clause
 %type <node> truncate_stmt
+%type <node> copy_stmt
+%type <number> copy_format
+%type <c10> opt_copy_csv_option_list
+%type <c10> copy_csv_option_list
+%type <c10> copy_csv_option
 %type <node> do_stmt
 %type <node> on_duplicate_key_update
 %type <node> opt_attr_ordering_info
@@ -1551,6 +1557,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> BIT_OR
 %token <cptr> BIT_XOR
 %token <cptr> BUFFER
+%token <cptr> BULK_
 %token <cptr> CALLER
 %token <cptr> CACHE
 %token <cptr> CAPACITY
@@ -1565,8 +1572,10 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> COMMITTED
 %token <cptr> COMPACT
 %token <cptr> COMPILE
+%token <cptr> COPY_
 %token <cptr> COST
 %token <cptr> CRITICAL
+%token <cptr> CSV_
 %token <cptr> CUME_DIST
 %token <cptr> DATE_ADD
 %token <cptr> DATE_SUB
@@ -1575,6 +1584,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> DBNAME
 %token <cptr> DECREMENT
 %token <cptr> DEFINER
+%token <cptr> DELIMITER_
 %token <cptr> DENSE_RANK
 %token <cptr> DETERMINISTIC
 %token <cptr> DONT_REUSE_OID
@@ -1586,6 +1596,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> EXPLAIN
 %token <cptr> FILL_FACTOR
 %token <cptr> FIRST_VALUE
+%token <cptr> FORMAT_
 %token <cptr> FORCE
 %token <cptr> FORCE_INLINE
 %token <cptr> FORCE_OUTLINE
@@ -1676,6 +1687,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> NULLS
 %token <cptr> OFFSET
 %token <cptr> ONLINE
+%token <cptr> ON_ERROR_
 %token <cptr> OOS
 %token <cptr> OPEN
 %token <cptr> ORDINALITY
@@ -1702,6 +1714,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> PUBLIC
 %token <cptr> QUARTER
 %token <cptr> QUEUES
+%token <cptr> QUOTE_
 %token <cptr> RANDOM_
 %token <cptr> RANGE_
 %token <cptr> RANK
@@ -1713,6 +1726,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> REGEXP_REPLACE
 %token <cptr> REGEXP_SUBSTR
 %token <cptr> REJECT_
+%token <cptr> REJECT_LIMIT_
 %token <cptr> REMOVE
 %token <cptr> REORGANIZE
 %token <cptr> REPEATABLE
@@ -1741,6 +1755,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> STDDEV
 %token <cptr> STDDEV_POP
 %token <cptr> STDDEV_SAMP
+%token <cptr> STDIN_
 %token <cptr> STR_TO_DATE
 %token <cptr> SUBDATE
 %token <cptr> SYNONYM
@@ -2039,6 +2054,8 @@ stmt_
 	| transaction_stmt
 		{ $$ = $1; }
 	| truncate_stmt
+		{ $$ = $1; }
+	| copy_stmt
 		{ $$ = $1; }
 	| merge_stmt
 		{ $$ = $1; }
@@ -4486,6 +4503,165 @@ opt_owner_clause
 as_or_to
 	: AS
 	| TO
+	;
+
+copy_stmt
+	: COPY_ class_spec_without_server_name opt_attr_list FROM STDIN_ WITH '(' FORMAT_ copy_format opt_copy_csv_option_list ')'
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_COPY);
+			if (node)
+			  {
+			    container_10 opt = $10;
+			    PT_NODE *delim = CONTAINER_AT_0 (opt);
+			    PT_NODE *quote = CONTAINER_AT_1 (opt);
+			    PT_NODE *bulk = CONTAINER_AT_2 (opt);
+			    PT_NODE *hdr = CONTAINER_AT_3 (opt);
+
+			    node->info.copy.table_name = $2;
+			    node->info.copy.column_list = $3;
+			    node->info.copy.direction = 0;	/* FROM */
+			    node->info.copy.format = $9;
+			    node->info.copy.fmt.csv.delimiter = 0;
+			    node->info.copy.fmt.csv.quote = 0;
+			    node->info.copy.fmt.csv.header = 0;
+			    node->info.copy.fmt.csv.null_str = CONTAINER_AT_4 (opt);
+			    node->info.copy.on_error = (int) TO_NUMBER (CONTAINER_AT_5 (opt));
+			    node->info.copy.reject_limit = CONTAINER_AT_6 (opt);
+			    node->info.copy.bulk = 0;
+			    if (bulk != NULL)
+			      {
+				node->info.copy.bulk = 1;
+			      }
+
+			    /* DELIMITER / QUOTE take exactly one character. Anything else is
+			     * marked -1 here and rejected by do_copy, so that a two-character
+			     * delimiter is not silently truncated to its first byte. */
+			    if (delim != NULL && delim->info.value.data_value.str != NULL)
+			      {
+				node->info.copy.fmt.csv.delimiter =
+				  (delim->info.value.data_value.str->length == 1)
+				  ? delim->info.value.data_value.str->bytes[0] : -1;
+			      }
+			    if (quote != NULL && quote->info.value.data_value.str != NULL)
+			      {
+				node->info.copy.fmt.csv.quote =
+				  (quote->info.value.data_value.str->length == 1)
+				  ? quote->info.value.data_value.str->bytes[0] : -1;
+			      }
+			    if (hdr != NULL)
+			      {
+				node->info.copy.fmt.csv.header = 1;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
+copy_format
+	: BINARY
+		{{ $$ = COPY_FORMAT_BINARY; }}
+	| CSV_
+		{{ $$ = COPY_FORMAT_CSV; }}
+	;
+
+opt_copy_csv_option_list
+	: /* empty */
+		{{
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			$$ = ctn;
+		}}
+	| ',' copy_csv_option_list
+		{{
+			$$ = $2;
+		}}
+	;
+
+copy_csv_option_list
+	: copy_csv_option
+		{{
+			$$ = $1;
+		}}
+	| copy_csv_option_list ',' copy_csv_option
+		{{
+			/* each option fills one slot; a later one of the same kind wins */
+			container_10 a = $1;
+			container_10 b = $3;
+			if (CONTAINER_AT_0 (b) != NULL) a.c1 = CONTAINER_AT_0 (b);
+			if (CONTAINER_AT_1 (b) != NULL) a.c2 = CONTAINER_AT_1 (b);
+			if (CONTAINER_AT_2 (b) != NULL) a.c3 = CONTAINER_AT_2 (b);
+			if (CONTAINER_AT_3 (b) != NULL) a.c4 = CONTAINER_AT_3 (b);
+			if (CONTAINER_AT_4 (b) != NULL) a.c5 = CONTAINER_AT_4 (b);
+			if (CONTAINER_AT_5 (b) != NULL) a.c6 = CONTAINER_AT_5 (b);
+			if (CONTAINER_AT_6 (b) != NULL) a.c7 = CONTAINER_AT_6 (b);
+			if (CONTAINER_AT_7 (b) != NULL) a.c8 = CONTAINER_AT_7 (b);
+			if (CONTAINER_AT_8 (b) != NULL) a.c9 = CONTAINER_AT_8 (b);
+			if (CONTAINER_AT_9 (b) != NULL) a.c10 = CONTAINER_AT_9 (b);
+			$$ = a;
+		}}
+	;
+
+copy_csv_option
+	: DELIMITER_ char_string_literal
+		{{
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c1 = $2;
+			$$ = ctn;
+		}}
+	| BULK_		/* applies to all formats (not CSV-specific) — enables bulk-load mode */
+		{{
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c3 = FROM_NUMBER (1);
+			$$ = ctn;
+		}}
+	| QUOTE_ char_string_literal
+		{{
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c2 = $2;
+			$$ = ctn;
+		}}
+	| HEADER
+		{{
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c4 = FROM_NUMBER (1);	/* flag */
+			$$ = ctn;
+		}}
+	| Null char_string_literal	/* the unquoted field that reads as NULL */
+		{{
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c5 = $2;
+			$$ = ctn;
+		}}
+	| ON_ERROR_ IGNORE_
+		{{
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c6 = FROM_NUMBER (PT_COPY_ON_ERROR_IGNORE);
+			$$ = ctn;
+		}}
+	| ON_ERROR_ identifier	/* STOP; any other word is refused by do_copy */
+		{{
+			container_10 ctn;
+			PT_NODE *word = $2;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c6 = FROM_NUMBER ((word != NULL && intl_identifier_casecmp (word->info.name.original, "STOP") == 0)
+					      ? PT_COPY_ON_ERROR_STOP : PT_COPY_ON_ERROR_INVALID);
+			$$ = ctn;
+		}}
+	| REJECT_LIMIT_ unsigned_integer
+		{{
+			container_10 ctn;
+			memset (&ctn, 0, sizeof (ctn));
+			ctn.c7 = $2;
+			$$ = ctn;
+		}}
 	;
 
 truncate_stmt
@@ -20852,6 +21028,7 @@ identifier
 	| BIT_OR                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| BIT_XOR                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| BUFFER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| BULK_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CALLER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CACHE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CAPACITY               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20866,8 +21043,10 @@ identifier
 	| COMMITTED              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMPACT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMPILE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COPY_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COST                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CRITICAL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CSV_                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CUME_DIST              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| DATE_ADD               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| DATE_SUB               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20876,6 +21055,7 @@ identifier
 	| DBNAME                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| DECREMENT              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 
 	| DEFINER                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 
+	| DELIMITER_             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
        	| DEDUPLICATE_           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 	
         | DENSE_RANK             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
         | DETERMINISTIC          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20891,6 +21071,7 @@ identifier
 	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FORCE_INLINE           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FORCE_OUTLINE          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FORMAT_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20974,6 +21155,7 @@ identifier
 	| NULLS                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OFFSET                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ONLINE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ON_ERROR_              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OOS                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OPEN                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ORDINALITY             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -21001,6 +21183,7 @@ identifier
 	| PUBLIC                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| QUARTER                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| QUEUES                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| QUOTE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RANDOM_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RANGE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RANK                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -21012,6 +21195,7 @@ identifier
 	| REGEXP_REPLACE         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REGEXP_SUBSTR          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REJECT_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REJECT_LIMIT_          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REMOVE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REORGANIZE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REPEATABLE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -21036,6 +21220,7 @@ identifier
 	| STDDEV                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STDDEV_POP             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STDDEV_SAMP            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STDIN_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STORAGE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STR_TO_DATE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SUBDATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -24350,6 +24535,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_ROW_COUNT:
     case PT_LAST_INSERT_ID:
     case PT_TRACE_STATS:
+    case PT_COPY_REJECTED_ROWS:
       if (c != 0)
 	{
 	  return NULL;

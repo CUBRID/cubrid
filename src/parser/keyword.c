@@ -34,6 +34,9 @@
 #include "string_opfunc.h"
 #include "chartype.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* It is not required for the keywords to be alphabetically sorted, as they
  * will be sorted when needed. See pt_find_keyword.
  */
@@ -127,6 +130,13 @@ static KEYWORD_RECORD keywords[] = {
   {CONSTRAINTS, "CONSTRAINTS", 0},
   {CONTINUE, "CONTINUE", 0},
   {CONVERT, "CONVERT", 0},
+  {COPY_, "COPY", 1},
+  {CSV_, "CSV", 1},
+  {DELIMITER_, "DELIMITER", 1},
+  {QUOTE_, "QUOTE", 1},
+  {BULK_, "BULK", 1},
+  {ON_ERROR_, "ON_ERROR", 1},
+  {REJECT_LIMIT_, "REJECT_LIMIT", 1},
   {CORRESPONDING, "CORRESPONDING", 0},
   {COST, "COST", 1},
   {COUNT, "COUNT", 0},
@@ -220,6 +230,7 @@ static KEYWORD_RECORD keywords[] = {
   {FORCE_INLINE, "FORCE_INLINE", 1},
   {FORCE_OUTLINE, "FORCE_OUTLINE", 1},
   {FOREIGN, "FOREIGN", 0},
+  {FORMAT_, "FORMAT", 1},
   {FOUND, "FOUND", 0},
   {FROM, "FROM", 0},
   {FULL, "FULL", 0},
@@ -528,6 +539,7 @@ static KEYWORD_RECORD keywords[] = {
   {STATEMENT, "STATEMENT", 1},
   {STATISTICS, "STATISTICS", 0},
   {STATUS, "STATUS", 1},
+  {STDIN_, "STDIN", 1},
   {STDDEV, "STDDEV", 1},
   {STDDEV_POP, "STDDEV_POP", 1},
   {STDDEV_SAMP, "STDDEV_SAMP", 1},
@@ -729,6 +741,7 @@ static FUNCTION_MAP functions[] = {
   {0, "disk_size", PT_DISK_SIZE},
   {0, "round", PT_ROUND},
   {0, "row_count", PT_ROW_COUNT},
+  {0, "copy_rejected_rows", PT_COPY_REJECTED_ROWS},
   {0, "last_insert_id", PT_LAST_INSERT_ID},
   {0, "rpad", PT_RPAD},
   {0, "rtrim", PT_RTRIM},

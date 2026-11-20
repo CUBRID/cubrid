@@ -1291,10 +1291,10 @@ $ LOADDB
 1218 스트림이 열려 있지 않음: %1$s.
 1219 지원하지 않는 스트림: %1$s.
 1220 잘못된 스트림 사용: %1$s.
-1221 Reserved error for stream/replication.
-1222 Reserved error for stream/replication.
-1223 Reserved error for stream/replication.
-1224 Reserved error for stream/replication.
+1221 COPY FROM은 "%1$s"에 대해 지원되지 않습니다.
+1222 COPY 바이너리 형식 오류: %1$s.
+1223 COPY CSV 형식 오류: %1$s.
+1224 COPY FROM: %1$s.
 1225 Reserved error for stream/replication.
 1226 Reserved error for stream/replication.
 1227 Reserved error for stream/replication.

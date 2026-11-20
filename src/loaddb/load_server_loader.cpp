@@ -888,8 +888,12 @@ namespace cubload
 
     insert_errors_filtered = has_errors_filtered_for_insert (m_session.get_args().m_ignored_errors);
 
-    /* The locator_multi_insert_force() sometimes creates the data page-based log record instead of the record-based log record. In HA, it means that the replication log cannot have an accurate LSA for each insert by loaddb. */
-    if (insert_errors_filtered || !HA_DISABLED () || pruning_type != DB_NOT_PARTITIONED_CLASS)
+    /* locator_multi_insert_force () settles its own logging shape - a page image
+     * where replication is not watching, a record per row where it is - so HA no
+     * longer forces the row-at-a-time path. Filtering per-row errors still does:
+     * a batch cannot report which row failed. So does a partitioned class, whose
+     * rows are routed one at a time. */
+    if (insert_errors_filtered || pruning_type != DB_NOT_PARTITIONED_CLASS)
       {
 	// In case of possible errors filtered for insert we disable the unique optimization
 	// A routed row uses a partition scan cache whose multi-row unique stats are discarded with the pruning

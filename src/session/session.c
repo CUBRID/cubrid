@@ -136,6 +136,7 @@ struct session_state
   DB_VALUE cur_insert_id;
   DB_VALUE last_insert_id;
   int row_count;
+  INT64 copy_rejected_rows;	/* rows the last COPY skipped under ON_ERROR IGNORE */
   SESSION_VARIABLE *session_variables;
   PREPARED_STATEMENT *statements;
   SESSION_QUERY_ENTRY *queries;
@@ -343,6 +344,7 @@ session_state_init (void *st)
   session_p->is_trigger_involved = false;
   session_p->is_last_insert_id_generated = false;
   session_p->row_count = -1;
+  session_p->copy_rejected_rows = 0;
   session_p->session_variables = NULL;
   session_p->statements = NULL;
   session_p->queries = NULL;
@@ -1718,6 +1720,48 @@ session_set_trigger_state (THREAD_ENTRY * thread_p, bool in_trigger)
 }
 
 
+
+/*
+ * session_get_copy_rejected_rows () - the rows the last COPY of the session skipped
+ *   return  : error code
+ *   thread_p (in) : worker thread
+ *   result(out) : BIGINT, 0 when no COPY skipped any
+ */
+int
+session_get_copy_rejected_rows (THREAD_ENTRY * thread_p, DB_VALUE * result)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  db_make_bigint (result, state_p->copy_rejected_rows);
+  return NO_ERROR;
+}
+
+/*
+ * session_set_copy_rejected_rows () - record the rows a COPY skipped
+ *   return  : error code
+ *   thread_p (in) : worker thread
+ *   rows(in) : the count
+ */
+int
+session_set_copy_rejected_rows (THREAD_ENTRY * thread_p, INT64 rows)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  state_p->copy_rejected_rows = rows;
+  return NO_ERROR;
+}
 
 /*
  * session_get_row_count () - get the affected row count from the session

@@ -728,6 +728,7 @@ extern void heap_rv_restore_prev_version (THREAD_ENTRY * thread_p, LOG_RCVINDEX 
 					  HEAP_RV_PREV_VERSION_STATE * state);
 
 extern bool heap_is_big_length (int length);
+extern bool heap_is_supplemental_log_needed (THREAD_ENTRY * thread_p, OID * class_oid);
 extern int xheap_get_maxslotted_reclength (int &maxslotted_reclength);
 
 extern int heap_get_class_oid_from_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, OID * class_oid);

@@ -701,6 +701,7 @@ fetch_opcode_caches (OPERATOR_TYPE opcode)
     case T_UUID:
     case T_EXEC_STATS:
     case T_TRACE_STATS:
+    case T_COPY_REJECTED_ROWS:
     case T_SLEEP:
     case T_PRIOR:
     case T_QPRIOR:
@@ -1449,6 +1450,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_LAST_INSERT_ID:
     case T_LIST_DBS:
     case T_TRACE_STATS:
+    case T_COPY_REJECTED_ROWS:
     case T_DBTIMEZONE:
     case T_SESSIONTIMEZONE:
     case T_SYS_GUID:

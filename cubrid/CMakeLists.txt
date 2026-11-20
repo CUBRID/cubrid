@@ -638,6 +638,23 @@ set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_worker_manager.hpp
   )
 
+set(COPY_SOURCES
+  ${COPY_DIR}/copy_binary_decoder.cpp
+  ${COPY_DIR}/copy_csv_decoder.cpp
+  ${COPY_DIR}/copy_decode_common.cpp
+  ${COPY_DIR}/copy_session.cpp
+  )
+
+set(COPY_HEADERS
+  ${COPY_DIR}/copy_stream_kind.h
+  ${COPY_DIR}/copy_column_types.h
+  ${COPY_DIR}/copy_binary_format.hpp
+  ${COPY_DIR}/copy_binary_decoder.hpp
+  ${COPY_DIR}/copy_csv_decoder.hpp
+  ${COPY_DIR}/copy_decode_common.hpp
+  ${COPY_DIR}/copy_session.hpp
+  )
+
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
@@ -674,6 +691,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${LOADDB_SOURCES}
+  ${COPY_SOURCES}
   ${MONITOR_SOURCES}
   ${OBJECT_SOURCES}
   ${PARSER_SOURCES}
@@ -700,6 +718,7 @@ set (CUBRID_LIB_SOURCES
   ${SP_SOURCES}
   ${METHOD_SOURCES}
   ${LOADDB_SOURCES}
+  ${COPY_SOURCES}
   ${MONITOR_SOURCES}
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
@@ -736,6 +755,7 @@ set (CUBRID_LIB_HEADERS
   ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}
   ${LOADDB_HEADERS}
+  ${COPY_HEADERS}
   ${PARALLEL_HASH_JOIN_HEADERS}
   ${PARALLEL_MERGE_JOIN_HEADERS}
   ${PARALLEL_SCAN_HEADERS}

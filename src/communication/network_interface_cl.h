@@ -453,4 +453,8 @@ extern int stream_from_read_open (int stream_kind, const char *config, int confi
 extern int stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags);
 extern int stream_from_release (INT64 handle);
 
+/* COPY FROM STDIN binding over the stream transport */
+struct copy_config;
+extern int copy_from_init (const struct copy_config *config);
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */

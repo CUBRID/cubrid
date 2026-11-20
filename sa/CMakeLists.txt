@@ -640,6 +640,23 @@ set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_semantic_helper.hpp
   )
 
+set(COPY_SOURCES
+  ${COPY_DIR}/copy_binary_decoder.cpp
+  ${COPY_DIR}/copy_csv_decoder.cpp
+  ${COPY_DIR}/copy_decode_common.cpp
+  ${COPY_DIR}/copy_session.cpp
+  )
+
+set(COPY_HEADERS
+  ${COPY_DIR}/copy_stream_kind.h
+  ${COPY_DIR}/copy_column_types.h
+  ${COPY_DIR}/copy_binary_format.hpp
+  ${COPY_DIR}/copy_binary_decoder.hpp
+  ${COPY_DIR}/copy_csv_decoder.hpp
+  ${COPY_DIR}/copy_decode_common.hpp
+  ${COPY_DIR}/copy_session.hpp
+  )
+
 if(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/dynamic_load.c)
@@ -719,6 +736,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PROBES_OBJECT}
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
+  ${COPY_SOURCES}
   ${HISTOGRAM_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
@@ -773,7 +791,9 @@ add_library(cubridsa SHARED
   ${XASL_HEADERS}
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
+  ${COPY_SOURCES}
   ${LOADDB_HEADERS}
+  ${COPY_HEADERS}
   ${HISTOGRAM_SOURCES}
   ${HISTOGRAM_HEADERS}
   )

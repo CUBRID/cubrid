@@ -254,9 +254,10 @@ extern "C"
     /* PROTOCOL_V13 names the whole family, 45-51; a driver checks it once before sending any of them */
     CAS_FC_STREAM_SEND_DATA = 45,
     CAS_FC_STREAM_END = 46,
-    /* Open and give up, for a consumer whose client half is the driver itself.
-     * A stream opened by a statement needs neither: the statement opens it, and
-     * the failure the server can see closes it. */
+    /* Open and give up. INIT is for a consumer whose client half is the driver
+     * itself; a stream opened by a statement needs none. ABORT also ends a
+     * statement-opened stream when its source fails on the client, a failure the
+     * server cannot see; the CAS pays the deferred auto-commit as a rollback. */
     CAS_FC_STREAM_INIT = 47,
     CAS_FC_STREAM_ABORT = 48,
     /* Server->client: a download is a handle the client reads until eof and then releases. A commit ends it, but an
