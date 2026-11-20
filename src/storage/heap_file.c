@@ -8693,9 +8693,9 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
   OID oid;
   SCAN_CODE scan;
   int n = 0;
-  const int delid_bit = OR_MVCC_FLAG_VALID_DELID << OR_RECORD_FLAG_SHIFT_BITS;
+  const int delid_bit = OR_MVCC_FLAG_VALID_DELID << OR_MVCC_FLAG_SHIFT_BITS;
   const int repid_bits = (n_repids > 0) ? OR_MVCC_REPID_MASK : 0;
-  int word_mask = ((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID) << OR_RECORD_FLAG_SHIFT_BITS) | repid_bits;
+  int word_mask = ((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID) << OR_MVCC_FLAG_SHIFT_BITS) | repid_bits;
   int word_want = (n_repids > 0) ? repids[0] : 0;
   bool page_precedes_snapshot = false;
   bool root_page;
@@ -8880,7 +8880,7 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
       rows[n].oid = oid;
       rows[n].recdes = rec;
       /* OR_HEADER_SIZE (rec.data): a row is a REC_HOME record */
-      rows[n].hdr_size = mvcc_header_size_lookup[(word >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_MVCC_FLAG_MASK];
+      rows[n].hdr_size = mvcc_header_size_lookup[(word >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK];
       n++;
       if (n == cap)
 	{
