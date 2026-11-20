@@ -22,6 +22,7 @@
 
 #include "pl_comm.h"
 #include "pl_execution_stack_context.hpp"
+#include "log_impl.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -184,6 +185,15 @@ namespace cubpl
       }
     while (error_code == NO_ERROR && code != METHOD_REQUEST_COMPILE);
 
+    /* as in cubpl::executor::execute (); the client reads the error from the response */
+    if (error_code == NO_ERROR)
+      {
+	error_code = lock_group_fail_if_abort_deferred (logtb_get_current_tran_index ());
+	if (error_code != NO_ERROR)
+	  {
+	    create_error_response (out_blk, error_code);
+	  }
+      }
     return error_code;
   }
 }
