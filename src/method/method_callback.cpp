@@ -285,6 +285,9 @@ namespace cubmethod
 	else
 	  {
 	    int error = handler->prepare (sql, flag);
+
+	    /* an error cleared while compiling must still fail the prepare; the handler is not cached yet */
+	    error = er_stmt_fail_resolve (error);
 	    if (error == NO_ERROR)
 	      {
 		// add to statement handler cache
@@ -334,6 +337,18 @@ namespace cubmethod
     else
       {
 	int error = handler->execute (request);
+	if (er_stmt_fail_get () != NO_ERROR)
+	  {
+	    /* an error cleared while executing must still fail the execution; close the result it may have made
+	     * before its query id is registered */
+	    int resolved = tran_stmt_fail_resolve (error, handler->get_result ().stmt_type);
+
+	    if (error == NO_ERROR && resolved != NO_ERROR)
+	      {
+		handler->end_qresult ();
+	      }
+	    error = resolved;
+	  }
 	if (error == NO_ERROR)
 	  {
 	    /* register query_id for out resultset */
@@ -893,17 +908,24 @@ namespace cubmethod
 	      DB_OBJECT *arg_mop_p = db_get_object (&temp);
 	      if (arg_mop_p)
 		{
-		  if (db_get (arg_mop_p, SP_ARG_ATTR_MODE, &mode) == NO_ERROR)
+		  /* a signature with defaults in place of what could not be read would compile the caller wrongly */
+		  db_make_null (&mode);
+		  db_make_null (&arg_type);
+		  db_make_null (&has_default);
+		  err = db_get (arg_mop_p, SP_ARG_ATTR_MODE, &mode);
+		  if (err == NO_ERROR)
 		    {
 		      param_info.mode = db_get_int (&mode);
+		      err = db_get (arg_mop_p, SP_ARG_ATTR_DATA_TYPE, &arg_type);
 		    }
 
-		  if (db_get (arg_mop_p, SP_ARG_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
+		  if (err == NO_ERROR)
 		    {
 		      param_info.type = db_get_int (&arg_type);
+		      err = db_get (arg_mop_p, SP_ARG_ATTR_DEFAULT_VALUE, &has_default);
 		    }
 
-		  if (db_get (arg_mop_p, SP_ARG_ATTR_DEFAULT_VALUE, &has_default) == NO_ERROR)
+		  if (err == NO_ERROR)
 		    {
 		      param_info.has_default = DB_IS_NULL (&has_default) ? 0 : 1;
 		    }
@@ -912,6 +934,11 @@ namespace cubmethod
 		  pr_clear_value (&arg_type);
 		  pr_clear_value (&has_default);
 		  pr_clear_value (&temp);
+
+		  if (err != NO_ERROR)
+		    {
+		      break;
+		    }
 		}
 	      else
 		{
@@ -922,10 +949,14 @@ namespace cubmethod
 	  pr_clear_value (&args);
 	}
 
-      if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &return_type) == NO_ERROR)
+      if (err == NO_ERROR)
 	{
-	  res.ret.type = db_get_int (&return_type);
-	  pr_clear_value (&return_type);
+	  err = db_get (mop_p, SP_ATTR_RETURN_TYPE, &return_type);
+	  if (err == NO_ERROR)
+	    {
+	      res.ret.type = db_get_int (&return_type);
+	      pr_clear_value (&return_type);
+	    }
 	}
     }
 

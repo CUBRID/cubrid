@@ -353,6 +353,14 @@ check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value)
 	  break;
 	case DOMAIN_INCOMPATIBLE:
 	default:
+	  /* checking an object domain fetches classes (sm_check_object_domain); a fetch that failed because the
+	   * transaction ended, the lock wait timed out or the request was interrupted is not a domain conflict */
+	  if (ER_IS_SERVER_DOWN_ERROR (er_errid ()) || ER_IS_LOCK_TIMEOUT_ERROR (er_errid ())
+	      || er_errid () == ER_LK_PAGE_TIMEOUT || er_errid () == ER_INTERRUPTED)
+	    {
+	      break;
+	    }
+
 	  /*
 	   * the default case shouldn't really be encountered, might want to
 	   * signal a different error.  The OVERFLOW case should only

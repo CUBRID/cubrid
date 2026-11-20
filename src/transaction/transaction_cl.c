@@ -77,6 +77,15 @@ CUB_THREAD_LOCAL LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transacti
  */
 CUB_THREAD_LOCAL LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
 static CUB_THREAD_LOCAL int tm_Tran_latest_query_status;
+/* a statement failed after its changes were made, and they were not undone: the transaction must not commit.
+ * The error it failed with, or NO_ERROR. */
+static CUB_THREAD_LOCAL int tm_Tran_rollback_required_by = NO_ERROR;
+/* the number of user savepoints when tm_Tran_rollback_required_by was set; a rollback to one of them undoes the
+ * statement. See tran_abort_upto_user_savepoint (). */
+static CUB_THREAD_LOCAL int tm_Tran_rollback_required_savepoints = 0;
+
+static int tran_set_failed_stmt_error (void);
+static int tran_count_user_savepoints (void);
 
 /* Timeout(milli seconds) for queries.
  *
@@ -131,6 +140,8 @@ tran_cache_tran_settings (int tran_index, int lock_timeout, TRAN_ISOLATION tran_
   tm_Tran_index = tran_index;
   tm_Tran_wait_msecs = lock_timeout;
   tm_Tran_isolation = tran_isolation;
+  /* a new connection, or none: no transaction is left */
+  tm_Tran_rollback_required_by = NO_ERROR;
 
   /* This is a dirty, but quick, method by which we can flag that the database connection has been terminated. This
    * flag is used by the C API calls to determine if a database connection exists. */
@@ -293,6 +304,16 @@ tran_commit (bool retain_lock)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
 	      "a stream session is open on this connection; end or abort it first");
       return ER_STREAM_INVALID_USE;
+    }
+
+  if (tm_Tran_rollback_required_by != NO_ERROR)
+    {
+      int cause = tm_Tran_rollback_required_by;
+
+      /* see tran_stmt_fail_resolve (); the abort clears the cause */
+      (void) tran_abort ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TM_FAILED_STMT_NOT_UNDONE, 1, cause);
+      return ER_TM_FAILED_STMT_NOT_UNDONE;
     }
 
   /* check deferred trigger activities, these may prevent the transaction from being committed. */
@@ -466,6 +487,9 @@ tran_abort (void)
 
   /* free the local list of savepoint names */
   tran_free_savepoint_list ();
+  tm_Tran_rollback_required_by = NO_ERROR;
+  /* a statement failed before, e.g. by a BEFORE ROLLBACK trigger, has gone with the transaction */
+  er_stmt_fail_note_tran_end ();
 
   /* Clear any query cursor */
   assert (!tran_was_latest_query_committed ());
@@ -620,6 +644,8 @@ tran_abort_only_client (bool is_server_down)
 
   /* the server already aborted the transaction, and any open stream with it */
   stream_from_reset ();
+  tm_Tran_rollback_required_by = NO_ERROR;
+  er_stmt_fail_note_tran_end ();
 
   tm_Tran_rep_read_lock = NULL_LOCK;
 
@@ -764,6 +790,12 @@ tran_2pc_prepare (void)
   TRAN_STATE state;
   int error_code = NO_ERROR;
 
+  if (tm_Tran_rollback_required_by != NO_ERROR)
+    {
+      /* see tran_stmt_fail_resolve (); the transaction manager is left to abort the transaction */
+      return tran_set_failed_stmt_error ();
+    }
+
   /* flush all dirty objects */
   error_code = locator_all_flush ();
   if (error_code != NO_ERROR)
@@ -894,6 +926,8 @@ tran_2pc_attach_global_tran (int gtrid)
     }
 
   tm_Tran_index = new_tran_index;
+  /* the server aborted the local transaction before attaching; what it must not commit went with it */
+  tm_Tran_rollback_required_by = NO_ERROR;
 
   return NO_ERROR;
 }
@@ -917,6 +951,12 @@ tran_2pc_prepare_global_tran (int gtrid)
 {
   TRAN_STATE state;
   int error_code = NO_ERROR;
+
+  if (tm_Tran_rollback_required_by != NO_ERROR)
+    {
+      /* see tran_2pc_prepare () */
+      return tran_set_failed_stmt_error ();
+    }
 
   /* Flush all dirty objects */
   error_code = locator_all_flush ();
@@ -1053,6 +1093,24 @@ tran_free_savepoint_list (void)
 {
   nlist_free (user_savepoint_list);
   user_savepoint_list = NULL;
+}
+
+/*
+ * tran_count_user_savepoints - count the user savepoints of the current transaction
+ *   return: the number of user savepoints
+ */
+static int
+tran_count_user_savepoints (void)
+{
+  DB_NAMELIST *sp;
+  int count = 0;
+
+  for (sp = user_savepoint_list; sp != NULL; sp = sp->next)
+    {
+      count++;
+    }
+
+  return count;
 }
 
 /*
@@ -1205,10 +1263,29 @@ tran_abort_upto_system_savepoint (const char *savepoint_name)
 int
 tran_abort_upto_user_savepoint (const char *savepoint_name)
 {
+  int error_code;
+
+  error_code = tran_internal_abort_upto_savepoint (savepoint_name, USER_SAVEPOINT, false);
+  if (error_code != NO_ERROR)
+    {
+      /* the server keeps the savepoints after a failed rollback, so the client keeps its copy of their names too:
+       * the commit refusal below is decided by them */
+      return error_code;
+    }
+
   /* delete client's local copy of savepoint names back to here */
   tran_free_list_upto_savepoint (savepoint_name);
 
-  return tran_internal_abort_upto_savepoint (savepoint_name, USER_SAVEPOINT, false);
+  if (tm_Tran_rollback_required_by != NO_ERROR && tran_count_user_savepoints () <= tm_Tran_rollback_required_savepoints)
+    {
+      /* the savepoint was there when the statement failed, so its changes are undone. A savepoint taken after the
+       * failure, also one of the same name, leaves more savepoints than that. */
+      er_log_debug (ARG_FILE_LINE, "the changes of a statement failed with error %d are rolled back to savepoint %s\n",
+		    tm_Tran_rollback_required_by, savepoint_name);
+      tm_Tran_rollback_required_by = NO_ERROR;
+    }
+
+  return error_code;
 }
 
 /*
@@ -1544,4 +1621,97 @@ bool
 tran_is_reset_required (void)
 {
   return tm_Tran_latest_query_status & LATEST_QUERY_STATUS::RESET_REQUIRED;
+}
+
+/*
+ * tran_stmt_fail_resolve - decide the outcome of a statement against the statement failure mark
+ *   return: error to report, or the given result if the statement may stand
+ *   result(in): result of the statement (negative on error)
+ *   stmt_type(in): CUBRID_STMT_TYPE of the statement, or a negative value if unknown
+ *
+ * Note: a statement the server has already committed (auto commit) stands, and its failure is only logged; see
+ *       er_stmt_fail_forget_committed (). It must not be rolled back either: the transaction has ended. Otherwise
+ *       see er_stmt_fail_resolve ().
+ *       A statement that succeeded is failed here after its changes were made. Nothing undoes them: the engine
+ *       rolls a statement back to its savepoint only on its own error path, and many statements take none. While
+ *       the transaction goes on (a lock timeout or an interrupt), it must therefore not commit; see
+ *       tran_set_rollback_required (). With auto commit the caller rolls back at once, which clears that.
+ */
+int
+tran_stmt_fail_resolve (int result, int stmt_type)
+{
+  int resolved;
+
+  if (er_stmt_fail_get () == NO_ERROR)
+    {
+      return result;
+    }
+
+  if (tran_was_latest_query_committed ())
+    {
+      (void) er_stmt_fail_forget_committed ();
+      return result;
+    }
+
+  resolved = er_stmt_fail_resolve (result);
+  if (result >= 0 && resolved < 0 && stmt_type != CUBRID_STMT_SELECT && stmt_type != CUBRID_STMT_SELECT_UPDATE)
+    {
+      /* a query changes nothing (a stored function it calls runs its statements in their own scope) */
+      tran_set_rollback_required ();
+    }
+
+  return resolved;
+}
+
+/*
+ * tran_set_rollback_required - refuse to commit the current transaction
+ *   return: none
+ *
+ * Note: for a statement failed after its changes were made, which were not undone. A deadlock victim or a server
+ *       down has already ended the transaction, so nothing is set for them, nor when the transaction was rolled back
+ *       after the error (a ROLLBACK statement whose BEFORE trigger failed, or a stored procedure that rolls back).
+ *       The next commit (or 2PC prepare) rolls the transaction back and reports ER_TM_FAILED_STMT_NOT_UNDONE with
+ *       the marked error. A rollback, an attach to a global transaction, or a rollback to a savepoint taken before
+ *       the statement clears it. The first such error of the transaction is kept.
+ */
+void
+tran_set_rollback_required (void)
+{
+  if (er_stmt_fail_is_tran_ended () || er_stmt_fail_is_before_tran_end () || tm_Tran_rollback_required_by != NO_ERROR)
+    {
+      return;
+    }
+
+  tm_Tran_rollback_required_by = er_stmt_fail_get ();
+  if (tm_Tran_rollback_required_by == NO_ERROR)
+    {
+      /* a caller sets it only for a marked statement */
+      assert (false);
+      tm_Tran_rollback_required_by = ER_FAILED;
+    }
+  tm_Tran_rollback_required_savepoints = tran_count_user_savepoints ();
+  er_stmt_fail_log ("failed a statement after its changes; the transaction must roll back");
+}
+
+/*
+ * tran_is_rollback_required - must the current transaction not commit ?
+ *   return: true after tran_set_rollback_required (), until the transaction ends
+ */
+bool
+tran_is_rollback_required (void)
+{
+  return tm_Tran_rollback_required_by != NO_ERROR;
+}
+
+/*
+ * tran_set_failed_stmt_error - set ER_TM_FAILED_STMT_NOT_UNDONE for a transaction that must not commit
+ *   return: ER_TM_FAILED_STMT_NOT_UNDONE
+ *
+ * Note: the message names the error the statement failed with; the error log has that error in full.
+ */
+static int
+tran_set_failed_stmt_error (void)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TM_FAILED_STMT_NOT_UNDONE, 1, tm_Tran_rollback_required_by);
+  return ER_TM_FAILED_STMT_NOT_UNDONE;
 }
