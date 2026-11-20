@@ -1504,7 +1504,6 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1390 The secret of session %1$u does not match.
 1391 Cannot end or keep session %1$u because it is not attached to this connection.
-
 1392 A connection used transaction index %1$d, but the server assigned it index %2$d. The assigned index was used instead.
 
 1393 Altering system generated stored procedure is not allowed.
@@ -1527,7 +1526,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1402 Vacuum could not find the OOS file of heap file %1$d|%2$d (error %3$d). Object %4$d|%5$d|%6$d and the rest of that heap file in the current log block are left for a later run of the block.
 
-1403 Last Error
+1403 The login method cannot be called through a broker.
+
+1404 session renewed: %1$u -> %2$u (%3$s)
+
+1405 Cannot restore the login user %2$s of session %1$u. Open a new connection.
+
+1406 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
