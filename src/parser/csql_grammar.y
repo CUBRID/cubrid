@@ -17699,17 +17699,7 @@ generic_function
 routine_name_for_call
 	: procedure_or_function_name
 		{{
-			PT_NODE *name = $1;
-
-			/* An unqualified name is not qualified with the current user name in
-			 * pt_set_user_specified_name (): <user>.<routine> would also read as <package>.<routine>
-			 * (see jsp_resolve_routine ()). The name is looked up in the current user without it. */
-			if (name && name->info.name.resolved == NULL)
-			  {
-			    PT_NAME_INFO_CLEAR_FLAG (name, PT_NAME_INFO_USER_SPECIFIED);
-			  }
-
-			$$ = name;
+			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| identifier DOT identifier DOT identifier
