@@ -78,8 +78,8 @@ namespace cubthread
   {
     m_wakeup_calls.increment ();
 
-    // early out if not sleeping
-    if (m_status != SLEEPING)
+    // early out if not sleeping (acquire to observe prior sleep state)
+    if (m_status.load (std::memory_order_acquire) != SLEEPING)
       {
 	/* not sleeping */
 	return;
@@ -88,7 +88,7 @@ namespace cubthread
     std::unique_lock<std::mutex> lock (m_mutex);
     Waiter_statistics.increment (m_stats, STAT_LOCK_WAKEUP_COUNT);
 
-    if (m_status != SLEEPING)
+    if (m_status.load (std::memory_order_acquire) != SLEEPING)
       {
 	return;
       }
@@ -103,7 +103,7 @@ namespace cubthread
   bool
   waiter::check_wake (void)
   {
-    return m_status == AWAKENING;
+    return m_status.load (std::memory_order_acquire) == AWAKENING;
   }
 
   void
@@ -111,7 +111,7 @@ namespace cubthread
   {
     assert (m_status == RUNNING);
 
-    m_status = SLEEPING;
+    m_status.store (SLEEPING, std::memory_order_release);
 
     // for statistics
     m_was_awaken = false;
@@ -123,7 +123,7 @@ namespace cubthread
   {
     assert (m_status == SLEEPING);
 
-    m_status = AWAKENING;
+    m_status.store (AWAKENING, std::memory_order_release);
 
     // for statistics
     cubperf::reset_timept (m_stats.m_timept);
@@ -135,7 +135,7 @@ namespace cubthread
   {
     assert (m_status == AWAKENING || m_status == SLEEPING);
 
-    m_status = RUNNING;
+    m_status.store (RUNNING, std::memory_order_release);
 
     // for statistics
     if (m_was_awaken)
@@ -151,7 +151,7 @@ namespace cubthread
     goto_sleep ();
 
     // wait
-    m_condvar.wait (lock, [this] { return m_status == AWAKENING; });
+    m_condvar.wait (lock, [this] { return m_status.load (std::memory_order_acquire) == AWAKENING; });
 
     run ();
 
@@ -179,7 +179,7 @@ namespace cubthread
   {
     std::unique_lock<std::mutex> lock (m_mutex);    /* mutex is also locked */
 
-    return (m_status == RUNNING);
+    return (m_status.load (std::memory_order_acquire) == RUNNING);
   }
 
   const char *
@@ -211,7 +211,7 @@ namespace cubthread
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
 
-    ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
+    ret = m_condvar.wait_for (lock, delta, [this] { return m_status.load (std::memory_order_acquire) == AWAKENING; });
     if (!ret)
       {
 	Waiter_statistics.increment (m_stats, STAT_TIMEOUT_COUNT);
@@ -229,7 +229,7 @@ namespace cubthread
     std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
     goto_sleep ();
 
-    bool ret = m_condvar.wait_until (lock, timeout_time, [this] { return m_status == AWAKENING; });
+    bool ret = m_condvar.wait_until (lock, timeout_time, [this] { return m_status.load (std::memory_order_acquire) == AWAKENING; });
     if (!ret)
       {
 	Waiter_statistics.increment (m_stats, STAT_TIMEOUT_COUNT);
