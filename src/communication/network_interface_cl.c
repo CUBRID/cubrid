@@ -490,7 +490,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   success =
     xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
-			fetch_copyarea, request_pages);
+			fetch_copyarea, request_pages, nparallel_process >= 1);
 
   if (nparallel_process > 1)
     {

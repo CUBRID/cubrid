@@ -1535,9 +1535,11 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
   while ((nobjects != nfetched) && (error_occurred == false))
     {
       TIMER_BEGIN ((g_sampling_records >= 0), &(g_uci->wi_fetch));
+      /* a split of 1 for a single process too: the split count tells the server that unloaddb fetches, and it then
+       * reads the heap in file order (xlocator_fetch_all ()) */
       error = locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area,
-				 g_request_pages, g_parallel_process_cnt,
-				 (g_parallel_process_idx - 1) /* to zero base */ );
+				 g_request_pages, (g_parallel_process_cnt > 1) ? g_parallel_process_cnt : 1,
+				 (g_parallel_process_cnt > 1) ? (g_parallel_process_idx - 1) /* to zero base */ : 0);
       TIMER_END ((g_sampling_records >= 0), &(g_uci->wi_fetch));
       if (error == NO_ERROR)
 	{

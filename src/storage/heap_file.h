@@ -456,6 +456,45 @@ extern SCAN_CODE heap_page_list_fix_next (THREAD_ENTRY * thread_p, const HFID * 
 extern bool heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
 extern bool heap_page_belongs_to_class (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, const OID * class_oid);
 
+/* a heap's data sectors in file order, taken after a snapshot and kept for the calls that walk the heap with it
+ * (heap_file_order_cache_get ()); unloaddb keeps one in its transaction descriptor between fetch calls */
+typedef struct heap_file_order_cache HEAP_FILE_ORDER_CACHE;
+struct heap_file_order_cache
+{
+  TRANID trid;			/* the transaction the sectors were taken for */
+  unsigned int build_serial;	/* the build of that transaction's snapshot they were taken after */
+  OID class_oid;
+  HFID hfid;
+  int nsects;
+  FILE_PARTIAL_SECTOR *sectors;	/* sorted by VSID; malloc'ed, so any thread may let them go */
+};
+
+extern int heap_file_order_cache_get (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_CACHE ** cache_p, TRANID trid,
+				      unsigned int build_serial, const OID * class_oid, const HFID * hfid);
+extern void heap_file_order_cache_free (HEAP_FILE_ORDER_CACHE ** cache_p);
+
+/* a heap walked in file order: page by page from the sector bitmaps of a HEAP_FILE_ORDER_CACHE instead of following
+ * the page links (heap_file_order_scan_start ()) */
+typedef struct heap_file_order_scan HEAP_FILE_ORDER_SCAN;
+struct heap_file_order_scan
+{
+  HFID hfid;
+  const FILE_PARTIAL_SECTOR *sectors;	/* the heap's data sectors, sorted by VSID; borrowed */
+  int nsects;
+  int nparts;			/* the sectors are split by sector id modulo nparts; 1 reads every sector */
+  int part;			/* the part read: the sectors whose id modulo nparts is part */
+  int sect_idx;			/* the sector being read */
+  size_t pgoffset;		/* the page offset in that sector to look from */
+  VPID vpid;			/* the page being read; null between pages */
+  VPID resume_vpid;		/* the page of the row to resume after, until the scan fixes it again */
+  OID last_oid;			/* the last row returned from vpid; null at the page's start */
+};
+
+extern void heap_file_order_scan_start (const HFID * hfid, const HEAP_FILE_ORDER_CACHE * cache, int nparts, int part,
+					const OID * resume_oid, HEAP_FILE_ORDER_SCAN * scan);
+extern SCAN_CODE heap_file_order_scan_next (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_SCAN * scan, OID * class_oid,
+					    OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
+
 extern SCAN_CODE heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 					RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					DB_VALUE ** cache_recordinfo);

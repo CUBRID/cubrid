@@ -80,6 +80,7 @@
 #include "xasl_cache.h"
 #include "session.h"
 #include "pl_session.hpp"
+#include "heap_file.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1592,6 +1593,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
       log_2pc_free_coord_info (tdes);
     }
   tdes->m_multiupd_stats.clear ();
+  heap_file_order_cache_free (&tdes->file_order_cache);
   if (tdes->interrupt == (int) true)
     {
       tdes->interrupt = false;
@@ -1694,6 +1696,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->trid = NULL_TRANID;
   tdes->isloose_end = false;
   tdes->coord = NULL;
+  tdes->file_order_cache = NULL;
   tdes->client_id = -1;
   tdes->gtrid = LOG_2PC_NULL_GTRID;
   tdes->gtrinfo.info_length = 0;

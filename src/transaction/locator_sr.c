@@ -2837,6 +2837,22 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn, con
 }
 
 /*
+ * locator_fetch_all_next () - the next row xlocator_fetch_all () copies: in file order when a file-order walk is
+ *				given, along the page links otherwise
+ */
+static SCAN_CODE
+locator_fetch_all_next (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_FILE_ORDER_SCAN * file_order_scan,
+			OID * class_oid, OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache)
+{
+  if (file_order_scan != NULL)
+    {
+      return heap_file_order_scan_next (thread_p, file_order_scan, class_oid, oid, recdes, scan_cache, COPY);
+    }
+
+  return heap_next (thread_p, hfid, class_oid, oid, recdes, scan_cache, COPY);
+}
+
+/*
  * xlocator_fetch_all () - Fetch all instances of a class
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -2849,13 +2865,23 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn, con
  *   nfetched(out): Current number of object fetched.
  *   last_oid(out): Object identifier of last fetched object
  *   fetch_area(in/out): Pointer to area where the objects are placed
+ *   request_pages(in): the pages' worth of objects to fetch at once
+ *   in_file_order(in): unloaddb asks for the rows in file order (heap_file_order_scan_start ())
  *
+ * Note: in file order, the heap's sectors are taken once per class and kept in the transaction descriptor until
+ *	 the class is done (heap_file_order_cache_get ()); each call goes on from last_oid, so the walk's position
+ *	 stays with the client.  The order is the file's only for the MVCC version of a class with
+ *	 snapshots; any other fetch follows the page links.  unloaddb's --process split (the thread's
+ *	 _unload_cnt_parallel_process) then splits the sectors instead of the pages, so each process fixes only its
+ *	 own pages.
  */
 int
 xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type,
 		    OID * class_oid, int *nobjects, int *nfetched, OID * last_oid, LC_COPYAREA ** fetch_area,
-		    int request_pages)
+		    int request_pages, bool in_file_order)
 {
+  HEAP_FILE_ORDER_SCAN file_order_scan;
+  LOG_TDES *tdes = NULL;	/* keeps the sectors of a file-order walk between calls */
   LC_COPYAREA_DESC prefetch_des;	/* Descriptor for decache of objects related to transaction isolation level */
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
@@ -2923,6 +2949,10 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
 	    }
 	  goto error;
 	}
+      if (in_file_order && mvcc_is_mvcc_disabled_class (class_oid))
+	{
+	  in_file_order = false;
+	}
       break;
 
     case LC_FETCH_DIRTY_VERSION:
@@ -2954,6 +2984,43 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
       goto error;
     }
 
+  if (in_file_order)
+    {
+      int nparts = 1;
+      int part = 0;
+
+      assert (fetch_version_type == LC_FETCH_MVCC_VERSION && mvcc_snapshot != NULL);
+
+      if (thread_p->_unload_cnt_parallel_process > 1)
+	{
+	  nparts = thread_p->_unload_cnt_parallel_process;
+	  part = thread_p->_unload_parallel_process_idx;
+	}
+
+      tdes = LOG_FIND_CURRENT_TDES (thread_p);
+      assert (tdes != NULL);
+      error_code =
+	heap_file_order_cache_get (thread_p, &tdes->file_order_cache, tdes->trid, mvcc_snapshot->build_serial,
+				   class_oid, hfid);
+      if (error_code == NO_ERROR)
+	{
+	  heap_file_order_scan_start (hfid, tdes->file_order_cache, nparts, part, last_oid, &file_order_scan);
+	}
+      else
+	{
+	  heap_file_order_cache_free (&tdes->file_order_cache);
+	  (void) heap_scancache_end (thread_p, &scan_cache);
+	  if (*lock != NULL_LOCK)
+	    {
+	      lock_unlock_object (thread_p, class_oid, oid_Root_class_oid, *lock, false);
+	    }
+	  *fetch_area = NULL;
+	  *nobjects = *nfetched = -1;
+
+	  goto error;
+	}
+    }
+
   /* Assume that the next object can fit in one page */
   copyarea_length = DB_PAGESIZE;
 
@@ -2983,7 +3050,8 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
       mobjs->num_objs = 0;
       offset = 0;
 
-      while ((scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY)) == S_SUCCESS)
+      while ((scan = locator_fetch_all_next (thread_p, hfid, in_file_order ? &file_order_scan : NULL, class_oid, &oid,
+					     &recdes, &scan_cache)) == S_SUCCESS)
 	{
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
@@ -3118,6 +3186,11 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
     }
 
 error:
+  if (tdes != NULL && (error_code != NO_ERROR || OID_ISNULL (last_oid)))
+    {
+      /* the class is done, or the walk failed: the next call starts over */
+      heap_file_order_cache_free (&tdes->file_order_cache);
+    }
   return error_code;
 }
 

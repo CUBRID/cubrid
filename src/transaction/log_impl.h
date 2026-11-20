@@ -509,6 +509,8 @@ struct log_tdes
   int num_unique_btrees;	/* # of unique btrees contained in unique_stat_info array */
   int max_unique_btrees;	/* size of unique_stat_info array */
   multi_index_unique_stats m_multiupd_stats;
+  struct heap_file_order_cache *file_order_cache;	/* the heap sectors unloaddb walks in file order, kept between
+							 * its fetch calls (xlocator_fetch_all ()) */
 #if defined(_AIX)
   sig_atomic_t interrupt;
 #else				/* _AIX */
