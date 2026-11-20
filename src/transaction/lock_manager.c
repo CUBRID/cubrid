@@ -399,6 +399,15 @@ struct lk_res_block
 #define LK_TRANSIENT_SCOPE_OPENERS 8
 #endif
 
+/* what lock_report_corrupt_hold_list () tells of an entry, read before the release that may free it */
+typedef struct lk_entry_before LK_ENTRY_BEFORE;
+struct lk_entry_before
+{
+  LK_RES *res_head;
+  int tran_index;
+  LOCK granted_mode;
+};
+
 /* a transient request of a statement nested in another, kept apart from the outer statement's counts */
 typedef struct lk_nested_transient LK_NESTED_TRANSIENT;
 struct lk_nested_transient
@@ -703,6 +712,10 @@ static void lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENT
 						 bool move_to_non2pl);
 static void lock_unlock_all_hold_list (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY ** list, int count,
 				       const char *name);
+static void lock_report_corrupt_hold_list (THREAD_ENTRY * thread_p, int tran_index, const char *name, int count,
+					   const char *corrupt, const LK_ENTRY * entry_ptr,
+					   const LK_ENTRY_BEFORE * before, const char *key_note)
+  __attribute__ ((noinline, cold));
 static void lock_unlock_object_by_isolation (THREAD_ENTRY * thread_p, int tran_index, TRAN_ISOLATION isolation,
 					     const OID * class_oid, const OID * oid);
 static void lock_unlock_inst_locks_of_class_by_isolation (THREAD_ENTRY * thread_p, int tran_index,
@@ -9319,6 +9332,41 @@ lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 
 #if defined (SERVER_MODE)
 /*
+ * lock_report_corrupt_hold_list () - Stop the server on a corrupt hold list (lock_unlock_all_hold_list ())
+ *   return: void
+ *   corrupt(in): what is wrong with the list
+ *   before(in): the entry as it was before the release
+ *   key_note(in): "", or a note that the key is read after the release
+ *
+ * Note: out of line and cold, so that the walk keeps its registers through each release.
+ */
+static void
+lock_report_corrupt_hold_list (THREAD_ENTRY * thread_p, int tran_index, const char *name, int count,
+			       const char *corrupt, const LK_ENTRY * entry_ptr, const LK_ENTRY_BEFORE * before,
+			       const char *key_note)
+{
+  LK_RES_KEY key = before->res_head != NULL ? before->res_head->key : LK_RES_KEY ();
+  char key_str[80];
+  LOCK mode = before->granted_mode;
+  const char *mode_name = (mode >= NULL_LOCK && mode < LOCK_COUNT) ? lock_to_lockmode_string (mode) : "?";
+
+  if (key.type == LOCK_RESOURCE_TRANSACTION)
+    {
+      snprintf (key_str, sizeof (key_str), "mvccid %llu", (unsigned long long) key.mvccid);
+    }
+  else
+    {
+      snprintf (key_str, sizeof (key_str), "oid %d|%d|%d, class oid %d|%d|%d", key.oid.volid, key.oid.pageid,
+		key.oid.slotid, key.class_oid.volid, key.class_oid.pageid, key.class_oid.slotid);
+    }
+  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+		     "lock_unlock_all: %s in the %s hold list of transaction %d: entry %p, tran_index %d,"
+		     " lock %s (%d), key type %d, %s%s, hold count %d at the start", corrupt, name, tran_index,
+		     (void *) entry_ptr, before->tran_index, mode_name, (int) mode, (int) key.type, key_str, key_note,
+		     count);
+}
+
+/*
  * lock_unlock_all_hold_list () - Release the entries of a transaction's hold list at its end
  *   return: void
  *   list(in/out): the list, or root_class_hold
@@ -9336,15 +9384,17 @@ lock_unlock_all_hold_list (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY ** 
   while (*list != NULL)
     {
       LK_ENTRY *entry_ptr = *list;
+      LK_ENTRY_BEFORE before;
       const char *corrupt = NULL;
       const char *key_note = "";
 
-      /* copied before the release, which may free the entry */
-      int entry_tran_index = entry_ptr->tran_index;
-      LOCK mode = entry_ptr->granted_mode;
-      LK_RES *res_ptr = entry_ptr->res_head;
+      /* to memory, read back only by a report: as registers they spill around each release. The resource's key is
+       * read only on a report, as reading it before every release slows a commit of many locks by about 4%. */
+      before.tran_index = entry_ptr->tran_index;
+      before.granted_mode = entry_ptr->granted_mode;
+      before.res_head = entry_ptr->res_head;
 
-      if (entry_tran_index != tran_index)
+      if (before.tran_index != tran_index)
 	{
 	  corrupt = "an entry of another transaction";
 	}
@@ -9364,25 +9414,7 @@ lock_unlock_all_hold_list (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY ** 
 
       if (corrupt != NULL)
 	{
-	  /* not read before every release: reading the resource there slows a commit of many locks by about 4% */
-	  LK_RES_KEY key = res_ptr != NULL ? res_ptr->key : LK_RES_KEY ();
-	  char key_str[80];
-	  const char *mode_name = (mode >= NULL_LOCK && mode < LOCK_COUNT) ? lock_to_lockmode_string (mode) : "?";
-
-	  if (key.type == LOCK_RESOURCE_TRANSACTION)
-	    {
-	      snprintf (key_str, sizeof (key_str), "mvccid %llu", (unsigned long long) key.mvccid);
-	    }
-	  else
-	    {
-	      snprintf (key_str, sizeof (key_str), "oid %d|%d|%d, class oid %d|%d|%d", key.oid.volid, key.oid.pageid,
-			key.oid.slotid, key.class_oid.volid, key.class_oid.pageid, key.class_oid.slotid);
-	    }
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
-			     "lock_unlock_all: %s in the %s hold list of transaction %d: entry %p, tran_index %d,"
-			     " lock %s (%d), key type %d, %s%s, hold count %d at the start", corrupt, name, tran_index,
-			     (void *) entry_ptr, entry_tran_index, mode_name, (int) mode, (int) key.type, key_str,
-			     key_note, count);
+	  lock_report_corrupt_hold_list (thread_p, tran_index, name, count, corrupt, entry_ptr, &before, key_note);
 	  return;
 	}
     }
