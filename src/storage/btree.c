@@ -571,11 +571,16 @@ typedef int BTREE_PROCESS_KEY_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * btid
     } \
   while (false)
 
+/* also resets the leaf decision against the upper key: the leaf may change once it is unfixed */
 #ifdef NDEBUG
-#define COMMON_PREFIX_PAGE_SIZE_RESET(bts)   ((bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN)
+#define COMMON_PREFIX_PAGE_SIZE_RESET(bts)   do {                    \
+              (bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN;     \
+              BTREE_UPPER_KEY_PAGE_CLEAR (bts);                      \
+       } while(0)
 #else
 #define COMMON_PREFIX_PAGE_SIZE_RESET(bts)   do {                    \
               (bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN;     \
+              BTREE_UPPER_KEY_PAGE_CLEAR (bts);                      \
               COMMON_PREFIX_PAGE_DEBUG_INFO_RESET((bts));            \
        } while(0)
 #endif
@@ -1573,6 +1578,10 @@ static int btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * 
 					    bool * stop, void *args);
 
 static int btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
+STATIC_INLINE int btree_range_scan_compare_upper_key (BTREE_SCAN * bts, DB_VALUE * key, bool is_compressed);
+static int btree_range_scan_compare_upper_key_at_slot (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, int slot, int *c);
+/* called once per leaf: kept out of the per-key loop it is called from */
+static int btree_range_scan_find_upper_key_end (THREAD_ENTRY * thread_p, BTREE_SCAN * bts) __attribute__ ((noinline));
 static int btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 static int btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, int *key_count,
 						      BTREE_NODE_HEADER ** node_header_ptr, VPID * next_vpid);
@@ -21251,6 +21260,9 @@ btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, key_val_rang
       std::swap (bts->key_range.lower_bound, bts->key_range.upper_bound);
     }
 
+  /* no leaf is decided against the new upper key */
+  BTREE_UPPER_KEY_PAGE_RESET (bts);
+
   return NO_ERROR;
 }
 
@@ -21572,6 +21584,162 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
+/* COMMON_PREFIX_PAGE_SIZE_RESET forgets the leaf whenever it is unfixed, so it is unchanged while decided */
+
+/*
+ * btree_range_scan_compare_upper_key () - Compare the upper key of the range with a leaf key, in scan order.
+ *
+ * return	      : positive if the key comes before the upper key in scan order, 0 if equal, negative if after;
+ *			DB_UNK on error.
+ * bts (in)	      : B-tree scan helper.
+ * key (in)	      : Leaf key, as read without decompression.
+ * is_compressed (in) : True if key lacks the common prefix of the current leaf.
+ */
+STATIC_INLINE int
+btree_range_scan_compare_upper_key (BTREE_SCAN * bts, DB_VALUE * key, bool is_compressed)
+{
+  int c = DB_UNK;
+
+  if (is_compressed)
+    {
+      int start_col = 0;
+      if (start_col < bts->common_prefix_size)
+	{
+	  c = btree_compare_search_key (&bts->btid_int, bts->key_range.upper_key, bts->key_range.upper_bound,
+					&bts->common_prefix_key, &start_col);
+	}
+
+      if (start_col >= bts->common_prefix_size)
+	{
+	  start_col = bts->common_prefix_size;
+	  c = btree_compare_search_key (&bts->btid_int, bts->key_range.upper_key, bts->key_range.upper_bound,
+					key, &start_col);
+	}
+    }
+  else
+    {
+      c = btree_compare_search_key (&bts->btid_int, bts->key_range.upper_key, bts->key_range.upper_bound, key, NULL);
+    }
+
+  /* when using descending index the comparison should be changed again */
+  if (c != DB_UNK && bts->use_desc_index)
+    {
+      c = -c;
+    }
+  return c;
+}
+
+/*
+ * btree_range_scan_compare_upper_key_at_slot () - Compare the upper key of the range with the key in a slot of the
+ *						    current leaf.
+ *
+ * return	  : Error code.
+ * thread_p (in)  : Thread entry.
+ * bts (in)	  : B-tree scan helper.
+ * slot (in)	  : Slot of a key (not a fence key) in bts->C_page.
+ * c (out)	  : Result of btree_range_scan_compare_upper_key.
+ */
+static int
+btree_range_scan_compare_upper_key_at_slot (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, int slot, int *c)
+{
+  RECDES rec;
+  DB_VALUE key;
+  LEAF_REC leaf_rec;
+  bool clear_key;
+  int offset;
+  int error_code;
+
+  if (spage_get_record (thread_p, bts->C_page, slot, &rec, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  assert (!btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE));
+
+  btree_init_temp_key_value (&clear_key, &key);
+  error_code =
+    btree_read_record_without_decompression (thread_p, &bts->btid_int, &rec, &key, &leaf_rec, BTREE_LEAF_NODE,
+					     &clear_key, &offset, PEEK_KEY_VALUE);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  /* as btree_read_record_in_leafpage decides is_cur_key_compressed */
+  *c = btree_range_scan_compare_upper_key (bts, &key,
+					   bts->common_prefix_size > 0
+					   && !btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_OVERFLOW_KEY));
+  btree_clear_key_value (&clear_key, &key);
+  if (*c == DB_UNK)
+    {
+      /* error should have been set */
+      error_code = er_errid ();
+      return error_code != NO_ERROR ? error_code : ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * btree_range_scan_find_upper_key_end () - Decide the current leaf against the upper key and remember it for the leaf.
+ *
+ * return	  : Error code.
+ * thread_p (in)  : Thread entry.
+ * bts (in/out)	  : B-tree scan helper. The current key is not compared with the upper key yet.
+ *
+ * Note: The keys of a leaf are sorted. When the last key of the leaf, in scan order, comes before the upper key, so do
+ *	 all the keys from the current key to it, and they are not compared. Otherwise the range ends in this leaf
+ *	 and its keys are compared one by one: searching for the end would read keys the scan reads next anyway.
+ */
+static int
+btree_range_scan_find_upper_key_end (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
+{
+  int last;
+  int c;
+  RECDES rec;
+  int error_code;
+
+  if (TP_DOMAIN_TYPE (bts->btid_int.key_type) == DB_TYPE_MIDXKEY && bts->common_prefix_size == COMMON_PREFIX_UNKNOWN)
+    {
+      /* the prefix of this leaf is not read yet (the current key is an overflow key); decide with a later key */
+      return NO_ERROR;
+    }
+
+  /* the last key in scan order; a fence key can only be the first or the last record of a leaf */
+  last = bts->use_desc_index ? 1 : btree_node_number_of_keys (thread_p, bts->C_page);
+  if (spage_get_record (thread_p, bts->C_page, last, &rec, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+    {
+      last += bts->use_desc_index ? 1 : -1;
+    }
+
+  if (last != bts->slot_id)
+    {
+      error_code = btree_range_scan_compare_upper_key_at_slot (thread_p, bts, last, &c);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      if (c > 0)
+	{
+	  /* the keys from the current one to the last one */
+	  bts->upper_key_keys_decided = (bts->use_desc_index ? bts->slot_id - last : last - bts->slot_id) + 1;
+	}
+    }
+
+  /* decided, even when no key is: the leaf is not decided again */
+  bts->upper_key_keys_to_check = -1;
+#if !defined (NDEBUG)
+  VPID_COPY (&bts->upper_key_page_vpid, &bts->C_vpid);
+  LSA_COPY (&bts->upper_key_page_lsa, pgbuf_get_lsa (bts->C_page));
+#endif
+  return NO_ERROR;
+}
+
 /*
  * btree_apply_key_range_and_filter () - Apply key range and key filter condition
  *   return: NO_ERROR
@@ -21606,61 +21774,60 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
     }
   else
     {
-      if (bts->is_cur_key_compressed)
+      /* the first keys of a range are compared one by one, so a range that ends within them (an equality, say) reads
+       * no other key; past them each leaf is decided once, before its keys are compared */
+      if (bts->upper_key_keys_decided == 0 && bts->upper_key_keys_to_check == 0)
 	{
-	  int start_col = 0;
-	  if (start_col < bts->common_prefix_size)
+	  ret = btree_range_scan_find_upper_key_end (thread_p, bts);
+	  if (ret != NO_ERROR)
 	    {
-	      c = btree_compare_search_key (&bts->btid_int, bts->key_range.upper_key, bts->key_range.upper_bound,
-					    &bts->common_prefix_key, &start_col);
+	      goto exit_on_error;
 	    }
+	}
 
-	  if (start_col >= bts->common_prefix_size)
-	    {
-	      start_col = bts->common_prefix_size;
-	      c = btree_compare_search_key (&bts->btid_int, bts->key_range.upper_key, bts->key_range.upper_bound,
-					    &bts->cur_key, &start_col);
-	    }
+      if (bts->upper_key_keys_decided > 0)
+	{
+	  /* decided for this leaf by btree_range_scan_find_upper_key_end */
+	  assert (VPID_EQ (&bts->upper_key_page_vpid, &bts->C_vpid));
+	  assert (LSA_EQ (&bts->upper_key_page_lsa, pgbuf_get_lsa (bts->C_page)));
+	  bts->upper_key_keys_decided--;
+	  *is_key_range_satisfied = true;
 	}
       else
 	{
-	  c = btree_compare_search_key (&bts->btid_int, bts->key_range.upper_key, bts->key_range.upper_bound,
-					&bts->cur_key, NULL);
-	}
-
-      if (c == DB_UNK)
-	{
-	  /* error should have been set */
-	  goto exit_on_error;
-	}
-
-      /* when using descending index the comparison should be changed again */
-      if (bts->use_desc_index)
-	{
-	  c = -c;
-	}
-
-      if (c < 0)
-	{
-	  *is_key_range_satisfied = false;
-	}
-      else if (c == 0)
-	{
-	  if (bts->key_range.range == GE_LE || bts->key_range.range == GT_LE || bts->key_range.range == INF_LE)
+	  c = btree_range_scan_compare_upper_key (bts, &bts->cur_key, bts->is_cur_key_compressed);
+	  if (c == DB_UNK)
 	    {
-	      *is_key_range_satisfied = true;
-	      /* the next key can compare equal to a limit that merges keys too: it is compared */
-	      bts->key_range_max_value_equal = bts->key_range.upper_bound == NULL
-		|| !bts->key_range.upper_bound->merges;
+	      /* error should have been set */
+	      goto exit_on_error;
 	    }
-	  else
+
+	  if (c < 0)
 	    {
 	      *is_key_range_satisfied = false;
 	    }
-	}
-      else
-	{
-	  *is_key_range_satisfied = true;
+	  else if (c == 0)
+	    {
+	      if (bts->key_range.range == GE_LE || bts->key_range.range == GT_LE || bts->key_range.range == INF_LE)
+		{
+		  *is_key_range_satisfied = true;
+		  /* the next key can compare equal to a limit that merges keys too: it is compared */
+		  bts->key_range_max_value_equal = bts->key_range.upper_bound == NULL
+		    || !bts->key_range.upper_bound->merges;
+		}
+	      else
+		{
+		  *is_key_range_satisfied = false;
+		}
+	    }
+	  else
+	    {
+	      *is_key_range_satisfied = true;
+	      if (bts->upper_key_keys_to_check > 0)
+		{
+		  bts->upper_key_keys_to_check--;
+		}
+	    }
 	}
     }
 
@@ -30387,6 +30554,9 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
    * raised again below and returned with, for the caller to start over. */
   bts->force_restart_from_root = false;
 
+  /* the upper key may have changed since a leaf was decided against it */
+  BTREE_UPPER_KEY_PAGE_RESET (bts);
+
   /* A start reads its first key from the leaf record on, so a key left partially processed by an earlier iteration
    * of this scan has nothing to resume here. The rewinds of an inner scan (BTREE_RESET_SCAN) and of an index MIN/MAX
    * scan turning around (bts_reset_scan) keep the mark; left set, the first key found here would skip its leaf record
@@ -30496,6 +30666,9 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   assert (bts->is_cur_key_compressed == false);
   assert (bts->common_prefix_size == COMMON_PREFIX_UNKNOWN);
+
+  /* the leaf may have changed while it was unfixed: compare the first keys one by one again */
+  BTREE_UPPER_KEY_PAGE_RESET (bts);
 
   /* Resume range scan. It can be resumed from same leaf or by looking up the key again from root. */
   if (bts->force_restart_from_root)
