@@ -26,10 +26,14 @@
 #include <signal.h>
 
 #include "system_parameter.h"
+#include "background_process.hpp"
+#include "environment_variable.h"
 #include "master_server_monitor.hpp"
 
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 bool auto_Restart_server = false;
+
+static constexpr int SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS = 1;
 
 server_monitor::server_monitor ()
 {
@@ -186,6 +190,9 @@ server_monitor::revive_server (const std::string &server_name)
 	      er_log_debug (ARG_FILE_LINE,
 			    "[Server Monitor] [%s] Failed to fork server process. Server monitor try to revive server again.",
 			    entry->first.c_str());
+	      // Exec/setup failures are now reported synchronously. Pace them
+	      // like registration checks instead of spinning through relays.
+	      std::this_thread::sleep_for (std::chrono::seconds (SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS));
 	      produce_job_internal (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	    }
 	  else
@@ -240,7 +247,6 @@ server_monitor::check_server_revived (const std::string &server_name)
       else if (entry->second.get_need_revive ())
 	{
 	  // Server revive confirm interval is set to be 1 second to avoid busy waiting.
-	  constexpr int SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS = 1;
 
 	  std::this_thread::sleep_for (std::chrono::seconds (SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS));
 
@@ -261,21 +267,22 @@ server_monitor::check_server_revived (const std::string &server_name)
 int
 server_monitor::try_revive_server (const std::string &exec_path, char *const *argv)
 {
-  pid_t pid;
-
-  pid = fork ();
-  if (pid < 0)
+  char relay[PATH_MAX], console[PATH_MAX];
+  envvar_bindir_file (relay, sizeof (relay), "cub_console");
+  envvar_logdir_file (console, sizeof (console), "server-console.log");
+  background_process process;
+  if (background_process_start (exec_path.c_str (), argv, relay, console, process) != 0)
     {
       return -1;
     }
-  else if (pid == 0)
+  // There is no CLI collector for automatic recovery. End the attempt channel
+  // now; registration is still checked by CONFIRM_REVIVE_SERVER, as before.
+  // All later output continues to the server console log through the relay.
+  if (background_process_finish_start (process) != 0)
     {
-      return execv (exec_path.c_str(), argv);
+      er_log_debug (ARG_FILE_LINE, "[Server Monitor] Failed to finish console startup capture.");
     }
-  else
-    {
-      return pid;
-    }
+  return process.pid;
 }
 void
 server_monitor::shutdown_server (const std::string &server_name)
