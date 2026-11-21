@@ -35,6 +35,7 @@
 
 #include <memory>
 #include <atomic>
+#include <cstdint>
 #include <thread>
 
 #include <cassert>
@@ -438,6 +439,12 @@ namespace cubthread
       void stop_waiting ();
 #endif
 
+      // the clock of the current suspension, shown by SHOW THREADS as Wait_elapsed_msecs. the owner thread starts
+      // it when it enters a wait and stops it before it resumes; other threads only read it.
+      void start_wait_clock (void);
+      void stop_wait_clock (void);
+      std::int64_t get_wait_elapsed_msecs (void) const;	// -1 when no wait clock is running
+
     private:
       void clear_resources (void);
 
@@ -456,6 +463,8 @@ namespace cubthread
       log_system_tdes *m_systdes;
 
       lockfree::tran::index m_lf_tran_index;
+
+      std::atomic<std::int64_t> m_wait_start_nsecs;	// steady clock time the current wait started, 0 if none
   };
 
 } // namespace cubthread
