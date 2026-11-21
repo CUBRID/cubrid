@@ -285,6 +285,7 @@ Available command:\n\
 46 The length of owner_name is required to be less than %1$d and the length of class_name is required to be less than %2$d bytes.\n
 47 Invalid format for owner_name.class_name ('%1$s').\n
 51 "%1$s" is a view; this operation requires a table.\n
+52 Enter DBA password: 
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
@@ -314,7 +315,8 @@ valid options:\n\
   -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
       --no-compress            don't compress backup volumes; default: compression\n\
       --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
-  -k, --separate-keys          keys file (_keys) for TDE is not included in the backup volume, but is separated into a file instead\n
+  -k, --separate-keys          keys file (_keys) for TDE is not included in the backup volume, but is separated into a file instead\n\
+  -p, --dba-password=PASS      password of the DBA user, asked for a database on another host when not given\n
 71 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
 
 
@@ -643,6 +645,7 @@ valid options:\n\
                                     enabled in CS-mode only\n\
   -c, --class-lock-timeout          timeout for class lock\n\
                                     enabled in CS-mode only\n\
+      --dba-password=PASS           password of the DBA user, asked for a database on another host when not given\n\
   class_name_list                   list of class name be compacted\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
@@ -719,7 +722,8 @@ valid options:\n\
                                            PERM - permanent volume type\n\
                                            TEMP - temporary volume type\n\
   -S, --SA-mode                    stand-alone mode execution\n\
-  -C, --CS-mode                    client-server mode execution\n
+  -C, --CS-mode                    client-server mode execution\n\
+      --dba-password=PASS          password of the DBA user, asked for a database on another host when not given\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 Some inconsistencies were detected in your database.\n Please consult error_log_file %1$s for additional information.\n
@@ -744,7 +748,8 @@ valid options:\n\
       --check-catalog          check catalog consistency\n\
       --check-btree            check all btree indices\n\
       --check-class-name       check class name consistency\n\
-      --check-btree-entries    check entries of btree consistency\n
+      --check-btree-entries    check entries of btree consistency\n\
+  -p, --dba-password=PASS      password of the DBA user, asked for a database on another host when not given\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
@@ -779,7 +784,8 @@ valid options:\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                set the display unit (page, mega, giga, tera, human readable); default: H\n\
   -s, --summarize              display only a summary for each volume purpose\n\
-  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
+  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n\
+      --dba-password=PASS      password of the DBA user, asked for a database on another host when not given\n
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 Estimated Number of Pages = %1$d\n
@@ -875,7 +881,8 @@ usage: %1$s lockdb [OPTION] database-name\n\
 \n\
 valid options:\n\
   -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
-  -c, --contention             display only lock information which has contention\n
+  -c, --contention             display only lock information which has contention\n\
+  -p, --dba-password=PASS      password of the DBA user, asked for a database on another host when not given\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -940,7 +947,8 @@ valid options:\n\
   -c, --drop-clone             drop XASL clones of the cached plans, keeping the plans; with -s, of the sha1 plan only\n\
   -d, --drop                   drop all plans in the server's cache\n\
   -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
-  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n
+  -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n\
+  -p, --dba-password=PASS      password of the DBA user, asked for a database on another host when not given\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 Cannot open output file '%1$s'\n
@@ -958,7 +966,8 @@ valid options:\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n\
       --ha-only                dump only HA related parameters; cannot be used with --exclude-ha option\n\
-      --exclude-ha             dump excluding HA related parameters; cannot be used with --ha-only option\n
+      --exclude-ha             dump excluding HA related parameters; cannot be used with --ha-only option\n\
+  -p, --dba-password=PASS      password of the DBA user, asked for a database on another host when not given\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 Wrong value \"%1$s\" for the server's HA running mode.\n
@@ -978,7 +987,8 @@ valid options:\n\
   -f, --force                 force to change\n\
   -t, --timeout=S             waiting S second while active transaction is terminated normally\n\
                               -t option is effective only when the user changes server mode to maintenance\n\
-                              default: 5\n
+                              default: 5\n\
+  -p, --dba-password=PASS     password of the DBA user, asked for a database on another host when not given\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
 11 Wrong value \"%1$s\" for the copylogdb's running mode.\n
@@ -1020,7 +1030,8 @@ valid options:\n\
   -o, --output-file=FILE       redirect output message to FILE; default: none\n\
   -c, --cumulative             print cumulative stats\n\
   -i, --interval=S             print stats every S secs\n\
-  -s, --substr=STRING          print stat item only that match the substring\n
+  -s, --substr=STRING          print stat item only that match the substring\n\
+  -p, --dba-password=PASS      password of the DBA user, asked for a database on another host when not given\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Enter DBA password:
@@ -1038,7 +1049,8 @@ valid options:\n\
   -a, --applied-info 	      display applied information; the -L option is required \n\
   -p, --page=ID               page id; the -L option is required; default : 0\n\
   -v, --verbose               enable verbose status messages; default : disable\n\
-  -i, --interval=S            print information every S secs\n
+  -i, --interval=S            print information every S secs\n\
+      --dba-password=PASS     password of the DBA user, asked for a database on another host when not given\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59 acldb cannot run as standalone mode.\n
@@ -1047,7 +1059,9 @@ acldb: Display or reload access control setting of the database.\n\
 usage: %1$s acldb [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -r, --reload       reload ip control file\n
+  -r, --reload       reload ip control file\n\
+  -p, --dba-password=PASS\n\
+                     password of the DBA user, asked for a database on another host when not given\n
 
 $set 46 MSGCAT_UTIL_SET_GENLOCALE
 60 \
@@ -1148,7 +1162,8 @@ usage: %1$s tranlist [OPTION] database-name\n\
 valid options:\n\
   -s, --summary                print summarized information of transaction\n\
       --sort-key=COLUMN_NUMBER column number to be sorted\n\
-      --reverse                reverse the sort result\n
+      --reverse                reverse the sort result\n\
+      --dba-password=PASS      password of the DBA user, asked for a database on another host when not given\n
 
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 Invalid generation mode supplied.\n
@@ -1245,7 +1260,8 @@ valid options:\n\
   -S, --SA-mode                stand-alone mode execution\n\
   -C, --CS-mode                client-server mode execution\n\
       --dump                   dump current state of vacuum\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
+  -p, --dba-password=PASS      password of the DBA user, asked for a database on another host when not given\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Failed to load table names in %1$s.\n
@@ -1269,7 +1285,8 @@ valid options:\n\
                                 any options except --table-name will be ignored\n\
       --resume                  resume calculating checksum\n\
       --schema-only             check only schema consistency\n\
-      --cont-on-error           continue on calculation error\n
+      --cont-on-error           continue on calculation error\n\
+  -p, --dba-password=PASS       password of the DBA user, asked for a database on another host when not given\n
 
 $set 57 MSGCAT_UTIL_SET_TDE
 21 Enter DBA password:
@@ -1343,7 +1360,8 @@ usage: %1$s memmon [OPTION] database-name\n\
 \n\
 valid option:\n\
     -o, --output-file=FILE    output results to FILE\n\
-    --disable-force           disable memory monitor of server forcibly\n
+    --disable-force           disable memory monitor of server forcibly\n\
+    -p, --dba-password=PASS   password of the DBA user, asked for a database on another host when not given\n
 
 $set 60 MSGCAT_UTIL_SET_CLEANFILEDB
 10 Couldn't open output file '%1$s'\n
@@ -1372,7 +1390,8 @@ valid options:\n\
     -C, --CS-mode                 client-server mode execution\n\
     -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
     -l, --list                    list all files\n\
-    -c, --clean-invalid-file      clean invalid files\n
+    -c, --clean-invalid-file      clean invalid files\n\
+    -p, --dba-password=PASS       password of the DBA user, asked for a database on another host when not given\n
 
 $set 61 MSGCAT_UTIL_SET_UPGRADEDB
 1 Database system metadata is not upgradable; recreate the database with the current CUBRID version.\n

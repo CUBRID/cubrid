@@ -285,6 +285,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
 46 owner_name의 길이는 %1$d 미만이어야 하고 class_name의 길이는 %2$d 바이트 미만이어야 합니다.\n
 47 테이블 이름('%1$s')을 owner_name.class_name 형식으로 입력하십시오.\n
 51 "%1$s"은(는) 뷰입니다. 이 작업은 테이블을 대상으로 합니다.\n
+52 DBA 비밀번호: 
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n
@@ -314,7 +315,8 @@ backupdb: 데이터베이스를 백업합니다.\n\
   -t, --thread-count=COUNT     백업을 수행하는 스레드 개수; 기본값: 자동\n\
       --no-compress            백업 볼륨을 압축하지 않습니다; 기본값: 압축\n\
       --sleep-msecs=N          매 1M 읽기 마다 N 밀리초를 쉽니다; 기본값: 0\n\
-  -k, --separate-keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다.\n
+  -k, --separate-keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다.\n\
+  -p, --dba-password=PASS      DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 71 \"%1$s\" 와 \"%2$s\" (은)는 함께 사용할 수 없습니다.\n
 
 
@@ -641,6 +643,7 @@ compactdb: 데이터베이스에서 사용되지 않는 영역을 해제.\n\
                                     클라이언트 서버 모드에서만 가능\n\
   -c, --class-lock-timeout          클래스 잠금에 대한 타임아웃\n\
                                     클라이언트 서버 모드에서만 가능\n\
+      --dba-password=PASS           DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n\
   [테이블1 테이블2 ...]             정리할 테이블 리스트\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
@@ -716,7 +719,8 @@ addvoldb: 데이터베이스 볼륨 파일을 추가\n\
                                            PERM - 영구 볼륨\n\
                                            TEMP - 임시 볼륨\n\
   -S, --SA-mode                    독립 모드 실행\n\
-  -C, --CS-mode                    클라이언트 서버 모드 실행\n
+  -C, --CS-mode                    클라이언트 서버 모드 실행\n\
+      --dba-password=PASS          DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 18 MSGCAT_UTIL_SET_CHECKDB
 20 데이터베이스에서 비일관성이 발견되었습니다.\n추가적인 정보는 error_log_file %1$s 을(를) 참고 하십시오\n
@@ -741,7 +745,8 @@ checkdb: 데이터베이스 일관성 검사.\n\
       --check-catalog          check catalog consistency\n\
       --check-btree            check all btree indices\n\
       --check-class-name       check class name consistency\n\
-      --check-btree-entries    check entries of btree consistency\n
+      --check-btree-entries    check entries of btree consistency\n\
+  -p, --dba-password=PASS      DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 
 $set 19 MSGCAT_UTIL_SET_SPACEDB
@@ -776,7 +781,8 @@ spacedb: 데이터베이스 디스크 공간 정보 출력\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                출력 단위(page, mega, giga, tera, human readable) 설정; 기본값: H\n\
   -s, --summarize              볼륨 용도별 합계 결과 출력\n\
-  -p, --purpose                각 볼륨의 목적별 (데이터/인덱스/임시) 사용량을 출력\n
+  -p, --purpose                각 볼륨의 목적별 (데이터/인덱스/임시) 사용량을 출력\n\
+      --dba-password=PASS      DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 20 MSGCAT_UTIL_SET_ESTIMATEDB_DATA
 15 추정되는 페이지 개수 = %1$d\n
@@ -872,7 +878,8 @@ lockdb: 데이터베이스의 lock 정보 출력\n\
 \n\
 옵션:\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
-  -c, --contention             display only lock information which has contention\n
+  -c, --contention             display only lock information which has contention\n\
+  -p, --dba-password=PASS      DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -937,7 +944,8 @@ plandump: 쿼리 플랜 표시 및 관리\n\
   -c, --drop-clone             캐시된 플랜의 XASL clone 삭제(플랜은 유지); -s 와 함께 쓰면 sha1 플랜만\n\
   -d, --drop                   서버 케시에 있는 모든 플랜 삭제\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
-  -s, --sha1=SHA1              서버 케시에 있는 sha1 플랜 삭제; 기본값: 없음\n
+  -s, --sha1=SHA1              서버 케시에 있는 sha1 플랜 삭제; 기본값: 없음\n\
+  -p, --dba-password=PASS      DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 11 출력 파일 '%1$s'을 열 수 없습니다.\n
@@ -955,7 +963,8 @@ valid options:\n\
   -S, --SA-mode                독립 모드 실행\n\
   -C, --CS-mode                클라이언트 서버 모드 실행\n\
       --ha-only                HA관련 시스템 파라미터만 출력; --exclude-ha와 함께 사용 불가\n\
-      --exclude-ha             HA관련 시스템 파라미터제외 출력; --ha-only와 함께 사용 불가\n
+      --exclude-ha             HA관련 시스템 파라미터제외 출력; --ha-only와 함께 사용 불가\n\
+  -p, --dba-password=PASS      DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 서버의 HA 모드에 대해 잘못된 값 \"%1$s\"입니다.\n
@@ -975,7 +984,8 @@ valid options:\n\
   -f, --force                 강제 변경\n\
   -t, --timeout=S             트랜잭션이 정상 종료될 때까지 S초 대기\n\
                               -t 옵션은 사용자가 서버의 HA 모드를 maintenance로 변경할 때만 유효\n\
-                              기본값: 5\n
+                              기본값: 5\n\
+  -p, --dba-password=PASS     DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 40 MSGCAT_UTIL_SET_COPYLOGDB
 11 copylogdb의 실행 모드에 대해 잘못된 값 \"%1$s\"\n
@@ -1017,7 +1027,8 @@ valid options:\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
   -c, --cumulative             누적값을 출력\n\
   -i, --interval=S             매 S 초마다 통계를 출력\n\
-  -s, --substr=STRING          지정한 문자열이 포함된 항목만 출력\n
+  -s, --substr=STRING          지정한 문자열이 포함된 항목만 출력\n\
+  -p, --dba-password=PASS      DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA 암호 입력:
@@ -1035,7 +1046,8 @@ valid options:\n\
   -a, --applied-info          반영된 정보 출력; L옵션이 필요\n\
   -p, --page=ID               페이지 id; L옵션이 필요; 기본값: 0\n\
   -v, --verbose               상세 상태 정보 출력; 기본값: 사용하지 않음\n\
-  -i, --interval=S            매 S 초마다 로그 정보 출력\n
+  -i, --interval=S            매 S 초마다 로그 정보 출력\n\
+      --dba-password=PASS     DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 45 MSGCAT_UTIL_SET_ACLDB
 59  acldb는 독립 모드에서 실행할 수 없습니다.\n
@@ -1044,7 +1056,9 @@ acldb: 서버의 접근권한 목록을 출력하거나 다시 읽습니다.\n\
 사용법: %1$s acldb [옵션] <데이터베이스 이름>\n\
 \n\
 valid options:\n\
-  -r, --reload       접근 권한 파일 다시 읽기.\n
+  -r, --reload       접근 권한 파일 다시 읽기.\n\
+  -p, --dba-password=PASS\n\
+                     DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 46 MSGCAT_UTIL_SET_GENLOCALE
 60 \
@@ -1142,7 +1156,8 @@ tranlist: 활성화된 트랜잭션 정보 출력.\n\
 valid options:\n\
   -s, --summary                질의정보 및 락 정보 생략\n\
       --sort-key=COLUMN_NUMBER 정렬할 컬럼번호; 기본값 : 1\n\
-      --reverse                내림차순 정렬수행; 기본값 : 오름차순 정렬\n
+      --reverse                내림차순 정렬수행; 기본값 : 오름차순 정렬\n\
+      --dba-password=PASS      DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 51 MSGCAT_UTIL_SET_GEN_TZ
 59 유효하지 않은 생성 모드가 지정되었습니다.\n
@@ -1231,7 +1246,8 @@ valid options:\n\
   -S, --SA-mode                독립 모드 실행\n\
   -C, --CS-mode                클라이언트 서버 모드 실행\n\
       --dump                   현재 vacuum 상태 덤프\n\
-  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
+  -p, --dba-password=PASS      DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 %1$s으로부터 테이블 이름 로딩 실패.\n
@@ -1255,7 +1271,8 @@ valid options:\n\
                                 --table-name 옵션 외에 다른 옵션은 모두 무시됨\n\
       --resume                  체크섬 계산 복귀\n\
       --schema-only             스키마 일관성만 검사\n\
-      --cont-on-error           계산 오류 발생해도 계속 진행\n
+      --cont-on-error           계산 오류 발생해도 계속 진행\n\
+  -p, --dba-password=PASS       DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 57 MSGCAT_UTIL_SET_TDE
 21 DBA 비밀 번호:
@@ -1329,7 +1346,8 @@ memmon: 데이터베이스 서버의 메모리 사용량 정보를 제공합니�
 \n\
 유효한 옵션:\n\
     -o, --output-file=FILE    결과를 FILE에 출력합니다\n\
-    --disable-force           서버의 메모리 모니터링을 강제로 비활성화합니다.\n
+    --disable-force           서버의 메모리 모니터링을 강제로 비활성화합니다.\n\
+    -p, --dba-password=PASS   DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 60 MSGCAT_UTIL_SET_CLEANFILEDB
 10 출력 파일 '%1$s'을 열 수 없습니다.\n
@@ -1358,7 +1376,8 @@ valid options:\n\
     -C, --CS-mode                 클라이언트 서버 모드 실행\n\
     -o, --output-file=FILE        출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\
     -l, --list                    모든 파일 항목 출력\n\
-    -c, --clean-invalid-file      유효하지 않은 파일 정리\n
+    -c, --clean-invalid-file      유효하지 않은 파일 정리\n\
+    -p, --dba-password=PASS       DBA 비밀번호. 다른 호스트의 데이터베이스에 필요하며, 지정하지 않으면 입력받습니다.\n
 
 $set 61 MSGCAT_UTIL_SET_UPGRADEDB
 1 데이터베이스 시스템 메타데이터를 업그레이드할 수 없습니다. 현재 CUBRID 버전으로 데이터베이스를 다시 생성하십시오.\n

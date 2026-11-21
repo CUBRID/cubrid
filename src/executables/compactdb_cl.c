@@ -797,11 +797,14 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   int instance_lock_timeout, class_lock_timeout;
   char **tables = NULL;
   int table_size = 0;
+  const char *dba_password = NULL;
+  int client_type;
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   verbose_flag = utility_get_option_bool_value (arg_map, COMPACT_VERBOSE_S);
   standby_compactdb_flag = utility_get_option_bool_value (arg_map, COMPACT_STANDBY_CS_MODE_S);
   input_filename = utility_get_option_string_value (arg_map, COMPACT_INPUT_CLASS_FILE_S, 0);
+  dba_password = utility_get_option_string_value (arg_map, COMPACT_DBA_PASSWORD_S, 0);
 
   pages = utility_get_option_int_value (arg_map, COMPACT_PAGES_COMMITED_ONCE_S);
   if (pages < COMPACT_MIN_PAGES || pages > COMPACT_MAX_PAGES)
@@ -874,18 +877,17 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  AU_DISABLE_PASSWORDS ();
-
   if (standby_compactdb_flag)
     {
-      db_set_client_type (DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS);
+      client_type = DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS;
     }
   else
     {
-      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+      client_type = DB_CLIENT_TYPE_ADMIN_UTILITY;
     }
 
-  if ((error = db_login ("DBA", NULL)) || (error = db_restart (arg->argv0, TRUE, database_name)))
+  error = util_restart_as_dba (arg->argv0, database_name, dba_password, client_type);
+  if (error != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s: %s.\n", exec_name, db_error_string (3));
       status = error;

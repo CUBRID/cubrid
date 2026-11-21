@@ -1140,6 +1140,9 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
   int tran_lock_wait_msecs;
   TRAN_STATE transtate;
   int error_code = NO_ERROR;
+#if defined (CS_MODE)
+  bool admin_password_given = false;
+#endif /* CS_MODE */
 
   if (!is_sub_client)
     {
@@ -1178,8 +1181,13 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
 		client_credential->process_id);
 
 #if defined (CS_MODE)
-  /* the server registers the user only after its password is proven */
-  if (BOOT_PASSWORD_PROOF_CLIENT_TYPE (client_credential->client_type))
+  /* the server registers the user only after its password is proven. An admin client may go without it from
+   * the server's own host or an HA node, which only the server can tell. A password it was given is proven up
+   * front all the same, so that a wrong one is never taken; without one, it proves the (empty) password only
+   * when the server asks for it below */
+  admin_password_given = (BOOT_ADMIN_CLIENT_TYPE (client_credential->client_type)
+			  && Au_user_password_sha2_512[0] != '\0');
+  if (BOOT_PASSWORD_PROOF_CLIENT_TYPE (client_credential->client_type) || admin_password_given)
     {
       error_code = au_prove_password (client_credential->get_db_user (), Au_user_password_des_oldstyle,
 				      Au_user_password_sha1, Au_user_password_sha2_512);
@@ -1198,6 +1206,28 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
 
   tran_index =
     boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate, &boot_Server_credential);
+
+#if defined (CS_MODE)
+  if (tran_index == NULL_TRAN_INDEX && BOOT_ADMIN_CLIENT_TYPE (client_credential->client_type) && !admin_password_given
+      && er_errid () == ER_AU_INVALID_PASSWORD)
+    {
+      /* the server wants the password from this host: prove it and register again */
+      er_clear ();
+      error_code = au_prove_password (client_credential->get_db_user (), Au_user_password_des_oldstyle,
+				      Au_user_password_sha1, Au_user_password_sha2_512);
+      if (error_code != NO_ERROR)
+	{
+	  if (!is_sub_client)
+	    {
+	      (void) net_client_final (false);
+	    }
+	  goto error;
+	}
+      tran_index =
+	boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate,
+			      &boot_Server_credential);
+    }
+#endif /* CS_MODE */
 
   if (tran_index == NULL_TRAN_INDEX)
     {

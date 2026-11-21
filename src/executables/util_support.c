@@ -238,7 +238,20 @@ util_is_password_argument (int index, int value)
 #endif
       || (index == TDE && value == TDE_DBA_PASSWORD_S)
       || (index == LOADDB && value == LOAD_PASSWORD_S) || (index == UNLOADDB && value == UNLOAD_PASSWORD_S)
-      || (index == FLASHBACK && value == FLASHBACK_DBA_PASSWORD_S))
+      || (index == FLASHBACK && value == FLASHBACK_DBA_PASSWORD_S)
+      || (index == BACKUPDB && value == BACKUP_DBA_PASSWORD_S) || (index == ADDVOLDB && value == ADDVOL_DBA_PASSWORD_S)
+      || (index == CHECKDB && value == CHECK_DBA_PASSWORD_S) || (index == SPACEDB && value == SPACE_DBA_PASSWORD_S)
+      || (index == ACLDB && value == ACLDB_DBA_PASSWORD_S) || (index == LOCKDB && value == LOCK_DBA_PASSWORD_S)
+      || (index == TRANLIST && value == TRANLIST_DBA_PASSWORD_S)
+      || (index == PLANDUMP && value == PLANDUMP_DBA_PASSWORD_S)
+      || (index == PARAMDUMP && value == PARAMDUMP_DBA_PASSWORD_S)
+      || (index == STATDUMP && value == STATDUMP_DBA_PASSWORD_S)
+      || (index == CHANGEMODE && value == CHANGEMODE_DBA_PASSWORD_S)
+      || (index == APPLYINFO && value == APPLYINFO_DBA_PASSWORD_S)
+      || (index == VACUUMDB && value == VACUUM_DBA_PASSWORD_S) || (index == MEMMON && value == MEMMON_DBA_PASSWORD_S)
+      || (index == CLEANFILEDB && value == CLEANFILEDB_DBA_PASSWORD_S)
+      || (index == CHECKSUMDB && value == CHECKSUM_DBA_PASSWORD_S)
+      || (index == COMPACTDB && value == COMPACT_DBA_PASSWORD_S))
     {
       return true;
     }

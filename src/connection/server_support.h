@@ -122,6 +122,7 @@ extern struct css_conn_entry *css_get_current_conn_entry (void);
 extern int css_check_conn (CSS_CONN_ENTRY * p);
 
 extern int css_check_accessibility (SOCKET new_fd);
+extern bool css_is_ha_node_address (SOCKET fd);
 
 extern size_t css_get_max_connections ();
 

@@ -809,6 +809,9 @@ extern "C"
   extern int sysprm_load_and_init (const char *db_name, const char *conf_file, const int load_flags);
   extern int sysprm_load_and_init_client (const char *db_name, const char *conf_file);
   extern int sysprm_reload_and_init (const char *db_name, const char *conf_file);
+#if defined (SERVER_MODE)
+  extern int sysprm_read_ha_node_lists (char *node_list, size_t node_size, char *replica_list, size_t replica_size);
+#endif				/* SERVER_MODE */
   extern void sysprm_final (void);
   extern void sysprm_dump_parameters (FILE * fp, char pmarker, unsigned int in_flags, SYSPRM_DUMP_CONDITION if_cond,
 				      unsigned int out_flags, SYSPRM_DUMP_CONDITION of_cond, bool old_style);

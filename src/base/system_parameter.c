@@ -25,6 +25,7 @@
 #include "config.h"
 
 #include <algorithm>
+#include <mutex>
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -6831,6 +6832,81 @@ sysprm_reload_and_init (const char *db_name, const char *conf_file)
 {
   return sysprm_load_and_init_internal (db_name, conf_file, true, SYSPRM_LOAD_ALL);
 }
+
+#if defined (SERVER_MODE)
+/*
+ * sysprm_read_ha_node_lists () - read ha_node_list and ha_replica_list as the
+ *   HA configuration file has them now
+ *   return: NO_ERROR, or ER_FAILED when the file cannot be read
+ *   node_list(out): ha_node_list, empty when not set
+ *   node_size(in): size of node_list
+ *   replica_list(out): ha_replica_list, empty when not set
+ *   replica_size(in): size of replica_list
+ *
+ * Note: the server loads its parameters once, while cubrid heartbeat reload
+ *   lets the nodes take a node added to or removed from the file later. The
+ *   sections are looked at in the order the loader applies them, so a later
+ *   one wins.
+ */
+int
+sysprm_read_ha_node_lists (char *node_list, size_t node_size, char *replica_list, size_t replica_size)
+{
+  char file[PATH_MAX];
+  char host_name[CUB_MAXHOSTNAMELEN];
+  char user_name[CUB_MAXHOSTNAMELEN];
+  char sections[3][LINE_MAX];
+  const char *conf_file;
+  const char *value;
+  INI_TABLE *ini;
+  int num_sections = 0, i;
+  /* the ini parser works in static buffers: one reader at a time */
+  static std::mutex ini_mutex;
+  std::lock_guard < std::mutex > lock (ini_mutex);
+
+  node_list[0] = '\0';
+  replica_list[0] = '\0';
+
+  conf_file = envvar_get ("HA_CONF_FILE");
+  if (conf_file == NULL || conf_file[0] == '\0')
+    {
+      envvar_confdir_file (file, PATH_MAX, sysprm_ha_conf_file_name);
+      conf_file = file;
+    }
+
+  ini = ini_parser_load (conf_file);
+  if (ini == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  snprintf (sections[num_sections++], LINE_MAX, "common");
+  if (GETHOSTNAME (host_name, CUB_MAXHOSTNAMELEN) == 0)
+    {
+      snprintf (sections[num_sections++], LINE_MAX, "%%%s|*", host_name);
+      if (getlogin_r (user_name, CUB_MAXHOSTNAMELEN) == 0)
+	{
+	  snprintf (sections[num_sections++], LINE_MAX, "%%%s|%s", host_name, user_name);
+	}
+    }
+
+  for (i = 0; i < num_sections; i++)
+    {
+      value = ini_getstr (ini, sections[i], PRM_NAME_HA_NODE_LIST, NULL, NULL);
+      if (value != NULL)
+	{
+	  snprintf (node_list, node_size, "%s", value);
+	}
+      value = ini_getstr (ini, sections[i], PRM_NAME_HA_REPLICA_LIST, NULL, NULL);
+      if (value != NULL)
+	{
+	  snprintf (replica_list, replica_size, "%s", value);
+	}
+    }
+
+  ini_parser_free (ini);
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
 
 
 

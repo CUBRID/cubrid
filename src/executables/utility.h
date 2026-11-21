@@ -135,7 +135,8 @@ typedef enum
   MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME = 48,
   MSGCAT_UTIL_GENERIC_EMPTY_HOSTS_CONF = 49,
   MSGCAT_UTIL_GENERIC_FILE_NOT_FOUND = 50,
-  MSGCAT_UTIL_GENERIC_CLASS_IS_VCLASS = 51
+  MSGCAT_UTIL_GENERIC_CLASS_IS_VCLASS = 51,
+  MSGCAT_UTIL_GENERIC_DBA_PASSWORD = 52
 } MSGCAT_UTIL_GENERIC_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DELETEDB */
@@ -1169,6 +1170,8 @@ typedef struct _ha_config
 #define BACKUP_SLEEP_MSECS_L                    "sleep-msecs"
 #define BACKUP_SEPARATE_KEYS_S                  'k'
 #define BACKUP_SEPARATE_KEYS_L                  "separate-keys"
+#define BACKUP_DBA_PASSWORD_S                   'p'
+#define BACKUP_DBA_PASSWORD_L                   "dba-password"
 
 
 /* restoredb option list */
@@ -1208,6 +1211,8 @@ typedef struct _ha_config
 #define ADDVOL_MAX_WRITESIZE_IN_SEC_L           "max-writesize-in-sec"
 #define ADDVOL_VOLTYPE_L			"voltype"
 #define ADDVOL_VOLTYPE_S			't'
+#define ADDVOL_DBA_PASSWORD_S                   10708
+#define ADDVOL_DBA_PASSWORD_L                   "dba-password"
 
 #if 0
 /* delvoldb option list */
@@ -1238,12 +1243,16 @@ typedef struct _ha_config
 #define SPACE_SUMMARIZE_L                       "summarize"
 #define SPACE_PURPOSE_S                         'p'
 #define SPACE_PURPOSE_L                         "purpose"
+#define SPACE_DBA_PASSWORD_S                    10804
+#define SPACE_DBA_PASSWORD_L                    "dba-password"
 
 /* lockdb option list */
 #define LOCK_OUTPUT_FILE_S                      'o'
 #define LOCK_OUTPUT_FILE_L                      "output-file"
 #define LOCK_DISPLAY_CONTENTION_S               'c'
 #define LOCK_DISPLAY_CONTENTION_L               "contention"
+#define LOCK_DBA_PASSWORD_S                     'p'
+#define LOCK_DBA_PASSWORD_L                     "dba-password"
 
 /* optimizedb option list */
 #define OPTIMIZE_CLASS_NAME_S                   'n'
@@ -1290,6 +1299,8 @@ typedef struct _ha_config
 #define CLEANFILEDB_DELETE_TARGET_FILE_S        'd'
 #define CLEANFILEDB_DELETE_TARGET_FILE_L        "delete-target-file"
 #endif
+#define CLEANFILEDB_DBA_PASSWORD_S              'p'
+#define CLEANFILEDB_DBA_PASSWORD_L              "dba-password"
 
 /* patch option list */
 #define PATCH_RECREATE_LOG_S                    'r'
@@ -1326,6 +1337,8 @@ typedef struct _ha_config
 #define CHECK_LC_CLASSNAMES_L                   "check-class-name"
 #define CHECK_LC_ALLENTRIES_OF_ALLBTREES_S      11508
 #define CHECK_LC_ALLENTRIES_OF_ALLBTREES_L      "check-btree-entries"
+#define CHECK_DBA_PASSWORD_S                    'p'
+#define CHECK_DBA_PASSWORD_L                    "dba-password"
 
 /* plandump option list */
 #define PLANDUMP_DROP_S			        'd'
@@ -1336,6 +1349,8 @@ typedef struct _ha_config
 #define PLANDUMP_SHA1_L                  	"sha1"
 #define PLANDUMP_DROP_CLONE_S			'c'
 #define PLANDUMP_DROP_CLONE_L			"drop-clone"
+#define PLANDUMP_DBA_PASSWORD_S                 'p'
+#define PLANDUMP_DBA_PASSWORD_L                 "dba-password"
 
 /* tranlist option list */
 #if defined(NEED_PRIVILEGE_PASSWORD)
@@ -1352,6 +1367,8 @@ typedef struct _ha_config
 #define TRANLIST_REVERSE_L                      "reverse"
 #define TRANLIST_FULL_SQL_S                     'f'
 #define TRANLIST_FULL_SQL_L                     "full"
+#define TRANLIST_DBA_PASSWORD_S                 12600
+#define TRANLIST_DBA_PASSWORD_L                 "dba-password"
 
 
 /* killtran option list */
@@ -1503,6 +1520,8 @@ typedef struct _ha_config
 #define COMPACT_CLASS_LOCK_TIMEOUT_L		"class-lock-timeout"
 #define COMPACT_STANDBY_CS_MODE_S               12000
 #define COMPACT_STANDBY_CS_MODE_L               "standby"
+#define COMPACT_DBA_PASSWORD_S                  12001
+#define COMPACT_DBA_PASSWORD_L                  "dba-password"
 
 /* sqlx option list */
 #define CSQL_SA_MODE_S                          'S'
@@ -1625,6 +1644,8 @@ typedef struct _ha_config
 #define PARAMDUMP_DUMP_FLAG_L			"dump-flag"
 #define PARAMDUMP_FOR_CM_S			12203
 #define PARAMDUMP_FOR_CM_L			"for-cm"
+#define PARAMDUMP_DBA_PASSWORD_S                'p'
+#define PARAMDUMP_DBA_PASSWORD_L                "dba-password"
 
 /* statdump option list */
 #define STATDUMP_OUTPUT_FILE_S                  'o'
@@ -1635,10 +1656,14 @@ typedef struct _ha_config
 #define STATDUMP_CUMULATIVE_L                   "cumulative"
 #define STATDUMP_SUBSTR_S			's'
 #define STATDUMP_SUBSTR_L			"substr"
+#define STATDUMP_DBA_PASSWORD_S                 'p'
+#define STATDUMP_DBA_PASSWORD_L                 "dba-password"
 
 /* acl option list */
 #define ACLDB_RELOAD_S                          'r'
 #define ACLDB_RELOAD_L				"reload"
+#define ACLDB_DBA_PASSWORD_S                    'p'
+#define ACLDB_DBA_PASSWORD_L                    "dba-password"
 
 /* changemode option list */
 #define CHANGEMODE_MODE_S                       'm'
@@ -1647,6 +1672,8 @@ typedef struct _ha_config
 #define CHANGEMODE_FORCE_L                      "force"
 #define CHANGEMODE_TIMEOUT_S			't'
 #define CHANGEMODE_TIMEOUT_L			"timeout"
+#define CHANGEMODE_DBA_PASSWORD_S               'p'
+#define CHANGEMODE_DBA_PASSWORD_L               "dba-password"
 
 /* copylogdb option list */
 #define COPYLOG_LOG_PATH_S                      'L'
@@ -1675,6 +1702,8 @@ typedef struct _ha_config
 #define APPLYINFO_VERBOSE_L                     "verbose"
 #define APPLYINFO_INTERVAL_S                    'i'
 #define APPLYINFO_INTERVAL_L                    "interval"
+#define APPLYINFO_DBA_PASSWORD_S                12500
+#define APPLYINFO_DBA_PASSWORD_L                "dba-password"
 
 /* genlocale option list */
 #define GENLOCALE_INPUT_PATH_S			'i'
@@ -1763,6 +1792,8 @@ typedef struct _ha_config
 #define VACUUM_DUMP_L                            "dump"
 #define VACUUM_OUTPUT_FILE_S                     'o'
 #define VACUUM_OUTPUT_FILE_L                     "output-file"
+#define VACUUM_DBA_PASSWORD_S                    'p'
+#define VACUUM_DBA_PASSWORD_L                    "dba-password"
 
 /* checksumdb option list */
 #define CHECKSUM_CHUNK_SIZE_S			'c'
@@ -1785,6 +1816,8 @@ typedef struct _ha_config
 #define CHECKSUM_REPORT_ONLY_L			"report-only"
 #define CHECKSUM_SCHEMA_ONLY_S			14002
 #define CHECKSUM_SCHEMA_ONLY_L			"schema-only"
+#define CHECKSUM_DBA_PASSWORD_S                 'p'
+#define CHECKSUM_DBA_PASSWORD_L                 "dba-password"
 
 /* tde option list */
 #define TDE_GENERATE_KEY_S    'n'
@@ -1825,6 +1858,8 @@ typedef struct _ha_config
 #define MEMMON_OUTPUT_L             "output-file"
 #define MEMMON_DISABLE_FORCE_S      14103
 #define MEMMON_DISABLE_FORCE_L      "disable-force"
+#define MEMMON_DBA_PASSWORD_S       'p'
+#define MEMMON_DBA_PASSWORD_L       "dba-password"
 
 /* upgradedb option list */
 #define UPGRADE_CHECK_S                         14200
@@ -1897,6 +1932,8 @@ extern "C"
   extern int util_time_string_to_msec (INT64 * msec_num, char *time_str);
   extern void util_print_deprecated (const char *option);
   extern int util_get_table_list_from_file (char *fname, dynamic_array * darray);
+  extern int util_restart_as_dba (const char *program_name, const char *db_name, const char *dba_password,
+				  int client_type);
 
   typedef struct
   {
