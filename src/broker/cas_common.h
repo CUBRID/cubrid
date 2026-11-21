@@ -34,9 +34,6 @@
 #include "porting.h"
 #include "chartype.h"
 
-#define makestring1(x) #x
-#define makestring(x) makestring1(x)
-
 #define MAX_SERVER_H_ID                 (256)
 #define MAX_BIND_VALUE                  (10240)
 #define MAX_QUERY_LEN                   (100000)
@@ -150,7 +147,16 @@ typedef socklen_t T_SOCKLEN;
 #endif
 
 /* default charset for JDBC : ISO8859-1 */
+#if defined(CAS_FOR_CGW)
+/* The gateway CAS has no CUBRID database, so it never initializes the language module
+ * and lang_charset () would assert (debug) or answer INTL_CODESET_NONE (release), which
+ * the wire truncates to an unmappable 3-bit value.  The remote's character data reaches
+ * the client re-encoded to UTF-8 (cas_cgw_odbc.c client_charset, which nothing changes),
+ * so report that instead - the same answer the CGW prepare path already gives. */
+#define CAS_SCHEMA_DEFAULT_CHARSET (INTL_CODESET_UTF8)
+#else
 #define CAS_SCHEMA_DEFAULT_CHARSET (lang_charset())
+#endif
 
 enum
 {
