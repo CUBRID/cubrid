@@ -187,6 +187,8 @@ jobs:
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           repositories: cubrid-testcases,cubrid-testcases-private-ex
           owner: ${{ env.OWNER }}
+          permission-contents: read
+          permission-pull-requests: read
 
       - name: Mask token
         env:
@@ -309,6 +311,8 @@ jobs:
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           repositories: cubrid-testcases,cubrid-testcases-private-ex
           owner: ${{ env.OWNER }}
+          permission-contents: read
+          permission-pull-requests: read
 
       - name: Mask token
         env:
