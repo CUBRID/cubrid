@@ -180,6 +180,11 @@
  * (system operation, worker shortage) -- so the realized speed-up lies anywhere between 1x and
  * the degree; 2 is the geometric middle of 1x..4x, wrong by at most 2x either way. */
 #define QO_PARALLEL_COST_DIVISOR 2.0
+/* Rows a heap scan must be estimated to return to drive a parallel nested-loop chain (CBRD-28121): the
+ * workers share the chain by the rows the scan returns, each row's joins running whole in the worker that
+ * read it, and a few rows -- which also tend to sit together on one or a few pages -- leave the chain in
+ * one worker whatever the size of the table. */
+#define QO_PARALLEL_DRIVE_MIN_ROWS 256.0
 /* qo_query_serial_level (): what the executor runs serially in a query block whatever the plan */
 enum
 {
@@ -262,7 +267,7 @@ static void qo_scan_info (QO_PLAN *, FILE *, int);
 typedef enum
 {
   QO_PARALLEL_MARK_NONE,	/* the child decides for itself */
-  QO_PARALLEL_MARK_SCAN,	/* a hash join input scan read in parallel */
+  QO_PARALLEL_MARK_SCAN,	/* a scan read in parallel outside a nested-loop block: a hash join input or a driving scan */
   QO_PARALLEL_MARK_IN_BLOCK	/* inside a parallel nested-loop block: not marked */
 } QO_PARALLEL_MARK;
 
@@ -6842,7 +6847,8 @@ qo_scan_runs_parallel (QO_PLAN * scan)
  *
  * Note: the executor parallelizes a nested-loop chain by splitting its driving (outermost)
  *	 scan among workers, each running the whole chain, so the answer is inherited: a heap scan
- *	 by its own size, a nested loop by its own parallel_driven, and a hash join, merge join
+ *	 by its own size and the rows it returns (QO_PARALLEL_DRIVE_MIN_ROWS), a nested loop by its
+ *	 own parallel_driven, and a hash join, merge join
  *	 or sort -- whose result is materialized into a list file that the chain then scans -- by
  *	 the estimated size of that list.
  */
@@ -6856,7 +6862,9 @@ qo_plan_drives_parallel (QO_PLAN * plan)
 
   if (plan->plan_type == QO_PLANTYPE_SCAN)
     {
-      return qo_scan_runs_parallel (plan);
+      /* the scan itself still runs in parallel (qo_scan_runs_parallel ()), but the chain gains only if its rows
+       * spread over the workers */
+      return qo_scan_runs_parallel (plan) && plan->info->cardinality >= QO_PARALLEL_DRIVE_MIN_ROWS;
     }
 
   if (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
@@ -7439,20 +7447,24 @@ qo_nljoin_cost (QO_PLAN * planp)
 	}
     }
 
-  /* parallel execution (CBRD-27474): the chain runs in parallel when its driving scan does;
-   * then the per-row inner work is divided, and so is the driving scan when the outer is that
-   * scan itself (a nested-loop or materialized outer already carries its own discount) */
+  /* parallel execution (CBRD-27474): the chain runs in parallel when its driving scan does and returns rows
+   * enough to spread over the workers (qo_plan_drives_parallel ()); then the per-row inner work is divided.
+   * The driving scan itself is divided when the outer is that scan (a nested-loop or materialized outer
+   * already carries its own discount). */
   divisor = qo_parallel_cost_divisor (planp);
   planp->parallel_driven = (divisor > 1.0 && qo_plan_drives_parallel (outer));
   if (planp->parallel_driven)
     {
       inner_cpu_cost /= divisor;
       inner_io_cost /= divisor;
-      if (outer->plan_type == QO_PLANTYPE_SCAN)
-	{
-	  outer_cpu_cost /= divisor;
-	  outer_io_cost /= divisor;
-	}
+    }
+
+  /* a driving heap scan the executor splits among workers runs in parallel whether or not it returns rows enough
+   * for the chain to gain (CBRD-28121), as the input scan of a hash join does (qo_join_input_factor ()) */
+  if (divisor > 1.0 && outer->plan_type == QO_PLANTYPE_SCAN && qo_scan_runs_parallel (outer))
+    {
+      outer_cpu_cost /= divisor;
+      outer_io_cost /= divisor;
     }
 
   /* CPU and IO costs which are variable according to the join plan */
@@ -9304,6 +9316,13 @@ qo_plan_child_parallel_mark (QO_PLAN * parent, QO_PLAN * child)
 	  && (child->plan_type == QO_PLANTYPE_SCAN || (child->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (child))))
 	{
 	  return QO_PARALLEL_MARK_IN_BLOCK;
+	}
+      /* a driving heap scan the executor reads in parallel while its few rows keep the chain serial
+       * (qo_plan_drives_parallel ()): its cost is divided in qo_nljoin_cost (), as a hash join input scan's is */
+      if (child == parent->plan_un.join.outer && child->plan_type == QO_PLANTYPE_SCAN
+	  && qo_join_input_factor (child, qo_parallel_cost_divisor (parent)) < 1.0)
+	{
+	  return QO_PARALLEL_MARK_SCAN;
 	}
       return QO_PARALLEL_MARK_NONE;
     }
