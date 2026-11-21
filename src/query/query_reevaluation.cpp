@@ -34,6 +34,7 @@ namespace cubquery
     type = REEV_DATA_UPDDEL;
     upddel_reev_data = &urd;
     filter_result = V_TRUE;
+    last_version_is_ours = false;
   }
 
   void
@@ -42,6 +43,7 @@ namespace cubquery
     type = REEV_DATA_SCAN;
     select_reev_data = &scan;
     filter_result = V_TRUE;
+    last_version_is_ours = false;
   }
 
   void
@@ -130,6 +132,23 @@ namespace cubquery
       default:
 	break;
       }
+  }
+
+  mvcc_update_reev_data::mvcc_update_reev_data ()
+    : mvcc_cond_reev_list (NULL)
+    , curr_upddel (NULL)
+    , curr_extra_assign_cnt (0)
+    , curr_extra_assign_reev (NULL)
+    , curr_assigns (NULL)
+    , curr_attrinfo (NULL)
+    , cons_pred (NULL)
+    , copyarea (NULL)
+    , vd (NULL)
+    , new_recdes (NULL)
+    , caller_builds_record (false)
+    , must_recompute (false)
+    , recomputed (false)
+  {
   }
 
   void

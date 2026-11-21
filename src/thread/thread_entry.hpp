@@ -29,6 +29,7 @@
 
 #include "error_context.hpp"
 #include "lockfree_transaction_def.hpp"
+#include "log_lsa.hpp"      // for LOG_LSA (oos_published_ref)
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
@@ -39,6 +40,8 @@
 
 #include <cassert>
 
+#include <vector>
+#include "oid.h"
 // forward definitions
 
 // from concurrency_slot.hpp
@@ -125,6 +128,17 @@ struct event_stat
 
   /* log flush thread wait time */
   int trace_log_flush_time;
+};
+
+/* What OOS value reads (oos_read, oos_read_many) cost: their page fixes, the reads those fixes made and the time
+ * spent in them.  A thread counts its own while it traces; a scan's trace takes the difference across its own
+ * window, so a scan's figures are a part of its fetch, ioread and time. */
+typedef struct oos_read_stats OOS_READ_STATS;
+struct oos_read_stats
+{
+  struct timeval elapsed;
+  UINT64 fetches;
+  UINT64 ioreads;
 };
 
 typedef std::thread::id thread_id_t;
@@ -300,6 +314,7 @@ namespace cubthread
       int trace_format;
       bool on_trace;
       bool clear_trace;
+      OOS_READ_STATS oos_read_stats;	/* only while on_trace; never reset, read as differences */
       bool trace_plan_detail;	/* XASL_TRACE_PLAN_DETAIL: the trace shows the compiled expression programs */
 
       /* for lock free structures */
@@ -334,6 +349,25 @@ namespace cubthread
       UINT64 *m_px_stats;
       entry *m_px_orig_thread_entry;
       bool m_uses_px_stats;
+
+      bool m_skip_end_resource_tracks_in_recycle;
+
+      /* OOS value chains published by the current logical heap-record insert, in insert order: head
+       * OOS OID plus the identity stamp the chain was created with (CBRD-26950). The HA applier's
+       * stub fixup rewrites both fields of each OOS inline stub from these pairs, so the slave's
+       * stubs carry the stamps the slave itself issued and never depend on reading OOS storage. A
+       * NULL OID with a NULL stamp is the multi-chunk replication boundary marker. A reused entry names
+       * no chain: an UPDATE reused that column's stub, and the replica takes the stub of its own previous
+       * version (CBRD-27230). The layout mirrors oos_chain_ref (oos_file.hpp) but is kept separate so
+       * this header does not depend on storage headers. */
+      struct oos_published_ref
+      {
+	OID oid;
+	LOG_LSA identity_stamp;
+	bool reused = false;
+      };
+      std::vector<oos_published_ref> oos_oids;
+
 
       bool m_is_private_lru_enabled;
       struct pgbuf_holder_anchor *m_holder_anchor;
