@@ -43,6 +43,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <math.h>
 
 #include "memory_hash.h"
 #include "chartype.h"
@@ -58,6 +59,8 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "dbtype.h"
+#include "db_json.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -105,15 +108,20 @@ static unsigned int mht_3str_pseudo_key (const void *key, int key_size, const un
 static unsigned int mht_4str_pseudo_key (const void *key, int key_size);
 static unsigned int mht_5str_pseudo_key (const void *key, int key_size);
 
+STATIC_INLINE unsigned int mht_hash_double (double d) __attribute__ ((ALWAYS_INLINE));
+static unsigned int mht_hash_element (const DB_VALUE * val);
+STATIC_INLINE unsigned int mht_hash_multiset (const DB_VALUE * val) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE unsigned int mht_hash_sequence (const DB_VALUE * val) __attribute__ ((ALWAYS_INLINE));
+
 static int mht_rehash (MHT_TABLE * ht);
 
 static const void *mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 static const void *mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 static const void *mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY * entry, MHT_PUT_OPT opt);
 
-static unsigned int mht_get_shiftmult32 (unsigned int key, const unsigned int ht_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
-static unsigned int mht_get32_next_power_of_2 (unsigned int const ht_size);
+static unsigned int mht_get32_next_power_of_2 (const unsigned int ht_size);
+static unsigned int mht_get_shiftmult32 (unsigned int key, const unsigned int ht_size);
 static unsigned int mht_get_linear_hash32 (const unsigned int key, const unsigned int ht_size);
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -560,189 +568,387 @@ mht_ptrhash (const void *key, const unsigned int ht_size)
 }
 
 /*
- * mht_valhash - hash a DB_VALUE key
+ * mht_hash_double () - hash a FLOAT, DOUBLE or MONETARY value by the bits of the DOUBLE it equals
  *   return: hash value
- *   key(in): pointer to DB_VALUE key to hash
- *   ht_size(in): size of hash table
+ *   d(in): the value; a FLOAT is widened to DOUBLE, a MONETARY gives its amount
+ *
+ * -0.0 compares equal to 0.0 but differs in its sign bit: adding 0.0 turns -0.0 into 0.0 before the bits are read.
+ * A NaN equals every other NaN, whatever its sign and bits (MR_CMP_FLOATING ()): every NaN hashes as the one NAN.
+ */
+STATIC_INLINE unsigned int
+mht_hash_double (double d)
+{
+  UINT64 bits;
+
+  d = (isnan (d)) ? NAN : d + 0.0;
+  memcpy (&bits, &d, sizeof (bits));
+  return mht_mixhash64_to_32 (bits);
+}
+
+/*
+ * mht_hash_json () - hash a JSON value as mr_cmpval_json () compares it
+ *   return: hash value
+ *   val(in): a non-NULL JSON value
+ *
+ * An array or an object compares by its body text. A scalar compares as the SQL value it converts to
+ * (db_convert_json_into_scalar ()): a number, a boolean as the string 'true' or 'false', a string as itself,
+ * and a string against a number as the DOUBLE that tp_value_coerce () makes of it ('1e0' = 1, '0x10' = 16).
+ * So a string that converts hashes as that DOUBLE, and any other string as the string.
+ */
+static unsigned int
+mht_hash_json (const DB_VALUE * val)
+{
+  const JSON_DOC *doc = db_get_json_document (val);
+  DB_VALUE scalar;
+  unsigned int hash = 0;
+
+  db_make_null (&scalar);
+  if (db_json_doc_is_uncomparable (doc))
+    {
+      /* the body mr_cmpval_json () compares, not the raw text: '{"a": 1}' = '{"a":1}' */
+      (void) db_make_string (&scalar, db_json_get_json_body_from_document (*doc));
+      scalar.need_clear = true;
+      hash = mht_valhash (&scalar, UINT_MAX);
+    }
+  else if (db_convert_json_into_scalar (val, &scalar) == NO_ERROR)
+    {
+      if (TP_IS_CHAR_TYPE (db_value_type (&scalar)))
+	{
+	  DB_VALUE number;
+
+	  /* a string that does not convert must not leave the conversion's error */
+	  er_stack_push ();
+	  const bool is_number =
+	    (tp_value_coerce (&scalar, &number, tp_domain_resolve_default (DB_TYPE_DOUBLE)) == DOMAIN_COMPATIBLE);
+	  er_stack_pop ();
+
+	  hash = mht_valhash ((is_number) ? &number : &scalar, UINT_MAX);
+	}
+      else
+	{
+	  hash = mht_hash_element (&scalar);
+	}
+    }
+
+  (void) pr_clear_value (&scalar);
+  return hash;
+}
+
+/*
+ * mht_hash_multiset () - hash a collection as a multiset: by the sum of its elements' hashes
+ *   return: hash value
+ *   val(in): a non-NULL SET, MULTISET or SEQUENCE
+ *
+ * The order of the elements does not change the sum: two collections that compare equal hold equal elements,
+ * as many of each (setobj_compare (), setobj_compare_order ()), whatever their order and their collection types.
+ */
+STATIC_INLINE unsigned int
+mht_hash_multiset (const DB_VALUE * val)
+{
+  COL *col = NULL;
+  DB_VALUE *element;
+  unsigned int hash = 0;
+
+  if (set_get_setobj (db_get_set (val), &col, 0) == NO_ERROR && col != NULL)
+    {
+      for (int i = 0; i < col->size; i++)
+	{
+	  if (setobj_get_element_ptr (col, i, &element) == NO_ERROR)
+	    {
+	      hash += mht_hash_element (element);
+	    }
+	}
+    }
+
+  return hash;
+}
+
+/*
+ * mht_hash_sequence () - hash a collection as a sequence: by every element in order
+ *   return: hash value
+ *   val(in): a non-NULL SEQUENCE
+ *
+ * The hash so far is rotated before each element, so that {a, b} and {b, a} hash apart:
+ * the comparison takes two sequences element by element in order.
+ */
+STATIC_INLINE unsigned int
+mht_hash_sequence (const DB_VALUE * val)
+{
+  COL *col = NULL;
+  DB_VALUE *element;
+  unsigned int hash = 0;
+
+  if (set_get_setobj (db_get_set (val), &col, 0) == NO_ERROR && col != NULL)
+    {
+      for (int i = 0; i < col->size; i++)
+	{
+	  if (setobj_get_element_ptr (col, i, &element) == NO_ERROR)
+	    {
+	      hash = ROTL32 (hash, 13) ^ mht_hash_element (element);
+	    }
+	}
+    }
+
+  return hash;
+}
+
+/*
+ * mht_hash_element () - hash an element of a collection or a JSON scalar
+ *   return: hash value
+ *   val(in): the element
+ *
+ * The element comparison converts two numbers of two families to DOUBLE (INTEGER 1 = DOUBLE 1.0), so every number
+ * hashes as a DOUBLE: the nearest one to its value, which two exact numbers of one value (BIGINT 2^60 + 1 and NUMERIC
+ * 2^60 + 1.0000) share whatever their types and scales; two exact numbers that one DOUBLE rounds only collide.
+ */
+static unsigned int
+mht_hash_element (const DB_VALUE * val)
+{
+  double d;
+  DB_VALUE double_value;
+
+  if (DB_IS_NULL (val))
+    {
+      return 0;
+    }
+
+  switch (db_value_type (val))
+    {
+    case DB_TYPE_SMALLINT:
+      d = db_get_short (val);
+      break;
+
+    case DB_TYPE_INTEGER:
+      d = db_get_int (val);
+      break;
+
+    case DB_TYPE_BIGINT:
+      d = (double) db_get_bigint (val);
+      break;
+
+    case DB_TYPE_NUMERIC:
+      numeric_coerce_num_to_double (val, db_value_scale (val), &d);
+      break;
+
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+      /* a collection element compares equal to one of another collection type (SET {1, 2} = SEQUENCE {1, 2}),
+       * and the planner cannot refuse its hash: the parser's domain of a column keeps only the leaf types
+       * (SEQUENCE OF SET OF INTEGER as SEQUENCE OF INTEGER), so it hashes by its elements whatever its type */
+      return mht_hash_multiset (val);
+
+    default:
+      /* FLOAT, DOUBLE and MONETARY already hash as the DOUBLE they equal; any other type hashes as it is */
+      return mht_valhash (val, UINT_MAX);
+    }
+
+  db_make_double (&double_value, d);
+  return mht_valhash (&double_value, UINT_MAX);
+}
+
+/*
+ * mht_valhash () - hash a DB_VALUE key
+ *   return: hash value mod ht_size; 0 for a NULL value
+ *   key(in): the DB_VALUE
+ *   ht_size(in): size of hash table; UINT_MAX for the whole hash
+ *
+ * Numbers a comparison finds equal hash alike within two families:
+ * the exact ones (SMALLINT, INTEGER, BIGINT, NUMERIC), by the value mod 2^61 - 1,
+ * and the floating ones (FLOAT, DOUBLE, MONETARY), by the bits of the DOUBLE the value equals.
+ * Across the families the comparison converts to DOUBLE and loses digits
+ * (BIGINT 2^53 and 2^53 + 1 both equal DOUBLE 2^53), so no hash of the exact value can follow it:
+ * a caller hashes such a pair in its common domain (domain_hashable_resolve_common ()).
  */
 unsigned int
 mht_valhash (const void *key, const unsigned int ht_size)
 {
-  unsigned int hash = 0;
   const DB_VALUE *val = (const DB_VALUE *) key;
-  int t_n;
-  DB_VALUE t_val;
+  unsigned int hash = 0;
 
-  if (key != NULL)
+  if (unlikely (val == NULL || DB_IS_NULL (val) || ht_size <= 1))
     {
-      switch (db_value_type (val))
-	{
-	case DB_TYPE_NULL:
-	  hash = 0;
-	  break;
-	case DB_TYPE_INTEGER:
-	  hash = (unsigned int) db_get_int (val);
-	  break;
-	case DB_TYPE_SHORT:
-	  hash = (unsigned int) db_get_short (val);
-	  break;
-	case DB_TYPE_BIGINT:
-	  {
-	    DB_BIGINT bigint;
-	    unsigned int x, y;
+      return 0;
+    }
 
-	    bigint = db_get_bigint (val);
-	    x = bigint >> 32;
-	    y = (unsigned int) bigint;
-	    hash = x ^ y;
-	    break;
-	  }
-	case DB_TYPE_FLOAT:
-	  hash = (unsigned int) db_get_float (val);
-	  break;
-	case DB_TYPE_DOUBLE:
-	  hash = (unsigned int) db_get_double (val);
-	  break;
-	case DB_TYPE_NUMERIC:
-	  {
-	    bool is_float_numeric = false;
-	    int precision = 0, scale = 0;
-	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
+  switch (db_value_type (val))
+    {
+    case DB_TYPE_SMALLINT:
+      hash = mht_mixhash64_to_32 (numeric_hash_int64 (db_get_short (val)));
+      break;
 
-	    /*
-	     * calculate hash without normalization if:
-	     *   - scale is 0, or
-	     *   - precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
-	     *   for positive scale, trailing zero check is required even when precision is
-	     *   DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
-	     * unlike mht_get_hash_number (), a fixed numeric is normalized too: the keys of one table here
-	     * (e.g. the host variables of a query cache entry) are not cast to one precision and scale
-	     * first, so 1.0 and 1.00 must hash alike.
-	     */
-	    if (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
+    case DB_TYPE_INTEGER:
+      hash = mht_mixhash64_to_32 (numeric_hash_int64 (db_get_int (val)));
+      break;
+
+    case DB_TYPE_BIGINT:
+      hash = mht_mixhash64_to_32 (numeric_hash_int64 (db_get_bigint (val)));
+      break;
+
+    case DB_TYPE_NUMERIC:
+      /* 1.0 and 1.00, of any precision and scale, hash alike */
+      hash = mht_mixhash64_to_32 (numeric_db_value_hash (val));
+      break;
+
+    case DB_TYPE_FLOAT:
+      /* as the DOUBLE it equals, so a FLOAT and a DOUBLE of one value hash alike */
+      hash = mht_hash_double (db_get_float (val));
+      break;
+
+    case DB_TYPE_DOUBLE:
+      hash = mht_hash_double (db_get_double (val));
+      break;
+
+    case DB_TYPE_MONETARY:
+      /* by its amount, as mr_cmpval_money () compares */
+      hash = mht_hash_double (db_get_monetary (val)->amount);
+      break;
+
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      {
+	const char *str = db_get_string (val);
+	if (str != NULL)
+	  {
+	    int size = db_get_string_size (val);
+	    if (size < 0)
 	      {
-		hash = mht_1str_pseudo_key (db_get_numeric (val), DB_NUMERIC_BUF_SIZE);
+		size = (int) strlen (str);
 	      }
-	    else
+
+	    /* the collation's hash leaves out what its comparison ignores, trailing spaces among them */
+	    hash = MHT2STR_COLL (db_get_string_collation (val), (unsigned char *) str, size);
+	  }
+      }
+      break;
+
+    case DB_TYPE_ENUMERATION:
+      hash = db_get_enum_short (val);
+      break;
+
+    case DB_TYPE_DATE:
+      hash = *db_get_date (val);
+      break;
+
+    case DB_TYPE_TIME:
+      hash = *db_get_time (val);
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
+      hash = *db_get_timestamp (val);
+      break;
+
+    case DB_TYPE_TIMESTAMPTZ:
+      hash = db_get_timestamptz (val)->timestamp;
+      break;
+
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+      {
+	const DB_DATETIME *datetime = db_get_datetime (val);
+	hash = mht_mixhash64_to_32 (((UINT64) datetime->date << 32) | datetime->time);
+      }
+      break;
+
+    case DB_TYPE_DATETIMETZ:
+      {
+	const DB_DATETIME *datetime = &db_get_datetimetz (val)->datetime;
+	hash = mht_mixhash64_to_32 (((UINT64) datetime->date << 32) | datetime->time);
+      }
+      break;
+
+    case DB_TYPE_JSON:
+      hash = mht_hash_json (val);
+      break;
+
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+      hash = mht_hash_multiset (val);
+      break;
+
+    case DB_TYPE_SEQUENCE:
+      hash = mht_hash_sequence (val);
+      break;
+
+    case DB_TYPE_VOBJ:
+      {
+	/* by its key, the third element: setvobj_compare () does not compare the first (the view) */
+	DB_SET *set = db_get_set (val);
+	DB_VALUE element;
+
+	db_make_null (&element);
+	if (set_size (set) == 3 && set_get_element (set, 2, &element) == NO_ERROR)
+	  {
+	    hash = mht_valhash (&element, UINT_MAX);
+	    (void) pr_clear_value (&element);
+	  }
+      }
+      break;
+
+    case DB_TYPE_MIDXKEY:
+      {
+	/* by every column in order, as the comparison takes a key:
+	 * the hash so far rotated before each column, so that (a, b) and (b, a) hash apart */
+	DB_MIDXKEY *midxkey = db_get_midxkey (val);
+	DB_VALUE element;
+	int prev_index = 0;
+	char *prev_ptr = NULL;
+
+	for (int i = 0; i < midxkey->ncolumns; i++)
+	  {
+	    db_make_null (&element);
+	    if (pr_midxkey_get_element_nocopy (midxkey, i, &element, &prev_index, &prev_ptr) == NO_ERROR)
 	      {
-		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
-		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
-							 scale);
-		hash = mht_1str_pseudo_key (calc_buf, DB_NUMERIC_BUF_SIZE);
+		hash = ROTL32 (hash, 13) ^ mht_valhash (&element, UINT_MAX);
+
+		/* a compressed string is read into buffers of its own even without a copy */
+		(void) pr_clear_value (&element);
 	      }
 	  }
-	  break;
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	  hash = mht_1str_pseudo_key (db_get_string (val), db_get_string_size (val));
-	  break;
-	case DB_TYPE_BIT:
-	case DB_TYPE_VARBIT:
-	  hash = mht_1str_pseudo_key (db_get_bit (val, &t_n), db_get_string_size (val));
-	  break;
-	case DB_TYPE_TIME:
-	  {
-	    unsigned int *time = db_get_time (val);
-	    hash = (unsigned int) (*time);
-	    break;
-	  }
-	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPLTZ:
-	  {
-	    DB_TIMESTAMP *time_st = db_get_timestamp (val);
-	    hash = (unsigned int) (*time_st);
-	    break;
-	  }
-	case DB_TYPE_TIMESTAMPTZ:
-	  {
-	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (val);
-	    hash = (unsigned int) (ts_tz->timestamp);
-	  }
-	  break;
-	case DB_TYPE_DATETIME:
-	case DB_TYPE_DATETIMELTZ:
-	  {
-	    DB_DATETIME *datetime;
-	    datetime = db_get_datetime (val);
-	    hash = (unsigned int) (datetime->date ^ datetime->time);
-	  }
-	  break;
-	case DB_TYPE_DATETIMETZ:
-	  {
-	    DB_DATETIMETZ *dt_tz;
-	    dt_tz = db_get_datetimetz (val);
-	    hash = (unsigned int) (dt_tz->datetime.date ^ dt_tz->datetime.time);
-	  }
-	  break;
-	case DB_TYPE_DATE:
-	  {
-	    DB_DATE *date = db_get_date (val);
-	    hash = (unsigned int) (*date);
-	    break;
-	  }
-	case DB_TYPE_MONETARY:
-	  {
-	    DB_MONETARY *mon = db_get_monetary (val);
-	    hash = (unsigned int) mon->amount;
-	    break;
-	  }
-	case DB_TYPE_SET:
-	case DB_TYPE_MULTISET:
-	case DB_TYPE_SEQUENCE:
-	  db_make_null (&t_val);
-	  {
-	    DB_SET *set;
-	    set = db_get_set (val);
-	    if (set_get_element (set, 0, &t_val) == NO_ERROR)
-	      {
-		hash = mht_valhash (&t_val, ht_size);
-		(void) pr_clear_value (&t_val);
-		t_n = set_size (set);
-		if ((t_n > 0) && set_get_element (set, t_n - 1, &t_val) == NO_ERROR)
-		  {
-		    hash += mht_valhash (&t_val, ht_size);
-		    (void) pr_clear_value (&t_val);
-		  }
-	      }
-	  }
-	  break;
-	case DB_TYPE_OBJECT:
-	  hash = GET_PTR_FOR_HASH (db_get_object (val));
-	  break;
-	case DB_TYPE_OID:
-	  hash = (unsigned int) OID_PSEUDO_KEY (db_get_oid (val));
-	  break;
-	case DB_TYPE_MIDXKEY:
-	  db_make_null (&t_val);
-	  {
-	    DB_MIDXKEY *midxkey;
-	    midxkey = db_get_midxkey (val);
-	    if (pr_midxkey_get_element_nocopy (midxkey, 0, &t_val, NULL, NULL) == NO_ERROR)
-	      {
-		hash = mht_valhash (&t_val, ht_size);
-		t_n = midxkey->size;
-		if (t_n > 0 && pr_midxkey_get_element_nocopy (midxkey, t_n - 1, &t_val, NULL, NULL) == NO_ERROR)
-		  {
-		    hash += mht_valhash (&t_val, ht_size);
-		  }
-	      }
-	  }
-	  break;
-	case DB_TYPE_POINTER:
-	  hash = GET_PTR_FOR_HASH (db_get_pointer (val));
-	  break;
-	case DB_TYPE_BLOB:
-	case DB_TYPE_CLOB:
-	case DB_TYPE_SUB:
-	case DB_TYPE_ERROR:
-	case DB_TYPE_VOBJ:
-	case DB_TYPE_DB_VALUE:
-	case DB_TYPE_RESULTSET:
-	case DB_TYPE_TABLE:
-	default:
-	  hash = GET_PTR_FOR_HASH (val);
-	  break;
-	}
+      }
+      break;
+
+    case DB_TYPE_OID:
+      /* OID_PSEUDO_KEY () keeps the slot apart from the page: the two XORed together fold most OIDs of a volume
+       * onto a few values */
+      hash = OID_PSEUDO_KEY (db_get_oid (val));
+      break;
+
+    case DB_TYPE_OBJECT:
+      /* by the MOP, not its OID: a MOP is one per object in the workspace and keeps its address when a flush turns
+       * its temporary OID permanent */
+      hash = GET_PTR_FOR_HASH (db_get_object (val));
+      break;
+
+    case DB_TYPE_POINTER:
+      hash = GET_PTR_FOR_HASH (db_get_pointer (val));
+      break;
+
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      /* by the address of the DB_ELO, as mr_cmpval_elo () compares; db_get_elo () gives NULL for ELO_NULL */
+      hash = GET_PTR_FOR_HASH (db_get_elo (val));
+      break;
+
+    default:
+      /* SUB, ERROR, DB_VALUE, RESULTSET, TABLE and the like are not keys: the address of a DB_VALUE would hash
+       * equal values apart, so a release build puts them all in one bucket. A type given a case here hashes alike
+       * whatever its comparison finds equal, and domain_hashable () takes it only once a case there says so */
+      er_log_debug (ARG_FILE_LINE, "mht_valhash: type %d is not hashed", db_value_type (val));
+      assert (false);
+      break;
+    }
+
+  /* mht_mixhash () is a bijection: mixing a hash mht_mixhash64_to_32 () already mixed adds no collision */
+  hash = mht_mixhash (hash);
+
+  /* ht_size UINT_MAX asks for the whole hash: hash % UINT_MAX, without the division */
+  if (ht_size == UINT_MAX)
+    {
+      return (hash == UINT_MAX) ? 0 : hash;
     }
 
   return hash % ht_size;
@@ -826,30 +1032,71 @@ mht_compare_dbvalues_are_equal (const void *key1, const void *key2)
 }
 
 /*
- * mht_compare_dbvalues_are_identical - compare two DB_VALUEs, strings byte by byte
+ * mht_compare_strings_are_identical - compare two non-NULL strings: of one collation and the same bytes
  *   return: 0 or 1 (key1 == key2)
- *   key1(in): pointer to DB_VALUE key1
- *   key2(in): pointer to DB_VALUE key2
+ *   key1(in): pointer to a string DB_VALUE
+ *   key2(in): pointer to a string DB_VALUE
  *
- * Note: for keys of cached results (memoize, subquery cache). Strings equal only under their collation
- *       ('A' and 'a' under a case-insensitive one) can give different results, e.g. ASCII (key).
- *       Identical bytes are also equal under the collation, so mht_get_hash_number () still applies.
+ * Note: callers rely on identity, not on equality by the comparison; do not compare by collation.
+ *       Keys of cached results (memoize, subquery cache, query result cache): strings equal only
+ *       under their collation ('A' and 'a' under a case-insensitive one) can give different results,
+ *       e.g. ASCII (key).
+ *       Identical values are also equal by the comparison, so mht_valhash () still applies.
  */
 int
-mht_compare_dbvalues_are_identical (const void *key1, const void *key2)
+mht_compare_strings_are_identical (const void *key1, const void *key2)
 {
   const DB_VALUE *val1 = (const DB_VALUE *) key1;
   const DB_VALUE *val2 = (const DB_VALUE *) key2;
-  int size;
 
-  if (key1 != key2 && TP_IS_CHAR_TYPE (db_value_type (val1)) && TP_IS_CHAR_TYPE (db_value_type (val2))
-      && !DB_IS_NULL (val1) && !DB_IS_NULL (val2))
+  assert (!DB_IS_NULL (val1) && !DB_IS_NULL (val2));
+  assert (TP_IS_CHAR_TYPE (db_value_type (val1)) && TP_IS_CHAR_TYPE (db_value_type (val2)));
+
+  /* one byte string under two collations (two codesets) is two keys: the results may differ, a miss is safe */
+  if (db_get_string_collation (val1) != db_get_string_collation (val2))
     {
-      size = db_get_string_size (val1);
-      return (size == db_get_string_size (val2) && memcmp (db_get_string (val1), db_get_string (val2), size) == 0);
+      return 0;
     }
 
-  return mht_compare_dbvalues_are_equal (key1, key2);
+  const int size1 = db_get_string_size (val1);
+  const int size2 = db_get_string_size (val2);
+  if (size1 != size2)
+    {
+      return 0;
+    }
+
+  return memcmp (db_get_string (val1), db_get_string (val2), size1) == 0;
+}
+
+/*
+ * mht_compare_jsons_are_identical - compare two non-NULL JSON values: of the same body text
+ *   return: 0 or 1 (key1 == key2)
+ *   key1(in): pointer to a JSON DB_VALUE
+ *   key2(in): pointer to a JSON DB_VALUE
+ *
+ * Note: callers rely on identity, not on equality by the comparison; do not compare by value.
+ *       Keys of cached results (memoize, subquery cache, query result cache): JSON values equal only
+ *       as the SQL values they convert to (1 and 1.0, true and "true") can give different results,
+ *       e.g. JSON_TYPE (key).
+ *       Identical values are also equal by the comparison, so mht_valhash () still applies.
+ */
+int
+mht_compare_jsons_are_identical (const void *key1, const void *key2)
+{
+  const DB_VALUE *val1 = (const DB_VALUE *) key1;
+  const DB_VALUE *val2 = (const DB_VALUE *) key2;
+
+  assert (!DB_IS_NULL (val1) && !DB_IS_NULL (val2));
+  assert (db_value_type (val1) == DB_TYPE_JSON && db_value_type (val2) == DB_TYPE_JSON);
+
+  /* the body text, which one document always prints the same: '{"a": 1}' and '{"a":1}' are one key */
+  char *body1 = db_json_get_json_body_from_document (*db_get_json_document (val1));
+  char *body2 = db_json_get_json_body_from_document (*db_get_json_document (val2));
+  const int identical = (body1 != NULL && body2 != NULL && strcmp (body1, body2) == 0);
+
+  db_private_free (NULL, body1);
+  db_private_free (NULL, body2);
+  return identical;
 }
 
 /*
@@ -2391,249 +2638,6 @@ mht_count (const MHT_TABLE * ht)
   return ht->nentries;
 }
 
-/* a hash reduced to [0, ht_size): the full range (ht_size UINT_MAX, a caller that keeps the whole hash, as the hash
- * GROUP BY's key does) is the hash itself but for UINT_MAX, without the division */
-static inline unsigned int
-mht_reduce (unsigned int hash, unsigned int ht_size)
-{
-  if (ht_size == UINT_MAX)
-    {
-      return (hash == UINT_MAX) ? 0 : hash;
-    }
-  return hash % ht_size;
-}
-
-/*
- * mht_get_hash_number - get linear hash number or string hash number
- *   return: the hash value of the hash key
- *   ht_size(out): hash size
- *   val(in): DB_VALUE to hash
- *
- * Note:
- */
-unsigned int
-mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
-{
-  unsigned int hashcode = 0;
-  int i, len;
-  const char *ptr;
-
-  if (!val || DB_IS_NULL (val) || ht_size <= 1)
-    {
-      hashcode = 0;
-    }
-  else
-    {
-      switch (db_value_type (val))
-	{
-	case DB_TYPE_INTEGER:
-	  hashcode = mht_get_shiftmult32 (val->data.i, ht_size);
-	  break;
-	case DB_TYPE_SMALLINT:
-	  hashcode = mht_get_shiftmult32 (val->data.sh, ht_size);
-	  break;
-	case DB_TYPE_BIGINT:
-	  {
-	    DB_BIGINT bigint;
-	    unsigned int x, y;
-
-	    bigint = db_get_bigint (val);
-	    x = bigint >> 32;
-	    y = (unsigned int) bigint;
-	    hashcode = mht_get_shiftmult32 (x ^ y, ht_size);
-	    break;
-	  }
-	  break;
-	case DB_TYPE_FLOAT:
-	  {
-	    unsigned int *x, y;
-	    x = (unsigned int *) &val->data.f;
-	    y = (*x) & 0xFFFFFFF0;
-	    hashcode = mht_get_shiftmult32 (y, ht_size);
-	  }
-	  break;
-	case DB_TYPE_DOUBLE:
-	case DB_TYPE_MONETARY:
-	  {
-	    unsigned int *x, y, z;
-	    x = (unsigned int *) &val->data.d;
-	    y = (x[0]) & 0xFFFFFFF0;
-	    z = (x[1]) & 0xFFFFFFF0;
-	    hashcode = mht_get_shiftmult32 (y ^ z, ht_size);
-	  }
-	  break;
-	case DB_TYPE_NUMERIC:
-	  {
-	    bool is_float_numeric = false;
-	    int precision = 0, scale = 0;
-	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
-
-	    /*
-	     * calculate hash without normalization if:
-	     *   - fixed numeric (is_float_numeric == false), or
-	     *   - float numeric (is_float_numeric == true) with:
-	     *     * scale is 0, or
-	     *     * precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
-	     *   for float numeric with positive scale, trailing zero check is required
-	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
-	     */
-	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
-	      {
-		hashcode = mht_get_shiftmult32 (numeric_repr_fold32 (db_locate_numeric (val)), ht_size);
-	      }
-	    else
-	      {
-		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
-		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
-							 scale);
-
-		hashcode = mht_get_shiftmult32 (numeric_repr_fold32 (calc_buf), ht_size);
-	      }
-	  }
-	  break;
-	case DB_TYPE_DATE:
-	  hashcode = mht_get_shiftmult32 (val->data.date, ht_size);
-	  break;
-	case DB_TYPE_TIME:
-	  hashcode = mht_get_shiftmult32 (val->data.time, ht_size);
-	  break;
-	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPLTZ:
-	  hashcode = mht_get_shiftmult32 (val->data.utime, ht_size);
-	  break;
-	case DB_TYPE_TIMESTAMPTZ:
-	  hashcode = mht_get_shiftmult32 (val->data.timestamptz.timestamp, ht_size);
-	  break;
-	case DB_TYPE_DATETIME:
-	case DB_TYPE_DATETIMELTZ:
-	  hashcode = mht_get_shiftmult32 (val->data.datetime.date ^ val->data.datetime.time, ht_size);
-	  break;
-	case DB_TYPE_DATETIMETZ:
-	  hashcode =
-	    mht_get_shiftmult32 (val->data.datetimetz.datetime.date ^ val->data.datetimetz.datetime.time, ht_size);
-	  break;
-	case DB_TYPE_OID:
-	  {
-	    unsigned int x = (val->data.oid.volid << 16) | (val->data.oid.slotid);
-	    unsigned int y = val->data.oid.pageid;
-
-	    hashcode = mht_get_shiftmult32 (x ^ y, ht_size);
-	  }
-	  break;
-	case DB_TYPE_BIT:
-	case DB_TYPE_VARBIT:
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	  ptr = db_get_string (val);
-	  if (ptr)
-	    {
-	      len = db_get_string_size (val);
-	      if (len < 0)
-		{
-		  len = (int) strlen (ptr);
-		}
-
-	      i = len;
-	      for (i--; 0 <= i && ptr[i]; i--)
-		{
-		  /* only the trailing ASCII space is ignored; the hashing for other characters depend on collation */
-		  if (ptr[i] != 0x20)
-		    {
-		      break;
-		    }
-		}
-	      i++;
-	    }
-	  if (!ptr || ptr[0] == 0 || i <= 0)
-	    {
-	      hashcode = 0;
-	    }
-	  else
-	    {
-	      hashcode = MHT2STR_COLL (db_get_string_collation (val), (unsigned char *) ptr, i);
-	      hashcode = mht_reduce (hashcode, ht_size);
-	    }
-	  break;
-	case DB_TYPE_SET:
-	case DB_TYPE_MULTISET:
-	case DB_TYPE_SEQUENCE:
-	case DB_TYPE_VOBJ:
-	  {
-	    int size = val->data.set->disk_size / 4;
-	    unsigned int x = 0;
-	    int i;
-
-	    for (i = 0; i < size; i++)
-	      {
-		x ^= (unsigned int) (val->data.set->disk_set[i * 4]);
-	      }
-
-	    hashcode = mht_get_shiftmult32 (x, ht_size);
-	  }
-	  break;
-	case DB_TYPE_BLOB:
-	case DB_TYPE_CLOB:
-	  {
-	    DB_ELO *elo = db_get_elo (val);
-
-	    /* db_get_elo () returns NULL for ELO_NULL, so a non-NULL elo is always ELO_FBO. */
-	    if (elo == NULL)
-	      {
-		hashcode = 0;
-		break;
-	      }
-
-	    /* Memory addresses are compared in mr_cmpval_elo,
-	     * so no additional processing is needed. */
-	    hashcode = GET_PTR_FOR_HASH (val);
-	    hashcode = mht_reduce (hashcode, ht_size);
-	  }
-	  break;
-	case DB_TYPE_ENUMERATION:
-	  hashcode = mht_get_shiftmult32 (val->data.enumeration.short_val, ht_size);
-	  break;
-	case DB_TYPE_JSON:
-	  {
-	    char *json_body = NULL;
-
-	    json_body = db_get_json_raw_body (val);
-
-	    if (json_body == NULL)
-	      {
-		hashcode = 0;
-	      }
-	    else
-	      {
-		len = (int) strlen (json_body);
-
-		hashcode = MHT2STR_COLL (LANG_COLL_BINARY, (unsigned char *) json_body, len);
-		hashcode = mht_reduce (hashcode, ht_size);
-		db_private_free (NULL, json_body);
-	      }
-	  }
-	  break;
-	default:		/* impossible */
-	  /*
-	   * TODO this is actually possible. See the QA scenario:
-	   * sql/_01_object/_09_partition/_006_prunning/cases/1093.sql
-	   * select * from hash_test where test_int = round(11.57);
-	   * The value has type DB_TYPE_DOUBLE in this case.
-	   */
-	  er_log_debug (ARG_FILE_LINE, "mht_get_hash_number: ERROR type = %d" " is Unsupported partition column type.",
-			db_value_type (val));
-#if defined(NDEBUG)
-	  hashcode = 0;
-#else /* NDEBUG */
-	  /* debugging purpose */
-	  abort ();
-#endif /* NDEBUG */
-	  break;
-	}
-    }
-
-  return hashcode;
-}
-
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * mht_get32_next_power_of_2 -
@@ -2677,7 +2681,6 @@ mht_get32_next_power_of_2 (const unsigned int ht_size)
       return map << 1;
     }
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * mht_get_shiftmult32 -
@@ -2697,10 +2700,9 @@ mht_get_shiftmult32 (unsigned int key, const unsigned int ht_size)
   key ^= (key >> 4);
   key *= c2;
   key ^= (key >> 15);
-  return mht_reduce (key, ht_size);
+  return (key % ht_size);
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * mht_get_linear_hash32 - find the next power of 2 greater than hashsize
  *   return: linear hash value
@@ -2797,7 +2799,7 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY * entry
  *
  * Note: HASH LIST SCAN tables index buckets with a bit-mask (hash & (size - 1))
  *       instead of a modulo. Their hash values are already avalanche-mixed
- *       (see mht_get_shiftmult32), so the low bits spread evenly across a
+ *       (see mht_mixhash ()), so the low bits spread evenly across a
  *       power-of-two table.
  */
 static unsigned int

@@ -122,7 +122,10 @@ tp_conversion_ignore_trailing_space ()
 
 /* shared by the casts of object_domain.c and the converters */
 bool tp_json_unwrap_scalar (const DB_VALUE * src, bool bool_as_string, DB_VALUE * scalar);
-int tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat);
+/* *INDENT-OFF* */
+template <typename T>
+int tp_string_to_real (const DB_VALUE *src, T *num_value, DB_DATA_STATUS *data_stat);
+/* *INDENT-ON* */
 int tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);
 char *tp_ltoa (DB_BIGINT value, char *string, int radix);
 void format_floating_point (char *new_string, char *rve, int ndigits, int decpt, int sign);

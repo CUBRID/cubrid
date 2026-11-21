@@ -26,6 +26,10 @@
 #include "regu_var.hpp"
 #include "system.h"		/* HL_HEAPID */
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "memory_hash.h"	/* ROTL32, mht_valhash */
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+
 #define HASH_LIST_SCAN_DUMP_HASH_TABLE 0
 #define HASH_LIST_SCAN_DUMP_FILE_HASH 0
 
@@ -129,6 +133,9 @@ struct hash_list_scan
   unsigned int curr_hash_key;	/* current hash key */
 };
 
+/* the method of a hash table over a list's tuples: the tuples in memory, their positions in memory, or a hash file */
+HASH_METHOD qdata_hash_scan_method (const QFILE_LIST_ID * list_id, const UINT64 mem_limit);
+
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
 MHT_HLS_ENTRY *qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, HL_HEAPID heap_id, QFILE_TUPLE tpl);
 MHT_HLS_ENTRY *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, HL_HEAPID heap_id, QFILE_LIST_SCAN_ID * scan_id_p);
@@ -137,8 +144,8 @@ void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val
 
 int qdata_build_hscan_key (THREAD_ENTRY * thread_p, VAL_DESCR * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
-unsigned int qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size);
-unsigned int qdata_hash_scan_key_step (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size);
+STATIC_INLINE unsigned int qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value,
+						     unsigned int ht_size) __attribute__ ((ALWAYS_INLINE));
 unsigned int qdata_hash_scan_key_finish (unsigned int hash_val, HASH_METHOD hash_method);
 
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
@@ -169,6 +176,25 @@ extern EH_SEARCH fhs_search (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid, TF
 extern EH_SEARCH fhs_search_next (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid, TFTID * value_ptr);
 extern void fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid);
 /* end : FILE HASH SCAN */
+
+/*
+ * qdata_hash_scan_key_fold () - fold one key value into the hash of the values before it
+ *   returns: the hash of the values so far
+ *   hash_val(in): the hash of the values before this one (0 before the first)
+ *   value(in): the key value
+ *   ht_size(in): hash table size (in buckets)
+ *
+ * Note: folding a key's values in key order from 0, then qdata_hash_scan_key_finish (), gives
+ *       qdata_hash_scan_key ()'s hash, for a caller that has the values one at a time.
+ */
+STATIC_INLINE unsigned int
+qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)
+{
+  unsigned int value_hash = mht_valhash (value, ht_size);
+
+  hash_val = ROTL32 (hash_val, 13) ^ value_hash;
+  return (hash_val != 0) ? hash_val : value_hash;
+}
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

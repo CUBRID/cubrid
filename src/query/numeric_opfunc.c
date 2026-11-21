@@ -47,6 +47,7 @@
 #endif
 
 #include "dbtype.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -69,6 +70,7 @@
 #define NUMERIC_GET_REM_BYTES(bytes)    ((bytes) & 7)	/* Remaining bytes after word alignment */
 #define NUMERIC_GET_WORD_COUNT(bytes)   (((bytes) + 7) >> 3)	/* Total word count to cover bytes (ceiling) */
 #define NUMERIC_GET_BYTE_COUNT(words)   ((words) << 3)	/* Convert words to byte count */
+
 /*
  * TWICE_NUM_MAX_PREC:
  * - Defines the maximum number of significant digits that can be stored
@@ -119,6 +121,11 @@ static const double numeric_Pow_of_10_dbl[DB_MAX_NUMERIC_PRECISION + 1] = {
   1e30, 1e31, 1e32, 1e33, 1e34, 1e35, 1e36, 1e37, 1e38, 1e39,
   1e40
 };
+
+/* the largest power of ten exact in a double and in a float: 10^k = 2^k x 5^k is exact while 5^k fits the significand
+ * (5^22 < 2^53 < 5^23, 5^10 < 2^24 < 5^11) */
+#define NUMERIC_DOUBLE_EXACT_POW10_MAX  (22)
+#define NUMERIC_FLOAT_EXACT_POW10_MAX   (10)
 
 /* look-up table : containing pre-calculated 4-byte ASCII representations for numbers 0000-9999. */
 static uint32_t _gv_digits4_ascii_lut[10000];
@@ -927,6 +934,13 @@ static void numeric_agg_expr_make (NUMERIC_AGG_EXPR_VAL * out, uint128_t coeffic
 static int numeric_sum_acc_add_core (SUM_ACC * acc, const uint64_t * val_words, int val_scale, bool val_neg);
 static int numeric_sum_acc_add_rounded (SUM_ACC * acc, const DB_VALUE * val_dbv);
 
+/* *INDENT-OFF* */
+template <typename T>
+static void numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest);
+template <typename T>
+static T numeric_round_quotient_to_real (uint128_t coefficient, int scale, T estimate);
+/* *INDENT-ON* */
+
 /* the addition exceeds the accumulator's capacity, so the caller retries with numeric_sum_acc_add_rounded () */
 #define SUM_ACC_NUMERIC_CAPACITY (1)
 
@@ -937,6 +951,54 @@ static int numeric_sum_acc_add_rounded (SUM_ACC * acc, const DB_VALUE * val_dbv)
  *                                                        = 10000000000000000000000000000000000000000 */
 static const uint64_t _gv_numeric_sum_acc_pow10_max_prec[SUM_ACC_NUMERIC_WORDS] =
   { 0x1DULL, 0x6329F1C35CA4BFABULL, 0xB9F5610000000000ULL };
+
+/*
+ * numeric_hash_make_inverse_pow10_table () - make numeric_hash_inverse_pow10 for numeric_db_value_hash ()
+ *   return: the table, made at compile time
+ *
+ * Step 1: find the inverse of 10, 10^(p - 2) mod p by Fermat (p = NUMERIC_HASH_PRIME),
+ *         squaring 10 and multiplying the squares at the bits set in p - 2.
+ * Step 2: fill scale 0 and up, each entry the one before times the inverse of 10.
+ * Step 3: fill scale -1 and down, each entry the one after times 10.
+ */
+static constexpr NUMERIC_HASH_INVERSE_POW10_TABLE
+numeric_hash_make_inverse_pow10_table (void)
+{
+  NUMERIC_HASH_INVERSE_POW10_TABLE table = { };
+  uint64_t inverse_10 = 1;
+  uint64_t base = 10;
+  uint64_t exponent = NUMERIC_HASH_PRIME - 2;
+  int scale = 0;
+
+  /* Step 1: find the inverse of 10, 10^(p - 2) mod p by Fermat */
+  for (; exponent != 0; exponent >>= 1, base = numeric_hash_mul (base, base))
+    {
+      if (exponent & 1)
+	{
+	  inverse_10 = numeric_hash_mul (inverse_10, base);
+	}
+    }
+
+  /* Step 2: fill scale 0 and up, multiplying by the inverse of 10 */
+  table.value[-DB_MIN_NUMERIC_SCALE] = 1;
+  for (scale = 1; scale <= DB_MAX_NUMERIC_SCALE; scale++)
+    {
+      table.value[scale - DB_MIN_NUMERIC_SCALE] =
+	numeric_hash_mul (table.value[scale - 1 - DB_MIN_NUMERIC_SCALE], inverse_10);
+    }
+
+  /* Step 3: fill scale -1 and down, multiplying by 10 */
+  for (scale = -1; scale >= DB_MIN_NUMERIC_SCALE; scale--)
+    {
+      table.value[scale - DB_MIN_NUMERIC_SCALE] = numeric_hash_mul (table.value[scale + 1 - DB_MIN_NUMERIC_SCALE], 10);
+    }
+
+  return table;
+}
+
+/* look-up table : 10^-scale mod NUMERIC_HASH_PRIME for every scale;
+ * numeric_db_value_hash () divides by 10^scale with it */
+extern constexpr NUMERIC_HASH_INVERSE_POW10_TABLE numeric_hash_inverse_pow10 = numeric_hash_make_inverse_pow10_table ();
 
 /*
  * numeric_is_negative () -
@@ -4177,100 +4239,6 @@ numeric_coerce_num_to_dec_str (const DB_VALUE * num_value, char *dec_str)
 }
 
 /*
- * float_numeric_normalize_for_hash() - Normalize a NUMERIC value for hashing
- *   num(in)       : original numeric value
- *   calc_buf(out) : normalized buffer (size: DB_NUMERIC_BUF_SIZE)
- *   precision(in) : precision of the input
- *   scale(in)     : scale of the input
- *
- * Note: 
- *   - This function ensures that equivalent numeric values (e.g., 1.0 and 1.00) 
- *     result in the same binary representation to produce identical hash values.
- *   - Case scale > 0: Trailing zeros are removed by dividing by powers of 10 
- *     using an optimized "Binary Skip" approach (e.g., 10^16, 10^8, etc.).
- *   - Case scale < 0: The value is multiplied by 10 to increase its precision 
- *     up to the maximum 40 digits.
- */
-void
-float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int precision, int scale)
-{
-  int tmp_scale = 0;
-  uint64_t word_buf[NUMERIC_AS_WORDS] = { 0 };
-
-  assert (scale != 0);
-
-  if (numeric_is_zero (num))
-    {
-      memset (calc_buf, 0, DB_NUMERIC_BUF_SIZE);
-      return;
-    }
-
-  numeric_bytes_to_words (num, DB_NUMERIC_BUF_SIZE, word_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES);
-
-  if (scale > 0)
-    {
-      /* divide by 10 repeatedly
-       * remove trailing zeros by repeatedly dividing by powers of 10.
-       * we use a chunked division (Binary Skip) approach with 10^19/16, 10^8, etc.,
-       * to efficiently process multiple zeros in a single pass.
-       */
-      int i, step;
-      uint64_t divisor, rem;
-      static const int scale_steps[] = { 19, 8, 4, 2, 1 };
-      static const int lookup_idx[] = { 18, 7, 3, 1, 0 };
-      const int num_steps = 5;
-      uint64_t backup_word[NUMERIC_AS_WORDS] = { 0 };
-
-      tmp_scale = (scale > DB_MAX_NUMERIC_PRECISION ? DB_MAX_NUMERIC_PRECISION : scale);
-
-      for (i = 0; i < num_steps; i++)
-	{
-	  step = scale_steps[i];
-	  divisor = _gv_mul_normalize_pow10_lookup[lookup_idx[i]];
-	  while (tmp_scale >= step)
-	    {
-	      /* backup the current word state to restore if division fails (remainder != 0) */
-	      backup_word[0] = word_buf[0];
-	      backup_word[1] = word_buf[1];
-	      backup_word[2] = word_buf[2];
-
-	      rem = float_numeric_div_pow10 (word_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES, divisor);
-	      if (rem == 0)
-		{
-		  tmp_scale -= step;
-		}
-	      else
-		{
-		  /* if the remainder is non-zero, restore the previous state and try a smaller step */
-		  word_buf[0] = backup_word[0];
-		  word_buf[1] = backup_word[1];
-		  word_buf[2] = backup_word[2];
-		  break;
-		}
-	    }
-	}
-    }
-  else
-    {
-      /* multiply by 10
-       * multiplication increases precision, but limited to
-       * DB_MAX_NUMERIC_PRECISION(40) digits maximum.
-       */
-      int max_multiply = DB_MAX_NUMERIC_PRECISION - precision;
-      tmp_scale = (-(scale) > max_multiply) ? max_multiply : -(scale);
-
-      assert (tmp_scale > 0);
-
-      if (tmp_scale > 0)
-	{
-	  (void) float_numeric_mul_normalize (word_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES, tmp_scale);
-	}
-    }
-
-  numeric_words_to_bytes (word_buf, NUMERIC_AS_WORDS, calc_buf);
-}
-
-/*
  * float_numeric_normalize_for_sort() - Normalize a NUMERIC value for a sort key
  *   return: the decimal exponent e of the value as 0.M x 10^e, offset by DB_MAX_NUMERIC_SCALE
  *           so that it is 1 at the least, or 0 for a zero value
@@ -5035,55 +5003,16 @@ numeric_sum_acc_snapshot (const SUM_ACC * acc, DB_VALUE * result)
 
 
 /*
- * numeric_coerce_num_to_double () -
+ * numeric_coerce_num_to_double () - the double nearest to a numeric value (numeric_coerce_num_to_real ())
  *   return:
- *   num(in)     : DB_VALUE
- *   scale(in)   : integer value of the scale
- *   adouble(out): ptr to the returned double value
- *
- * Note: Converts a DB_C_NUMERIC to double arithmetically: coefficient words are
- *       converted to double and then divided by a power of ten.
- *
- *       - A coefficient fitting uint128 converts directly with hardware rounding.
- *       - A wider coefficient (39..40 digits, upper word nonzero) is folded to
- *         64 bits with round-to-odd first. For an intermediate of 55 or more
- *         bits, this preserves the final round-to-nearest (Boldo-Melquiond);
- *         the 2^k rescale is exact.
- *
- *       Only the coefficient is converted to double; scale adjusts the exponent
- *       through the power-of-ten division.
+ *   src(in)  : DB_VALUE
+ *   scale(in): integer value of the scale
+ *   dest(out): ptr to the returned double value
  */
 void
-numeric_coerce_num_to_double (const DB_VALUE * num_value, int scale, double *adouble)
+numeric_coerce_num_to_double (const DB_VALUE * src, int scale, double *dest)
 {
-  uint64_t words[NUMERIC_AS_WORDS];
-  double magnitude;
-
-  assert (num_value);
-
-  numeric_bytes_to_words (db_locate_numeric (num_value), DB_NUMERIC_BUF_SIZE, words, NUMERIC_AS_WORDS,
-			  NUMERIC_AS_WORD_BYTES);
-
-  if (words[0] == 0)
-    {
-      magnitude = (double) (((uint128_t) words[1] << 64) | words[2]);
-    }
-  else
-    {
-      /* a 39..40 digit coefficient takes the same cast, shifted right just
-       * enough (its bits above uint128) to fit; ldexp puts the 2^shift back */
-      int shift = 64 - NUMERIC_CLZ64 (words[0]);
-      uint128_t folded =
-	((uint128_t) words[0] << (128 - shift)) | ((uint128_t) words[1] << (64 - shift)) | (words[2] >> shift);
-
-      /* if anything was shifted out, record it in the lowest bit for the
-       * cast's rounding (round-to-odd) */
-      folded |= (uint128_t) ((words[2] & ((1ULL << shift) - 1)) != 0);
-      magnitude = ldexp ((double) folded, shift);
-    }
-
-  magnitude /= (scale >= 0 && scale <= DB_MAX_NUMERIC_PRECISION) ? numeric_Pow_of_10_dbl[scale] : pow (10.0, scale);
-  *adouble = numeric_is_negative (num_value) ? -magnitude : magnitude;
+  numeric_coerce_num_to_real (src, scale, dest);
 }
 
 /*
@@ -5251,6 +5180,19 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
   db_make_numeric (result, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, result_sign, true);
 
   return ret;
+}
+
+/*
+ * numeric_coerce_num_to_float () - the float nearest to a numeric value (numeric_coerce_num_to_real ())
+ *   return:
+ *   src(in)  : DB_VALUE
+ *   scale(in): integer value of the scale
+ *   dest(out): ptr to the returned float value
+ */
+void
+numeric_coerce_num_to_float (const DB_VALUE * src, int scale, float *dest)
+{
+  numeric_coerce_num_to_real (src, scale, dest);
 }
 
 /*
@@ -7132,14 +7074,7 @@ numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS
     }
   else if constexpr (SRC == DB_TYPE_NUMERIC)
     {
-      bool src_is_float_numeric = false;
-      db_get_numeric_precision_and_scale (src, &precision, &scale, &src_is_float_numeric);
-
-      if (!src_is_float_numeric && precision == (unsigned char) DB_HJOIN_NUMERIC_PRECISION_DEFERRED)
-	{
-	  precision = numeric_get_precision_digits (db_locate_numeric (src));
-	}
-
+      db_get_numeric_precision_and_scale (src, &precision, &scale, NULL);
       numeric_copy (num, db_locate_numeric (src));
       num_is_negative = numeric_is_negative (src);
     }
@@ -7268,14 +7203,14 @@ numeric_coerce_num_to_float (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
   int ret = NO_ERROR;
 
-  double adouble;
-  numeric_coerce_num_to_double (src, scale, &adouble);
-  if (OR_CHECK_FLOAT_OVERFLOW (adouble))
+  float afloat;
+  numeric_coerce_num_to_float (src, scale, &afloat);
+  if (OR_CHECK_FLOAT_OVERFLOW (afloat))
     {
       ret = ER_IT_DATA_OVERFLOW;
       goto exit_on_error;
     }
-  db_make_float (dest, (float) adouble);
+  db_make_float (dest, afloat);
 
   return ret;
 
@@ -7546,13 +7481,13 @@ int
 numeric_coerce_num_to_float_strict (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
 
-  double adouble;
-  numeric_coerce_num_to_double (src, scale, &adouble);
-  if (OR_CHECK_FLOAT_OVERFLOW (adouble))
+  float afloat;
+  numeric_coerce_num_to_float (src, scale, &afloat);
+  if (OR_CHECK_FLOAT_OVERFLOW (afloat))
     {
       return ER_FAILED;
     }
-  db_make_float (dest, (float) adouble);
+  db_make_float (dest, afloat);
 
   /* Preserve the legacy strict entry point, including its failure after writing a value. */
   return ER_FAILED;
@@ -7769,3 +7704,218 @@ numeric_get_precision_digits (uint8_t * calc_buf)
   numeric_bytes_to_words (calc_buf, DB_NUMERIC_BUF_SIZE, word_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES);
   return float_numeric_get_decimal_digit (word_buf, NUMERIC_AS_WORDS);
 }
+
+/*
+ * numeric_coerce_num_to_real () - the double or float nearest to a numeric value
+ *   return:
+ *   src(in)  : DB_VALUE
+ *   scale(in): integer value of the scale
+ *   dest(out): ptr to the returned double or float value
+ *
+ * Note: Converts a DB_C_NUMERIC to T arithmetically: coefficient words are
+ *       converted to T and then divided by a power of ten.
+ *
+ *       - A coefficient fitting uint128 converts directly with hardware rounding.
+ *       - A wider coefficient (39..40 digits, upper word nonzero) is rounded
+ *         to odd at 128 bits first. For an intermediate of 2 or more bits wider than T,
+ *         this preserves the final round-to-nearest (Boldo-Melquiond); the
+ *         2^excess_bits rescale is exact.
+ *
+ *       Only the coefficient is converted to T; scale adjusts the exponent
+ *       through the power-of-ten division. The quotient is the nearest T
+ *       when both are exact (a coefficient below 2^53 and a scale up to 22 for a double,
+ *       2^24 and 10 for a float); any other fraction would round twice, so the quotient is corrected
+ *       in integers to the nearest T (numeric_round_quotient_to_real ()): one value gives one T
+ *       whatever its scale (1.0 and 1.00, BIGINT b and NUMERIC b.0000).
+ *       A float is corrected from the nearest double, not rounded from it, which would round twice
+ *       (1.0000000596046447753906250001 to 1.0, not to 1 + 2^-23).
+ *       A 39..40 digit coefficient, and a float quotient near the subnormals, which the correction
+ *       does not take, are converted from the decimal string by strtod () or strtof (), which rounds once.
+ */
+/* *INDENT-OFF* */
+template <typename T>
+static void
+numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest)
+{
+  constexpr T exact_int_limit = (T) (1ULL << std::numeric_limits<T>::digits);
+  constexpr int exact_pow10_max =
+    (std::is_same<T, double>::value) ? NUMERIC_DOUBLE_EXACT_POW10_MAX : NUMERIC_FLOAT_EXACT_POW10_MAX;
+  uint64_t words[NUMERIC_AS_WORDS];
+  T coefficient;		/* the digits without the decimal point and the sign: 12345 for -12.345 */
+  T magnitude;			/* the value without the sign: 12.345 for -12.345 */
+  T pow10_scale;		/* 10^scale: 1000 for -12.345 */
+
+  assert (src);
+
+  numeric_bytes_to_words (db_locate_numeric (src), DB_NUMERIC_BUF_SIZE, words, NUMERIC_AS_WORDS,
+			  NUMERIC_AS_WORD_BYTES);
+
+  /* the coefficient's two low words: the whole coefficient up to 38 digits */
+  const uint128_t coefficient_u128 = ((uint128_t) words[1] << 64) | words[2];
+
+  if (words[0] == 0)
+    {
+      /* a coefficient of up to 38 digits fits uint128: one cast, rounded once (exact below exact_int_limit) */
+      coefficient = (T) coefficient_u128;
+    }
+  else
+    {
+      /* a 39..40 digit coefficient fits no integer type to cast, and adding its words as T would round
+       * more than once: it takes the same cast, shifted right by its bits above uint128 to fit;
+       * ldexp puts the 2^excess_bits back */
+      int excess_bits = 64 - NUMERIC_CLZ64 (words[0]);
+      uint128_t rounded_to_odd = ((uint128_t) words[0] << (128 - excess_bits))
+	| ((uint128_t) words[1] << (64 - excess_bits)) | (words[2] >> excess_bits);
+
+      /* round to odd: if anything was shifted out, set the lowest bit, so an inexact value is always odd.
+       * Truncation alone can leave the value exactly halfway between two T values while the dropped bits put
+       * the coefficient above it, and the cast would round that to even, down; an odd value is never such
+       * a midpoint, so the cast rounds it as it would the coefficient itself (Boldo-Melquiond) */
+      rounded_to_odd |= (uint128_t) ((words[2] & ((1ULL << excess_bits) - 1)) != 0);
+      coefficient = std::ldexp ((T) rounded_to_odd, excess_bits);
+    }
+
+  /* T holds the value coefficient / 10^scale (12.345 = 12345 / 10^3, 1.50 = 150 / 10^2, 15 = 15 / 10^0)
+   * as m x 2^e, which rounds it once: the cast above where scale is 0, the division where both are exact;
+   * a zero is exact at any scale. Exact in T are every power of ten up to 10^exact_pow10_max and every integer
+   * below exact_int_limit:
+   *            exact_pow10_max    exact_int_limit
+   *   double   22                 2^53 (9007199254740992)
+   *   float    10                 2^24 (16777216) */
+  if (coefficient != 0 && (scale > exact_pow10_max || (scale > 0 && coefficient >= exact_int_limit)))
+    {
+      /* the division would round twice: the quotient is corrected in integers */
+      double nearest = 0;	/* the double nearest to the quotient; 0 when the correction does not take it */
+
+      /* the fast way, in 128-bit integers: the coefficient fits them up to 38 digits, and 10^scale up to 10^38
+       * (_gv_numeric_agg_expr_pow10_u128; 10^39 is past 2^128); the division gives the estimate it corrects.
+       * The digits, not the value's size, decide it: a 40 digit coefficient is past it at any scale, and a tiny
+       * value of few digits takes it (1e-38: a coefficient of 1 at scale 38) */
+      if (words[0] == 0 && scale <= NUMERIC_AGG_EXPR_POW10_MAX_EXP)
+	{
+	  nearest = numeric_round_quotient_to_real<double> (coefficient_u128, scale,
+							    (double) coefficient_u128 / numeric_Pow_of_10_dbl[scale]);
+	}
+
+      /* the decimal string's way where the correction above did not take the value (nearest still 0), or took it
+       * and the quotient is below twice the smallest normal T, a float near the subnormals (1e-38), which the float
+       * correction does not take; only nearest tells the second, so this is no else of the if above */
+      if (nearest < 2 * std::numeric_limits<T>::min ())
+	{
+	  /* strtod () or strtof () rounds the digits, with the sign, and the scale as an exponent ("-123450e-4")
+	   * once */
+	  char dec_str[TWICE_NUM_MAX_PREC + 8];
+
+	  numeric_coerce_num_to_dec_str (src, dec_str);
+	  sprintf (dec_str + strlen (dec_str), "e-%d", scale);
+	  if constexpr (std::is_same<T, double>::value)
+	    {
+	      *dest = strtod (dec_str, NULL);
+	    }
+	  else
+	    {
+	      static_assert (std::is_same<T, float>::value, "T is a double or a float");
+	      *dest = strtof (dec_str, NULL);
+	    }
+	  return;
+	}
+
+      if constexpr (std::is_same<T, double>::value)
+	{
+	  magnitude = nearest;
+	}
+      else
+	{
+	  static_assert (std::is_same<T, float>::value, "T is a double or a float");
+	  /* the float nearest to the double is the float nearest to the quotient or its neighbour */
+	  magnitude = numeric_round_quotient_to_real<float> (coefficient_u128, scale, (float) nearest);
+	}
+    }
+  else
+    {
+      pow10_scale = (scale >= 0 && scale <= DB_MAX_NUMERIC_PRECISION)
+	? (T) numeric_Pow_of_10_dbl[scale] : (T) pow (10.0, scale);
+      /* magnitude = coefficient / 10^scale */
+      magnitude = coefficient / pow10_scale;
+    }
+  *dest = (numeric_is_negative (src)) ? -magnitude : magnitude;
+}
+/* *INDENT-ON* */
+
+/*
+ * numeric_round_quotient_to_real () - the double or float nearest to coefficient / 10^scale, rounded once
+ *   return: the double or float
+ *   coefficient(in): the coefficient, above 0
+ *   scale(in)      : the scale, up to NUMERIC_AGG_EXPR_POW10_MAX_EXP
+ *   estimate(in)   : a T next to the quotient, at least twice the smallest normal T
+ *
+ * Note: the estimate m x 2^exp2 moves to its neighbour while the exact quotient lies past a midpoint.
+ *       The test scales the gap to integers: gap = (coefficient / 10^scale - m x 2^exp2) x 10^scale,
+ *       times 2^-exp2 when exp2 < 0, and a midpoint is at half of 10^scale x 2^exp2, or of 10^scale when exp2 < 0.
+ *       A double estimate, the double quotient of the double coefficient and power of ten, is within 1.5 ulps
+ *       when one of them is exact, and within 1 + e + 0.5 ulps when neither is, e (below 0.82) being the power of
+ *       ten's rounding error in units of 2^-53: the gap is below 2.4 x 10^37 up to a scale of 37, and below
+ *       1.6 x 10^38 at 38, where e is 0.2 and 10^38 ties the coefficient's mantissa to the quotient's (a quotient
+ *       near the top of its binade has a coefficient rounded by less than 2^-53). A float estimate, the nearest
+ *       double rounded to float, is within 0.5 + 2^-29 ulps: the gap is below 10^38. All are below 2^127,
+ *       so 128-bit arithmetic that wraps gets them exact.
+ */
+/* *INDENT-OFF* */
+template <typename T>
+static T
+numeric_round_quotient_to_real (uint128_t coefficient, int scale, T estimate)
+{
+  using bits_t = std::conditional_t<sizeof (T) == sizeof (uint64_t), uint64_t, uint32_t>;
+  constexpr int digits = std::numeric_limits<T>::digits;
+  constexpr bits_t hidden_bit = (bits_t) 1 << (digits - 1);
+  const uint128_t divisor = _gv_numeric_agg_expr_pow10_u128[scale];
+  bits_t bits;
+  T result;
+
+  static_assert (sizeof (bits_t) == sizeof (T), "bits_t holds the bits of T");
+  assert (coefficient != 0 && scale >= 0 && scale <= NUMERIC_AGG_EXPR_POW10_MAX_EXP);
+  assert (estimate >= 2 * std::numeric_limits<T>::min ());
+
+  /* a positive normal T: its neighbours are bits - 1 and bits + 1 */
+  memcpy (&bits, &estimate, sizeof (bits));
+  while (true)
+    {
+      const bits_t m = (bits & (hidden_bit - 1)) | hidden_bit;
+      const int exp2 = (int) (bits >> (digits - 1)) - (std::numeric_limits<T>::max_exponent - 1) - (digits - 1);
+      __int128 gap, half;
+
+      if (exp2 >= 0)
+	{
+	  gap = (__int128) (coefficient - ((divisor * m) << exp2));
+	  half = (__int128) ((divisor << exp2) >> 1);
+	}
+      else
+	{
+	  /* coefficient x 2^-exp2 mod 2^128: 0 from 2^128 on */
+	  gap = (__int128) (((-exp2 < 128) ? coefficient << -exp2 : 0) - divisor * m);
+	  half = (__int128) (divisor >> 1);
+	}
+
+      if (gap > half || (gap == half && (m & 1)))
+	{
+	  bits++;
+	}
+      else if (gap < -half || (gap == -half && (m & 1)))
+	{
+	  bits--;
+	}
+      else if (m == hidden_bit && gap < 0 && 2 * gap < -half)
+	{
+	  /* below a power of two the T values are twice as dense: the midpoint is at a quarter */
+	  bits--;
+	}
+      else
+	{
+	  break;
+	}
+    }
+
+  memcpy (&result, &bits, sizeof (result));
+  return result;
+}
+/* *INDENT-ON* */

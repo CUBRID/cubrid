@@ -53,6 +53,7 @@
 #include "db_date.h"
 #include "thread_compat.hpp"
 #include "oid.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -114,6 +115,7 @@ typedef enum
   FHS_BUCKET_FULL,		/* Bucket full condition; used in insertion */
   FHS_ERROR_OCCURRED
 } FHS_RESULT;
+
 
 static void inline fhs_read_tftid_from_record (char *record_p, TFTID * tftid_p);
 static void inline fhs_read_key_from_record (char *record_p, int *key);
@@ -198,6 +200,57 @@ static int fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, FHS_H
 /****************************************************************************/
 
 /*
+ * qdata_hash_scan_method () - the method a hash table over a list's tuples takes within mem_limit
+ *   returns: HASH_METH_IN_MEM (the tuples in memory), HASH_METH_HYBRID (their positions in memory),
+ *	     HASH_METH_HASH_FILE (a hash file) or HASH_METH_NOT_USE (no list or no tuples)
+ *   list_id(in): the list the table is built over, or NULL
+ *   mem_limit(in): the bytes the table may take in memory
+ */
+HASH_METHOD
+qdata_hash_scan_method (const QFILE_LIST_ID * list_id, const UINT64 mem_limit)
+{
+  INT64 tuple_cnt;
+  UINT64 slot_array_size, entries_size, payload_size, in_mem_size, hybrid_size;
+
+  if (list_id == NULL || list_id->tuple_cnt <= 0)
+    {
+      return HASH_METH_NOT_USE;
+    }
+
+  tuple_cnt = list_id->tuple_cnt;
+
+  /* the IN_MEM/HYBRID table is int-indexed */
+  if (tuple_cnt > INT_MAX)
+    {
+      return HASH_METH_HASH_FILE;
+    }
+
+  slot_array_size = (UINT64) mht_hls_slot_count ((int) tuple_cnt) * sizeof (MHT_HLS_SLOT);
+  entries_size = (UINT64) tuple_cnt *sizeof (MHT_HLS_ENTRY);
+
+  /* IN_MEM: slot array + one entry (header) per row + the tuples themselves */
+  payload_size = (UINT64) list_id->page_cnt * DB_PAGESIZE;
+  in_mem_size = slot_array_size + entries_size + payload_size;
+
+  /* HYBRID: slot array + one entry (header) per row + a tuple position per row; tuples stay on the temp file */
+  payload_size = (UINT64) tuple_cnt *sizeof (QFILE_TUPLE_SIMPLE_POS);
+  hybrid_size = slot_array_size + entries_size + payload_size;
+
+  if (in_mem_size <= mem_limit)
+    {
+      return HASH_METH_IN_MEM;
+    }
+  else if (hybrid_size <= mem_limit)
+    {
+      return HASH_METH_HYBRID;
+    }
+  else
+    {
+      return HASH_METH_HASH_FILE;
+    }
+}
+
+/*
  * qdata_alloc_hscan_key () - allocate new hash key
  *   returns: pointer to new structure or NULL on error
  *   thread_p(in): thread
@@ -280,101 +333,6 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
 }
 
 /*
- * qdata_hash_scan_value () - hash one key value; -0.0 and +0.0 compare equal, so a zero hashes as +0, and a NaN
- *			      equals every other NaN, whatever its sign and bits (MR_CMP_FLOATING ()), so it hashes as one
- *   returns: hash value
- *   value(in): key value
- *   ht_size(in): hash table size (in buckets)
- *
- * Also the aggregate key's hash (qdata_hash_agg_hkey ()): equal keys hash alike there too, but for a JSON value,
- * which hashes its text while its comparison takes a scalar's value (true as 'true', mr_cmpval_json ()), and a
- * string of a collation with expansions, which hashes the weights its comparison skips (lang_mht2str_utf8_exp ()).
- */
-unsigned int
-qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
-{
-  DB_VALUE canon;		/* +0 for a zero, the one NaN for a NaN */
-
-  if (value != NULL && !DB_IS_NULL (value))
-    {
-      /* mht_get_hash_number hashes the raw bits (the CONNECT BY cycle hash, qexec_connect_by_hash_column (), folds
-       * here too) */
-      switch (DB_VALUE_DOMAIN_TYPE (value))
-	{
-	case DB_TYPE_FLOAT:
-	  if (db_get_float (value) == 0.0f || isnan (db_get_float (value)))
-	    {
-	      db_make_float (&canon, isnan (db_get_float (value)) ? NAN : 0.0f);
-	      return mht_get_hash_number (ht_size, &canon);
-	    }
-	  break;
-
-	case DB_TYPE_DOUBLE:
-	  if (db_get_double (value) == 0.0 || isnan (db_get_double (value)))
-	    {
-	      db_make_double (&canon, isnan (db_get_double (value)) ? NAN : 0.0);
-	      return mht_get_hash_number (ht_size, &canon);
-	    }
-	  break;
-
-	case DB_TYPE_MONETARY:
-	  if (db_get_monetary (value)->amount == 0.0 || isnan (db_get_monetary (value)->amount))
-	    {
-	      db_make_monetary (&canon, db_get_monetary (value)->type,
-				isnan (db_get_monetary (value)->amount) ? NAN : 0.0);
-	      return mht_get_hash_number (ht_size, &canon);
-	    }
-	  break;
-
-	default:
-	  break;
-	}
-    }
-
-  return mht_get_hash_number (ht_size, value);
-}
-
-/*
- * qdata_hash_scan_key_fold () - fold one key value into the hash of the values before it
- *   returns: the hash of the values so far
- *   hash_val(in): the hash of the values before this one (0 before the first)
- *   value(in): the key value
- *   ht_size(in): hash table size (in buckets)
- *
- * The one step qdata_hash_scan_key () takes per value; qdata_hash_scan_key_step () is the same step for a caller
- * that hashes the values one by one, so both give the same hash for the same values.
- */
-static inline unsigned int
-qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)
-{
-  unsigned int tmp_hash_val;
-
-  hash_val = ROTL32 (hash_val, 13);
-  tmp_hash_val = qdata_hash_scan_value (value, ht_size);
-  hash_val ^= tmp_hash_val;
-  if (hash_val == 0)
-    {
-      hash_val = tmp_hash_val;
-    }
-  return hash_val;
-}
-
-/*
- * qdata_hash_scan_key_step () - qdata_hash_scan_key ()'s step for one key value, for a caller that has the values
- *				 one at a time: folding them in key order from 0 and finishing with
- *				 qdata_hash_scan_key_finish () gives qdata_hash_scan_key ()'s hash
- *   returns: the hash of the values so far
- *   hash_val(in): the hash of the values before this one (0 before the first)
- *   value(in): the key value
- *   ht_size(in): hash table size (in buckets)
- */
-unsigned int
-qdata_hash_scan_key_step (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)
-{
-  return qdata_hash_scan_key_fold (hash_val, value, ht_size);
-}
-
-/*
  * qdata_hash_scan_key_finish () - qdata_hash_scan_key ()'s last step: the file hash method's own hash over it
  *   returns: hash value
  *   hash_val(in): the hash of all the key values
@@ -383,12 +341,7 @@ qdata_hash_scan_key_step (unsigned int hash_val, const DB_VALUE * value, unsigne
 unsigned int
 qdata_hash_scan_key_finish (unsigned int hash_val, HASH_METHOD hash_method)
 {
-  if (hash_method == HASH_METH_HASH_FILE)
-    {
-      hash_val = fhs_hash (&hash_val);
-    }
-
-  return hash_val;
+  return (hash_method == HASH_METH_HASH_FILE) ? fhs_hash (&hash_val) : hash_val;
 }
 
 /*

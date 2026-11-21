@@ -38,7 +38,6 @@
 #include "expr_batch.h"
 #include "expr_compile.h"
 #include "query_executor.h"
-#include "query_hash_scan.h"	// qdata_hash_scan_value
 #include "query_opfunc.h"
 #include "regu_var.hpp"
 #include "string_opfunc.h"
@@ -50,6 +49,7 @@
 #include <cmath>
 #include "perf_monitor.h"
 #include "thread_manager.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -3442,12 +3442,7 @@ qdata_key_sketch_add_hashed (unsigned char *regs, unsigned int h)
   unsigned int w;
   unsigned char rank;
 
-  /* the key's hash mixed again: an integer key's is little more than the integer */
-  h ^= h >> 16;
-  h *= 0x7feb352du;
-  h ^= h >> 15;
-  h *= 0x846ca68bu;
-  h ^= h >> 16;
+  /* h needs no mixing: mht_valhash () mixes every value of the key */
   w = h << 10;
   /* 1 + the leading zeros of the 22 bits after the prefix, 23 when all are zero */
   rank = (w == 0) ? 23 : (unsigned char) (__builtin_clz (w) + 1);
@@ -3502,12 +3497,9 @@ qdata_key_sketch_estimate (const unsigned char *regs)
  *   key(in): key
  *   ht_size(in): hash table size (in buckets)
  *
- * Keys the comparison finds equal hash alike, but for a JSON key and a string of a collation with expansions: a
- * FLOAT, DOUBLE or MONETARY -0 hashes as +0 (qdata_hash_scan_value ()).  The hash merge of the GROUP BY leftovers
- * (qexec_gby_hash_merge ()) meets two groups only when their hashes are equal, and goes out without the sort that
- * brings a -0 group and a +0 group together.  A JSON key hashes its text while its comparison takes a scalar's value
- * (true as 'true'), and a collation with expansions hashes the weights its comparison skips
- * (lang_mht2str_utf8_exp ()), so the merge leaves those keys to the sort (qexec_gby_keys_hash_as_compared ()).
+ * Keys the comparison finds equal hash alike (mht_valhash ()): the hash merge of the GROUP BY leftovers
+ * (qexec_gby_hash_merge ()) meets two groups only when their hashes are equal, and writes them out without the sort
+ * that brings equal keys together.
  */
 unsigned int
 qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
@@ -3520,7 +3512,7 @@ qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
   for (i = 0; i < ckey->val_count; i++)
     {
       hash_val = ROTL32 (hash_val, 13);
-      hash_val ^= qdata_hash_scan_value (ckey->values[i], ht_size);
+      hash_val ^= mht_valhash (ckey->values[i], ht_size);
     }
 
   return hash_val;
@@ -3574,8 +3566,7 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
   for (i = 0; i < ckey1->val_count; i++)
     {
       /* a key from the scan and one read back from a partial list are values of the key's one domain (the scan's key
-       * regu's, which types the partial list's column): they hash alike when they compare equal, but for JSON and
-       * a collation with expansions (qdata_hash_agg_hkey ()) */
+       * regu's, which types the partial list's column): they hash alike when they compare equal */
       assert (ckey1->compares != NULL);
       result = domain_compare_in_domain (ckey1->compares[i], ckey1->values[i], ckey2->values[i], 0, 1);
       if (result != DB_EQ)

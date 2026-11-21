@@ -28,6 +28,7 @@
 
 #include "dbtype_def.h"
 #include "memory_alloc.h"
+#include "porting_inline.hpp"
 #include "thread_compat.hpp"
 
 #include <stdio.h>
@@ -35,8 +36,21 @@
 #define ROTL32(x,r) \
   (((x) << (r)) | ((x) >> (32 - (r))))
 
+/*
+ * The standard 32-bit offset basis (0x811C9DC5) and prime (0x01000193) of the FNV-1a hash
+ * (Fowler-Noll-Vo, public domain): http://www.isthe.com/chongo/tech/comp/fnv/
+ */
+#define MHT_FNV_OFFSET 2166136261u
+#define MHT_FNV_PRIME 16777619u
+
+/*
+ * round (2^64 / pi), an odd number: the multiplier of FxHasher (rustc-hash 1.x, a hash taken from Firefox). Here it is
+ * the multiplier of a folded multiply, which XORs the high half of the 128-bit product into its low half.
+ */
+#define MHT_FX_MULTIPLIER 0x517cc1b727220a95ULL
+
 #define MHT2STR_COLL(id, str, size) \
-  (lang_get_collation (id))->mht2str ((lang_get_collation (id)), (str), (size))
+  (LANG_GET_COLLATION (id))->mht2str ((LANG_GET_COLLATION (id)), (str), (size))
 
 /* Hash Table Entry - linked list */
 typedef struct hentry HENTRY;
@@ -85,16 +99,18 @@ extern unsigned int mht_4strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_5strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
 
-extern unsigned int mht_get_hash_number (const int unsigned ht_size, const DB_VALUE * val);
 extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size);
 extern unsigned int mht_valhash (const void *key, const unsigned int ht_size);
+STATIC_INLINE unsigned int mht_mixhash (unsigned int hash) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE unsigned int mht_mixhash64_to_32 (UINT64 hash) __attribute__ ((ALWAYS_INLINE));
 extern int mht_compare_identifiers_equal (const void *key1, const void *key2);
 extern int mht_compare_strings_are_equal (const void *key1, const void *key2);
 extern int mht_compare_ints_are_equal (const void *key1, const void *key2);
 extern int mht_compare_logpageids_are_equal (const void *key1, const void *key2);
 extern int mht_compare_ptrs_are_equal (const void *key1, const void *key2);
 extern int mht_compare_dbvalues_are_equal (const void *key1, const void *key2);
-extern int mht_compare_dbvalues_are_identical (const void *key1, const void *key2);
+extern int mht_compare_strings_are_identical (const void *key1, const void *key2);
+extern int mht_compare_jsons_are_identical (const void *key1, const void *key2);
 
 extern MHT_TABLE *mht_create (const char *name, int est_size,
 			      unsigned int (*hash_func) (const void *key, unsigned int ht_size),
@@ -185,5 +201,48 @@ extern unsigned int mht_calculate_htsize (unsigned int ht_size);
 extern unsigned int mht_calculate_htsize_for_pow2 (unsigned int ht_size);
 extern unsigned int mht_hls_slot_count (int est_size);
 /* for HASH LIST SCAN (end) */
+
+/*
+ * mht_mixhash () - mix the bits of a 32-bit hash by MurmurHash3's fmix32
+ *   return: hash value
+ *   hash(in): the hash
+ *
+ * mht_valhash () mixes the hash of every value with it once,
+ * a value of 64 bits after mht_mixhash64_to_32 () cuts it to 32 bits.
+ * The hash of a value keeps patterns of the value in its low bits:
+ * a DATE is its own hash, and the multiplies of FNV-1a carry only into the high bits.
+ * The hash tables take the low bits (hash & mask in mht_put_hls ()), which the mix makes depend on all the bits.
+ */
+STATIC_INLINE unsigned int
+mht_mixhash (unsigned int hash)
+{
+  hash ^= hash >> 16;
+  hash *= 0x85ebca6bu;
+  hash ^= hash >> 13;
+  hash *= 0xc2b2ae35u;
+  hash ^= hash >> 16;
+
+  return hash;
+}
+
+/*
+ * mht_mixhash64_to_32 () - mix the bits of a 64-bit value by MurmurHash3's fmix64 and take the high 32 bits
+ *   return: hash value
+ *   hash(in): the value
+ *
+ * A value of 64 bits is mixed before it is cut to 32 bits: high ^ low would hash alike the values whose halves
+ * XOR to the same word, such as every (a << 32) | a.
+ */
+STATIC_INLINE unsigned int
+mht_mixhash64_to_32 (UINT64 hash)
+{
+  hash ^= hash >> 33;
+  hash *= 0xff51afd7ed558ccdULL;
+  hash ^= hash >> 33;
+  hash *= 0xc4ceb9fe1a85ec53ULL;
+  hash ^= hash >> 33;
+
+  return (unsigned int) (hash >> 32);
+}
 
 #endif /* _MEMORY_HASH_H_ */

@@ -58,6 +58,7 @@
 #include "memory_hash.h"	/* MHT_HLS_ENTRY for hash-join spill cost */
 #include "histogram_cl.hpp"
 #include "jsp_cl.h"		/* jsp_is_sp_parallel_eligible () */
+#include "domain_rules.h"	/* domain_hashable_resolve () */
 
 #define TEST_DUMP_PLAN_SCAN_COST 0
 #define TEST_DUMP_PLAN_SORT_COST 0
@@ -372,6 +373,7 @@ static int qo_examine_merge_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BI
 				  BITSET *, int);
 static int qo_examine_hash_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
 				 BITSET *, int);
+static bool qo_is_hashable_term (QO_TERM * term);
 static int qo_examine_correlated_index (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *,
 					int *);
 static int qo_examine_follow (QO_INFO *, QO_TERM *, QO_INFO *, BITSET *, BITSET *);
@@ -11793,7 +11795,13 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
        bitset_index = bitset_next_member (&bitset_iter))
     {
       term = QO_ENV_TERM (info->env, bitset_index);
+
       if (QO_IS_PATH_TERM (term) && QO_TERM_JOIN_TYPE (term) != JOIN_INNER)
+	{
+	  goto exit;		/* give up */
+	}
+
+      if (!qo_is_hashable_term (term))
 	{
 	  goto exit;		/* give up */
 	}
@@ -11928,6 +11936,42 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 
 exit:
   return n;
+}
+
+/*
+ * qo_is_hashable_term () - CBRD-28060: whether a term's operands may be hashed: they hash in a domain whose hash
+ *   follows the term's comparison, as they are or in the common domain both convert to
+ *   (domain_hashable_resolve ()), so that a type not known to hash alike is compared without a hash
+ *   return: false for a term that is not a comparison of two operands, which a hash join term always is
+ *   term(in): a term
+ */
+static bool
+qo_is_hashable_term (QO_TERM * term)
+{
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (QO_TERM_ENV (term));
+  PT_NODE *expr = QO_TERM_PT_EXPR (term);
+
+  /* a hash join term is an equi-join term or a path term: a comparison of two operands */
+  if (unlikely (expr == NULL || expr->node_type != PT_EXPR || expr->info.expr.arg1 == NULL
+		|| expr->info.expr.arg2 == NULL))
+    {
+      assert (false);
+      return false;
+    }
+
+  /* an OBJECT's values are OIDs on the server */
+  const TP_DOMAIN *domain[2] = {
+    domain_key_value_domain (pt_xasl_node_to_domain (parser, expr->info.expr.arg1)),
+    domain_key_value_domain (pt_xasl_node_to_domain (parser, expr->info.expr.arg2))
+  };
+  if (domain[0] == NULL || domain[1] == NULL)
+    {
+      /* no domain made (pt_xasl_node_to_domain () has set the error): nothing says that they hash alike */
+      return false;
+    }
+
+  const TP_DOMAIN *common;
+  return domain_hashable_resolve (domain[0], domain[1], &common);
 }
 
 /*

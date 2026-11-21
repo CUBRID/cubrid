@@ -7834,7 +7834,6 @@ xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node)
 				info->ls_outer_column[i]) != NULL;
     }
   ptr = or_pack_int (ptr, fixed ? 1 : 0);
-  bool coerce = false;
   for (int i = 0; i < info->ls_column_cnt && fixed; i++)
     {
       /* the server reads an OBJECT column's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
@@ -7853,7 +7852,7 @@ xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node)
       const TP_DOMAIN *common;
       int conv_kind[2];
       DOMAIN_COMPARE compare;
-      if (domain_decide_hash_join_key (outer, inner, &coerce, &common, conv_kind, &compare) != NO_ERROR)
+      if (domain_decide_hash_join_key (outer, inner, &common, conv_kind, &compare) != NO_ERROR)
 	{
 	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
 	  return NULL;
@@ -7886,7 +7885,6 @@ xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node)
 				info->ls_outer_column[i]) != NULL;
     }
   int size = OR_INT_SIZE;
-  bool coerce = false;
   for (int i = 0; i < info->ls_column_cnt && fixed; i++)
     {
       /* the server reads an OBJECT column's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
@@ -7905,7 +7903,7 @@ xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node)
       const TP_DOMAIN *common;
       int conv_kind[2];
       DOMAIN_COMPARE compare;
-      if (domain_decide_hash_join_key (outer, inner, &coerce, &common, conv_kind, &compare) != NO_ERROR)
+      if (domain_decide_hash_join_key (outer, inner, &common, conv_kind, &compare) != NO_ERROR)
 	{
 	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
 	  return ER_FAILED;

@@ -109,6 +109,7 @@
 #include <set>
 #include <vector>
 #include "dblink_scan.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -870,12 +871,10 @@ struct connect_by_path_index
 /* spilling stops at half the limit, so a chunk is at most a quarter of it; the limit is floored at four buffers */
 #define CONNECT_BY_SPILL_CHUNKS_PER_LIMIT 4
 #define CONNECT_BY_NODE_ARRAY_INIT_CAPACITY 32
-#define CONNECT_BY_HASH_MULTIPLIER 31u
 #define CONNECT_BY_PATH_INDEX_NONE (-1)
 #define CONNECT_BY_PATH_INDEX_MIN_BUCKETS (1 << 6)
 #define CONNECT_BY_PATH_INDEX_FIB 2654435769u
 
-static unsigned int qexec_connect_by_hash_column (const DB_VALUE * dbval);
 static void qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash_out);
 static QFILE_TUPLE_RECORD *qexec_connect_by_bind_tuple (QFILE_TUPLE_RECORD * slot, QFILE_TUPLE tpl,
 							const QFILE_TUPLE_VALUE_TYPE_LIST * tpl_layout);
@@ -8395,10 +8394,8 @@ qexec_gby_aggs_follow_row_order (AGGREGATE_TYPE * agg_list)
  *
  * The merge meets two groups only when their hashes are equal (qexec_gby_mtable_find (),
  * qexec_gby_merge_part_of ()), and where the group order does not reach the result it writes them out without the
- * sort that brings equal keys together.  A JSON key hashes its text while its comparison takes a scalar's value
- * (true as 'true', -0.0 as 0.0: mr_cmpval_json ()); a string of a collation with expansions hashes the weights its
- * comparison skips ('cafe' and 'café' of an accent-insensitive one: lang_mht2str_utf8_exp ()); and keys without
- * compiled comparisons compare by their values' own types: those keys keep the sort, as in develop.
+ * sort that brings equal keys together. A string key without a loaded collation (lang_get_collation ()) has no
+ * collation hash, and keys without compiled comparisons compare by their values' own types: those keys keep the sort.
  */
 static bool
 qexec_gby_keys_hash_as_compared (const BUILDLIST_PROC_NODE * proc)
@@ -8413,18 +8410,9 @@ qexec_gby_keys_hash_as_compared (const BUILDLIST_PROC_NODE * proc)
     {
       const TP_DOMAIN *domain = proc->g_hk_compares[k];
 
-      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)
+      if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)) && lang_get_collation (TP_DOMAIN_COLLATION (domain)) == NULL)
 	{
 	  return false;
-	}
-      if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)))
-	{
-	  const LANG_COLLATION *coll = lang_get_collation (TP_DOMAIN_COLLATION (domain));
-
-	  if (coll == NULL || coll->coll.uca_exp_num > 1)
-	    {
-	      return false;
-	    }
 	}
     }
   return true;
@@ -8529,10 +8517,14 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
       return NO_ERROR;
     }
   order_free = !qexec_gby_order_reaches_result (xasl);
-  if (ctx->key_sketch_partial || ctx->state == HS_REJECT_ALL)
+
+  /* the key sketch holds only the keys of the rows the table took, so the unsorted list is sampled instead when
+   * - the table stopped taking rows: the rows after it went to the list without a call
+   * - the table took no row, and its empty sketch estimates 0: a row with a set column goes to the list without it
+   *   (qexec_end_one_iteration ()) */
+  groups = qdata_key_sketch_estimate (ctx->key_sketch);
+  if (ctx->key_sketch_partial || ctx->state == HS_REJECT_ALL || groups == 0)
     {
-      /* a table stopped taking rows (the rows after it go by the table without a call): their keys went by the
-       * sketch, so the unsorted list -- those rows themselves, mostly -- is sampled instead */
       qfile_close_list (thread_p, list_id);
       if (qexec_gby_merge_sample_groups (thread_p, gbstate, list_id, &groups) != NO_ERROR)
 	{
@@ -8540,10 +8532,7 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
 	  goto end;		/* an error is set there, or end: sets one */
 	}
     }
-  else
-    {
-      groups = qdata_key_sketch_estimate (ctx->key_sketch);
-    }
+
   if (thread_is_on_trace (thread_p))
     {
       xasl->groupby_stats.groupby_hash_groups = (INT64) groups;
@@ -23967,12 +23956,12 @@ qexec_bind_checksum (int count, const DB_VALUE * values)
       const DB_VALUE *value = &values[i];
       const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
       sum = sum * 31 + (unsigned int) type;
-      /* the types mht_get_hash_number hashes; it aborts on another (an SA client binds an object as its MOP), which
-       * counts by its type */
+      /* the types mht_valhash () hashes by value; another (an SA client binds an object as its MOP) counts by
+       * its type */
       const bool hashed = (TP_IS_NUMERIC_TYPE (type) || TP_IS_CHAR_BIT_TYPE (type) || TP_IS_DATE_OR_TIME_TYPE (type)
 			   || TP_IS_SET_TYPE (type) || TP_IS_LOB_TYPE (type) || type == DB_TYPE_OID
 			   || type == DB_TYPE_VOBJ || type == DB_TYPE_ENUMERATION || type == DB_TYPE_JSON);
-      sum = sum * 31 + (DB_IS_NULL (value) || !hashed ? 1 : mht_get_hash_number (UINT_MAX, value));
+      sum = sum * 31 + ((DB_IS_NULL (value) || !hashed) ? 1 : mht_valhash (value, UINT_MAX));
     }
   return sum;
 }
@@ -26281,42 +26270,6 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD *
 }
 
 /*
- * qexec_connect_by_hash_column () - hash one cycle-key column for the cycle pre-filter
- *  return: hash value
- *  dbval(in):
- */
-static unsigned int
-qexec_connect_by_hash_column (const DB_VALUE * dbval)
-{
-  if (DB_IS_NULL (dbval))
-    {
-      return 0;
-    }
-
-  switch (DB_VALUE_DOMAIN_TYPE (dbval))
-    {
-    case DB_TYPE_SET:
-    case DB_TYPE_MULTISET:
-    case DB_TYPE_SEQUENCE:
-    case DB_TYPE_VOBJ:
-      /* the collection hash depends on whether the disk image is resident, which differs between a peeked
-       * scan value and a copied tuple value; leave these columns to the exact compare */
-      return 0;
-
-    case DB_TYPE_JSON:
-      /* the JSON compare converts scalars to SQL values ("true" = true, -0.0 = 0.0) but the hash uses the raw text */
-      return 0;
-
-    default:
-      break;
-    }
-
-  /* mht_get_hash_number hashes the raw bits, so a zero and a NaN are folded first, as a hash join folds them:
-   * the cycle compare finds -0.0 equal to +0.0 and a NaN equal to every other NaN */
-  return qdata_hash_scan_value (dbval, UINT_MAX);
-}
-
-/*
  * qexec_connect_by_hash_from_valptr () - hash the user columns of the current
  *    val_list values (same source as dbvalp2 in qexec_compare_valptr_with_tuple)
  *  outptr_list(in):
@@ -26341,8 +26294,8 @@ qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash
       if (regulist->value.type == TYPE_CONSTANT)
 	{
 	  dbvalp = regulist->value.value.dbvalptr;
-	  col_hash = qexec_connect_by_hash_column (dbvalp);
-	  h = h * CONNECT_BY_HASH_MULTIPLIER + col_hash;
+	  col_hash = mht_valhash (dbvalp, UINT_MAX);
+	  h = ROTL32 (h, 13) ^ col_hash;
 	}
 
       regulist = regulist->next;
@@ -26407,14 +26360,14 @@ qexec_connect_by_hash_from_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD 
 	    }
 	  else
 	    {
-	      col_hash = qexec_connect_by_hash_column (&dbval);
+	      col_hash = mht_valhash (&dbval, UINT_MAX);
 
 	      if (copy || DB_NEED_CLEAR (&dbval))
 		{
 		  pr_clear_value (&dbval);
 		}
 	    }
-	  h = h * CONNECT_BY_HASH_MULTIPLIER + col_hash;
+	  h = ROTL32 (h, 13) ^ col_hash;
 	}
 
       regulist = regulist->next;

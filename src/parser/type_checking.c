@@ -21908,6 +21908,10 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser, const PT_NOD
 	}
       break;
 
+    case PT_DATA_TYPE:
+      /* the element domain of an inner collection: pt_get_collation_of_collection () takes only its collation */
+      break;
+
     default:
       assert (!has_collation);
       coll_infer->coerc_level = PT_COLLATION_NOT_COERC;
