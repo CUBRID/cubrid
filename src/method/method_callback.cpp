@@ -266,11 +266,16 @@ namespace cubmethod
     TRANID tid;
     unpacker.unpack_all (sql, flag, tid);
 
+    bool in_only_bind = (flag & PREPARE_IN_ONLY_BIND) != 0;
+
     /* find in m_sql_handler_map */
     query_handler *handler = get_query_handler_by_sql (sql, [&] (query_handler *h)
     {
+      /* Reuse only a handler compiled with the same IN-only mark, in either direction.
+       * The check of OUT arguments depends on the mark. */
       return h->get_is_occupied() == false && (h->get_tran_id () == NULL_TRANID || h->get_tran_id() == tid)
-	     && h->get_user_name ().compare (au_get_current_user_name ()) == 0;
+	     && h->get_user_name ().compare (au_get_current_user_name ()) == 0
+	     && h->is_in_only_bind () == in_only_bind;
     });
 
     if (handler == nullptr)

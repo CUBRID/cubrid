@@ -147,6 +147,22 @@ public class CUBRIDServerSideConnection implements Connection {
                 sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY, holdability);
     }
 
+    // for PL/CSQL EXECUTE IMMEDIATE: the binds are IN values only
+    public PreparedStatement prepareStatementInOnlyBind(String sql) throws SQLException {
+        PreparedStatement stmt =
+                new CUBRIDServerSidePreparedStatement(
+                        this,
+                        sql,
+                        ResultSet.TYPE_FORWARD_ONLY,
+                        ResultSet.CONCUR_READ_ONLY,
+                        holdability,
+                        Statement.NO_GENERATED_KEYS,
+                        true);
+
+        statements.add(stmt);
+        return stmt;
+    }
+
     public CallableStatement prepareCall(String sql) throws SQLException {
         CallableStatement cstmt = new CUBRIDServerSideCallableStatement(this, sql);
         statements.add(cstmt);
