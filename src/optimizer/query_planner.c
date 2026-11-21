@@ -2329,18 +2329,7 @@ qo_top_plan_new (QO_PLAN * plan)
 		   * but a hash join or a merge join that re-sorts its outer (see qo_join_new) loses that order.
 		   * Append a SORT_ORDERBY plan so that the subplans can keep the order by skip.
 		   */
-		  bool save_use_iscan_descending = plan->use_iscan_descending;
-
 		  plan = qo_sort_new (plan, QO_UNORDERED, SORT_ORDERBY);
-		  if (plan != NULL)
-		    {
-		      /*
-		       * Since qo_sort_new does not propagate it,
-		       * keep the descending scan direction visible at the top
-		       * so that qo_optimize applies qo_set_use_desc to the subplan index scans.
-		       */
-		      plan->use_iscan_descending = save_use_iscan_descending;
-		    }
 		}
 	    }
 	  else
@@ -4153,6 +4142,9 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
   plan->has_sort_limit = (sort_type == SORT_LIMIT || subplan->has_sort_limit);
   plan->need_final_sort = subplan->need_final_sort;
+  /* only the top plan tells qo_planner_search () to scan the index backward (qo_set_use_desc ()): a sort keeps the
+   * direction its subplan's GROUP BY or ORDER BY skip asked for */
+  plan->use_iscan_descending = subplan->use_iscan_descending;
 
   qo_plan_compute_cost (plan);
   if (sort_type == SORT_GROUPBY || sort_type == SORT_DISTINCT)
