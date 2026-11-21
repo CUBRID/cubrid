@@ -5060,7 +5060,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
       return ER_PRM_BAD_VALUE;
     }
 
-  hb_Cluster->is_tcp_ping = (prm_get_string_value (PRM_ID_HA_PING_HOSTS) == NULL);
+  hb_Cluster->is_tcp_ping = false;
   hb_Cluster->num_ping_hosts = hb_cluster_load_ping_host_list (prm_get_string_value (PRM_ID_HA_PING_HOSTS));
 
   if (hb_cluster_check_valid_ping_server () == false)
@@ -5072,6 +5072,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
   if (hb_Cluster->num_ping_hosts == 0)
     {
       /* The ha_tcp_ping_hosts can be used instead of the ha_ping_hosts in case the ICMP protocol is disabled. To use TCP ping, ha_ping_hosts should not be set because ha_ping_hosts has a higher priority than ha_tcp_ping_hosts. */
+      hb_Cluster->is_tcp_ping = true;
       hb_Cluster->num_ping_hosts = hb_cluster_load_tcp_ping_host_list (prm_get_string_value (PRM_ID_HA_TCP_PING_HOSTS));
       hb_Cluster->ping_timeout = prm_get_integer_value (PRM_ID_HA_PING_TIMEOUT) * 1000;	/* change to msecs */
 
@@ -5695,7 +5696,7 @@ hb_reload_config (void)
     }
 
   /* reload ping hosts. how they are checked follows the reloaded list, and goes back with it on failure */
-  hb_Cluster->is_tcp_ping = (prm_get_string_value (PRM_ID_HA_PING_HOSTS) == NULL);
+  hb_Cluster->is_tcp_ping = false;
   hb_Cluster->num_ping_hosts = hb_cluster_load_ping_host_list (prm_get_string_value (PRM_ID_HA_PING_HOSTS));
 
   if (hb_cluster_check_valid_ping_server () == false)
@@ -5708,6 +5709,7 @@ hb_reload_config (void)
   if (hb_Cluster->num_ping_hosts == 0)
     {
       /* The ha_tcp_ping_hosts can be used instead of the ha_ping_hosts in case the ICMP protocol is disabled. To use TCP ping, ha_ping_hosts should not be set because ha_ping_hosts has a higher priority than ha_tcp_ping_hosts. */
+      hb_Cluster->is_tcp_ping = true;
       hb_Cluster->num_ping_hosts = hb_cluster_load_tcp_ping_host_list (prm_get_string_value (PRM_ID_HA_TCP_PING_HOSTS));
       hb_Cluster->ping_timeout = prm_get_integer_value (PRM_ID_HA_PING_TIMEOUT) * 1000;	/* change to msecs */
 

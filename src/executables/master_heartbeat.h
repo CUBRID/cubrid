@@ -262,7 +262,7 @@ struct hb_cluster
 
   HB_PING_HOST_ENTRY *ping_hosts;
   int num_ping_hosts;
-  bool is_tcp_ping;		/* ping_hosts are ha_tcp_ping_hosts: ha_ping_hosts was not set when they were loaded */
+  bool is_tcp_ping;		/* ping_hosts were loaded from ha_tcp_ping_hosts: ha_ping_hosts gave no host */
   int ping_timeout;		/* TCP ping only */
 
   HB_UI_NODE_ENTRY *ui_nodes;
