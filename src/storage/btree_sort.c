@@ -50,6 +50,7 @@
 #include "btree_load.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "language_support.h"
 #include "file_manager.h"
 #include "heap_file.h"
 #include "page_buffer.h"
@@ -194,6 +195,24 @@ struct btsort_px_merge_input
   BTSORT_INDEX_SHARD range;	/* this shard's [start, end) slice of the run */
   FILE_FIND_NTH_CURSOR cursor;	/* this shard's page lookup position in the run above. every shard owns its own
 				 * BTSORT_PX_MERGE_INPUT array, so shards reading the same run do not share it. */
+};
+
+/* the index_cmpdisk () of a type (pr_type::index_cmpdisk_function_type) */
+typedef DB_VALUE_COMPARE_RESULT BTSORT_CMPDISK_FUNC (void *, void *, TP_DOMAIN *, int, int, int *);
+
+/* the argument of the comparator btsort_pick_compare () picks */
+typedef struct btsort_cmp_arg BTSORT_CMP_ARG;
+struct btsort_cmp_arg
+{
+  SORT_ARGS *sort_args;
+  TP_DOMAIN *key_type;
+  bool is_desc;			/* a key of one column runs down */
+  BTSORT_CMPDISK_FUNC *cmpdisk;	/* a key of one column: the index_cmpdisk () of its type */
+
+  /* a VARCHAR or a CHAR key: the comparison of its collation, and whether it ignores trailing spaces */
+  LANG_COLLATION *coll;
+  int (*fastcmp) (const LANG_COLLATION *, const unsigned char *, int, const unsigned char *, int, bool);
+  bool ti;
 };
 
 typedef struct btsort_param BTSORT_PARAM;
@@ -351,6 +370,10 @@ static INT16 btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_PAGE_SLOT ** sptr, I
 static INT16 btsort_spage_insert (PAGE_PTR pgptr, RECDES * recdes);
 static SCAN_CODE btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_p);
 static int btsort_compare_records (const void *first, const void *second, void *arg);
+static int btsort_compare_column (const void *first, const void *second, void *arg);
+static bool btsort_get_uncompressed_string (char *key, unsigned char **str, int *size);
+static int btsort_compare_string (const void *first, const void *second, void *arg);
+static BTSORT_CMP_FUNC *btsort_pick_compare (SORT_ARGS * sort_args, BTSORT_CMP_ARG * cmp_arg);
 static char *btsort_retrieve_longrec (THREAD_ENTRY * thread_p, RECDES * address, RECDES * memory);
 
 /************************************************************************/
@@ -702,7 +725,7 @@ btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool pee
  *   return: DB_LT or DB_GT (a key tie is broken by OID)
  *   first(in): sort record (bt_load_put_buf_to_record ())
  *   second(in): sort record
- *   arg(in): SORT_ARGS *
+ *   arg(in): BTSORT_CMP_ARG *
  *
  * Note: The key is compared by bt_load_cmp_key_bytes (), in the order the leaf loader expects.
  */
@@ -717,7 +740,7 @@ btsort_compare_records (const void *first, const void *second, void *arg)
   char *oidptr1, *oidptr2;
   int c = DB_UNK;
 
-  sort_args = (SORT_ARGS *) arg;
+  sort_args = ((BTSORT_CMP_ARG *) arg)->sort_args;
   key_type = sort_args->key_type;
 
   assert (PTR_ALIGN (mem1, INT_ALIGNMENT) == mem1);
@@ -777,6 +800,154 @@ btsort_compare_records (const void *first, const void *second, void *arg)
     }
 
   return c;
+}
+
+/*
+ * btsort_compare_order () - The order of two sort records of a key of one column, from the order of their keys
+ *   return: DB_LT or DB_GT (a key tie is broken by OID)
+ *   first(in): sort record
+ *   second(in): sort record
+ *   c(in): the order of the keys in their type
+ *   is_desc(in): the key runs down
+ */
+static int
+btsort_compare_order (const void *first, const void *second, int c, bool is_desc)
+{
+  OID first_oid, second_oid;
+
+  /* the sort engine reads DB_UNK (-2) as "less than", which would silently break the order */
+  assert_release (c == DB_LT || c == DB_EQ || c == DB_GT);
+
+  if (c != DB_EQ)
+    {
+      return is_desc ? -c : c;
+    }
+
+  OR_GET_OID (BTSORT_REC_OID (first), &first_oid);
+  OR_GET_OID (BTSORT_REC_OID (second), &second_oid);
+
+  assert_release (!OID_EQ (&first_oid, &second_oid));
+
+  return (OID_LT (&first_oid, &second_oid) ? DB_LT : DB_GT);
+}
+
+/*
+ * btsort_compare_column () - Compares two sort records of a key of one column by the index_cmpdisk () of its type
+ *   return: DB_LT or DB_GT (a key tie is broken by OID)
+ *   first(in): sort record
+ *   second(in): sort record
+ *   arg(in): BTSORT_CMP_ARG *
+ */
+static int
+btsort_compare_column (const void *first, const void *second, void *arg)
+{
+  BTSORT_CMP_ARG *cmp_arg = (BTSORT_CMP_ARG *) arg;
+  int c;
+
+  c = (*cmp_arg->cmpdisk) (BTSORT_REC_KEY (first), BTSORT_REC_KEY (second), cmp_arg->key_type, 0, 1, NULL);
+
+  return btsort_compare_order (first, second, c, cmp_arg->is_desc);
+}
+
+/*
+ * btsort_get_uncompressed_string () - The bytes of a VARCHAR or a CHAR key, where they can be read in place
+ *   return: false for a compressed value
+ *   key(in): the key image
+ *   str(out): the bytes
+ *   size(out): the number of bytes
+ *
+ * Note: A value is its length byte and its bytes. One of OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION bytes or more has
+ *       the compressed and the original size after the length byte, and is stored as it was when the compressed size
+ *       is 0.
+ */
+static bool
+btsort_get_uncompressed_string (char *key, unsigned char **str, int *size)
+{
+  OR_BUF buf;
+  int compressed_size;
+
+  if ((unsigned char) key[0] < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+    {
+      *str = (unsigned char *) key + OR_BYTE_SIZE;
+      *size = (unsigned char) key[0];
+      return true;
+    }
+
+  or_init (&buf, key, 0);
+  if (or_get_varchar_compression_lengths (&buf, &compressed_size, size) != NO_ERROR || compressed_size > 0)
+    {
+      return false;
+    }
+
+  *str = (unsigned char *) buf.ptr;
+
+  return true;
+}
+
+/*
+ * btsort_compare_string () - Compares two sort records of a VARCHAR or a CHAR key by the comparison of its collation
+ *   return: DB_LT or DB_GT (a key tie is broken by OID)
+ *   first(in): sort record
+ *   second(in): sort record
+ *   arg(in): BTSORT_CMP_ARG *
+ */
+static int
+btsort_compare_string (const void *first, const void *second, void *arg)
+{
+  BTSORT_CMP_ARG *cmp_arg = (BTSORT_CMP_ARG *) arg;
+  unsigned char *str1, *str2;
+  int size1, size2;
+  int c;
+
+  if (!btsort_get_uncompressed_string (BTSORT_REC_KEY (first), &str1, &size1)
+      || !btsort_get_uncompressed_string (BTSORT_REC_KEY (second), &str2, &size2))
+    {
+      /* index_cmpdisk () reads a compressed value */
+      return btsort_compare_column (first, second, arg);
+    }
+
+  c = (*cmp_arg->fastcmp) (cmp_arg->coll, str1, size1, str2, size2, cmp_arg->ti);
+
+  return btsort_compare_order (first, second, DB_INT_TO_COMPARE_RESULT (c), cmp_arg->is_desc);
+}
+
+/*
+ * btsort_pick_compare () - Picks the comparator of the sort records by the key domain, once per sort
+ *   return: the comparator
+ *   sort_args(in):
+ *   cmp_arg(out): the argument of the comparator
+ *
+ * Note: A key of one column takes the comparison function of its type, and a VARCHAR or a CHAR key that of its
+ *       collation, so that no comparison looks them up again. A MIDXKEY takes btsort_compare_records ().
+ */
+static BTSORT_CMP_FUNC *
+btsort_pick_compare (SORT_ARGS * sort_args, BTSORT_CMP_ARG * cmp_arg)
+{
+  TP_DOMAIN *key_type = sort_args->key_type;
+
+  memset (cmp_arg, 0, sizeof (*cmp_arg));
+  cmp_arg->sort_args = sort_args;
+  cmp_arg->key_type = key_type;
+
+  if (key_type == NULL || TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
+    {
+      return btsort_compare_records;
+    }
+
+  cmp_arg->is_desc = key_type->is_desc;
+  cmp_arg->cmpdisk = key_type->type->get_index_cmpdisk_function ();
+
+  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_VARCHAR || TP_DOMAIN_TYPE (key_type) == DB_TYPE_CHAR)
+    {
+      /* as index_cmpdisk () does: CHAR ignores trailing spaces, VARCHAR does by ignore_trailing_space */
+      cmp_arg->coll = lang_get_collation (key_type->collation_id);
+      cmp_arg->fastcmp = cmp_arg->coll->fastcmp;
+      cmp_arg->ti = (TP_DOMAIN_TYPE (key_type) == DB_TYPE_CHAR || prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE));
+
+      return btsort_compare_string;
+    }
+
+  return btsort_compare_column;
 }
 
 /*
@@ -849,6 +1020,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   int error = NO_ERROR;
   BTSORT_PARAM ori_sort_param;
   BTSORT_PARAM *sort_param = &ori_sort_param;
+  BTSORT_CMP_ARG cmp_arg;
 
   /* for parallel sort */
   BTSORT_PARAM *px_sort_param = NULL;
@@ -876,8 +1048,8 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   sort_param->complete_cond = &complete_cond;
 #endif /* SERVER_MODE */
 
-  sort_param->cmp_fn = btsort_compare_records;
-  sort_param->cmp_arg = sort_args;
+  sort_param->cmp_fn = btsort_pick_compare (sort_args, &cmp_arg);
+  sort_param->cmp_arg = &cmp_arg;
 
   sort_param->sorter = btsort_run_pick_sorter (sort_args);
 
