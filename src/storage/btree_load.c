@@ -1351,9 +1351,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->no_redo = eligible_no_redo;
   /* Do NOT open a build sysop here. For SERVER_MODE, the topop rmutex must not be held across
    * btree_index_sort()'s parallel in-phase sort: px workers share this transaction's tdes and briefly
-   * lock_topop() it themselves (e.g. disk_reserve_sectors() -> log_sysop_start() while creating their
-   * per-worker temp files); if the main thread already holds the rmutex from here, every worker blocks
-   * on it while the main thread blocks on BTSORT_WAIT_PARALLEL waiting for those same workers -- deadlock.
+   * lock_topop() it themselves whenever they open a system operation (before CBRD-27562 this included
+   * disk_reserve_sectors() while creating their per-worker temp files); if the main thread already holds the
+   * rmutex from here, every worker blocks on it while the main thread blocks on BTSORT_WAIT_PARALLEL waiting for
+   * those same workers -- deadlock.
    * The real build sysop for logged paths is opened deeper -- either by btree_sort()'s
    * single-process branch or by btsort_merge_run_for_parallel_index_leaf_build()'s legacy branch
    * -- always after the parallel wait has already returned, and is picked up below via
