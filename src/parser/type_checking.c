@@ -22526,6 +22526,13 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 	      /* 'wrap_dt' is copied in 'pt_wrap_with_cast_op' */
 	      parser_free_node (parser, wrap_dt);
 	    }
+	  else if (node->data_type == NULL)
+	    {
+	      /* a CAST is not wrapped above, and a COLLATE modifier CAST whose type could not be resolved (an error is
+	       * already set, but type checking goes on inside a collection constructor or an IN list) has no data type
+	       * to take the collation */
+	      goto cannot_coerce;
+	    }
 	  else
 	    {
 	      node->data_type->info.data_type.collation_id = coll_id;
