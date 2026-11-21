@@ -7874,7 +7874,7 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
   if (bufptr->next_wait_thrd == NULL)
     {
       /* The thread entry has been already removed from the BCB waiting queue by another thread. */
-      return NO_ERROR;
+      goto end;
     }
 
   /* case 2 : first waiting thread != thrd_entry */
@@ -7891,7 +7891,7 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
 	    }
 	  prev_thrd_entry = prev_thrd_entry->next_wait_thrd;
 	}
-      return NO_ERROR;
+      goto end;
     }
 
   /* case 3 : first waiting thread == thrd_entry */
@@ -7938,6 +7938,17 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
 	{
 	  break;
 	}
+    }
+
+end:
+  /* The thread that gave up is off the queue. When no blocked reader or writer is left, clear waiter_exists as
+   * pgbuf_wakeup_reader_writer () does: a stale bit makes pgbuf_latch_bcb_upon_fix () block every later READ
+   * request from a non-holder on a READ-latched page, and keeps the lock-free READ path off, until the last holder
+   * unlatches. The BCB mutex taken at the top of this function is still held here, and every waiter_exists
+   * transition is made under it. */
+  if (!pgbuf_is_exist_blocked_reader_writer (bufptr))
+    {
+      set_waiter_exists (&bufptr->atomic_latch, false);
     }
 
   return NO_ERROR;
@@ -8010,6 +8021,12 @@ try_again:
     }
   else if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
+      /* thread_suspend_timeout_wakeup_and_unlock_entry () returns with th_entry_lock released. Take it again, as the
+       * interrupt branch above does: a waker grants the latch and sets THREAD_PGBUF_RESUMED under this lock
+       * (pgbuf_wakeup_reader_writer ()), so a grant must not fall between the check below and the PGBUF_NO_LATCH
+       * write, or the granted latch is left with no holder. Each path below releases the lock once. */
+      thread_lock_entry (thread_p);
+
       /* rollback operation, postpone operation, etc. */
       if (thread_p->resume_status == THREAD_PGBUF_RESUMED)
 	{
