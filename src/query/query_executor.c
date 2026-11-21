@@ -5080,6 +5080,20 @@ qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
   for (i = 0; i < gbstate->g_dim_levels; i++)
     {
       QEXEC_CLEAR_AGG_LIST_VALUE (gbstate->g_dim[i].d_agg_list);
+      /* the run's COUNT (DISTINCT) memory (qexec_groupby ()): a dimension's copies of the nodes aggregate */
+      for (AGGREGATE_TYPE * agg = gbstate->g_dim != NULL ? gbstate->g_dim[i].d_agg_list : NULL; agg != NULL;
+	   agg = agg->next)
+	{
+	  qdata_distinct_mem_free (thread_p, agg);
+	}
+    }
+  if (gbstate->xasl != NULL && gbstate->xasl->type == BUILDLIST_PROC)
+    {
+      /* the plan's nodes, which the dimensions copied, keep no memory of the run */
+      for (AGGREGATE_TYPE * agg = gbstate->xasl->proc.buildlist.g_agg_list; agg != NULL; agg = agg->next)
+	{
+	  qdata_distinct_mem_free (thread_p, agg);
+	}
     }
   if (gbstate->eptr_list)
     {
@@ -5194,6 +5208,298 @@ qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL
 }
 
 static bool qexec_hash_gby_selectivity_abandons (AGGREGATE_HASH_STATE state, int group_count, int tuple_count);
+
+/* ---------------------------------------------------------------------------------------- */
+/* the leftovers of a hash GROUP BY by partition
+ *
+ * The groups a hash GROUP BY's table evicts at its budget (their first tuples and accumulators) go to the lists of
+ * their key's partition (the keys' hash split as the hash merge splits the leftovers, qexec_gby_merge_part_of (),
+ * level 1) instead of one unsorted list and one partial list.  Once the input ends, each partition is folded by
+ * itself, a table at a time (qexec_gby_hash_merge ()): a group is in one partition only, so the leftovers need
+ * neither the sort nor the merge's own split of them.  Where the order of the groups reaches the result, a partition's
+ * groups are collapsed to one first tuple and one partial entry each, and the sort takes those
+ * (qexec_gby_merge_leaf_collapse ()) instead of every entry the table let go.
+ *
+ * A table that stops hashing (a key that looks unique: qexec_hash_gby_abandon_cutoff ()) goes on as without the
+ * partitions: what it let go so far joins the unsorted and the partial lists, and those and every later row go to
+ * the sort or the merge as they decide (qexec_gby_spill_drop ()). */
+
+/* as many as the merge splits its lists into at most (QEXEC_GBY_MERGE_MAX_PARTS): each list holds a page while it is
+ * appended to, and a thread pays for every page it holds whenever it dirties one -- more partitions cost more than the
+ * second splits they save (measured with 128 to 512) */
+#define QEXEC_GBY_SPILL_PARTS (64)
+#define QEXEC_GBY_SPILL_MIN_FOLD (3)	/* QEXEC_GBY_MERGE_MIN_FOLD: the entries per key below which the sort is left them */
+
+struct qexec_gby_spill
+{
+  int n_spilled;		/* the partitions with lists */
+  QFILE_LIST_ID *rows[QEXEC_GBY_SPILL_PARTS];	/* the partition's first tuples and rows (the unsorted list's layout) */
+  QFILE_LIST_ID *partials[QEXEC_GBY_SPILL_PARTS];	/* its groups' accumulators: the partial list's layout after
+							 * the key's hash (qdata_save_agg_hentry_to_list ()) */
+  QFILE_TUPLE_VALUE_TYPE_LIST part_type;	/* that layout */
+  bool active;			/* the evictions go to the partitions (qexec_gby_spill_check ()) */
+  INT64 n_evicted;		/* the groups evicted before that, into the unsorted and the partial lists */
+};
+
+static int qexec_gby_merge_part_of_hash (unsigned int h, int n_parts, int level);
+static QFILE_LIST_ID *qexec_gby_merge_open_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * like, QUERY_ID query_id,
+						 bool with_descr);
+static void qexec_gby_merge_free_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID ** list);
+static bool qexec_gby_keys_hash_as_compared (const BUILDLIST_PROC_NODE * proc);
+static bool qexec_gby_aggs_follow_row_order (AGGREGATE_TYPE * agg_list);
+static bool qexec_gby_order_reaches_result (const XASL_NODE * xasl);
+static void qexec_gby_spill_free (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * ctx);
+
+/* a hash GROUP BY of the row path (not a parallel worker's) keeps its leftovers by partition where the merge can fold
+ * them (qexec_gby_hash_merge ()): what the merge refuses sends them to the sort */
+static int
+qexec_gby_spill_init (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  BUILDLIST_PROC_NODE *proc = &xasl->proc.buildlist;
+  AGGREGATE_HASH_CONTEXT *ctx = proc->agg_hash_context;
+
+  assert (ctx != NULL && ctx->spill == NULL);
+  if (proc->g_with_rollup || proc->g_first_tuple == XASL_G_FIRST_TUPLE_OUTPUT
+      || XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG) || qexec_gby_aggs_follow_row_order (proc->g_agg_list)
+      || !qexec_gby_keys_hash_as_compared (proc))
+    {
+      return NO_ERROR;
+    }
+  ctx->spill = (struct qexec_gby_spill *) db_private_alloc (thread_p, sizeof (struct qexec_gby_spill));
+  if (ctx->spill == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (ctx->spill, 0, sizeof (struct qexec_gby_spill));
+  /* the partial list's layout after an int, the key's hash */
+  ctx->spill->part_type.type_cnt = ctx->part_list_id->type_list.type_cnt + 1;
+  ctx->spill->part_type.domp =
+    (TP_DOMAIN **) db_private_alloc (thread_p, ctx->spill->part_type.type_cnt * sizeof (TP_DOMAIN *));
+  if (ctx->spill->part_type.domp == NULL)
+    {
+      qexec_gby_spill_free (thread_p, ctx);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  ctx->spill->part_type.hdr_size = ctx->part_list_id->type_list.hdr_size;
+  ctx->spill->part_type.domp[0] = &tp_Integer_domain;
+  memcpy (ctx->spill->part_type.domp + 1, ctx->part_list_id->type_list.domp,
+	  ctx->part_list_id->type_list.type_cnt * sizeof (TP_DOMAIN *));
+  return NO_ERROR;
+}
+
+static void
+qexec_gby_spill_free (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * ctx)
+{
+  int p;
+
+  if (ctx->spill == NULL)
+    {
+      return;
+    }
+  for (p = 0; p < QEXEC_GBY_SPILL_PARTS; p++)
+    {
+      qexec_gby_merge_free_list (thread_p, &ctx->spill->rows[p]);
+      qexec_gby_merge_free_list (thread_p, &ctx->spill->partials[p]);
+    }
+  if (ctx->spill->part_type.domp != NULL)
+    {
+      db_private_free_and_init (thread_p, ctx->spill->part_type.domp);
+    }
+  db_private_free_and_init (thread_p, ctx->spill);
+}
+
+/* a partition's list, opened on its first entry: without the memory pages a list starts on (the partitions are
+ * many, and each list holds its last page while it is appended to) */
+static QFILE_LIST_ID *
+qexec_gby_spill_open (THREAD_ENTRY * thread_p, QFILE_LIST_ID ** list, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
+		      QFILE_LIST_ID * like, bool with_descr, int *n_spilled)
+{
+  if (*list == NULL)
+    {
+      *list = qfile_open_list (thread_p, type_list, NULL, like->query_id,
+			       QFILE_LIST_BACKWARD_FLAG (like) | QFILE_FLAG_NO_MEMBUF, NULL);
+      if (*list == NULL)
+	{
+	  return NULL;
+	}
+      if (with_descr)
+	{
+	  (*list)->tpl_descr.f_cnt = type_list->type_cnt;
+	  if (qfile_tpl_descr_alloc_values (&(*list)->tpl_descr, type_list->type_cnt) != NO_ERROR)
+	    {
+	      qexec_gby_merge_free_list (thread_p, list);
+	      return NULL;
+	    }
+	}
+      (*n_spilled)++;
+    }
+  return *list;
+}
+
+/* a group the table lets go, into its partition's lists as qdata_save_agg_htable_to_list () writes it */
+static int
+qexec_gby_spill_group (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * ctx, QFILE_LIST_ID * groupby_list,
+		       AGGREGATE_HASH_KEY * key, AGGREGATE_HASH_VALUE * value)
+{
+  struct qexec_gby_spill *spill = ctx->spill;
+  /* the key's hash the table made the group with */
+  int p = qexec_gby_merge_part_of_hash (value->key_hash, QEXEC_GBY_SPILL_PARTS, 1);
+  QFILE_LIST_ID *list;
+  int rc = NO_ERROR;
+
+  if (value->first_tuple.tpl != NULL)
+    {
+      list = qexec_gby_spill_open (thread_p, &spill->rows[p], &groupby_list->type_list, groupby_list, false,
+				   &spill->n_spilled);
+      rc = (list != NULL) ? qfile_add_tuple_to_list (thread_p, list, value->first_tuple.tpl) : ER_FAILED;
+    }
+  if (rc == NO_ERROR && value->tuple_count > 0)
+    {
+      list = qexec_gby_spill_open (thread_p, &spill->partials[p], &spill->part_type, ctx->part_list_id, true,
+				   &spill->n_spilled);
+      rc = (list != NULL) ? qdata_save_agg_hentry_to_list (thread_p, key, value, ctx->temp_dbval_array, list,
+							   &value->key_hash) : ER_FAILED;
+    }
+  return rc;
+}
+
+/* Whether the evictions fold: a group evicted comes back as a new group when more of its rows follow, so the groups
+ * the table made over the distinct keys it saw (its sketch) are the entries per key the leftovers will hold.  Below
+ * QEXEC_GBY_MERGE_MIN_FOLD of them (a key evicted once, as when the input comes in the keys' order) a table per
+ * partition folds nothing and the sort does as well: the evictions stay in the unsorted and the partial lists, as in
+ * develop.  The check is made every QEXEC_GBY_SPILL_CHECK evictions until it passes; the evictions made before
+ * join the partitions at the end (qexec_gby_hash_merge ()). */
+#define QEXEC_GBY_SPILL_CHECK (1024)
+
+static void
+qexec_gby_spill_check (AGGREGATE_HASH_CONTEXT * ctx, bool keep_first)
+{
+  struct qexec_gby_spill *spill = ctx->spill;
+  double keys;
+
+  if (++spill->n_evicted % QEXEC_GBY_SPILL_CHECK != 0)
+    {
+      return;
+    }
+  keys = qdata_key_sketch_estimate (ctx->key_sketch);
+  /* a group the table let go leaves its first tuple (when kept) and its accumulators */
+  if ((double) ctx->group_count * (keep_first ? 2 : 1) >= QEXEC_GBY_SPILL_MIN_FOLD * keys)
+    {
+      spill->active = true;
+    }
+}
+
+/* the table's groups into the partitions' lists, and emptied: the end of the input, when the table let groups go */
+static int
+qexec_gby_spill_table (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * ctx, QFILE_LIST_ID * groupby_list)
+{
+  HENTRY_PTR he;
+  int rc;
+
+  for (he = ctx->hash_table->act_head; he != NULL; he = he->act_next)
+    {
+      rc = qexec_gby_spill_group (thread_p, ctx, groupby_list, (AGGREGATE_HASH_KEY *) he->key,
+				  (AGGREGATE_HASH_VALUE *) he->data);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
+  return mht_clear (ctx->hash_table, qdata_free_agg_hentry, (void *) thread_p);
+}
+
+/* the spilled partitions' lists after the unsorted and the partial lists, which the sort or the merge then takes
+ * whole: the way back when the leftovers are not folded by partition after all.  close: the lists are done (the
+ * input ended), or the scan appends to them on */
+static int
+qexec_gby_spill_unload (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * ctx, QFILE_LIST_ID * list_id, bool close)
+{
+  struct qexec_gby_spill *spill = ctx->spill;
+  QFILE_LIST_SCAN_ID scan;
+  QFILE_TUPLE_RECORD tpl = QFILE_TUPLE_RECORD_INITIALIZER;
+  SCAN_CODE sc;
+  int p, k, rc = NO_ERROR;
+
+  if (spill == NULL || spill->n_spilled == 0)
+    {
+      return NO_ERROR;
+    }
+  if (qfile_reopen_list_as_append_mode (thread_p, list_id) != NO_ERROR
+      || qfile_reopen_list_as_append_mode (thread_p, ctx->part_list_id) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  for (p = 0; p < QEXEC_GBY_SPILL_PARTS && rc == NO_ERROR; p++)
+    {
+      for (k = 0; k < 2 && rc == NO_ERROR; k++)
+	{
+	  QFILE_LIST_ID *from = (k == 0) ? spill->rows[p] : spill->partials[p];
+	  QFILE_LIST_ID *to = (k == 0) ? list_id : ctx->part_list_id;
+
+	  if (from == NULL || from->tuple_cnt == 0)
+	    {
+	      continue;
+	    }
+	  qfile_close_list (thread_p, from);
+	  if (qfile_open_list_scan (from, &scan) != NO_ERROR)
+	    {
+	      rc = ER_FAILED;
+	      break;
+	    }
+	  while ((sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
+	    {
+	      if (k == 0)
+		{
+		  rc = qfile_add_tuple_to_list (thread_p, to, tpl.tpl);
+		}
+	      else
+		{
+		  /* a partition's partial entry carries its key's hash first: the partial list's layout has none */
+		  unsigned int h;
+
+		  rc =
+		    qdata_load_agg_hentry_from_tuple (thread_p, tpl.tpl, from->type_list.hdr_size, ctx->temp_part_key,
+						      ctx->temp_part_value, ctx->key_domains, ctx->accumulator_domains,
+						      &h);
+		  if (rc == NO_ERROR)
+		    {
+		      rc = qdata_save_agg_hentry_to_list (thread_p, ctx->temp_part_key, ctx->temp_part_value,
+							  ctx->temp_dbval_array, to);
+		    }
+		}
+	      if (rc != NO_ERROR)
+		{
+		  break;
+		}
+	    }
+	  if (sc == S_ERROR && rc == NO_ERROR)
+	    {
+	      rc = ER_FAILED;
+	    }
+	  qfile_close_scan (thread_p, &scan);
+	}
+      qexec_gby_merge_free_list (thread_p, &spill->rows[p]);
+      qexec_gby_merge_free_list (thread_p, &spill->partials[p]);
+    }
+  if (close)
+    {
+      qfile_close_list (thread_p, list_id);
+      qfile_close_list (thread_p, ctx->part_list_id);
+    }
+  spill->n_spilled = 0;
+  return rc;
+}
+
+/* the table stops hashing: the partitions are given up, what they took joins the lists the table stops into */
+static int
+qexec_gby_spill_drop (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * ctx, QFILE_LIST_ID * groupby_list)
+{
+  int rc = qexec_gby_spill_unload (thread_p, ctx, groupby_list, false);
+
+  qexec_gby_spill_free (thread_p, ctx);
+  return rc;
+}
+
 static int qexec_hash_gby_abandon (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * context,
 				   QFILE_LIST_ID * groupby_list);
 /*
@@ -5261,6 +5567,8 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   bool keep_first = (proc->g_first_tuple == XASL_G_FIRST_TUPLE_KEEP);
+  bool to_parts;
+  int freed;
 
   if (context->state == HS_REJECT_ALL)
     {
@@ -5337,6 +5645,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 					       new_value->first_tuple.size, &groupby_list->type_list);
 	}
       *output_tuple = false;
+      new_value->key_hash = h;
       mht_put (context->hash_table, (void *) new_key, (void *) new_value);
       context->tuple_count++;
       context->group_count++;
@@ -5409,6 +5718,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
 
       /* add to hash table */
+      new_value->key_hash = h;
       mht_put (context->hash_table, (void *) new_key, (void *) new_value);
 
       /* count new group and tuple; we're not aggregating the tuple just yet but the count is used for statistic
@@ -5495,8 +5805,12 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       context->state = HS_REJECT_ALL;
       context->evictions++;	/* a dump, as in qexec_hash_gby_abandon () */
 
-      rc = qdata_save_agg_htable_to_list (thread_p, context->hash_table, groupby_list, context->part_list_id,
-					  context->temp_dbval_array);
+      rc = qexec_gby_spill_drop (thread_p, context, groupby_list);
+      if (rc == NO_ERROR)
+	{
+	  rc = qdata_save_agg_htable_to_list (thread_p, context->hash_table, groupby_list, context->part_list_id,
+					      context->temp_dbval_array);
+	}
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -5519,16 +5833,34 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
       key = (AGGREGATE_HASH_KEY *) hentry->key;
       value = (AGGREGATE_HASH_VALUE *) hentry->data;
+      /* what the table counted for the group (its value's last size), taken before the save below flattens a word
+       * sum into the value (qdata_save_agg_hentry_to_list ()) */
+      freed = (context->spill != NULL) ? qdata_get_agg_hkey_size (key) + value->curr_size : 0;
+      /* where this group goes: its first tuple goes where its accumulators went, though the check after them may
+       * turn the partitions on for the next groups */
+      to_parts = (context->spill != NULL && context->spill->active);
 
-      /* add key/accumulators to partial list */
-      rc = qdata_save_agg_hentry_to_list (thread_p, key, value, context->temp_dbval_array, context->part_list_id);
+      if (to_parts)
+	{
+	  /* into the lists of its key's partition (qexec_gby_spill_check ()) */
+	  rc = qexec_gby_spill_group (thread_p, context, groupby_list, key, value);
+	}
+      else
+	{
+	  /* add key/accumulators to partial list */
+	  rc = qdata_save_agg_hentry_to_list (thread_p, key, value, context->temp_dbval_array, context->part_list_id);
+	  if (rc == NO_ERROR && context->spill != NULL)
+	    {
+	      qexec_gby_spill_check (context, keep_first);
+	    }
+	}
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
 
       /* add first tuple of group to groupby list */
-      if (value->first_tuple.tpl != NULL)
+      if (!to_parts && value->first_tuple.tpl != NULL)
 	{
 	  rc = qfile_add_tuple_to_list (thread_p, groupby_list, value->first_tuple.tpl);
 	  if (rc != NO_ERROR)
@@ -5542,9 +5874,20 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		    (qdata_get_agg_hkey_size (key) + qdata_get_agg_hvalue_size (value, false)) / 1024.0f);
 #endif
 
-      /* remove entry */
-      context->hash_size -= qdata_get_agg_hkey_size (key);
-      context->hash_size -= qdata_get_agg_hvalue_size (value, false);
+      /* remove entry: a table that may spill gives back what it counted, so it stays within the budget its
+       * partitions are checked against (qexec_gby_spill_check ()); one that may not (a parallel scan's worker, a
+       * block qexec_gby_spill_init () refuses) takes off the size measured after the save as before: the table
+       * grows over the budget eviction by eviction, but counting it exactly would have it evict more and its sort
+       * grow (2 to 4 workers: +1.3% on 14,000 groups) */
+      if (freed > 0)
+	{
+	  context->hash_size -= freed;
+	}
+      else
+	{
+	  context->hash_size -= qdata_get_agg_hkey_size (key);
+	  context->hash_size -= qdata_get_agg_hvalue_size (value, false);
+	}
       mht_rem (context->hash_table, key, qdata_free_agg_hentry, NULL);
       context->evictions++;	/* the page batch's key cache may hold this group (qexec_batch_gby_consume ()) */
     }
@@ -5619,6 +5962,11 @@ qexec_hash_gby_abandon (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * contex
   context->state = HS_REJECT_ALL;
   context->evictions++;		/* the dump frees every group: the page batch's key cache holds none of them */
 
+  /* what the partitions took joins the lists (qexec_gby_spill_drop ()) */
+  if (qexec_gby_spill_drop (thread_p, context, groupby_list) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
   /* dump hash table to list file, no need to keep it in memory */
   return qdata_save_agg_htable_to_list (thread_p, context->hash_table, groupby_list, context->part_list_id,
 					context->temp_dbval_array);
@@ -6211,8 +6559,29 @@ static bool
 qexec_gby_order_reaches_result (const XASL_NODE * xasl)
 {
   const BUILDLIST_PROC_NODE *proc = &xasl->proc.buildlist;
+  bool numbered;
 
   if (!prm_get_bool_value (PRM_ID_AGG_HASH_RESPECT_ORDER))
+    {
+      return false;
+    }
+  /* what reads the groups in their order before the result is made: analytics, a group or row number */
+  numbered = (proc->a_eval_list != NULL || proc->g_grbynum_val != NULL || proc->g_grbynum_pred != NULL
+	      || xasl->instnum_val != NULL || xasl->instnum_pred != NULL);
+  /* the query of a set predicate: the result is a set of the groups, unless a limit picks some of them in their
+   * order */
+  if ((proc->g_order_free & XASL_G_ORDER_FREE_SET) && !numbered && xasl->ordbynum_val == NULL
+      && xasl->limit_row_count == NULL)
+    {
+      return false;
+    }
+  /* the ORDER BY has every key: its sort orders the groups whole, where they come in no matter what order -- unless
+   * it is skipped for the order the GROUP BY's sort leaves: at generation (XASL_SKIP_ORDERBY_LIST), or at run time when
+   * the GROUP BY's output list is sorted on what the ORDER BY asks (qexec_orderby_distinct ()) */
+  if ((proc->g_order_free & XASL_G_ORDER_FREE_ORDERBY) && !numbered && xasl->orderby_list != NULL
+      && !XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)
+      && !(xasl->ordbynum_val == NULL && xasl->option != Q_DISTINCT
+	   && qfile_is_sort_list_covered (proc->after_groupby_list, xasl->orderby_list)))
     {
       return false;
     }
@@ -6233,8 +6602,13 @@ qexec_gby_order_reaches_result (const XASL_NODE * xasl)
 static int
 qexec_gby_merge_part_of (AGGREGATE_HASH_KEY * key, int n_parts, int level)
 {
-  unsigned int h = qdata_hash_agg_hkey (key, 0xffffffffu);
+  return qexec_gby_merge_part_of_hash (qdata_hash_agg_hkey (key, 0xffffffffu), n_parts, level);
+}
 
+/* qexec_gby_merge_part_of () of a key's hash (qdata_hash_agg_hkey ()) */
+static int
+qexec_gby_merge_part_of_hash (unsigned int h, int n_parts, int level)
+{
   if (level == 1)
     {
       h ^= h >> 16;
@@ -6378,11 +6752,18 @@ qexec_gby_mtable_group_bytes (int n_keys, int n_funcs)
 		   + 8 * MAX_ALIGNMENT + 2 * sizeof (QEXEC_GBY_SLOT));
 }
 
+static unsigned int qexec_gby_mtable_hash_of (unsigned int h);
+
 static unsigned int
 qexec_gby_mtable_hash (AGGREGATE_HASH_KEY * key)
 {
-  unsigned int h = qdata_hash_agg_hkey (key, 0xffffffffu);
+  return qexec_gby_mtable_hash_of (qdata_hash_agg_hkey (key, 0xffffffffu));
+}
 
+/* qexec_gby_mtable_hash () of a key's qdata_hash_agg_hkey () */
+static unsigned int
+qexec_gby_mtable_hash_of (unsigned int h)
+{
   /* another mix than the partition's (qexec_gby_merge_part_of ()), whose high bits are one per partition */
   h ^= h >> 15;
   h *= 0x2c1b3c6du;
@@ -6532,6 +6913,7 @@ struct qexec_gby_reader
   bool first_aggregated;	/* a new group's first tuple is aggregated at once (a worker's groups go out finished) */
   bool no_first_tuple;		/* XASL_G_FIRST_TUPLE_NONE: a group is its key and accumulators, every row counted in
 				 * them, and a partial entry may come without rows */
+  bool hashed;			/* the partial entries begin with their key's hash (a spilled partition's) */
 };
 
 static void
@@ -6550,6 +6932,7 @@ qexec_gby_reader_init (GROUPBY_STATE * gbstate, QEXEC_GBY_READER * rd)
   rd->xasl_state = gbstate->xasl_state;
   rd->no_first_tuple = gbstate->no_first_tuple;
   rd->first_aggregated = rd->no_first_tuple;
+  rd->hashed = false;
 }
 
 /* a new group in slot s: the row's tuple copied into the arena as its first tuple, its key read from that copy
@@ -6896,7 +7279,7 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
 
       if (qdata_load_agg_hentry_from_tuple (thread_p, tpl.tpl, partials->type_list.hdr_size, rd->temp_part_key,
 					    rd->temp_part_value, rd->ctx->key_domains,
-					    rd->ctx->accumulator_domains) != NO_ERROR)
+					    rd->ctx->accumulator_domains, rd->hashed ? &h : NULL) != NO_ERROR)
 	{
 	  rc = ER_FAILED;
 	  break;
@@ -6905,7 +7288,9 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
 	{
 	  (*n_read)++;
 	}
-      h = qexec_gby_mtable_hash (rd->temp_part_key);
+      /* the entry's key hashed once, by the table that made the group (a spilled partition's), or here */
+      assert (!rd->hashed || h == qdata_hash_agg_hkey (rd->temp_part_key, 0xffffffffu));
+      h = rd->hashed ? qexec_gby_mtable_hash_of (h) : qexec_gby_mtable_hash (rd->temp_part_key);
       s = qexec_gby_mtable_find (t, rd->temp_part_key, h);
       if (s->key == NULL && rd->no_first_tuple)
 	{
@@ -7045,7 +7430,13 @@ qexec_gby_merge_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QFIL
     }
   while ((sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
     {
-      if (partials)
+      if (partials && rd->hashed)
+	{
+	  /* the hash the entry carries */
+	  k = qexec_gby_merge_part_of_hash (qdata_agg_hentry_tuple_hash (tpl.tpl, from->type_list.hdr_size,
+									 from->type_list.type_cnt), n_parts, level);
+	}
+      else if (partials)
 	{
 	  rc = qdata_load_agg_hkey_from_tuple (thread_p, tpl.tpl, from->type_list.hdr_size, from->type_list.type_cnt,
 					       rd->temp_part_key, rd->ctx->key_domains, false);
@@ -7107,6 +7498,75 @@ qexec_gby_merge_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * to, QFILE_
     }
   qfile_close_scan (thread_p, &scan);
   return rc;
+}
+
+/* partial entries between the partial list's layout and the hashed one of a spilled partition (rd->hashed): from
+ * without the hash into the partitions of their keys (level 1), or from with it into one list without it */
+static int
+qexec_gby_merge_rehash_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QFILE_LIST_ID * from, bool add,
+				 int n_parts, QFILE_LIST_ID ** parts)
+{
+  QFILE_LIST_SCAN_ID scan;
+  QFILE_TUPLE_RECORD tpl = QFILE_TUPLE_RECORD_INITIALIZER;
+  SCAN_CODE sc;
+  unsigned int h;
+  int rc = NO_ERROR;
+
+  if (from->tuple_cnt == 0)
+    {
+      return NO_ERROR;
+    }
+  qfile_close_list (thread_p, from);
+  if (qfile_open_list_scan (from, &scan) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  while ((sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
+    {
+      rc = qdata_load_agg_hentry_from_tuple (thread_p, tpl.tpl, from->type_list.hdr_size, rd->temp_part_key,
+					     rd->temp_part_value, rd->ctx->key_domains, rd->ctx->accumulator_domains,
+					     add ? NULL : &h);
+      if (rc != NO_ERROR)
+	{
+	  break;
+	}
+      if (add)
+	{
+	  h = qdata_hash_agg_hkey (rd->temp_part_key, 0xffffffffu);
+	  rc = qdata_save_agg_hentry_to_list (thread_p, rd->temp_part_key, rd->temp_part_value,
+					      rd->ctx->temp_dbval_array,
+					      parts[qexec_gby_merge_part_of_hash (h, n_parts, 1)], &h);
+	}
+      else
+	{
+	  rc = qdata_save_agg_hentry_to_list (thread_p, rd->temp_part_key, rd->temp_part_value,
+					      rd->ctx->temp_dbval_array, parts[0]);
+	}
+      if (rc != NO_ERROR)
+	{
+	  break;
+	}
+    }
+  if (sc == S_ERROR && rc == NO_ERROR)
+    {
+      rc = ER_FAILED;
+    }
+  qfile_close_scan (thread_p, &scan);
+  return rc;
+}
+
+static int
+qexec_gby_spill_hash_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QFILE_LIST_ID * from, int n_parts,
+			       QFILE_LIST_ID ** parts)
+{
+  return qexec_gby_merge_rehash_partials (thread_p, rd, from, true, n_parts, parts);
+}
+
+static int
+qexec_gby_merge_unhash_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QFILE_LIST_ID * to,
+				 QFILE_LIST_ID * from)
+{
+  return qexec_gby_merge_rehash_partials (thread_p, rd, from, false, 1, &to);
 }
 
 /* n lists of each kind opened with the layouts of two (n_parts partitions' rows and partial entries); *rows and
@@ -7187,6 +7647,7 @@ struct qexec_gby_merge_job
   QEXEC_GBY_MTABLE *table;
   QFILE_LIST_ID *rows_like;	/* the unsorted list and the partial list: the layouts of the lists made here */
   QFILE_LIST_ID *partials_like;
+  QFILE_LIST_ID *sort_partials_like;	/* the layout of the partial entries the sort is left, when not partials_like's */
   QUERY_ID query_id;
   UINT64 budget;		/* max_agg_hash_size: what one table may grow to */
   double per_entry;		/* the table bytes an entry of the lists is estimated to bring */
@@ -7195,6 +7656,8 @@ struct qexec_gby_merge_job
   void *leaf_arg;
   QFILE_LIST_ID *to_sort_rows;	/* what the sort is left: opened on the first need (or by the owner beforehand) */
   QFILE_LIST_ID *to_sort_partials;
+  bool collapse;		/* the groups go to the sort collapsed (qexec_gby_merge_leaf_collapse ()), a worker's
+				 * too: a first tuple and the accumulators of the rest */
   bool stop;			/* the leaf asks for no more partitions (the group count limit was reached) */
   bool split_again;		/* a partition was split a second time */
   int sorted_parts;		/* the sub-partitions left to the sort */
@@ -7209,7 +7672,9 @@ qexec_gby_merge_job_sort_lists (THREAD_ENTRY * thread_p, QEXEC_GBY_MERGE_JOB * j
     }
   if (job->to_sort_partials == NULL)
     {
-      job->to_sort_partials = qexec_gby_merge_open_list (thread_p, job->partials_like, job->query_id, true);
+      job->to_sort_partials =
+	qexec_gby_merge_open_list (thread_p, job->sort_partials_like != NULL ? job->sort_partials_like
+				   : job->partials_like, job->query_id, true);
     }
   return (job->to_sort_rows != NULL && job->to_sort_partials != NULL) ? NO_ERROR : ER_FAILED;
 }
@@ -7310,7 +7775,10 @@ qexec_gby_merge_partition (THREAD_ENTRY * thread_p, QEXEC_GBY_MERGE_JOB * job, Q
 	    }
 	  if (rc == NO_ERROR)
 	    {
-	      rc = qexec_gby_merge_append_list (thread_p, job->to_sort_partials, sub_partials[q]);
+	      /* hashed entries go back to the partial list's layout */
+	      rc = job->rd->hashed ? qexec_gby_merge_unhash_partials (thread_p, job->rd, job->to_sort_partials,
+								      sub_partials[q])
+		: qexec_gby_merge_append_list (thread_p, job->to_sort_partials, sub_partials[q]);
 	    }
 	  job->sorted_parts++;
 	}
@@ -8125,6 +8593,9 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
 	  qexec_gby_px_delete (thread_p, px);
 	  return NO_ERROR;
 	}
+      /* a group the sort is to take keeps its first tuple apart from its accumulators, as the leader's own
+       * (qexec_gby_reader_init ()); one a worker finishes has it in them */
+      readers[w].rd.first_aggregated = job->collapse ? readers[w].rd.no_first_tuple : true;
     }
   *why = NULL;
   px->gbstate = gbstate;
@@ -8253,6 +8724,16 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
     }
   for (w = 0; w < n && rc == NO_ERROR && gbstate->state == NO_ERROR; w++)
     {
+      if (job->collapse)
+	{
+	  /* the workers' groups collapsed, one first tuple and one partial entry each: the sort takes them */
+	  rc = qexec_gby_merge_append_list (thread_p, job->to_sort_rows, px->out_rows[w]);
+	  if (rc == NO_ERROR)
+	    {
+	      rc = qexec_gby_merge_append_list (thread_p, job->to_sort_partials, px->out_partials[w]);
+	    }
+	  continue;
+	}
       rc = qexec_gby_px_finish (thread_p, gbstate, px->out_rows[w], px->out_partials[w]);
     }
   if (px->on_trace)
@@ -8269,7 +8750,7 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
 	    (px->out_partials[w] != NULL) ? px->out_partials[w]->tuple_cnt : 0;
 	}
     }
-  /* what the workers left to the sort, after the leader's own (the order is free when workers merge) */
+  /* what the workers left to the sort, after the leader's own (when the order is free) or the collapsed groups */
   for (w = 0; w < n && rc == NO_ERROR && gbstate->state == NO_ERROR; w++)
     {
       if (px->sort_rows[w] == NULL || px->sort_partials[w] == NULL || px->sort_rows[w]->tuple_cnt == 0)
@@ -8495,15 +8976,17 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   QUERY_ID query_id = gbstate->xasl_state->query_id;
   QFILE_LIST_ID **row_parts = NULL, **part_parts = NULL;
   QFILE_LIST_ID *rows_out = NULL, *partials_out = NULL;
-  QFILE_LIST_ID collapsed;
+  QFILE_LIST_ID collapsed, hashed_like;
   QEXEC_GBY_MTABLE table;
   QEXEC_GBY_READER reader;
   QEXEC_GBY_MERGE_JOB job;
-  bool order_free, parallel;
-  double groups;
+  bool order_free, parallel, sort_px;
+  double groups, row_bytes;
   UINT64 budget, bytes;
+  INT64 n_entries, n_rows, row_pages;
   int n_parts = 0, p, n_workers = 0, n_parts_done = 0, px_degree, rc = NO_ERROR;
   const char *px_why = NULL;
+  struct qexec_gby_spill *spill = (ctx != NULL && ctx->spill != NULL && ctx->spill->n_spilled > 0) ? ctx->spill : NULL;
 
   *result = QEXEC_GBY_MERGE_NONE;
   memset (&table, 0, sizeof (table));	/* end: frees it on every path below */
@@ -8516,9 +8999,11 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
       || qexec_gby_aggs_follow_row_order (xasl->proc.buildlist.g_agg_list)
       || !qexec_gby_keys_hash_as_compared (&xasl->proc.buildlist))
     {
+      /* a spill is not made where these refuse it (qexec_gby_spill_init ()); the caller unloads one for the sort */
+      assert (spill == NULL);
       return NO_ERROR;
     }
-  if (list_id->tuple_cnt == 0)
+  if (list_id->tuple_cnt == 0 && spill == NULL)
     {
       /* no row left to sort (no first rows kept, none passed the table): the partial entries are the groups and
        * nothing is merged, but the trace reports their estimate as when rows are left */
@@ -8529,7 +9014,12 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
       return NO_ERROR;
     }
   order_free = !qexec_gby_order_reaches_result (xasl);
-  if (ctx->key_sketch_partial || ctx->state == HS_REJECT_ALL)
+  if (spill != NULL)
+    {
+      /* the table hashed every row (it stops partitioning when it stops hashing: qexec_gby_spill_drop ()) */
+      groups = qdata_key_sketch_estimate (ctx->key_sketch);
+    }
+  else if (ctx->key_sketch_partial || ctx->state == HS_REJECT_ALL)
     {
       /* a table stopped taking rows (the rows after it go by the table without a call): their keys went by the
        * sketch, so the unsorted list -- those rows themselves, mostly -- is sampled instead */
@@ -8548,19 +9038,60 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
     {
       xasl->groupby_stats.groupby_hash_groups = (INT64) groups;
     }
-  /* many groups whose order does not reach the result: workers merge the partitions (qexec_gby_px_merge ()), as
-   * many as the sort of these lists would take */
+  /* the entries the lists hold, and the unsorted rows' size (a spill's lists with them) */
+  n_entries = list_id->tuple_cnt + partials->tuple_cnt;
+  n_rows = list_id->tuple_cnt;
+  row_pages = list_id->page_cnt;
+  for (p = 0; spill != NULL && p < QEXEC_GBY_SPILL_PARTS; p++)
+    {
+      if (spill->rows[p] != NULL)
+	{
+	  n_entries += spill->rows[p]->tuple_cnt;
+	  n_rows += spill->rows[p]->tuple_cnt;
+	  row_pages += spill->rows[p]->page_cnt;
+	}
+      if (spill->partials[p] != NULL)
+	{
+	  n_entries += spill->partials[p]->tuple_cnt;
+	}
+    }
+  row_bytes = (double) row_pages *DB_PAGESIZE / MAX (n_rows, (INT64) 1);
+  if (spill != NULL)
+    {
+      /* the spill split the lists already: each partition is folded by itself, on the leader */
+      px_degree = 1;
+      parallel = false;
+      goto fold;
+    }
+
 #if defined (SERVER_MODE)
-  px_degree = (order_free && groups >= QEXEC_GBY_PX_MIN_GROUPS)
+  /* workers merge where the sort of these lists would take workers as well, or where the groups are many; a merge
+   * whose group order reaches the result gives the sort its groups collapsed (QEXEC_GBY_MERGE_JOB::collapse) */
+  sort_px = (qexec_gby_sort_takes_workers (list_id, xasl->parallelism)
+	     || qexec_gby_sort_takes_workers (partials, xasl->parallelism));
+  px_degree = (groups >= QEXEC_GBY_PX_MIN_GROUPS || sort_px)
     ? (int) parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT,
 						     (UINT64) list_id->page_cnt + partials->page_cnt,
 						     xasl->parallelism) : 1;
+  if (px_degree > 1 && sort_px && !(order_free && groups >= QEXEC_GBY_PX_MIN_GROUPS))
+    {
+      /* the merge is had for its workers here: a GROUP BY they cannot read (qexec_gby_px_reader_make ()) leaves the
+       * lists to the sort, which takes workers for any */
+      QEXEC_GBY_PX_READER probe;
+      const char *why;
+
+      if (!qexec_gby_px_reader_make (thread_p, gbstate, &probe, &why))
+	{
+	  return NO_ERROR;
+	}
+      qexec_gby_px_reader_free (thread_p, &probe);
+    }
 #else /* SERVER_MODE */
+  sort_px = false;
   px_degree = 1;
 #endif /* SERVER_MODE */
   parallel = (px_degree > 1);
-  if (!parallel && (qexec_gby_sort_takes_workers (list_id, xasl->parallelism)
-		    || qexec_gby_sort_takes_workers (partials, xasl->parallelism)))
+  if (!parallel && sort_px)
     {
       /* the merge would run on the leader alone, where the sort of these lists takes workers: the sort keeps them
        * (a merge that has workers of its own goes on below) */
@@ -8573,16 +9104,16 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
       return NO_ERROR;
     }
 
+fold:
   /* the budget is one table's: a worker's table too, when workers merge, since each holds one partition at a
    * time (the scan's tables each had it as well).  A sub-partition of the second split is folded up to
    * QEXEC_GBY_MERGE_SORT_FACTOR budgets before it goes to the sort, so one table may reach that many, and with
    * workers merging each may at once: QEXEC_GBY_MERGE_SORT_FACTOR x workers x the budget at the worst */
   budget = (UINT64) MAX (prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE), (INT64) 1);
   /* a group's memory: its first tuple, its key, its accumulators, the table's slots */
-  bytes = (UINT64) (groups * ((double) list_id->page_cnt * DB_PAGESIZE / MAX (list_id->tuple_cnt, 1)
-			      + (double) qexec_gby_mtable_group_bytes (xasl->proc.buildlist.g_hkey_size,
-								       xasl->proc.buildlist.g_func_count)));
-  n_parts = qexec_gby_merge_n_parts ((double) bytes, budget);
+  bytes = (UINT64) (groups * (row_bytes + (double) qexec_gby_mtable_group_bytes (xasl->proc.buildlist.g_hkey_size,
+										 xasl->proc.buildlist.g_func_count)));
+  n_parts = (spill != NULL) ? QEXEC_GBY_SPILL_PARTS : qexec_gby_merge_n_parts ((double) bytes, budget);
   if (parallel)
     {
       /* a few partitions a worker, so that the workers finish together */
@@ -8601,10 +9132,22 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   job.table = &table;
   job.rows_like = list_id;
   job.partials_like = partials;
+  if (spill != NULL)
+    {
+      /* the partitions' partial entries carry the key's hash, and so do the lists a second split makes of them; what
+       * the sort is left goes back to the partial list's own layout */
+      memset (&hashed_like, 0, sizeof (hashed_like));
+      hashed_like.type_list = spill->part_type;
+      hashed_like.query_id = query_id;
+      job.partials_like = &hashed_like;
+      job.sort_partials_like = partials;
+      reader.hashed = true;
+    }
   job.query_id = query_id;
   job.budget = budget;
-  job.per_entry = (double) bytes / (double) (list_id->tuple_cnt + partials->tuple_cnt);
+  job.per_entry = (double) bytes / (double) MAX (n_entries, (INT64) 1);
   job.leaf = order_free ? qexec_gby_merge_leaf_write : qexec_gby_merge_leaf_collapse;
+  job.collapse = !order_free;
   job.leaf_arg = gbstate;
   if (!order_free)
     {
@@ -8637,7 +9180,73 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
 	  er_clear ();
 	}
     }
-  if (n_parts > 1 && n_parts_done < n_parts)
+  if (spill != NULL)
+    {
+      /* the spilled partitions' lists are the partitions; each array zeroed as soon as it is had: end: walks them (qexec_gby_merge_free_parts ()) */
+      row_parts = (QFILE_LIST_ID **) db_private_alloc (thread_p, n_parts * sizeof (QFILE_LIST_ID *));
+      if (row_parts != NULL)
+	{
+	  memset (row_parts, 0, n_parts * sizeof (QFILE_LIST_ID *));
+	}
+      part_parts = (QFILE_LIST_ID **) db_private_alloc (thread_p, n_parts * sizeof (QFILE_LIST_ID *));
+      if (part_parts != NULL)
+	{
+	  memset (part_parts, 0, n_parts * sizeof (QFILE_LIST_ID *));
+	}
+      if (row_parts == NULL || part_parts == NULL)
+	{
+	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+      /* the table's groups went to the partitions at the end of the input (qexec_gby_spill_table ()); the groups
+       * evicted before the partitions were taken (qexec_gby_spill_check ()) and a row too big for the table are in
+       * the unsorted and the partial lists: they join the partitions, every partition's lists open for them */
+      bool leftovers = (list_id->tuple_cnt > 0 || partials->tuple_cnt > 0);
+
+      for (p = 0; p < n_parts; p++)
+	{
+	  row_parts[p] = spill->rows[p];
+	  part_parts[p] = spill->partials[p];
+	  spill->rows[p] = spill->partials[p] = NULL;
+	  if (!leftovers && row_parts[p] == NULL && part_parts[p] == NULL)
+	    {
+	      continue;		/* nothing went to this partition */
+	    }
+	  if ((row_parts[p] == NULL
+	       && qexec_gby_spill_open (thread_p, &row_parts[p], &list_id->type_list, list_id, false,
+					&spill->n_spilled) == NULL)
+	      || (part_parts[p] == NULL
+		  && qexec_gby_spill_open (thread_p, &part_parts[p], &spill->part_type, partials, true,
+					   &spill->n_spilled) == NULL))
+	    {
+	      rc = ER_FAILED;
+	    }
+	}
+      spill->n_spilled = 0;	/* the partitions are the merge's now */
+      for (p = 0; p < n_parts && rc == NO_ERROR && leftovers; p++)
+	{
+	  /* the lists the leftovers join are appended to again */
+	  if (qfile_reopen_list_as_append_mode (thread_p, row_parts[p]) != NO_ERROR
+	      || qfile_reopen_list_as_append_mode (thread_p, part_parts[p]) != NO_ERROR)
+	    {
+	      rc = ER_FAILED;
+	    }
+	}
+      if (rc == NO_ERROR && leftovers)
+	{
+	  rc = qexec_gby_merge_split_list (thread_p, &reader, list_id, false, 1, n_parts, row_parts);
+	  if (rc == NO_ERROR)
+	    {
+	      /* the partial list's entries without the hash the partitions' carry */
+	      rc = qexec_gby_spill_hash_partials (thread_p, &reader, partials, n_parts, part_parts);
+	    }
+	}
+      if (rc != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+  else if (n_parts > 1 && n_parts_done < n_parts)
     {
       rc = qexec_gby_merge_open_parts (thread_p, list_id, partials, query_id, n_parts, &row_parts, &part_parts);
       if (rc == NO_ERROR)
@@ -8659,6 +9268,10 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
       QFILE_LIST_ID *rows = (n_parts > 1) ? row_parts[p] : list_id;
       QFILE_LIST_ID *parts = (n_parts > 1) ? part_parts[p] : partials;
 
+      if (rows == NULL)
+	{
+	  continue;		/* a spilled partition nothing went to (both lists are opened together otherwise) */
+	}
       rc = qexec_gby_merge_partition (thread_p, &job, &rows, &parts, 1);
       if (n_parts > 1)
 	{
@@ -8797,6 +9410,16 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   /* an initialization that fails part way leaves through wrapup, which clears every field of the state */
   memset (&gbstate, 0, sizeof (gbstate));
 
+  /* CBRD-28181: a sort GROUP BY's COUNT (DISTINCT) keeps a group's few values in memory (qdata_distinct_mem_add ());
+   * not with ROLLUP, whose levels copy the aggregate nodes */
+  if (!buildlist->g_hash_eligible && !buildlist->g_with_rollup)
+    {
+      for (AGGREGATE_TYPE * agg = buildlist->g_agg_list; agg != NULL; agg = agg->next)
+	{
+	  agg->distinct_mem = qdata_distinct_mem_eligible (&xasl_state->vd, agg);
+	}
+    }
+
   if (qexec_initialize_groupby_state (&gbstate, buildlist->groupby_list, buildlist->g_having_pred,
 				      buildlist->g_grbynum_pred, buildlist->g_grbynum_val, buildlist->g_grbynum_flag,
 				      buildlist->eptr_list, buildlist->g_agg_list, buildlist->g_regu_list,
@@ -8862,7 +9485,9 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   }
 
   /* check for quick finalization scenarios */
-  if (list_id->tuple_cnt == 0)
+  if (list_id->tuple_cnt == 0
+      && (!gbstate.hash_eligible || gbstate.agg_hash_context->spill == NULL
+	  || gbstate.agg_hash_context->spill->n_spilled == 0))
     {
       if (!gbstate.hash_eligible
 	  || (gbstate.agg_hash_context->tuple_count == 0 && gbstate.agg_hash_context->part_list_id->tuple_cnt == 0))
@@ -8881,9 +9506,11 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 
 	  return NO_ERROR;
 	}
-      else if (gbstate.agg_hash_context->part_list_id->tuple_cnt == 0
-	       && !prm_get_bool_value (PRM_ID_AGG_HASH_RESPECT_ORDER))
+      else if (gbstate.agg_hash_context->part_list_id->tuple_cnt == 0 && !qexec_gby_order_reaches_result (xasl)
+	       && qexec_gby_keys_hash_as_compared (buildlist))
 	{
+	  /* the groups as the table made them: keys whose hash does not follow their comparison (a collation with
+	   * expansions, JSON) may sit in two groups the sort would make one (qexec_gby_keys_hash_as_compared ()) */
 	  HENTRY_PTR head = gbstate.agg_hash_context->hash_table->act_head;
 	  AGGREGATE_HASH_VALUE *value = NULL;
 
@@ -8963,10 +9590,17 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      /* save hash table */
-      if (qdata_save_agg_htable_to_list (thread_p, gbstate.agg_hash_context->hash_table, list_id,
-					 gbstate.agg_hash_context->part_list_id,
-					 gbstate.agg_hash_context->temp_dbval_array) != NO_ERROR)
+      /* save hash table: into the partitions when the table let groups go to them (qexec_gby_spill_table ()) */
+      if (gbstate.agg_hash_context->spill != NULL && gbstate.agg_hash_context->spill->n_spilled > 0)
+	{
+	  if (qexec_gby_spill_table (thread_p, gbstate.agg_hash_context, list_id) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+      else if (qdata_save_agg_htable_to_list (thread_p, gbstate.agg_hash_context->hash_table, list_id,
+					      gbstate.agg_hash_context->part_list_id,
+					      gbstate.agg_hash_context->temp_dbval_array) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -8981,6 +9615,11 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       QEXEC_GBY_MERGE_RESULT merged;
 
       if (qexec_gby_hash_merge (thread_p, &gbstate, xasl, list_id, &merged) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      /* a spill the merge left, for the sort (qexec_gby_spill_unload ()) */
+      if (qexec_gby_spill_unload (thread_p, gbstate.agg_hash_context, list_id, true) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -22787,7 +23426,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  /* disable hash aggregate evaluation when group by skip is possible */
 		  xasl->proc.buildlist.g_hash_eligible = 0;
 		}
-	      else if (qexec_alloc_agg_hash_context (thread_p, &xasl->proc.buildlist, xasl_state, false) != NO_ERROR)
+	      else if (qexec_alloc_agg_hash_context (thread_p, &xasl->proc.buildlist, xasl_state, false) != NO_ERROR
+		       || qexec_gby_spill_init (thread_p, xasl) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -37241,6 +37881,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   proc->agg_hash_context->curr_part_key = NULL;
   proc->agg_hash_context->temp_part_value = NULL;
   proc->agg_hash_context->curr_part_value = NULL;
+  proc->agg_hash_context->spill = NULL;
   qfile_init_empty_sort_key_info (&proc->agg_hash_context->sort_key);
 
   /*
@@ -37513,6 +38154,9 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
 
   /* free sort key */
   qfile_clear_sort_key_info (&proc->agg_hash_context->sort_key);
+
+  /* the spill's lists */
+  qexec_gby_spill_free (thread_p, proc->agg_hash_context);
 
   /* free entries and hash table */
   if (proc->agg_hash_context->hash_table != NULL)

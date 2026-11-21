@@ -86,6 +86,112 @@ static int qdata_aggregate_interpolation (cubthread::entry *thread_p, const VAL_
 // implementation
 //
 
+/*
+ * A sort GROUP BY's COUNT (DISTINCT) (CBRD-28181): a group's distinct values kept in memory, compared one by one,
+ * up to QDATA_DISTINCT_MEM_MAX of them; past that the group's values go to the list file the node sorts at the
+ * group's end, as every group's do otherwise -- a list file opened, written, sorted and destroyed per group, where
+ * most groups hold a few values.  Only the types whose comparison here is the one the list's sort makes
+ * (qdata_distinct_mem_eligible ()).
+ */
+#define QDATA_DISTINCT_MEM_MAX (64)
+
+bool
+qdata_distinct_mem_eligible (const VAL_DESCR *vd, const cubxasl::aggregate_list_node *agg_p)
+{
+  const tp_domain *dom;
+
+  if (agg_p->function != PT_COUNT || agg_p->option != Q_DISTINCT || agg_p->sort_list != NULL
+      || agg_p->flag.agg_optimized)
+    {
+      return false;
+    }
+  dom = qdata_aggregate_list_domain (vd, agg_p);
+  if (dom == NULL)
+    {
+      return false;
+    }
+  switch (TP_DOMAIN_TYPE (dom))
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATETIME:
+      return true;
+    default:
+      return false;
+    }
+}
+
+void
+qdata_distinct_mem_clear (cubxasl::aggregate_list_node *agg_p)
+{
+  int i;
+
+  for (i = 0; i < agg_p->distinct_cnt; i++)
+    {
+      pr_clear_value (&agg_p->distinct_vals[i]);
+    }
+  agg_p->distinct_cnt = 0;
+  agg_p->distinct_listed = false;
+}
+
+void
+qdata_distinct_mem_free (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p)
+{
+  qdata_distinct_mem_clear (agg_p);
+  if (agg_p->distinct_vals != NULL)
+    {
+      db_private_free_and_init (thread_p, agg_p->distinct_vals);
+    }
+  agg_p->distinct_mem = false;
+}
+
+/* a value of the group: *kept when it is in memory (new or not); otherwise the group's values went to the list
+ * file (opened now), and the value is the caller's to add after them */
+static int
+qdata_distinct_mem_add (cubthread::entry *thread_p, const VAL_DESCR *vd, cubxasl::aggregate_list_node *agg_p,
+			DB_VALUE *value, bool *kept)
+{
+  int i, error;
+
+  *kept = true;
+  for (i = 0; i < agg_p->distinct_cnt; i++)
+    {
+      if (tp_value_compare (value, &agg_p->distinct_vals[i], 1, 1) == DB_EQ)
+	{
+	  return NO_ERROR;
+	}
+    }
+  if (agg_p->distinct_vals == NULL)
+    {
+      agg_p->distinct_vals = (DB_VALUE *) db_private_alloc (thread_p, QDATA_DISTINCT_MEM_MAX * sizeof (DB_VALUE));
+      if (agg_p->distinct_vals == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  if (agg_p->distinct_cnt < QDATA_DISTINCT_MEM_MAX)
+    {
+      return pr_clone_value (value, &agg_p->distinct_vals[agg_p->distinct_cnt++]);
+    }
+
+  /* more than the memory takes: the list file, with every value so far */
+  *kept = false;
+  error = qdata_process_distinct_or_sort (thread_p, vd, agg_p, vd->xasl_state->query_id);
+  for (i = 0; i < agg_p->distinct_cnt && error == NO_ERROR; i++)
+    {
+      DB_VALUE *v = &agg_p->distinct_vals[i];
+
+      error = qfile_add_values_tuple_to_list (thread_p, agg_p->list_id, &v, 1);
+    }
+  qdata_distinct_mem_clear (agg_p);
+  agg_p->distinct_listed = true;
+  return error;
+}
+
 static int
 qdata_process_distinct_or_sort (cubthread::entry *thread_p, const VAL_DESCR *vd, cubxasl::aggregate_list_node *agg_p,
 				QUERY_ID query_id)
@@ -267,7 +373,12 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
 	}
 
       /* create temporary list file to handle distincts */
-      if (agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL)
+      if (agg_p->distinct_mem)
+	{
+	  /* the group's values in memory, the list opened only when they outgrow it (qdata_distinct_mem_add ()) */
+	  qdata_distinct_mem_clear (agg_p);
+	}
+      else if (agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL)
 	{
 	  /* NOTE: cume_dist and percent_rank do NOT need sorting */
 	  if (agg_p->function != PT_CUME_DIST && agg_p->function != PT_PERCENT_RANK)
@@ -1652,6 +1763,23 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		}
 	    }
 
+	  if (agg_p->distinct_mem && !agg_p->distinct_listed)
+	    {
+	      bool kept;
+
+	      error = qdata_distinct_mem_add (thread_p, val_desc_p, agg_p, db_value_p, &kept);
+	      if (error != NO_ERROR || kept)
+		{
+		  qdata_clear_value_array (stack_values, n_values);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		  continue;
+		}
+	      /* the values went to the list: this one follows them */
+	    }
+
 	  dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
 	  pr_type_p = pr_type_from_id (dbval_type);
 
@@ -2269,9 +2397,17 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  continue;
 	}
 
+      if (agg_p->distinct_mem && !agg_p->distinct_listed)
+	{
+	  /* a COUNT (DISTINCT) whose values stayed in memory: they are distinct already */
+	  assert (agg_p->function == PT_COUNT);
+	  db_make_bigint (agg_p->accumulator.value, agg_p->distinct_cnt);
+	  agg_p->accumulator.curr_cnt = agg_p->distinct_cnt;
+	  qdata_distinct_mem_clear (agg_p);
+	}
       /* process list file for sum/avg/count distinct */
-      if ((agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL) && agg_p->function != PT_MAX
-	  && agg_p->function != PT_MIN)
+      else if ((agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL) && agg_p->function != PT_MAX
+	       && agg_p->function != PT_MIN)
 	{
 	  if (agg_p->flag.agg_optimized == false)
 	    {
@@ -3736,13 +3872,20 @@ qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggrega
  */
 int
 qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *key, aggregate_hash_value *value,
-			       DB_VALUE *temp_dbval_array, qfile_list_id *list_id)
+			       DB_VALUE *temp_dbval_array, qfile_list_id *list_id, const unsigned int *key_hash)
 {
-  DB_VALUE tuple_count;
+  DB_VALUE tuple_count, hash_val;
   int tuple_size;
   int col = 0, i;
   QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   int error = NO_ERROR;
+
+  /* the key's hash first, when the list carries it (qdata_agg_hentry_tuple_hash ()) */
+  if (key_hash != NULL)
+    {
+      db_make_int (&hash_val, (int) *key_hash);
+      list_id->tpl_descr.f_valp[col++] = &hash_val;
+    }
 
   /* build tuple descriptor */
   for (i = 0; i < key->val_count; i++)
@@ -3849,16 +3992,26 @@ cleanup:
 int
 qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size, aggregate_hash_key *key,
 				  aggregate_hash_value *value, tp_domain **key_dom,
-				  cubxasl::aggregate_accumulator_domain **acc_dom)
+				  cubxasl::aggregate_accumulator_domain **acc_dom, unsigned int *key_hash)
 {
   DB_VALUE int_val;
   QFILE_TUPLE_WALK walk;
   bool is_null;
   int i, rc = NO_ERROR;
 
-  /* domain-driven walk: key columns, then value/value2/count per function, then the tuple count */
+  /* domain-driven walk: (the key's hash,) key columns, then value/value2/count per function, then the tuple count */
   db_make_int (&int_val, 0);
-  qfile_tuple_walk_init (&walk, tuple, hdr_size, key->val_count + 3 * value->func_count + 1);
+  qfile_tuple_walk_init (&walk, tuple, hdr_size, (key_hash != NULL ? 1 : 0) + key->val_count + 3 * value->func_count
+			 + 1);
+  if (key_hash != NULL)
+    {
+      rc = qfile_tuple_walk_read_value (&walk, &tp_Integer_domain, &int_val, false, &is_null);
+      if (rc != NO_ERROR || is_null)
+	{
+	  return (rc != NO_ERROR) ? rc : ER_FAILED;
+	}
+      *key_hash = (unsigned int) int_val.data.i;
+    }
 
   /* read key */
   for (i = 0; i < key->val_count; i++)
@@ -3945,6 +4098,20 @@ end:
  *   key_dom(in): key domains
  *   acc_dom(in): accumulator domains
  */
+unsigned int
+qdata_agg_hentry_tuple_hash (QFILE_TUPLE tuple, int hdr_size, int type_cnt)
+{
+  QFILE_TUPLE_WALK walk;
+  DB_VALUE v;
+  bool is_null = true;
+
+  db_make_int (&v, 0);
+  qfile_tuple_walk_init (&walk, tuple, hdr_size, type_cnt);
+  (void) qfile_tuple_walk_read_value (&walk, &tp_Integer_domain, &v, false, &is_null);
+  assert (!is_null);
+  return (unsigned int) db_get_int (&v);
+}
+
 int
 qdata_load_agg_hkey_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size, int type_cnt,
 				aggregate_hash_key *key, tp_domain **key_dom, bool copy)

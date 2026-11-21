@@ -3508,6 +3508,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
   std::memset (stx_build_list_proc->agg_hash_context, 0, sizeof (*stx_build_list_proc->agg_hash_context));
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_first_tuple);
+  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_order_free);
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hkey_size);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -7822,6 +7823,10 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   assert (ptr != NULL && aggregate != NULL);
 
   /* server-side runtime state, never part of the stream */
+  aggregate->distinct_mem = false;
+  aggregate->distinct_listed = false;
+  aggregate->distinct_cnt = 0;
+  aggregate->distinct_vals = NULL;
   aggregate->operand_prog = NULL;
   aggregate->operand_prog_idx = NULL;
   aggregate->operand_prog_state = 0;
