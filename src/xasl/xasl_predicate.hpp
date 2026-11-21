@@ -123,7 +123,7 @@ namespace cubxasl
     /* CBRD-27583: an ORDERBY_NUM upper bound `ORDERBY_NUM () < bound` (xasl_orderbynum_upper_bound): the
      * operand coercion of bound - 1, which the compiler decided (unpack arena); NULL for any other term */
     const DOMAIN_OPERAND_COERCION *bound_coercion;
-    /* CBRD-27583: an ORDERBY_NUM upper bound's conversion into INTEGER (top-N) or an INST_NUM upper limit's into
+    /* CBRD-27583: an ORDERBY_NUM upper bound's conversion into BIGINT (top-N) or an INST_NUM upper limit's into
      * BIGINT, found by the unpack (unpack arena); NULL for any other term */
     const DOMAIN_BOUND_CONVERSION *bound_conversion;
     /* CBRD-27583: a partitioned class's term between a value (a constant, a bind) and what is not one: the

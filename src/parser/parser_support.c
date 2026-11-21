@@ -4677,6 +4677,151 @@ regu_set_global_error (void)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
+ * pt_cast_limit_operand () - wrap an operand of a LIMIT value in CAST (... AS DOUBLE)
+ *   return: none
+ *   parser(in):
+ *   arg(in/out): the operand, the cast on return
+ */
+static void
+pt_cast_limit_operand (PARSER_CONTEXT * parser, PT_NODE ** arg)
+{
+  PT_NODE *cast;
+
+  cast = pt_wrap_with_cast_op (parser, *arg, PT_TYPE_DOUBLE, 0, 0, NULL);
+  if (cast == NULL)
+    {
+      return;
+    }
+
+  if ((*arg)->node_type == PT_HOST_VAR)
+    {
+      /* a cast of the rule, not of the text: the position keeps the type the value was bound with, so that the next
+       * execution of another type does not bind into DOUBLE */
+      (*arg)->info.host_var.rule_cast = true;
+    }
+  *arg = cast;
+}
+
+/*
+ * pt_limit_is_string () - whether an operand of a LIMIT value is a string
+ *   return: true when it is
+ *   parser(in):
+ *   node(in): the operand
+ *
+ * Note: Under a bind type signature a host variable stays MAYBE, so its type is read from the bound value. A PL/CSQL
+ *       variable has no value at compile time and may be a string.
+ */
+static bool
+pt_limit_is_string (const PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  int index;
+
+  if (node == NULL || node->node_type == PT_EXPR)
+    {
+      return false;
+    }
+
+  if (PT_IS_CHAR_STRING_TYPE (node->type_enum))
+    {
+      return true;
+    }
+
+  if (node->node_type != PT_HOST_VAR)
+    {
+      return false;
+    }
+
+  if (parser->flag.is_parsing_static_sql)
+    {
+      return true;
+    }
+
+  index = node->info.host_var.index;
+  return (parser->host_variables != NULL && index >= 0 && index < parser->host_var_count
+	  && TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&parser->host_variables[index])));
+}
+
+/*
+ * pt_cast_limit_string_operands () - cast the string operands of a + in the user's LIMIT values to DOUBLE
+ *   return: none
+ *   parser(in):
+ *   limit(in/out): the values
+ *
+ * Note: Two strings bound to + concatenate ('2' + '2' is '22'). The cast is the one the type checking gives a
+ *       string added to a number ('2' + 1 is 3).
+ */
+void
+pt_cast_limit_string_operands (PARSER_CONTEXT * parser, PT_NODE * limit)
+{
+  PT_NODE *node;
+
+  for (node = limit; node != NULL; node = node->next)
+    {
+      if (node->node_type != PT_EXPR)
+	{
+	  continue;
+	}
+
+      pt_cast_limit_string_operands (parser, node->info.expr.arg1);
+      pt_cast_limit_string_operands (parser, node->info.expr.arg2);
+      if (node->info.expr.op == PT_PLUS)
+	{
+	  if (pt_limit_is_string (parser, node->info.expr.arg1))
+	    {
+	      pt_cast_limit_operand (parser, &node->info.expr.arg1);
+	    }
+
+	  if (pt_limit_is_string (parser, node->info.expr.arg2))
+	    {
+	      pt_cast_limit_operand (parser, &node->info.expr.arg2);
+	    }
+	}
+    }
+}
+
+/*
+ * pt_limit_has_host_var () - whether a LIMIT value has a host variable
+ *   return: true when it has
+ *   node(in): a host variable, a literal or an arithmetic of them (the LIMIT grammar allows nothing else)
+ */
+static bool
+pt_limit_has_host_var (const PT_NODE * node)
+{
+  if (node != NULL && node->node_type == PT_EXPR)
+    {
+      return pt_limit_has_host_var (node->info.expr.arg1) || pt_limit_has_host_var (node->info.expr.arg2);
+    }
+  return node != NULL && node->node_type == PT_HOST_VAR;
+}
+
+/*
+ * pt_cast_limit_rewritten_sum () - cast the string operands of a sum the rewrite builds over LIMIT values to DOUBLE
+ *                                  and mark the sum so that an overflow gives the BIGINT maximum
+ *   return: true when an operand has a host variable, false for a sum of literals
+ *   parser(in):
+ *   sum(in/out): the offset + count of a numbering predicate, or the sum a UNION pushes down to its arms
+ *
+ * Note: Every path reads the sum the same way: an overflow gives the BIGINT maximum (PT_EXPR_INFO_LIMIT_SUM), so
+ *       LIMIT 5, 9223372036854775807 reads from row 6 instead of failing at the scan open of one path only.
+ */
+bool
+pt_cast_limit_rewritten_sum (PARSER_CONTEXT * parser, PT_NODE * sum)
+{
+  if (pt_limit_is_string (parser, sum->info.expr.arg1))
+    {
+      pt_cast_limit_operand (parser, &sum->info.expr.arg1);
+    }
+
+  if (pt_limit_is_string (parser, sum->info.expr.arg2))
+    {
+      pt_cast_limit_operand (parser, &sum->info.expr.arg2);
+    }
+
+  PT_EXPR_INFO_SET_FLAG (sum, PT_EXPR_INFO_LIMIT_SUM);
+  return pt_limit_has_host_var (sum->info.expr.arg1) || pt_limit_has_host_var (sum->info.expr.arg2);
+}
+
+/*
  * pt_limit_to_numbering_expr () -rewrite limit expr to xxx_num() expr
  *   return: expr node with numbering
  *   limit(in): limit node
@@ -4689,6 +4834,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 {
   PT_NODE *lhs, *sum, *part1, *part2, *node;
   DB_VALUE sum_val;
+  bool sum_cast;
 
   db_make_null (&sum_val);
 
@@ -4747,6 +4893,11 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	{
 	  goto error_exit;
 	}
+      if (parser->flag.is_parsing_static_sql)
+	{
+	  /* the predicate may be printed and parsed again without the LIMIT clause */
+	  pt_cast_limit_string_operands (parser, node->info.expr.arg2);
+	}
     }
   else
     {
@@ -4766,6 +4917,10 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
       if (part1->info.expr.arg2 == NULL)
 	{
 	  goto error_exit;
+	}
+      if (parser->flag.is_parsing_static_sql)
+	{
+	  pt_cast_limit_string_operands (parser, part1->info.expr.arg2);
 	}
 
       part2 = parser_new_node (parser, PT_EXPR);
@@ -4791,23 +4946,33 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	}
 
       sum->info.expr.op = PT_PLUS;
-      sum->type_enum = PT_TYPE_NUMERIC;
-      sum->data_type = parser_new_node (parser, PT_DATA_TYPE);
-      if (sum->data_type == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  goto error_exit;
-	}
-
-      sum->data_type->type_enum = PT_TYPE_NUMERIC;
-      sum->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
-      sum->data_type->info.data_type.dec_precision = 0;
-
       sum->info.expr.arg1 = parser_copy_tree (parser, limit);
       sum->info.expr.arg2 = parser_copy_tree (parser, limit->next);
       if (sum->info.expr.arg1 == NULL || sum->info.expr.arg2 == NULL)
 	{
 	  goto error_exit;
+	}
+
+      sum_cast = pt_cast_limit_rewritten_sum (parser, sum);
+      if (parser->flag.is_parsing_static_sql)
+	{
+	  pt_cast_limit_string_operands (parser, sum);
+	}
+
+      /* a sum without a host variable adds in NUMERIC as it did (LIMIT 9223372036854775806 + 1, 1) */
+      if (!sum_cast)
+	{
+	  sum->type_enum = PT_TYPE_NUMERIC;
+	  sum->data_type = parser_new_node (parser, PT_DATA_TYPE);
+	  if (sum->data_type == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      goto error_exit;
+	    }
+
+	  sum->data_type->type_enum = PT_TYPE_NUMERIC;
+	  sum->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
+	  sum->data_type->info.data_type.dec_precision = 0;
 	}
 
       if (limit->node_type == PT_VALUE && limit->next->node_type == PT_VALUE)
@@ -10388,7 +10553,7 @@ static int
 pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val, bool add_offset)
 {
   int save_set_host_var;
-  TP_DOMAIN *domainp = NULL;
+  DB_BIGINT row_bound;
   int error = NO_ERROR;
 
   db_make_null (limit_val);
@@ -10397,8 +10562,6 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
     {
       return NO_ERROR;
     }
-
-  domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
 
   save_set_host_var = parser->flag.set_host_var;
   parser->flag.set_host_var = 1;
@@ -10415,12 +10578,6 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
   if (DB_IS_NULL (limit_val))
     {
       /* probably value is not bound yet */
-      goto cleanup;
-    }
-
-  if (tp_value_coerce (limit_val, limit_val, domainp) != DOMAIN_COMPATIBLE)
-    {
-      error = ER_FAILED;
       goto cleanup;
     }
 
@@ -10444,25 +10601,43 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
       if (DB_IS_NULL (&range))
 	{
 	  /* probably value is not bound yet */
-	  goto cleanup;
-	}
-
-      if (tp_value_coerce (&range, &range, domainp) != DOMAIN_COMPATIBLE)
-	{
-	  error = ER_FAILED;
+	  pr_clear_value (limit_val);
+	  db_make_null (limit_val);
 	  goto cleanup;
 	}
 
       /* add range to current limit */
       if (add_offset)
 	{
-	  db_make_bigint (limit_val, db_get_bigint (limit_val) + db_get_bigint (&range));
+	  /* the sum first, as the numbering predicate reads it: LIMIT 1.5, 1.5 reads up to row 3 */
+	  DB_VALUE offset_dbl, range_dbl;
+
+	  if (tp_value_coerce (limit_val, &offset_dbl, &tp_Double_domain) != DOMAIN_COMPATIBLE
+	      || tp_value_coerce (&range, &range_dbl, &tp_Double_domain) != DOMAIN_COMPATIBLE)
+	    {
+	      pr_clear_value (&range);
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	  pr_clear_value (limit_val);
+	  db_make_double (limit_val, db_get_double (&offset_dbl) + db_get_double (&range_dbl));
 	}
       else
 	{
-	  db_make_bigint (limit_val, db_get_bigint (&range));
+	  pr_clear_value (limit_val);
+	  pr_clone_value (&range, limit_val);
 	}
+      pr_clear_value (&range);
     }
+
+  /* the rows the value admits: floor (2.5) is 2 rows, beyond BIGINT every row */
+  if (tp_value_to_row_bound (limit_val, false, DB_VALUE_DOMAIN_TYPE (limit_val), NULL, &row_bound) != DOMAIN_COMPATIBLE)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+  pr_clear_value (limit_val);
+  db_make_bigint (limit_val, row_bound);
 
 cleanup:
   if (error != NO_ERROR)
@@ -10873,6 +11048,7 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
   PT_NODE *arg1 = NULL, *arg2 = NULL;
   PT_NODE *save_next = NULL;
   DB_VALUE limit;
+  DB_BIGINT row_bound;
   int error = NO_ERROR;
   bool lt = false;
 
@@ -10934,20 +11110,20 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
     {
       arg_ordby_num = arg2;
       rhs = arg1;
-      /* reverse operators */
+      /* ORDERBY_NUM () is on the right: mirror the operator, n >= ORDERBY_NUM () is ORDERBY_NUM () <= n */
       switch (op)
 	{
 	case PT_LE:
-	  op = PT_GT;
-	  break;
-	case PT_LT:
 	  op = PT_GE;
 	  break;
+	case PT_LT:
+	  op = PT_GT;
+	  break;
 	case PT_GT:
-	  op = PT_LE;
+	  op = PT_LT;
 	  break;
 	case PT_GE:
-	  op = PT_LT;
+	  op = PT_LE;
 	  break;
 	default:
 	  break;
@@ -11006,20 +11182,19 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
       pt_evaluate_tree_having_serial (parser, rhs, &limit, 1);
     }
 
+  /* the rows the comparison keeps: floor (n) for <= n, ceil (n) - 1 for < n */
   if (DB_IS_NULL (&limit)
-      || tp_value_coerce (&limit, &limit, tp_domain_resolve_default (DB_TYPE_BIGINT)) != DOMAIN_COMPATIBLE)
+      || tp_value_to_row_bound (&limit, lt, DB_VALUE_DOMAIN_TYPE (&limit), NULL, &row_bound) != DOMAIN_COMPATIBLE)
     {
       /* has unusable upper_limit */
+      pr_clear_value (&limit);
       pr_clear_value (upper_limit);
       *has_limit = true;
       return NO_ERROR;
     }
 
-  if (lt)
-    {
-      /* ORDERBY_NUM () < n => ORDERBY_NUM <= n - 1 */
-      db_make_bigint (&limit, (db_get_bigint (&limit) - 1));
-    }
+  pr_clear_value (&limit);
+  db_make_bigint (&limit, row_bound);
   if (DB_IS_NULL (upper_limit) || (db_get_bigint (upper_limit) > db_get_bigint (&limit)))
     {
       /* update upper limit */
