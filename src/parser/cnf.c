@@ -522,14 +522,23 @@ pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	  /* meet subquery in search condition. prune and go ahead */
 	  *continue_walk = PT_STOP_WALK;
 	}
+      else if (node)
+	{
+	  /* an atom of the condition, as in the default case below */
+	  *continue_walk = PT_LIST_WALK;
+	}
       return node;
     }
 
   switch (node->info.expr.op)
     {
     case PT_AND:
+      /* walk into the operands: an atom before this node among its parent's operands left PT_LIST_WALK,
+       * which the walk carries over to here */
+      *continue_walk = PT_CONTINUE_WALK;
       break;
     case PT_OR:
+      *continue_walk = PT_CONTINUE_WALK;
       /* OR-tree prune mode */
       if (*mode == TRANSFORM_CNF_OR_PRUNE)
 	{
@@ -537,6 +546,11 @@ pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	}
       break;
     default:
+      /* an atom of the condition -- a comparison, IS [NOT] TRUE/FALSE, CASE, IF, a function: its operands are
+       * values, not conjuncts of this condition, so the walk does not go under it.  An AND under it turned into
+       * a CNF list leaves an operand that prints as its first conjunct only, and the common factor search of an
+       * OR compares printed forms: ((a > 0 and a = 1) is true) or ((a > 0 and a = 2) is true) lost a branch */
+      *continue_walk = PT_LIST_WALK;
       break;
     }
 
@@ -736,9 +750,8 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 
   if (node->info.expr.op == PT_AND || node->info.expr.op == PT_OR)
     {
-      /* the cases below build a new list in place of node; a node already in a CNF list -- a CASE
-       * condition converted again by pt_do_cnf (), whose factors are not isolated as the WHERE's are --
-       * keeps the rest of that list after it */
+      /* the cases below build a new list in place of node; a node already in a CNF list keeps the rest of
+       * that list after it */
       rest = node->next;
       node->next = NULL;
     }
