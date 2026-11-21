@@ -1527,7 +1527,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1402 Vacuum could not find the OOS file of heap file %1$d|%2$d (error %3$d). Object %4$d|%5$d|%6$d and the rest of that heap file in the current log block are left for a later run of the block.
 
-1403 Last Error
+1403 The binary section of the object file is corrupted or truncated at offset %1$lld.
+
+1404 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
