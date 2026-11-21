@@ -1816,7 +1816,9 @@
 
 #define ER_LDR_CORRUPTED_BINARY_RECORD              -1403
 
-#define ER_LAST_ERROR                               -1404
+#define ER_SP_REPLACE_NOT_ALLOWED_SYSTEM_GENERATED  -1404
+
+#define ER_LAST_ERROR                               -1405
 
 /*
  * CAUTION!
