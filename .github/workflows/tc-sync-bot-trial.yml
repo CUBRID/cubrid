@@ -1,0 +1,75 @@
+# One step of the bot's trials on the branch tc-sync-bot-trial of a testcase repository: does a ruleset there
+# take the App's commit status, and can the App reopen a PR that a person closed, also after its head branch is gone.
+name: TC Sync Bot Trial
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "Testcase repository"
+        type: choice
+        options: [cubrid-testcases, cubrid-testcases-private-ex]
+      action:
+        description: "open: a trial PR onto tc-sync-bot-trial · status: 'OK to merge.' on its head · merge: squash it · reopen: restore its head branch if gone, then reopen it"
+        type: choice
+        options: [open, status, merge, reopen]
+      pr:
+        description: "The trial PR, for status, merge and reopen"
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  try:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          owner: CUBRID
+          repositories: ${{ inputs.repo }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-statuses: ${{ inputs.action == 'status' && 'write' || '' }}
+
+      - name: Try
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: CUBRID/${{ inputs.repo }}
+          ACTION: ${{ inputs.action }}
+          PR: ${{ inputs.pr }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          trial=tc-sync-bot-trial
+          ref() { gh api "repos/$REPO/git/ref/heads/$1" --jq .object.sha; }
+          if [ "$ACTION" = open ]; then
+            head=tc/pr-trial-$GITHUB_RUN_ID
+            gh api "repos/$REPO/git/refs" -f ref="refs/heads/$head" -f sha="$(ref "$trial")"
+            gh api -X PUT "repos/$REPO/contents/trial/$GITHUB_RUN_ID.txt" -f branch="$head" \
+              -f message="Trial $GITHUB_RUN_ID" -f content="$(base64 -w0 <<<"$RUN_URL")"
+            gh pr create --repo "$REPO" --base "$trial" --head "$head" \
+              --title "Trial of the TC sync bot ($GITHUB_RUN_ID)" --body "Opened by $RUN_URL to try the bot. Not for develop."
+            exit 0
+          fi
+          read -r base head sha < <(gh pr view "$PR" --repo "$REPO" --json baseRefName,headRefName,headRefOid \
+            --jq '"\(.baseRefName) \(.headRefName) \(.headRefOid)"')
+          if [ "$base" != "$trial" ]; then
+            echo "::error::$REPO#$PR is onto $base, not $trial"
+            exit 1
+          fi
+          case $ACTION in
+            status)
+              gh api "repos/$REPO/statuses/$sha" -f state=success -f context='tc-sync-bot: merge-guard' \
+                -f description='OK to merge.' -f target_url="$RUN_URL" ;;
+            merge)
+              gh pr merge "$PR" --repo "$REPO" --squash ;;
+            reopen)
+              ref "$head" > /dev/null || gh api "repos/$REPO/git/refs" -f ref="refs/heads/$head" -f sha="$sha"
+              gh pr reopen "$PR" --repo "$REPO" --comment "The bot reopened this: $RUN_URL" ;;
+          esac
