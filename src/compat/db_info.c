@@ -706,35 +706,41 @@ db_get_subclasses (DB_OBJECT * obj)
 }
 
 /*
- * db_class_has_instance() -
- * return : an object list
+ * db_class_has_instance() - check whether the class or any of its subclasses has an instance
+ * return : positive if an instance exists, 0 if not, negative on error
  * classobj(in): class object
  */
 int
 db_class_has_instance (DB_OBJECT * classobj)
 {
   DB_OBJLIST *sub_list;
+  HFID *hfid;
   int has_instance;
 
   sub_list = db_get_subclasses (classobj);
-  if (sub_list)
-    {
-      for (; sub_list; sub_list = sub_list->next)
-	{
-	  has_instance = db_class_has_instance (sub_list->op);
-	  if (has_instance < 0)
-	    {
-	      return has_instance;
-	    }
-	  else if (has_instance > 0)
-	    {
-	      return 1;
-	    }
-	}
-    }
-  else
+  if (sub_list == NULL)
     {
       return heap_has_instance (sm_get_ch_heap (classobj), WS_OID (classobj), 1);
+    }
+
+  /* a class with subclasses keeps its own rows too; a class without a heap (e.g. a view) has none */
+  hfid = sm_get_ch_heap (classobj);
+  if (hfid != NULL && !HFID_IS_NULL (hfid))
+    {
+      has_instance = heap_has_instance (hfid, WS_OID (classobj), 1);
+      if (has_instance != 0)
+	{
+	  return has_instance;
+	}
+    }
+
+  for (; sub_list; sub_list = sub_list->next)
+    {
+      has_instance = db_class_has_instance (sub_list->op);
+      if (has_instance != 0)
+	{
+	  return has_instance;
+	}
     }
 
   return 0;

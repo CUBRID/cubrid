@@ -14892,6 +14892,7 @@ do_update_new_notnull_cols_without_default (PARSER_CONTEXT * parser, PT_NODE * a
   PT_NODE *relevant_attrs = NULL;
   int error = NO_ERROR;
   int attr_count = 0;
+  int has_instance;
 
   PT_NODE *attr = NULL;
   PT_NODE *save = NULL;
@@ -14918,7 +14919,13 @@ do_update_new_notnull_cols_without_default (PARSER_CONTEXT * parser, PT_NODE * a
 	  continue;
 	}
 
-      if (!db_class_has_instance (class_mop))
+      has_instance = db_class_has_instance (class_mop);
+      if (has_instance < 0)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto end;
+	}
+      if (has_instance == 0)
 	{
 	  continue;
 	}
@@ -14998,6 +15005,7 @@ do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * a
   PT_NODE *save = NULL;
   PT_NODE *copy = NULL;
   DB_DEFAULT_EXPR default_expr;
+  int has_instance;
 
   assert (alter->node_type == PT_ALTER);
   assert (alter->info.alter.code == PT_ADD_ATTR_MTHD);
@@ -15019,7 +15027,18 @@ do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * a
 	  continue;
 	}
 
-      if (!db_is_class (class_mop) || !db_class_has_instance (class_mop))
+      if (!db_is_class (class_mop))
+	{
+	  continue;
+	}
+
+      has_instance = db_class_has_instance (class_mop);
+      if (has_instance < 0)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto end;
+	}
+      if (has_instance == 0)
 	{
 	  continue;
 	}
