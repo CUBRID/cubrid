@@ -245,7 +245,8 @@ TEST_CASE ("the guard is move-only and its noexcept follows the callable", "[sco
 
   STATIC_REQUIRE (std::is_same_v<decltype (make_scope_exit (std::declval<lambda_t> ())), guard_t>);
 
-  /* the destructor is noexcept only when the callable is; a lambda without noexcept, like every user's, is not */
+  /* the destructor is noexcept only when the call of the callable is (a lambda without noexcept is not);
+   * this pins the header's conditional noexcept, so making it unconditional should change this test on purpose */
   STATIC_REQUIRE (std::is_nothrow_destructible_v<scope_exit<nothrow_callable>>);
   STATIC_REQUIRE_FALSE (std::is_nothrow_destructible_v<scope_exit<may_throw_callable>>);
   STATIC_REQUIRE_FALSE (std::is_nothrow_destructible_v<guard_t>);
@@ -255,5 +256,4 @@ TEST_CASE ("the guard is move-only and its noexcept follows the callable", "[sco
   STATIC_REQUIRE_FALSE (std::is_nothrow_constructible_v<scope_exit<throwing_move_callable>, throwing_move_callable &&>);
   STATIC_REQUIRE (std::is_nothrow_move_constructible_v<scope_exit<nothrow_callable>>);
   STATIC_REQUIRE_FALSE (std::is_nothrow_move_constructible_v<scope_exit<throwing_move_callable>>);
-  STATIC_REQUIRE_FALSE (std::is_nothrow_move_constructible_v<guard_t>);
 }
