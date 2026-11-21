@@ -195,7 +195,6 @@ enum
 
 #define RBO_CHECK_COST 50
 #define RBO_CHECK_RATIO 1.2
-#define RBO_CHECK_LIMIT_RATIO 10
 
 /* NL inner memoize decision (qo_nl_inner_memoize_is_useless) */
 #define MEMOIZE_UNIQUE_KEY_RATIO 0.95	/* without a unique index, NDV >= 95% of the rows counts as near-unique */
@@ -440,6 +439,9 @@ static PT_NODE *qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_N
 						   int *continue_walk);
 static double qo_analytic_sort_cost (QO_PLAN * plan);
 static QO_PLAN *qo_plan_top_scan (QO_PLAN * plan);
+static double qo_orderby_limit_fraction (QO_ENV * env);
+static bool qo_scan_has_join_term (QO_PLAN * plan);
+static double qo_scan_limit_fraction (QO_PLAN * plan);
 static bool qo_index_keeps_asc_key_order (QO_ENV * env, QO_NODE * node, QO_INDEX_ENTRY * index_entryp);
 static bool qo_key_seg_is_asc_column (QO_ENV * env, TP_DOMAIN * col_type, int seg_idx);
 static int qo_iscan_sort_segs (QO_PLAN * plan, int *seg_idxs, int max);
@@ -700,6 +702,7 @@ qo_plan_malloc (QO_ENV * env)
   plan->need_final_sort = false;
   plan->groupby_skip_join = false;
   plan->limit_nljoin_guessed_card = 0.0;
+  plan->limit_scan_fraction = 1.0;
   plan->iscan_index_rows = 0.0;
   plan->iscan_range_rows = 0.0;
   plan->iscan_heap_io = 0.0;
@@ -2320,6 +2323,9 @@ qo_top_plan_new (QO_PLAN * plan)
 	      {
 		bool yn = true;
 		qo_walk_plan_tree (plan, qo_set_orderby_skip, &yn);
+		/* and on the top plan itself, which a join is not: the chosen plan marks the index entries again
+		 * (qo_search_planner ()) */
+		plan->skip_orderby_opt = QO_PLAN_SKIP_ORDERBY_USE;
 	      }
 
 	      if (plan->need_final_sort)
@@ -3817,6 +3823,11 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->variable_io_cost = object_IO * QO_COST_RANDOM_PAGE;
   planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * heap_sel);
 
+  /* a scan that skips the ORDER BY or GROUP BY of a LIMIT query stops at the LIMIT (CBRD-28111) */
+  planp->limit_scan_fraction = qo_scan_limit_fraction (planp);
+  planp->variable_cpu_cost *= planp->limit_scan_fraction;
+  planp->variable_io_cost *= planp->limit_scan_fraction;
+
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
@@ -4375,7 +4386,10 @@ qo_sort_cost (QO_PLAN * planp)
 	{
 	  double save_ncard = QO_NODE_NCARD (subplanp->plan_un.scan.node);
 	  QO_NODE_NCARD (subplanp->plan_un.scan.node) = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (planp->info->env));
+	  /* the scan is priced as one of LIMIT rows: not charged for a share of them on top (CBRD-28111) */
+	  planp->info->planner->sort_limit_costing = true;
 	  (*(subplanp->vtbl)->cost_fn) (subplanp);
+	  planp->info->planner->sort_limit_costing = false;
 	  QO_NODE_NCARD (subplanp->plan_un.scan.node) = save_ncard;
 	}
 
@@ -4384,8 +4398,8 @@ qo_sort_cost (QO_PLAN * planp)
        */
       planp->fixed_cpu_cost = subplanp->fixed_cpu_cost;
       planp->fixed_io_cost = subplanp->fixed_io_cost;
-      planp->variable_cpu_cost = subplanp->variable_cpu_cost;
-      planp->variable_io_cost = subplanp->variable_io_cost;
+      planp->variable_cpu_cost = QO_PLAN_VARIABLE_CPU_COST_WHOLE (subplanp);
+      planp->variable_io_cost = QO_PLAN_VARIABLE_IO_COST_WHOLE (subplanp);
       qo_plan_uncover_cost (subplanp, false, &planp->variable_io_cost, &planp->variable_cpu_cost);
     }
   else
@@ -4405,8 +4419,8 @@ qo_sort_cost (QO_PLAN * planp)
       /* The cost (in io's) of just setting up a list file.  This is mostly to discourage the optimizer from choosing
        * merge join for joins of little classes.
        */
-      planp->fixed_cpu_cost = subplanp->fixed_cpu_cost + subplanp->variable_cpu_cost + TEMP_SETUP_COST;
-      planp->fixed_io_cost = subplanp->fixed_io_cost + subplanp->variable_io_cost;
+      planp->fixed_cpu_cost = subplanp->fixed_cpu_cost + QO_PLAN_VARIABLE_CPU_COST_WHOLE (subplanp) + TEMP_SETUP_COST;
+      planp->fixed_io_cost = subplanp->fixed_io_cost + QO_PLAN_VARIABLE_IO_COST_WHOLE (subplanp);
       planp->variable_cpu_cost = (planp->info)->cardinality * (double) QO_CPU_WEIGHT;
       /* the list file is written and re-read in order: sequential unit price. TEMP_SETUP_COST
        * above is a CPU-side policy offset, not a page count, and is not priced. */
@@ -6175,6 +6189,135 @@ qo_can_apply_limit_card (QO_ENV * env)
 }
 
 /*
+ * qo_orderby_limit_fraction () - the share of its rows a plan that reads them in the ORDER BY order and stops at the
+ *				  LIMIT reads
+ *   return: LIMIT rows (GUESSED_BIND_LIMIT_CARD for a host variable) over the estimated rows of the query, at most 1;
+ *	     1 when the query has no ORDER BY that an index scan could skip, or no LIMIT
+ *   env(in):
+ *
+ * Note: CBRD-28111. The scan of the ORDER BY order stops when the query has its LIMIT rows: with the filtered rows
+ *	 spread evenly along the key, as every estimate assumes, it reads this share of its rows, the first nested
+ *	 loop inner is probed by this share of the scan's rows, and so on up the joins (CBRD-25080 charged the inner
+ *	 for LIMIT / hit_prob rows, the same share for two tables). The rows of the query are the product of the node
+ *	 cardinalities and the term selectivities, as the join infos compute them; a term evaluated after the join
+ *	 (inst_num ()) does not stop the scan earlier.
+ */
+static double
+qo_orderby_limit_fraction (QO_ENV * env)
+{
+  PT_NODE *tree = QO_ENV_PT_TREE (env);
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  double limit, rows;
+  int i;
+
+  if (tree == NULL || parser == NULL || tree->node_type != PT_SELECT || tree->info.query.order_by == NULL
+      || (tree->info.query.limit == NULL && tree->info.query.orderby_for == NULL)
+      || tree->info.query.q.select.group_by != NULL || tree->info.query.all_distinct == PT_DISTINCT
+      || tree->info.query.q.select.connect_by != NULL || pt_has_analytic (parser, tree))
+    {
+      return 1.0;
+    }
+
+  limit = (!DB_IS_NULL (&QO_ENV_LIMIT_VALUE (env)) && db_get_bigint (&QO_ENV_LIMIT_VALUE (env)) > 0)
+    ? (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (env)) : GUESSED_BIND_LIMIT_CARD;
+
+  rows = 1.0;
+  for (i = 0; i < env->Nnodes; i++)
+    {
+      rows *= MAX (1.0, QO_NODE_NCARD (QO_ENV_NODE (env, i)));
+    }
+  for (i = 0; i < env->Nterms; i++)
+    {
+      if (QO_TERM_CLASS (QO_ENV_TERM (env, i)) != QO_TC_TOTALLY_AFTER_JOIN)
+	{
+	  rows *= QO_TERM_SELECTIVITY (QO_ENV_TERM (env, i));
+	}
+    }
+
+  return MIN (1.0, limit / MAX (1.0, rows));
+}
+
+/*
+ * qo_scan_has_join_term () - does an index scan take a join term as its key range or filter
+ *   return: true/false
+ *   plan(in):
+ *
+ * Note: such a scan is the inner of an index join (qo_generate_join_index_scan ()), read once per outer row.
+ */
+static bool
+qo_scan_has_join_term (QO_PLAN * plan)
+{
+  BITSET_ITERATOR iter;
+  int t;
+
+  for (t = bitset_iterate (&(plan->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      if (QO_IS_EDGE_TERM (QO_ENV_TERM (plan->info->env, t)))
+	{
+	  return true;
+	}
+    }
+  for (t = bitset_iterate (&(plan->plan_un.scan.kf_terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      if (QO_IS_EDGE_TERM (QO_ENV_TERM (plan->info->env, t)))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_scan_limit_fraction () - the share of its rows an index scan reads when it skips the ORDER BY or the GROUP BY
+ *			       of a LIMIT query
+ *   return: the share, or 1 for a scan that reads its rows whole
+ *   plan(in): an index scan whose cost is being computed
+ *
+ * Note: CBRD-28111. The scan is charged for this share of its rows (qo_iscan_cost ()), so that it competes by its
+ *	 LIMIT cost with the other scans of its node and drives the nested loops above it at that cost. The plan
+ *	 that reads it whole, as a nested loop inner, a hash or merge join input or a sort input, charges it whole
+ *	 again (QO_PLAN_VARIABLE_CPU_COST_WHOLE ()). An index join inner is read once per outer row and is not
+ *	 discounted. For an ORDER BY the share is the query's (qo_orderby_limit_fraction ()); for a GROUP BY it is
+ *	 the LIMIT groups times the rows per group (CBRD-27685) over the rows of the scan.
+ */
+static double
+qo_scan_limit_fraction (QO_PLAN * plan)
+{
+  QO_PLANNER *planner;
+  double rows_per_group, rows;
+
+  if (plan == NULL || plan->info == NULL || plan->plan_un.scan.index == NULL || !qo_is_interesting_order_scan (plan)
+      || qo_is_index_mro_scan (plan))
+    {
+      return 1.0;
+    }
+
+  planner = plan->info->planner;
+  if (planner == NULL || planner->sort_limit_costing || qo_scan_has_join_term (plan))
+    {
+      return 1.0;
+    }
+
+  if (planner->orderby_limit_fraction < 1.0 && qo_plan_is_orderby_skip_candidate (plan))
+    {
+      return planner->orderby_limit_fraction;
+    }
+
+  if (planner->groupby_limit_groups > 0.0 && qo_plan_is_groupby_skip_candidate (plan))
+    {
+      rows_per_group = qo_groupby_skip_rows_per_group (plan, QO_ENV_PT_TREE (plan->info->env));
+      if (rows_per_group < DBL_MAX)
+	{
+	  rows = planner->groupby_limit_groups * rows_per_group;
+	  return MIN (1.0, rows / MAX (1.0, (plan->info)->cardinality));
+	}
+    }
+
+  return 1.0;
+}
+
+/*
  * qo_groupby_limit_groups () - groups a GROUP BY query reads before its LIMIT stops the scan
  *   return: LIMIT plus offset, GUESSED_BIND_LIMIT_CARD for a host variable, or 0 when the query reads every group
  *   env(in):
@@ -7290,7 +7433,17 @@ qo_nljoin_cost (QO_PLAN * planp)
 	  limit_rows = limit_val;
 	}
 
-      if (outer->plan_type == QO_PLANTYPE_SCAN)
+      if (!is_groupby_limit && planp->info->planner->orderby_limit_fraction < 1.0
+	  && qo_plan_is_orderby_skip_candidate (planp))
+	{
+	  /* the join reads its outer in the ORDER BY order and stops at the LIMIT: the share of the outer rows the
+	   * query reads (qo_orderby_limit_fraction (), CBRD-28111), the share its outer scan was charged for */
+	  guessed_result_cardinality =
+	    MAX (1.0, (outer->info)->cardinality * planp->info->planner->orderby_limit_fraction);
+	  planp->limit_nljoin_guessed_card =
+	    MAX (1.0, MIN (limit_rows, (planp->info)->cardinality * planp->info->planner->orderby_limit_fraction));
+	}
+      else if (outer->plan_type == QO_PLANTYPE_SCAN)
 	{
 	  /* outer rows required to satisfy the LIMIT; the outer scan cannot read more rows than it has */
 	  required_card = MAX (limit_val / (outer->info)->hit_prob, 1.0);
@@ -7355,7 +7508,8 @@ qo_nljoin_cost (QO_PLAN * planp)
   /* iscan_descent_cpu is the per-probe root-to-leaf descent (zero for non-iscan inners):
    * the inner side really descends once per outer row, so it is charged here and only here --
    * see the publishing comment in qo_iscan_cost (). */
-  inner_cpu_cost = inner_scan_card * inner->variable_cpu_cost + guessed_result_cardinality * inner->iscan_descent_cpu;
+  inner_cpu_cost =
+    inner_scan_card * QO_PLAN_VARIABLE_CPU_COST_WHOLE (inner) + guessed_result_cardinality * inner->iscan_descent_cpu;
 
   /* inner side IO cost of nested-loop block join */
   if (qo_is_iscan (inner))
@@ -7387,8 +7541,8 @@ qo_nljoin_cost (QO_PLAN * planp)
        * scan carries no heap share and no phantom page (qo_iscan_cost ()), so its per-probe IO
        * is the non-covering probe's minus the heap page -- never more.  Anything a later step
        * adds to variable_io_cost (e.g. subquery IO) stays per probe by design. */
-      heap_io = MIN (inner->iscan_heap_io, inner->variable_io_cost);
-      leaf_io = inner->variable_io_cost - heap_io;
+      heap_io = MIN (inner->iscan_heap_io, QO_PLAN_VARIABLE_IO_COST_WHOLE (inner));
+      leaf_io = QO_PLAN_VARIABLE_IO_COST_WHOLE (inner) - heap_io;
 
       /* Saturate in page space, then price: heap_io/leaf_io already carry the random unit
        * price (qo_iscan_cost ()), so the saturation ceilings get the same factor. Pricing
@@ -7405,13 +7559,23 @@ qo_nljoin_cost (QO_PLAN * planp)
     {
       /* if inner is seq scan, it is calculated by default card. */
       /* This prevents the worst plan if the cardinality is calculated to be less than the actual value. */
-      inner_io_cost = (inner_scan_card + SSCAN_DEFAULT_CARD) * inner->variable_io_cost;
+      inner_io_cost = (inner_scan_card + SSCAN_DEFAULT_CARD) * QO_PLAN_VARIABLE_IO_COST_WHOLE (inner);
     }
 
-  /* outer side CPU cost of nested-loop block join */
-  outer_cpu_cost = outer->variable_cpu_cost;
-  /* outer side IO cost of nested-loop block join */
-  outer_io_cost = outer->variable_io_cost;
+  /* outer side CPU and IO cost of nested-loop block join: an outer scan charged for the share of its rows it reads
+   * before the LIMIT (qo_scan_limit_fraction ()) keeps that cost when this join skips the ORDER BY or the GROUP BY
+   * in its order, and is read whole by any other join (CBRD-28111) */
+  if (outer->plan_type == QO_PLANTYPE_SCAN && outer->limit_scan_fraction < 1.0
+      && !(is_groupby_limit || (QO_PLAN_HAS_LIMIT (planp) && qo_plan_is_orderby_skip_candidate (planp))))
+    {
+      outer_cpu_cost = QO_PLAN_VARIABLE_CPU_COST_WHOLE (outer);
+      outer_io_cost = QO_PLAN_VARIABLE_IO_COST_WHOLE (outer);
+    }
+  else
+    {
+      outer_cpu_cost = outer->variable_cpu_cost;
+      outer_io_cost = outer->variable_io_cost;
+    }
 
   /* a partitioned inner walks its partitions per outer row (CBRD-27866): each outer key its memo has not seen
    * (qo_nl_outer_key_ndv ()) probes every partition the join does not prune (qo_nl_inner_partitions ()), and the
@@ -7601,10 +7765,10 @@ qo_mjoin_cost (QO_PLAN * planp)
   planp->fixed_cpu_cost = outer->fixed_cpu_cost + inner->fixed_cpu_cost;
   planp->fixed_io_cost = outer->fixed_io_cost + inner->fixed_io_cost;
   /* CPU and IO costs which are variable according to the join plan */
-  planp->variable_cpu_cost = outer->variable_cpu_cost + inner->variable_cpu_cost;
+  planp->variable_cpu_cost = QO_PLAN_VARIABLE_CPU_COST_WHOLE (outer) + QO_PLAN_VARIABLE_CPU_COST_WHOLE (inner);
   planp->variable_cpu_cost += (outer_cardinality + inner_cardinality) * QO_CPU_WEIGHT * MJ_CPU_OVERHEAD_FACTOR;
   /* merge cost */
-  planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
+  planp->variable_io_cost = QO_PLAN_VARIABLE_IO_COST_WHOLE (outer) + QO_PLAN_VARIABLE_IO_COST_WHOLE (inner);
   qo_plan_uncover_cost (outer, false, &planp->variable_io_cost, &planp->variable_cpu_cost);
   qo_plan_uncover_cost (inner, false, &planp->variable_io_cost, &planp->variable_cpu_cost);
 
@@ -7693,10 +7857,10 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   outer_factor = qo_join_input_factor (outer_plan_p, divisor);
   inner_factor = qo_join_input_factor (inner_plan_p, divisor);
 
-  plan_p->variable_cpu_cost =
-    outer_plan_p->variable_cpu_cost * outer_factor + inner_plan_p->variable_cpu_cost * inner_factor;
-  plan_p->variable_io_cost =
-    outer_plan_p->variable_io_cost * outer_factor + inner_plan_p->variable_io_cost * inner_factor;
+  plan_p->variable_cpu_cost = QO_PLAN_VARIABLE_CPU_COST_WHOLE (outer_plan_p) * outer_factor
+    + QO_PLAN_VARIABLE_CPU_COST_WHOLE (inner_plan_p) * inner_factor;
+  plan_p->variable_io_cost = QO_PLAN_VARIABLE_IO_COST_WHOLE (outer_plan_p) * outer_factor
+    + QO_PLAN_VARIABLE_IO_COST_WHOLE (inner_plan_p) * inner_factor;
   {
     double outer_io = 0.0, outer_cpu = 0.0, inner_io = 0.0, inner_cpu = 0.0;
 
@@ -8075,9 +8239,9 @@ qo_follow_cost (QO_PLAN * planp)
 
   planp->fixed_cpu_cost = head->fixed_cpu_cost;
   planp->fixed_io_cost = head->fixed_io_cost;
-  planp->variable_cpu_cost = head->variable_cpu_cost + (cardinality * (double) QO_CPU_WEIGHT);
+  planp->variable_cpu_cost = QO_PLAN_VARIABLE_CPU_COST_WHOLE (head) + (cardinality * (double) QO_CPU_WEIGHT);
   /* following an OID to its object is a random page read */
-  planp->variable_io_cost = head->variable_io_cost + fetch_ios * QO_COST_RANDOM_PAGE;
+  planp->variable_io_cost = QO_PLAN_VARIABLE_IO_COST_WHOLE (head) + fetch_ios * QO_COST_RANDOM_PAGE;
 
 #if TEST_DUMP_PLAN_FOLLOW_COST
   fprintf (stdout, "\nFollow Cost: \n");
@@ -8394,27 +8558,13 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       }
   }
 
-  if (ta > 0 && tb > 0 && QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
+  if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_RATIO <= tb))
     {
-      if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_LIMIT_RATIO <= tb))
-	{
-	  return PLAN_COMP_LT;
-	}
-      else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_LIMIT_RATIO))
-	{
-	  return PLAN_COMP_GT;
-	}
+      return PLAN_COMP_LT;
     }
-  else
+  else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_RATIO))
     {
-      if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_RATIO <= tb))
-	{
-	  return PLAN_COMP_LT;
-	}
-      else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_RATIO))
-	{
-	  return PLAN_COMP_GT;
-	}
+      return PLAN_COMP_GT;
     }
 
   if (qo_is_sort_limit (a))
@@ -12370,6 +12520,8 @@ qo_alloc_planner (QO_ENV * env)
   planner->cleanup_needed = true;
   planner->can_apply_limit_card = qo_can_apply_limit_card (env);
   planner->groupby_limit_groups = qo_groupby_limit_groups (env);
+  planner->orderby_limit_fraction = qo_orderby_limit_fraction (env);
+  planner->sort_limit_costing = false;
 
   return planner;
 }
@@ -15035,6 +15187,38 @@ qo_search_planner (QO_PLANNER * planner)
       assert (driving != NULL && driving->plan_un.scan.index != NULL);
       driving->plan_un.scan.index->head->groupby_skip = true;
     }
+
+  /* an index entry is shared by the plans of its node, and every top plan accepted to skip the ORDER BY marked the
+   * entries of its scans (qo_set_orderby_skip ()), the ones a chosen sort plan reads among them (a scan so marked is
+   * not read in parallel, and reverses a key list of a descending ORDER BY); the chosen plan alone marks them
+   * (CBRD-28111) */
+  {
+    QO_ENV *env = planner->env;
+    QO_NODE_INDEX *ni;
+    QO_INDEX_ENTRY *entry;
+    QO_PLAN *top;
+    int n, j;
+    bool yn = true;
+
+    for (n = 0; n < env->Nnodes; n++)
+      {
+	ni = QO_NODE_INDEXES (QO_ENV_NODE (env, n));
+	for (j = 0; ni != NULL && j < QO_NI_N (ni); j++)
+	  {
+	    for (entry = QO_NI_ENTRY (ni, j)->head; entry != NULL; entry = entry->next)
+	      {
+		entry->orderby_skip = false;
+	      }
+	  }
+      }
+
+    for (top = plan; top != NULL && top->plan_type == QO_PLANTYPE_SORT; top = top->plan_un.sort.subplan)
+      ;
+    if (top != NULL && top->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE)	/* accepted by qo_top_plan_new () */
+      {
+	qo_walk_plan_tree (top, qo_set_orderby_skip, &yn);
+      }
+  }
 
 end:
 
