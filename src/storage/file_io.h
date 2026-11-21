@@ -624,6 +624,9 @@ int fileio_os_sysconf (void);
 #endif /* SERVER_MODE */
 #endif
 
+extern bool fileio_writeback_temp_pages (THREAD_ENTRY * thread_p, VOLID vol_id, int npages, bool defer);
+extern int fileio_writeback_requested_volumes (THREAD_ENTRY * thread_p);
+
 /* flush control related */
 extern int fileio_flush_control_initialize (void);
 extern void fileio_flush_control_finalize (void);

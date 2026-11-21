@@ -839,6 +839,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL "numeric_empty_string_as_null"
 
+#define PRM_NAME_TEMP_WRITEBACK_SIZE "temp_writeback_size"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -5797,6 +5799,21 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* Temporary pages are written without DWB, and nothing synchronizes them while DWB is used, so the OS keeps them as
+   * dirty page cache until its own writeback. After this many temporary pages are written to a volume, ask the OS to
+   * start writing them back. Kept in pages, given as size. 0 turns it off. */
+  {PRM_ID_TEMP_WRITEBACK_SIZE,
+   PRM_NAME_TEMP_WRITEBACK_SIZE,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 256}},
+   {false, {.i = 256}},
+   {false, {.i = 65536}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) prm_size_to_io_pages,
+   (DUP_PRM_FUNC) prm_io_pages_to_size},
 };
 
 /* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the
