@@ -16898,7 +16898,7 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
 
   if (result_num->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
-      result_num->data.num.header.precision = precision;
+      result_num->data.num.header.precision = numeric_get_precision_digits (db_locate_numeric (result_num));
       result_num->data.num.header.scale = scale;
     }
   else
