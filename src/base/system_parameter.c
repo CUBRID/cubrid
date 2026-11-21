@@ -5799,9 +5799,9 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  /* Temporary pages are written without DWB and never synchronized, so the OS keeps them as dirty page cache until
-   * its own writeback. After this many temporary pages are written, ask the OS to start writing them back.
-   * Kept in pages, given as size. 0 turns it off. */
+  /* Temporary pages are written without DWB, and nothing synchronizes them while DWB is used, so the OS keeps them as
+   * dirty page cache until its own writeback. After this many temporary pages are written to a volume, ask the OS to
+   * start writing them back. Kept in pages, given as size. 0 turns it off. */
   {PRM_ID_TEMP_WRITEBACK_SIZE,
    PRM_NAME_TEMP_WRITEBACK_SIZE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
