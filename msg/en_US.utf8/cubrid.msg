@@ -1526,12 +1526,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1402 Vacuum could not find the OOS file of heap file %1$d|%2$d (error %3$d). Object %4$d|%5$d|%6$d and the rest of that heap file in the current log block are left for a later run of the block.
 
-1403 Cannot perform %1$s inside a query or DML statement.
-1404 Cannot perform %1$s in a trigger.
-1405 Cannot perform a DML operation inside a query.
-1406 The stored procedure cannot modify table "%1$s" because the statement references it.
+1403 The binary section of the object file is corrupted or truncated at offset %1$lld.
+1404 Cannot perform %1$s inside a query or DML statement.
+1405 Cannot perform %1$s in a trigger.
+1406 Cannot perform a DML operation inside a query.
+1407 The stored procedure cannot modify table "%1$s" because the statement references it.
 
-1407 Last Error
+1408 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

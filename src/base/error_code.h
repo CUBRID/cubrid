@@ -1814,13 +1814,14 @@
 
 #define ER_VACUUM_OOS_LOOKUP_DEFERRED               -1402
 
-#define ER_SP_TCL_DDL_IN_QUERY                      -1403
-#define ER_SP_TCL_DDL_IN_TRIGGER                    -1404
-#define ER_SP_DML_IN_QUERY                          -1405
-#define ER_SP_TABLE_REFERENCED                      -1406
+#define ER_LDR_CORRUPTED_BINARY_RECORD              -1403
 
-#define ER_LAST_ERROR                               -1407
+#define ER_SP_TCL_DDL_IN_QUERY                      -1404
+#define ER_SP_TCL_DDL_IN_TRIGGER                    -1405
+#define ER_SP_DML_IN_QUERY                          -1406
+#define ER_SP_TABLE_REFERENCED                      -1407
 
+#define ER_LAST_ERROR                               -1408
 
 /*
  * CAUTION!

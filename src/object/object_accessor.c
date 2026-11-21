@@ -3692,7 +3692,7 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
 
 /*
  * obj_find_multi_attr_internal - Work function of obj_find_multi_attr (),
- *                                obj_find_multi_attr_committed () and
+ *                                obj_find_multi_attr_catalog () and
  *                                obj_find_multi_attr_for_update ()
  *   return :  object with the key value
  *   op(in): class pointer
@@ -3704,7 +3704,7 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
  *   lookup(in): OBJ_FIND_LOCKED_READ  -- S-lock the found object (btree_find_unique () is
  *                                        S_SELECT_WITH_LOCK) and fetch its dirty version;
  *                                        an AU_FETCH_UPDATE fetch then upgrades that S to X
- *               OBJ_FIND_COMMITTED_READ -- read the latest committed version without a lock
+ *               OBJ_FIND_CATALOG_READ  -- read the latest committed version without a lock
  *                                        (fetchmode must be AU_FETCH_READ)
  *               OBJ_FIND_FOR_UPDATE    -- X-lock the found object already at the index lookup
  *                                        (S_UPDATE), so a writer never holds an intermediate S
@@ -3714,7 +3714,7 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
 typedef enum
 {
   OBJ_FIND_LOCKED_READ,
-  OBJ_FIND_COMMITTED_READ,
+  OBJ_FIND_CATALOG_READ,
   OBJ_FIND_FOR_UPDATE
 } OBJ_FIND_LOOKUP;
 
@@ -3735,7 +3735,7 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
   BTREE_SEARCH result;
   OID oid;
 
-  assert (lookup != OBJ_FIND_COMMITTED_READ || fetchmode == AU_FETCH_READ);
+  assert (lookup != OBJ_FIND_CATALOG_READ || fetchmode == AU_FETCH_READ);
   assert (lookup != OBJ_FIND_FOR_UPDATE || fetchmode == AU_FETCH_UPDATE);
 
   if (op == NULL || attr_names == NULL || values == NULL || size < 1)
@@ -3843,7 +3843,7 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
 
       result =
 	btree_find_multi_uniques (ws_oid (op), DB_NOT_PARTITIONED_CLASS, &unique_btid, &unique_key, 1,
-				  (lookup == OBJ_FIND_COMMITTED_READ) ? S_SELECT : S_UPDATE, &found_oids, &found_count);
+				  (lookup == OBJ_FIND_CATALOG_READ) ? S_SELECT : S_UPDATE, &found_oids, &found_count);
       if (result == BTREE_KEY_FOUND)
 	{
 	  assert (found_oids != NULL && found_count == 1);
@@ -3863,7 +3863,7 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
     {
       obj = ws_mop (&oid, NULL);
       if (au_fetch_instance_force (obj, NULL, fetchmode,
-				   (lookup == OBJ_FIND_COMMITTED_READ) ? LC_FETCH_COMMITTED_VERSION :
+				   (lookup == OBJ_FIND_CATALOG_READ) ? LC_FETCH_CATALOG_VERSION :
 				   LC_FETCH_DIRTY_VERSION) != NO_ERROR)
 	{
 	  obj = NULL;
@@ -3906,9 +3906,9 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
 }
 
 /*
- * obj_find_multi_attr_committed - Locate the instance whose key has a
- *                                 particular unique value and read its latest
- *                                 committed version without locking it
+ * obj_find_multi_attr_catalog - Locate the instance whose key has a
+ *                               particular unique value and read its latest
+ *                               committed version without locking it
  *   return :  object with the key value
  *   op(in): class pointer
  *   size(in): size of value array
@@ -3919,16 +3919,16 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
  *       dirty version, so a concurrent writer holding the row X-locked blocks
  *       the caller until it commits. This variant instead returns the last
  *       committed state of the row -- lookup and fetch take no lock and do not
- *       build the transaction's MVCC snapshot (LC_FETCH_COMMITTED_VERSION). It
+ *       build the transaction's MVCC snapshot (LC_FETCH_CATALOG_VERSION). It
  *       is for catalog data whose last committed value is good enough for the
  *       reader, e.g. the optimizer's histogram read (CBRD-27369); the returned
  *       object must not be used as the base of an update. The server honors the
  *       unlocked lookup only for the classes listed in xbtree_find_unique ().
  */
 MOP
-obj_find_multi_attr_committed (MOP op, int size, const char *attr_names[], const DB_VALUE * values[])
+obj_find_multi_attr_catalog (MOP op, int size, const char *attr_names[], const DB_VALUE * values[])
 {
-  return obj_find_multi_attr_internal (op, size, attr_names, values, AU_FETCH_READ, OBJ_FIND_COMMITTED_READ);
+  return obj_find_multi_attr_internal (op, size, attr_names, values, AU_FETCH_READ, OBJ_FIND_CATALOG_READ);
 }
 
 /*
