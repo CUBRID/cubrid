@@ -158,6 +158,7 @@ enum thread_type
   TT_NONE
 };
 
+// a new value must also be classified in thread_is_resumed_status () (thread_entry.cpp)
 enum thread_resume_suspend_status
 {
   THREAD_RESUME_NONE = 0,
