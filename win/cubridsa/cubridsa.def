@@ -157,6 +157,7 @@ EXPORTS
 	backupdb
 	restoredb
 	addvoldb
+	delvoldb
 	spacedb
 	optimizedb
 	installdb

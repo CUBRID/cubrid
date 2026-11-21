@@ -209,7 +209,9 @@ typedef enum
   RVOOS_RECLAIM_POSTPONE = 142,	/* logical postpone: reclaim chains once the deciding unit commits */
   RVOOS_UPDATE_DROP_POSTPONE = 143,	/* logical postpone: append RVOOS_NOTIFY_VACUUM once an UPDATE commits */
   RVREPL_OOS_REUSE = 144,	/* OOS replication marker: the UPDATE reused this column's chain */
-  RV_LAST_LOGID = RVREPL_OOS_REUSE,
+  RVDK_DELETE_VOLUME = 145,
+
+  RV_LAST_LOGID = RVDK_DELETE_VOLUME,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
