@@ -24,16 +24,39 @@
 
 #include "thread_manager.hpp"
 
+#include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <log_impl.h>
 #include <sys/time.h>
+#include <time.h>
+
+#include "mvcc.h"
+#include "object_representation_constants.h"
+
+#include <atomic>
 
 #define strlen(s1) ((int) strlen(s1))
 
 #define NOPS_SNAPSHOT   1000000
 #define NOPS_COMPLPETE  1000000
 #define NOPS_OLDEST     2000000
+
+/* operations per thread; main () may lower them for a single benchmark run */
+static int nops_snapshot = NOPS_SNAPSHOT;
+static int nops_complete = NOPS_COMPLPETE;
+static int nops_oldest = NOPS_OLDEST;
+
+/* thread entries and transaction descriptors created once; thread entry i works under tran index i + 1, and order
+ * writer w borrows tran index TEST_MAX_THREADS + 1 + w as its second transaction */
+#define TEST_MAX_THREADS 128
+/* order writers; each one also borrows one extra tran index after the thread entries' indices */
+#define TEST_ORDER_WRITERS 4
+#define TEST_NUM_TRAN_INDICES (TEST_MAX_THREADS + 1 + TEST_ORDER_WRITERS)
+#define TEST_ORDER_SECOND_TRAN_INDEX(writer) (TEST_MAX_THREADS + 1 + (writer))
+/* upper bound of operations per thread given on the command line */
+#define TEST_MAX_OPS 10000000
 
 /* bit area sizes expressed in bits */
 #define MVCC_BITAREA_ELEMENT_BITS 64
@@ -89,6 +112,86 @@ success ()
 
   printf (" %s [%9.3f sec]\n", "OK", (float) elapsed_msec / 1000.0f);
   return NO_ERROR;
+}
+
+static int
+test_parse_count (const char *arg, int min_value, int max_value, int *value)
+{
+  char *end = NULL;
+  long parsed;
+
+  errno = 0;
+  parsed = strtol (arg, &end, 10);
+  if (errno != 0 || end == arg || *end != '\0' || parsed < min_value || parsed > max_value)
+    {
+      return ER_FAILED;
+    }
+  *value = (int) parsed;
+  return NO_ERROR;
+}
+
+static UINT64
+test_now_ns (void)
+{
+  struct timespec ts;
+
+  clock_gettime (CLOCK_MONOTONIC, &ts);
+  return (UINT64) ts.tv_sec * 1000000000ULL + (UINT64) ts.tv_nsec;
+}
+
+/*
+ * Order oracle (CBRD-26971).  Each of TEST_ORDER_WRITERS writer threads owns two transactions.  In each round it
+ * takes two MVCCIDs, publishes the pair, and commits them one after the other.  Snapshot threads check every snapshot
+ * they build:
+ *  - real time: an id whose commit returned before the snapshot started is visible;
+ *  - order: if a pair's second commit is visible, its first commit is visible too (the last two pairs are checked:
+ *    the last one may be between its commits, the one before it is done);
+ *  - not early: if the writer had not started committing a pair's second id when the snapshot was done, the second
+ *    id is not visible;
+ *  - vacuum bound: the global oldest visible MVCCID never passes the snapshot's lowest active MVCCID.
+ * Every writer keeps its own pairs.  The writers keep going while snapshot threads run (at least one round each, at
+ * most nops_snapshot rounds each).  A run fails unless some snapshot was built while a writer was between the two
+ * commits of a pair, so the checks cannot pass only because no snapshot overlapped a commit.
+ * The current table serializes commits under one mutex; a table that lets commits and snapshots overlap must keep
+ * passing.  Not covered: rollback (a snapshot treats it like a commit), the vacuum guard between a commit and its
+ * LOG_COMMIT, unique statistics (the transactions here have none), long transactions and sub-transactions.
+ */
+typedef struct test_order_pair TEST_ORDER_PAIR;
+struct test_order_pair
+{
+  MVCCID first_completed;
+  MVCCID second_completed;
+};
+
+static TEST_ORDER_PAIR *order_pairs[TEST_ORDER_WRITERS];
+static int nops_order = 0;
+static int order_writer_first_entry = 0;
+// *INDENT-OFF*
+static std::atomic<int> snapshot_threads_running (0);
+static std::atomic<int> order_pairs_published[TEST_ORDER_WRITERS];
+static std::atomic<MVCCID> order_last_completed[TEST_ORDER_WRITERS];
+/* the id the writer is committing or last committed; stored before the commit starts */
+static std::atomic<MVCCID> order_commit_started[TEST_ORDER_WRITERS];
+// *INDENT-ON*
+
+static UINT64 count_order_rounds = 0;
+static UINT64 count_overlaps = 0;
+static UINT64 count_early = 0;
+static UINT64 count_stale = 0;
+static UINT64 count_order_violations = 0;
+static UINT64 count_vacuum_violations = 0;
+static UINT64 total_snapshot_ns = 0;
+static UINT64 total_complete_ns = 0;
+
+static bool
+test_is_committed_in_snapshot (THREAD_ENTRY * thread_p, MVCCID mvccid, MVCC_SNAPSHOT * snapshot)
+{
+  MVCC_REC_HEADER rec_header = MVCC_REC_HEADER_INITIALIZER;
+
+  /* a record inserted by mvccid is visible exactly when mvccid is committed for the snapshot */
+  rec_header.mvcc_flag = OR_MVCC_FLAG_VALID_INSID;
+  rec_header.mvcc_ins_id = mvccid;
+  return mvcc_satisfies_snapshot (thread_p, &rec_header, snapshot) == SNAPSHOT_SATISFIED;
 }
 
 static void
@@ -289,11 +392,76 @@ test_mvcc_get_snapshot (void *param)
   cubthread::set_thread_local_entry (*thread_p);
   // *INDENT-ON*
 
-  for (i = 0; i < NOPS_SNAPSHOT; i++)
+  UINT64 local_ns = 0, local_overlaps = 0, local_early = 0, local_stale = 0, local_order = 0, local_vacuum = 0;
+  MVCC_SNAPSHOT *snapshot;
+  MVCCID done_before[TEST_ORDER_WRITERS], oldest_visible;
+  MVCCID started;
+  int published[TEST_ORDER_WRITERS], published_after, k, w;
+  bool overlapped;
+  TEST_ORDER_PAIR *pair;
+  UINT64 t0;
+
+  for (i = 0; i < nops_snapshot; i++)
     {
-      if (logtb_get_mvcc_snapshot (thread_p) != NULL)
+      /* everything read here happened before the snapshot started */
+      for (w = 0; w < TEST_ORDER_WRITERS; w++)
+	{
+	  done_before[w] = order_last_completed[w].load (std::memory_order_acquire);
+	  published[w] = order_pairs_published[w].load (std::memory_order_acquire);
+	}
+
+      t0 = test_now_ns ();
+      snapshot = logtb_get_mvcc_snapshot (thread_p);
+      local_ns += test_now_ns () - t0;
+      if (snapshot != NULL)
 	{
 	  local_count_snapshots++;
+
+	  for (w = 0; w < TEST_ORDER_WRITERS; w++)
+	    {
+	      if (MVCCID_IS_VALID (done_before[w])
+		  && !test_is_committed_in_snapshot (thread_p, done_before[w], snapshot))
+		{
+		  local_stale++;
+		}
+	      for (k = published[w] - 1; k >= 0 && k >= published[w] - 2; k--)
+		{
+		  pair = &order_pairs[w][k];
+		  if (test_is_committed_in_snapshot (thread_p, pair->second_completed, snapshot)
+		      && !test_is_committed_in_snapshot (thread_p, pair->first_completed, snapshot))
+		    {
+		      local_order++;
+		    }
+		}
+	    }
+	  /* read after the snapshot: if the writer is still on the first commit of its last pair, the second commit had
+	   * not started while the snapshot was built (a completion published to the snapshot happens after the writer
+	   * stored the second id here), so the second id must not be visible */
+	  overlapped = false;
+	  for (w = 0; w < TEST_ORDER_WRITERS; w++)
+	    {
+	      started = order_commit_started[w].load (std::memory_order_acquire);
+	      published_after = order_pairs_published[w].load (std::memory_order_acquire);
+	      if (published_after > 0 && started == order_pairs[w][published_after - 1].first_completed)
+		{
+		  overlapped = true;
+		  if (test_is_committed_in_snapshot (thread_p, order_pairs[w][published_after - 1].second_completed,
+						     snapshot))
+		    {
+		      local_early++;
+		    }
+		}
+	    }
+	  if (overlapped)
+	    {
+	      local_overlaps++;
+	    }
+	  /* this transaction's lowest active MVCCID is published, so vacuum must stay at or below it */
+	  oldest_visible = log_Gl.mvcc_table.get_global_oldest_visible ();
+	  if (MVCC_ID_PRECEDES (snapshot->lowest_active_mvccid, oldest_visible))
+	    {
+	      local_vacuum++;
+	    }
 	}
 
       /* Invalidate snapshot */
@@ -302,6 +470,13 @@ test_mvcc_get_snapshot (void *param)
     }
 
   ATOMIC_INC_64 (&count_snapshots, local_count_snapshots);
+  ATOMIC_INC_64 (&total_snapshot_ns, local_ns);
+  ATOMIC_INC_64 (&count_overlaps, local_overlaps);
+  ATOMIC_INC_64 (&count_early, local_early);
+  ATOMIC_INC_64 (&count_stale, local_stale);
+  ATOMIC_INC_64 (&count_order_violations, local_order);
+  ATOMIC_INC_64 (&count_vacuum_violations, local_vacuum);
+  snapshot_threads_running--;
   fprintf (stdout, "snapshot worker thread (%p) is leaving\n", thread_p);
   fflush (stdout);
 
@@ -327,7 +502,10 @@ test_new_mvcc_complete (void *param)
   cubthread::set_thread_local_entry (*thread_p);
   // *INDENT-ON*
 
-  for (i = 0; i < NOPS_COMPLPETE; i++)
+  UINT64 local_ns = 0;
+  UINT64 t0;
+
+  for (i = 0; i < nops_complete; i++)
     {
       mvccid = logtb_get_current_mvccid (thread_p);
       if (mvccid == MVCCID_NULL)
@@ -335,7 +513,9 @@ test_new_mvcc_complete (void *param)
 	  abort ();
 	}
 
+      t0 = test_now_ns ();
       logtb_complete_mvcc (thread_p, tdes, committed);
+      local_ns += test_now_ns () - t0;
       committed = !committed;
 
       /* here we may test whether bit was set */
@@ -345,6 +525,7 @@ test_new_mvcc_complete (void *param)
     }
 
   ATOMIC_INC_64 (&count_complete, local_count_complete);
+  ATOMIC_INC_64 (&total_complete_ns, local_ns);
   fprintf (stdout, "complete worker thread (%p) is leaving\n", thread_p);
   fflush (stdout);
 
@@ -367,10 +548,11 @@ test_mvcc_get_oldest (void *param)
   cubthread::set_thread_local_entry (*thread_p);
   // *INDENT-ON*
 
-  for (i = 0; i < NOPS_OLDEST; i++)
+  for (i = 0; i < nops_oldest; i++)
     {
       prev_oldest = curr_oldest;
-      curr_oldest = log_Gl.mvcc_table.get_global_oldest_visible ();
+      /* compute it the way vacuum does, so snapshot threads can check the bound against a moving value */
+      curr_oldest = log_Gl.mvcc_table.update_global_oldest_visible ();
       if (MVCC_ID_PRECEDES (curr_oldest, prev_oldest))
 	{
 	  abort ();
@@ -392,18 +574,89 @@ test_mvcc_get_oldest (void *param)
   return (THREAD_RET_T) 0;
 }
 
+static void
+test_order_commit (THREAD_ENTRY * thread_p, int tran_index)
+{
+  thread_p->tran_index = tran_index;
+  logtb_complete_mvcc (thread_p, LOG_FIND_TDES (tran_index), true);
+  log_Gl.mvcc_table.reset_transaction_lowest_active (tran_index);
+}
+
+THREAD_RET_T THREAD_CALLING_CONVENTION
+test_mvcc_order_writer (void *param)
+{
+  int i;
+  THREAD_ENTRY *thread_p = (THREAD_ENTRY *) param;
+  int own_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  int writer = thread_p->index - order_writer_first_entry;
+  int second_tran_index = TEST_ORDER_SECOND_TRAN_INDEX (writer);
+  int tran_a, tran_b, tran_tmp;
+  MVCCID id_a, id_b, id_tmp;
+  unsigned int local_rounds = 0;
+
+  // *INDENT-OFF*
+  cubthread::set_thread_local_entry (*thread_p);
+  // *INDENT-ON*
+
+  for (i = 0; i < nops_order && (i == 0 || snapshot_threads_running.load () > 0); i++)
+    {
+      thread_p->tran_index = own_tran_index;
+      id_a = logtb_get_current_mvccid (thread_p);
+      thread_p->tran_index = second_tran_index;
+      id_b = logtb_get_current_mvccid (thread_p);
+      if (id_a == MVCCID_NULL || id_b == MVCCID_NULL)
+	{
+	  abort ();
+	}
+
+      /* alternate older-first and newer-first, so both ends of the active range move first */
+      tran_a = own_tran_index;
+      tran_b = second_tran_index;
+      if (i % 2 != 0)
+	{
+	  id_tmp = id_a;
+	  id_a = id_b;
+	  id_b = id_tmp;
+	  tran_tmp = tran_a;
+	  tran_a = tran_b;
+	  tran_b = tran_tmp;
+	}
+      order_pairs[writer][i].first_completed = id_a;
+      order_pairs[writer][i].second_completed = id_b;
+      order_pairs_published[writer].store (i + 1, std::memory_order_release);
+
+      order_commit_started[writer].store (id_a, std::memory_order_release);
+      test_order_commit (thread_p, tran_a);
+      order_last_completed[writer].store (id_a, std::memory_order_release);
+      order_commit_started[writer].store (id_b, std::memory_order_release);
+      test_order_commit (thread_p, tran_b);
+      order_last_completed[writer].store (id_b, std::memory_order_release);
+
+      local_rounds++;
+    }
+  thread_p->tran_index = own_tran_index;
+
+  ATOMIC_INC_64 (&count_order_rounds, local_rounds);
+
+  // *INDENT-OFF*
+  cubthread::clear_thread_local_entry ();
+  // *INDENT-ON*
+
+  return (THREAD_RET_T) 0;
+}
+
 static int
 test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int num_oldest_mvccid_threads,
 		      THREAD_ENTRY * thread_array)
 {
   int i;
   int numthreads;
-#define MAX_THREADS	  100
-  pthread_t threads[MAX_THREADS];
+  pthread_t threads[TEST_MAX_THREADS];
   int idx_thread_entry;
+  int error = NO_ERROR;
   char msg[256];
 
-  numthreads = num_snapshot_threads + num_complete_threads + num_oldest_mvccid_threads;
+  numthreads = num_snapshot_threads + num_complete_threads + num_oldest_mvccid_threads + TEST_ORDER_WRITERS;
   sprintf (msg, "test_mvcc_operations (%d snapshot threads, %d complete threads, %d oldest threads)",
 	   num_snapshot_threads, num_complete_threads, num_oldest_mvccid_threads);
   begin (msg);
@@ -414,74 +667,137 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
       return ER_FAILED;
     }
 
-  if (numthreads > MAX_THREADS)
+  if (numthreads > TEST_MAX_THREADS)
     {
       printf (" %s: %s\n", "FAILED", "too many threads");
       return ER_FAILED;
     }
 
   count_snapshots = count_complete = count_oldest = 0;
+  count_order_rounds = count_overlaps = count_early = count_stale = count_order_violations = 0;
+  count_vacuum_violations = 0;
+  total_snapshot_ns = total_complete_ns = 0;
+  nops_order = nops_snapshot;
+  for (i = 0; i < TEST_ORDER_WRITERS; i++)
+    {
+      order_pairs[i] = (TEST_ORDER_PAIR *) malloc (nops_order * sizeof (TEST_ORDER_PAIR));
+      if (order_pairs[i] == NULL)
+	{
+	  while (--i >= 0)
+	    {
+	      free_and_init (order_pairs[i]);
+	    }
+	  printf (" %s: %s\n", "FAILED", "out of memory");
+	  return ER_FAILED;
+	}
+      order_pairs_published[i].store (0);
+      order_last_completed[i].store (MVCCID_NULL);
+      order_commit_started[i].store (MVCCID_NULL);
+    }
+  snapshot_threads_running.store (num_snapshot_threads);
   idx_thread_entry = 0;
-  for (i = 0; i < num_snapshot_threads; i++, idx_thread_entry++)
+  /* order writers first, so they are already committing when the snapshot threads start */
+  order_writer_first_entry = idx_thread_entry;
+  for (i = 0; i < TEST_ORDER_WRITERS && error == NO_ERROR; i++, idx_thread_entry++)
+    {
+      if (pthread_create (&threads[idx_thread_entry], NULL, test_mvcc_order_writer,
+			  (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
+	{
+	  printf (" %s: %s\n", "FAILED", "thread create error");
+	  error = ER_FAILED;
+	  break;
+	}
+    }
+
+  for (i = 0; i < num_snapshot_threads && error == NO_ERROR; i++, idx_thread_entry++)
     {
       if (pthread_create (&threads[idx_thread_entry], NULL, test_mvcc_get_snapshot,
 			  (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
 	{
 	  printf (" %s: %s\n", "FAILED", "thread create error");
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  break;
 	}
     }
+  /* the writers stop when the started snapshot threads end; do not wait for those never started */
+  snapshot_threads_running.fetch_sub (num_snapshot_threads - i);
 
-  for (i = 0; i < num_complete_threads; i++, idx_thread_entry++)
+  for (i = 0; i < num_complete_threads && error == NO_ERROR; i++, idx_thread_entry++)
     {
       if (pthread_create (&threads[idx_thread_entry], NULL, test_new_mvcc_complete,
 			  (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
 	{
 	  printf (" %s: %s\n", "FAILED", "thread create error");
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  break;
 	}
     }
 
-  for (i = 0; i < num_oldest_mvccid_threads; i++, idx_thread_entry++)
+  for (i = 0; i < num_oldest_mvccid_threads && error == NO_ERROR; i++, idx_thread_entry++)
     {
       if (pthread_create (&threads[idx_thread_entry], NULL, test_mvcc_get_oldest,
 			  (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
 	{
 	  printf (" %s: %s\n", "FAILED", "thread create error");
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  break;
 	}
     }
 
-  for (i = 0; i < numthreads; i++)
+  /* Wait for every thread that started, also after a failure: they use the MVCC table and the pair arrays, which
+   * the caller and this function free. idx_thread_entry is the number of threads created. */
+  for (i = 0; i < idx_thread_entry; i++)
     {
       void *retval;
 
       pthread_join (threads[i], &retval);
-      if (retval != NO_ERROR)
+      if (retval != NO_ERROR && error == NO_ERROR)
 	{
 	  printf (" %s: %s\n", "FAILED", "thread proc error");
-	  return ER_FAILED;
+	  error = ER_FAILED;
 	}
     }
-
-  if (count_snapshots != (UINT64) num_snapshot_threads * NOPS_SNAPSHOT)
+  for (i = 0; i < TEST_ORDER_WRITERS; i++)
     {
-      printf ("snapshot count fail (%llu != %llu)",
-	      (unsigned long long) count_snapshots, (unsigned long long) num_snapshot_threads * NOPS_SNAPSHOT);
+      free_and_init (order_pairs[i]);
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (count_snapshots != (UINT64) num_snapshot_threads * nops_snapshot)
+    {
+      printf ("snapshot count fail (%llu != %llu)\n",
+	      (unsigned long long) count_snapshots, (unsigned long long) num_snapshot_threads * nops_snapshot);
       return ER_FAILED;
     }
 
-  if (count_complete != (UINT64) num_complete_threads * NOPS_COMPLPETE)
+  if (count_complete != (UINT64) num_complete_threads * nops_complete)
     {
-      printf ("complete count fail (%llu != %llu)",
-	      (unsigned long long) count_complete, (unsigned long long) num_complete_threads * NOPS_COMPLPETE);
+      printf ("complete count fail (%llu != %llu)\n",
+	      (unsigned long long) count_complete, (unsigned long long) num_complete_threads * nops_complete);
       return ER_FAILED;
     }
 
-  if (count_oldest != (UINT64) num_oldest_mvccid_threads * NOPS_OLDEST)
+  if (count_oldest != (UINT64) num_oldest_mvccid_threads * nops_oldest)
     {
-      printf ("oldest count fail (%llu != %llu)",
-	      (unsigned long long) count_oldest, (unsigned long long) num_oldest_mvccid_threads * NOPS_OLDEST);
+      printf ("oldest count fail (%llu != %llu)\n",
+	      (unsigned long long) count_oldest, (unsigned long long) num_oldest_mvccid_threads * nops_oldest);
+      return ER_FAILED;
+    }
+
+  printf ("  snapshot avg %.0f ns, complete avg %.0f ns, order rounds %llu, snapshots between a pair's commits %llu\n",
+	  count_snapshots > 0 ? (double) total_snapshot_ns / count_snapshots : 0.0,
+	  count_complete > 0 ? (double) total_complete_ns / count_complete : 0.0,
+	  (unsigned long long) count_order_rounds, (unsigned long long) count_overlaps);
+  if ((num_snapshot_threads > 0 && count_overlaps == 0) || count_stale != 0 || count_order_violations != 0
+      || count_early != 0 || count_vacuum_violations != 0)
+    {
+      printf (" %s: snapshots between a pair's commits %llu, stale snapshots %llu, order violations %llu, "
+	      "early visible %llu, vacuum bound violations %llu\n", "FAILED", (unsigned long long) count_overlaps,
+	      (unsigned long long) count_stale, (unsigned long long) count_order_violations,
+	      (unsigned long long) count_early, (unsigned long long) count_vacuum_violations);
       return ER_FAILED;
     }
 
@@ -501,7 +817,38 @@ main (int argc, char **argv)
   int num_snapshot_threads, num_complete_threads, num_oldest_threads;
   THREAD_ENTRY *thread_array = NULL;
 
-  logtb_initialize_mvcc_testing (100, &thread_array);
+  if (argc != 1 && argc != 3 && argc != 4)
+    {
+      printf ("usage: %s [<snapshot threads> <complete threads> [<operations per thread>]]\n", argv[0]);
+      return ER_FAILED;
+    }
+
+  if (logtb_initialize_mvcc_testing (TEST_NUM_TRAN_INDICES, &thread_array) != NO_ERROR)
+    {
+      printf ("Unit tests failed!\n");
+      return ER_FAILED;
+    }
+
+  if (argc > 1)
+    {
+      /* one run with the given thread counts, e.g. to compare the cost per operation as threads grow */
+      if (test_parse_count (argv[1], 0, TEST_MAX_THREADS, &num_snapshot_threads) != NO_ERROR
+	  || test_parse_count (argv[2], 0, TEST_MAX_THREADS, &num_complete_threads) != NO_ERROR
+	  || (argc == 4 && test_parse_count (argv[3], 1, TEST_MAX_OPS, &nops_snapshot) != NO_ERROR))
+	{
+	  printf ("invalid argument: thread counts 0..%d (snapshot + complete up to %d), operations 1..%d\n",
+		  TEST_MAX_THREADS, TEST_MAX_THREADS - 1 - TEST_ORDER_WRITERS, TEST_MAX_OPS);
+	  goto fail;
+	}
+      nops_complete = nops_snapshot;
+      nops_oldest = 2 * nops_snapshot;
+      if (test_mvcc_operations (num_snapshot_threads, num_complete_threads, 1, thread_array) != NO_ERROR)
+	{
+	  goto fail;
+	}
+      logtb_finalize_mvcc_testing (&thread_array);
+      return 0;
+    }
 
   for (num_oldest_threads = 1; num_oldest_threads <= MAX_OLDEST_THREADS; num_oldest_threads++)
     {
