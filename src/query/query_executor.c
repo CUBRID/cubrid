@@ -973,6 +973,7 @@ static int qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl, DB_VALUE ** l
 static void qexec_reset_pseudocolumns_val_pointers (DB_VALUE * level_valp, DB_VALUE * isleaf_valp,
 						    DB_VALUE * iscycle_valp, DB_VALUE * parent_pos_valp);
 static int qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p);
+static bool qexec_version_predates_lookup (THREAD_ENTRY * thread_p, const OID * class_oid, MVCC_REC_HEADER * header);
 static BTREE_SEARCH qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 					       SCAN_OPERATION_TYPE op_type, OID * class_oid, bool is_global_index,
 					       OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache);
@@ -17969,6 +17970,34 @@ qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p, DEL_LOB_INFO ** del_lo
 
 
 /*
+ * qexec_version_predates_lookup () - Whether the settled version was committed before the snapshot the unique key
+ *				       lookup took, so that the key entry the lookup found is this version's
+ *   header(in): the settled last version's MVCC header
+ *
+ * Note: the lookup returns no entry another live transaction is writing, and a committed key change delete-marks the
+ *	 old key's entry, so the live entry naming a version committed before the lookup carries that version's key.
+ *	 The snapshot also keeps vacuum from clearing a later writer's MVCCID, so a cleared insert MVCCID is an old one.
+ */
+static bool
+qexec_version_predates_lookup (THREAD_ENTRY * thread_p, const OID * class_oid, MVCC_REC_HEADER * header)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  /* nothing between the lookup and here takes a snapshot, so a valid one predates the lookup; never take one here */
+  if (tdes == NULL || !tdes->mvccinfo.snapshot.valid || mvcc_is_mvcc_disabled_class (class_oid)
+      || MVCC_IS_HEADER_DELID_VALID (header))
+    {
+      return false;
+    }
+  /* our own version is visible to us however late we made it */
+  if (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (header) && MVCC_IS_REC_INSERTED_BY_ME (thread_p, header))
+    {
+      return false;
+    }
+  return mvcc_satisfies_snapshot (thread_p, header, &tdes->mvccinfo.snapshot) == SNAPSHOT_SATISFIED;
+}
+
+/*
  * qexec_settle_on_duplicate () - Lock the row a unique key was found to name, and make sure the key still names it
  *   return: BTREE_KEY_FOUND with *oid locked and settled, BTREE_KEY_NOTFOUND once the key names no row, or
  *	     BTREE_ERROR_OCCURRED as the lookup reports it
@@ -17977,7 +18006,8 @@ qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p, DEL_LOB_INFO ** del_lo
  *
  * Note: the lookup takes no lock: one taken from the key entry cannot see the row's owner and would queue this
  *	 transaction behind a waiter parked on this transaction's stamp.  The owner can still move the row past our X,
- *	 and the row can be deleted before we lock it, so the key is asked again until it names the row we settled on.
+ *	 and the row can be deleted before we lock it, so the key is asked again until it names the row we settled on,
+ *	 unless the settled version predates the lookup.
  */
 static BTREE_SEARCH
 qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, SCAN_OPERATION_TYPE op_type,
@@ -17985,8 +18015,10 @@ qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 			   HEAP_SCANCACHE * scan_cache)
 {
   OID settled_oid;
+  MVCC_REC_HEADER header = MVCC_REC_HEADER_INITIALIZER;
   SCAN_CODE scan;
   BTREE_SEARCH r;
+  bool predates;
 
   /* the lookup below can wait on the key's writer, so no heap page may stay fixed across it */
   assert (scan_cache == NULL || !scan_cache->cache_last_fix_page);
@@ -17994,7 +18026,8 @@ qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   do
     {
       scan = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY, NULL_CHN,
-					  LOG_WARNING_IF_DELETED, false, true, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+					  LOG_WARNING_IF_DELETED, false, true, HEAP_RECDES_DONT_CONSUME_RAW_BYTES,
+					  &header);
       if (scan == S_DOESNT_EXIST)
 	{
 	  er_clear ();
@@ -18005,7 +18038,17 @@ qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	  return BTREE_ERROR_OCCURRED;
 	}
 
+      predates = (scan == S_SUCCESS && qexec_version_predates_lookup (thread_p, class_oid, &header));
+#if defined (NDEBUG)
+      if (predates)
+	{
+	  return BTREE_KEY_FOUND;
+	}
+#endif /* NDEBUG */
+
       r = xbtree_find_unique_unlocked (thread_p, btid, op_type, key, class_oid, &settled_oid, is_global_index);
+      /* debug asks the key anyway: a version check that let a moved row through fails here */
+      assert (!predates || r == BTREE_ERROR_OCCURRED || (r == BTREE_KEY_FOUND && OID_EQ (&settled_oid, oid)));
       if (scan == S_SUCCESS)
 	{
 	  if (r == BTREE_KEY_FOUND && OID_EQ (&settled_oid, oid))
