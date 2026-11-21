@@ -341,6 +341,9 @@ struct la_info
   bool is_end_of_record;
   int last_server_state;
   bool is_role_changed;
+  bool is_failing_over;		/* the local server is to-be-active: heartbeat fails over to it */
+  bool last_is_failing_over;
+  time_t failing_over_asked_time;	/* when the local server was last asked for is_failing_over */
 
   /* _db_ha_apply_info */
   LOG_LSA append_lsa;		/* append lsa of active log header */
@@ -594,7 +597,8 @@ static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
 static void la_free_repl_items_by_tranid (int tranid);
 static int la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
 static bool la_is_done_state (int ha_server_state);
-static bool la_record_end_is_stale (void);
+static bool la_record_end_is_stale (const LOG_HEADER * iter_log_hdr);
+static bool la_is_received_log_end (const LOG_HEADER * iter_log_hdr);
 static int la_change_state (void);
 static int la_log_commit (bool update_commit_time);
 static unsigned long la_get_mem_size (void);
@@ -7659,18 +7663,54 @@ la_is_done_state (int ha_server_state)
 
 /*
  * la_record_end_is_stale() - check whether the record end an iteration reached is short of the copied log
- *   return: true if the source has stopped and the copied log header's eof is past final_lsa
+ *   return: true if the source has stopped and the copied log holds records past the end the iteration reached
+ *   iter_log_hdr(in): the copied log header the iteration started with
  *
  * Note: an iteration reads its page once. If the copied log grows meanwhile, the END_OF_LOG it reaches
  *       in that page is not the end of the copied log, although the header may have been re-read since.
  *       Only a stopped source matters: it is the one that lets the applier report done.
+ *       When neither header is synchronized, the eof is the source's and the iteration stops at the last
+ *       received page (see la_is_received_log_end ()). The copied log has grown only if that page has moved.
  */
 static bool
-la_record_end_is_stale (void)
+la_record_end_is_stale (const LOG_HEADER * iter_log_hdr)
 {
   const LOG_HEADER *log_hdr = la_Info.act_log.log_hdr;
 
-  return la_is_done_state (log_hdr->ha_server_state) && la_Info.final_lsa < log_hdr->eof_lsa;
+  if (!la_is_done_state (log_hdr->ha_server_state))
+    {
+      return false;
+    }
+
+  if (log_hdr->ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED
+      || iter_log_hdr->ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
+    {
+      return la_Info.final_lsa < log_hdr->eof_lsa;
+    }
+
+  return log_hdr->append_lsa.load ().pageid > iter_log_hdr->append_lsa.load ().pageid;
+}
+
+/*
+ * la_is_received_log_end() - check whether the records an iteration stops at the received pages are all it gets
+ *   return: true if the source is dead, the copied log header is not synchronized and heartbeat fails over
+ *           to the local server
+ *   iter_log_hdr(in): the copied log header the iteration started with
+ *
+ * Note: while copylogdb catches up, the copied log header keeps the source's eof and an append LSA of
+ *       (the last received page, NULL_OFFSET). If the source dies then, copylogdb records it dead in that
+ *       header and stops: the pages after the append page never arrive, so the record end the applier can
+ *       reach in the received pages is the end of the copied log.
+ *       copylogdb records the source dead on a lost connection as well (ER_NET_SERVER_CRASHED) and is restarted
+ *       to catch up again, so dead alone does not mean the rest never arrives. Only heartbeat tells a dead source
+ *       node from a lost connection: it makes the local server to-be-active when it has lost the source node
+ *       (la_Info.is_failing_over).
+ */
+static bool
+la_is_received_log_end (const LOG_HEADER * iter_log_hdr)
+{
+  return iter_log_hdr->ha_server_state == HA_SERVER_STATE_DEAD
+    && iter_log_hdr->ha_file_status != LOG_HA_FILESTAT_SYNCHRONIZED && la_Info.is_failing_over;
 }
 
 static int
@@ -7682,7 +7722,8 @@ la_change_state (void)
 
   if (la_Info.last_server_state == la_Info.act_log.log_hdr->ha_server_state
       && la_Info.last_file_state == la_Info.act_log.log_hdr->ha_file_status
-      && la_Info.last_is_end_of_record == la_Info.is_end_of_record)
+      && la_Info.last_is_end_of_record == la_Info.is_end_of_record
+      && la_Info.last_is_failing_over == la_Info.is_failing_over)
     {
       /* there are no need to change */
       return NO_ERROR;
@@ -7699,9 +7740,13 @@ la_change_state (void)
   la_Info.last_server_state = la_Info.act_log.log_hdr->ha_server_state;
   la_Info.last_file_state = la_Info.act_log.log_hdr->ha_file_status;
   la_Info.last_is_end_of_record = la_Info.is_end_of_record;
+  la_Info.last_is_failing_over = la_Info.is_failing_over;
 
-  /* check log file status */
-  if (la_Info.is_end_of_record == true && (la_Info.act_log.log_hdr->ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED))
+  /* check log file status. while heartbeat fails over from a dead source, no more log arrives, so the record end in
+   * the received pages is the end also when the header is not synchronized (la_is_received_log_end ()) */
+  if (la_Info.is_end_of_record == true
+      && (la_Info.act_log.log_hdr->ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED
+	  || la_is_received_log_end (la_Info.act_log.log_hdr)))
     {
       /* check server's state with log header */
       if (la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_ACTIVE
@@ -7786,6 +7831,20 @@ la_change_state (void)
 		    css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) new_state),
 		    (long long int) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
+
+	  if (new_state == HA_LOG_APPLIER_STATE_DONE && la_is_received_log_end (la_Info.act_log.log_hdr))
+	    {
+	      const LOG_LSA append_lsa = la_Info.act_log.log_hdr->append_lsa;
+	      const LOG_LSA eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
+
+	      snprintf (buffer, sizeof (buffer),
+			"the source (%s@%s) died before the copied log was synchronized. "
+			"applied the records before %lld|%d, received up to page %lld, "
+			"the log from there to the source's eof %lld|%d was not received",
+			la_slave_db_name, la_peer_host, LSA_AS_ARGS (&la_Info.final_lsa),
+			(long long int) append_lsa.pageid, LSA_AS_ARGS (&eof_lsa));
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
+	    }
 
 	  la_Info.apply_state = new_state;
 	}
@@ -9595,6 +9654,25 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 
 	  memcpy ((void *) &final_log_hdr, la_Info.act_log.log_hdr, sizeof (LOG_HEADER));
 
+	  /* the received pages are all the applier gets only while heartbeat fails over to the local server
+	   * (la_is_received_log_end ()). ask the local server only when the header could need it, once a second */
+	  if (final_log_hdr.ha_server_state == HA_SERVER_STATE_DEAD
+	      && final_log_hdr.ha_file_status != LOG_HA_FILESTAT_SYNCHRONIZED)
+	    {
+	      now = time (NULL);
+	      if (now != la_Info.failing_over_asked_time)
+		{
+		  /* HA_SERVER_STATE_NA asks the current state without changing it */
+		  la_Info.is_failing_over =
+		    (boot_change_ha_mode (HA_SERVER_STATE_NA, false, 0) == HA_SERVER_STATE_TO_BE_ACTIVE);
+		  la_Info.failing_over_asked_time = now;
+		}
+	    }
+	  else
+	    {
+	      la_Info.is_failing_over = false;
+	    }
+
 	  if (prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS) >= 0)
 	    {
 	      if (final_log_hdr.ha_server_state == HA_SERVER_STATE_DEAD && last_eof_lsa == final_log_hdr.eof_lsa)
@@ -9807,8 +9885,17 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  la_invalidate_page_buffer (log_buf);
 		  break;
 		}
-	      else if (la_Info.final_lsa > final_log_hdr.append_lsa.load ())
+	      else if (la_Info.final_lsa > final_log_hdr.append_lsa.load ()
+		       && !(la_is_received_log_end (&final_log_hdr)
+			    && la_Info.final_lsa.pageid == final_log_hdr.append_lsa.load ().pageid))
 		{
+		  /* the append page itself was received whole (it is short of the source's eof). when the source is
+		   * dead, its records whose next record starts in it are applied: the forw_lsa check below stops at
+		   * the first one whose next record starts past it */
+		  if (la_is_received_log_end (&final_log_hdr))
+		    {
+		      la_Info.is_end_of_record = true;
+		    }
 		  la_invalidate_page_buffer (log_buf);
 		  break;
 		}
@@ -9826,6 +9913,19 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      if (la_Info.final_lsa == final_log_hdr.eof_lsa && lrec->type != LOG_END_OF_LOG)
 		{
 		  la_Info.is_end_of_record = true;
+		  la_invalidate_page_buffer (log_buf);
+		  break;
+		}
+
+	      /* a record that runs past the received pages: la_get_page () would wait in a loop for the next page,
+	       * which never arrives from a dead source */
+	      if (final_log_hdr.ha_file_status != LOG_HA_FILESTAT_SYNCHRONIZED
+		  && lrec->forw_lsa.pageid > final_log_hdr.append_lsa.load ().pageid)
+		{
+		  if (la_is_received_log_end (&final_log_hdr))
+		    {
+		      la_Info.is_end_of_record = true;
+		    }
 		  la_invalidate_page_buffer (log_buf);
 		  break;
 		}
@@ -9902,7 +10002,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      break;
 	    }
 
-	  if (la_Info.is_end_of_record == true && la_record_end_is_stale ())
+	  if (la_Info.is_end_of_record == true && la_record_end_is_stale (&final_log_hdr))
 	    {
 	      const LOG_LSA eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
 
