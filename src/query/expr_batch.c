@@ -248,7 +248,7 @@ struct eb_leaf
   int col;			/* its index in the plan's columns */
   int vec2;			/* another column on the right instead of the constant ("a < b"), or -1 */
   int col2;
-  /* EB_STR: "= / <>" the constant (rel_op), or [NOT] LIKE a pattern */
+  /* EB_STR: "=", "<>" or an order ("<", "<=", ">", ">=") against the constant (rel_op), or [NOT] LIKE a pattern */
   unsigned char like;
   unsigned char negate;
   const char *k_str;		/* the constant's bytes for the current page */
@@ -283,7 +283,8 @@ struct eb_leaf
   /* EB_NUM: the constant brought to the column's scale, which may change the operator
    * ("n < 2.345" over scale 2 is "n <= 234") or settle it for every row ("n = 2.345") */
   unsigned char k_op;
-  unsigned char k_all;		/* EB_NUM: 0, or the result of every non-NULL row (EB_ALL_FALSE / EB_ALL_TRUE) */
+  unsigned char k_all;		/* EB_NUM, or an EB_STR order against the maximum string: 0, or the result of every
+				 * non-NULL row (EB_ALL_FALSE / EB_ALL_TRUE) */
   union
   {
     int64_t i;
@@ -314,6 +315,8 @@ struct eb_leaf_src
 {
   const DB_VALUE *value;	/* a value the leaf holds, or ... */
   DB_VALUE *const *cell;	/* ... a program cell (read after the filter's prologues ran) */
+  int step;			/* CBRD-28249: 0, or the cell is the slot of the filter's step step - 1, which the row loop
+				 * computes once per execution and eb_load_leaf_constants () computes first */
 };
 
 typedef struct eb_agg EB_AGG;
@@ -510,7 +513,7 @@ static int eb_decline (EB_BUILD * b, const char *why);
 static void *eb_arena_alloc (EXPR_BATCH_PLAN * plan, size_t bytes);
 static int eb_fallback (EXPR_BATCH_PLAN * plan, const char *why);
 static int eb_load_scalars (EXPR_BATCH_PLAN * plan);
-static int eb_load_leaf_constants (EXPR_BATCH_PLAN * plan);
+static int eb_load_leaf_constants (EXPR_BATCH_PLAN * plan, THREAD_ENTRY * thread_p, struct val_descr *vd);
 static int eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, int n, int only_col);
 static int eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale);
 static int eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, struct val_descr *vd);
@@ -1188,6 +1191,29 @@ eb_slot_lookup (const EB_BUILD * b, const DB_VALUE * slot, ATTR_ID * attrid, HEA
 /* ---------------------------------------------------------------------------------------- */
 /* the filter: the AND chain's terms in order, raw where "column op constant" */
 
+/* the leaf's REL_OP with the column on the left: "constant op column" reads as "column op' constant" */
+static int
+eb_rel_op_column_left (const EXPR_RAW_LEAF_INFO * info)
+{
+  if (info->col_is_lhs)
+    {
+      return info->rel_op;
+    }
+  switch (info->rel_op)
+    {
+    case R_LT:
+      return R_GT;
+    case R_LE:
+      return R_GE;
+    case R_GT:
+      return R_LT;
+    case R_GE:
+      return R_LE;
+    default:
+      return info->rel_op;
+    }
+}
+
 /* A raw leaf for one filter term: *out the leaf's index, or -1 when the term is not one the batch runs as a leaf
  * (the compiled filter runs it per row).  NO_ERROR, or an allocation error. */
 static int
@@ -1195,7 +1221,7 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
 {
   EXPR_BATCH_PLAN *plan = b->plan;
   EB_LEAF *leaf;
-  int etype, vec, vec2 = -1, rel_op, cap;
+  int etype, vec, vec2 = -1, cap;
 
   *out = -1;
   if (info->k_set != NULL)
@@ -1269,29 +1295,8 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   leaf->k_type = (unsigned char) info->fast_type;
   plan->lsrc[plan->n_leaves].value = info->k_value;
   plan->lsrc[plan->n_leaves].cell = info->k_cell;
-  rel_op = info->rel_op;
-  if (!info->col_is_lhs)
-    {
-      /* "constant op column" reads as "column op' constant" */
-      switch (info->rel_op)
-	{
-	case R_LT:
-	  rel_op = R_GT;
-	  break;
-	case R_LE:
-	  rel_op = R_GE;
-	  break;
-	case R_GT:
-	  rel_op = R_LT;
-	  break;
-	case R_GE:
-	  rel_op = R_LE;
-	  break;
-	default:
-	  break;
-	}
-    }
-  leaf->rel_op = (unsigned char) rel_op;
+  plan->lsrc[plan->n_leaves].step = info->k_cell_step;
+  leaf->rel_op = (unsigned char) eb_rel_op_column_left (info);
   plan->n_raw_kids++;
   *out = plan->n_leaves++;
   return NO_ERROR;
@@ -1399,7 +1404,8 @@ eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   const EB_COL *col;
   int vec, cap;
 
-  if (info->col_regu->value.attr_descr.cache_attrinfo == NULL || k == NULL || info->col2_regu != NULL)
+  if (info->col_regu->value.attr_descr.cache_attrinfo == NULL || (k == NULL && info->k_cell == NULL)
+      || info->col2_regu != NULL)
     {
       return NO_ERROR;
     }
@@ -1415,8 +1421,10 @@ eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   /* the constant must read as the column does: its codeset and its collation.  A LIKE pattern is matched by the
    * engine's own qstr_like_match () under that collation (eb_raw_kid_str ()), which takes '%' and '_' as the row
    * path does; no ESCAPE clause reaches here (expr_pred_term_string_info ()), so a backslash is a literal.  A NULL
-   * host variable compares as UNKNOWN for every row, whatever the collation (k_null) */
-  if (!DB_IS_NULL (k) && (db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation))
+   * host variable compares as UNKNOWN for every row, whatever the collation (k_null).  A value a program cell holds
+   * is not known yet: eb_load_leaf_constants () checks it */
+  if (k != NULL && !DB_IS_NULL (k)
+      && (db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation))
     {
       return NO_ERROR;
     }
@@ -1434,11 +1442,12 @@ eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   leaf->col2 = -1;
   leaf->etype = EB_STR;
   leaf->k_type = (unsigned char) info->fast_type;
-  leaf->rel_op = (unsigned char) info->rel_op;
+  leaf->rel_op = (unsigned char) eb_rel_op_column_left (info);
   leaf->like = info->like ? 1 : 0;
   leaf->negate = info->negate ? 1 : 0;
   plan->lsrc[plan->n_leaves].value = info->k_value;
   plan->lsrc[plan->n_leaves].cell = info->k_cell;
+  plan->lsrc[plan->n_leaves].step = info->k_cell_step;
   plan->n_raw_kids++;
   *out = plan->n_leaves++;
   return NO_ERROR;
@@ -1548,6 +1557,7 @@ eb_add_in_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   leaf->rel_op = R_EQ;
   plan->lsrc[plan->n_leaves].value = NULL;
   plan->lsrc[plan->n_leaves].cell = NULL;
+  plan->lsrc[plan->n_leaves].step = 0;
   plan->n_raw_kids++;
   *out = plan->n_leaves++;
   return NO_ERROR;
@@ -2007,11 +2017,40 @@ eb_raw_kid_str (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf
 	    }
 	  keep = leaf->negate ? (m != V_TRUE) : (m == V_TRUE);
 	}
-      else
+      else if (leaf->rel_op == R_EQ || leaf->rel_op == R_NE)
 	{
 	  bool eq = eb_str_equal (leaf, col, str, len, leaf->k_str, leaf->k_len);
 
 	  keep = (leaf->rel_op == R_EQ) ? eq : !eq;
+	}
+      else if (leaf->k_all != 0)
+	{
+	  /* the constant is the maximum string (eb_load_leaf_constants ()) */
+	  keep = (leaf->k_all == EB_ALL_TRUE);
+	}
+      else
+	{
+	  /* CBRD-28249: an order, by the comparison the row path makes (mr_cmpval_string ()): the collation's own,
+	   * trailing spaces as eb_str_ti () decided at load */
+	  int c = QSTR_COMPARE (col->collation, (const unsigned char *) str, len, (const unsigned char *) leaf->k_str,
+				leaf->k_len, leaf->ti);
+
+	  switch (leaf->rel_op)
+	    {
+	    case R_LT:
+	      keep = (c < 0);
+	      break;
+	    case R_LE:
+	      keep = (c <= 0);
+	      break;
+	    case R_GT:
+	      keep = (c > 0);
+	      break;
+	    default:
+	      assert (leaf->rel_op == R_GE);
+	      keep = (c >= 0);
+	      break;
+	    }
 	}
       if (keep)
 	{
@@ -2076,6 +2115,7 @@ eb_add_or_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, const int *len, i
   leaf->or_leaf = or_leaf;
   plan->lsrc[plan->n_leaves].value = NULL;
   plan->lsrc[plan->n_leaves].cell = NULL;
+  plan->lsrc[plan->n_leaves].step = 0;
   *out = plan->n_leaves++;
   return NO_ERROR;
 }
@@ -3985,16 +4025,25 @@ eb_load_scalars (EXPR_BATCH_PLAN * plan)
 }
 
 static int
-eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
+eb_load_leaf_constants (EXPR_BATCH_PLAN * plan, THREAD_ENTRY * thread_p, struct val_descr *vd)
 {
   int i;
 
   for (i = 0; i < plan->n_leaves; i++)
     {
       EB_LEAF *leaf = &plan->leaves[i];
-      const DB_VALUE *k = (plan->lsrc[i].cell != NULL) ? *plan->lsrc[i].cell : plan->lsrc[i].value;
+      const DB_VALUE *k;
 
+      if (plan->lsrc[i].step > 0
+	  && expr_scan_pred_compute_step (plan->filter, plan->lsrc[i].step - 1, thread_p, vd) != NO_ERROR)
+	{
+	  /* CBRD-28249: the value the row loop computes once per execution failed here, its error discarded: the row
+	   * loop computes it again on the row the interpreter would, or on none, and raises the error there */
+	  return eb_fallback (plan, "a filter constant the row loop computes fails");
+	}
+      k = (plan->lsrc[i].cell != NULL) ? *plan->lsrc[i].cell : plan->lsrc[i].value;
       leaf->k_null = 0;
+      leaf->k_all = 0;
       if (leaf->vec2 >= 0 || leaf->or_n > 0)
 	{
 	  /* two columns, or an OR (its leaves load themselves): nothing to load */
@@ -4022,9 +4071,29 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	      leaf->k_null = 1;
 	      continue;
 	    }
-	  /* the execution's one value, which the build took as the column reads it (eb_add_str_leaf ()) */
-	  assert ((DB_VALUE_DOMAIN_TYPE (k) == DB_TYPE_VARCHAR || DB_VALUE_DOMAIN_TYPE (k) == DB_TYPE_CHAR)
-		  && db_get_string_codeset (k) == col->codeset && db_get_string_collation (k) == col->collation);
+	  if (DB_VALUE_DOMAIN_TYPE (k) != DB_TYPE_VARCHAR && DB_VALUE_DOMAIN_TYPE (k) != DB_TYPE_CHAR)
+	    {
+	      return eb_fallback (plan, "a string filter constant of another type");
+	    }
+	  if (k->data.ch.info.is_max_string)
+	    {
+	      /* CBRD-28249: the upper bound of a pattern without a fixed prefix (db_value_domain_max ()): greater than
+	       * every string, as mr_cmpval_string () takes it -- "<" and "<=" hold for every non-NULL row, ">" and ">="
+	       * for none */
+	      if (leaf->like || (leaf->rel_op != R_LT && leaf->rel_op != R_LE && leaf->rel_op != R_GT
+				 && leaf->rel_op != R_GE))
+		{
+		  return eb_fallback (plan, "a maximum string compared other than by order");
+		}
+	      leaf->k_all = (leaf->rel_op == R_LT || leaf->rel_op == R_LE) ? EB_ALL_TRUE : EB_ALL_FALSE;
+	      continue;
+	    }
+	  /* the execution's one value, as the column reads it: a literal or a host variable the build checked
+	   * (eb_add_str_leaf ()), a value a program cell holds checked here */
+	  if (db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation)
+	    {
+	      return eb_fallback (plan, "a string filter constant of another collation");
+	    }
 	  leaf->k_str = db_get_string (k);
 	  leaf->k_len = db_get_string_size (k);
 	  leaf->ti = eb_str_ti (leaf, k);
@@ -5498,11 +5567,12 @@ eb_run_chunk (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_
 	  return rc;
 	}
     }
-  /* the leaves' constants are literals, host variables and the filter's prologue: fixed for the scan, so the IN
-   * lists, their sort and the string matchers are set up at its first chunk only */
+  /* the leaves' constants are literals, host variables, the filter's prologue and the steps the row loop computes
+   * once per execution (computed here first -- CBRD-28249): fixed for the scan, so the IN lists, their sort and the
+   * string matchers are set up at its first chunk only */
   if (!plan->consts_loaded)
     {
-      rc = eb_load_leaf_constants (plan);
+      rc = eb_load_leaf_constants (plan, thread_p, vd);
       plan->consts_loaded = true;
       if (rc != NO_ERROR)
 	{

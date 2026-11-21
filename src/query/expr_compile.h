@@ -116,6 +116,9 @@ struct expr_step
   EXPR_KERNEL_FN kernel;
   unsigned char kernel_id;	/* the kernel by id (expr_compile.c, EXPR_KERNEL_LIST): what the compiler decides; kernel is
 				 * its function */
+  int once_exec;		/* a generic step that computes once per execution (it owns out): the execution of its
+				 * program (EXPR_PROG.n_executions) that computed out, 0 before the first; a runtime mark,
+				 * not in the image (here, in the hole after kernel_id, the step keeps its size) */
 
   /* argument cells: dereferenced at evaluation time; wired at compile time either to a
    * stable value (constant, host variable) or to a producer step's cell */
@@ -389,6 +392,9 @@ struct expr_raw_leaf_info
 				 * a plan per bind-type signature) */
   DB_VALUE *const *k_cell;	/* ... or the program cell a prologue computes it into (read after
 				 * expr_scan_pred_prepare ()); exactly one of k_value / k_cell is set */
+  int k_cell_step;		/* CBRD-28249: 0, or k_cell is the slot of a step the row loop computes once per
+				 * execution (the bounds "col LIKE ?" adds): that step's index plus one, which the batch
+				 * computes itself before the rows (expr_scan_pred_compute_step ()) */
   const REGU_VARIABLE *col2_regu;	/* instead of a constant, another column of the scan ("a < b"): the right
 					 * operand, col_regu the left; neither k_value nor k_cell is set */
   bool like;			/* a VARCHAR or CHAR column LIKE the constant pattern k_value (rel_op unused), ... */
@@ -449,6 +455,10 @@ extern bool expr_scan_pred_kid_has_side_effect (const void *compiled, int kid);
 extern bool expr_scan_pred_kid_runs_query (const void *compiled, int kid);
 /* the filter's prologues for this execution (the per-row entry does the same before its first row) */
 extern int expr_scan_pred_prepare (void *compiled, cubthread::entry * thread_p, val_descr * vd);
+/* CBRD-28249: compute step (an index) of the filter's program, a step the row loop computes once per execution, for
+ * this execution if it has not yet: NO_ERROR, or ER_FAILED with the step's error discarded -- the row loop computes it
+ * again and raises the error on the row the interpreter would, or on none */
+extern int expr_scan_pred_compute_step (void *compiled, int step, cubthread::entry * thread_p, val_descr * vd);
 /* evaluate kid i of the root alone for the current row (the batch's residual terms) */
 extern DB_LOGICAL expr_scan_pred_eval_kid (void *compiled, int kid, cubthread::entry * thread_p, val_descr * vd,
 					   OID * obj_oid);
