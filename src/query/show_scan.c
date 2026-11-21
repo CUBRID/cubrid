@@ -531,7 +531,8 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   DB_DATETIME time_val;
   cubthread::entry::status thread_status;
 
-  /* read the status once so that Status and Wait_elapsed_msecs of a row agree */
+  /* read the status once so that a row whose Status is not WAIT never shows Wait_elapsed_msecs; a thread that
+   * resumes before its clock is read below still shows WAIT with NULL */
   thread_status = thrd->m_status;
   if (thread_status == cubthread::entry::status::TS_DEAD)
     {
