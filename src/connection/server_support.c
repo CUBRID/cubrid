@@ -1786,7 +1786,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  for (i = 1; i < log_Gl.trantable.num_total_indices; i++)
 	    {
 	      tdes = log_Gl.trantable.all_tdes[i];
-	      /* a loose end has no connection to close (see logtb_count_not_allowed_clients_in_maintenance_mode) */
+	      /* a loose end left by its client has no connection to close
+	       * (see logtb_count_not_allowed_clients_in_maintenance_mode) */
 	      if (tdes != NULL && tdes->trid != NULL_TRANID && !tdes->isloose_end)
 		{
 		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.get_host_name (), boot_Host_name,
@@ -1799,15 +1800,12 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  TR_TABLE_CS_EXIT (thread_p);
 
 	  /* wait for the slammed connections to be closed, without holding TR_TABLE_CS */
-	  for (i = 0; i < LOGTB_SLAM_WAIT_SECONDS * 10; i++)
-	    {
-	      if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) == 0)
-		{
-		  break;
-		}
-	      thread_sleep (100);	/* 100 msec */
-	    }
 	  remaining = logtb_count_not_allowed_clients_in_maintenance_mode (thread_p);
+	  for (i = 0; remaining != 0 && i < LOGTB_SLAM_WAIT_SECONDS * 10; i++)
+	    {
+	      thread_sleep (100);	/* 100 msec */
+	      remaining = logtb_count_not_allowed_clients_in_maintenance_mode (thread_p);
+	    }
 	  if (remaining != 0)
 	    {
 	      char msg[LINE_MAX];
@@ -1815,7 +1813,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      /* the change goes on. leave in the server error log why such clients are still connected.
 	       * ER_BO_SERVER_STATUS, not ER_HA_GENERIC_ERROR: the latter is in the default
 	       * call_stack_dump_activation_list, and a call stack would make this notification look like a failure. */
-	      snprintf (msg, sizeof (msg), "maintenance, but %d client(s) not allowed in maintenance mode are still "
+	      snprintf (msg, sizeof (msg), "MAINTENANCE, but %d client(s) not allowed in maintenance mode are still "
 			"connected %d sec after they were requested to close", remaining, LOGTB_SLAM_WAIT_SECONDS);
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_SERVER_STATUS, 1, msg);
 	    }

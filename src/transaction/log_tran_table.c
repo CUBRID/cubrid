@@ -2057,8 +2057,9 @@ logtb_count_clients (THREAD_ENTRY * thread_p)
  *                        connection not allowed client in maintenancemode.
  *   return: number of clients
  *
- * Note: a loose end (e.g. an XA transaction prepared and then left by its client) is not counted. It has no
- *       connection to close, and it stays until a coordinator attaches to it.
+ * Note: a loose end is not counted. It is left by its client (e.g. a prepared XA transaction whose client is gone,
+ *       or a transaction the server goes on informing its participants), so it has no connection to close and
+ *       closing connections does not end it.
  */
 int
 logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p)
@@ -6214,6 +6215,8 @@ logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index, int wait_second
   logtb_set_tran_index_interrupt (thread_p, tran_index, true);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_SHUTDOWN, 0);
 #if defined (SERVER_MODE)
+  /* closing the connection needs TR_TABLE_CS: a writer of it must not wait here */
+  assert (wait_seconds == LOGTB_SLAM_NO_WAIT || csect_check_own (thread_p, CSECT_TRAN_TABLE) != 1);
   css_shutdown_conn_by_tran_index (tran_index, wait_seconds);
 #endif // SERVER_MODE
 }
