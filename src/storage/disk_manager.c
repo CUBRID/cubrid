@@ -6404,6 +6404,111 @@ end:
 }
 
 /*
+ * disk_is_permanent_volume_file () - does the file start with the header of a permanent volume?
+ *
+ * return : NO_ERROR, or ER_IO_MOUNT_FAIL (notified) if the type of the file cannot be told: the file cannot be
+ *          opened or read, or another process holds a lock on it (e.g. a permanent volume being formatted)
+ * thread_p(in) : thread entry
+ * vol_label_p(in) : volume label
+ * is_permanent(out) : true if the file is a CUBRID volume of permanent type, false otherwise (not a CUBRID volume,
+ *                     a temporary volume, or a header too short, e.g. a temporary volume left while formatting)
+ *
+ * Note: The volume does not need to be mounted; the header of a file that is not a mounted permanent volume is read
+ *       from the file.
+ */
+int
+disk_is_permanent_volume_file (THREAD_ENTRY * thread_p, const char *vol_label_p, bool * is_permanent)
+{
+  char data_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *data;
+  DISK_VOLUME_HEADER *vhdr;
+  int vol_fd;
+  VOLID volid;
+  off_t read_size;
+  size_t page_reserver_area;
+  struct stat stat_buffer;
+  struct stat mounted_stat;
+
+  assert (vol_label_p != NULL && is_permanent != NULL);
+
+  *is_permanent = false;
+
+  /* Do not open a mounted permanent volume again: closing the second descriptor would release the lock taken at
+   * mount. Compare the file itself, not the label, since the same file can be reached by another path. */
+  if (stat (vol_label_p, &stat_buffer) != 0)
+    {
+      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+      return ER_IO_MOUNT_FAIL;
+    }
+  for (volid = 0; volid < disk_Cache->nvols_perm; volid++)
+    {
+      vol_fd = fileio_get_volume_descriptor (volid);
+      if (vol_fd != NULL_VOLDES && fstat (vol_fd, &mounted_stat) == 0 && mounted_stat.st_dev == stat_buffer.st_dev
+	  && mounted_stat.st_ino == stat_buffer.st_ino)
+	{
+	  *is_permanent = true;
+	  return NO_ERROR;
+	}
+    }
+
+  data = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
+  page_reserver_area = offsetof (FILEIO_PAGE, page);
+  vhdr = (DISK_VOLUME_HEADER *) (data + page_reserver_area);
+
+  vol_fd = fileio_open (vol_label_p, O_RDONLY, 0);
+  if (vol_fd == NULL_VOLDES)
+    {
+      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+      return ER_IO_MOUNT_FAIL;
+    }
+
+#if !defined (WINDOWS)
+  {
+    /* A permanent volume is locked by the process that formats or mounts it, and its header is written last when it
+     * is formatted. A temporary volume is never locked, so a locked file is not one to remove. */
+    struct flock lock;
+
+    lock.l_type = F_WRLCK;
+    lock.l_whence = SEEK_SET;
+    lock.l_start = 0;
+    lock.l_len = 0;
+    if (fcntl (vol_fd, F_GETLK, &lock) != 0 || lock.l_type != F_UNLCK)
+      {
+	fileio_close (vol_fd);
+	er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+	return ER_IO_MOUNT_FAIL;
+      }
+  }
+#endif /* !WINDOWS */
+
+  read_size = page_reserver_area + offsetof (DISK_VOLUME_HEADER, type) + sizeof (vhdr->type);
+  if (fstat (vol_fd, &stat_buffer) != 0)
+    {
+      fileio_close (vol_fd);
+      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+      return ER_IO_MOUNT_FAIL;
+    }
+  if (stat_buffer.st_size >= read_size)
+    {
+      if (fileio_read (thread_p, vol_fd, data, 0, read_size) == NULL)
+	{
+	  /* a read error is not a missing header; the type is unknown */
+	  fileio_close (vol_fd);
+	  er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+	  return ER_IO_MOUNT_FAIL;
+	}
+      if (strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) == 0
+	  && vhdr->type == DB_PERMANENT_VOLTYPE)
+	{
+	  *is_permanent = true;
+	}
+    }
+
+  fileio_close (vol_fd);
+
+  return NO_ERROR;
+}
+
+/*
  * disk_compatible_type_and_purpose () - is volume purpose compatible to volume type?
  *
  * return       : true if compatible, false otherwise
