@@ -7900,12 +7900,23 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
   while (bufptr->next_wait_thrd != NULL)
     {
       curr_thrd_entry = bufptr->next_wait_thrd;
+
+      /* Check under the entry lock of the waiter that it still waits for a READ latch before adding its fix count, as
+       * pgbuf_wakeup_reader_writer () does. A waiter that times out gives up its request under this lock, and a fix
+       * count added for it would never be released. */
+      thread_lock_entry (curr_thrd_entry);
+      if (curr_thrd_entry->request_latch_mode != PGBUF_LATCH_READ)
+	{
+	  thread_unlock_entry (curr_thrd_entry);
+	  break;
+	}
+
       do
 	{
 	  can_grant = false;
 	  impl = get_impl (&bufptr->atomic_latch);
 	  impl_new = impl;
-	  if (impl.impl.latch_mode == PGBUF_LATCH_READ && curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
+	  if (impl.impl.latch_mode == PGBUF_LATCH_READ)
 	    {
 	      can_grant = true;
 	      impl_new.impl.fcnt += curr_thrd_entry->request_fix_count;
@@ -7913,31 +7924,21 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
 	}
       while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, impl_new.raw, std::memory_order_acq_rel,
 							  std::memory_order_acquire));
-      if (can_grant)
+      if (!can_grant)
 	{
-	  /* grant the request */
-	  thread_lock_entry (curr_thrd_entry);
-	  if (curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
-	    {
-	      /* do not handle BCB holder entry, at here. refer pgbuf_latch_bcb_upon_fix () */
-
-	      /* remove thrd_entry from BCB waiting queue. */
-	      bufptr->next_wait_thrd = curr_thrd_entry->next_wait_thrd;
-	      curr_thrd_entry->next_wait_thrd = NULL;
-
-	      /* wake up the thread */
-	      pgbuf_wakeup (curr_thrd_entry);
-	    }
-	  else
-	    {
-	      thread_unlock_entry (curr_thrd_entry);
-	      break;
-	    }
-	}
-      else
-	{
+	  thread_unlock_entry (curr_thrd_entry);
 	  break;
 	}
+
+      /* grant the request */
+      /* do not handle BCB holder entry, at here. refer pgbuf_latch_bcb_upon_fix () */
+
+      /* remove thrd_entry from BCB waiting queue. */
+      bufptr->next_wait_thrd = curr_thrd_entry->next_wait_thrd;
+      curr_thrd_entry->next_wait_thrd = NULL;
+
+      /* wake up the thread */
+      pgbuf_wakeup (curr_thrd_entry);
     }
 
   return NO_ERROR;
@@ -8010,6 +8011,10 @@ try_again:
     }
   else if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
+      /* The wait returns without the entry lock. Take it again before the check below: pgbuf_wakeup_reader_writer ()
+       * grants the latch under this lock, so the check and giving up the request must be one step. */
+      thread_lock_entry (thread_p);
+
       /* rollback operation, postpone operation, etc. */
       if (thread_p->resume_status == THREAD_PGBUF_RESUMED)
 	{
@@ -8019,6 +8024,7 @@ try_again:
 
       if (logtb_is_current_active (thread_p) == false)
 	{
+	  /* wait again, with the entry lock held as for the first wait */
 	  goto try_again;
 	}
 
