@@ -1603,8 +1603,8 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, &reusable, was_interrupted);
       if (error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED)
 	{
-	  /* A deferral leaves the block for a later run. Every page of this heap would wait for its header again, so the
-	   * later run retries the whole heap. */
+	  /* A deferral leaves the block for a later run. Every page of this heap would wait for its header again, so
+	   * the later run retries the whole heap. */
 	  vacuum_heap_hold_error (error_code, &held_error);
 	  error_code = NO_ERROR;
 	  for (page_ptr = obj_ptr;
@@ -1662,7 +1662,8 @@ vacuum_heap_hold_error (int error_code, int *held_error)
 }
 
 /*
- * vacuum_heap_skip_failed_page () - Decide whether vacuum_heap skips a failed page and goes on with the block.
+ * vacuum_heap_skip_failed_page () - Decide whether vacuum_heap skips a failed page and goes on with the block. A
+ *				    skipped page holds its error (vacuum_heap_hold_error).
  *
  * return	       : True to skip the page, false to stop vacuuming the block.
  * thread_p (in)       : Thread entry.
@@ -4147,7 +4148,8 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
     }
   else
     {
-      /* Shutdown, allocation failures and deferred OOS lookups leave the block available for a later retry. */
+      /* Shutdown, allocation failures, deferred OOS lookups and, in release builds, failed heap pages leave the block
+       * available for a later retry. */
       int error_level =
 #if defined (SERVER_MODE)
 	thread_p->shutdown ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
