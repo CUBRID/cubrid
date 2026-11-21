@@ -1623,6 +1623,11 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     {
       db_npages = (DKNPAGES) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE) / db_desired_pagesize);
     }
+  /* createdb applies the same floor to the size it passes; this covers db_volume_size taken here */
+  if (db_npages > 0 && disk_sectors_to_extend_npages (db_npages) < DISK_MIN_FIRST_VOLUME_SECTS)
+    {
+      db_npages = DISK_SECTS_NPAGES (DISK_MIN_FIRST_VOLUME_SECTS);
+    }
 
   if (log_npages <= 0)
     {
