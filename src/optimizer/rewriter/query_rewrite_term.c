@@ -231,6 +231,35 @@ qo_get_name_by_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 }
 
 /*
+ * qo_may_be_empty_collection () - can the right operand of IN / op SOME / op ALL be an empty collection?
+ *   return: false only for a literal collection with at least one element
+ *   arg2(in): right operand
+ */
+static bool
+qo_may_be_empty_collection (PT_NODE * arg2)
+{
+  if (arg2 != NULL && arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_CAST)
+    {
+      arg2 = arg2->info.expr.arg1;
+    }
+
+  if (arg2 != NULL && arg2->node_type == PT_VALUE && PT_IS_SET_TYPE (arg2))
+    {
+      return arg2->info.value.data_value.set == NULL;
+    }
+
+  /* ENUM comparison type checking may represent a literal collection as a PT_FUNCTION */
+  if (arg2 != NULL && arg2->node_type == PT_FUNCTION
+      && (arg2->info.function.function_type == F_SET || arg2->info.function.function_type == F_MULTISET
+	  || arg2->info.function.function_type == F_SEQUENCE))
+    {
+      return arg2->info.function.arg_list == NULL;
+    }
+
+  return true;
+}
+
+/*
  * qo_check_nullable_op () - classifies whether an expression's operator can
  *   be TRUE even when one of its operands is NULL, so it must never be
  *   treated as proof that a key column is not NULL.
@@ -286,34 +315,7 @@ qo_check_nullable_op (PT_NODE * node)
     case PT_LT_ALL:
     case PT_LE_ALL:
     case PT_IS_NOT_IN:
-      {
-	PT_NODE *arg2 = node->info.expr.arg2;
-
-	if (arg2 != NULL && arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_CAST)
-	  {
-	    /* Strip a CAST wrapper so the underlying literal collection can be
-	     * checked below. */
-	    arg2 = arg2->info.expr.arg1;
-	  }
-
-	if (arg2 != NULL && arg2->node_type == PT_VALUE && PT_IS_SET_TYPE (arg2))
-	  {
-	    return arg2->info.value.data_value.set == NULL;
-	  }
-
-	if (arg2 != NULL && arg2->node_type == PT_FUNCTION
-	    && (arg2->info.function.function_type == F_SET || arg2->info.function.function_type == F_MULTISET
-		|| arg2->info.function.function_type == F_SEQUENCE))
-	  {
-	    /*
-	     * ENUM comparison type checking may represent a literal collection as a
-	     * PT_FUNCTION.
-	     */
-	    return arg2->info.function.arg_list == NULL;
-	  }
-
-	return true;
-      }
+      return qo_may_be_empty_collection (node->info.expr.arg2);
 
     default:
       return false;
@@ -507,6 +509,181 @@ qo_has_alternative_without_spec (PARSER_CONTEXT * parser, PT_NODE * node, SPEC_I
 }
 
 /*
+ * qo_is_single_row_aggregate () - does the query return one row even when its input is empty?
+ *   return: true for a SELECT with an aggregate and no GROUP BY
+ *   parser(in):
+ *   query(in): query node to check
+ */
+static bool
+qo_is_single_row_aggregate (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  return (query->node_type == PT_SELECT && query->info.query.q.select.group_by == NULL
+	  && pt_has_aggregate (parser, query));
+}
+
+/*
+ * qo_subquery_has_result_without_spec () - can a subquery reading the spec yield a value when the spec is NULL?
+ *   return: true if the query reads the spec and is not proven to yield no row or only NULL without it
+ *   parser(in):
+ *   query(in): query node to check
+ *   info(in): spec to look for
+ */
+static bool
+qo_subquery_has_result_without_spec (PARSER_CONTEXT * parser, PT_NODE * query, SPEC_ID_INFO * info)
+{
+  PT_NODE *term, *col, *item, *save_next, *save_or_next;
+
+  save_next = query->next;
+  save_or_next = query->or_next;
+  query->next = query->or_next = NULL;
+  info->appears = false;
+  parser_walk_tree (parser, query, qo_get_name_by_spec_id, info, NULL, NULL);
+  query->next = save_next;
+  query->or_next = save_or_next;
+  if (!info->appears)
+    {
+      return false;
+    }
+
+  if (query->node_type != PT_SELECT || query->info.query.q.select.connect_by != NULL)
+    {
+      return true;
+    }
+
+  /* same term selection as qo_rewrite_outerjoin (): such a term cannot be true for a NULL spec */
+  for (term = query->info.query.q.select.where; term != NULL; term = term->next)
+    {
+      if (term->node_type != PT_EXPR || term->info.expr.location != 0 || term->or_next != NULL
+	  || term->info.expr.op == PT_IS_NULL || term->info.expr.op == PT_AND || term->info.expr.op == PT_OR)
+	{
+	  continue;
+	}
+
+      save_next = term->next;
+      term->next = NULL;
+      info->appears = false;
+      parser_walk_tree (parser, term, qo_get_name_by_spec_id, info, NULL, NULL);
+      term->next = save_next;
+      if (info->appears)
+	{
+	  break;
+	}
+    }
+
+  if (term == NULL)
+    {
+      return true;
+    }
+
+  if (!qo_is_single_row_aggregate (parser, query))
+    {
+      return false;
+    }
+
+  if (query->info.query.q.select.having != NULL)
+    {
+      return true;
+    }
+
+  /* on an empty input COUNT and the like return a non-NULL value */
+  for (col = query->info.query.q.select.list; col != NULL; col = col->next)
+    {
+      item = col;
+      while (item != NULL && item->node_type == PT_EXPR && item->info.expr.op == PT_CAST)
+	{
+	  item = item->info.expr.arg1;
+	}
+
+      if (item == NULL || item->node_type != PT_FUNCTION || item->info.function.analytic.is_analytic
+	  || (item->info.function.function_type != PT_MIN && item->info.function.function_type != PT_MAX
+	      && item->info.function.function_type != PT_SUM && item->info.function.function_type != PT_AVG))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_is_non_null_boolean_with_spec () - is the node a boolean reading the spec that is not NULL for a NULL spec?
+ *   return: true if the node is EXISTS, IN / op SOME on a subquery or a collection that may be empty,
+ *           IS NOT NULL, IS TRUE / IS FALSE, AND or OR and reads the spec
+ *   parser(in):
+ *   node(in): operand to check
+ *   info(in): spec to look for
+ */
+static bool
+qo_is_non_null_boolean_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, SPEC_ID_INFO * info)
+{
+  PT_NODE *save_next, *save_or_next;
+
+  if (node == NULL || node->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  /* CNF turns an AND / OR operand into a next / or_next list */
+  if (node->next != NULL || node->or_next != NULL)
+    {
+      info->appears = false;
+      parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
+      return info->appears;
+    }
+
+  switch (node->info.expr.op)
+    {
+    case PT_EXISTS:
+      if (node->info.expr.arg1 == NULL || !PT_IS_QUERY_NODE_TYPE (node->info.expr.arg1->node_type))
+	{
+	  return false;
+	}
+      break;
+
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+    case PT_NE_SOME:
+    case PT_GE_SOME:
+    case PT_GT_SOME:
+    case PT_LT_SOME:
+    case PT_LE_SOME:
+      /* NULL IN {} is FALSE */
+      if (!qo_may_be_empty_collection (node->info.expr.arg2))
+	{
+	  return false;
+	}
+      break;
+
+    case PT_IS_NOT_NULL:
+    case PT_AND:
+    case PT_OR:
+      break;
+
+    case PT_IS:
+      /* IS UNKNOWN is left to qo_check_nullable_op () */
+      if (node->info.expr.arg2 != NULL && node->info.expr.arg2->node_type == PT_VALUE
+	  && node->info.expr.arg2->type_enum == PT_TYPE_NULL)
+	{
+	  return false;
+	}
+      break;
+
+    default:
+      return false;
+    }
+
+  save_next = node->next;
+  save_or_next = node->or_next;
+  node->next = node->or_next = NULL;
+  info->appears = false;
+  parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
+  node->next = save_next;
+  node->or_next = save_or_next;
+
+  return info->appears;
+}
+
+/*
  * qo_check_nullable_expr_with_spec () -
  *   return:
  *   parser(in):
@@ -534,6 +711,45 @@ qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void 
     {
       info->nullable = true;
       *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      if (qo_subquery_has_result_without_spec (parser, node, info))
+	{
+	  info->nullable = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+  else if (node->node_type == PT_EXPR)
+    {
+      PT_NODE *arg1 = node->info.expr.arg1;
+      bool nullable = false;
+
+      /* a FALSE or TRUE from a NULL spec may be turned into TRUE by the enclosing operator; AND / OR keep it */
+      if (node->info.expr.op != PT_AND && node->info.expr.op != PT_OR && node->info.expr.op != PT_RANGE)
+	{
+	  nullable = (qo_is_non_null_boolean_with_spec (parser, arg1, info)
+		      || qo_is_non_null_boolean_with_spec (parser, node->info.expr.arg2, info)
+		      || qo_is_non_null_boolean_with_spec (parser, node->info.expr.arg3, info));
+	}
+
+      /* an aggregate without GROUP BY always returns a row, so this EXISTS is TRUE */
+      if (!nullable && node->info.expr.op == PT_EXISTS && arg1 != NULL && qo_is_single_row_aggregate (parser, arg1))
+	{
+	  PT_NODE *save_next = arg1->next;
+
+	  arg1->next = NULL;
+	  info->appears = false;
+	  parser_walk_tree (parser, arg1, qo_get_name_by_spec_id, info, NULL, NULL);
+	  arg1->next = save_next;
+	  nullable = info->appears;
+	}
+
+      if (nullable)
+	{
+	  info->nullable = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
     }
 
   return node;
