@@ -29370,9 +29370,10 @@ heap_rv_set_prev_version_if_null (THREAD_ENTRY * thread_p, const OID * oid, INT1
   version = recdes;
   if (slot_type == REC_HOME && (recdes.type == REC_RELOCATION || recdes.type == REC_BIGONE))
     {
-      OID fwd_oid = *(OID *) recdes.data;
+      OID fwd_oid;
       VPID fwd_vpid;
 
+      heap_fwd_record_get_oid (&recdes, &fwd_oid);
       VPID_GET_FROM_OID (&fwd_vpid, &fwd_oid);
       fwd_page = pgbuf_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (fwd_page == NULL)
