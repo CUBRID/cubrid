@@ -2502,7 +2502,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
   int error_code = NO_ERROR;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
-  MVCC_SNAPSHOT mvcc_snapshot_committed;
+  MVCC_SNAPSHOT mvcc_snapshot_catalog;
   SCAN_OPERATION_TYPE operation_type;
   OID *p_oid = oid;
   bool object_locked = false;
@@ -2544,9 +2544,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
       break;
 
     case LC_FETCH_CATALOG_VERSION:
-      /* latest committed version, without materializing the transaction snapshot (CBRD-27369) */
-      mvcc_snapshot_committed.snapshot_fnc = mvcc_satisfies_committed;
-      mvcc_snapshot = &mvcc_snapshot_committed;
+      mvcc_snapshot = logtb_get_catalog_read_snapshot (thread_p, &mvcc_snapshot_catalog);
       break;
 
     case LC_FETCH_CURRENT_VERSION:

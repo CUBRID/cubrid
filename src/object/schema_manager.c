@@ -4049,7 +4049,7 @@ sm_get_class_with_statistics (MOP classop)
 {
   SM_CLASS *class_ = NULL;
   int is_class = 0;
-  bool updated = false;
+  unsigned int stats_time_stamp;
 
   /* only try to get statistics if we know the class has been flushed if it has a temporary oid, it isn't flushed and
    * there are no statistics */
@@ -4104,7 +4104,6 @@ sm_get_class_with_statistics (MOP classop)
 	{
 	  stats_free_statistics (class_->stats);
 	  class_->stats = stats;
-	  updated = true;
 	}
       else if (err != NO_ERROR)
 	{
@@ -4112,7 +4111,13 @@ sm_get_class_with_statistics (MOP classop)
 	}
     }
 
-  /* get the histogram of the class */
+  /* get the histogram of the class, again when it was read with other class statistics than these */
+  stats_time_stamp = (class_->stats != NULL) ? class_->stats->time_stamp : 0;
+  if (class_->histogram != NULL && class_->histogram->stats_time_stamp != stats_time_stamp)
+    {
+      stats_free_histogram_and_init (class_->histogram);
+      class_->histogram = NULL;
+    }
   if (class_->histogram == NULL)
     {
       if (!OID_ISTEMP (WS_OID (classop)))
@@ -4129,22 +4134,6 @@ sm_get_class_with_statistics (MOP classop)
 	    {
 	      /* histogram is optional; a transient fetch failure (e.g. concurrent ANALYZE
 	       * rewriting _db_histogram) must not fail the query -- proceed without it */
-	      stats_free_histogram_and_init (class_->histogram);
-	      class_->histogram = NULL;
-	      er_clear ();
-	    }
-	}
-    }
-  else
-    {
-      if (updated)
-	{
-	  stats_free_histogram_and_init (class_->histogram);
-	  class_->histogram = NULL;
-	  int err = stats_get_histogram (classop, &class_->histogram);
-	  if (err != NO_ERROR)
-	    {
-	      /* optional; see above -- do not fail the query on a transient fetch error */
 	      stats_free_histogram_and_init (class_->histogram);
 	      class_->histogram = NULL;
 	      er_clear ();
@@ -15603,7 +15592,7 @@ sm_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool wit
   if (error == ER_BTREE_UNIQUE_FAILED)
     {
       /* Another session inserted this column's row while we were inserting ours.  The existence
-       * check above reads the latest committed version and takes no lock (CBRD-27369), so it
+       * check above reads under a snapshot of the request and takes no lock (CBRD-27369), so it
        * cannot see a concurrent uncommitted insert -- this unique violation is the only place
        * that race shows, and any two sessions first-collecting the same column reach it.  The
        * unique insert waits for the other transaction, so by the time this error comes back that
