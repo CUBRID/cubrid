@@ -1523,7 +1523,9 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	      arg2_arg1 =
 		((pt_is_expr_node (arg2) && arg2->info.expr.op == PT_UNARY_MINUS) ? arg2->info.expr.arg1 : NULL);
 
-	      if (arg1_arg1 && arg2_arg1)
+	      /* An operator without a converse (pt_converse_op () gives 0, as for <=>) keeps both minus signs, as the
+	       * other two cases below do: removing them would end in writing op 0 over the term's operator. */
+	      if (op_type != 0 && arg1_arg1 && arg2_arg1)
 		{
 		  /* Delete both minus from prior also. */
 		  if (arg1_prior_father)
