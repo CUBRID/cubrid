@@ -72,6 +72,7 @@
 #define GRANT_SUFFIX          "_grant"
 #define PK_SUFFIX             "_pk"
 #define PROCEDURE_SUFFIX      "_procedure"
+#define PROCEDURE_BODY_SUFFIX "_procedure_body"
 #define SERIAL_SUFFIX         "_serial"
 #define SERVER_SUFFIX         "_server"
 #define SYNONYM_SUFFIX        "_synonym"
@@ -255,6 +256,7 @@ static int extract_user (extract_context & ctxt);
 static int extract_serial (extract_context & ctxt);
 static int extract_synonym (extract_context & ctxt);
 static int extract_procedure (extract_context & ctxt);
+static int extract_procedure_body (extract_context & ctxt);
 static int extract_server (extract_context & ctxt);
 static int extract_class (extract_context & ctxt);
 static int extract_vclass (extract_context & ctxt);
@@ -1504,6 +1506,11 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	}
     }
 
+  if (emit_grant (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR)
+    {
+      err_count++;
+    }
+
   if (ctxt.classes != NULL
       && (emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_VCLASS), er_errid () != NO_ERROR))
     {
@@ -1516,11 +1523,6 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
     }
 
   if (ctxt.classes != NULL && (emit_foreign_key (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR))
-    {
-      err_count++;
-    }
-
-  if (emit_grant (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR)
     {
       err_count++;
     }
@@ -3081,6 +3083,20 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
   if (db_attribute_is_invisible_column (attribute))
     {
       output_ctx (" INVISIBLE");
+    }
+
+  /* emit storage prefer_inline */
+  if (db_attribute_is_oos_prefer_inline (attribute))
+    {
+      output_ctx (" STORAGE PREFER_INLINE");
+    }
+  else if (db_attribute_is_oos_force_outline (attribute))
+    {
+      output_ctx (" STORAGE FORCE_OUTLINE");
+    }
+  else if (db_attribute_is_oos_force_inline (attribute))
+    {
+      output_ctx (" STORAGE FORCE_INLINE");
     }
 
   if (emit_autoincrement_def (output_ctx, attribute) != NO_ERROR)
@@ -4869,6 +4885,11 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	}
     }
 
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
+    }
+
   return NO_ERROR;
 }
 
@@ -5365,6 +5386,62 @@ extract_procedure (extract_context & ctxt)
       err = emit_stored_procedure_pre (ctxt, output_ctx);
     }
 
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
+    {
+      /* file is empty (database has no procedure to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static int
+extract_procedure_body (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, PROCEDURE_BODY_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME,
+       PROCEDURE_BODY_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
   if (required_class_only == false)
     {
       err = emit_stored_procedure_post (ctxt, output_ctx);
@@ -5374,7 +5451,7 @@ extract_procedure (extract_context & ctxt)
 
   if (ftell (output_file) == 0)
     {
-      /* file is empty (database has no procedure to be emitted) */
+      /* file is empty (database has no procedure body to be emitted) */
       fclose (output_file);
       output_file = NULL;
       remove (output_filename);
@@ -6028,6 +6105,11 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
 	}
     }
 
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
+    }
+
   return err;
 }
 
@@ -6154,6 +6236,11 @@ extract_split_schema_files (extract_context & ctxt)
     }
 
   if (extract_procedure (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_procedure_body (ctxt) != NO_ERROR)
     {
       err_count++;
     }
@@ -6295,7 +6382,7 @@ create_schema_info (extract_context & ctxt)
   const char *loading_order[] =
     { "_schema_user", "_schema_class", "_schema_vclass", "_schema_server", "_schema_synonym",
     "_schema_serial", "_schema_procedure",
-    "_schema_pk", "_schema_fk", "_schema_uk", "_schema_grant", "_schema_vclass_query_spec"
+    "_schema_pk", "_schema_fk", "_schema_uk", "_schema_grant", "_schema_vclass_query_spec", "_schema_procedure_body"
   };
 
   const size_t len = sizeof (loading_order) / sizeof (loading_order[0]);

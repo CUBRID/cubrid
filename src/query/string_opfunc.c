@@ -9378,8 +9378,8 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
  */
 
 static int
-qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_precision, DB_TYPE s1_type,
-		  const unsigned char *s2, int s2_length, int s2_size_, int s2_precision, DB_TYPE s2_type,
+qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size, int s1_precision, DB_TYPE s1_type,
+		  const unsigned char *s2, int s2_length, int s2_size, int s2_precision, DB_TYPE s2_type,
 		  INTL_CODESET codeset, unsigned char **result, int *result_length, int *result_size,
 		  DB_DATA_STATUS * data_status)
 {
@@ -9387,14 +9387,11 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
   int pad1_length, pad2_length;
   int length_left, cat_length, cat_size;
   int s1_logical_length, s2_logical_length;
-  int s1_size, s2_size;
+  int missing_pad_size;
   unsigned char *cat_ptr;
   int error_status = NO_ERROR;
 
   *data_status = DATA_STATUS_OK;
-
-  s1_size = s1_size_;
-  s2_size = s2_size_;
 
   /*
    *  Categorize the source string into fixed and variable
@@ -9424,17 +9421,15 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
       s2_logical_length = s2_length;
     }
 
+  /* the result gets the pad characters a fixed-length string lacks, so reserve their bytes */
+  missing_pad_size = (s1_logical_length - s1_length + s2_logical_length - s2_length) * intl_pad_size (codeset);
+
   /*
    *  If both source strings are fixed-length, the concatenated
    *  result will be fixed-length.
    */
   if (QSTR_IS_PADDED_LENGTH (s1_type) && QSTR_IS_PADDED_LENGTH (s2_type))
     {
-      /*
-       * The only time we enter inside this if statement is 
-       * when we are using the iso88591 codeset and a data type like char(100). 
-       * This is because the size is not fixed in all other cases.
-       */
       /*
        *  The result will be a chararacter string of length =
        *  string1_precision + string2_precision.  If the result
@@ -9449,16 +9444,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 	  *data_status = DATA_STATUS_TRUNCATED;
 	}
 
-      if (s1_size == 0)
-	{
-	  s1_size = s1_logical_length;
-	}
-      if (s2_size == 0)
-	{
-	  s2_size = s2_logical_length;
-	}
-
-      *result_size = s1_size + s2_size;
+      *result_size = s1_size + s2_size + missing_pad_size;
 
       if (*result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
@@ -9518,16 +9504,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
        */
       *result_length = MIN ((s1_logical_length + s2_logical_length), QSTR_MAX_PRECISION (s1_type));
 
-      if (s1_size == 0)
-	{
-	  s1_size = s1_logical_length;
-	}
-      if (s2_size == 0)
-	{
-	  s2_size = s2_logical_length;
-	}
-
-      *result_size = s1_size + s2_size;
+      *result_size = s1_size + s2_size + missing_pad_size;
 
       if (*result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
