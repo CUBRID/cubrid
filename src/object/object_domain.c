@@ -2048,6 +2048,45 @@ tp_free_sub_client_domains (void)
 #endif /* CS_MODE && MULTI_CONN_TO_A_SERVER */
 
 /*
+ * tp_domain_coll_flags_match - CBRD-28066: whether two domains a match found alike also carry the same collation
+ *   flags, in themselves and in their element domains, nested included: a flag left to the values (ENFORCE, LEAVE)
+ *   is part of what a domain means, and a cached collection domain must not hand one plan's undecided elements to
+ *   another's decided ones, or the other way round
+ *    return: true when the flags match
+ *    dom1(in): a domain
+ *    dom2(in): a domain alike
+ * Note: element domains are paired in list order; a pair of another type is no match, so elements of an unordered
+ *   collection alike in another order only miss the cache entry, and are never taken for a domain whose flags differ.
+ */
+static bool
+tp_domain_coll_flags_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2)
+{
+  const TP_DOMAIN *d1, *d2;
+
+  if (dom1 == dom2)
+    {
+      return true;
+    }
+  if (dom1 == NULL || dom2 == NULL)
+    {
+      return false;
+    }
+  if (TP_DOMAIN_TYPE (dom1) != TP_DOMAIN_TYPE (dom2)
+      || (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (dom1)) && dom1->collation_flag != dom2->collation_flag))
+    {
+      return false;
+    }
+  for (d1 = dom1->setdomain, d2 = dom2->setdomain; d1 != NULL && d2 != NULL; d1 = d1->next, d2 = d2->next)
+    {
+      if (!tp_domain_coll_flags_match (d1, d2))
+	{
+	  return false;
+	}
+    }
+  return d1 == NULL && d2 == NULL;
+}
+
+/*
  * tp_is_domain_cached - find matching domain from domain list
  *    return: matched domain
  *    dlist(in): domain list
@@ -2218,8 +2257,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 			match = tp_domain_match (domain->setdomain, transient->setdomain, exact);
 
 			if (match && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient))
-			    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (transient->setdomain))
-			    && domain->setdomain->collation_flag != transient->setdomain->collation_flag)
+			    && !tp_domain_coll_flags_match (domain->setdomain, transient->setdomain))
 			  {
 			    match = 0;
 			  }
@@ -2234,8 +2272,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 			  {
 			    if (!tp_domain_match (d1, d2, exact)
 				|| (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient))
-				    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d2))
-				    && d1->collation_flag != d2->collation_flag))
+				    && !tp_domain_coll_flags_match (d1, d2)))
 			      {
 				match = 0;
 				break;	/* immediately exit for loop */
@@ -2964,7 +3001,9 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 	      /* handle the simple single domain case quickly */
 	      if (dsize == 1)
 		{
-		  if (tp_domain_match (dom->setdomain, setdomain, TP_EXACT_MATCH))
+		  /* CBRD-28066: the element's collation flag too, as tp_is_domain_cached () */
+		  if (tp_domain_match (dom->setdomain, setdomain, TP_EXACT_MATCH)
+		      && (!TP_IS_SET_TYPE (type) || tp_domain_coll_flags_match (dom->setdomain, setdomain)))
 		    {
 		      break;
 		    }
@@ -2984,7 +3023,8 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 
 			  for (i = 0; i < dsize; i++)
 			    {
-			      match = tp_domain_match (d1, d2, TP_EXACT_MATCH);
+			      match = tp_domain_match (d1, d2, TP_EXACT_MATCH)
+				&& (!TP_IS_SET_TYPE (type) || tp_domain_coll_flags_match (d1, d2));
 			      if (match == 0)
 				{
 				  break;
@@ -3011,7 +3051,8 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 			{
 			  for (d2 = setdomain; d2 != NULL; d2 = d2->next)
 			    {
-			      if (!d2->is_visited && tp_domain_match (d1, d2, TP_EXACT_MATCH))
+			      if (!d2->is_visited && tp_domain_match (d1, d2, TP_EXACT_MATCH)
+				  && tp_domain_coll_flags_match (d1, d2))
 				{
 				  break;
 				}
