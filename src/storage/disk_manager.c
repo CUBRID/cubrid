@@ -6406,11 +6406,12 @@ end:
 /*
  * disk_is_permanent_volume_file () - does the file start with the header of a permanent volume?
  *
- * return : NO_ERROR, or ER_IO_MOUNT_FAIL (notified) if the file cannot be opened, so its type is unknown
+ * return : NO_ERROR, or ER_IO_MOUNT_FAIL (notified) if the type of the file cannot be told: the file cannot be
+ *          opened or read, or another process holds a lock on it (e.g. a permanent volume being formatted)
  * thread_p(in) : thread entry
  * vol_label_p(in) : volume label
  * is_permanent(out) : true if the file is a CUBRID volume of permanent type, false otherwise (not a CUBRID volume,
- *                     a temporary volume, or a header too short or unreadable, e.g. a volume left while formatting)
+ *                     a temporary volume, or a header too short, e.g. a temporary volume left while formatting)
  *
  * Note: The volume does not need to be mounted; the header of a file that is not a mounted permanent volume is read
  *       from the file.
@@ -6460,13 +6461,46 @@ disk_is_permanent_volume_file (THREAD_ENTRY * thread_p, const char *vol_label_p,
       return ER_IO_MOUNT_FAIL;
     }
 
+#if !defined (WINDOWS)
+  {
+    /* A permanent volume is locked by the process that formats or mounts it, and its header is written last when it
+     * is formatted. A temporary volume is never locked, so a locked file is not one to remove. */
+    struct flock lock;
+
+    lock.l_type = F_WRLCK;
+    lock.l_whence = SEEK_SET;
+    lock.l_start = 0;
+    lock.l_len = 0;
+    if (fcntl (vol_fd, F_GETLK, &lock) != 0 || lock.l_type != F_UNLCK)
+      {
+	fileio_close (vol_fd);
+	er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+	return ER_IO_MOUNT_FAIL;
+      }
+  }
+#endif /* !WINDOWS */
+
   read_size = page_reserver_area + offsetof (DISK_VOLUME_HEADER, type) + sizeof (vhdr->type);
-  if (fstat (vol_fd, &stat_buffer) == 0 && stat_buffer.st_size >= read_size
-      && fileio_read (thread_p, vol_fd, data, 0, read_size) != NULL
-      && strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) == 0
-      && vhdr->type == DB_PERMANENT_VOLTYPE)
+  if (fstat (vol_fd, &stat_buffer) != 0)
     {
-      *is_permanent = true;
+      fileio_close (vol_fd);
+      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+      return ER_IO_MOUNT_FAIL;
+    }
+  if (stat_buffer.st_size >= read_size)
+    {
+      if (fileio_read (thread_p, vol_fd, data, 0, read_size) == NULL)
+	{
+	  /* a read error is not a missing header; the type is unknown */
+	  fileio_close (vol_fd);
+	  er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+	  return ER_IO_MOUNT_FAIL;
+	}
+      if (strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) == 0
+	  && vhdr->type == DB_PERMANENT_VOLTYPE)
+	{
+	  *is_permanent = true;
+	}
     }
 
   fileio_close (vol_fd);

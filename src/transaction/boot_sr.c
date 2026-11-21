@@ -882,7 +882,8 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
  *   file_name(in): file name without the directory
  *   db_name(in): database name
  *
- * Note: A temporary volume is named db_name + FILEIO_VOLTMP_PREFIX + volid by fileio_make_volume_temp_name ().
+ * Note: A temporary volume is named db_name + FILEIO_VOLTMP_PREFIX + volid in at least three digits ("%03d") by
+ *       fileio_make_volume_temp_name ().
  */
 static VOLID
 boot_get_temp_volid_from_name (const char *file_name, const char *db_name)
@@ -904,7 +905,8 @@ boot_get_temp_volid_from_name (const char *file_name, const char *db_name)
       return NULL_VOLID;
     }
 
-  /* the name must be exactly what fileio_make_volume_temp_name () makes for this volid (no sign, no leading zeros) */
+  /* the name must be exactly what fileio_make_volume_temp_name () makes for this volid ("%03d": no sign, and leading
+   * zeros only up to three digits) */
   snprintf (temp_vol_name, sizeof (temp_vol_name), "%s%s%03d", db_name, FILEIO_VOLTMP_PREFIX, volid);
   if (strcmp (temp_vol_name, file_name) != 0)
     {
@@ -1068,7 +1070,7 @@ boot_remove_temp_volume_file (THREAD_ENTRY * thread_p, const char *temp_path, co
     }
   if (disk_is_permanent_volume_file (thread_p, temp_vol_fullname, &is_permanent) != NO_ERROR)
     {
-      /* not a temporary volume of this server, which can always open its own; leave it (the error is logged) */
+      /* the type is unknown or another process holds the file; leave it (the reason is logged) */
       return;
     }
   if (is_permanent)
@@ -1094,9 +1096,10 @@ boot_remove_temp_volume_file (THREAD_ENTRY * thread_p, const char *temp_path, co
  * Note: A temporary volume is added and removed without logging, and boot_Db_parm counts them only in memory; the
  *       count reaches the disk only along with other changes of boot_Db_parm. So after a crash the count on disk
  *       does not tell which temporary volumes exist. Every file in the temporary volume directory that is named as
- *       a temporary volume of this database is removed, except a permanent volume that was given such a name and a
- *       file that cannot be opened. If the directory cannot be listed, every name a temporary volume can have is
- *       looked up instead.
+ *       a temporary volume of this database is removed, except a permanent volume that was given such a name, a file
+ *       whose type cannot be told (it cannot be opened or read, or another process locks it) and a file that is not
+ *       a regular file. If the directory cannot be listed, every name a temporary volume can have is looked up
+ *       instead.
  *       At restart, a volume beyond the temporary volumes known by boot_Db_parm is notified as unknown.
  */
 static void
@@ -1137,10 +1140,27 @@ boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
       return;
     }
 
-  while ((entry = readdir (dir_p)) != NULL)
+  while (true)
     {
+      errno = 0;
+      entry = readdir (dir_p);
+      if (entry == NULL)
+	{
+	  break;
+	}
       volid = boot_get_temp_volid_from_name (entry->d_name, db_name);
       if (volid != NULL_VOLID)
+	{
+	  boot_remove_temp_volume_file (thread_p, temp_path, db_name, volid);
+	}
+    }
+
+  if (errno != 0)
+    {
+      /* the listing stopped on an error, not at its end; look up the names it may have missed */
+      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1,
+			   temp_path[0] != '\0' ? temp_path : "/");
+      for (volid = LOG_MAX_DBVOLID; volid > boot_Db_parm->last_volid; volid--)
 	{
 	  boot_remove_temp_volume_file (thread_p, temp_path, db_name, volid);
 	}
