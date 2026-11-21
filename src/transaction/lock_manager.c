@@ -382,8 +382,10 @@ struct lk_tran_lock
   LK_ENTRY *inst_hold_list;	/* instance lock hold list */
   LK_ENTRY *class_hold_list;	/* class lock hold list */
   LK_ENTRY *root_class_hold;	/* root class lock hold */
-  LK_ENTRY *lk_entry_pool;	/* local pool of lock entries which can be used with no synchronization. */
+  LK_ENTRY *lk_entry_pool;	/* local pool of lock entries, used only by the thread that set lk_entry_pool_busy
+				 * (server start and shutdown fill and free it without the flag, on one thread) */
   int lk_entry_pool_count;	/* Current count of lock entries in local pool. */
+  bool lk_entry_pool_busy;	/* a thread of the transaction is using lk_entry_pool and its count (atomic access) */
   int inst_hold_count;		/* # of entries in inst_hold_list */
   int transient_scope;		/* statements now taking transient row locks, so nesting is visible */
   int transient_total;		/* counted requests outstanding, never below the entries' sum: the walk stops on it */
@@ -10877,9 +10879,39 @@ lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 
 #if defined (SERVER_MODE)
 /*
+ * lock_try_enter_entry_pool () - Take the transaction's local pool of lock entries if no other thread has it.
+ *
+ * return	  : true if the caller now has the pool and must give it back with lock_leave_entry_pool ().
+ * tran_lock (in) : The transaction's lock table entry.
+ *
+ * Note: several threads can lock objects for one transaction at once (parallel query workers share the
+ *	 transaction index of their leader). The pool is a plain list, so only one of them may pop or push it at a
+ *	 time. The others do not wait: they use the shared free list, which any thread may use, so no entry is handed
+ *	 out twice. When one thread runs the transaction, as before parallel query, the flag is always free.
+ */
+static bool
+lock_try_enter_entry_pool (LK_TRAN_LOCK * tran_lock)
+{
+  return !__atomic_exchange_n (&tran_lock->lk_entry_pool_busy, true, __ATOMIC_ACQUIRE);
+}
+
+/*
+ * lock_leave_entry_pool () - Give back the pool taken by lock_try_enter_entry_pool ().
+ *
+ * return	  : void
+ * tran_lock (in) : The transaction's lock table entry.
+ */
+static void
+lock_leave_entry_pool (LK_TRAN_LOCK * tran_lock)
+{
+  __atomic_store_n (&tran_lock->lk_entry_pool_busy, false, __ATOMIC_RELEASE);
+}
+
+/*
  * lock_get_new_entry () - Get new lock entry. Local pool of free entries is
- *			   first used. When this pool is depleted, a new
- *			   entry is claimed from shared list of lock entries.
+ *			   first used. When this pool is depleted, or another
+ *			   thread of the transaction is using it, a new entry is
+ *			   claimed from shared list of lock entries.
  *
  * return	   : New lock entry.
  * tran_index (in) : Transaction index of requester.
@@ -10890,16 +10922,24 @@ static LK_ENTRY *
 lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist)
 {
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
-  LK_ENTRY *lock_entry;
+  LK_ENTRY *lock_entry = NULL;
 
-  /* Check if local pool has free entries. */
-  if (tran_lock->lk_entry_pool)
+  if (lock_try_enter_entry_pool (tran_lock))
     {
-      assert (tran_lock->lk_entry_pool_count > 0);
-      lock_entry = tran_lock->lk_entry_pool;
-      tran_lock->lk_entry_pool = tran_lock->lk_entry_pool->next;
-      tran_lock->lk_entry_pool_count--;
-      return lock_entry;
+      /* Check if local pool has free entries. */
+      if (tran_lock->lk_entry_pool != NULL)
+	{
+	  assert (tran_lock->lk_entry_pool_count > 0);
+	  lock_entry = tran_lock->lk_entry_pool;
+	  tran_lock->lk_entry_pool = tran_lock->lk_entry_pool->next;
+	  tran_lock->lk_entry_pool_count--;
+	}
+      lock_leave_entry_pool (tran_lock);
+
+      if (lock_entry != NULL)
+	{
+	  return lock_entry;
+	}
     }
 
   /* Claim from shared freelist. */
@@ -10908,8 +10948,9 @@ lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * fr
 
 /*
  * lock_free_entry () - Free lock entry. Local pool has high priority if its
- *			maximum size is not reached. Otherwise, the entry
- *			is "retired" to shared list of free lock entries.
+ *			maximum size is not reached and no other thread of the
+ *			transaction is using it. Otherwise, the entry is
+ *			"retired" to shared list of free lock entries.
  *
  * return	   : Error code.
  * tran_index (in) : Transaction index.
@@ -10922,21 +10963,25 @@ lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freel
 {
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
-  assert (tran_lock->lk_entry_pool_count >= 0
-	  && tran_lock->lk_entry_pool_count <= lk_Gl.config.tran_local_pool_max_size);
+  if (lock_try_enter_entry_pool (tran_lock))
+    {
+      assert (tran_lock->lk_entry_pool_count >= 0
+	      && tran_lock->lk_entry_pool_count <= lk_Gl.config.tran_local_pool_max_size);
 
-  /* "Free" entry to local pool or shared list. */
-  if (tran_lock->lk_entry_pool_count < lk_Gl.config.tran_local_pool_max_size)
-    {
-      lock_uninit_entry (lock_entry);
-      lock_entry->next = tran_lock->lk_entry_pool;
-      tran_lock->lk_entry_pool = lock_entry;
-      tran_lock->lk_entry_pool_count++;
+      /* "Free" entry to local pool or shared list. */
+      if (tran_lock->lk_entry_pool_count < lk_Gl.config.tran_local_pool_max_size)
+	{
+	  lock_uninit_entry (lock_entry);
+	  lock_entry->next = tran_lock->lk_entry_pool;
+	  tran_lock->lk_entry_pool = lock_entry;
+	  tran_lock->lk_entry_pool_count++;
+	  lock_leave_entry_pool (tran_lock);
+	  return;
+	}
+      lock_leave_entry_pool (tran_lock);
     }
-  else
-    {
-      lf_freelist_retire (tran_entry, freelist, lock_entry);
-    }
+
+  lf_freelist_retire (tran_entry, freelist, lock_entry);
 }
 #endif
 
