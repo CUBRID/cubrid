@@ -162,6 +162,7 @@ PT_NODE *qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 void qo_move_on_of_explicit_join_to_where (PARSER_CONTEXT * parser, PT_NODE ** fromp, PT_NODE ** wherep);
 void qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement);
 void qo_rewrite_nonnull_count_select_list (PARSER_CONTEXT * parser, PT_NODE * select);
+void qo_rewrite_group_by_placement (PARSER_CONTEXT * parser, PT_NODE * query);
 
 /* qo_auto_parameterize is defined in parser.h */
 void qo_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);

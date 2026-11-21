@@ -25,6 +25,8 @@
 
 #include <assert.h>
 #include "query_rewrite.h"
+#include "query_planner.h"
+#include "xasl_generation.h"
 
 
 static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -5042,4 +5044,2101 @@ qo_rewrite_nonnull_count_select_list (PARSER_CONTEXT * parser, PT_NODE * select)
 	}
     }
   parser_walk_tree (parser, select_list, qo_rewrite_nonnull_count, (void *) from, NULL, NULL);
+}
+
+/*
+ * Group-by placement (CBRD-28183)
+ *
+ * A SELECT that joins tables and aggregates may group a part of the tables before the join, in a derived table that
+ * groups them on the columns the rest of the query reads from them: the join then meets one row per group instead
+ * of one per row, and the block re-aggregates the partial results (W. P. Yan and P.-A. Larson, "Eager Aggregation
+ * and Lazy Aggregation", VLDB 1995):
+ *
+ *   select c_custkey, count (o_orderkey)
+ *   from customer left outer join orders on c_custkey = o_custkey and o_comment not like '%special%requests%'
+ *   group by c_custkey
+ *     ->
+ *   select c_custkey, nvl (sum (nvl (gbp.c, 0)), 0)
+ *   from customer left outer join (select o_custkey, count (o_orderkey) c from orders
+ *                                  where o_comment not like '%special%requests%' group by o_custkey) gbp
+ *        on c_custkey = gbp.o_custkey
+ *   group by c_custkey
+ *
+ * Whether it pays depends on how many rows the grouping folds and on what the join would have read without it (a
+ * selective condition on the other tables keeps an index join that reads only the rows of C it meets cheaper).  The
+ * rewrite runs on every compile, before the plan cache is looked up (the cache key is the rewritten statement), so
+ * it may not plan the block: it rewrites only when the statistics tell it surely pays (qo_gbp_is_sure_gain ()),
+ *
+ *   - the other tables meet at least QO_GBP_MIN_REACHED of the groups, by the selectivity of their own conditions
+ *     (an equality or IN list from the number of distinct values of its column, the planner's guess otherwise), and
+ *   - a block that keeps its GROUP BY, and so groups twice, folds at least QO_GBP_MIN_GROUP_SIZE rows into a group of
+ *     the derived table: C's rows over the product of the numbers of distinct values of its grouping columns.  A
+ *     block that drops its GROUP BY only moves its grouping down onto a key of no more groups.
+ *
+ * C starts from the tables of the aggregate arguments and grows along the tables they look up by a key; the first C
+ * that lets the block drop its GROUP BY is taken, else the first that folds enough.
+ *
+ * The tables grouped early (C below) hold every aggregate argument and are joined to the others by equalities of
+ * one column on each side only, compared in the same domain and collation, so that the rows of a group meet the
+ * same rows of the other tables.  The grouping key is every column of C the block reads outside the aggregates.
+ * C is either tables joined in the WHERE, or the one table on the null-supplying side of an outer join; the latter
+ * needs the aggregate arguments to be NULL whenever their columns are, which the compensation below relies on:
+ *
+ *   SUM (x), MIN (x), MAX (x)   -> same function of the partial value
+ *   COUNT (x)                   -> NVL (SUM (NVL (partial COUNT (x), 0)), 0)
+ *   COUNT (*)                   -> NVL (SUM (NVL (partial COUNT (*), 1)), 0)   (an unmatched row counts once)
+ *   AVG (x)                     -> SUM (partial SUM (x)) / SUM (partial COUNT (x)) in DOUBLE
+ *
+ * each cast back to the type of the aggregate it replaces.  When every table left in the block is fixed by the
+ * GROUP BY columns through its keys and the join equalities, a group meets one row and the block drops its GROUP BY.
+ *
+ * The NO_PUSH_GROUP_BY hint keeps a block as it is.
+ */
+
+#define QO_GBP_MAX_SPECS 16	/* tables a block may join for the rewrite to look at it */
+#define QO_GBP_MIN_GROUP_SIZE 8.0	/* rows a group of the derived table must fold, estimated, when the block keeps its
+					 * GROUP BY (PostgreSQL's min_eager_agg_group_size) */
+#define QO_GBP_MIN_REACHED 0.5	/* fraction of the groups the other tables must meet, estimated */
+
+/* hints that name no table and also apply to the derived table's SELECT */
+#define QO_GBP_DERIVED_HINTS \
+  (PT_HINT_NO_PARALLEL_SCAN | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_HASH_AGGREGATE \
+   | PT_HINT_NO_HASH_LIST_SCAN | PT_HINT_NO_SORT_LIMIT | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_NO_COVERING_IDX \
+   | PT_HINT_NO_INDEX_SS | PT_HINT_NO_INDEX_LS | PT_HINT_PARALLEL)
+
+/* hints a block may hold and still be rewritten; one naming tables (ORDERED, LEADING, USE_NL ...) keeps it as it
+ * is, since C's tables leave it */
+#define QO_GBP_ALLOWED_HINTS (QO_GBP_DERIVED_HINTS | PT_HINT_RECOMPILE | PT_HINT_QUERY_CACHE)
+
+typedef unsigned int QO_GBP_MASK;
+
+typedef struct qo_gbp_env QO_GBP_ENV;
+struct qo_gbp_env
+{
+  PT_NODE *query;
+  int nspecs;
+  PT_NODE *specs[QO_GBP_MAX_SPECS];
+  QO_GBP_MASK at_mask;		/* tables the aggregate arguments read */
+  QO_GBP_MASK inner_mask;	/* tables joined in the WHERE that C may take */
+  QO_GBP_MASK nullable_mask;	/* null-supplying tables of an outer join that C may take alone */
+  QO_GBP_MASK adj[QO_GBP_MAX_SPECS];	/* tables joined to each by an equality in the WHERE */
+  QO_GBP_MASK edge[QO_GBP_MAX_SPECS];	/* tables joined to each by an equality in the WHERE or an ON */
+  bool args_null_strict;	/* every aggregate argument is NULL when one of its columns is */
+  bool has_groupby_num;		/* groupby_num () counts the groups of the block */
+};
+
+typedef struct qo_gbp_walk QO_GBP_WALK;
+struct qo_gbp_walk
+{
+  QO_GBP_ENV *env;
+  QO_GBP_MASK mask;		/* tables the walked tree reads */
+  int naggs;			/* aggregates met */
+  bool has_name_outside_agg;	/* a column read outside an aggregate */
+  bool bad;			/* the tree cannot be moved or re-evaluated */
+};
+
+typedef struct qo_gbp_build QO_GBP_BUILD;
+struct qo_gbp_build
+{
+  QO_GBP_ENV *env;
+  QO_GBP_MASK cmask;
+  PT_NODE *dquery;		/* the derived table's SELECT */
+  PT_NODE *dspec;		/* its spec in the block */
+  PT_NODE *needed;		/* the columns of C the block reads, a list of PT_NAME */
+  PT_NODE *attrs;		/* the derived table columns that hold them, in the same order */
+  int ncols;
+  int seq;
+  bool remove_group_by;
+  bool nullable;		/* C is the null-supplying table of an outer join */
+  bool failed;
+};
+
+static int qo_gbp_spec_index (QO_GBP_ENV * env, UINTPTR spec_id);
+static PT_NODE *qo_gbp_check_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static bool qo_gbp_is_null_strict (PT_NODE * node);
+static bool qo_gbp_is_image_equal (PT_NODE * node);
+static bool qo_gbp_is_same_domain (PT_NODE * a, PT_NODE * b);
+static bool qo_gbp_name_is_grouped (QO_GBP_ENV * env, PT_NODE * name);
+static PT_NODE *qo_gbp_check_output_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static bool qo_gbp_check_term (PARSER_CONTEXT * parser, QO_GBP_ENV * env, PT_NODE * term, QO_GBP_MASK * maskp);
+static bool qo_gbp_analyze (PARSER_CONTEXT * parser, PT_NODE * query, QO_GBP_ENV * env);
+static QO_GBP_MASK qo_gbp_term_mask (PARSER_CONTEXT * parser, QO_GBP_ENV * env, PT_NODE * term);
+static PT_NODE *qo_gbp_collect_needed_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *qo_gbp_needed_columns (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask);
+static bool qo_gbp_needed_is_image_equal (PT_NODE * needed);
+static bool qo_gbp_needed_has_key (QO_GBP_ENV * env, QO_GBP_MASK cmask, PT_NODE * needed);
+static bool qo_gbp_is_lookup (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, int t);
+static bool qo_gbp_can_remove_group_by (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, PT_NODE * needed);
+static PT_NODE *qo_gbp_add_column (PARSER_CONTEXT * parser, QO_GBP_BUILD * build, PT_NODE * expr, bool group);
+static PT_NODE *qo_gbp_make_agg (PARSER_CONTEXT * parser, FUNC_CODE function, PT_NODE * arg);
+static PT_NODE *qo_gbp_cast_to (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * like);
+static PT_NODE *qo_gbp_replace_agg_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *qo_gbp_replace_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *qo_gbp_transform (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, bool remove_group_by);
+static bool qo_gbp_is_connected (QO_GBP_ENV * env, QO_GBP_MASK cmask);
+static bool qo_gbp_is_candidate (QO_GBP_ENV * env, QO_GBP_MASK cmask);
+static CLASS_STATS *qo_gbp_class_stats (PT_NODE * spec);
+static double qo_gbp_column_ndv (QO_GBP_ENV * env, PT_NODE * name);
+static double qo_gbp_term_selectivity (QO_GBP_ENV * env, PT_NODE * term);
+static double qo_gbp_table_selectivity (PARSER_CONTEXT * parser, QO_GBP_ENV * env, int k);
+static bool qo_gbp_is_sure_gain (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, PT_NODE * needed,
+				 bool remove_group_by);
+static bool qo_gbp_try (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, bool * remove_group_by);
+
+#define QO_GBP_BIT(i) ((QO_GBP_MASK) 1 << (i))
+
+/*
+ * qo_gbp_popcount () - the number of tables in a mask
+ */
+static int
+qo_gbp_popcount (QO_GBP_MASK mask)
+{
+  int n = 0;
+
+  while (mask)
+    {
+      mask &= mask - 1;
+      n++;
+    }
+  return n;
+}
+
+/*
+ * qo_gbp_spec_index () - the position of a spec of the block in its FROM, -1 for another spec
+ */
+static int
+qo_gbp_spec_index (QO_GBP_ENV * env, UINTPTR spec_id)
+{
+  int i;
+
+  for (i = 0; i < env->nspecs; i++)
+    {
+      if (env->specs[i]->info.spec.id == spec_id)
+	{
+	  return i;
+	}
+    }
+  return -1;
+}
+
+/*
+ * qo_gbp_check_expr_pre () - collect the tables an expression reads, and refuse what it cannot evaluate twice or
+ *			      somewhere else: a subquery, a method, a path, a column of another block, and the
+ *			      functions whose value depends on the row order or changes per call
+ */
+static PT_NODE *
+qo_gbp_check_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_GBP_WALK *walk = (QO_GBP_WALK *) arg;
+  int idx;
+
+  if (walk->bad)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_METHOD_CALL:
+    case PT_DOT_:
+      walk->bad = true;
+      break;
+
+    case PT_FUNCTION:
+      if (node->info.function.analytic.is_analytic || node->info.function.function_type == PT_GROUPBY_NUM)
+	{
+	  walk->bad = true;
+	}
+      break;
+
+    case PT_NAME:
+      if (node->info.name.meta_class != PT_NORMAL)
+	{
+	  walk->bad = true;
+	  break;
+	}
+      idx = qo_gbp_spec_index (walk->env, node->info.name.spec_id);
+      if (idx < 0)
+	{
+	  walk->bad = true;
+	  break;
+	}
+      walk->mask |= QO_GBP_BIT (idx);
+      break;
+
+    case PT_EXPR:
+      switch (node->info.expr.op)
+	{
+	case PT_RAND:
+	case PT_RANDOM:
+	case PT_DRAND:
+	case PT_DRANDOM:
+	case PT_SYS_GUID:
+	case PT_UUID:
+	case PT_CURRENT_VALUE:
+	case PT_NEXT_VALUE:
+	case PT_INST_NUM:
+	case PT_ROWNUM:
+	case PT_ORDERBY_NUM:
+	case PT_LEVEL:
+	case PT_PRIOR:
+	case PT_CONNECT_BY_ROOT:
+	case PT_SYS_CONNECT_BY_PATH:
+	case PT_CONNECT_BY_ISLEAF:
+	case PT_CONNECT_BY_ISCYCLE:
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	case PT_SLEEP:
+	  /* an argument copied into two partial aggregates (AVG) runs twice per row */
+	  walk->bad = true;
+	  break;
+	default:
+	  break;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  if (walk->bad)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * qo_gbp_is_null_strict () - whether an aggregate argument is NULL whenever one of its columns is NULL: a column, or
+ *			      numeric arithmetic over at least one such operand (a NULL-extended row of an outer join
+ *			      must leave the aggregate as an unmatched row of the derived table does)
+ */
+static bool
+qo_gbp_is_null_strict (PT_NODE * node)
+{
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  if (node->node_type == PT_NAME)
+    {
+      return true;
+    }
+
+  if (node->node_type != PT_EXPR || !PT_IS_NUMERIC_TYPE (node->type_enum))
+    {
+      return false;
+    }
+
+  switch (node->info.expr.op)
+    {
+    case PT_UNARY_MINUS:
+      return qo_gbp_is_null_strict (node->info.expr.arg1);
+    case PT_PLUS:
+    case PT_MINUS:
+    case PT_TIMES:
+    case PT_DIVIDE:
+      return qo_gbp_is_null_strict (node->info.expr.arg1) || qo_gbp_is_null_strict (node->info.expr.arg2);
+    default:
+      return false;
+    }
+}
+
+/*
+ * qo_gbp_is_image_equal () - whether two values of a column that compare equal are the same value, so that it does
+ *			      not matter which row of a group gives the group its value: no string collation that
+ *			      folds case, accents or trailing spaces, no time zone (PostgreSQL asks the same of an
+ *			      eager aggregation key, btequalimage)
+ */
+static bool
+qo_gbp_is_image_equal (PT_NODE * node)
+{
+  int coll;
+
+  if (PT_IS_NUMERIC_TYPE (node->type_enum) || node->type_enum == PT_TYPE_DATE || node->type_enum == PT_TYPE_TIME
+      || node->type_enum == PT_TYPE_TIMESTAMP || node->type_enum == PT_TYPE_DATETIME)
+    {
+      return true;
+    }
+
+  if (!PT_HAS_COLLATION (node->type_enum) || node->data_type == NULL
+      || prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE))
+    {
+      return false;
+    }
+
+  coll = node->data_type->info.data_type.collation_id;
+  return coll == LANG_COLL_ISO_BINARY || coll == LANG_COLL_UTF8_BINARY || coll == LANG_COLL_EUCKR_BINARY
+    || coll == LANG_COLL_BINARY;
+}
+
+/*
+ * qo_gbp_is_same_domain () - whether the two sides of a join equality compare as GROUP BY compares either of them:
+ *			      the same type and, for strings, the same collation, so no cast comes between them
+ */
+static bool
+qo_gbp_is_same_domain (PT_NODE * a, PT_NODE * b)
+{
+  if (a->type_enum != b->type_enum || !qo_gbp_is_image_equal (a) || !qo_gbp_is_image_equal (b))
+    {
+      return false;
+    }
+
+  if (PT_HAS_COLLATION (a->type_enum))
+    {
+      return a->data_type->info.data_type.collation_id == b->data_type->info.data_type.collation_id;
+    }
+
+  return true;
+}
+
+/*
+ * qo_gbp_name_is_grouped () - whether a column the block reads outside an aggregate keeps one value per group: it is
+ *			       a GROUP BY column, or a key of its table is (see qo_remove_useless_groupby_columns ())
+ */
+static bool
+qo_gbp_name_is_grouped (QO_GBP_ENV * env, PT_NODE * name)
+{
+  PT_NODE *group_by = env->query->info.query.q.select.group_by, *group, *col, *spec;
+  DB_OBJECT *classop = NULL;
+  SM_CLASS_CONSTRAINT *cons;
+  int idx;
+
+  for (group = group_by; group != NULL; group = group->next)
+    {
+      col = group->info.sort_spec.expr;
+      if (col->node_type == PT_NAME && col->info.name.spec_id == name->info.name.spec_id
+	  && intl_identifier_casecmp (col->info.name.original, name->info.name.original) == 0)
+	{
+	  return true;
+	}
+    }
+
+  idx = qo_gbp_spec_index (env, name->info.name.spec_id);
+  if (idx < 0 || group_by == NULL)
+    {
+      return false;
+    }
+
+  spec = env->specs[idx];
+  PT_SPEC_GET_DB_OBJECT (spec, classop);
+  if (classop == NULL)
+    {
+      return false;
+    }
+
+  for (cons = sm_class_constraints (classop); cons != NULL; cons = cons->next)
+    {
+      if (qo_is_row_identifying_key (cons) && qo_groupby_has_key (group_by, spec->info.spec.id, cons))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_gbp_check_output_pre () - check an item of the select list, the HAVING or the ORDER BY: the aggregates are
+ *				re-aggregated, and the columns outside them must keep one value per group
+ */
+static PT_NODE *
+qo_gbp_check_output_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_GBP_WALK *walk = (QO_GBP_WALK *) arg;
+  QO_GBP_WALK arg_walk;
+  PT_NODE *agg_arg;
+  FUNC_CODE function;
+
+  if (walk->bad)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_FUNCTION && node->info.function.function_type == PT_GROUPBY_NUM)
+    {
+      /* LIMIT over the groups counts the groups of the block, which keeps its GROUP BY for it */
+      walk->env->has_groupby_num = true;
+      return node;
+    }
+
+  if (pt_is_aggregate_function (parser, node))
+    {
+      /* the aggregate is replaced as a whole: its argument is not read outside it */
+      *continue_walk = PT_LIST_WALK;
+      walk->naggs++;
+
+      function = node->info.function.function_type;
+      if (node->info.function.all_or_distinct != PT_ALL || node->info.function.order_by != NULL
+	  || (function != PT_SUM && function != PT_COUNT && function != PT_COUNT_STAR && function != PT_AVG
+	      && function != PT_MIN && function != PT_MAX))
+	{
+	  walk->bad = true;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+
+      if (function == PT_COUNT_STAR)
+	{
+	  return node;
+	}
+
+      agg_arg = node->info.function.arg_list;
+      if (agg_arg == NULL || agg_arg->next != NULL)
+	{
+	  walk->bad = true;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+
+      arg_walk.env = walk->env;
+      arg_walk.mask = 0;
+      arg_walk.naggs = 0;
+      arg_walk.has_name_outside_agg = false;
+      arg_walk.bad = false;
+      (void) parser_walk_tree (parser, agg_arg, qo_gbp_check_expr_pre, &arg_walk, NULL, NULL);
+
+      /* an argument over several tables (SUM (a.x * b.y)) has no table to be grouped with */
+      if (arg_walk.bad || qo_gbp_popcount (arg_walk.mask) > 1)
+	{
+	  walk->bad = true;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+
+      /* AVG adds in DOUBLE over a NUMERIC or a floating argument: partial sums of another order would round
+       * differently; over integers the sum is exact */
+      if (function == PT_AVG && agg_arg->type_enum != PT_TYPE_SMALLINT && agg_arg->type_enum != PT_TYPE_INTEGER
+	  && agg_arg->type_enum != PT_TYPE_BIGINT)
+	{
+	  walk->bad = true;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+
+      /* SUM over FLOAT adds in DOUBLE and casts the total: a partial sum cast to FLOAT would round, or overflow
+       * where the total does not */
+      if (function == PT_SUM && agg_arg->type_enum != PT_TYPE_SMALLINT && agg_arg->type_enum != PT_TYPE_INTEGER
+	  && agg_arg->type_enum != PT_TYPE_BIGINT && agg_arg->type_enum != PT_TYPE_NUMERIC
+	  && agg_arg->type_enum != PT_TYPE_DOUBLE)
+	{
+	  walk->bad = true;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+
+      /* MIN and MAX of values that compare equal return the first one met: partial results met in another order
+       * would return another */
+      if ((function == PT_MIN || function == PT_MAX) && !qo_gbp_is_image_equal (agg_arg))
+	{
+	  walk->bad = true;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+
+      walk->env->at_mask |= arg_walk.mask;
+      if (!qo_gbp_is_null_strict (agg_arg))
+	{
+	  walk->env->args_null_strict = false;
+	}
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+      walk->has_name_outside_agg = true;
+      if (node->info.name.meta_class != PT_NORMAL || !qo_gbp_name_is_grouped (walk->env, node))
+	{
+	  walk->bad = true;
+	}
+      break;
+
+    default:
+      {
+	/* the same refusals as the expressions moved, for what is left around the aggregates */
+	QO_GBP_WALK tmp = *walk;
+	int cw = PT_CONTINUE_WALK;
+
+	(void) qo_gbp_check_expr_pre (parser, node, &tmp, &cw);
+	if (tmp.bad && node->node_type != PT_NAME)
+	  {
+	    walk->bad = true;
+	  }
+      }
+      break;
+    }
+
+  if (walk->bad)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * qo_gbp_check_term () - check a conjunct of the WHERE or of an ON: AND only, and a join of two tables is an equality
+ *			  of their columns in the same domain
+ *   return: false if the block cannot be rewritten
+ *   maskp(out): the tables the term reads
+ */
+static bool
+qo_gbp_check_term (PARSER_CONTEXT * parser, QO_GBP_ENV * env, PT_NODE * term, QO_GBP_MASK * maskp)
+{
+  QO_GBP_WALK walk;
+  PT_NODE *arg1, *arg2;
+
+  if (term->or_next != NULL || (term->node_type == PT_EXPR && term->info.expr.op == PT_OR))
+    {
+      return false;
+    }
+
+  walk.env = env;
+  walk.mask = 0;
+  walk.naggs = 0;
+  walk.has_name_outside_agg = false;
+  walk.bad = false;
+  (void) parser_walk_tree (parser, term, qo_gbp_check_expr_pre, &walk, NULL, NULL);
+  if (walk.bad)
+    {
+      return false;
+    }
+
+  *maskp = walk.mask;
+
+  if (qo_gbp_popcount (walk.mask) <= 1)
+    {
+      return true;
+    }
+
+  if (qo_gbp_popcount (walk.mask) > 2 || term->node_type != PT_EXPR || term->info.expr.op != PT_EQ)
+    {
+      return false;
+    }
+
+  arg1 = term->info.expr.arg1;
+  arg2 = term->info.expr.arg2;
+  if (arg1 == NULL || arg2 == NULL || arg1->node_type != PT_NAME || arg2->node_type != PT_NAME
+      || !qo_gbp_is_same_domain (arg1, arg2))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * qo_gbp_term_mask () - the tables a checked term reads
+ */
+static QO_GBP_MASK
+qo_gbp_term_mask (PARSER_CONTEXT * parser, QO_GBP_ENV * env, PT_NODE * term)
+{
+  QO_GBP_WALK walk;
+  PT_NODE *next = term->next;
+
+  walk.env = env;
+  walk.mask = 0;
+  walk.naggs = 0;
+  walk.has_name_outside_agg = false;
+  walk.bad = false;
+  term->next = NULL;
+  (void) parser_walk_tree (parser, term, qo_gbp_check_expr_pre, &walk, NULL, NULL);
+  term->next = next;
+
+  return walk.mask;
+}
+
+/*
+ * qo_gbp_analyze () - check that a block may take the rewrite and find which tables its derived table may group
+ *   return: false if the block is left as it is
+ */
+static bool
+qo_gbp_analyze (PARSER_CONTEXT * parser, PT_NODE * query, QO_GBP_ENV * env)
+{
+  PT_NODE *spec, *term, *next, *item;
+  QO_GBP_WALK walk;
+  QO_GBP_MASK mask, where_ref_mask = 0, on_ref_mask = 0, a, b;
+  int i, j, k;
+  bool has_join_edge;
+
+  memset (env, 0, sizeof (QO_GBP_ENV));
+  env->query = query;
+  env->args_null_strict = true;
+
+  if (query->node_type != PT_SELECT || query->info.query.q.select.flavor != PT_USER_SELECT)
+    {
+      return false;
+    }
+
+  if ((query->info.query.q.select.hint & ~QO_GBP_ALLOWED_HINTS) != 0 || query->info.query.correlation_level != 0
+      || query->info.query.q.select.connect_by != NULL || query->info.query.q.select.start_with != NULL
+      || query->info.query.q.select.after_cb_filter != NULL || query->info.query.upd_del_class_cnt > 0
+      || query->info.query.scan_op_type != S_SELECT || query->info.query.oids_included != 0
+      || query->info.query.flag.is_insert_select || query->info.query.flag.single_tuple
+      || query->info.query.is_subquery == PT_IS_CTE_REC_SUBQUERY || query->flag.is_system_generated_stmt
+      || query->info.query.q.select.using_index != NULL)
+    {
+      return false;
+    }
+
+  if (!PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_HAS_AGG) || pt_has_analytic (parser, query)
+      || (query->info.query.q.select.group_by != NULL && query->info.query.q.select.group_by->flag.with_rollup))
+    {
+      return false;
+    }
+
+  /* FROM: tables only, joined in the WHERE or by LEFT / RIGHT OUTER JOIN */
+  for (spec = query->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      if (env->nspecs >= QO_GBP_MAX_SPECS || spec->node_type != PT_SPEC || spec->info.spec.derived_table != NULL
+	  || PT_SPEC_IS_CTE (spec) || spec->info.spec.entity_name == NULL || spec->info.spec.only_all == PT_ALL
+	  || spec->info.spec.path_entities != NULL || spec->info.spec.meta_class == PT_META_CLASS
+	  || spec->info.spec.flat_entity_list == NULL || spec->info.spec.flat_entity_list->next != NULL)
+	{
+	  return false;
+	}
+
+      switch (spec->info.spec.join_type)
+	{
+	case PT_JOIN_NONE:
+	case PT_JOIN_CROSS:
+	case PT_JOIN_LEFT_OUTER:
+	case PT_JOIN_RIGHT_OUTER:
+	  break;
+	case PT_JOIN_INNER:
+	  if (spec->info.spec.on_cond != NULL)
+	    {
+	      return false;
+	    }
+	  break;
+	default:
+	  return false;
+	}
+
+      env->specs[env->nspecs++] = spec;
+    }
+
+  if (env->nspecs < 2)
+    {
+      return false;
+    }
+
+  /* select list, HAVING, ORDER BY: one aggregate per item and nothing that is not grouped beside it */
+  for (item = query->info.query.q.select.list; item != NULL; item = item->next)
+    {
+      next = item->next;
+      item->next = NULL;
+      walk.env = env;
+      walk.mask = 0;
+      walk.naggs = 0;
+      walk.has_name_outside_agg = false;
+      walk.bad = false;
+      (void) parser_walk_tree (parser, item, qo_gbp_check_output_pre, &walk, NULL, NULL);
+      item->next = next;
+      if (walk.bad || walk.naggs > 1 || (walk.naggs == 1 && walk.has_name_outside_agg))
+	{
+	  return false;
+	}
+    }
+
+  walk.env = env;
+  walk.mask = 0;
+  walk.naggs = 0;
+  walk.has_name_outside_agg = false;
+  walk.bad = false;
+  (void) parser_walk_tree (parser, query->info.query.q.select.having, qo_gbp_check_output_pre, &walk, NULL, NULL);
+  (void) parser_walk_tree (parser, query->info.query.order_by, qo_gbp_check_output_pre, &walk, NULL, NULL);
+  if (walk.bad)
+    {
+      return false;
+    }
+
+  for (item = query->info.query.q.select.group_by; item != NULL; item = item->next)
+    {
+      /* the group takes its value from one of its rows, met in another order once the plan changes */
+      if (item->info.sort_spec.expr == NULL || item->info.sort_spec.expr->node_type != PT_NAME
+	  || qo_gbp_spec_index (env, item->info.sort_spec.expr->info.name.spec_id) < 0
+	  || !qo_gbp_is_image_equal (item->info.sort_spec.expr))
+	{
+	  return false;
+	}
+    }
+
+  if (env->at_mask == 0)
+    {
+      /* only COUNT (*): grouping a table without aggregate argument would need its count multiplied into the others */
+      return false;
+    }
+
+  /* WHERE */
+  for (term = query->info.query.q.select.where; term != NULL; term = term->next)
+    {
+      next = term->next;
+      term->next = NULL;
+      if (!qo_gbp_check_term (parser, env, term, &mask))
+	{
+	  term->next = next;
+	  return false;
+	}
+      term->next = next;
+
+      where_ref_mask |= mask;
+      if (qo_gbp_popcount (mask) == 2)
+	{
+	  i = qo_gbp_spec_index (env, term->info.expr.arg1->info.name.spec_id);
+	  j = qo_gbp_spec_index (env, term->info.expr.arg2->info.name.spec_id);
+	  env->adj[i] |= QO_GBP_BIT (j);
+	  env->adj[j] |= QO_GBP_BIT (i);
+	  env->edge[i] |= QO_GBP_BIT (j);
+	  env->edge[j] |= QO_GBP_BIT (i);
+	}
+    }
+
+  /* the tables joined in the WHERE, and the null-supplying tables, that C may take */
+  for (k = 0; k < env->nspecs; k++)
+    {
+      spec = env->specs[k];
+
+      if (spec->info.spec.join_type != PT_JOIN_LEFT_OUTER && spec->info.spec.join_type != PT_JOIN_RIGHT_OUTER)
+	{
+	  if (spec->info.spec.on_cond == NULL)
+	    {
+	      env->inner_mask |= QO_GBP_BIT (k);
+	    }
+	  continue;
+	}
+
+      if (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER && k != 1)
+	{
+	  /* every table before it is null-supplying: only a single one is handled */
+	  return false;
+	}
+
+      /* a LEFT OUTER JOIN supplies NULL for its own table, a RIGHT OUTER JOIN for the table before it */
+      a = (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER) ? QO_GBP_BIT (k) : QO_GBP_BIT (0);
+      has_join_edge = false;
+
+      for (term = spec->info.spec.on_cond; term != NULL; term = term->next)
+	{
+	  next = term->next;
+	  term->next = NULL;
+	  if (!qo_gbp_check_term (parser, env, term, &mask))
+	    {
+	      term->next = next;
+	      return false;
+	    }
+	  term->next = next;
+
+	  b = mask & ~a;
+	  on_ref_mask |= b;
+	  if ((mask & a) && b)
+	    {
+	      /* an equality between the null-supplying table and one table of the other side */
+	      i = qo_gbp_spec_index (env, term->info.expr.arg1->info.name.spec_id);
+	      j = qo_gbp_spec_index (env, term->info.expr.arg2->info.name.spec_id);
+	      env->edge[i] |= QO_GBP_BIT (j);
+	      env->edge[j] |= QO_GBP_BIT (i);
+	      has_join_edge = true;
+	    }
+	}
+
+      /* a WHERE term over it reads it after the join, NULL-extended */
+      if (has_join_edge && !(where_ref_mask & a))
+	{
+	  env->nullable_mask |= a;
+	}
+      if (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	{
+	  env->inner_mask &= ~QO_GBP_BIT (0);
+	}
+    }
+
+  /* a table an ON names besides its own null-supplying table must stay where the ON is */
+  env->inner_mask &= ~on_ref_mask;
+  env->nullable_mask &= ~on_ref_mask;
+
+  return true;
+}
+
+/*
+ * qo_gbp_is_connected () - whether the tables of C are joined to each other by equalities in the WHERE
+ */
+static bool
+qo_gbp_is_connected (QO_GBP_ENV * env, QO_GBP_MASK cmask)
+{
+  QO_GBP_MASK reached, prev;
+  int i;
+
+  for (i = 0; i < env->nspecs && !(cmask & QO_GBP_BIT (i)); i++)
+    {
+      ;
+    }
+  if (i == env->nspecs)
+    {
+      return false;
+    }
+
+  reached = QO_GBP_BIT (i);
+  do
+    {
+      prev = reached;
+      for (i = 0; i < env->nspecs; i++)
+	{
+	  if (reached & QO_GBP_BIT (i))
+	    {
+	      reached |= env->adj[i] & cmask;
+	    }
+	}
+    }
+  while (reached != prev);
+
+  return reached == cmask;
+}
+
+/*
+ * qo_gbp_is_candidate () - whether a set of tables may be grouped before the join
+ */
+static bool
+qo_gbp_is_candidate (QO_GBP_ENV * env, QO_GBP_MASK cmask)
+{
+  QO_GBP_MASK all = (QO_GBP_MASK) ((1ULL << env->nspecs) - 1), other = 0;
+  int i;
+
+  if ((cmask & env->at_mask) != env->at_mask || cmask == all || cmask == 0)
+    {
+      return false;
+    }
+
+  if (qo_gbp_popcount (cmask) == 1 && (cmask & env->nullable_mask))
+    {
+      if (!env->args_null_strict)
+	{
+	  return false;
+	}
+    }
+  else if ((cmask & env->inner_mask) != cmask || !qo_gbp_is_connected (env, cmask))
+    {
+      return false;
+    }
+
+  /* joined to the rest by an equality, which gives the derived table its grouping key */
+  for (i = 0; i < env->nspecs; i++)
+    {
+      if (cmask & QO_GBP_BIT (i))
+	{
+	  other |= env->edge[i] & ~cmask;
+	}
+    }
+
+  return other != 0;
+}
+
+/*
+ * qo_gbp_collect_needed_pre () - collect the columns of C read outside the aggregates
+ */
+static PT_NODE *
+qo_gbp_collect_needed_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_GBP_BUILD *build = (QO_GBP_BUILD *) arg;
+  PT_NODE *col;
+  int idx;
+
+  if (pt_is_aggregate_function (parser, node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type != PT_NAME)
+    {
+      return node;
+    }
+
+  idx = qo_gbp_spec_index (build->env, node->info.name.spec_id);
+  if (idx < 0 || !(build->cmask & QO_GBP_BIT (idx)))
+    {
+      return node;
+    }
+
+  for (col = build->needed; col != NULL; col = col->next)
+    {
+      if (col->info.name.spec_id == node->info.name.spec_id
+	  && intl_identifier_casecmp (col->info.name.original, node->info.name.original) == 0)
+	{
+	  return node;
+	}
+    }
+
+  col = parser_copy_tree (parser, node);
+  if (col == NULL)
+    {
+      build->failed = true;
+      return node;
+    }
+  build->needed = parser_append_node (col, build->needed);
+
+  return node;
+}
+
+/*
+ * qo_gbp_needed_columns () - the columns of C the block reads outside the aggregates and outside the terms that move
+ *			      into the derived table: they become its grouping key
+ */
+static PT_NODE *
+qo_gbp_needed_columns (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask)
+{
+  QO_GBP_BUILD build;
+  PT_NODE *query = env->query, *term, *next;
+  int k;
+
+  memset (&build, 0, sizeof (build));
+  build.env = env;
+  build.cmask = cmask;
+
+#define QO_GBP_COLLECT(tree) \
+  (void) parser_walk_tree (parser, (tree), qo_gbp_collect_needed_pre, &build, NULL, NULL)
+
+  /* the group by first, so that the derived table groups in the order the block does */
+  QO_GBP_COLLECT (query->info.query.q.select.group_by);
+  QO_GBP_COLLECT (query->info.query.q.select.list);
+  QO_GBP_COLLECT (query->info.query.q.select.having);
+  QO_GBP_COLLECT (query->info.query.order_by);
+
+  for (term = query->info.query.q.select.where; term != NULL; term = term->next)
+    {
+      if ((qo_gbp_term_mask (parser, env, term) & ~cmask) != 0)
+	{
+	  next = term->next;
+	  term->next = NULL;
+	  QO_GBP_COLLECT (term);
+	  term->next = next;
+	}
+    }
+
+  for (k = 0; k < env->nspecs; k++)
+    {
+      for (term = env->specs[k]->info.spec.on_cond; term != NULL; term = term->next)
+	{
+	  if ((qo_gbp_term_mask (parser, env, term) & ~cmask) != 0)
+	    {
+	      next = term->next;
+	      term->next = NULL;
+	      QO_GBP_COLLECT (term);
+	      term->next = next;
+	    }
+	}
+    }
+
+#undef QO_GBP_COLLECT
+
+  if (build.failed)
+    {
+      parser_free_tree (parser, build.needed);
+      return NULL;
+    }
+
+  return build.needed;
+}
+
+/*
+ * qo_gbp_needed_is_image_equal () - whether every grouping column of the derived table is (qo_gbp_is_image_equal ())
+ */
+static bool
+qo_gbp_needed_is_image_equal (PT_NODE * needed)
+{
+  PT_NODE *col;
+
+  for (col = needed; col != NULL; col = col->next)
+    {
+      if (!qo_gbp_is_image_equal (col))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
+ * qo_gbp_needed_has_key () - whether every table of C is grouped on one of its keys: a row of their join is then a
+ *			      group of its own, and the grouping folds nothing
+ */
+static bool
+qo_gbp_needed_has_key (QO_GBP_ENV * env, QO_GBP_MASK cmask, PT_NODE * needed)
+{
+  PT_NODE *spec, *col;
+  DB_OBJECT *classop;
+  SM_CLASS_CONSTRAINT *cons;
+  int i, k;
+
+  for (k = 0; k < env->nspecs; k++)
+    {
+      if (!(cmask & QO_GBP_BIT (k)))
+	{
+	  continue;
+	}
+
+      spec = env->specs[k];
+      classop = NULL;
+      PT_SPEC_GET_DB_OBJECT (spec, classop);
+      if (classop == NULL)
+	{
+	  return false;
+	}
+
+      for (cons = sm_class_constraints (classop); cons != NULL; cons = cons->next)
+	{
+	  if (!qo_is_row_identifying_key (cons))
+	    {
+	      continue;
+	    }
+
+	  for (i = 0; cons->attributes[i] != NULL; i++)
+	    {
+	      for (col = needed; col != NULL; col = col->next)
+		{
+		  if (col->info.name.spec_id == spec->info.spec.id
+		      && intl_identifier_casecmp (col->info.name.original, cons->attributes[i]->header.name) == 0)
+		    {
+		      break;
+		    }
+		}
+	      if (col == NULL)
+		{
+		  break;
+		}
+	    }
+
+	  if (cons->attributes[i] == NULL)
+	    {
+	      break;
+	    }
+	}
+
+      if (cons == NULL)
+	{
+	  /* this table has a row of its own in more than one group's join rows */
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * qo_gbp_can_remove_group_by () - whether the block, once C is grouped, meets one row per group: every table left is
+ *				   fixed by the GROUP BY columns, through a key of it whose columns are fixed, or
+ *				   for the derived table through its grouping key, a column being fixed by an
+ *				   equality with a fixed one or by a key of its table (C's tables included: their rows
+ *				   vary inside a group, but a column fixed by their key does not)
+ */
+static bool
+qo_gbp_can_remove_group_by (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, PT_NODE * needed)
+{
+  PT_NODE *query = env->query, *group, *term, *col, *fixed = NULL, *a1, *a2, *spec;
+  QO_GBP_MASK determined = 0, all = (QO_GBP_MASK) ((1ULL << env->nspecs) - 1);
+  DB_OBJECT *classop;
+  SM_CLASS_CONSTRAINT *cons;
+  bool changed, ok, dquery_fixed = false;
+  int i, k, idx1;
+
+#define QO_GBP_IS_FIXED(col_) \
+  (((idx1 = qo_gbp_spec_index (env, (col_)->info.name.spec_id)) >= 0 && (determined & QO_GBP_BIT (idx1))) \
+   || pt_find_name (parser, (col_), fixed) != NULL)
+
+  if (query->info.query.q.select.group_by == NULL || query->info.query.q.select.having != NULL
+      || query->info.query.order_by == NULL || env->has_groupby_num)
+    {
+      /* without ORDER BY the GROUP BY gives the output its order */
+      return false;
+    }
+
+  for (k = 0; k < env->nspecs; k++)
+    {
+      if (env->specs[k]->info.spec.join_type == PT_JOIN_LEFT_OUTER
+	  || env->specs[k]->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	{
+	  return false;
+	}
+    }
+
+  for (group = query->info.query.q.select.group_by; group != NULL; group = group->next)
+    {
+      fixed = parser_append_node (parser_copy_tree (parser, group->info.sort_spec.expr), fixed);
+    }
+
+  do
+    {
+      changed = false;
+
+      /* the tables fixed through a key, C through its grouping key */
+      for (k = 0; k < env->nspecs; k++)
+	{
+	  if (determined & QO_GBP_BIT (k))
+	    {
+	      continue;
+	    }
+
+	  spec = env->specs[k];
+	  classop = NULL;
+	  PT_SPEC_GET_DB_OBJECT (spec, classop);
+	  if (classop == NULL)
+	    {
+	      continue;
+	    }
+
+	  for (cons = sm_class_constraints (classop); cons != NULL; cons = cons->next)
+	    {
+	      if (!qo_is_row_identifying_key (cons))
+		{
+		  continue;
+		}
+
+	      for (i = 0; cons->attributes[i] != NULL; i++)
+		{
+		  for (col = fixed; col != NULL; col = col->next)
+		    {
+		      if (col->info.name.spec_id == spec->info.spec.id
+			  && intl_identifier_casecmp (col->info.name.original, cons->attributes[i]->header.name) == 0)
+			{
+			  break;
+			}
+		    }
+		  if (col == NULL)
+		    {
+		      break;
+		    }
+		}
+
+	      if (cons->attributes[i] == NULL)
+		{
+		  determined |= QO_GBP_BIT (k);
+		  changed = true;
+		  break;
+		}
+	    }
+	}
+
+      /* the derived table meets one row per group once its grouping key is fixed */
+      if (!dquery_fixed)
+	{
+	  ok = true;
+	  for (col = needed; col != NULL && ok; col = col->next)
+	    {
+	      ok = QO_GBP_IS_FIXED (col);
+	    }
+	  if (ok)
+	    {
+	      dquery_fixed = true;
+	      changed = true;
+	    }
+	}
+
+      /* a column equal to a fixed one is fixed */
+      for (term = query->info.query.q.select.where; term != NULL; term = term->next)
+	{
+	  if (term->node_type != PT_EXPR || term->info.expr.op != PT_EQ)
+	    {
+	      continue;
+	    }
+	  a1 = term->info.expr.arg1;
+	  a2 = term->info.expr.arg2;
+	  if (a1->node_type != PT_NAME || a2->node_type != PT_NAME)
+	    {
+	      continue;
+	    }
+	  if (QO_GBP_IS_FIXED (a1) && !QO_GBP_IS_FIXED (a2))
+	    {
+	      fixed = parser_append_node (parser_copy_tree (parser, a2), fixed);
+	      changed = true;
+	    }
+	  else if (QO_GBP_IS_FIXED (a2) && !QO_GBP_IS_FIXED (a1))
+	    {
+	      fixed = parser_append_node (parser_copy_tree (parser, a1), fixed);
+	      changed = true;
+	    }
+	}
+    }
+  while (changed && !(dquery_fixed && (determined & ~cmask) == (all & ~cmask)));
+
+#undef QO_GBP_IS_FIXED
+
+  parser_free_tree (parser, fixed);
+
+  /* the tables of C may vary inside a group of the derived table: what is fixed is its grouping key */
+  return dquery_fixed && (determined & ~cmask) == (all & ~cmask);
+}
+
+/*
+ * qo_gbp_add_column () - add a column to the derived table's select list, and its GROUP BY for a grouping column
+ *   return: a name of the block for the new column
+ */
+static PT_NODE *
+qo_gbp_add_column (PARSER_CONTEXT * parser, QO_GBP_BUILD * build, PT_NODE * expr, bool group)
+{
+  PT_NODE *attr, *sort, *range = build->dspec->info.spec.range_var;
+
+  if (expr == NULL)
+    {
+      build->failed = true;
+      return NULL;
+    }
+
+  build->ncols++;
+  build->dquery->info.query.q.select.list = parser_append_node (expr, build->dquery->info.query.q.select.list);
+
+  attr = pt_name (parser, mq_generate_name (parser, "gbp_a", &build->seq));
+  if (attr == NULL)
+    {
+      build->failed = true;
+      return NULL;
+    }
+  attr->info.name.meta_class = PT_NORMAL;
+  attr->info.name.resolved = range->info.name.original;
+  attr->info.name.spec_id = build->dspec->info.spec.id;
+  attr->type_enum = expr->type_enum;
+  attr->data_type = parser_copy_tree (parser, expr->data_type);
+  PT_NAME_INFO_SET_FLAG (attr, PT_NAME_GENERATED_DERIVED_SPEC);
+  build->dspec->info.spec.as_attr_list = parser_append_node (attr, build->dspec->info.spec.as_attr_list);
+
+  if (group)
+    {
+      sort = parser_new_node (parser, PT_SORT_SPEC);
+      if (sort == NULL)
+	{
+	  build->failed = true;
+	  return NULL;
+	}
+      sort->info.sort_spec.expr = parser_copy_tree (parser, expr);
+      sort->info.sort_spec.asc_or_desc = PT_ASC;
+      sort->info.sort_spec.pos_descr.pos_no = build->ncols;
+      sort->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, expr);
+      build->dquery->info.query.q.select.group_by =
+	parser_append_node (sort, build->dquery->info.query.q.select.group_by);
+    }
+
+  return parser_copy_tree (parser, attr);
+}
+
+/*
+ * qo_gbp_make_agg () - a new aggregate function over an argument, typed
+ */
+static PT_NODE *
+qo_gbp_make_agg (PARSER_CONTEXT * parser, FUNC_CODE function, PT_NODE * arg)
+{
+  PT_NODE *agg;
+
+  agg = parser_new_node (parser, PT_FUNCTION);
+  if (agg == NULL)
+    {
+      return NULL;
+    }
+  agg->info.function.function_type = function;
+  agg->info.function.all_or_distinct = PT_ALL;
+  agg->info.function.arg_list = arg;
+
+  return pt_semantic_type (parser, agg, NULL);
+}
+
+/*
+ * qo_gbp_cast_to () - cast an expression to the type of the aggregate it replaces, when it differs
+ */
+static PT_NODE *
+qo_gbp_cast_to (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * like)
+{
+  int prec = 0, scale = 0;
+
+  if (expr == NULL)
+    {
+      return NULL;
+    }
+
+  expr = pt_semantic_type (parser, expr, NULL);
+  if (expr == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  if (expr->type_enum == like->type_enum
+      && (expr->data_type == NULL ? like->data_type == NULL
+	  : (like->data_type != NULL
+	     && expr->data_type->info.data_type.precision == like->data_type->info.data_type.precision
+	     && expr->data_type->info.data_type.dec_precision == like->data_type->info.data_type.dec_precision)))
+    {
+      return expr;
+    }
+
+  if (like->data_type != NULL)
+    {
+      prec = like->data_type->info.data_type.precision;
+      scale = like->data_type->info.data_type.dec_precision;
+    }
+
+  expr = pt_wrap_with_cast_op (parser, expr, like->type_enum, prec, scale, like->data_type);
+  if (expr == NULL)
+    {
+      return NULL;
+    }
+
+  return pt_semantic_type (parser, expr, NULL);
+}
+
+/*
+ * qo_gbp_replace_agg_post () - replace an aggregate of the block by the re-aggregation of the partial one(s) the
+ *				derived table computes
+ */
+static PT_NODE *
+qo_gbp_replace_agg_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_GBP_BUILD *build = (QO_GBP_BUILD *) arg;
+  PT_NODE *agg_arg, *s, *c, *expr = NULL, *next;
+  FUNC_CODE function;
+  bool flat = build->remove_group_by;
+
+  if (build->failed || !pt_is_aggregate_function (parser, node) || node->info.function.function_type == PT_GROUPBY_NUM)
+    {
+      return node;
+    }
+
+  function = node->info.function.function_type;
+  agg_arg = node->info.function.arg_list;
+
+  switch (function)
+    {
+    case PT_SUM:
+    case PT_MIN:
+    case PT_MAX:
+      s = qo_gbp_add_column (parser, build, qo_gbp_make_agg (parser, function, parser_copy_tree (parser, agg_arg)),
+			     false);
+      expr = flat ? s : qo_gbp_make_agg (parser, function, s);
+      break;
+
+    case PT_COUNT:
+    case PT_COUNT_STAR:
+      c = qo_gbp_add_column (parser, build,
+			     qo_gbp_make_agg (parser, function,
+					      function == PT_COUNT ? parser_copy_tree (parser, agg_arg) : NULL), false);
+      /* a row of the block without a partner in the derived table counts 0 for COUNT (x) and 1 for COUNT (*), as
+       * its NULL-extended row did */
+      expr = parser_make_expression (parser, PT_NVL, c, pt_make_integer_value (parser, function == PT_COUNT ? 0 : 1),
+				     NULL);
+      if (!flat)
+	{
+	  expr = parser_make_expression (parser, PT_NVL, qo_gbp_make_agg (parser, PT_SUM, expr),
+					 pt_make_integer_value (parser, 0), NULL);
+	}
+      break;
+
+    case PT_AVG:
+      s = qo_gbp_add_column (parser, build, qo_gbp_make_agg (parser, PT_SUM, parser_copy_tree (parser, agg_arg)),
+			     false);
+      c = qo_gbp_add_column (parser, build, qo_gbp_make_agg (parser, PT_COUNT, parser_copy_tree (parser, agg_arg)),
+			     false);
+      if (!flat)
+	{
+	  s = qo_gbp_make_agg (parser, PT_SUM, s);
+	  c = qo_gbp_make_agg (parser, PT_SUM, c);
+	}
+      /* AVG divides the sum by the count in DOUBLE */
+      s = pt_wrap_with_cast_op (parser, s, PT_TYPE_DOUBLE, 0, 0, NULL);
+      c = pt_wrap_with_cast_op (parser, parser_make_expression (parser, PT_NULLIF, c,
+								pt_make_integer_value (parser, 0), NULL),
+				PT_TYPE_DOUBLE, 0, 0, NULL);
+      expr = parser_make_expression (parser, PT_DIVIDE, s, c, NULL);
+      break;
+
+    default:
+      build->failed = true;
+      return node;
+    }
+
+  expr = qo_gbp_cast_to (parser, expr, node);
+  if (expr == NULL || build->failed)
+    {
+      build->failed = true;
+      return node;
+    }
+
+  next = node->next;
+  node->next = NULL;
+  expr->next = next;
+  expr->line_number = node->line_number;
+  expr->column_number = node->column_number;
+  if (node->alias_print != NULL)
+    {
+      expr->alias_print = node->alias_print;
+    }
+  expr->flag.is_hidden_column = node->flag.is_hidden_column;
+  parser_free_tree (parser, node);
+
+  return expr;
+}
+
+/*
+ * qo_gbp_replace_name_pre () - replace a column of C by the derived table column that holds it
+ */
+static PT_NODE *
+qo_gbp_replace_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_GBP_BUILD *build = (QO_GBP_BUILD *) arg;
+  PT_NODE *col, *attr, *new_name;
+
+  if (build->failed || node->node_type != PT_NAME || node->info.name.spec_id == build->dspec->info.spec.id)
+    {
+      return node;
+    }
+
+  for (col = build->needed, attr = build->attrs; col != NULL && attr != NULL; col = col->next, attr = attr->next)
+    {
+      if (col->info.name.spec_id == node->info.name.spec_id
+	  && intl_identifier_casecmp (col->info.name.original, node->info.name.original) == 0)
+	{
+	  break;
+	}
+    }
+
+  if (col == NULL)
+    {
+      return node;
+    }
+
+  new_name = parser_copy_tree (parser, attr);
+  if (new_name == NULL)
+    {
+      build->failed = true;
+      return node;
+    }
+  new_name->next = node->next;
+  new_name->line_number = node->line_number;
+  new_name->column_number = node->column_number;
+  new_name->alias_print = node->alias_print;
+  new_name->flag.is_hidden_column = node->flag.is_hidden_column;
+  node->next = NULL;
+  parser_free_tree (parser, node);
+
+  return new_name;
+}
+
+/*
+ * qo_gbp_transform () - group the tables of C in a derived table and re-aggregate the block over it
+ *   return: the derived table's SELECT, NULL if the block could not be rewritten (it may be partly rewritten then:
+ *	     the caller works on a copy, or has checked the same copy before)
+ *   env(in): the block, analyzed
+ *   cmask(in): the tables to group
+ *   remove_group_by(in): the block meets one row per group and drops its GROUP BY
+ */
+static PT_NODE *
+qo_gbp_transform (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, bool remove_group_by)
+{
+  QO_GBP_BUILD build;
+  PT_NODE *query = env->query, *dquery, *dspec, *spec, *prev, *next, *term, **termp, *col, *attr;
+  PT_NODE *first_c = NULL, *nullable_spec = NULL, *moved = NULL, *on_spec = NULL;
+  QO_GBP_MASK mask;
+  int k, idx = 0, seq = 0;
+
+  memset (&build, 0, sizeof (build));
+  build.env = env;
+  build.cmask = cmask;
+  build.remove_group_by = remove_group_by;
+  build.nullable = (cmask & env->nullable_mask) != 0;
+
+  build.needed = qo_gbp_needed_columns (parser, env, cmask);
+  if (build.needed == NULL)
+    {
+      return NULL;
+    }
+
+  dquery = parser_new_node (parser, PT_SELECT);
+  dspec = parser_new_node (parser, PT_SPEC);
+  if (dquery == NULL || dspec == NULL)
+    {
+      return NULL;
+    }
+  build.dquery = dquery;
+  build.dspec = dspec;
+
+  dquery->info.query.q.select.flavor = PT_USER_SELECT;
+  dquery->info.query.is_subquery = PT_IS_SUBQUERY;
+  dquery->info.query.all_distinct = PT_ALL;
+  dquery->info.query.correlation_level = 0;
+  dquery->flag.cannot_prepare = query->flag.cannot_prepare;
+  dquery->info.query.q.select.hint = query->info.query.q.select.hint & QO_GBP_DERIVED_HINTS;
+  dquery->info.query.q.select.num_parallel_threads = query->info.query.q.select.num_parallel_threads;
+  PT_SELECT_INFO_SET_FLAG (dquery, PT_SELECT_INFO_HAS_AGG);
+
+  dspec->info.spec.id = (UINTPTR) dspec;
+  dspec->info.spec.derived_table = dquery;
+  dspec->info.spec.derived_table_type = PT_IS_SUBQUERY;
+  dspec->info.spec.range_var = pt_name (parser, mq_generate_name (parser, "gbp", &seq));
+  if (dspec->info.spec.range_var == NULL)
+    {
+      return NULL;
+    }
+  dspec->info.spec.range_var->info.name.spec_id = dspec->info.spec.id;
+
+  /* the grouping columns lead the derived table's select list */
+  for (col = build.needed; col != NULL; col = col->next)
+    {
+      attr = qo_gbp_add_column (parser, &build, parser_copy_tree (parser, col), true);
+      if (build.failed)
+	{
+	  return NULL;
+	}
+      build.attrs = parser_append_node (attr, build.attrs);
+    }
+
+  /* the aggregates: partial ones in the derived table, re-aggregated in the block */
+  query->info.query.q.select.list =
+    parser_walk_tree (parser, query->info.query.q.select.list, NULL, NULL, qo_gbp_replace_agg_post, &build);
+  query->info.query.q.select.having =
+    parser_walk_tree (parser, query->info.query.q.select.having, NULL, NULL, qo_gbp_replace_agg_post, &build);
+  query->info.query.order_by =
+    parser_walk_tree (parser, query->info.query.order_by, NULL, NULL, qo_gbp_replace_agg_post, &build);
+  if (build.failed)
+    {
+      return NULL;
+    }
+
+  /* the WHERE terms over C alone move into the derived table */
+  for (termp = &query->info.query.q.select.where; *termp != NULL;)
+    {
+      term = *termp;
+      mask = qo_gbp_term_mask (parser, env, term);
+      if (mask != 0 && (mask & ~cmask) == 0)
+	{
+	  *termp = term->next;
+	  term->next = NULL;
+	  moved = parser_append_node (term, moved);
+	}
+      else
+	{
+	  termp = &term->next;
+	}
+    }
+
+  /* so do the terms of an ON over the null-supplying table alone */
+  if (build.nullable)
+    {
+      for (k = 0; k < env->nspecs; k++)
+	{
+	  if (cmask & QO_GBP_BIT (k))
+	    {
+	      nullable_spec = env->specs[k];
+	    }
+	}
+      on_spec = (nullable_spec->info.spec.join_type == PT_JOIN_LEFT_OUTER) ? nullable_spec : env->specs[1];
+      for (termp = &on_spec->info.spec.on_cond; *termp != NULL;)
+	{
+	  term = *termp;
+	  mask = qo_gbp_term_mask (parser, env, term);
+	  if (mask != 0 && (mask & ~cmask) == 0)
+	    {
+	      *termp = term->next;
+	      term->next = NULL;
+	      moved = parser_append_node (term, moved);
+	    }
+	  else
+	    {
+	      termp = &term->next;
+	    }
+	}
+    }
+
+  for (term = moved; term != NULL; term = term->next)
+    {
+      if (term->node_type == PT_EXPR)
+	{
+	  term->info.expr.location = 0;
+	}
+      else if (term->node_type == PT_VALUE)
+	{
+	  term->info.value.location = 0;
+	}
+    }
+  dquery->info.query.q.select.where = moved;
+
+  /* the tables of C move into the derived table, which takes the place of the first of them */
+  prev = NULL;
+  for (spec = query->info.query.q.select.from, k = 0; spec != NULL; spec = next, k++)
+    {
+      next = spec->next;
+      if (!(cmask & QO_GBP_BIT (k)))
+	{
+	  prev = spec;
+	  continue;
+	}
+
+      if (first_c == NULL)
+	{
+	  first_c = spec;
+	  dspec->info.spec.location = spec->info.spec.location;
+	  if (spec == nullable_spec && spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
+	    {
+	      dspec->info.spec.join_type = PT_JOIN_LEFT_OUTER;
+	      dspec->info.spec.on_cond = spec->info.spec.on_cond;
+	      spec->info.spec.on_cond = NULL;
+	    }
+	  dspec->next = next;
+	  if (prev == NULL)
+	    {
+	      query->info.query.q.select.from = dspec;
+	    }
+	  else
+	    {
+	      prev->next = dspec;
+	    }
+	  prev = dspec;
+	}
+      else
+	{
+	  prev->next = next;
+	}
+
+      spec->next = NULL;
+      spec->info.spec.join_type = PT_JOIN_NONE;
+      spec->info.spec.location = idx++;
+      dquery->info.query.q.select.from = parser_append_node (spec, dquery->info.query.q.select.from);
+    }
+
+  /* the columns of C left in the block read the derived table */
+#define QO_GBP_REPLACE(tree) \
+  (tree) = parser_walk_tree (parser, (tree), qo_gbp_replace_name_pre, &build, NULL, NULL)
+
+  QO_GBP_REPLACE (query->info.query.q.select.list);
+  QO_GBP_REPLACE (query->info.query.q.select.group_by);
+  QO_GBP_REPLACE (query->info.query.q.select.having);
+  QO_GBP_REPLACE (query->info.query.order_by);
+  QO_GBP_REPLACE (query->info.query.q.select.where);
+  for (spec = query->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      QO_GBP_REPLACE (spec->info.spec.on_cond);
+    }
+
+#undef QO_GBP_REPLACE
+
+  if (build.failed)
+    {
+      return NULL;
+    }
+
+  /* the derived table groups on a key of its tables as the block would (it also keeps the group estimate from
+   * multiplying the distinct counts of columns the key fixes) */
+  qo_remove_useless_groupby_columns (parser, dquery);
+
+  if (remove_group_by)
+    {
+      parser_free_tree (parser, query->info.query.q.select.group_by);
+      query->info.query.q.select.group_by = NULL;
+      PT_SELECT_INFO_CLEAR_FLAG (query, PT_SELECT_INFO_HAS_AGG);
+    }
+
+  query = mq_regenerate_if_ambiguous (parser, dspec, query, query->info.query.q.select.from);
+  (void) query;
+
+  parser_free_tree (parser, build.needed);
+  parser_free_tree (parser, build.attrs);
+
+  return dquery;
+}
+
+/*
+ * qo_gbp_is_lookup () - whether C joins table t on a key of t of one column: t meets one row per row of C at most
+ */
+static bool
+qo_gbp_is_lookup (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, int t)
+{
+  PT_NODE *term, *col;
+  DB_OBJECT *classop = NULL;
+  SM_CLASS_CONSTRAINT *cons;
+  QO_GBP_MASK m;
+
+  PT_SPEC_GET_DB_OBJECT (env->specs[t], classop);
+  if (classop == NULL)
+    {
+      return false;
+    }
+
+  for (term = env->query->info.query.q.select.where; term != NULL; term = term->next)
+    {
+      m = qo_gbp_term_mask (parser, env, term);
+      if (qo_gbp_popcount (m) != 2 || !(m & QO_GBP_BIT (t)) || !(m & cmask))
+	{
+	  continue;
+	}
+
+      /* an equality of two columns (qo_gbp_check_term ()) */
+      col = (term->info.expr.arg1->info.name.spec_id == env->specs[t]->info.spec.id)
+	? term->info.expr.arg1 : term->info.expr.arg2;
+
+      for (cons = sm_class_constraints (classop); cons != NULL; cons = cons->next)
+	{
+	  if (qo_is_row_identifying_key (cons) && cons->attributes[0] != NULL && cons->attributes[1] == NULL
+	      && intl_identifier_casecmp (col->info.name.original, cons->attributes[0]->header.name) == 0)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_gbp_class_stats () - the statistics of the class a spec reads, NULL when it has none
+ */
+static CLASS_STATS *
+qo_gbp_class_stats (PT_NODE * spec)
+{
+  DB_OBJECT *classop = NULL;
+  SM_CLASS *smclass;
+
+  PT_SPEC_GET_DB_OBJECT (spec, classop);
+  if (classop == NULL)
+    {
+      return NULL;
+    }
+
+  smclass = sm_get_class_with_statistics (classop);
+  if (smclass == NULL || smclass->stats == NULL || smclass->stats->heap_num_objects <= 0
+      || smclass->stats->attr_stats == NULL)
+    {
+      return NULL;
+    }
+
+  return smclass->stats;
+}
+
+/*
+ * qo_gbp_column_ndv () - the number of distinct values of a column of the block, 0 when unknown
+ */
+static double
+qo_gbp_column_ndv (QO_GBP_ENV * env, PT_NODE * name)
+{
+  DB_OBJECT *classop = NULL;
+  CLASS_STATS *stats;
+  int k, j, attr_id;
+
+  k = qo_gbp_spec_index (env, name->info.name.spec_id);
+  if (k < 0 || (stats = qo_gbp_class_stats (env->specs[k])) == NULL)
+    {
+      return 0.0;
+    }
+
+  PT_SPEC_GET_DB_OBJECT (env->specs[k], classop);
+  attr_id = sm_att_id (classop, name->info.name.original);
+  for (j = 0; j < stats->n_attrs; j++)
+    {
+      if (stats->attr_stats[j].id == attr_id)
+	{
+	  return (double) stats->attr_stats[j].ndv;
+	}
+    }
+
+  return 0.0;
+}
+
+/*
+ * qo_gbp_term_selectivity () - the fraction of the rows of its table a condition on one table keeps, estimated from
+ *				the number of distinct values of its column for an equality or an IN list, and as
+ *				the planner guesses otherwise (a range or LIKE is guessed to keep few rows, which only
+ *				makes the rewrite rarer)
+ */
+static double
+qo_gbp_term_selectivity (QO_GBP_ENV * env, PT_NODE * term)
+{
+  PT_NODE *col = NULL, *other = NULL, *elem;
+  double ndv = 0.0, sel;
+  int n;
+
+  if (term->node_type != PT_EXPR)
+    {
+      return DEFAULT_SELECTIVITY;
+    }
+
+  if (term->info.expr.arg1 != NULL && term->info.expr.arg1->node_type == PT_NAME)
+    {
+      col = term->info.expr.arg1;
+      other = term->info.expr.arg2;
+    }
+  else if (term->info.expr.arg2 != NULL && term->info.expr.arg2->node_type == PT_NAME)
+    {
+      col = term->info.expr.arg2;
+      other = term->info.expr.arg1;
+    }
+  if (col != NULL && (other == NULL || other->node_type != PT_NAME))
+    {
+      ndv = qo_gbp_column_ndv (env, col);
+    }
+
+  switch (term->info.expr.op)
+    {
+    case PT_EQ:
+    case PT_NULLSAFE_EQ:
+      return (ndv >= 1.0) ? 1.0 / ndv : DEFAULT_EQUAL_SELECTIVITY;
+
+    case PT_NE:
+      return (ndv >= 1.0) ? 1.0 - 1.0 / ndv : 1.0 - DEFAULT_EQUAL_SELECTIVITY;
+
+    case PT_IS_IN:
+    case PT_IS_NOT_IN:
+      n = 0;
+      if (PT_IS_SET_TYPE (other) && (other->node_type == PT_VALUE || other->node_type == PT_FUNCTION))
+	{
+	  elem = (other->node_type == PT_VALUE) ? other->info.value.data_value.set : other->info.function.arg_list;
+	  for (; elem != NULL; elem = elem->next)
+	    {
+	      n++;
+	    }
+	}
+      sel = (ndv >= 1.0 && n > 0) ? MIN (1.0, n / ndv) : DEFAULT_IN_SELECTIVITY;
+      return (term->info.expr.op == PT_IS_IN) ? sel : 1.0 - sel;
+
+    case PT_LIKE:
+      return DEFAULT_SELECTIVITY;
+
+    case PT_NOT_LIKE:
+      return 1.0 - DEFAULT_SELECTIVITY;
+
+    case PT_IS_NULL:
+      return DEFAULT_NULL_SELECTIVITY;
+
+    case PT_IS_NOT_NULL:
+      return 1.0 - DEFAULT_NULL_SELECTIVITY;
+
+    case PT_LT:
+    case PT_LE:
+    case PT_GT:
+    case PT_GE:
+      return DEFAULT_COMP_SELECTIVITY;
+
+    case PT_BETWEEN:
+    case PT_RANGE:
+      return DEFAULT_BETWEEN_SELECTIVITY;
+
+    default:
+      return DEFAULT_SELECTIVITY;
+    }
+}
+
+/*
+ * qo_gbp_table_selectivity () - the fraction of the rows of a table its own conditions keep
+ */
+static double
+qo_gbp_table_selectivity (PARSER_CONTEXT * parser, QO_GBP_ENV * env, int k)
+{
+  PT_NODE *term;
+  double sel = 1.0;
+  int j;
+
+  for (term = env->query->info.query.q.select.where; term != NULL; term = term->next)
+    {
+      if (qo_gbp_term_mask (parser, env, term) == QO_GBP_BIT (k))
+	{
+	  sel *= qo_gbp_term_selectivity (env, term);
+	}
+    }
+
+  /* an ON condition on its own table only filters the null-supplying table it belongs to */
+  for (j = 0; j < env->nspecs; j++)
+    {
+      for (term = env->specs[j]->info.spec.on_cond; term != NULL; term = term->next)
+	{
+	  if (qo_gbp_term_mask (parser, env, term) == QO_GBP_BIT (k))
+	    {
+	      sel *= qo_gbp_term_selectivity (env, term);
+	    }
+	}
+    }
+
+  return sel;
+}
+
+/*
+ * qo_gbp_is_sure_gain () - whether grouping C first surely pays, judged on the statistics alone: the rewrite runs on
+ *			    every compile, plan cache hit or not, so it may not plan the block (see the block
+ *			    comment above)
+ *   needed(in): the grouping key of the derived table (qo_gbp_needed_columns ())
+ *   remove_group_by(in): the block drops its GROUP BY once C is grouped
+ */
+static bool
+qo_gbp_is_sure_gain (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, PT_NODE * needed,
+		     bool remove_group_by)
+{
+  CLASS_STATS *stats;
+  PT_NODE *col;
+  double reached = 1.0, rows = 0.0, sel = 1.0, groups = 1.0, ndv;
+  int k;
+
+  for (k = 0; k < env->nspecs; k++)
+    {
+      if (cmask & QO_GBP_BIT (k))
+	{
+	  stats = qo_gbp_class_stats (env->specs[k]);
+	  if (stats == NULL)
+	    {
+	      return false;
+	    }
+	  rows = MAX (rows, (double) stats->heap_num_objects);
+	  sel *= qo_gbp_table_selectivity (parser, env, k);
+	}
+      else
+	{
+	  reached *= qo_gbp_table_selectivity (parser, env, k);
+	}
+    }
+
+  /* the other tables must meet most groups: a selective condition on them keeps the join that reads only the rows of
+   * C it meets, through an index, cheaper than grouping all of C */
+  if (reached < QO_GBP_MIN_REACHED)
+    {
+      return false;
+    }
+
+  if (remove_group_by)
+    {
+      /* the grouping only moves down, onto a key that has no more groups than the block's, before the join */
+      return true;
+    }
+
+  /* the block groups twice: the derived table must fold many rows into a group.  C's rows are those of its largest
+   * table, which the others join on their keys, kept by C's conditions; its groups are at most the product of the
+   * numbers of distinct values of the grouping columns */
+  rows *= sel;
+  for (col = needed; col != NULL; col = col->next)
+    {
+      ndv = qo_gbp_column_ndv (env, col);
+      if (ndv < 1.0)
+	{
+	  return false;
+	}
+      groups *= ndv;
+    }
+  groups = MIN (groups, rows);
+
+  return groups >= 1.0 && rows >= QO_GBP_MIN_GROUP_SIZE * groups;
+}
+
+/*
+ * qo_gbp_try () - whether a set C may be grouped first and surely pays, and whether the block then drops its GROUP BY
+ */
+static bool
+qo_gbp_try (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, bool * remove_group_by)
+{
+  PT_NODE *needed;
+  bool ok;
+
+  if (!qo_gbp_is_candidate (env, cmask))
+    {
+      return false;
+    }
+
+  needed = qo_gbp_needed_columns (parser, env, cmask);
+  if (needed == NULL)
+    {
+      return false;
+    }
+
+  /* a grouping key that may merge different values, or a C whose every table is grouped on one of its keys (no row
+   * folds), is never taken */
+  *remove_group_by = qo_gbp_can_remove_group_by (parser, env, cmask, needed);
+  ok = qo_gbp_needed_is_image_equal (needed) && !qo_gbp_needed_has_key (env, cmask, needed)
+    && qo_gbp_is_sure_gain (parser, env, cmask, needed, *remove_group_by);
+  parser_free_tree (parser, needed);
+
+  return ok;
+}
+
+/*
+ * qo_rewrite_group_by_placement () - group a part of the tables of a joining, aggregating SELECT before the join when
+ *				      the statistics tell it surely pays (see the block comment above)
+ *   return: void
+ *   parser(in):
+ *   query(in/out): a SELECT whose rewrites are done (qo_rewrite_queries_post ())
+ */
+void
+qo_rewrite_group_by_placement (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  QO_GBP_ENV env;
+  QO_GBP_MASK cmask, best_mask = 0;
+  bool remove_group_by = false, best_remove = false;
+  int level, t;
+
+  if (query == NULL || query->node_type != PT_SELECT
+      || (query->info.query.q.select.hint & PT_HINT_NO_PUSH_GROUP_BY) || pt_has_error (parser))
+    {
+      return;
+    }
+
+  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+  if (!OPTIMIZATION_ENABLED (level))
+    {
+      return;
+    }
+
+  if (!qo_gbp_analyze (parser, query, &env))
+    {
+      return;
+    }
+
+  /* C starts from the tables of the aggregate arguments and grows along the tables they look up by a key, which keep
+   * its rows and give it a grouping key of fewer values (TPC-H Q10: lineitem, then orders, grouped on o_custkey).  The
+   * first C that lets the block drop its GROUP BY is taken, else the first that folds enough. */
+  cmask = env.at_mask;
+  while (true)
+    {
+      if (qo_gbp_try (parser, &env, cmask, &remove_group_by))
+	{
+	  if (remove_group_by)
+	    {
+	      best_mask = cmask;
+	      best_remove = true;
+	      break;
+	    }
+	  if (best_mask == 0)
+	    {
+	      best_mask = cmask;
+	    }
+	}
+
+      if ((cmask & env.nullable_mask) != 0)
+	{
+	  /* the null-supplying table is grouped alone */
+	  break;
+	}
+
+      for (t = 0; t < env.nspecs; t++)
+	{
+	  if ((env.inner_mask & ~cmask & QO_GBP_BIT (t)) && qo_gbp_is_lookup (parser, &env, cmask, t))
+	    {
+	      break;
+	    }
+	}
+      if (t == env.nspecs)
+	{
+	  break;
+	}
+      cmask |= QO_GBP_BIT (t);
+    }
+
+  if (best_mask == 0)
+    {
+      return;
+    }
+
+  if (qo_gbp_transform (parser, &env, best_mask, best_remove) == NULL)
+    {
+      /* only on memory */
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "group by placement");
+	}
+    }
 }
