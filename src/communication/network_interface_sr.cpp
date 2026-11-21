@@ -9708,13 +9708,15 @@ slocator_upgrade_instances_domain (THREAD_ENTRY *thread_p, unsigned int rid, cha
   char *ptr;
   OID class_oid;
   int attr_id;
+  int check_only;
   int success;
 
   ptr = request;
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
+  ptr = or_unpack_int (ptr, &check_only);
 
-  success = xlocator_upgrade_instances_domain (thread_p, &class_oid, attr_id);
+  success = xlocator_upgrade_instances_domain (thread_p, &class_oid, attr_id, check_only != 0);
 
   if (success != NO_ERROR)
     {
@@ -11254,7 +11256,6 @@ sloaddb_load_batch (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   bool is_batch_accepted = false;
   load_session *session = NULL;
 
-  session_get_load_session (thread_p, session);
   int error_code = session_get_load_session (thread_p, session);
   if (error_code == NO_ERROR)
     {

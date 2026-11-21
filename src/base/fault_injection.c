@@ -46,6 +46,10 @@ static int fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg, const cha
 static int fi_handler_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 static int fi_handler_hang (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 static int fi_handler_hold (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
+#if defined (SERVER_MODE) || defined (SA_MODE)
+static int fi_handler_page_latch_timeout (THREAD_ENTRY * thread_p, void *arg, const char *caller_file,
+					  const int caller_line);
+#endif /* SERVER_MODE || SA_MODE */
 
 /* how long fi_handler_hold stays in place when the caller passes no argument */
 #define FI_HOLD_DEFAULT_SECONDS 3
@@ -84,7 +88,10 @@ FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL, fi_handler_fail, FI_INIT_STATE},
   {FI_TEST_CONNECTION_WORKER_QUEUE_TIMER_STOP_FAIL, fi_handler_fail, FI_INIT_STATE},
   {FI_TEST_CONNECTION_WORKER_CLOSE_HOLD, fi_handler_hold, FI_INIT_STATE},
-  {FI_TEST_HEAP_PREV_VERSION_WALK_HOLD, fi_handler_hold, FI_INIT_STATE}
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  {FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT, fi_handler_page_latch_timeout, FI_INIT_STATE},
+#endif /* SERVER_MODE || SA_MODE */
+  {FI_TEST_HEAP_PREV_VERSION_WALK_HOLD, fi_handler_hold, FI_INIT_STATE},
 };
 
 const FI_TEST_CODE fi_Group_none[] = {
@@ -543,4 +550,27 @@ fi_handler_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, co
 
   return ER_FAILED;
 }
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/*
+ * Note: Leaves the errors that pgbuf_timed_sleep leaves when an active transaction with an infinite wait times out
+ *       on the page in arg (a VPID), without its debug assert.
+ */
+static int
+fi_handler_page_latch_timeout (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line)
+{
+  const VPID *vpid = (const VPID *) arg;
+  const char *client_prog_name, *client_user_name, *client_host_name;
+  int client_pid;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  er_set (ER_ERROR_SEVERITY, caller_file, caller_line, ER_PAGE_LATCH_TIMEDOUT, 2, vpid->volid, vpid->pageid);
+  (void) logtb_find_client_name_host_pid (tran_index, &client_prog_name, &client_user_name, &client_host_name,
+					  &client_pid);
+  er_set (ER_ERROR_SEVERITY, caller_file, caller_line, ER_LK_UNILATERALLY_ABORTED, 4, tran_index, client_user_name,
+	  client_host_name, client_pid);
+
+  return ER_LK_UNILATERALLY_ABORTED;
+}
+#endif /* SERVER_MODE || SA_MODE */
 #endif
