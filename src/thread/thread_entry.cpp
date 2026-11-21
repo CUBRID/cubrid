@@ -748,6 +748,56 @@ thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status 
 }
 
 /*
+ * thread_is_resumed_status () - is the status one a waker gives after deciding for the waiting thread (the resource
+ *                               was handed over, or for some waits the thread was told to retry)
+ *   return: true for *_RESUMED, false for *_SUSPENDED, NONE, INTERRUPT and SHUTDOWN
+ *   status(in):
+ */
+static bool
+thread_is_resumed_status (thread_resume_suspend_status status)
+{
+  switch (status)
+    {
+    case THREAD_PGBUF_RESUMED:
+    case THREAD_JOB_QUEUE_RESUMED:
+    case THREAD_CSECT_READER_RESUMED:
+    case THREAD_CSECT_WRITER_RESUMED:
+    case THREAD_CSECT_PROMOTER_RESUMED:
+    case THREAD_CSS_QUEUE_RESUMED:
+    case THREAD_HEAP_CLSREPR_RESUMED:
+    case THREAD_LOCK_RESUMED:
+    case THREAD_LOGWR_RESUMED:
+    case THREAD_ALLOC_BCB_RESUMED:
+    case THREAD_DWB_QUEUE_RESUMED:
+    case THREAD_CONCURRENCY_SLOT_RESUMED:
+      return true;
+
+    case THREAD_RESUME_NONE:
+    case THREAD_RESUME_DUE_TO_INTERRUPT:
+    case THREAD_RESUME_DUE_TO_SHUTDOWN:
+    case THREAD_PGBUF_SUSPENDED:
+    case THREAD_JOB_QUEUE_SUSPENDED:
+    case THREAD_CSECT_READER_SUSPENDED:
+    case THREAD_CSECT_WRITER_SUSPENDED:
+    case THREAD_CSECT_PROMOTER_SUSPENDED:
+    case THREAD_CSS_QUEUE_SUSPENDED:
+    case THREAD_HEAP_CLSREPR_SUSPENDED:
+    case THREAD_LOCK_SUSPENDED:
+    case THREAD_LOGWR_SUSPENDED:
+    case THREAD_ALLOC_BCB_SUSPENDED:
+    case THREAD_DWB_QUEUE_SUSPENDED:
+    case THREAD_SLEEP_FUNC_SUSPENDED:
+    case THREAD_CONCURRENCY_SLOT_SUSPENDED:
+      return false;
+
+    default:
+      /* a new status must be classified here */
+      assert (false);
+      return false;
+    }
+}
+
+/*
  * thread_wakeup_internal () -
  *   return:
  *   thread_p(in/out):
@@ -759,6 +809,22 @@ thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status
   if (had_mutex == false)
     {
       thread_lock_entry (thread_p);
+    }
+
+  if ((resume_reason == THREAD_RESUME_DUE_TO_INTERRUPT || resume_reason == THREAD_RESUME_DUE_TO_SHUTDOWN)
+      && thread_is_resumed_status (thread_p->resume_status))
+    {
+      /* The waker already decided for the thread (handed the resource over, or told it to retry) and woke it; the
+       * thread has not taken the entry lock back yet. Overwriting the resumed status would make it believe the
+       * resource was not granted and leave the resource without an owner. Keep it. The interrupt is not lost: the
+       * two INTERRUPT senders through here (css_stop_non_log_writer and the deadlock victim loop in lock_suspend)
+       * record it in the transaction table (logtb_set_tran_index_interrupt) and repeat the wakeup (50 ms / 10 ms)
+       * until the thread is gone. No code sends SHUTDOWN now; it is a stop reason like INTERRUPT and kept the same. */
+      if (had_mutex == false)
+	{
+	  thread_unlock_entry (thread_p);
+	}
+      return;
     }
 
   pthread_cond_signal (&thread_p->wakeup_cond);
