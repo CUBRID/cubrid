@@ -278,14 +278,6 @@ xserial_get_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const
 	}
     }
 
-  if (ret != NO_ERROR && !heap_does_exist (thread_p, oid_Serial_class_oid, oid_p))
-    {
-      /* _db_serial is not MVCC: a DROP committed after the caller's scan read the row removes it at once */
-      er_clear ();
-      db_make_null (result_num);
-      ret = NO_ERROR;
-    }
-
   return ret;
 }
 
@@ -398,6 +390,14 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
 
   /* get record into record desc */
   scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  if (scan == S_DOESNT_EXIST)
+    {
+      /* only via serial_current_value_by_oid: a query naming the serial locks it, a _db_serial scan does not */
+      er_clear ();
+      db_make_null (result_num);
+      heap_scancache_end (thread_p, &scan_cache);
+      return NO_ERROR;
+    }
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
