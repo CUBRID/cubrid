@@ -513,14 +513,19 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
   rght_elen = bitset_cardinality (rght_exprs);
   rght_nlen = pt_length_of_list (rght_list) - rght_elen;
 
-  nlen = ls_merge->ls_pos_cnt = left_nlen + rght_nlen;
-  ls_merge->ls_outer_inner_list = (int *) pt_alloc_packing_buf (nlen * sizeof (int));
+  nlen = left_nlen + rght_nlen;
+
+  /* When the keys are expressions on both sides and no column of the two is read above the join, there is no column
+   * to project. Project the first column of the outer list, the value of its first key expression, so that each
+   * joined row is still a row of the result: an array of no element cannot be allocated (pt_alloc_packing_buf ()). */
+  ls_merge->ls_pos_cnt = (nlen > 0) ? nlen : 1;
+  ls_merge->ls_outer_inner_list = (int *) pt_alloc_packing_buf (ls_merge->ls_pos_cnt * sizeof (int));
   if (ls_merge->ls_outer_inner_list == NULL)
     {
       goto exit_on_error;
     }
 
-  ls_merge->ls_pos_list = (int *) pt_alloc_packing_buf (nlen * sizeof (int));
+  ls_merge->ls_pos_list = (int *) pt_alloc_packing_buf (ls_merge->ls_pos_cnt * sizeof (int));
   if (ls_merge->ls_pos_list == NULL)
     {
       goto exit_on_error;
@@ -540,6 +545,13 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
     {
       ls_merge->ls_outer_inner_list[left_nlen + i] = QFILE_INNER_LIST;
       ls_merge->ls_pos_list[left_nlen + i] = i + rght_elen;
+    }
+
+  if (nlen == 0)
+    {
+      assert (left_elen > 0);
+      ls_merge->ls_outer_inner_list[0] = QFILE_OUTER_LIST;
+      ls_merge->ls_pos_list[0] = 0;
     }
 
   /* make outer_spec_list, outer_val_list, inner_spec_list, and inner_val_list */
@@ -2904,7 +2916,8 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		  if (qo_is_index_covering_scan (inner) || qo_plan_multi_range_opt (inner))
 		    {
 		      /* Coverage indexes and indexes using multi range optimization are certified to include segments
-		       * from inner node */
+		       * from inner node. A term that reads no segment of it (an ON term of the preserved side or of no
+		       * table) goes to the key filter too, which evaluates it without the key (eval_key_filter ()). */
 		      bitset_add (&(inner->plan_un.scan.kf_terms), i);
 		      bitset_difference (&predset, &(inner->plan_un.scan.kf_terms));
 		    }
@@ -2956,7 +2969,13 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	   * by scan_handle_single_scan. It might lead to making a wrong result.
 	   */
 	  scan = gen_inner (env, inner, &predset, &new_subqueries, inner_scans, fetches, xasl->parallelism);
-	  if (scan)
+	  if (scan == NULL)
+	    {
+	      /* the inner could not be generated: fail the plan rather than join the outer rows with nothing */
+	      xasl = NULL;
+	      break;
+	    }
+	  else
 	    {
 	      if (IS_OUTER_JOIN_TYPE (join_type))
 		{
@@ -3652,6 +3671,16 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
       namelist = make_namelist_from_projected_segs (env, plan);
       listfile = make_buildlist_proc (env, namelist, parallelism);
       listfile = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, listfile, NULL);
+      if (listfile == NULL)
+	{
+	  /* the plan of the temporary list failed: report it, a scan of no list would read as an inner with no row */
+	  if (namelist)
+	    {
+	      parser_free_tree (env->parser, namelist);
+	    }
+	  scan = NULL;
+	  break;
+	}
       scan = make_scan_proc (env);
       scan = init_list_scan_proc (env, scan, listfile, namelist, predset, NULL);
       if (namelist)

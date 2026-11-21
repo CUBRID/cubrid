@@ -17779,7 +17779,19 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
 
 	  if (i >= env->nterms)
 	    {
-	      attr_notnull = true;	/* OK */
+	      /* the walk above takes the key as read also under IS FALSE, in a bound of a RANGE or inside a subquery,
+	       * so a term must prove that it cannot be TRUE on a NULL key; an ON condition of an outer join does not
+	       * filter the preserved table, nor does a path term */
+	      for (i = 0; i < env->nterms && !attr_notnull; i++)
+		{
+		  termp = QO_ENV_TERM (env, i);
+		  pt_expr = QO_TERM_PT_EXPR (termp);
+		  if (pt_expr != NULL && pt_expr->or_next == NULL && !QO_ON_COND_TERM (termp)
+		      && !QO_IS_PATH_TERM (termp) && !QO_IS_FAKE_TERM (termp))
+		    {
+		      attr_notnull = qo_expr_rejects_null (env->parser, pt_expr, col->info.name.spec_id, col);
+		    }
+		}
 	    }
 
 	  bitset_delset (&key_segment);

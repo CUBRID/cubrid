@@ -5586,7 +5586,11 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		      keep_searching = false;
 		      break;
 		    }
-		  if (precision < temp->info.data_type.precision)
+		  /* an element of no fixed length (a string literal) is the longest: cast to the length of a shorter one,
+		   * a longer literal would fail to coerce */
+		  if (precision != TP_FLOATING_PRECISION_VALUE
+		      && (temp->info.data_type.precision == TP_FLOATING_PRECISION_VALUE
+			  || precision < temp->info.data_type.precision))
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5601,7 +5605,10 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		      keep_searching = false;
 		      break;
 		    }
-		  if (precision < temp->info.data_type.precision)
+		  /* as for VARCHAR, an element of no fixed length is the longest */
+		  if (precision != TP_FLOATING_PRECISION_VALUE
+		      && (temp->info.data_type.precision == TP_FLOATING_PRECISION_VALUE
+			  || precision < temp->info.data_type.precision))
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5714,6 +5721,13 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
   PT_NODE *b2 = NULL;
 
   op = expr->info.expr.op;
+  if (op == PT_NOT_BETWEEN)
+    {
+      /* x NOT BETWEEN a AND b is evaluated as NOT (x >= a AND x <= b) (pt_to_pred_expr_local_with_arg ()), and the
+       * NOT (x BETWEEN a AND b) of a search condition becomes one (pt_cnf ()). Decide its operand types as for
+       * BETWEEN, or a row can satisfy both x BETWEEN a AND b and its negation, or neither. */
+      op = PT_BETWEEN;
+    }
 
   arg1 = expr->info.expr.arg1;
   if (arg1)
@@ -6938,9 +6952,10 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 	  goto always_false;
 	}
 
-      if (cnf_node->type_enum == PT_TYPE_NA || cnf_node->type_enum == PT_TYPE_NULL)
+      if ((cnf_node->type_enum == PT_TYPE_NA || cnf_node->type_enum == PT_TYPE_NULL) && cnf_node->or_next == NULL)
 	{
-	  /* on_cond does not confused with where conjunct is a NULL, treat it as false condition */
+	  /* on_cond does not confused with where conjunct is a NULL, treat it as false condition; the head of an
+	   * or_next chain is one disjunct only, see the DNF loop below */
 	  goto always_false;
 	}
 
@@ -6992,10 +7007,13 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 		  break;
 		}
 
-	      if (dnf_node->node_type == PT_VALUE && dnf_node->type_enum == PT_TYPE_LOGICAL
-		  && dnf_node->info.value.data_value.i == 0)
+	      if ((dnf_node->node_type == PT_VALUE && dnf_node->type_enum == PT_TYPE_LOGICAL
+		   && dnf_node->info.value.data_value.i == 0)
+		  || dnf_node->type_enum == PT_TYPE_NA || dnf_node->type_enum == PT_TYPE_NULL)
 		{
-		  /* cut it off from DNF list */
+		  /* cut it off from DNF list: a FALSE or NULL disjunct, as a NULL (UNKNOWN) rejects the row as FALSE does
+		   * in a condition (since CBRD-28029 a NULL OR x is folded only in a term pt_cnf () made, and CNF can leave
+		   * the NULL as the head of the chain) */
 		  if (dnf_prev)
 		    {
 		      dnf_prev->or_next = dnf_node->or_next;
@@ -7138,6 +7156,23 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case PT_SELECT:
 
+      /* the ORDER BY ... FOR filter takes the rows out after the aggregation */
+      if (node->info.query.orderby_for)
+	{
+	  where = node->info.query.orderby_for;
+	  if (pt_false_search_condition (parser, where) == true)
+	    {
+	      return true;
+	    }
+	}
+
+      /* an aggregate with no GROUP BY gives one row even over no row: a false START WITH or hierarchical WHERE,
+       * which take the rows out before the aggregation, does not empty it (CBRD-28029) */
+      if (pt_is_single_tuple (parser, node))
+	{
+	  return false;
+	}
+
       /* If the "connect by" condition is false the query still has to return all the "start with" tuples. Therefore we
        * do not check that "connect by" is false. */
       if (node->info.query.q.select.start_with)
@@ -7155,20 +7190,6 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      return true;
 	    }
-	}
-
-      if (node->info.query.orderby_for)
-	{
-	  where = node->info.query.orderby_for;
-	  if (pt_false_search_condition (parser, where) == true)
-	    {
-	      return true;
-	    }
-	}
-
-      if (pt_is_single_tuple (parser, node))
-	{
-	  return false;
 	}
 
       if (node->info.query.q.select.group_by)
@@ -9301,6 +9322,8 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_DISK_SIZE:
     case PT_SCHEMA_DEF:
     case PT_COLLECTION_TO_STRING:
+      /* EXISTS is LOGICAL whatever its subquery selects, even a host variable that has no type yet */
+    case PT_EXISTS:
       return true;
 
     default:
@@ -9434,6 +9457,15 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  assert (node->info.expr.arg1->node_type == PT_VALUE);
 	}
+      return node;
+    }
+
+  if (pt_is_range_expression (op) && node->info.expr.arg2 != NULL && PT_IS_VALUE_NODE (node->info.expr.arg2)
+      && node->info.expr.arg2->info.value.is_false_where)
+    {
+      /* the right operand is a subquery that returns no row, folded to a NULL value (pt_to_false_subquery ()): the
+       * comparison is TRUE or FALSE whatever the left operand is, and pt_fold_const_expr () folds it */
+      node->type_enum = PT_TYPE_LOGICAL;
       return node;
     }
 
@@ -17916,7 +17948,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    DB_VALUE slash_char;
 	    char const *slash_str = "\\";
 
-	    if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false && DB_IS_NULL (esc_char))
+	    /* with no ESCAPE clause the backslash escapes only under require_like_escape_character, as when the term is
+	     * evaluated (pt_to_pred_expr_local_with_arg ()); no_backslash_escapes concerns string literals only */
+	    if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER) && DB_IS_NULL (esc_char))
 	      {
 		INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET : db_get_string_codeset (arg1);
 		int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION : db_get_string_collation (arg1);
@@ -18529,6 +18563,35 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
       goto end;
     }
+
+  if (pt_is_range_expression (op) && expr->info.expr.arg2 != NULL && PT_IS_VALUE_NODE (expr->info.expr.arg2)
+      && expr->info.expr.arg2->info.value.is_false_where)
+    {
+      /* the right operand is a subquery that returns no row (pt_to_false_subquery ()): x op ALL and x NOT IN over the
+       * empty set are TRUE, x op SOME and x IN are FALSE, also for a NULL x */
+      switch (op)
+	{
+	case PT_EQ_ALL:
+	case PT_NE_ALL:
+	case PT_GE_ALL:
+	case PT_GT_ALL:
+	case PT_LT_ALL:
+	case PT_LE_ALL:
+	case PT_IS_NOT_IN:
+	  db_make_int (&dbval_res, 1);
+	  break;
+	default:
+	  db_make_int (&dbval_res, 0);
+	  break;
+	}
+      result = pt_dbval_to_value (parser, &dbval_res);
+      if (result == NULL)
+	{
+	  has_error = true;
+	}
+      goto end;
+    }
+
   /* special handling for only one range - convert to comp op */
   if (op == PT_RANGE)
     {
@@ -19074,6 +19137,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  }
 	  break;
 	case PT_LIKE:
+	case PT_NOT_LIKE:
+	  /* no ESCAPE clause: a NULL value here would be taken as ESCAPE NULL, which escapes with a backslash */
 	  arg3 = NULL;
 	  type3 = PT_TYPE_NONE;
 	  break;
@@ -19206,6 +19271,14 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
 
       db_value = pt_value_to_db (parser, val);
+      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL && !PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CNF_DONE))
+	{
+	  /* NULL AND x is FALSE when x is, and NULL OR x is UNKNOWN when x is FALSE: only a term of a filter (pt_cnf ()
+	   * marks those CNF_DONE), where UNKNOWN rejects the row as FALSE does, takes NULL for the AND and the other
+	   * operand for the OR.  Under IS, NOT, XOR, CAST or CASE the node stays */
+	  goto end;
+	}
+
       if (op == PT_AND)
 	{
 	  if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)

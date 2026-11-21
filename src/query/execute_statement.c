@@ -107,7 +107,10 @@
 #define UNIQUE_SAVEPOINT_ALTER_TRIGGER "aLTERtRIGGER"
 #define UNIQUE_SAVEPOINT_CREATE_BLOCK_TRIGGER "cREATEbLOCKtRIGGER"
 
-#define CUSTOM_PRINT_4_SHA_COMPUTE (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT | PT_PRINT_DBLINK_INFO)
+/* the XASL cache key text; the parameters a compilation reads (PRM_FOR_QRY_STRING) are in it for DML too, as for
+ * SELECT, so that a plan compiled under another value is not reused (CBRD-28029) */
+#define CUSTOM_PRINT_4_SHA_COMPUTE (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT \
+				    | PT_PRINT_DBLINK_INFO | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS)
 /*
  * Function Group:
  * Do create/alter/drop serial statement
@@ -15432,8 +15435,14 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 	{
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
 	  pt_reset_error (parser);
-
 	  error = er_errid ();
+	}
+      /* the error is in the error manager now, reported here or by a callee that reset the messages (the error_exit of
+       * the hash join generation): has_internal_error left set would make the caller report the parser again, with
+       * no message left, as "Internal error- reporting semantic error." */
+      if (parser->error_msgs == NULL)
+	{
+	  parser->flag.has_internal_error = 0;
 	}
 
       assert (er_errid () != NO_ERROR);
@@ -15581,8 +15590,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
 
-  PT_NODE_PRINT_TO_ALIAS (parser, statement,
-			  (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_LOWER));
+  PT_NODE_PRINT_TO_ALIAS (parser, statement, (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER));
 
   contextp->sql_hash_text = (char *) statement->alias_print;
   err = do_append_bind_variant_key (parser, contextp, statement);
@@ -15710,8 +15718,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
 	      pt_reset_error (parser);
-
 	      err = er_errid ();
+	    }
+	  /* the error is in the error manager now, reported here or by a callee that reset the messages (the error_exit
+	   * of the hash join generation): has_internal_error left set would make the caller report the parser again,
+	   * with no message left, as "Internal error- reporting semantic error." */
+	  if (parser->error_msgs == NULL)
+	    {
+	      parser->flag.has_internal_error = 0;
 	    }
 
 	  assert (er_errid () != NO_ERROR);
