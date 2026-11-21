@@ -5399,8 +5399,8 @@ disk_type_to_string (DB_VOLTYPE voltype)
  *   vol_fullname(in): new volume full name, or NULL to keep the current one
  *   next_vol_fullname(in): new next volume full name, or NULL to keep the current one
  *
- * Note: The volume names are never trimmed. They and the terminating null of the remarks must fit in the page.
- *       Only the remarks are trimmed when the header grows.
+ * Note: The volume names are not trimmed to fit the page. They and the terminating null of the remarks must fit in
+ *       the page. Only the remarks are trimmed when the header grows.
  */
 static int
 disk_vhdr_check_vol_names_size (const DISK_VOLUME_HEADER * vhdr, const char *vol_fullname,
@@ -5409,7 +5409,8 @@ disk_vhdr_check_vol_names_size (const DISK_VOLUME_HEADER * vhdr, const char *vol
   int vol_fullname_size = vhdr->offset_to_next_vol_fullname - vhdr->offset_to_vol_fullname;
   int next_vol_fullname_size = vhdr->offset_to_vol_remarks - vhdr->offset_to_next_vol_fullname;
   int names_size;
-  const char *name = vol_fullname;
+  const char *name;		/* the name being changed */
+  const char *other_name;	/* the name kept as it is */
 
   if (vol_fullname != NULL)
     {
@@ -5418,14 +5419,27 @@ disk_vhdr_check_vol_names_size (const DISK_VOLUME_HEADER * vhdr, const char *vol
   if (next_vol_fullname != NULL)
     {
       next_vol_fullname_size = MIN ((int) strlen (next_vol_fullname) + 1, PATH_MAX);
-      name = next_vol_fullname;
     }
 
   names_size = vhdr->offset_to_vol_fullname + vol_fullname_size + next_vol_fullname_size;
   if (names_size + 1 > DISK_VHDR_VAR_FIELDS_SIZE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 4, "",
-	      name != NULL ? name : "", names_size + 1, DISK_VHDR_VAR_FIELDS_SIZE);
+      if (next_vol_fullname != NULL)
+	{
+	  name = next_vol_fullname;
+	  other_name = vol_fullname != NULL ? vol_fullname : vhdr->var_fields + vhdr->offset_to_vol_fullname;
+	}
+      else
+	{
+	  name = vol_fullname != NULL ? vol_fullname : "";
+	  other_name = vhdr->var_fields + vhdr->offset_to_next_vol_fullname;
+	}
+
+      /* The message shows the two names and their combined length. Each name and the remarks need a terminating
+       * null, so the combined length must be less than the area size minus 2. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 4, other_name, name,
+	      vol_fullname_size + next_vol_fullname_size - 2,
+	      DISK_VHDR_VAR_FIELDS_SIZE - vhdr->offset_to_vol_fullname - 2);
       return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
     }
 
