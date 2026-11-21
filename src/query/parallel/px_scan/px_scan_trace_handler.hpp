@@ -45,6 +45,14 @@ namespace parallel_scan
     UINT64 qualified_rows;
     struct timeval elapsed_time;
 
+    /* heap scan only: the worker's page batch (expr_batch.h) -- its pages taken, handed back to the row path and, of
+     * those, handed back at a record off the page; and a static string: why it declined when it took no page, else
+     * the last cause it handed a page back for (the serial scan's s.hsid.batch_why_not) */
+    UINT64 batch_pages;
+    UINT64 batch_pages_rowpath;
+    UINT64 batch_pages_offpage;
+    const char *batch_why_not;
+
     /* index scan only */
     UINT64 read_keys;
     UINT64 qualified_keys;
@@ -82,7 +90,8 @@ namespace parallel_scan
       /* the EXPR_COMPILE listing of a worker's XASL clone (expr_compile.h).  The compiled
        * programs live and die with the worker clones, so the coordinator's XASL -- the one
        * the SQL trace dumps -- never has any; the first worker to report keeps its listing
-       * here and the scan's trace prints it (every worker compiles the same clone the same way). */
+       * here and the trace's plan section prints it under the scan (qdump_print_plan_detail_text ():
+       * every worker compiles the same clone the same way). */
       void add_expr_compile_dump (xasl_node *xasl, SCAN_ID *scan_id);
       /* a worker hands over everything it counted when it ends; merge_stats () merges the sum into the leader */
       void add_px_stats (const UINT64 *worker_stats);
@@ -104,6 +113,7 @@ namespace parallel_scan
       bool m_merged = false;
       trace_storage_for_sibling_xasl m_trace_storage_for_sibling_xasl;
       std::string m_expr_compile_dump;	/* guarded by m_stats_mutex */
+      bool m_expr_compile_dump_paged = false;	/* its worker took a page: guarded by m_stats_mutex */
     private:
       std::atomic<bool> m_topnsort_used {false};
   };
@@ -122,7 +132,22 @@ namespace parallel_scan
       void dump_stats_text (FILE *fp, int indent, char *class_name);
       void dump_stats_json (trace_json_t *scan, char *class_name);
       void set_last_partition_stats (SCAN_STATS *partition_stats);
+      /* the workers' EXPR_COMPILE listing for the trace's plan section, or an empty string */
+      const std::string &get_expr_compile_dump () const
+      {
+	return m_expr_compile_dump;
+      }
     private:
+      struct batch_range
+      {
+	UINT64 min_pages, max_pages;
+	UINT64 min_rowpath, max_rowpath;
+	UINT64 min_offpage, max_offpage;
+	const char *why_not;		/* a worker's reason for taking no page */
+	const char *rowpath_last;	/* a worker's last cause for handing a page back */
+      };
+      void batch_ranges (batch_range &r) const;
+      void dump_batch_text (FILE *fp);
       std::vector<child_stats> m_stats;
       child_stats m_stats_last;
       RESULT_TYPE m_result_type;
@@ -130,6 +155,7 @@ namespace parallel_scan
       bool m_is_initialized;
       bool m_topnsort_used = false;
       std::string m_expr_compile_dump;	/* one worker's EXPR_COMPILE listing, see trace_handler */
+      bool m_expr_compile_dump_paged = false;
   };
 }
 

@@ -36,12 +36,12 @@ extern bool qdump_print_xasl (xasl_node * xasl);
 #if defined (SERVER_MODE)
 extern void qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent);
 extern void qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent);
-#endif /* SERVER_MODE */
-#if defined (SERVER_MODE) || defined (SA_MODE)
-/* the EXPR_COMPILE section of the SQL trace for one XASL node; tag (may be NULL) is appended
- * to every section header, e.g. " [px worker]" when a parallel worker's clone is listed */
+/* the server's part of the trace's plan section (;plan detail): each node's EXPR_COMPILE lines */
+extern void qdump_print_plan_detail_text (FILE * fp, xasl_node * xasl_p, int indent);
+/* the EXPR_COMPILE lines of one XASL node; tag (may be NULL) is appended to every summary
+ * line, e.g. " [px worker]" when a parallel worker's clone is listed */
 extern void qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const char *tag);
-#endif /* SERVER_MODE || SA_MODE */
+#endif /* SERVER_MODE */
 extern const char *qdump_operator_type_string (OPERATOR_TYPE optype);
 extern const char *qdump_arith_operator_string (OPERATOR_TYPE opcode);
 extern const char *qdump_arith_opcode_name (OPERATOR_TYPE opcode);

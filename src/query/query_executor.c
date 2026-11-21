@@ -8521,10 +8521,10 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   if (list_id->tuple_cnt == 0)
     {
       /* no row left to sort (no first rows kept, none passed the table): the partial entries are the groups and
-       * nothing is merged, but the trace reports their estimate as when rows are left */
-      if (thread_is_on_trace (thread_p) && !ctx->key_sketch_partial && ctx->state != HS_REJECT_ALL)
+       * nothing is merged */
+      if (thread_is_on_trace (thread_p))
 	{
-	  xasl->groupby_stats.groupby_hash_groups = (INT64) qdata_key_sketch_estimate (ctx->key_sketch);
+	  xasl->groupby_stats.groupby_hash_merge_skip = "no rows left";
 	}
       return NO_ERROR;
     }
@@ -8544,10 +8544,6 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
     {
       groups = qdata_key_sketch_estimate (ctx->key_sketch);
     }
-  if (thread_is_on_trace (thread_p))
-    {
-      xasl->groupby_stats.groupby_hash_groups = (INT64) groups;
-    }
   /* many groups whose order does not reach the result: workers merge the partitions (qexec_gby_px_merge ()), as
    * many as the sort of these lists would take */
 #if defined (SERVER_MODE)
@@ -8564,12 +8560,21 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
     {
       /* the merge would run on the leader alone, where the sort of these lists takes workers: the sort keeps them
        * (a merge that has workers of its own goes on below) */
+      if (thread_is_on_trace (thread_p))
+	{
+	  /* the trace says what the estimate decided, not the estimate itself */
+	  xasl->groupby_stats.groupby_hash_merge_skip = "the sort takes workers";
+	}
       return NO_ERROR;
     }
   if (groups * (parallel ? QEXEC_GBY_MERGE_MIN_FOLD_PX : QEXEC_GBY_MERGE_MIN_FOLD)
       > (double) (list_id->tuple_cnt + partials->tuple_cnt))
     {
       /* the lists fold little: the sort runs in parallel, where a table would build every group one by one */
+      if (thread_is_on_trace (thread_p))
+	{
+	  xasl->groupby_stats.groupby_hash_merge_skip = "the groups fold little";
+	}
       return NO_ERROR;
     }
 
@@ -13317,6 +13322,18 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	      HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
 	      const FILE_FTAB_COLLECTOR *page_list;
 	      int num_data_pages;
+	      /* the batch plan's shape for the trace's plan section, kept past the reopen: scan_open_heap_scan () clears
+	       * it, and a partition that builds no plan -- or the root class reopened at the end -- would otherwise
+	       * leave the plan section a shape of none beside the pages the partitions took (scan_stats sums them) */
+	      SCAN_BATCH_SHAPE batch_shape;
+	      bool keep_shape = (thread_is_on_trace (thread_p) && spec->s_id.type == S_HEAP_SCAN
+				 && hsidp->batch_shape.built);
+
+	      memset (&batch_shape, 0, sizeof (batch_shape));
+	      if (keep_shape)
+		{
+		  batch_shape = hsidp->batch_shape;
+		}
 
 	      /* clear caches */
 	      if (hsidp->caches_inited)
@@ -13396,6 +13413,11 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		}
 #endif /* SERVER_MODE && !WINDOWS */
 
+	      if (keep_shape && spec->s_id.type == S_HEAP_SCAN && !hsidp->batch_shape.built)
+		{
+		  /* a later partition that builds a plan replaces it when its scan ends (scan_batch_park ()) */
+		  hsidp->batch_shape = batch_shape;
+		}
 	      break;
 	    }			/* case ACCESS_METHOD_SEQUENTIAL */
 
@@ -14539,7 +14561,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
   char *mem;
   size_t size;
 
-  *why_not = "the hash GROUP BY no longer takes rows";
+  *why_not = "hash GROUP BY not accepting rows";
   if (proc->agg_hash_context == NULL || proc->agg_hash_context->state != HS_ACCEPT_ALL || outptr == NULL)
     {
       return NULL;
@@ -14552,7 +14574,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
     {
       n_keys++;
     }
-  *why_not = "a GROUP BY without aggregates";
+  *why_not = "GROUP BY without aggregates";
   if (n_aggs == 0 || n_keys == 0)
     {
       return NULL;
@@ -14609,7 +14631,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
 	  {
 	    continue;
 	  }
-	*why_not = "an aggregate operand that is not a column of the scan's tuple";
+	*why_not = "aggregate operand not a tuple column";
 	if (agg->operands == NULL)
 	  {
 	    goto no_map;
@@ -14628,7 +14650,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
 	  }
 	if (c == n_cols)
 	  {
-	    *why_not = "an aggregate operand in a hidden column";
+	    *why_not = "aggregate operand in hidden column";
 	    goto no_map;	/* a hidden column's value, or one the batch does not see */
 	  }
 	if (prog != NULL && outptr->eval_prog_idx != NULL && outptr->eval_prog_idx[col_idx[c]] >= 0)
@@ -14641,7 +14663,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
 	  }
 	else
 	  {
-	    *why_not = "an aggregate operand the projection computes without a program";
+	    *why_not = "aggregate operand without program";
 	    goto no_map;
 	  }
 	/* the column's compiled domain: the projection writes the value it produces, uncast (CBRD-27583) */
@@ -14653,7 +14675,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
 
 	if (pos < 0 || pos >= n_cols || col[pos]->type != TYPE_CONSTANT)
 	  {
-	    *why_not = "a GROUP BY key that is not a plain column of the tuple";
+	    *why_not = "GROUP BY key not a plain column";
 	    goto no_map;
 	  }
 	key_slot[k] = col[pos]->value.dbvalptr;
@@ -37114,9 +37136,27 @@ static void
 qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   size_t sizeloc;
-  char *trace_str = NULL;
+  char *trace_str = NULL, *plan_detail = NULL;
   FILE *fp;
   trace_json_t *trace;
+
+  /* the plan section's server part first: the statistics below free the parallel scans' trace storage, which holds
+   * the workers' expression listings.  Only for a session that shows its plans in detail (csql ;plan detail); every
+   * traced statement sets it, NULL included, so the block of the statement before does not stay */
+  if (thread_p->trace_plan_detail)
+    {
+      fp = port_open_memstream (&plan_detail, &sizeloc);
+      if (fp)
+	{
+	  qdump_print_plan_detail_text (fp, xasl, 4);
+	  port_close_memstream (fp, &plan_detail, &sizeloc);
+	}
+      if (plan_detail != NULL && plan_detail[0] == '\0')
+	{
+	  free_and_init (plan_detail);
+	}
+    }
+  (void) session_set_trace_plan_detail (thread_p, plan_detail);
 
   if (thread_p->trace_format == QUERY_TRACE_TEXT)
     {

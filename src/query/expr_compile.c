@@ -7707,7 +7707,8 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
     {
       fprintf (fp, ", shared from data filter: %d", prog->n_shared);
     }
-  fprintf (fp, ", executions: %d\n", prog->n_executions);
+  /* the shape only: the listing is in the trace's plan section, and n_executions is a runtime count */
+  fprintf (fp, "\n");
 
   for (i = 0; i < prog->n_steps; i++)
     {

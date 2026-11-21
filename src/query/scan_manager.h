@@ -115,6 +115,22 @@ struct dblink_scan_id
  * the clone, whose private heap holds the plan's arrays: a clone is run by one thread per execution, that thread's
  * final clear releases it, and a parallel worker clears its own clone in its finalize. */
 struct access_spec_node;
+/* The page batch's shape as the trace's plan section shows it beside the compiled expressions
+ * (qdump_print_plan_detail_text ()): which of the data filter's terms run on the batch, which output columns it
+ * computes as vectors, whether it accumulates the aggregates.  The plan itself is parked or freed when the scan ends,
+ * before the trace is written, so the scan keeps these numbers (expr_batch_plan_shape ()). */
+typedef struct scan_batch_shape SCAN_BATCH_SHAPE;
+struct scan_batch_shape
+{
+  bool built;			/* a plan was built for the scan */
+  int filter_raw;		/* the data filter's terms the batch evaluates on its vectors ... */
+  int filter_row;		/* ... and the ones it evaluates per row */
+  int proj_vec;			/* output columns the batch computes as vectors ... */
+  int proj_rows;		/* ... and the ones left to the row path */
+  int aggs;			/* aggregates the batch accumulates */
+  const char *proj_why;		/* why the output list's program stays on the row path, or NULL (a static string) */
+};
+
 typedef struct scan_batch_keep SCAN_BATCH_KEEP;
 struct scan_batch_keep
 {
@@ -173,6 +189,7 @@ struct heap_scan_id
   bool batch_started;		/* serial walk: the first page was fixed */
   bool batch_rowmode;		/* scan_next_scan () walks the held page row by row (a page the batch handed back) */
   const char *batch_why_not;	/* trace: why the batch declined */
+  SCAN_BATCH_SHAPE batch_shape;	/* trace: the plan's shape, kept when the plan goes (scan_batch_park ()) */
   /* the filter iterator (scan_batch_open_filter ()): scan_next_scan () itself runs the filter a chunk at a time and
    * hands out the rows it kept one by one */
   bool batch_iter;
@@ -231,6 +248,7 @@ struct parallel_heap_scan_id
   bool batch_started;
   bool batch_rowmode;
   const char *batch_why_not;
+  SCAN_BATCH_SHAPE batch_shape;
   bool batch_iter;
   bool batch_page_more;
   bool batch_off_page;
@@ -499,6 +517,7 @@ struct parallel_index_scan_id
  * the parallel fields that outlive it */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
+static_assert (offsetof (HEAP_SCAN_ID, batch_shape) == offsetof (PARALLEL_HEAP_SCAN_ID, batch_shape), "phsid mirror: batch_shape");
 static_assert (offsetof (HEAP_SCAN_ID, batch_spec) == offsetof (PARALLEL_HEAP_SCAN_ID, batch_spec), "phsid mirror: batch_spec");
 static_assert (offsetof (HEAP_SCAN_ID, page_list) == offsetof (PARALLEL_HEAP_SCAN_ID, page_list), "phsid mirror: page_list");
 static_assert (offsetof (HEAP_SCAN_ID, page_list_vpid) == offsetof (PARALLEL_HEAP_SCAN_ID, page_list_vpid), "phsid mirror: page_list_vpid");
