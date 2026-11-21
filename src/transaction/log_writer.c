@@ -318,8 +318,9 @@ logwr_read_log_header (void)
 	  if (error == ER_DISK_INCONSISTENT_VOL_HEADER)
 	    {
 	      /* the page appears to be just formatted (previous instance of log writter was stopped before appending
-	       * expected data; in this case just notify and delete the volume:
-	       * the behavior will be the same as `if (!fileio_is_volume_exist (logwr_Gl.active_name)) branch` */
+	       * expected data; in this case just notify and delete the volume. Once it is deleted, the behavior is
+	       * the same as `if (!fileio_is_volume_exist (logwr_Gl.active_name)) branch`: a new active log is
+	       * formatted with the size in the header received from the server. */
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DISK_INCONSISTENT_VOL_HEADER, 1,
 		      logwr_Gl.active_name);
 
