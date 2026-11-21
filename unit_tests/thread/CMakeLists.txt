@@ -55,3 +55,17 @@ elseif(WIN32)
 else()
   message( SEND_ERROR "Thread unit testing is for unix/windows")
 endif ()
+
+# thread_wakeup must not take back a handed-over resource (CBRD-28191). A separate executable so that it does not depend
+# on test_manager.
+set_source_files_properties(test_wakeup.cpp PROPERTIES LANGUAGE CXX)
+add_executable(test_thread_wakeup test_wakeup.cpp)
+target_compile_definitions(test_thread_wakeup PRIVATE ${COMMON_DEFS})
+target_include_directories(test_thread_wakeup PRIVATE ${TEST_INCLUDES})
+target_link_libraries(test_thread_wakeup LINK_PRIVATE test_common)
+if(UNIX)
+  target_link_libraries(test_thread_wakeup LINK_PRIVATE cubrid)
+elseif(WIN32)
+  target_link_libraries(test_thread_wakeup LINK_PRIVATE cubrid-win-lib)
+endif ()
+add_test(NAME test_thread_wakeup COMMAND test_thread_wakeup)
