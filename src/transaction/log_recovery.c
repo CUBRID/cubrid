@@ -3363,7 +3363,7 @@ static void
 log_recovery_2pc_restore_tran_prev_versions (THREAD_ENTRY * thread_p, const LOG_TDES * tdes, LOG_PAGE * log_page)
 {
   HEAP_RV_PREV_VERSION_STATE state = { OID_INITIALIZER, LSA_INITIALIZER };
-  OID fwd_oid;
+  HEAP_FWD_RECORD_AREA fwd_area;
   LOG_LSA lsa;
 
   for (lsa = tdes->tail_lsa; !LSA_ISNULL (&lsa);)
@@ -3426,8 +3426,8 @@ log_recovery_2pc_restore_tran_prev_versions (THREAD_ENTRY * thread_p, const LOG_
 	  VPID_SET (&vpid, data.volid, data.pageid);
 	  if (data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	    {
-	      old_home.data = (char *) &fwd_oid;
-	      old_home.area_size = sizeof (fwd_oid);
+	      old_home.data = fwd_area.data;
+	      old_home.area_size = sizeof (fwd_area);
 	      /* the data header may end on the next log page; a larger image does not fit, but its type is read */
 	      if ((log_page->hdr.logical_pageid != lsa.pageid
 		   && logpb_fetch_page (thread_p, &lsa, LOG_CS_FORCE_USE, log_page) != NO_ERROR)

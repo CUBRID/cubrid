@@ -29454,9 +29454,15 @@ heap_rv_restore_prev_version (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, co
 	{
 	  heap_rv_set_prev_version_if_null (thread_p, &oid, REC_HOME, mvccid, lsa);
 	}
-      else if (old_home->type == REC_RELOCATION && OID_EQ ((OID *) old_home->data, &state->deleted_oid))
+      else if (old_home->type == REC_RELOCATION)
 	{
-	  heap_rv_set_prev_version_if_null (thread_p, &oid, REC_HOME, mvccid, &state->deleted_lsa);
+	  OID forward_oid;
+
+	  heap_fwd_record_get_oid (old_home, &forward_oid);
+	  if (OID_EQ (&forward_oid, &state->deleted_oid))
+	    {
+	      heap_rv_set_prev_version_if_null (thread_p, &oid, REC_HOME, mvccid, &state->deleted_lsa);
+	    }
 	}
       /* an update of a big record sets the lsa before logging the new version */
       break;

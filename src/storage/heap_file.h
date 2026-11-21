@@ -386,8 +386,10 @@ typedef enum
 
 /*
  * Forwarding record: the home slot record of a REC_RELOCATION or REC_BIGONE row. It holds, at offset 0, the OID of the
- * REC_NEWHOME record or of the first overflow page. Every reader goes through heap_fwd_record_get_oid () and every
- * buffer that copies one is a HEAP_FWD_RECORD_AREA, so the layout and the size are defined here only.
+ * REC_NEWHOME record or of the first overflow page. Every reader in the heap, vacuum and recovery code goes through
+ * heap_fwd_record_get_oid () and every buffer that copies one is a HEAP_FWD_RECORD_AREA, so the layout and the size are
+ * defined here only. The page dumper spage_dump_record () prints the slot bytes on its own; it depends only on the
+ * forward OID staying at offset 0.
  */
 #define HEAP_FWD_RECORD_SIZE OR_OID_SIZE
 
