@@ -148,6 +148,8 @@ static int trace_log_slow_query (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, i
 static void event_log_many_ioreads (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time, UINT64 *diff_stats);
 static void event_log_extend_pages (THREAD_ENTRY *thread_p, EXECUTION_INFO *info);
 static void set_tdes_query_exec_info (int tran_index, char *sql_user_text);
+static bool auth_may_switch_user (THREAD_ENTRY *thread_p, const char *user_name);
+static char *cdc_flashback_unpack_bounded_string (char *ptr, char *request, int reqlen, char **out_string);
 
 /*
  * stran_server_commit_internal - commit transaction on server.
@@ -7894,20 +7896,38 @@ sthread_kill_or_interrupt_tran (THREAD_ENTRY *thread_p, unsigned int rid, char *
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int i = 0;
-  int *tran_index_list;
-  int num_tran_index, interrupt_only;
+  int *tran_index_list = NULL;
+  int num_tran_index = 0, interrupt_only = 0;
   int num_killed_tran = 0;
-  int is_dba_group_member = 0;
+  int client_claims_dba_group = 0;
 
-  ptr = or_unpack_int (request, &is_dba_group_member);
-  ptr = or_unpack_int (ptr, &num_tran_index);
+  /* read only to stay in step with the request; the server decides */
+  if (reqlen >= OR_INT_SIZE * 3)
+    {
+      ptr = or_unpack_int (request, &client_claims_dba_group);
+      ptr = or_unpack_int (ptr, &num_tran_index);
+    }
+
+  /* the request is the flag, the count, the indexes and interrupt_only, so its
+   * length is fixed by the count; a crafted count would otherwise read past the
+   * buffer or free an uninitialised pointer */
+  if (num_tran_index <= 0 || (reqlen - OR_INT_SIZE * 3) % OR_INT_SIZE != 0
+      || num_tran_index != (reqlen - OR_INT_SIZE * 3) / OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, OR_INT_SIZE * 3, reqlen);
+      (void) return_error_to_client (thread_p, rid);
+      ptr = or_pack_int (reply, ER_NET_DATASIZE_MISMATCH);
+      ptr = or_pack_int (ptr, 0);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      return;
+    }
+
   ptr = or_unpack_int_array (ptr, num_tran_index, &tran_index_list);
   ptr = or_unpack_int (ptr, &interrupt_only);
 
   for (i = 0; i < num_tran_index; i++)
     {
-      success =
-	      xlogtb_kill_or_interrupt_tran (thread_p, tran_index_list[i], (bool) is_dba_group_member, (bool) interrupt_only);
+      success = xlogtb_kill_or_interrupt_tran (thread_p, tran_index_list[i], (bool) interrupt_only);
       if (success == NO_ERROR)
 	{
 	  num_killed_tran++;
@@ -9688,13 +9708,15 @@ slocator_upgrade_instances_domain (THREAD_ENTRY *thread_p, unsigned int rid, cha
   char *ptr;
   OID class_oid;
   int attr_id;
+  int check_only;
   int success;
 
   ptr = request;
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
+  ptr = or_unpack_int (ptr, &check_only);
 
-  success = xlocator_upgrade_instances_domain (thread_p, &class_oid, attr_id);
+  success = xlocator_upgrade_instances_domain (thread_p, &class_oid, attr_id, check_only != 0);
 
   if (success != NO_ERROR)
     {
@@ -9726,7 +9748,7 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL, *area = NULL;
   char *db_user = NULL, *host = NULL, *program_name = NULL;
-  char db_user_upper[DB_MAX_USER_LENGTH] = { '\0' };
+  char db_user_upper[CSS_AU_NAME_SIZE] = { '\0' };
   char server_session_key[SERVER_SESSION_KEY_SIZE];
   char session_secret[SESSION_SECRET_SIZE];
   SESSION_PARAM *session_params = NULL;
@@ -9818,10 +9840,38 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
       assert (host != NULL);
       assert (program_name != NULL);
 
-      intl_identifier_upper (db_user, db_user_upper);
-      css_set_user_access_status (db_user_upper, host, program_name);
+      const char *current_user = logtb_find_current_client_name (thread_p);
 
-      logtb_set_current_user_name (thread_p, db_user_upper);
+      if (strlen (db_user) < DB_MAX_USER_LENGTH)
+	{
+	  intl_identifier_upper (db_user, db_user_upper);
+	}
+
+      if (db_user_upper[0] == '\0'
+	  || (current_user != NULL && intl_identifier_casecmp (current_user, db_user_upper) == 0))
+	{
+	  /* no switch, but spend a proof made for it so none is left on the connection */
+	  (void) css_consume_auth_proof (thread_p->conn_entry, db_user_upper);
+	}
+      /* same rule as slogin_user () */
+      else if (auth_may_switch_user (thread_p, db_user_upper))
+	{
+	  logtb_set_current_user_name (thread_p, db_user_upper);
+	  current_user = db_user_upper;
+	}
+      else if (error == NO_ERROR)
+	{
+	  /* refused, and said so as slogin_user () does, so the client does not go on as
+	   * a user the server did not switch to */
+	  error = ER_AU_INVALID_PASSWORD;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  (void) return_error_to_client (thread_p, rid);
+	}
+
+      if (current_user != NULL)
+	{
+	  css_set_user_access_status (current_user, host, program_name);
+	}
     }
 
   free_and_init (db_user);
@@ -10271,11 +10321,18 @@ slogin_user (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *username = NULL;
 
-  or_unpack_string_nocopy (request, &username);
-  if (username == NULL)
+  if (request == NULL || cdc_flashback_unpack_bounded_string (request, request, reqlen, &username) == NULL
+      || username == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
       err = ER_FAILED;
+    }
+  /* switch only with a proof of the new account's password, or as DBA */
+  else if (!auth_may_switch_user (thread_p, username))
+    {
+      err = ER_AU_INVALID_PASSWORD;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      (void) return_error_to_client (thread_p, rid);
     }
   else
     {
@@ -11199,7 +11256,6 @@ sloaddb_load_batch (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   bool is_batch_accepted = false;
   load_session *session = NULL;
 
-  session_get_load_session (thread_p, session);
   int error_code = session_get_load_session (thread_p, session);
   if (error_code == NO_ERROR)
     {
@@ -11791,13 +11847,22 @@ cdc_auth_init_key (void)
   cdc_Auth_key_ready = (crypt_generate_random_bytes (cdc_Auth_key, sizeof (cdc_Auth_key)) == NO_ERROR);
 }
 
+/* what a signed challenge is for: a tag issued for one purpose must not pass for
+ * another, so the CDC channel handshake and the login/user-switch proof cannot
+ * borrow each other's tags */
+#define CDC_AUTH_PURPOSE_CDC "cdc"
+#define CDC_AUTH_PURPOSE_LOGIN "login"
+
 /*
- * cdc_auth_sign () - tag that ties a challenge to this connection, account and
- *   issue time, so the server can recognise its own challenge without storing it.
+ * cdc_auth_sign () - tag that ties a challenge to its purpose, this connection,
+ *   account and issue time, so the server can recognise its own challenge
+ *   without storing it.
+ *   purpose (in): what the challenge is for (CDC channel or login proof)
  *   tag (out): CSS_CDC_AUTH_RESPONSE_SIZE bytes of hex
  */
 static int
-cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *user_name, const char *nonce, INT64 issued_at, char *tag)
+cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *purpose, const char *user_name, const char *nonce, INT64 issued_at,
+	       char *tag)
 {
   char msg[CSS_CDC_AUTH_NONCE_SIZE + DB_MAX_USER_LENGTH + 64];
   int len;
@@ -11808,7 +11873,7 @@ cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *user_name, const char *nonce, I
       return ER_FAILED;
     }
 
-  len = snprintf (msg, sizeof (msg), "%s|%d|%d|%s|%lld", nonce, (int) conn->fd, conn->client_id, user_name,
+  len = snprintf (msg, sizeof (msg), "%s|%s|%d|%d|%s|%lld", purpose, nonce, (int) conn->fd, conn->client_id, user_name,
 		  (long long) issued_at);
   if (len < 0 || len >= (int) sizeof (msg))
     {
@@ -11823,12 +11888,17 @@ cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *user_name, const char *nonce, I
  *   membership, at most one lookup at a time per connection (each borrows a
  *   transaction index, so overlapping requests could otherwise hold many).
  *   return: NO_ERROR, ER_AU_AUTHORIZATION_FAILURE if a lookup is already running
- *           on this connection, or another error if the account could not be read.
+ *           on this connection, ER_AU_INVALID_USER if there is no such account,
+ *           or another error if the account could not be read.
+ *   is_loginable (out): whether the account may log in; may be NULL
+ *
+ * Shared by the CDC handshake and the login password proof.
  */
 static int
-cdc_auth_lookup (THREAD_ENTRY *thread_p, const char *user_name, char *stored, int stored_size, bool *is_dba)
+cdc_auth_lookup (THREAD_ENTRY *thread_p, const char *user_name, char *stored, int stored_size, bool *is_dba,
+		 bool *is_loginable)
 {
-  bool found;
+  int error;
 
   if (!ATOMIC_CAS (&thread_p->conn_entry->cdc_auth_busy, 0, 1))
     {
@@ -11836,10 +11906,10 @@ cdc_auth_lookup (THREAD_ENTRY *thread_p, const char *user_name, char *stored, in
       return ER_AU_AUTHORIZATION_FAILURE;
     }
 
-  found = cdc_get_user_info (thread_p, user_name, stored, stored_size, is_dba);
+  error = cdc_find_user_info (thread_p, user_name, stored, stored_size, is_dba, is_loginable);
   (void) ATOMIC_TAS (&thread_p->conn_entry->cdc_auth_busy, 0);
 
-  return found ? NO_ERROR : ER_FAILED;
+  return error;
 }
 
 /*
@@ -11878,7 +11948,7 @@ scdc_auth_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
     }
   str_to_hex_prealloced (nonce_bytes, sizeof (nonce_bytes), nonce, sizeof (nonce), HEX_UPPERCASE);
 
-  if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba) == NO_ERROR)
+  if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba, NULL) == NO_ERROR)
     {
       scheme = IS_ENCODED_ANY (stored) ? (int) stored[0] : 0;
     }
@@ -11889,7 +11959,7 @@ scdc_auth_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   memset (stored, 0, sizeof (stored));
 
   issued_at = (INT64) time (NULL);
-  if (cdc_auth_sign (thread_p->conn_entry, user_name, nonce, issued_at, tag) != NO_ERROR)
+  if (cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_CDC, user_name, nonce, issued_at, tag) != NO_ERROR)
     {
       goto error;
     }
@@ -11979,12 +12049,12 @@ scdc_auth_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
     }
 
   now = (INT64) time (NULL);
-  if (cdc_auth_sign (thread_p->conn_entry, user_name, nonce, issued_at, expected) != NO_ERROR
+  if (cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_CDC, user_name, nonce, issued_at, expected) != NO_ERROR
       || !cdc_auth_response_matches (expected, tag) || issued_at > now || now - issued_at > CDC_AUTH_CHALLENGE_TTL_SEC)
     {
       /* not a challenge this server issued to this connection for this account, or expired */
     }
-  else if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba) != NO_ERROR
+  else if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba, NULL) != NO_ERROR
 	   || cdc_auth_make_response (thread_p, nonce, stored, expected) != NO_ERROR
 	   || !cdc_auth_response_matches (expected, answer))
     {
@@ -12012,6 +12082,188 @@ scdc_auth_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
     }
 
   (void) or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * auth_may_switch_user () - may this session become user_name? It may if it
+ *   just proved that account's password, or if the session is already DBA or a
+ *   DBA group member, who may switch users without one (CALL LOGIN spec).
+ */
+static bool
+auth_may_switch_user (THREAD_ENTRY *thread_p, const char *user_name)
+{
+  char password[AU_MAX_PASSWORD_BUF + 4];
+  bool is_dba_group = false;
+  bool found;
+
+  if (css_consume_auth_proof (thread_p->conn_entry, user_name))
+    {
+      return true;
+    }
+
+  found = cdc_get_user_info (thread_p, logtb_find_current_client_name (thread_p), password, sizeof (password),
+			     &is_dba_group);
+  memset (password, 0, sizeof (password));
+
+  return (found && is_dba_group);
+}
+
+/*
+ * sau_challenge () - first half of proving a password before a client login or
+ *   user switch, signed the way the CDC handshake is.
+ *
+ * Sends a fresh nonce, the scheme the password is stored under, the issue time
+ * and a tag over them; nothing is kept on the server. Unlike the CDC channel, an
+ * unknown account is reported (ER_AU_INVALID_USER), as a client login always did,
+ * and so is an account that may not log in (ER_AU_LOGIN_DISABLED), before any
+ * password, the order perform_login () checks them in.
+ */
+void
+sau_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (CSS_AU_CHALLENGE_REPLY_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  char *user_name = NULL;
+  char stored[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
+  char nonce_bytes[CSS_CDC_AUTH_NONCE_SIZE / 2];
+  char nonce[CSS_CDC_AUTH_NONCE_SIZE] = { '\0' };
+  char tag[CSS_CDC_AUTH_RESPONSE_SIZE] = { '\0' };
+  char salt[CSS_AU_SALT_SIZE] = { '\0' };
+  char stored_name[CSS_AU_NAME_SIZE] = { '\0' };
+  INT64 issued_at = 0;
+  bool is_dba = false, is_loginable = true;
+  int scheme = 0, error;
+
+  if (request == NULL || cdc_flashback_unpack_bounded_string (request, request, reqlen, &user_name) == NULL
+      || user_name == NULL || strlen (user_name) >= DB_MAX_USER_LENGTH)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, OR_INT_SIZE, reqlen);
+      error = ER_NET_DATASIZE_MISMATCH;
+    }
+  else if (crypt_generate_random_bytes (nonce_bytes, sizeof (nonce_bytes)) != NO_ERROR)
+    {
+      error = ER_FAILED;
+    }
+  else
+    {
+      str_to_hex_prealloced (nonce_bytes, sizeof (nonce_bytes), nonce, sizeof (nonce), HEX_UPPERCASE);
+
+      error = cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba, &is_loginable);
+      if (error == ER_AU_INVALID_USER)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1, user_name);
+	}
+      else if (error == NO_ERROR && !is_loginable)
+	{
+	  error = ER_AU_LOGIN_DISABLED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, user_name);
+	}
+      else if (error == NO_ERROR)
+	{
+	  scheme = IS_ENCODED_ANY (stored) ? (int) stored[0] : 0;
+	  /* a salted password: the client needs its salt and the name as stored to build
+	   * the same stored form. Neither is secret; the salt is stored in the clear in
+	   * front of the hash. The client cannot upper-case the name itself before boot. */
+	  if (scheme == ENCODE_PREFIX_SHA2_512_SALT && strlen (stored + 1) > CSS_AU_SALT_SIZE - 1)
+	    {
+	      memcpy (salt, stored + 1, CSS_AU_SALT_SIZE - 1);
+	      salt[CSS_AU_SALT_SIZE - 1] = '\0';
+	      intl_identifier_upper (user_name, stored_name);
+	    }
+	  issued_at = (INT64) time (NULL);
+	  error = cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_LOGIN, user_name, nonce, issued_at, tag);
+	}
+      memset (stored, 0, sizeof (stored));
+    }
+
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  /* the client reads a fixed-size reply; zero it so no stale stack bytes go out */
+  memset (reply, 0, OR_ALIGNED_BUF_SIZE (a_reply));
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_int (ptr, scheme);
+  ptr = or_pack_string (ptr, nonce);
+  ptr = or_pack_int64 (ptr, issued_at);
+  ptr = or_pack_string (ptr, tag);
+  ptr = or_pack_string (ptr, salt);
+  ptr = or_pack_string (ptr, stored_name);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sau_response () - second half. The request carries the account,
+ *   nonce, issue time, tag and answer: a fresh tag from this server for this
+ *   connection and account plus the right answer prove the password, which the
+ *   next login or user switch then spends (css_consume_auth_proof ()).
+ */
+void
+sau_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  char *user_name = NULL, *nonce = NULL, *tag = NULL, *answer = NULL;
+  char expected[CSS_CDC_AUTH_RESPONSE_SIZE];
+  char stored[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
+  INT64 issued_at = 0, now;
+  bool is_dba = false;
+  int error = ER_AU_INVALID_PASSWORD;
+
+  /* a new attempt spends whatever this connection proved before */
+  css_set_auth_proof (thread_p->conn_entry, NULL);
+
+  /* request: user | nonce | issued_at | tag | answer */
+  ptr = (request != NULL) ? cdc_flashback_unpack_bounded_string (request, request, reqlen, &user_name) : NULL;
+  ptr = (ptr != NULL) ? cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &nonce) : NULL;
+  /* or_unpack_int64 () aligns first, so check the room from the aligned position */
+  if (ptr != NULL && reqlen - (int) (PTR_ALIGN (ptr, MAX_ALIGNMENT) - request) >= OR_BIGINT_SIZE)
+    {
+      ptr = or_unpack_int64 (ptr, &issued_at);
+      ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &tag);
+      ptr = (ptr != NULL) ? cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &answer) : NULL;
+    }
+  else
+    {
+      ptr = NULL;
+    }
+
+  now = (INT64) time (NULL);
+  if (ptr == NULL || user_name == NULL || nonce == NULL || tag == NULL || answer == NULL
+      || strlen (user_name) >= DB_MAX_USER_LENGTH || strlen (nonce) != CSS_CDC_AUTH_NONCE_SIZE - 1)
+    {
+      /* malformed */
+    }
+  else if (cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_LOGIN, user_name, nonce, issued_at, expected) != NO_ERROR
+	   || !cdc_auth_response_matches (expected, tag) || issued_at > now
+	   || now - issued_at > CDC_AUTH_CHALLENGE_TTL_SEC)
+    {
+      /* not a challenge this server issued to this connection for this account, or expired */
+    }
+  else if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba, NULL) != NO_ERROR
+	   || cdc_auth_make_response (thread_p, nonce, stored, expected) != NO_ERROR
+	   || !cdc_auth_response_matches (expected, answer))
+    {
+      /* unknown account, unreadable password, or a wrong answer */
+    }
+  else
+    {
+      error = NO_ERROR;
+      css_set_auth_proof (thread_p->conn_entry, user_name);
+    }
+  memset (stored, 0, sizeof (stored));
+
+  if (error != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_PASSWORD, 0);
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  (void) or_pack_int (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
