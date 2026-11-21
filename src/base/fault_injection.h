@@ -106,6 +106,9 @@ typedef enum
   FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT = 800000,	/* vacuum's wait for a busy heap header fails at once as a latch
 							 * timeout; arg is the header VPID */
 
+  /* HEAP MANAGER */
+  FI_TEST_HEAP_PREV_VERSION_WALK_HOLD = 900000,	/* hold a version walk under a non-transaction snapshot */
+
   /* etc .... */
 
 } FI_TEST_CODE;
