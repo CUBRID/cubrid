@@ -748,7 +748,8 @@ thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status 
 }
 
 /*
- * thread_is_resumed_status () - is the status one a granting wakeup gives (the thread owns the resource it waited for)
+ * thread_is_resumed_status () - is the status one a waker gives after deciding for the waiting thread (the resource
+ *                               was handed over, or for some waits the thread was told to retry)
  *   return: true for *_RESUMED, false for *_SUSPENDED, NONE, INTERRUPT and SHUTDOWN
  *   status(in):
  */
@@ -813,10 +814,12 @@ thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status
   if ((resume_reason == THREAD_RESUME_DUE_TO_INTERRUPT || resume_reason == THREAD_RESUME_DUE_TO_SHUTDOWN)
       && thread_is_resumed_status (thread_p->resume_status))
     {
-      /* The resource was already handed over to the thread, which has not taken the entry lock back yet.
-       * Overwriting the resumed status would make it believe the resource was not granted and leave the resource
-       * without an owner. Keep it; the interrupt is not lost, it is recorded apart from resume_status (e.g.
-       * logtb_set_tran_index_interrupt) and the senders repeat the wakeup while the thread is still running. */
+      /* The waker already decided for the thread (handed the resource over, or told it to retry) and woke it; the
+       * thread has not taken the entry lock back yet. Overwriting the resumed status would make it believe the
+       * resource was not granted and leave the resource without an owner. Keep it. The interrupt is not lost: the
+       * two INTERRUPT senders through here (css_stop_non_log_writer and the deadlock victim loop in lock_suspend)
+       * record it in the transaction table (logtb_set_tran_index_interrupt) and repeat the wakeup (50 ms / 10 ms)
+       * until the thread is gone. No code sends SHUTDOWN now; it is a stop reason like INTERRUPT and kept the same. */
       if (had_mutex == false)
 	{
 	  thread_unlock_entry (thread_p);
