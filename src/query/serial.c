@@ -278,6 +278,14 @@ xserial_get_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const
 	}
     }
 
+  if (ret != NO_ERROR && !heap_does_exist (thread_p, oid_Serial_class_oid, oid_p))
+    {
+      /* _db_serial is not MVCC: a DROP committed after the caller's scan read the row removes it at once */
+      er_clear ();
+      db_make_null (result_num);
+      ret = NO_ERROR;
+    }
+
   return ret;
 }
 

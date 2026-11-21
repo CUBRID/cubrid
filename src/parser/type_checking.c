@@ -1436,6 +1436,20 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_CURRENT_VALUE_BY_OID:
+      num = 0;
+
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_OBJECT;
+
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_NUMERIC;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_NEXT_VALUE:
       num = 0;
 
@@ -6602,6 +6616,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_TO_DATETIME:
     case PT_TO_NUMBER:
     case PT_CURRENT_VALUE:
+    case PT_CURRENT_VALUE_BY_OID:
     case PT_NEXT_VALUE:
     case PT_CAST:
     case PT_EXTRACT:
@@ -12123,7 +12138,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       || op == PT_CONCAT_WS || op == PT_FIELD || op == PT_UNIX_TIMESTAMP || op == PT_BIT_COUNT || op == PT_REPEAT
       || op == PT_SPACE || op == PT_MD5 || op == PT_TIMEF || op == PT_AES_ENCRYPT || op == PT_AES_DECRYPT
       || op == PT_SHA_TWO || op == PT_SHA_ONE || op == PT_TO_BASE64 || op == PT_FROM_BASE64 || op == PT_DEFAULTF
-      || op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_UUID_FORMAT)
+      || op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_CURRENT_VALUE_BY_OID || op == PT_UUID_FORMAT)
     {
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
@@ -12662,6 +12677,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 
     case PT_NEXT_VALUE:
     case PT_CURRENT_VALUE:
+    case PT_CURRENT_VALUE_BY_OID:
       /* serial value is fixed NUMERIC(38,0); do not promote to float numeric */
       dt->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
       dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
@@ -12700,7 +12716,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  if (op != PT_NEXT_VALUE && op != PT_CURRENT_VALUE)
+	  if (op != PT_NEXT_VALUE && op != PT_CURRENT_VALUE && op != PT_CURRENT_VALUE_BY_OID)
 	    {
 	      dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	      dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
@@ -18092,6 +18108,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     case PT_ESTIMATED_AVG_ROW_LENGTH:
     case PT_ESTIMATED_DATA_LENGTH:
     case PT_ESTIMATED_DATA_FREE:
+    case PT_CURRENT_VALUE_BY_OID:
       /* constant folding for this expression is never performed : is always resolved on server */
       return 0;
     case PT_LIST_DBS:
@@ -18585,7 +18602,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    }
 	}
     }
-  else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB
+  else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_CURRENT_VALUE_BY_OID
+	   || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB
 	   || op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR
 	   || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET
 	   || op == PT_ESTIMATED_TABLE_ROWS || op == PT_ESTIMATED_AVG_ROW_LENGTH

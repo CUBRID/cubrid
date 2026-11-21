@@ -4352,6 +4352,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "to_number ";
     case PT_CURRENT_VALUE:
       return "serial_current_value ";
+    case PT_CURRENT_VALUE_BY_OID:
+      return "serial_current_value_by_oid ";
     case PT_NEXT_VALUE:
       return "serial_next_value ";
     case PT_EXTRACT:
@@ -11036,6 +11038,13 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	  q = pt_append_nulstring (parser, q, ")");
 	}
+      break;
+
+    case PT_CURRENT_VALUE_BY_OID:
+      q = pt_append_nulstring (parser, q, "serial_current_value_by_oid(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_NEXT_VALUE:

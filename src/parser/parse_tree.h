@@ -481,7 +481,8 @@ struct trace_json_t;
            (n)->info.expr.op == PT_RANDOM || \
            (n)->info.expr.op == PT_RAND || \
            (n)->info.expr.op == PT_SYS_GUID || \
-           (n)->info.expr.op == PT_UUID ))
+           (n)->info.expr.op == PT_UUID || \
+           (n)->info.expr.op == PT_CURRENT_VALUE_BY_OID ))
 
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
@@ -1484,7 +1485,7 @@ typedef enum
   PT_SYS_TIME, PT_SYS_TIMESTAMP, PT_CURRENT_TIMESTAMP, PT_SYS_DATETIME,
   PT_CURRENT_DATETIME, PT_CURRENT_TIME, PT_CURRENT_DATE, PT_UTC_TIME,
   PT_UTC_DATE, PT_TO_TIME, PT_TO_TIMESTAMP, PT_TO_DATETIME,
-  PT_CURRENT_VALUE, PT_NEXT_VALUE,
+  PT_CURRENT_VALUE, PT_CURRENT_VALUE_BY_OID, PT_NEXT_VALUE,
   PT_INST_NUM, PT_ROWNUM, PT_ORDERBY_NUM,
   PT_CONNECT_BY_ISCYCLE, PT_CONNECT_BY_ISLEAF, PT_LEVEL,
   PT_SYS_CONNECT_BY_PATH,
