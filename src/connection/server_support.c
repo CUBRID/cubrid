@@ -1777,25 +1777,46 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) != 0)
 	{
 	  LOG_TDES *tdes;
+	  int remaining;
 
-	  /* try to kill transaction. */
+	  /* try to kill transaction. Only request the shutdown while holding TR_TABLE_CS; closing a connection needs
+	   * TR_TABLE_CS (logtb_release_tran_index), so waiting for it here would wait out the whole timeout. */
 	  TR_TABLE_CS_ENTER (thread_p);
 	  // start from transaction index i = 1; system transaction cannot be killed
 	  for (i = 1; i < log_Gl.trantable.num_total_indices; i++)
 	    {
 	      tdes = log_Gl.trantable.all_tdes[i];
-	      if (tdes != NULL && tdes->trid != NULL_TRANID)
+	      /* a loose end left by its client has no connection to close
+	       * (see logtb_count_not_allowed_clients_in_maintenance_mode) */
+	      if (tdes != NULL && tdes->trid != NULL_TRANID && !tdes->isloose_end)
 		{
 		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.get_host_name (), boot_Host_name,
 							       tdes->client.client_type))
 		    {
-		      logtb_slam_transaction (thread_p, tdes->tran_index);
+		      logtb_slam_transaction (thread_p, tdes->tran_index, LOGTB_SLAM_NO_WAIT);
 		    }
 		}
 	    }
 	  TR_TABLE_CS_EXIT (thread_p);
 
-	  thread_sleep (2000);	/* 2000 msec */
+	  /* wait for the slammed connections to be closed, without holding TR_TABLE_CS */
+	  remaining = logtb_count_not_allowed_clients_in_maintenance_mode (thread_p);
+	  for (i = 0; remaining != 0 && i < LOGTB_SLAM_WAIT_SECONDS * 10; i++)
+	    {
+	      thread_sleep (100);	/* 100 msec */
+	      remaining = logtb_count_not_allowed_clients_in_maintenance_mode (thread_p);
+	    }
+	  if (remaining != 0)
+	    {
+	      char msg[LINE_MAX];
+
+	      /* the change goes on. leave in the server error log why such clients are still connected.
+	       * ER_BO_SERVER_STATUS, not ER_HA_GENERIC_ERROR: the latter is in the default
+	       * call_stack_dump_activation_list, and a call stack would make this notification look like a failure. */
+	      snprintf (msg, sizeof (msg), "MAINTENANCE, but %d client(s) not allowed in maintenance mode are still "
+			"connected %d sec after they were requested to close", remaining, LOGTB_SLAM_WAIT_SECONDS);
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_SERVER_STATUS, 1, msg);
+	    }
 	}
       break;
 

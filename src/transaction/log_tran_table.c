@@ -2056,6 +2056,10 @@ logtb_count_clients (THREAD_ENTRY * thread_p)
  *                        count number of transaction indices
  *                        connection not allowed client in maintenancemode.
  *   return: number of clients
+ *
+ * Note: a loose end is not counted. It is left by its client (e.g. a prepared XA transaction whose client is gone,
+ *       or a transaction the server goes on informing its participants), so it has no connection to close and
+ *       closing connections does not end it.
  */
 int
 logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p)
@@ -2069,7 +2073,7 @@ logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p)
   for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
-      if (tdes != NULL && tdes->trid != NULL_TRANID)
+      if (tdes != NULL && tdes->trid != NULL_TRANID && !tdes->isloose_end)
 	{
 	  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.get_host_name (), boot_Host_name,
 						       tdes->client.client_type))
@@ -6198,13 +6202,22 @@ logtb_check_class_for_rr_isolation_err (const OID * class_oid)
   return false;
 }
 
+/*
+ * logtb_slam_transaction () - interrupt the transaction and request to shut down its connection
+ *
+ *   tran_index(in): transaction to slam
+ *   wait_seconds(in): seconds to wait for the connection to be closed (LOGTB_SLAM_NO_WAIT: do not wait).
+ *                     A caller holding TR_TABLE_CS must not wait: closing the connection needs TR_TABLE_CS.
+ */
 void
-logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index)
+logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index, int wait_seconds)
 {
   logtb_set_tran_index_interrupt (thread_p, tran_index, true);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_SHUTDOWN, 0);
 #if defined (SERVER_MODE)
-  css_shutdown_conn_by_tran_index (tran_index, LOGTB_RETRY_SLAM_MAX_TIMES);
+  /* closing the connection needs TR_TABLE_CS: a writer of it must not wait here */
+  assert (wait_seconds == LOGTB_SLAM_NO_WAIT || csect_check_own (thread_p, CSECT_TRAN_TABLE) != 1);
+  css_shutdown_conn_by_tran_index (tran_index, wait_seconds);
 #endif // SERVER_MODE
 }
 
@@ -6309,7 +6322,7 @@ xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill
 
       if (kill_pid == slam_pid && strcmp (kill_user_p, slam_user_p) == 0 && strcmp (kill_host_p, slam_host_p) == 0)
 	{
-	  logtb_slam_transaction (thread_p, kill_tran_index);
+	  logtb_slam_transaction (thread_p, kill_tran_index, LOGTB_SLAM_WAIT_SECONDS);
 	  signaled = true;
 	}
       else
@@ -6390,7 +6403,7 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool int
 	    }
 	}
 
-      if (css_shutdown_conn_by_tran_index (tran_index, LOGTB_RETRY_SLAM_MAX_TIMES) != NO_ERROR)
+      if (css_shutdown_conn_by_tran_index (tran_index, LOGTB_SLAM_WAIT_SECONDS) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
