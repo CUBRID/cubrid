@@ -1491,6 +1491,27 @@ expr_k_fetch (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
+/* Copy a value into a step's own slot, failing when the copy fails.  pr_clone_value () drops the error of the type's
+ * setval (the allocation of a string's copy) and answers NO_ERROR with the slot left NULL -- a value the step would
+ * publish, and a step that computes once per execution would keep, where the interpreter, which reads the node's
+ * value in place, copies nothing and cannot fail. */
+static int
+expr_slot_clone (const DB_VALUE * src, DB_VALUE * slot)
+{
+  const PR_TYPE *type = (src != NULL && !DB_IS_NULL (src)) ? pr_type_from_id (DB_VALUE_DOMAIN_TYPE (src)) : NULL;
+
+  if (type == NULL)
+    {
+      return pr_clone_value (src, slot);	/* a NULL keeps its domain: nothing to allocate */
+    }
+  if (type->setval (slot, src, true) != NO_ERROR)
+    {
+      pr_clear_value (slot);
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
 /* A COLLATE-flagged arithmetic node (REGU_VARIABLE_APPLY_COLLATION): the interpreted path does not cast the value but
  * re-labels its codeset and collation with the node's domain (fetch_peek_dbval_slow ()'s epilogue).  The step clones
  * the node's value into its own slot before the relabel: the producing step's slot may serve another reader through
@@ -1501,7 +1522,7 @@ expr_k_relabel (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   const TP_DOMAIN *collate = regu_produced_domain (step->regu);
 
   pr_clear_value (step->out);
-  if (pr_clone_value (*step->arg1p, step->out) != NO_ERROR)
+  if (expr_slot_clone (*step->arg1p, step->out) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1541,7 +1562,15 @@ expr_k_nested_prog (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
  * the interpreter runs around the same body (fetch_arith_node_resolve): the node's domains, its slot cleared.  The
  * result is the node's own slot (arithptr->value), published by pointer like a leaf fetch -- the body
  * writes there and the interpreter's consumers read there, so nothing is copied.  T_INCR/T_DECR publish their left
- * operand itself (FETCH_ARITH_RAW_LEFT), outside the epilogue, as the interpreter does. */
+ * operand itself (FETCH_ARITH_RAW_LEFT), outside the epilogue, as the interpreter does.
+ *
+ * A step that owns a slot (expr_compile_generic ()) computes once per execution, as the interpreter keeps such a node
+ * (FETCH_ALL_CONST): on the first row of an execution that reaches it, it copies the value into the slot its cell was
+ * wired to, and on the later rows it returns at once -- clearing the mark of a '?' check, which skips the same operands
+ * on every row of the execution.  It copies because the node's slot is the interpreter's: an interpreted evaluation of
+ * the same node rewrites it, and a clear of the XASL node empties it (qexec_clear_arith_list () -- at the end of the
+ * execution, and at the start of every run of a BUILD_SCHEMA_PROC's iterations), while a step that returns at once
+ * reads nothing again.  The slot is the program's and keeps the value until expr_prog_reset (). */
 static int
 expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
@@ -1550,6 +1579,10 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   int rc;
 
   step->skip = 0;
+  if (step->out != NULL && step->once_exec != 0 && step->once_exec == ctx->prog->n_executions)
+    {
+      return NO_ERROR;
+    }
   a.regu_var = step->regu;
   a.arithptr = step->regu->value.arithptr;
   a.vd = ctx->vd;
@@ -1582,12 +1615,23 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   expr_frames_add (ctx, -step->level);
   if (rc == FETCH_ARITH_RAW_LEFT)
     {
+      assert (step->out == NULL);	/* T_INCR, T_DECR: never once per execution (fetch_opcode_caches ()) */
       *step->out_cell = a.peek_left;
       return NO_ERROR;
     }
   if (rc != NO_ERROR)
     {
       return ER_FAILED;		/* the interpreter's error exit: the body set the error */
+    }
+  if (step->out != NULL)
+    {
+      pr_clear_value (step->out);
+      if (expr_slot_clone (a.arithptr->value, step->out) != NO_ERROR)
+	{
+	  return ER_FAILED;	/* the copy failed: nothing is kept for the execution */
+	}
+      step->once_exec = ctx->prog->n_executions;
+      return NO_ERROR;
     }
   *step->out_cell = a.arithptr->value;
   return NO_ERROR;
@@ -3229,7 +3273,9 @@ expr_scan_pred_compile_at_generation (const PRED_EXPR * pr)
  * every shareable arithmetic node whose step owns a result slot -- that slot's address is
  * what the node's cell holds on every row (materialized once), so a consumer can wire a
  * cell of its own to it.  Pointer-select nodes (NVL, a CASE without a cast) publish a
- * different address per row and are left out. */
+ * different address per row and are left out, and so is the slot of a generic step: it holds
+ * the value of the execution (expr_compile_generic ()), which a consumer computes once on its
+ * own, and a shared value the page batch does not carry would keep the scan off the batch. */
 static void
 expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root)
 {
@@ -3260,7 +3306,8 @@ expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root)
       /* the build-time steps still carry their encoded out cell and owned-slot marker */
       for (j = 0; j < bctx->n_steps; j++)
 	{
-	  if ((intptr_t) bctx->steps[j].out_cell == cell && bctx->steps[j].out != NULL)
+	  if ((intptr_t) bctx->steps[j].out_cell == cell && bctx->steps[j].out != NULL
+	      && bctx->steps[j].kernel_id != EXPR_KID_generic)
 	    {
 	      owns_slot = true;
 	      break;
@@ -5089,10 +5136,33 @@ expr_generic_operand_spec (OPERATOR_TYPE op, const TP_DOMAIN * exec_domain)
     }
 }
 
+/* Whether an operand cell of a generic step holds one value for the whole execution: no cell, a literal, a host
+ * variable or a value computed from those alone (expr_cells_fixed_class ()), or the slot of a generic step that
+ * computes once per execution itself (the CONCAT under the bounds of "col LIKE CONCAT (?, '%')").  The producer is
+ * the step that owns the cell, not a '?' check that names it to mark the skipped operands (alias_of). */
+static bool
+expr_generic_operand_fixed (const EXPR_BUILD_CTX * bctx, int c)
+{
+  int j;
+
+  if (expr_cells_fixed_class (bctx, c, -1) != EXPR_CELL_ROW)
+    {
+      return true;
+    }
+  for (j = 0; j < bctx->n_steps; j++)
+    {
+      if ((intptr_t) bctx->steps[j].out_cell == c && bctx->steps[j].alias_of < 0)
+	{
+	  return bctx->steps[j].kernel_id == EXPR_KID_generic && bctx->steps[j].out != NULL;
+	}
+    }
+  return false;
+}
+
 /* An arithmetic node the kernel table does not cover: its operands compiled in the interpreter's fetch order, then
  * one generic step running the opcode's body (expr_k_generic).  -1 when an operand declines or the program is full:
  * the node stays interpreted.  No CSE and no hoisting: a body may be non-deterministic (RAND, SYS_*) or have a side
- * effect (INCR, DEFINE_VARIABLE).
+ * effect (INCR, DEFINE_VARIABLE).  It may compute once per execution where the interpreter does (see the end).
  *
  * A '?' rule always gets its check step, fallible right side or not (unlike the arithmetic kernels' lazy region):
  * the body sees the operands the interpreter fetched and no other -- INCR/DECR read the right operand only, and a
@@ -5106,7 +5176,7 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
   EXPR_STEP *step;
   int cell, err_code = NO_ERROR, lazy_mask = 0, lazy_start = -1, guard = 0, saved_guard = 0, cse_mark = 0, node_mark =
     0;
-  bool width_bucket = false;
+  bool width_bucket = false, tried = false;
   const char *p;
 
   if (spec == NULL)
@@ -5192,6 +5262,7 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
 	  try_step->regu = operand;
 	  try_step->aux = err_code;
 	  try_step->jump_to = bctx->n_steps;	/* the boundary after the operand's steps */
+	  tried = true;
 	}
       if (lazy_start >= 0)
 	{
@@ -5216,6 +5287,22 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
   step->fn = NULL;		/* the opcode's body, bound with the program from step->regu */
   step->aux = width_bucket ? EXPR_GENERIC_WIDTH_BUCKET : 0;
   /* a row step: expr_step_hoist () is not called, so its cell keeps the per-row class */
+  /* Once per execution where the interpreter keeps the node for the rest of the execution (fetch_peek_arith ()'s
+   * FETCH_ALL_CONST): the operator caches (fetch_opcode_caches (), no predicate), the step's cells are every operand
+   * the node has, and each holds one value for the execution -- the range bounds that "col LIKE ?" adds are computed
+   * for the first row the filter evaluates them on, not for every row.  The step keeps its place, so it runs, and
+   * fails, on the first row the interpreter would have computed the node on, under the same guard and recursion
+   * check; a '?' check over a left operand of the execution skips the same operands on every row of it.  A body that
+   * fetches its own operands (COALESCE, NVL, the CASE family, WIDTH_BUCKET's bounds) or a try step around an operand
+   * keeps the step per row.  The step owns the slot it keeps the value in. */
+  if (!tried && !width_bucket && arith->pred == NULL && fetch_opcode_caches (arith->opcode)
+      && (arith->leftptr == NULL || cells[0] >= 0) && (arith->rightptr == NULL || cells[1] >= 0)
+      && (arith->thirdptr == NULL || cells[2] >= 0) && expr_generic_operand_fixed (bctx, cells[0])
+      && expr_generic_operand_fixed (bctx, cells[1]) && expr_generic_operand_fixed (bctx, cells[2]))
+    {
+      step->out = (DB_VALUE *) 1;	/* owned slot; materialized later */
+      bctx->n_slots++;
+    }
   if (lazy_mask != 0)
     {
       /* a NULL left operand skips the right (and third) operand's steps: the check marks them unfetched on the
@@ -7760,7 +7847,8 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
       fprintf (fp, " -> c%d", (int) (step->out_cell - prog->cells));
       if (step->out != NULL)
 	{
-	  fprintf (fp, " (slot)");
+	  /* a generic step owns a slot only to compute once per execution (expr_compile_generic ()) */
+	  fprintf (fp, (step->kernel_id == EXPR_KID_generic) ? " (slot, once per execution)" : " (slot)");
 	}
       if (step->domain != NULL)
 	{
@@ -8763,8 +8851,8 @@ expr_image_get_prog (EXPR_IMAGE_READER * r)
     {
       if (prog->steps[i].alias_of >= 0 && prog->steps[i].out != NULL)
 	{
-	  /* a step that writes another step's slot owns none (a lazy check may alias a generic step, which owns
-	   * none either: its value is the node's own) */
+	  /* a step that writes another step's slot owns none (a lazy check aliases a generic step, which owns a slot
+	   * only when it computes once per execution -- expr_compile_generic ()) */
 	  r->failed = true;
 	}
     }
