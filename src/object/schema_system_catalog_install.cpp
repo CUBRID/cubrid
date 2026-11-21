@@ -373,7 +373,9 @@ namespace cubschema
 
   /*
    * The authorization classes are defined by au_install () before any user exists, so their definitions carry
-   * no authorization: au_install () changes their owner to DBA and grants on them once the users are created.
+   * no authorization: once the users are created, au_install () changes their owner to DBA, grants SELECT and
+   * EXECUTE on db_root to PUBLIC, and grants SELECT on db_root, _db_user and _db_authorization to
+   * INFORMATION_SCHEMA. _db_password gets no grant.
    */
 
   system_metadata_definition
@@ -391,7 +393,7 @@ namespace cubschema
       {"charset", "integer"},
       {"lang", "string"},
       {"timezone_checksum", "string"},
-      // class methods (need signatures for these !)
+      // class methods (only find_user declares its argument domain)
       {attribute_kind::CLASS_METHOD, "add_user", "au_add_user_method"},
       {attribute_kind::CLASS_METHOD, "drop_user", "au_drop_user_method"},
       {attribute_kind::CLASS_METHOD, "find_user", "au_find_user_method", {"string"}},
@@ -433,7 +435,7 @@ namespace cubschema
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
-      // methods (need signatures for these)
+      // methods (no argument domains are declared)
       {attribute_kind::METHOD, "set_password", "au_set_password_method"},
       {attribute_kind::METHOD, "set_password_encoded", "au_set_password_encoded_method"},
       {attribute_kind::METHOD, "set_password_encoded_sha1", "au_set_password_encoded_sha1_method"},
