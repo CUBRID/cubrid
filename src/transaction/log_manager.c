@@ -5451,7 +5451,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
       else
 	{
 	  /* Postpone appending replication and commit log and releasing locks to log_complete_for_2pc.
-	   * The commit decision is already flushed (log_2pc_append_decision), so the saved space can be released. */
+	   * The commit decision is already on disk: log_2pc_append_decision flushed it, or restart recovery read it
+	   * from the log (and then there is no saved space). So the saved space can be released. */
 	  if (tdes->first_save_entry != NULL)
 	    {
 	      spage_free_saved_spaces (thread_p, tdes->first_save_entry);
