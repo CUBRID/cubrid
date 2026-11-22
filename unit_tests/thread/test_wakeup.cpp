@@ -83,23 +83,30 @@ namespace test_thread
       done = true;
     });
 
-    // wait until the waiter is really waiting
-    for (;;)
+    // wait until the waiter is really waiting, for at most 5 seconds (a stuck entry lock fails by the CTest TIMEOUT)
+    bool woken = false;
+    for (int i = 0; i < 5000 && !woken; i++)
       {
 	thread_lock_entry (&waiter);
-	bool waiting = waiter.m_status == cubthread::entry::status::TS_WAIT;
-	if (waiting)
+	if (waiter.m_status == cubthread::entry::status::TS_WAIT)
 	  {
 	    if (grant_first)
 	      {
 		thread_wakeup_already_had_mutex (&waiter, THREAD_LOCK_RESUMED);
 	      }
 	    thread_wakeup_already_had_mutex (&waiter, THREAD_RESUME_DUE_TO_INTERRUPT);
-	    thread_unlock_entry (&waiter);
-	    break;
+	    woken = true;
 	  }
 	thread_unlock_entry (&waiter);
-	std::this_thread::sleep_for (std::chrono::milliseconds (1));
+	if (!woken)
+	  {
+	    std::this_thread::sleep_for (std::chrono::milliseconds (1));
+	  }
+      }
+    if (!woken)
+      {
+	std::cout << "  FAIL: the waiter did not start waiting (grant_first=" << grant_first << ")" << std::endl;
+	std::exit (1);	// the waiter is not waiting; cannot wake or join it
       }
 
     for (int i = 0; i < 5000 && !done; i++)
