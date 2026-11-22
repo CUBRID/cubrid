@@ -717,6 +717,10 @@ static int qexec_collection_has_null (DB_VALUE * colval);
 static QFILE_LIST_ID *qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp,
 					QFILE_LIST_ID * inner_list_idp, QFILE_LIST_MERGE_INFO * merge_infop,
 					int ls_flag, const DOMAIN_COMPARE * compares, const VAL_DESCR * vd);
+static int qexec_merge_outer_add_unmatched_inners (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_idp,
+						   QFILE_LIST_MERGE_INFO * merge_infop, QFILE_TUPLE_RECORD * tplrec,
+						   SCAN_ID * inner_sid, SCAN_POS * group_pos, const bool * matched,
+						   int group_cnt);
 static QFILE_LIST_ID *qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * inner_sid,
 					      QFILE_LIST_MERGE_INFO * merge_infop, PRED_EXPR * other_outer_join_pred,
 					      XASL_STATE * xasl_state, int ls_flag, const DOMAIN_COMPARE * compares);
@@ -10188,6 +10192,82 @@ exit_on_error:
   goto exit_on_end;
 }
 
+#define QEXEC_MERGE_OUTER_ADD_UNMATCHED_INNERS(thread_p)                     \
+    do {                                                                     \
+        if (unmatched_group_cnt > 0) {                                       \
+            int _cnt = unmatched_group_cnt;                                  \
+            unmatched_group_cnt = 0;                                         \
+            if (qexec_merge_outer_add_unmatched_inners((thread_p), list_idp, \
+                              merge_infop, &tplrec, inner_sid,               \
+                              &inner_group_scanpos, inner_matched,           \
+                              _cnt) != NO_ERROR) {                           \
+                goto exit_on_error;                                          \
+            }                                                                \
+        }                                                                    \
+    } while (0)
+
+/*
+ * qexec_merge_outer_add_unmatched_inners () - add the inner tuples of a key group that no outer tuple matched,
+ *                                             each joined with a NULL outer row
+ *   return: NO_ERROR, or ER_code
+ *   list_idp(in/out)   : result list file
+ *   merge_infop(in)    :
+ *   tplrec(in/out)     : area to store the merged tuple
+ *   inner_sid(in/out)  : inner scan; its position is restored before returning
+ *   group_pos(in)      : position of the first tuple of the key group
+ *   matched(in)        : whether each tuple of the key group was merged with an outer tuple
+ *   group_cnt(in)      : number of tuples in the key group
+ */
+static int
+qexec_merge_outer_add_unmatched_inners (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_idp,
+					QFILE_LIST_MERGE_INFO * merge_infop, QFILE_TUPLE_RECORD * tplrec,
+					SCAN_ID * inner_sid, SCAN_POS * group_pos, const bool * matched, int group_cnt)
+{
+  SCAN_POS saved_pos;
+  SCAN_CODE scan;
+  int i;
+
+  for (i = 0; i < group_cnt && matched[i]; i++)
+    {
+      ;
+    }
+  if (i >= group_cnt)
+    {
+      return NO_ERROR;
+    }
+
+  scan_save_scan_pos (inner_sid, &saved_pos);
+
+  scan = scan_jump_scan_pos (thread_p, inner_sid, group_pos);
+  for (i = 0; i < group_cnt; i++)
+    {
+      if (i > 0)
+	{
+	  inner_sid->qualification = QPROC_QUALIFIED_OR_NOT;
+	  scan = scan_next_scan (thread_p, inner_sid);
+	}
+      if (scan != S_SUCCESS)
+	{
+	  assert (scan == S_ERROR);
+	  return ER_FAILED;
+	}
+
+      if (!matched[i]
+	  && qfile_merge_tuple_add_list (thread_p, list_idp, NULL, inner_sid->s.llsid.tplrecp, merge_infop,
+					 tplrec) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  if (scan_jump_scan_pos (thread_p, inner_sid, &saved_pos) == S_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * qexec_merge_list_outer () -
  *   return:
@@ -10223,7 +10303,12 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
   int k, cnt, group_cnt, merge_cnt, already_compared;
   SCAN_DIRECTION direction;
   SCAN_POS inner_scanpos;
+  SCAN_POS inner_group_scanpos;
   bool all_lefts, all_rghts;
+  bool track_rghts;
+  bool *inner_matched = NULL;
+  int inner_matched_size = 0;
+  int unmatched_group_cnt = 0;
   DB_LOGICAL ev_res;
   DB_VALUE_COMPARE_RESULT val_cmp;
 
@@ -10233,6 +10318,9 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
   /* determine all lefts or all rights option depending on join type */
   all_lefts = (merge_infop->join_type == JOIN_LEFT || merge_infop->join_type == JOIN_OUTER) ? true : false;
   all_rghts = (merge_infop->join_type == JOIN_RIGHT || merge_infop->join_type == JOIN_OUTER) ? true : false;
+
+  /* with a during-join predicate, an inner tuple is unmatched only after every outer tuple of its key group failed */
+  track_rghts = all_rghts && other_outer_join_pred != NULL;
 
   /* QFILE_LIST_ID pointer from SCAN_ID */
   outer_list_idp = outer_sid->s.llsid.list_id;
@@ -10457,6 +10545,11 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 		  QEXEC_MERGE_ADD_MERGETUPLE (thread_p, NULL, &inner_tplrec);
 		}
 	    }
+	  else
+	    {
+	      QEXEC_MERGE_OUTER_ADD_UNMATCHED_INNERS (thread_p);
+	      QEXEC_MERGE_PVALS (inner);
+	    }
 
 	  /* move the inner(right) scan to the next tuple and position tuple values (to merge columns) */
 	  QEXEC_MERGE_OUTER_NEXT_SCAN_PVALS (thread_p, inner, true);
@@ -10477,9 +10570,31 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 	{
 	  /* move forwards within a group */
 	  cnt = 0;
+	  if (track_rghts && group_cnt == 0)
+	    {
+	      scan_save_scan_pos (inner_sid, &inner_group_scanpos);
+	    }
 	  /* group_cnt has the number of tuples in the group */
 	  while (1)
 	    {
+	      if (track_rghts && group_cnt == 0)
+		{
+		  if (cnt >= inner_matched_size)
+		    {
+		      int new_size = (inner_matched_size == 0) ? 64 : inner_matched_size * 2;
+		      bool *new_matched =
+			(bool *) db_private_realloc (thread_p, inner_matched, new_size * sizeof (bool));
+
+		      if (new_matched == NULL)
+			{
+			  goto exit_on_error;
+			}
+		      inner_matched = new_matched;
+		      inner_matched_size = new_size;
+		    }
+		  inner_matched[cnt] = false;
+		}
+
 	      /* evaluate other outer join predicate */
 	      ev_res = V_UNKNOWN;
 	      if (other_outer_join_pred != NULL)
@@ -10498,6 +10613,10 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 		  QEXEC_MERGE_ADD_MERGETUPLE (thread_p, &outer_tplrec, &inner_tplrec);
 
 		  merge_cnt++;	/* increase the counter of merged tuples */
+		  if (track_rghts)
+		    {
+		      inner_matched[cnt] = true;
+		    }
 
 		  /* if scan works in a single_fetch mode and first qualified scan item has now been fetched, return
 		   * immediately. */
@@ -10512,18 +10631,6 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 	      /* if the group is formed for the first time */
 	      if (group_cnt == 0)
 		{
-		  /* not qualified */
-		  if (!(other_outer_join_pred == NULL || ev_res == V_TRUE))
-		    {
-		      /* depending on the join type, join with a NULL opposite row when a NULL or a not-qualified is
-		       * encountered, or skip it. */
-		      if (all_rghts)
-			{
-			  /* merge the fetched tuple(right) and NULL tuple(left) */
-			  QEXEC_MERGE_ADD_MERGETUPLE (thread_p, NULL, &inner_tplrec);
-			}
-		    }
-
 		  /* move the inner(right) scan to the next tuple and position tuple values (to merge columns) */
 		  QEXEC_MERGE_OUTER_NEXT_SCAN_PVALS (thread_p, inner, false	/* do not exit */
 		    );
@@ -10589,6 +10696,11 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 		}
 	    }			/* while (1) */
 
+	  if (track_rghts && group_cnt == 0)
+	    {
+	      unmatched_group_cnt = cnt;
+	    }
+
 	  /* move the outer to the next tuple and position tuple values */
 	  QEXEC_MERGE_OUTER_NEXT_SCAN_PVALS (thread_p, outer, true);
 
@@ -10651,6 +10763,12 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 
 		  /* comparison has already been done */
 		  already_compared = true;
+
+		  if (group_cnt == 0)
+		    {
+		      QEXEC_MERGE_OUTER_ADD_UNMATCHED_INNERS (thread_p);
+		      QEXEC_MERGE_PVALS (inner);
+		    }
 		}
 	    }
 	  else
@@ -10684,6 +10802,10 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 		  QEXEC_MERGE_ADD_MERGETUPLE (thread_p, &outer_tplrec, &inner_tplrec);
 
 		  merge_cnt++;	/* increase the counter of merged tuples */
+		  if (track_rghts)
+		    {
+		      inner_matched[cnt - 1] = true;
+		    }
 		}
 
 	      cnt--;		/* decrease the counter of the processed tuples */
@@ -10728,6 +10850,8 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 
 	  if (val_cmp != DB_EQ)
 	    {
+	      QEXEC_MERGE_OUTER_ADD_UNMATCHED_INNERS (thread_p);
+
 	      /* jump to the previously set scan position */
 	      inner_scan = scan_jump_scan_pos (thread_p, inner_sid, &inner_scanpos);
 	      /* is saved position the end of scan? */
@@ -10756,6 +10880,11 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
     }				/* while (1) */
 
 exit_on_end:
+  if (all_rghts)
+    {
+      QEXEC_MERGE_OUTER_ADD_UNMATCHED_INNERS (thread_p);
+    }
+
   /* inner(right) is at the end. is there more to the outer(left) ? */
   if (all_lefts)
     {
@@ -10838,6 +10967,10 @@ exit_on_end:
   if (inner_lenp)
     {
       db_private_free_and_init (thread_p, inner_lenp);
+    }
+  if (inner_matched)
+    {
+      db_private_free_and_init (thread_p, inner_matched);
     }
 
   if (list_idp)
