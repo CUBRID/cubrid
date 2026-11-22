@@ -366,6 +366,8 @@ struct la_info
   LOG_LSA append_lsa;		/* append lsa of active log header */
   LOG_LSA eof_lsa;		/* eof lsa of active log header */
   LOG_LSA required_lsa;		/* start lsa of the first transaction to be applied */
+  LOG_LSA stored_required_lsa;	/* required_lsa as last committed to the apply info, where a restart starts
+				 * reading; copied-log archives are removed only below it */
   unsigned long insert_counter;
   unsigned long update_counter;
   unsigned long delete_counter;
@@ -1420,6 +1422,11 @@ la_coordinator_commit_apply_info (bool final_store)
 	  if (res != NO_ERROR)
 	    {
 	      la_Info.marker_cleanup_pending = true;
+	    }
+	  else
+	    {
+	      /* a restart now starts from here; la_remove_archive_logs keeps the archives from it on */
+	      LSA_COPY (&la_Info.stored_required_lsa, &la_Info.required_lsa);
 	    }
 
 	  la_coordinator_tran_end (save_wait_msecs);
@@ -3242,6 +3249,9 @@ la_get_last_ha_applied_info (void)
     {
       LSA_COPY (&la_Info.final_lsa, &la_Info.required_lsa);
     }
+
+  /* the stored row has this value, or the row inserted below will have it */
+  LSA_COPY (&la_Info.stored_required_lsa, &la_Info.required_lsa);
 
   if (insert_apply_info == true)
     {
@@ -9393,6 +9403,7 @@ la_init (const char *log_path, const int max_mem_size)
   LSA_SET_NULL (&la_Info.append_lsa);
   LSA_SET_NULL (&la_Info.eof_lsa);
   LSA_SET_NULL (&la_Info.required_lsa);
+  LSA_SET_NULL (&la_Info.stored_required_lsa);
   LSA_SET_NULL (&la_Info.final_lsa);
   LSA_SET_NULL (&la_Info.last_committed_lsa);
   LSA_SET_NULL (&la_Info.last_committed_rep_lsa);
@@ -10077,9 +10088,16 @@ la_remove_archive_logs (const char *db_name, int last_deleted_arv_num, int nxarv
   int current_arv_count;
   int i;
 
-  if (LA_LOG_IS_IN_ARCHIVE (la_Info.required_lsa.pageid))
+  /* A restart reads from the stored required_lsa. The in-memory one moves ahead of it while storing the apply info
+   * fails (a lock wait times out), and an archive removed by it would leave the restart without its pages. */
+  if (LSA_ISNULL (&la_Info.stored_required_lsa))
     {
-      error = la_find_archive_num (&required_arv_num, la_Info.required_lsa.pageid);
+      return last_deleted_arv_num;
+    }
+
+  if (LA_LOG_IS_IN_ARCHIVE (la_Info.stored_required_lsa.pageid))
+    {
+      error = la_find_archive_num (&required_arv_num, la_Info.stored_required_lsa.pageid);
       if (error != NO_ERROR)
 	{
 	  return last_deleted_arv_num;
