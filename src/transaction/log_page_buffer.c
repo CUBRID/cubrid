@@ -8755,9 +8755,29 @@ loop:
       /* Vacuum data is not loaded and archives are not removed while vacuum is disabled, so the log that vacuum still
        * has to process, once enabled again, can be in any archive that is left. Keep them all. Stand-alone mode
        * does not vacuum everything at boot either in this case, so its backup needs them too. */
-      if (first_arv_needed < 0 || first_arv_needed > log_Gl.hdr.last_deleted_arv_num + 1)
+      int oldest_arv_num = log_Gl.hdr.last_deleted_arv_num + 1;
+      char oldest_arv_name[PATH_MAX];
+
+      /* The header does not promise that every archive after the last deleted one is on disk. A database restored
+       * from a backup lacks the older archives that the backup left out, as nothing needed them. Start at the
+       * oldest archive that is there. */
+      for (; oldest_arv_num < log_Gl.hdr.nxarv_num; oldest_arv_num++)
 	{
-	  first_arv_needed = log_Gl.hdr.last_deleted_arv_num + 1;
+	  fileio_make_log_archive_name (oldest_arv_name, log_Archive_path, log_Prefix, oldest_arv_num);
+	  if (fileio_is_volume_exist (oldest_arv_name))
+	    {
+	      break;
+	    }
+	}
+      if (oldest_arv_num > log_Gl.hdr.last_deleted_arv_num + 1)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "Backup skips log archives %d to %d, which do not exist",
+			 log_Gl.hdr.last_deleted_arv_num + 1, oldest_arv_num - 1);
+	}
+
+      if (first_arv_needed < 0 || first_arv_needed > oldest_arv_num)
+	{
+	  first_arv_needed = oldest_arv_num;
 	}
       vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "Vacuum is disabled. First archive needed for backup is %d\n",
 		     first_arv_needed);
