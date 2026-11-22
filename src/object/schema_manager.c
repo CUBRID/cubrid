@@ -4049,6 +4049,7 @@ sm_get_class_with_statistics (MOP classop)
 {
   SM_CLASS *class_ = NULL;
   int is_class = 0;
+  bool updated = false;
 
   /* only try to get statistics if we know the class has been flushed if it has a temporary oid, it isn't flushed and
    * there are no statistics */
@@ -4103,6 +4104,7 @@ sm_get_class_with_statistics (MOP classop)
 	{
 	  stats_free_statistics (class_->stats);
 	  class_->stats = stats;
+	  updated = true;
 	}
       else if (err != NO_ERROR)
 	{
@@ -4110,8 +4112,10 @@ sm_get_class_with_statistics (MOP classop)
 	}
     }
 
-  /* a cached histogram is valid only with the class statistics it was read with */
-  if (class_->histogram != NULL && class_->histogram->class_stats_time_stamp != STATS_CLASS_TIME_STAMP (class_->stats))
+  /* a cached histogram is valid only with the class statistics it was read with, and statistics sent again are
+   * read with it again: the server sends them on every request while their time stamp is 0 */
+  if (class_->histogram != NULL
+      && (updated || class_->histogram->class_stats_time_stamp != STATS_CLASS_TIME_STAMP (class_->stats)))
     {
       stats_free_histogram_and_init_and_set_null (class_->histogram);
     }
