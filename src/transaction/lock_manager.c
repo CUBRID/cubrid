@@ -8760,7 +8760,7 @@ lock_notify_isolation_incons (THREAD_ENTRY * thread_p, bool (*fun) (const OID * 
   isolation = logtb_find_isolation (tran_index);
   if (isolation == TRAN_REPEATABLE_READ || isolation == TRAN_SERIALIZABLE)
     {
-      return;			/* Nothing was released */
+      return;			/* Nothing went to the non-2PL list */
     }
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];

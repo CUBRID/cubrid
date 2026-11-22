@@ -2098,6 +2098,7 @@ obj_delete (MOP op)
   int pin = 0;
   int pin2 = 0;
   bool unpin_on_error = false;
+  bool was_dirty;
   TR_STATE *trstate = NULL;
 
   /* op must be an object */
@@ -2127,6 +2128,7 @@ obj_delete (MOP op)
       goto error_exit;
     }
 
+  was_dirty = WS_ISDIRTY (op);
   error = au_fetch_instance (op, &obj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_DELETE);
   if (error != NO_ERROR)
     {
@@ -2154,6 +2156,12 @@ obj_delete (MOP op)
 	  goto error_exit;
 	}
       au_fetch_class (base_op, &base_class, AU_FETCH_READ, AU_DELETE);
+    }
+
+  /* the fetch for update marks the row dirty before it is deleted: a flush in a BEFORE trigger would write it again */
+  if (!was_dirty && base_op == op && !op->is_vid)
+    {
+      ws_clean (op);
     }
 
   /* We need to keep it pinned for the duration of trigger processing. */
