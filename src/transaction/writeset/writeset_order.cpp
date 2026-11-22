@@ -226,8 +226,8 @@ wset_order_record_sysop (const LOG_LSA *sysop_lsa)
   wset_history_record_commit (false, sysop_lsa);
 }
 
-/* Publish an independent unit's keys inside the SYSOP_END prior_lsa_mutex region, before its row lock or serial
- * page latch is released. */
+/* Publish an independent unit's keys after its SYSOP_END is appended and prior_lsa_mutex is released, but before
+ * its row lock or serial page latch is released. */
 void
 wset_order_publish_sysop_keys (LOG_TDES *tdes, size_t begin, const LOG_LSA *sysop_lsa)
 {

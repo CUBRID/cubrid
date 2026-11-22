@@ -4700,7 +4700,9 @@ log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_EN
  *       is raised to the SYSOP_END, so the operation is a barrier on the slave. By keys the label comes from the
  *       keys like a commit's, and the commit-order baseline (prev_commit_lsa) moves to the SYSOP_END: without it
  *       a later label lowered to the baseline, or a later commit-order label, could fall below this operation.
- *       Key publication finishes before this mutex is released, so subsequent labels see the published keys.
+ *       The keys are published after the mutex is released, as a commit's are, so a history clear does not stop
+ *       every log append. The caller still holds the row lock or serial page latch, so a later operation on the
+ *       same key collects and resolves its keys only after they are published.
  */
 void
 log_append_repl_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
@@ -4762,7 +4764,6 @@ log_append_repl_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYS
   if (by_keys)
     {
       wset_order_record_sysop (sysop_end_lsa_out);
-      wset_order_publish_sysop_keys (tdes, key_begin, sysop_end_lsa_out);
     }
   else
     {
@@ -4770,6 +4771,11 @@ log_append_repl_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYS
     }
 
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
+
+  if (by_keys)
+    {
+      wset_order_publish_sysop_keys (tdes, key_begin, sysop_end_lsa_out);
+    }
 }
 
 /*

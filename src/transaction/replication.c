@@ -880,7 +880,7 @@ repl_finish_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END *
 
       if (sysop_keyed)
 	{
-	  /* Already published with SYSOP_END under prior_lsa_mutex; keep the outer commit from publishing again. */
+	  /* Already published with SYSOP_END, just after prior_lsa_mutex; keep the outer commit from publishing again. */
 	  wset_discard_sysop_keys (tdes, sysop_key_begin);
 	}
       else if (sysop_commit_order)
