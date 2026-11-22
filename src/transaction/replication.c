@@ -211,21 +211,11 @@ repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc)
  *
  *   inst_oid(in): OID of the instance
  *
- * NOTE:For update operation, the server does "Heap stuff" after "Index Stuff".
- *     In order to reduce the cost of replication log, we generates a
- *     replication log at the point of indexing  processing step.
- *     (During index processing, the primary key value is fetched ..)
- *     After Heap operation, we have to set the target LSA into the
- *     replication log.
- *
- *     For update case, this function is called by locator_update_force().
- *     In the case of insert/delete cases, when the replication log info. is
- *     generated, the server already has the target transaction log(HEAP_INSERT
- *     or HEAP_DELETE).
- *     But, for the udpate case, the server doesn't has the target log when
- *     it generates the replication log. So, the server has to find out the
- *     location of replication record and match with the target transaction
- *     log after heap_update(). This is done by locator_update_force().
+ * NOTE: The replication record of an updated row is logged while its indexes are updated
+ *	 (locator_update_index ()), where the primary key value is at hand, with a null target LSA. The heap update
+ *	 keeps the LSA of its log record in tdes->repl_update_lsa, and locator_update_force () calls this function to
+ *	 copy it into the record when the whole update has succeeded. An update that fails after logging the record
+ *	 drops it instead (repl_cancel_unfilled_update ()).
  */
 int
 repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
