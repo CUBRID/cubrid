@@ -91,6 +91,7 @@
 #include "px_parallel.hpp"
 #include "ftab_set.hpp"
 #include "bit.h"		/* bit64_is_set */
+#include "fault_injection.h"
 
 #include <algorithm>
 #if defined(CUBRID_UNIT_TEST_ENABLED)
@@ -28807,6 +28808,18 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  scan_code = S_ERROR;
 	  goto end;
+	}
+      if (FI_INSERTED (FI_TEST_HEAP_PREV_VERSION_WALK_HOLD) && LSA_EQ (&process_lsa, previous_version_lsa)
+	  && scan_cache->mvcc_snapshot != &LOG_FIND_CURRENT_TDES (thread_p)->mvccinfo.snapshot)
+	{
+	  /* holds every walk under a snapshot other than the transaction snapshot, catalog reads among them, so that
+	   * a test can commit the writer of the newer versions between two judgments of one walk */
+	  int hold_seconds = 2;
+
+	  heap_prev_version_walk_release_pages (thread_p, &walk);
+	  er_log_debug (ARG_FILE_LINE, "fault injection: hold a non-transaction snapshot read at version %lld|%d",
+			LSA_AS_ARGS (&process_lsa));
+	  (void) FI_TEST_ARG (thread_p, FI_TEST_HEAP_PREV_VERSION_WALK_HOLD, &hold_seconds, FI_INIT_STATE);
 	}
       snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
       if (snapshot_res == SNAPSHOT_SATISFIED)

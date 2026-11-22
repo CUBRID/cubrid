@@ -7270,7 +7270,7 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
  *   return: void
  *   thread_p(in): thread entry
  *
- * Note: for a statement whose locks stay to commit (not the outermost READ COMMITTED one, or its transaction is
+ * Note: for a statement whose locks stay to commit (not the outermost one, or its transaction is
  *	being aborted): its counts must go, or the next statement to release would give back requests it never took.
  */
 void
@@ -9757,7 +9757,7 @@ lock_notify_isolation_incons (THREAD_ENTRY * thread_p, bool (*fun) (const OID * 
   isolation = logtb_find_isolation (tran_index);
   if (isolation == TRAN_REPEATABLE_READ || isolation == TRAN_SERIALIZABLE)
     {
-      return;			/* Nothing was released */
+      return;			/* Nothing went to the non-2PL list */
     }
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];

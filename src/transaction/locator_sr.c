@@ -2555,7 +2555,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
     }
 
   if (LC_FETCH_IS_MVCC_VERSION_NEEDED (initial_fetch_version_type)
-      || initial_fetch_version_type == LC_FETCH_COMMITTED_VERSION)
+      || initial_fetch_version_type == LC_FETCH_CATALOG_VERSION)
     {
       /* a version-consistent read needs no lock on the object */
       skip_fetch_version_type_check = true;
@@ -2577,7 +2577,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
       mvcc_snapshot = &mvcc_snapshot_dirty;
       break;
 
-    case LC_FETCH_COMMITTED_VERSION:
+    case LC_FETCH_CATALOG_VERSION:
       /* latest committed version, without materializing the transaction snapshot (CBRD-27369) */
       mvcc_snapshot_committed.snapshot_fnc = mvcc_satisfies_committed;
       mvcc_snapshot = &mvcc_snapshot_committed;
@@ -4535,12 +4535,13 @@ locator_header_writer (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * header)
  *
  *   inserter(in): the active inserter phase 1 found writing the child, or MVCCID_NULL
  *
- * Note: a writer is found by its stamp, not by a row lock: an inserter takes none, and a READ COMMITTED updater
- *	 gives its own back at the end of a successful statement. Locking the child first and waiting in the locked
- *	 read would hold the lock against such a writer, and one that reaches the row again where no owner check lets
- *	 it pass (a unique-key check of the same key, say) would wait for us: a deadlock. A transaction that holds
- *	 the child's X with no stamp (SELECT ... FOR UPDATE, an updater before its heap write) is not seen here;
- *	 phase 3 meets it and waits with no child of the key held (locator_try_lock_gathered_child ()).
+ * Note: a writer is found by its stamp, not by a row lock: an inserter takes none, and an updater gives its own
+ *	 back at the end of a successful statement unless an enclosing statement or its class keeps it. Locking the
+ *	 child first and waiting in the locked read would hold the lock against such a writer, and one that reaches
+ *	 the row again where no owner check lets it pass (a unique-key check of the same key, say) would wait for us:
+ *	 a deadlock. A transaction that holds the child's X with no stamp (SELECT ... FOR UPDATE, an updater before
+ *	 its heap write) is not seen here; phase 3 meets it and waits with no child of the key held
+ *	 (locator_try_lock_gathered_child ()).
  */
 static int
 locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, MVCCID inserter)
@@ -8184,8 +8185,9 @@ locator_class_keeps_row_locks (THREAD_ENTRY * thread_p, const OID * class_oid)
  *
  * Note: an uncommitted change is guarded by its stamp and our MVCCID self-lock, so its row lock may end unless the
  *	 stamp can go before commit in a statement nested in another.  Under a savepoint it may end too: a rollback to
- *	 it sends the writers waiting on the stamp back to read (lock_deferred_wake_mark ()).
- *	 REPEATABLE READ keeps its row locks for now.  Ask with the statement's transient scope open.
+ *	 it sends the writers waiting on the stamp back to read (lock_deferred_wake_mark ()).  At any isolation level:
+ *	 a writer settled on the stamp judges it by its own isolation level, not ours, and no level promises the lock
+ *	 on a row the scan locked but left unchanged.  Ask with the transient scope open.
  */
 bool
 locator_statement_ends_row_locks (THREAD_ENTRY * thread_p, STMT_ROW_CHANGE change)
@@ -8195,8 +8197,7 @@ locator_statement_ends_row_locks (THREAD_ENTRY * thread_p, STMT_ROW_CHANGE chang
       return true;
     }
 
-  return (lock_transient_scope_is_outermost (thread_p)
-	  && logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
+  return lock_transient_scope_is_outermost (thread_p);
 }
 
 /*
