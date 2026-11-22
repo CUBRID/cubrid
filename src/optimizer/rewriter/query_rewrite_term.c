@@ -135,7 +135,8 @@ qo_collect_name_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       break;
 
     case PT_EXPR:
-      if (node->info.expr.op == PT_NEXT_VALUE || node->info.expr.op == PT_CURRENT_VALUE)
+      if (node->info.expr.op == PT_NEXT_VALUE || node->info.expr.op == PT_CURRENT_VALUE
+	  || node->info.expr.op == PT_CURRENT_VALUE_BY_OID)
 	{
 	  /* simply give up when we find serial */
 	  info->query_serial_num++;
@@ -4856,6 +4857,7 @@ qo_or_extract_check_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  /* a second evaluation draws a different value, so a duplicated filter could reject rows
 	   * the original predicate accepts */
 	case PT_CURRENT_VALUE:
+	case PT_CURRENT_VALUE_BY_OID:
 	case PT_NEXT_VALUE:
 	  /* serial access has side effects */
 	case PT_INST_NUM:

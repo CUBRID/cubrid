@@ -1512,6 +1512,7 @@ qo_check_unmatchable_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 	case PT_SYS_GUID:
 	case PT_UUID:
 	case PT_CURRENT_VALUE:
+	case PT_CURRENT_VALUE_BY_OID:
 	case PT_NEXT_VALUE:
 	case PT_INST_NUM:
 	case PT_ROWNUM:
