@@ -6646,7 +6646,7 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
  * O2|ON   |TC_join              |term_tail=|=on_node       |TC_join(ow O3)
  * O3|ON   |TC_other(n>0,on_conn)|-         |!Outer(ex R_on)|TC_dj
  * O4|ON   |TC_other(n==0)       |-         |-              |TC_dj
- * I1|ON   |TC_sarg/other(inner) |-         |pad ref        |TC_dj
+ * N1|ON   |TC_sarg/other        |-         |pad ref        |TC_dj
  * W1|WHERE|TC_sarg              |!Left     |!Right         |TC_sarg(ow TC_aj)
  * W2|WHERE|TC_join              |!Outer    |!Right,!pad ref|TC_join(ow TC_aj)
  * W3|WHERE|TC_other(n>0)        |!Outer    |!Right,!pad ref|TC_other(ow TC_aj)
@@ -6701,25 +6701,22 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  /* is explicit join ON cond */
 	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
+	  /* an ON term that reads a node a preceding outer join fills with NULL is not a scan filter of that node
+	   * nor an edge of that outer join: evaluate it when on_node joins, after the padding */
+	  if (QO_TERM_CLASS (term) == QO_TC_SARG || QO_TERM_CLASS (term) == QO_TC_OTHER)
 	    {
-	      /* an inner join ON term that reads a node a preceding outer join fills with NULL is not a scan filter
-	       * of that node nor an edge of that outer join: evaluate it when on_node joins, after the padding */
-	      if (QO_TERM_CLASS (term) == QO_TC_SARG || QO_TERM_CLASS (term) == QO_TC_OTHER)
+	      BITSET_CLEAR (suppliers);
+	      qo_get_null_suppliers_of_nodes (env, on_node, &(QO_TERM_NODES (term)), &suppliers);
+	      if (!bitset_is_empty (&suppliers))
 		{
-		  BITSET_CLEAR (suppliers);
-		  qo_get_null_suppliers_of_nodes (env, on_node, &(QO_TERM_NODES (term)), &suppliers);
-		  if (!bitset_is_empty (&suppliers))
-		    {
-		      QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
-		    }
+		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
+		  continue;
 		}
-	      continue;
 	    }
 
-	  if (QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	    {
-	      /* semi / anti: structurally inner, no outer-join classification */
+	      /* inner / semi / anti: structurally inner, no outer-join classification */
 	      continue;
 	    }
 
