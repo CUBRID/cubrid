@@ -913,6 +913,7 @@ sm_define_view_tables_spec (void)
       "estimated_data_free ([cls].[unique_name]) AS [data_free], "
       /* numeric -> numeric(38,0) */
       "CAST (CASE "
+        /* one read of serial_current_value_by_oid per row, so the bound check and the result see the same value */
         "WHEN [serial].[started] = 0 THEN serial_current_value_by_oid ([serial]) "
         /* Check overflow: LEAST caps current_val at max_val - increment_val + 1, which NULLIF turns into NULL */
         "WHEN [serial].[increment_val] > 0 THEN "
