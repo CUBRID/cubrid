@@ -5912,8 +5912,11 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
        * a crash. If the cached block is next to the last block in vacuum data, all records are in that one block.
        * The cached block can also be two blocks after the last block with vacuum enabled, when the last block was
        * moved forward on empty vacuum data (vacuum_consume_buffer_log_blocks). Then the walk finds only the cached
-       * block. */
-      if (!log_Gl.hdr.does_block_need_vacuum
+       * block.
+       * The walk reads the log, so it is skipped when the TDE key is not loaded: the log pages of encrypted tables
+       * cannot be read then, and the server must still start (vacuum dispatches no job until the key is loaded).
+       * Then the cache stays in log header as before. */
+      if (!log_Gl.hdr.does_block_need_vacuum || !tde_is_loaded ()
 	  || vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) <= vacuum_Data.get_last_blockid () + 1)
 	{
 	  return NO_ERROR;
