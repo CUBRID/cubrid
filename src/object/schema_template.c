@@ -1997,10 +1997,10 @@ smt_check_histogram_exist (MOP classop, const char *attr_name)
   /* _db_histogram is an internal catalog; bypass user authorization. (CBRD-26667)
    * Read the row's existence without a lock (CBRD-27369): an S lock here would be held to
    * commit and the store step's X on the same row would have to upgrade past every concurrent
-   * collector's S, deadlocking.  The committed lock-free read still sees this transaction's own
+   * collector's S, deadlocking.  The lock-free read still sees this transaction's own
    * uncommitted insert, so a re-check within one transaction is correct. */
   AU_SAVE_AND_DISABLE (au_save);
-  histogram_obj = db_find_multi_unique_committed (histogram_class, 2, (char **) search_attrs, value_ptrs);
+  histogram_obj = db_find_multi_unique_catalog (histogram_class, 2, (char **) search_attrs, value_ptrs);
   AU_RESTORE (au_save);
   if (histogram_obj != NULL)
     {

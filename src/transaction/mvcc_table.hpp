@@ -36,6 +36,7 @@
 // forward declarations
 struct log_tdes;
 struct mvcc_info;
+struct mvcc_snapshot;
 
 struct mvcc_trans_status
 {
@@ -77,6 +78,7 @@ class mvcctable
 
     // mvcc_snapshot/mvcc_info functions
     void build_mvcc_info (log_tdes &tdes);
+    void build_snapshot (int tran_index, mvcc_snapshot &snapshot, bool load_tran_stats);
     void complete_mvcc (int tran_index, MVCCID mvccid, bool committed);
     void complete_sub_mvcc (MVCCID mvccid);
     MVCCID get_new_mvccid ();
