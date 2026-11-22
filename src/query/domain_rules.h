@@ -412,8 +412,8 @@ bool domain_compare_equal (const DOMAIN_COMPARE * a, const DOMAIN_COMPARE * b);
 void domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs,
 					  DOMAIN_COMPARE * result);
 
-/* How a side of a hash join key reaches the common domain (domain_decide_hash_join_key ()'s conv_kind): as it is,
- * by the IMPLICIT converter into it, or by tp_value_coerce at the row (a JSON value, which converts by its scalar). */
+/* How a side of a hash join key reaches the common domain (domain_decide_hash_join_key ()'s conv_kind): as it is, by
+ * the IMPLICIT converter into it, or by tp_value_coerce at the row (a JSON value, which converts by its scalar). */
 enum
 {
   DOMAIN_HASH_KEY_AS_IS = 0,
@@ -460,20 +460,8 @@ const DOMAIN_COMPARE *domain_compare_row_entry (int row, const DB_VALUE * elemen
 DB_VALUE_COMPARE_RESULT domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
 					       const DB_VALUE * value2, int total_order, bool * can_compare);
 
-/*
- * domain_key_values_equal () - CBRD-27583: whether two key values of one position of a cache (memoize, the
- *   subquery cache) are equal. Both are values of one regu, so of its compiled domain, and compare by that domain
- *   type's cmpval as tp_value_compare's total order answers: no comparison is decided. A string compares byte by
- *   byte instead (mht_compare_strings_are_identical): keys equal only under a case-insensitive collation can give
- *   different results.
- *   A TIMESTAMPTZ and a DATETIMETZ also need the same zone (CBRD-27804): one instant in two zones casts differently.
- *   A NUMERIC needs the same scale, a MONETARY the same currency, and a FLOAT, a DOUBLE and a MONETARY the same
- *   sign (-0 and 0, -NaN and NaN) (CBRD-28060), for the same reason.
- *   A collection compares element by element, each by its own type as a key would, and an ENUM element by its label
- *   as well as its index, which the ENUMs of two value lists among the element domains share (CBRD-28060).
- *   domain(in): the key position regu's compiled domain (an OBJECT's values are OIDs on the server)
- */
 bool domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * first, const DB_VALUE * second);
+bool domain_key_values_identical (const DB_VALUE * first, const DB_VALUE * second);
 
 /* Kernel CONVERT alone (domain_compare_values' case), for a caller that has switched on the comparison method
  * already. */

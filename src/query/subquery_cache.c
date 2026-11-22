@@ -234,8 +234,7 @@ sq_hash_func (const void *key, unsigned int ht_size)
 
   for (i = 0; i < k->n_elements; i++)
     {
-      h = ROTL32 (h, 13);
-      h ^= mht_valhash (k->dbv_array[i], ht_size);
+      h = mht_foldhash (h, mht_valhash (k->dbv_array[i], ht_size));
     }
   return h % ht_size;
 }

@@ -4599,11 +4599,15 @@ qo_hq_index_serves_child_lookup (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NOD
 }
 
 /*
- * qo_hq_cast_walker () - detects a cast that can fail on a value it cannot
- *   convert: any cast written in the query, or a cast the compiler wrapped
- *   from a string to another type or from an ENUM to a type neither a string
- *   nor a number, which reads its label as a string (its other wrapped casts
- *   only widen)
+ * qo_hq_cast_walker () - detects a cast that can fail on a value it cannot convert
+ *
+ * The casts detected:
+ *   - any cast written in the query
+ *   - a cast the compiler wrapped from a string to another type
+ *   - a cast the compiler wrapped from an ENUM to a type neither a string nor a number, which reads its label as a
+ *     string
+ *
+ * The compiler's other wrapped casts only widen.
  */
 static PT_NODE *
 qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -4628,8 +4632,8 @@ qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 	  const PT_TYPE_ENUM to = node->type_enum;
 	  assert (arg != NULL);
 
-	  /* one the compiler wrapped from a string to another type, or from an ENUM (by its label) to a type
-	   * neither a string nor a number (by its index) */
+	  /* one the compiler wrapped from a string to another type, or from an ENUM to a type neither a string nor a
+	   * number, which reads its label as a string (a number takes its index) */
 	  if ((PT_IS_CHAR_STRING_TYPE (arg->type_enum) && !PT_IS_CHAR_STRING_TYPE (to))
 	      || (arg->type_enum == PT_TYPE_ENUMERATION && !PT_IS_CHAR_STRING_TYPE (to) && !PT_IS_NUMERIC_TYPE (to)))
 	    {
@@ -4645,10 +4649,8 @@ qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 /*
  * qo_hq_is_unsafe_hash_key () - checks whether one PT_EQ conjunct, as a key of
  *   the hash list scan, can give a result other than the single-table plan
- * Note: a JSON key is hashed by its text, so JSON values that compare equal
- *       ('1.0' and '"1"' against '1') can hash apart. The build key is
- *       evaluated on every row, even one no parent reaches, so a cast there
- *       can fail where the single-table plan never evaluates it.
+ * Note: the build key is evaluated on every row, even one no parent reaches, so a cast there can fail where the
+ *       single-table plan never evaluates it.
  */
 static bool
 qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
@@ -4662,11 +4664,6 @@ qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
   if (arg1 == NULL || arg2 == NULL)
     {
       return false;
-    }
-
-  if (arg1->type_enum == PT_TYPE_JSON || arg2->type_enum == PT_TYPE_JSON)
-    {
-      return true;
     }
 
   (void) parser_walk_tree (parser, arg1, qo_hq_classify_arg_walker, &c1, NULL, NULL);
@@ -4723,18 +4720,16 @@ qo_hq_has_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * pred)
  *   generic path, whose hash list scan finds children in O(N+E) instead of
  *   rescanning the table for every parent row
  *   return: true to use the generic (materialize + hash list scan) path
- * Note: the single-table plan is kept only when the leading columns of an
- *       index are all fixed by equalities of the CONNECT BY predicate (to a
- *       constant, a host variable or a PRIOR expression, or to one of several
- *       such values by IN or OR) and one of them is the bare build-side column
- *       of a hashable equality, since only such an index finds the children of
- *       a parent by a key range: (pid) or (grp, pid) for PRIOR id = pid AND
- *       grp = 7 or grp IN (7, 8). An expression over the column
- *       (PRIOR id = pid + 0) cannot use any index. It is also kept when an
- *       equality conjunct is unsafe as a hash key (see
- *       qo_hq_is_unsafe_hash_key): a JSON side, a build side with a cast
- *       that can fail, or a NUMERIC pair whose DOUBLE hash can round equal
- *       values apart.
+ * Note:
+ *   - The single-table plan is kept only when the leading columns of an index are all fixed by equalities of the
+ *     CONNECT BY predicate, and one of them is the bare build-side column of a hashable equality:
+ *       - an equality fixes a column to a constant, a host variable or a PRIOR expression, or to one of several such
+ *         values by IN or OR
+ *       - only such an index finds the children of a parent by a key range: (pid) or (grp, pid) for PRIOR id = pid AND
+ *         grp = 7 or grp IN (7, 8)
+ *       - an expression over the column (PRIOR id = pid + 0) cannot use any index
+ *   - The single-table plan is also kept when an equality conjunct is unsafe as a hash key (see
+ *     qo_hq_is_unsafe_hash_key): a build side with a cast that can fail.
  */
 static bool
 qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)

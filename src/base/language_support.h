@@ -377,8 +377,11 @@ extern "C"
  *   str_end(in):
  *   trail(in/out): the trail bytes left of the character the next byte is in, 0 at a character's start
  *
- * An ASCII space and an EUC space (0xA1 0xA1) weigh 0 only at a character's start: the second byte of a character
- * can be 0xA1. Any other byte weighs itself. Inline: lang_fastcmp_ko () calls it for every byte it compares.
+ * An ASCII space and an EUC space (0xA1 0xA1) weigh 0 only at a character's start: the second byte of a character can
+ * be 0xA1. Any other byte weighs itself.
+ *
+ * It is inline because lang_fastcmp_ko () calls it for every byte it compares, and in this header because btree.c calls
+ * it too.
  */
 STATIC_INLINE unsigned char
 lang_next_byte_weight_ko (const unsigned char **str, const unsigned char *str_end, int *trail)

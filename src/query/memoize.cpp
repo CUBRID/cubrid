@@ -460,11 +460,10 @@ namespace memoize
 
   size_t key::hash::operator() (const key *k) const
   {
-    size_t hash = 0;
+    unsigned int hash = 0;
     for (const DB_VALUE &dbval : k->m_values)
       {
-	hash = ROTL32 (hash, 13);
-	hash ^= mht_valhash (&dbval, UINT_MAX);
+	hash = mht_foldhash (hash, mht_valhash (&dbval, UINT_MAX));
       }
     return hash;
   }

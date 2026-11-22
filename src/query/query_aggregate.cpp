@@ -3498,8 +3498,7 @@ qdata_key_sketch_estimate (const unsigned char *regs)
  *   ht_size(in): hash table size (in buckets)
  *
  * Keys the comparison finds equal hash alike (mht_valhash ()): the hash merge of the GROUP BY leftovers
- * (qexec_gby_hash_merge ()) meets two groups only when their hashes are equal, and writes them out without the sort
- * that brings equal keys together.
+ * (qexec_gby_hash_merge ()) meets two groups only when their hashes are equal.
  */
 unsigned int
 qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
@@ -3511,8 +3510,7 @@ qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
   /* build hash value */
   for (i = 0; i < ckey->val_count; i++)
     {
-      hash_val = ROTL32 (hash_val, 13);
-      hash_val ^= mht_valhash (ckey->values[i], ht_size);
+      hash_val = mht_foldhash (hash_val, mht_valhash (ckey->values[i], ht_size));
     }
 
   return hash_val;

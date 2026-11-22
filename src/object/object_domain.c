@@ -4865,10 +4865,9 @@ tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp)
  *		      that are not numeric codes or spaces then it is set to
  *		      DATA_STATUS_NOT_CONSUMED.
  * Note:
- *    Accepts strings that are not null terminated. Don't call this unless
- *    src is a string db_value.
- *    A float is read by strtof (): a float rounded from the double strtod () reads would round twice
- *    ('1.0000000596046447753906250001' to 1.0, not to 1 + 2^-23).
+ *   - Accepts strings that are not null terminated. Don't call this unless src is a string db_value.
+ *   - A float is read by strtof (): a float rounded from the double strtod () reads would round twice
+ *     ('1.0000000596046447753906250001' to 1.0, not to 1 + 2^-23).
  */
 /* *INDENT-OFF* */
 template <typename T>
@@ -4947,8 +4946,8 @@ tp_string_to_real (const DB_VALUE *src, T *num_value, DB_DATA_STATUS *data_stat)
       d = strtof (strp, &end_ptr);
     }
 
-  /* ERANGE is overflow (an infinity) or underflow (a zero or a subnormal), and only overflow is an error;
-   * strtod and strtof set it by the range of their own type, and std::isinf takes either, so one check covers both */
+  /* ERANGE is overflow (an infinity) or underflow (a zero or a subnormal), and only overflow is an error; strtod and
+   * strtof set it by the range of their own type, and std::isinf takes either, so one check covers both */
   if (errno == ERANGE && std::isinf (d))
     {
       *data_stat = DATA_STATUS_TRUNCATED;

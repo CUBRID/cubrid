@@ -27,7 +27,7 @@
 #include "system.h"		/* HL_HEAPID */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "memory_hash.h"	/* ROTL32, mht_valhash */
+#include "memory_hash.h"	/* mht_foldhash, mht_valhash */
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #define HASH_LIST_SCAN_DUMP_HASH_TABLE 0
@@ -184,15 +184,15 @@ extern void fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid);
  *   value(in): the key value
  *   ht_size(in): hash table size (in buckets)
  *
- * Note: folding a key's values in key order from 0, then qdata_hash_scan_key_finish (), gives
- *       qdata_hash_scan_key ()'s hash, for a caller that has the values one at a time.
+ * Note: folding a key's values in key order from 0, then qdata_hash_scan_key_finish (), gives qdata_hash_scan_key ()'s
+ *       hash, for a caller that has the values one at a time.
  */
 STATIC_INLINE unsigned int
 qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)
 {
   unsigned int value_hash = mht_valhash (value, ht_size);
 
-  hash_val = ROTL32 (hash_val, 13) ^ value_hash;
+  hash_val = mht_foldhash (hash_val, value_hash);
   return (hash_val != 0) ? hash_val : value_hash;
 }
 

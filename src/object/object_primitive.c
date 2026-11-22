@@ -26,44 +26,46 @@
 
 #include "config.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <math.h>
-
 #include "object_primitive.h"
 
+#include <assert.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <utility>
+
 #include "area_alloc.h"
-#include "db_value_printer.hpp"
+#include "compressor.hpp"
 #include "db_json.hpp"
+#include "db_value_printer.hpp"
+#include "dbtype.h"
 #include "elo.h"
 #include "error_manager.h"
 #include "file_io.h"
-#include "compressor.hpp"
-#include "numeric_opfunc.h"
 #include "mem_block.hpp"
+#include "memory_private_allocator.hpp"
+#include "numeric_opfunc.h"
+#include "object_domain_convert.h"
 #include "object_representation.h"
 #include "set_object.h"
 #include "string_buffer.hpp"
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "tz_support.h"
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /* domain_compare_by_type_pair: the server compares two JSON scalars by the type pair comparison table */
 #include "domain_rules.h"
-#endif
-
-#include <utility>
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #if !defined (SERVER_MODE)
-#include "work_space.h"
-#include "virtual_object.h"
-#include "transform_cl.h"
 #include "dbi.h"
+#include "transform_cl.h"
+#include "virtual_object.h"
+#include "work_space.h"
 #endif /* !defined (SERVER_MODE) */
 
-#include "dbtype.h"
-#include "memory_private_allocator.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -878,6 +880,7 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_json (void *mem1, void *mem2, TP_
 						     int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 					       int *start_colp, int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2);
 /*
  * Value_area
  *    Area used for allocation of value containers that may be given out
@@ -15278,6 +15281,78 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   return res;
 }
 
+/*
+ * mr_cmpval_json_number () - compare a JSON integer and a JSON number of another kind by their values
+ *   return: the comparison; DB_UNK to leave any other pair to the scalars' own comparison, which is exact for two
+ *	     integers (INTEGER, BIGINT) and for two DOUBLEs
+ *
+ * The comparison through DOUBLE rounds an integer above 2^53 (2^62 + 1 = 2^62.0), which mht_hash_json () cannot
+ * follow: it hashes an integer by its value.
+ */
+static DB_VALUE_COMPARE_RESULT
+mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
+{
+  const bool is_integer1 = (DB_VALUE_TYPE (value1) == DB_TYPE_INTEGER || DB_VALUE_TYPE (value1) == DB_TYPE_BIGINT);
+  const bool is_integer2 = (DB_VALUE_TYPE (value2) == DB_TYPE_INTEGER || DB_VALUE_TYPE (value2) == DB_TYPE_BIGINT);
+  const DB_VALUE *integer_value = (is_integer1) ? value1 : value2;
+  const DB_VALUE *other_value = (is_integer1) ? value2 : value1;
+  DB_BIGINT integer;
+  double number, truncated;
+  int sign;
+  DB_DATA_STATUS data_status;
+
+  if (is_integer1 == is_integer2)
+    {
+      return DB_UNK;
+    }
+
+  /* the other value is a DOUBLE or a string. A string is a number when tp_value_coerce () converts it to DOUBLE: read
+   * whole and without overflow ('1e0' = 1, '0x10' = 16), as mht_hash_json () reads it. tp_string_to_real () sets an
+   * error only when out of memory, so a string that does not convert leaves no error */
+  if (DB_VALUE_TYPE (other_value) == DB_TYPE_DOUBLE)
+    {
+      number = db_get_double (other_value);
+    }
+  else if (!TP_IS_CHAR_TYPE (DB_VALUE_TYPE (other_value))
+	   || tp_string_to_real (other_value, &number, &data_status) != NO_ERROR || data_status != DATA_STATUS_OK)
+    {
+      return DB_UNK;
+    }
+
+  integer =
+    (DB_VALUE_TYPE (integer_value) == DB_TYPE_INTEGER) ? db_get_int (integer_value) : db_get_bigint (integer_value);
+
+  /* -2^63 <= number < 2^63: the truncated number converts to a BIGINT exactly */
+  if (number >= 9223372036854775808.0)
+    {
+      sign = -1;
+    }
+  else if (number < -9223372036854775808.0)
+    {
+      sign = 1;
+    }
+  else
+    {
+      truncated = trunc (number);
+      if (integer != (DB_BIGINT) truncated)
+	{
+	  sign = (integer < (DB_BIGINT) truncated) ? -1 : 1;
+	}
+      else
+	{
+	  /* the fraction decides: number - truncated is exact */
+	  sign = (number > truncated) ? -1 : (number < truncated) ? 1 : 0;
+	}
+    }
+
+  /* sign is of the integer against the number */
+  if (!is_integer1)
+    {
+      sign = -sign;
+    }
+  return (sign < 0) ? DB_LT : (sign > 0) ? DB_GT : DB_EQ;
+}
+
 /* when total_order is true,
  * we force to string uncomparable types.
  * this is because "order by" uses total_order=true
@@ -15366,13 +15441,20 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	}
     }
 
-  /* the scalars' types are the documents' data: the server reads the key pair table, which holds the comparison of
-   * every pair of keys a value can have, resolved before any row */
+  /* of the scalar pairs a coercion converts, only an integer against a DOUBLE or a number string compares through a
+   * DOUBLE that rounds the integer: mr_cmpval_json_number () picks that pair out by the two types and leaves the rest
+   * (DB_UNK), which compare as mht_hash_json () hashes them */
+  cmp_result = (do_coercion) ? mr_cmpval_json_number (&scalar_value1, &scalar_value2) : DB_UNK;
+  if (cmp_result == DB_UNK)
+    {
+      /* the scalars' types are the documents' data: the server reads the key pair table, which holds the comparison of
+       * every pair of keys a value can have, resolved before any row */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  cmp_result = domain_compare_by_type_pair (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+      cmp_result = domain_compare_by_type_pair (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
 #else
-  cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+      cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
 #endif
+    }
 
   pr_clear_value (&scalar_value1);
   pr_clear_value (&scalar_value2);

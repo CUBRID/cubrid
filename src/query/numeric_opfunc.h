@@ -29,19 +29,19 @@
 
 #include "config.h"
 
-#include "intl_support.h"
+#include "byte_order.h"
 #include "dbtype_def.h"
 #include "error_manager.h"
-#include "byte_order.h"
-#include "query_sum_accumulator.h"
+#include "intl_support.h"
 #include "porting_inline.hpp"
+#include "query_sum_accumulator.h"
 
 #include <string.h>
 
 /*
  * Build requirements (enforced via #error)
  *
- * - GCC or Clang: required for __builtin_clz/ctz/bswap intrinsics
+ * - GCC or Clang: required for __builtin_clz/ctz/bswap intrinsics and __builtin_mul_overflow on __int128
  * - __int128: required for multi-precision arithmetic
  * - x86_64: required for x86 intrinsics (_addcarry_u64, _subborrow_u64)
  *
@@ -117,8 +117,7 @@ typedef enum
 #define NUMERIC_MAX_STRING_SIZE (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2) * 2)
 
 /*
- * NUMERIC_SCALE_COUNT:
- * The number of scales a NUMERIC value can have, DB_MIN_NUMERIC_SCALE to DB_MAX_NUMERIC_SCALE.
+ * NUMERIC_SCALE_COUNT: The number of scales a NUMERIC value can have, DB_MIN_NUMERIC_SCALE to DB_MAX_NUMERIC_SCALE.
  *   = 252 - (-214) + 1 = 467
  */
 #define NUMERIC_SCALE_COUNT (DB_MAX_NUMERIC_SCALE - DB_MIN_NUMERIC_SCALE + 1)
@@ -131,8 +130,7 @@ typedef enum
 #define NUMERIC_VALUE_SIGN_BIT_MASK 0x80
 #define NUMERIC_HEADER_SCALE_SIGN_BIT_MASK 0x80
 
-/* the Mersenne prime 2^61 - 1 of numeric_db_value_hash (): as 2^61 is 1 mod it, a reduction takes shifts and adds,
- * no division */
+/* the Mersenne prime 2^61 - 1 of numeric_db_value_hash (): 2^61 is 1 mod it, so a reduction takes shifts and adds */
 #define NUMERIC_HASH_PRIME_BITS (61)
 #define NUMERIC_HASH_PRIME ((1ULL << NUMERIC_HASH_PRIME_BITS) - 1)
 
@@ -152,8 +150,8 @@ typedef enum
     (value)->data.num.header.scale = 0; \
   } while(0)
 
-/* 10^-scale mod NUMERIC_HASH_PRIME for every scale, in a struct for numeric_hash_make_inverse_pow10_table () to return:
- * a constexpr function cannot return an array */
+/* 10^-scale mod NUMERIC_HASH_PRIME for every scale, in a struct because numeric_hash_make_inverse_pow10_table (), a
+ * constexpr function, cannot return an array */
 typedef struct numeric_hash_inverse_pow10_table NUMERIC_HASH_INVERSE_POW10_TABLE;
 struct numeric_hash_inverse_pow10_table
 {
@@ -411,8 +409,8 @@ numeric_repr_write_disk (unsigned char *digits, const unsigned char *buf, int di
  *   return: the value mod 2^61 - 1
  *   value(in): a value below 2^122, such as the product of two residues
  *
- * Note: each fold adds the bits above bit 61 to the bits below it. Two folds bring the value to at most
- *       the prime + 1, and one subtraction below the prime.
+ * Note: each fold adds the bits above bit 61 to the bits below it. Two folds bring the value to at most the prime, and
+ *       one subtraction below it.
  */
 STATIC_INLINE constexpr uint64_t
 numeric_hash_mod (uint128_t value)
@@ -461,18 +459,20 @@ static_assert (numeric_hash_int64 (INT64_MIN) == NUMERIC_HASH_PRIME - 4, "2^63 i
  *   return: the value mod 2^61 - 1, its bits not mixed
  *   value(in): a NUMERIC value, fixed or float
  *
- * Step 1: read the scale as db_get_numeric_precision_and_scale () reads it: a float NUMERIC keeps it in the value,
- *         a fixed one in its domain. That function cannot be called here,
- *         as dbtype.h includes this header before dbtype_function.i defines it.
- * Step 2: read the magnitude, a byte then two words, big end first.
- * Step 3: reduce the magnitude mod the prime 2^61 - 1, 2^128 being 64 and 2^64 being 8 mod it (numeric_hash_mod ()).
- * Step 4: divide by 10^scale, multiplying by 10^-scale mod the prime (numeric_hash_inverse_pow10).
- * Step 5: negate a negative value: -x is the prime less x, so 1.5 and -1.5 hash apart and a zero keeps one hash.
+ * Steps:
+ *   Step 1: read the scale as db_get_numeric_precision_and_scale () reads it: a float NUMERIC keeps it in the value, a
+ *           fixed one in its domain.
+ *   Step 2: read the magnitude, a byte then two words, big end first.
+ *   Step 3: reduce the magnitude mod the prime 2^61 - 1, 2^128 being 64 and 2^64 being 8 mod it (numeric_hash_mod ()).
+ *   Step 4: divide by 10^scale, multiplying by 10^-scale mod the prime (numeric_hash_inverse_pow10).
+ *   Step 5: negate a negative value: -x is the prime less x, so 1.5 and -1.5 hash apart and a zero keeps one hash.
  *
  * Note:
- *   - The value is its magnitude x 10^-scale, and 10 has an inverse mod the prime: equivalent numeric values
- *     (e.g., 1.5 as 15 at scale 1 and 1.50 as 150 at scale 2) give one residue,
- *     whatever their precision and scale, with no zero stripped or appended.
+ *   - db_get_numeric_precision_and_scale () cannot be called here, as dbtype.h includes this header before
+ *     dbtype_function.i defines it.
+ *   - The value is its magnitude x 10^-scale, and 10 has an inverse mod the prime. Equivalent numeric values (1.5 as 15
+ *     at scale 1, 1.50 as 150 at scale 2) give one residue, whatever their precision and scale, with no zero stripped
+ *     or appended.
  *   - Unlike float_numeric_normalize_for_sort (), the hash keeps no order.
  */
 STATIC_INLINE uint64_t
@@ -487,8 +487,8 @@ numeric_db_value_hash (const DB_VALUE * value)
 	   ? value->data.num.header.scale : value->domain.numeric_info.scale);
   assert (scale >= DB_MIN_NUMERIC_SCALE && scale <= DB_MAX_NUMERIC_SCALE);
 
-  /* Step 2: read the magnitude, a byte then two words, big end first. The buffer (DB_NUMERIC_BUF_SIZE, 17 bytes)
-   * holds the magnitude unsigned, the sign kept in the domain (Step 5):
+  /* Step 2: read the magnitude, a byte then two words, big end first. The buffer (DB_NUMERIC_BUF_SIZE, 17 bytes) holds
+   * the magnitude unsigned, the sign kept in the domain (Step 5):
    *   num[0]         bits 128 - 135
    *   num[1 - 8]     high, bits 64 - 127
    *   num[9 - 16]    low, bits 0 - 63

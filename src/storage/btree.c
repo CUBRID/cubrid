@@ -7719,17 +7719,19 @@ btree_get_stats_hash_finalize (UINT64 hash)
  *   hash(in): hash to mix into
  *   value(in): CHAR or VARCHAR key element
  *
- * Note: (CBRD-27701) the string is mixed in by the hash of its collation (mht2str),
- * which leaves out the trailing weights 0, the trailing spaces among them.
+ * Note: (CBRD-27701) the string is mixed in by the hash of its collation (mht2str), which leaves out the trailing
+ *       weights 0, the trailing spaces among them.
  *
- * The trailing spaces count for a VARCHAR unless ignore_trailing_space, and never for a CHAR
- * (mr_cmpval_string (), mr_cmpval_char ()). Where they count, 'a' and 'a ' are two values the Duj1 estimate
- * must tell apart, so the number of trailing weights 0 is mixed in as well:
- * a hash table allows the two to hash alike, a distinct count does not. They are counted as:
- *   euckr_bin: the spaces and EUC spaces at a character's start (lang_next_byte_weight_ko ())
- *   any other: the ASCII spaces and NULs, which the byte and UTF-8 comparisons weigh alike
- * An UCA comparison does not weigh a NUL as a space: a NUL rarely ends a value, and miscounting it
- * only shifts the estimate. The binary collation compares a space as any other byte and its hash keeps it.
+ * The trailing spaces count for a VARCHAR unless ignore_trailing_space, and never for a CHAR (mr_cmpval_string (),
+ * mr_cmpval_char ()).
+ *
+ * Where they count, 'a' and 'a ' are two values the Duj1 estimate must tell apart: a hash table allows the two to hash
+ * alike, a distinct count does not. So the number of trailing weights 0 is mixed in as well, counted as:
+ *   - euckr_bin: the spaces and EUC spaces at a character's start (lang_next_byte_weight_ko ())
+ *   - any other: the ASCII spaces and NULs, which the byte and UTF-8 comparisons weigh alike
+ *
+ * A UCA comparison does not weigh a NUL as a space: a NUL rarely ends a value, and miscounting it only shifts the
+ * estimate. The binary collation compares a space as any other byte, and its hash keeps it.
  */
 static UINT64
 btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
@@ -7777,11 +7779,14 @@ btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
  *   return: 64-bit hash
  *   value(in): key element
  *
- * Note: (CBRD-27701) the Duj1 estimate counts distinct hashes, so the hash must be equal for equal
- * values and distinct for distinct ones. mht_valhash () is made for hash table buckets (32 bits,
- * a collision costs only a comparison there). The whole value is mixed here instead into 64 bits;
- * strings follow the comparison of their collation (btree_get_stats_hash_string ()). The result is finalized
- * (CBRD-28213).
+ * Note:
+ *   - (CBRD-27701) The Duj1 estimate counts distinct hashes, so the hash must be equal for equal values and distinct
+ *     for distinct ones.
+ *   - mht_valhash () is made for hash table buckets (32 bits, where a collision costs only a comparison).
+ *   - btree_get_stats_value_hash () mixes the whole value into 64 bits instead; only a type it does not list falls back
+ *     to mht_valhash ().
+ *   - Strings follow the comparison of their collation (btree_get_stats_hash_string ()).
+ *   - The result is finalized (CBRD-28213).
  */
 static UINT64
 btree_get_stats_prefix_value_hash (const DB_VALUE * value)

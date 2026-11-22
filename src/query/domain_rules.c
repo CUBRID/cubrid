@@ -17,7 +17,9 @@
  */
 
 #include "config.h"
+
 #include "domain_rules.h"
+
 #include "chartype.h"
 #include "db_date_status.h"
 #include "db_function.hpp"
@@ -51,7 +53,6 @@ static int domain_character_result (int opcode, const DOMAIN_OPERAND * operands,
 				    const TP_DOMAIN * compiled, RESOLVED_DOMAIN * result);
 static const TP_DOMAIN *domain_variable_string_value (const TP_DOMAIN * domain);
 
-static bool domain_key_values_identical (const DB_VALUE * first, const DB_VALUE * second);
 static bool domain_key_collections_identical (const DB_VALUE * first, const DB_VALUE * second);
 
 static DB_TYPE domain_hash_element_type (DB_TYPE type);
@@ -1995,6 +1996,25 @@ end:
   return result;
 }
 
+/*
+ * domain_key_values_equal () - CBRD-27583: whether two key values of one position of a cache (memoize, the subquery
+ *   cache) are equal
+ *   domain(in): the key position regu's compiled domain (an OBJECT's values are OIDs on the server)
+ *
+ * Both are values of one regu, so of its compiled domain, and compare by that domain type's cmpval as
+ * tp_value_compare's total order answers: no comparison is decided.
+ *
+ * Keys equal by cmpval can give different results, so some types compare further (domain_key_values_identical ()):
+ *   - a string byte by byte instead (mht_compare_strings_are_identical ()): keys equal only under a case-insensitive
+ *     collation
+ *   - a TIMESTAMPTZ and a DATETIMETZ by zone as well (CBRD-27804): one instant in two zones casts differently
+ *   - a NUMERIC by scale, a MONETARY by currency, and a FLOAT, a DOUBLE and a MONETARY by sign (-0 and 0, -NaN and NaN)
+ *     as well (CBRD-28060)
+ *   - a JSON value by its body text instead (mht_compare_jsons_are_identical ()): keys equal only as SQL values (1 and
+ *     1.0)
+ *   - a collection element by element, each by its own type as a key would, and an ENUM element by its label as well as
+ *     its index, as the ENUMs of two value lists among the element domains share indexes (CBRD-28060)
+ */
 bool
 domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * first, const DB_VALUE * second)
 {
@@ -2017,9 +2037,21 @@ domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * first, const
   return domain_key_values_identical (first, second);
 }
 
-/* Whether two key values, or two elements of collection keys, are equal as domain_key_values_equal () takes keys,
- * by the values' own types: of one type, of one collation for a string, and alike in all a result can see. */
-static bool
+/*
+ * domain_key_values_identical () - CBRD-28060: whether two key values, or two elements of collection keys, are equal as
+ *   domain_key_values_equal () takes keys, by the values' own types
+ *
+ * Equal values are of one type, of one collation for a string, and alike in all a result can see. Values of two types
+ * are not equal, so a key of no compiled domain (the result cache's bound values) compares too. Two NULLs are equal.
+ *
+ * Note: a cached result (memoize, the subquery cache, the query result cache) may depend on what a comparison ignores,
+ *   so equality under it is not enough:
+ *   - a string's bytes: 'A' and 'a' for ASCII (key)
+ *   - a NUMERIC's scale: 1.0 and 1.00
+ *   - a DOUBLE's sign: -0 and 0
+ *   - a JSON value's own type: 1 and 1.0
+ */
+bool
 domain_key_values_identical (const DB_VALUE * first, const DB_VALUE * second)
 {
   if (DB_IS_NULL (first) || DB_IS_NULL (second))
@@ -2062,8 +2094,8 @@ domain_key_values_identical (const DB_VALUE * first, const DB_VALUE * second)
       return db_get_datetimetz (first)->tz_id == db_get_datetimetz (second)->tz_id;
 
     case DB_TYPE_FLOAT:
-      /* -0.0 and 0.0, or -NaN and NaN, compare equal and hash alike (mht_hash_double ()),
-       * but can give different results, e.g. key || '' */
+      /* -0.0 and 0.0, or -NaN and NaN, compare equal and hash alike (mht_hash_double ()), but can give different
+       * results, e.g. key || '' */
       if (std::signbit (db_get_float (first)) != std::signbit (db_get_float (second)))
 	{
 	  return false;
@@ -2080,8 +2112,8 @@ domain_key_values_identical (const DB_VALUE * first, const DB_VALUE * second)
 
     case DB_TYPE_NUMERIC:
       {
-	/* one number in two scales (1.0 and 1.00) compares equal but can give different results, e.g. key || '';
-	 * a float NUMERIC (of the default precision) keeps its scale in the value, a fixed one in its domain */
+	/* one number in two scales (1.0 and 1.00) compares equal but can give different results, e.g. key || ''; a
+	 * float NUMERIC (of the default precision) keeps its scale in the value, a fixed one in its domain */
 	int precision[2], scale[2];
 	db_get_numeric_precision_and_scale (first, &precision[0], &scale[0], NULL);
 	db_get_numeric_precision_and_scale (second, &precision[1], &scale[1], NULL);
@@ -2094,8 +2126,8 @@ domain_key_values_identical (const DB_VALUE * first, const DB_VALUE * second)
 
     case DB_TYPE_MONETARY:
       {
-	/* one amount in two currencies ($1 and \1), or of two signs (-0 and 0, -NaN and NaN), compares equal
-	 * but can give different results, e.g. key || '' */
+	/* one amount in two currencies ($1 and \1), or of two signs (-0 and 0, -NaN and NaN), compares equal but can
+	 * give different results, e.g. key || '' */
 	const DB_MONETARY *money[2] = { db_get_monetary (first), db_get_monetary (second) };
 	if (money[0]->type != money[1]->type || std::signbit (money[0]->amount) != std::signbit (money[1]->amount))
 	  {
@@ -2109,8 +2141,8 @@ domain_key_values_identical (const DB_VALUE * first, const DB_VALUE * second)
       return mht_compare_jsons_are_identical (first, second) != 0;
 
     case DB_TYPE_ENUMERATION:
-      /* an ENUM compares by its index alone, which the ENUMs of two value lists among a collection's element domains
-       * share: the label as well */
+      /* an ENUM compares by its index alone, and the ENUMs of two value lists among a collection's element domains
+       * share indexes: the label as well */
       return (db_get_enum_short (first) == db_get_enum_short (second)
 	      && db_get_enum_string_size (first) == db_get_enum_string_size (second)
 	      && (db_get_enum_string_size (first) == 0
@@ -2120,8 +2152,8 @@ domain_key_values_identical (const DB_VALUE * first, const DB_VALUE * second)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      /* element by element: elements a coercion finds equal ({1} and {1.0} of a SEQUENCE of no element domain)
-       * can give different results, e.g. the collection itself */
+      /* element by element: elements a coercion finds equal ({1} and {1.0} of a SEQUENCE of no element domain) can give
+       * different results, e.g. the collection itself */
       return domain_key_collections_identical (first, second);
 
     default:
@@ -3010,19 +3042,23 @@ domain_decide_comparison (const TP_DOMAIN * const domain[2], DOMAIN_COMPARE * de
 }
 
 /*
- * domain_decide_hash_join_key () - CBRD-27583: a hash join's key column pair, decided by the compiler from the
- *   two inputs' column domains (unpack's fallback for a list whose column the execution fixes): the domain both
- *   values are hashed and compared in, each side's conversion into it, and the comparison of the two values then
- *   (tp_value_compare without coercion; with coercion for JSON and collection keys, whose contents the join term's
- *   comparison coerces); a pair of one hash type (domain_hash_type) is hashed as it is, and compared with coercion
- *   if of two types
+ * domain_decide_hash_join_key () - CBRD-27583: decide a hash join's key column pair from the two inputs' column
+ *   domains, in the compiler (xts_pack_hash_join_keys ())
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
  *   common(out): the domain a pair of two hash types converts to; NULL for a key compared in its own domains
  *   conv_kind(out): per side, DOMAIN_HASH_KEY_AS_IS, _CONVERTED (the IMPLICIT converter into common) or _COERCED
  *		     (tp_value_coerce at the row: a JSON value)
  *
- * Step 1: the domain each side is hashed in, which its comparison key takes
- * Step 2: the comparison of the two keys, with coercion where they need it
+ * The decision holds:
+ *   - the domain both values are hashed and compared in: a pair of one hash type (domain_hash_type ()) is hashed as it
+ *     is, a pair of two hash types in their common domain
+ *   - each side's conversion into that domain
+ *   - the comparison of the two values: tp_value_compare without coercion, or with coercion for keys of two types and
+ *     for JSON and collection keys, whose contents the join term's comparison coerces
+ *
+ * Steps:
+ *   Step 1: the domain each side is hashed in, which its comparison key takes.
+ *   Step 2: the comparison of the two keys, with coercion where they need it.
  */
 int
 domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, const TP_DOMAIN ** common,
@@ -3035,8 +3071,10 @@ domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, c
   /* Step 1: the domain each side is hashed in, which its comparison key takes */
   if (domain_hash_type (outer_type) == domain_hash_type (inner_type))
     {
-      /* one hash type: hashed as they are, whatever their precision and scale (a BIT converted to a longer one is
-       * padded to equal what its comparison tells apart) */
+      /* one hash type: hashed as they are, whatever their precision and scale. A conversion would pad a BIT to the
+       * longer length and make equal what the comparison tells apart: X'01' as BIT(16) is X'0100'.
+       *
+       * Strings of two collations do not reach here: type checking casts one side to the other's collation. */
       *common = NULL;
       conv_kind[0] = conv_kind[1] = DOMAIN_HASH_KEY_AS_IS;
       domain_compare_key_of (outer, &key[0]);
@@ -3044,8 +3082,7 @@ domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, c
     }
   else
     {
-      /* two hash types: both converted to the common domain. Strings of two collations never reach here: type
-       * checking casts one side to the other's collation */
+      /* two hash types: both converted to the common domain */
       const int error = domain_hashable_resolve_common (outer, inner, common);
       if (error != NO_ERROR)
 	{
@@ -3058,8 +3095,8 @@ domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, c
 	  conv_kind[side] = DOMAIN_HASH_KEY_AS_IS;
 	  if (*common != domain[side])
 	    {
-	      /* tp_value_coerce's: a JSON value converts by its scalar - coerced at the row; XASL generation gives
-	       * every other key a domain of its collation */
+	      /* a JSON value converts by its scalar (tp_value_coerce), so it is coerced at the row; XASL generation
+	       * gives every other key a domain of its collation */
 	      assert (TP_DOMAIN_COLLATION_FLAG (*common) == TP_DOMAIN_COLL_NORMAL);
 	      conv_kind[side] =
 		(TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_JSON) ? DOMAIN_HASH_KEY_COERCED : DOMAIN_HASH_KEY_CONVERTED;
@@ -3068,9 +3105,10 @@ domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, c
 	}
     }
 
-  /* Step 2: the comparison of the two keys, with coercion where they need it: keys of two types, or of a type whose
-   * cmpval coerces what it holds only when asked to (a JSON value's scalar, a collection's elements: JSON 1 = 1.0,
-   * {1} = {1.0}) */
+  /* Step 2: the comparison of the two keys, with coercion where they need it:
+   *   - keys of two types
+   *   - keys of a type whose cmpval coerces what it holds only when asked to (a JSON value's scalar, a collection's
+   *     elements: JSON 1 = 1.0, {1} = {1.0}) */
   if (key[0].type != key[1].type || key[0].type == DB_TYPE_JSON || TP_IS_SET_TYPE (key[0].type))
     {
       return domain_resolve_comparison (&key[0], &key[1], compare);
@@ -3080,12 +3118,14 @@ domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, c
 }
 
 /*
- * domain_hash_type () - CBRD-28060: the type mht_valhash () hashes a value of the type as, so that two types of one
- *   hash type hash their values that compare equal alike and a pair of them hashes as it is
- *   return: NUMERIC for an exact number (SMALLINT, INTEGER, BIGINT, NUMERIC: by the value), DOUBLE for a floating
- *	     one (FLOAT, DOUBLE, MONETARY: by the DOUBLE the value equals), VARCHAR for a string (CHAR, VARCHAR: by
- *	     its collation, the trailing pad left out), OID for an OBJECT (by the OID its values are on the server,
- *	     where they hash), the type itself for any other
+ * domain_hash_type () - CBRD-28060: the type mht_valhash () hashes a value of the type as
+ *   return: NUMERIC for an exact number (SMALLINT, INTEGER, BIGINT, NUMERIC: by the value),
+ *	     DOUBLE for a floating one (FLOAT, DOUBLE, MONETARY: by the DOUBLE the value equals),
+ *	     VARCHAR for a string (CHAR, VARCHAR: by its collation, the trailing pad left out),
+ *	     OID for an OBJECT (by the OID its values are on the server, where they hash),
+ *	     the type itself for any other
+ *
+ * Values of two types of one hash type hash alike when they compare equal, so a pair of them hashes as it is.
  */
 DB_TYPE
 domain_hash_type (DB_TYPE type)
@@ -3116,44 +3156,31 @@ domain_hash_type (DB_TYPE type)
     }
 }
 
-/* The type mht_hash_element () hashes a collection's element of the type as, so that two elements of one element
- * hash type hash alike whenever the comparison, which coerces them, finds them equal. Unlike domain_hash_type (), it
- * takes every number but FLOAT as DOUBLE, as the elements cannot be converted to a common domain one by one. */
+/* The type mht_hash_element () hashes a collection element of the type as: elements of one element hash type hash alike
+ * whenever the comparison, which coerces them, finds them equal.
+ *
+ * As domain_hash_type (), but for a FLOAT: the comparison takes a DOUBLE at FLOAT precision against a FLOAT element. */
 static DB_TYPE
 domain_hash_element_type (DB_TYPE type)
 {
-  switch (type)
-    {
-    case DB_TYPE_SMALLINT:
-    case DB_TYPE_INTEGER:
-    case DB_TYPE_BIGINT:
-    case DB_TYPE_NUMERIC:
-    case DB_TYPE_DOUBLE:
-    case DB_TYPE_MONETARY:
-      /* a number by the DOUBLE it equals, as the comparison takes two types of number */
-      return DB_TYPE_DOUBLE;
-
-    case DB_TYPE_FLOAT:
-      /* apart from the other numbers, which the comparison takes at FLOAT precision against a FLOAT */
-      return DB_TYPE_FLOAT;
-
-    default:
-      return domain_hash_type (type);
-    }
+  return (type == DB_TYPE_FLOAT) ? DB_TYPE_FLOAT : domain_hash_type (type);
 }
 
 /*
- * domain_hashable_resolve () - CBRD-28060: the domain two domains' values hash in so that they hash alike
- *   whenever their comparison finds them equal: none (as they are) or the common domain both convert to.
- *   A hash gives a wrong result only when both hold: the comparison coerces, so it finds values of two types equal,
- *   and those values hash to different buckets, so they never meet. A hash join and a hash list scan compare their
- *   keys across two domains, so they take only what this returns true for; any other hash compares within one domain
- *   without coercion, or at worst misses a cache entry.
- *   return: true for a pair domain_hashable () takes, or for two hash types (domain_hash_type ()) whose common
- *	     domain (domain_hashable_resolve_common ()) it takes; false for any other pair, a collection against another
- *	     type among them
+ * domain_hashable_resolve () - CBRD-28060: the domain in which two domains' values hash alike whenever their comparison
+ *   finds them equal: none (as they are) or the common domain both convert to
+ *   return: true for:
+ *	       - a pair domain_hashable () takes
+ *	       - two hash types (domain_hash_type ()) whose common domain (domain_hashable_resolve_common ()) it takes
+ *	     false for any other pair, a collection against another type among them
  *   first(in), second(in): the two domains
  *   common(out): NULL to hash the values as they are, or for a false return; else the domain both convert to
+ *
+ * A hash gives a wrong result only when the comparison coerces, finding values of two types equal, and those values
+ * hash to different buckets, so they never meet.
+ *
+ * A hash join and a hash list scan compare their keys across two domains, so they take only what this returns true for.
+ * Any other hash compares within one domain without coercion, or at worst misses a cache entry.
  */
 bool
 domain_hashable_resolve (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common)
@@ -3173,8 +3200,8 @@ domain_hashable_resolve (const TP_DOMAIN * first, const TP_DOMAIN * second, cons
       return false;
     }
 
-  /* a collection against another type: type checking refuses to compare them, so no pair reaches here;
-   * one that did is not hashable, since its values converted to a common domain need not compare as they did */
+  /* a collection against another type: type checking refuses to compare them, so no pair reaches here; one that did is
+   * not hashable, since its values converted to a common domain need not compare as they did */
   if (unlikely (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (first)) != TP_IS_SET_TYPE (TP_DOMAIN_TYPE (second))))
     {
       assert (false);
@@ -3199,13 +3226,22 @@ domain_hashable_resolve (const TP_DOMAIN * first, const TP_DOMAIN * second, cons
 }
 
 /*
- * domain_hashable_resolve_common () - the domain a hash table holds the values of a pair of key columns of two hash
- *   types (domain_hash_type) in, so that the values the pair's comparison finds equal hash alike: the type that
- *   comparison converts both sides to (domain_resolve_comparison), with a precision and scale that hold both
- *   columns' values (a NUMERIC's integral digits and scale, the default NUMERIC past 38 digits: CBRD-27575; a string's
- *   length); a type of fixed precision as the side of that type has it
+ * domain_hashable_resolve_common () - the domain in which a key column pair of two hash types (domain_hash_type ())
+ *   hashes, so that the values the pair's comparison finds equal hash alike
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
  *   common(out): first or second where it has that type, precision and scale, else a cached domain; NULL on an error
+ *
+ * The domain is of the type that comparison converts both sides to (domain_resolve_comparison ()), with a precision and
+ * scale that hold both columns' values:
+ *   - a NUMERIC: the integral digits and the scale of both, the default NUMERIC past 38 digits (CBRD-27575)
+ *   - a string or a bit string: the length that holds both
+ *   - a type of fixed precision: as the side of that type has it
+ *
+ * Steps:
+ *   Step 1: the type the comparison converts both sides to.
+ *   Step 2: a type of neither side (a string against a number of another type): the default DOUBLE domain.
+ *   Step 3: the precision and scale that hold both sides' values.
+ *   Step 4: the side of that type where it has them, else a cached copy of it with them.
  */
 int
 domain_hashable_resolve_common (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common)
@@ -3218,9 +3254,11 @@ domain_hashable_resolve_common (const TP_DOMAIN * first, const TP_DOMAIN * secon
   /* the callers take a pair of one hash type as it is */
   assert (domain_hash_type (first_type) != domain_hash_type (second_type));
 
-  /* a NULL-typed side has no value that matches a row, and its comparison converts neither side (no cmpval): it
-   * takes the other side's domain, as a hash join's key column does (domain_list_column_joined ()). A hash list
-   * scan gets one from a NULL host variable under arithmetic (a.i + ? = b.i executed with NULL against INTEGER) */
+  /* a NULL-typed side takes the other side's domain, as a hash join's key column does (domain_list_column_joined ()):
+   * it has no value that matches a row, and its comparison converts neither side (no cmpval).
+   *
+   * A hash list scan gets one from a NULL host variable under arithmetic (a.i + ? = b.i executed with NULL against
+   * INTEGER). */
   if (first_type == DB_TYPE_NULL || second_type == DB_TYPE_NULL)
     {
       *common = (first_type == DB_TYPE_NULL) ? second : first;
@@ -3238,14 +3276,16 @@ domain_hashable_resolve_common (const TP_DOMAIN * first, const TP_DOMAIN * secon
       return error;
     }
 
-  /* the comparison converts one side (a DATE to a DATETIME) or both (a string and an INTEGER to DOUBLE), as every pair
-   * it compares as they are (one type, CHAR and VARCHAR, an integer and a NUMERIC) is of one hash type, which the
-   * callers take as it is: both compare as values of the cmpval's type, so they hash alike in it */
+  /* the comparison converts one side (a DATE to a DATETIME) or both (a string and an INTEGER to DOUBLE), and both
+   * compare as values of the cmpval's type, so they hash alike in it.
+   *
+   * No pair here compares as it is: every such pair (one type, CHAR and VARCHAR, an integer and a NUMERIC) is of one
+   * hash type, which the callers take as it is. */
   assert (compare.conv[0] != NULL || compare.conv[1] != NULL);
   const DB_TYPE compare_type = compare.cmp->get_id ();
 
-  /* Step 2: a type of neither side: a string against a number of another type, which the comparison converts both to
-   * DOUBLE, whose default domain holds every value of either; any other pair converts to one side's type (Step 3) */
+  /* Step 2: a type of neither side: a string against a number of another type, both converted to DOUBLE, whose default
+   * domain holds every value of either; any other pair converts to one side's type (Step 3) */
   if (compare_type != first_type && compare_type != second_type)
     {
       assert (compare_type == DB_TYPE_DOUBLE);
@@ -3267,8 +3307,8 @@ domain_hashable_resolve_common (const TP_DOMAIN * first, const TP_DOMAIN * secon
   switch (compare_type)
     {
     case DB_TYPE_NUMERIC:
-      /* the integral digits and the scale that hold both sides' values, the default NUMERIC past 38 digits;
-       * a default NUMERIC side (its scale in each value) leaves more than 38 and so the default NUMERIC */
+      /* the integral digits and the scale that hold both sides' values, the default NUMERIC past 38 digits; a default
+       * NUMERIC side (precision 40, its scale in each value) has 40 integral digits and so gives the default NUMERIC */
       if (compare_domain[0]->precision == TP_FLOATING_PRECISION_VALUE
 	  || compare_domain[1]->precision == TP_FLOATING_PRECISION_VALUE)
 	{
@@ -3330,11 +3370,12 @@ domain_hashable_resolve_common (const TP_DOMAIN * first, const TP_DOMAIN * secon
 }
 
 /*
- * domain_hashable () - CBRD-28060: whether the values of two domains hash alike as they are (mht_valhash ())
- *   whenever their comparison finds them equal
- *   return: true for two types of one hash type (domain_hash_type ()): numbers, strings of one collation,
- *	     bit strings, an ENUM of one value list, dates and times, JSON, collections domain_hashable_collections ()
- *	     takes, OIDs; false for any other type (an OBJECT: a key passes domain_key_value_domain () first)
+ * domain_hashable () - CBRD-28060: whether two domains' values hash alike as they are (mht_valhash ()) whenever their
+ *   comparison finds them equal
+ *   return: true for two types of one hash type (domain_hash_type ()) among:
+ *	       - numbers, bit strings, dates and times, JSON, OIDs, view objects, LOBs, of any domains
+ *	       - strings of one collation, an ENUM of one value list, collections domain_hashable_collections () takes
+ *	     false for any other type, an OBJECT among them
  */
 bool
 domain_hashable (const TP_DOMAIN * first, const TP_DOMAIN * second)
@@ -3372,9 +3413,14 @@ domain_hashable (const TP_DOMAIN * first, const TP_DOMAIN * second)
       /* a date or a time by its instant, one with a time zone by its UTC time */
     case DB_TYPE_JSON:
       /* a JSON value as mr_cmpval_json () compares it (mht_hash_json ()) */
-    case DB_TYPE_OBJECT:
     case DB_TYPE_OID:
-      /* an object by its OID, an OBJECT's too (domain_hash_type ()) */
+      /* an object by its OID, an OBJECT's too: a key passes domain_key_value_domain () first */
+    case DB_TYPE_VOBJ:
+      /* a view object by its key, the real OID pt_make_vid () puts in it (qexec_add_composite_lock () reads it so):
+       * setvobj_compare () then compares only the key */
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      /* a LOB by the address of its DB_ELO, as mr_cmpval_elo () compares: two rows' LOBs never match */
       return true;
 
       /* a type whose hash follows its comparison only between some domains */
@@ -3393,11 +3439,6 @@ domain_hashable (const TP_DOMAIN * first, const TP_DOMAIN * second)
       return domain_hashable_collections (first, second);
 
       /* a type whose hash does not follow its comparison */
-    case DB_TYPE_VOBJ:
-      /* a virtual object hashes by its key, which its comparison coerces (setvobj_compare ()) */
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
-      /* a LOB compares by its locator's address, so no two rows' LOBs compare equal and a hash finds nothing */
     case DB_TYPE_NULL:
     case DB_TYPE_VARIABLE:
       /* no type fixed: the values decide it at the row */
@@ -3408,25 +3449,28 @@ domain_hashable (const TP_DOMAIN * first, const TP_DOMAIN * second)
 }
 
 /*
- * domain_hashable_collections () - CBRD-28060: whether two collections of the domains hash alike whenever their
- *   comparison finds them equal, so that a hash join or a hash list scan may hash them
- *   return: true for one collection type whose declared scalar element types, of both, are of one element hash type
- *	     (domain_hash_element_type ()) at one depth of nesting: numbers but FLOAT, which mht_hash_element () and
- *	     the comparison take as DOUBLE, or elements domain_hashable () takes; false for an untyped collection
+ * domain_hashable_collections () - CBRD-28060: whether two collection domains' values hash alike whenever their
+ *   comparison finds them equal
+ *   return: true for one collection type whose declared scalar element types, of both, lie at one depth of nesting
+ *	     and are of one element hash type (domain_hash_element_type ()) that domain_hashable () takes
+ *	     false for an untyped collection
  *
- * Note: the comparison coerces the elements (tp_value_compare () with coercion): '1' equals 1, a DATE equals the
- *	 DATETIME at its midnight, INTEGER 16777217 equals FLOAT 16777216, all of which the element hash tells apart.
- *	 An untyped collection, or one of element types of two hash types, can hold such elements in one column.
+ * Note:
+ *   - The comparison coerces the elements (tp_value_compare () with coercion): '1' equals 1, a DATE equals the DATETIME
+ *     at its midnight, BIGINT 2^62 + 1 equals DOUBLE 2^62, and the element hash tells each of these pairs apart.
+ *   - An untyped collection, or one of element types of two hash types, can hold such elements in one column.
+ *   - No common domain converts a pair of two element hash types: the parser domain of a column keeps only its leaf
+ *     types (SEQUENCE OF SET OF INTEGER as SEQUENCE OF INTEGER), so a conversion could meet an element collection.
  */
 bool
 domain_hashable_collections (const TP_DOMAIN * first, const TP_DOMAIN * second)
 {
-  /* domain_hashable () calls this for one hash type: one collection type, as a SEQUENCE hashes in order and
-   * a SET or a MULTISET in none */
+  /* domain_hashable () calls this for one hash type, so one collection type: a SEQUENCE hashes in order, a SET or a
+   * MULTISET in none */
   assert (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (first)) && TP_DOMAIN_TYPE (first) == TP_DOMAIN_TYPE (second));
 
-  /* every scalar element domain of both against the first one:
-   * domain_hashable () holds transitively in one hash type */
+  /* every scalar element domain of both against the first one: domain_hashable () holds transitively in one hash
+   * type */
   const TP_DOMAIN *base = first->setdomain;
   int base_depth = 0;
   while (base != NULL && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (base)))
@@ -3444,10 +3488,12 @@ domain_hashable_collections (const TP_DOMAIN * first, const TP_DOMAIN * second)
 	  && domain_hashable_elements (base, base_depth, second->setdomain, 0));
 }
 
-/* Whether every element domain of the list hashes alike with base, the first scalar (non-collection) element domain at
- * base_depth, whenever the comparison finds two elements equal; an element collection by its own element domains.
- * The list holds the element domains of a collection at depth (0 for a top-level key). The two depth checks keep
- * every scalar element of both keys at base_depth and every element collection above it:
+/* Whether every element domain of the list hashes alike with base whenever the comparison finds two elements equal; an
+ * element collection by its own element domains.
+ *   - base: the first scalar (non-collection) element domain, at base_depth
+ *   - elements: the element domains of a collection at depth (0 for a top-level key)
+ *
+ * The two depth checks keep every scalar element of both keys at base_depth and every element collection above it:
  *
  *   SEQUENCE OF (SET OF INTEGER, SET OF SET OF INTEGER)
  *     depth 0:  SET                    SET
@@ -3471,8 +3517,8 @@ domain_hashable_elements (const TP_DOMAIN * base, int base_depth, const TP_DOMAI
 
   for (const TP_DOMAIN * element = elements; element != NULL; element = element->next)
     {
-      /* mht_hash_element () hashes an element collection by the sum of its elements' hashes and any other element
-       * by itself, so the scalar elements of both keys lie at the depth of base */
+      /* mht_hash_element () hashes an element collection by the sum of its elements' hashes and any other element by
+       * itself, so the scalar elements of both keys lie at the depth of base */
       if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (element)))
 	{
 	  /* depth == base_depth: a collection where the scalars of base lie, whose own scalars would lie deeper */
@@ -3484,14 +3530,8 @@ domain_hashable_elements (const TP_DOMAIN * base, int base_depth, const TP_DOMAI
 	}
 
       /* depth != base_depth: a scalar above the depth of base, where the side of base holds an element collection */
-      if (depth != base_depth || domain_hash_element_type (TP_DOMAIN_TYPE (element)) != base_hash_type)
-	{
-	  return false;
-	}
-
-      /* a number hashes as the DOUBLE it equals (mht_hash_element ()), which domain_hashable () does not know:
-       * it keeps the hash types of top-level keys, where INTEGER and DOUBLE hash apart */
-      if (base_hash_type != DB_TYPE_DOUBLE && !domain_hashable (base, element))
+      if (depth != base_depth || domain_hash_element_type (TP_DOMAIN_TYPE (element)) != base_hash_type
+	  || !domain_hashable (base, element))
 	{
 	  return false;
 	}

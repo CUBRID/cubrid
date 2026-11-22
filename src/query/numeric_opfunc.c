@@ -956,10 +956,11 @@ static const uint64_t _gv_numeric_sum_acc_pow10_max_prec[SUM_ACC_NUMERIC_WORDS] 
  * numeric_hash_make_inverse_pow10_table () - make numeric_hash_inverse_pow10 for numeric_db_value_hash ()
  *   return: the table, made at compile time
  *
- * Step 1: find the inverse of 10, 10^(p - 2) mod p by Fermat (p = NUMERIC_HASH_PRIME),
- *         squaring 10 and multiplying the squares at the bits set in p - 2.
- * Step 2: fill scale 0 and up, each entry the one before times the inverse of 10.
- * Step 3: fill scale -1 and down, each entry the one after times 10.
+ * Steps:
+ *   Step 1: find the inverse of 10, 10^(p - 2) mod p (p = NUMERIC_HASH_PRIME), by Fermat's little theorem (10^(p - 1)
+ *           is 1 mod p), squaring 10 and multiplying the squares at the bits set in p - 2.
+ *   Step 2: fill scale 0 and up, each entry the one before times the inverse of 10.
+ *   Step 3: fill scale -1 and down, each entry the one after times 10.
  */
 static constexpr NUMERIC_HASH_INVERSE_POW10_TABLE
 numeric_hash_make_inverse_pow10_table (void)
@@ -996,8 +997,7 @@ numeric_hash_make_inverse_pow10_table (void)
   return table;
 }
 
-/* look-up table : 10^-scale mod NUMERIC_HASH_PRIME for every scale;
- * numeric_db_value_hash () divides by 10^scale with it */
+/* look-up table : 10^-scale mod NUMERIC_HASH_PRIME per scale, for numeric_db_value_hash () to divide by 10^scale */
 extern constexpr NUMERIC_HASH_INVERSE_POW10_TABLE numeric_hash_inverse_pow10 = numeric_hash_make_inverse_pow10_table ();
 
 /*
@@ -7712,25 +7712,30 @@ numeric_get_precision_digits (uint8_t * calc_buf)
  *   scale(in): integer value of the scale
  *   dest(out): ptr to the returned double or float value
  *
- * Note: Converts a DB_C_NUMERIC to T arithmetically: coefficient words are
- *       converted to T and then divided by a power of ten.
+ * Converts a DB_C_NUMERIC to T arithmetically: the coefficient is converted to T and divided by a power of ten.
  *
- *       - A coefficient fitting uint128 converts directly with hardware rounding.
- *       - A wider coefficient (39..40 digits, upper word nonzero) is rounded
- *         to odd at 128 bits first. For an intermediate of 2 or more bits wider than T,
- *         this preserves the final round-to-nearest (Boldo-Melquiond); the
- *         2^excess_bits rescale is exact.
+ * The coefficient converts to T:
+ *   - A coefficient fitting uint128 converts directly with hardware rounding.
+ *   - A wider coefficient (39..40 digits, upper word nonzero) is rounded to odd at 128 bits first:
+ *       - for an intermediate of 2 or more bits wider than T, rounding to odd preserves the final round-to-nearest
+ *         (Boldo-Melquiond)
+ *       - the 2^excess_bits rescale is exact
  *
- *       Only the coefficient is converted to T; scale adjusts the exponent
- *       through the power-of-ten division. The quotient is the nearest T
- *       when both are exact (a coefficient below 2^53 and a scale up to 22 for a double,
- *       2^24 and 10 for a float); any other fraction would round twice, so the quotient is corrected
- *       in integers to the nearest T (numeric_round_quotient_to_real ()): one value gives one T
- *       whatever its scale (1.0 and 1.00, BIGINT b and NUMERIC b.0000).
- *       A float is corrected from the nearest double, not rounded from it, which would round twice
- *       (1.0000000596046447753906250001 to 1.0, not to 1 + 2^-23).
- *       A 39..40 digit coefficient, and a float quotient near the subnormals, which the correction
- *       does not take, are converted from the decimal string by strtod () or strtof (), which rounds once.
+ * The quotient is the nearest T when the coefficient and 10^scale are both exact: a coefficient below 2^53 and a scale
+ * up to 22 for a double, 2^24 and 10 for a float.
+ *
+ * Any other quotient would round twice, so numeric_round_quotient_to_real () corrects it in integers to the nearest T.
+ * One value then gives one T whatever its scale (1.0 and 1.00, BIGINT b and NUMERIC b.0000).
+ *   - A float is corrected from the nearest double, not rounded from it, which would round twice: rounding the double
+ *     takes 1.0000000596046447753906250001 to 1.0, not to 1 + 2^-23.
+ *   - The correction does not take the values below. strtod () or strtof () converts them from the decimal string,
+ *     rounding once:
+ *       - a coefficient wider than uint128 (39..40 digits)
+ *       - a scale above NUMERIC_AGG_EXPR_POW10_MAX_EXP (38)
+ *       - a float quotient near the subnormals
+ *
+ * A negative scale makes an integer, the coefficient times 10^-scale (12300 at scale -2 is 123 x 100): its product in
+ * 128-bit integers converts with one cast, and a product past uint128 converts from the decimal string ("123e2").
  */
 /* *INDENT-OFF* */
 template <typename T>
@@ -7745,7 +7750,7 @@ numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest)
   T magnitude;			/* the value without the sign: 12.345 for -12.345 */
   T pow10_scale;		/* 10^scale: 1000 for -12.345 */
 
-  assert (src);
+  assert (src != NULL);
 
   numeric_bytes_to_words (db_locate_numeric (src), DB_NUMERIC_BUF_SIZE, words, NUMERIC_AS_WORDS,
 			  NUMERIC_AS_WORD_BYTES);
@@ -7760,54 +7765,66 @@ numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest)
     }
   else
     {
-      /* a 39..40 digit coefficient fits no integer type to cast, and adding its words as T would round
-       * more than once: it takes the same cast, shifted right by its bits above uint128 to fit;
-       * ldexp puts the 2^excess_bits back */
+      /* a 39..40 digit coefficient fits no integer type to cast, and adding its words as T would round more than once:
+       * it takes the same cast, shifted right by its bits above uint128 to fit; ldexp puts the 2^excess_bits back */
       int excess_bits = 64 - NUMERIC_CLZ64 (words[0]);
       uint128_t rounded_to_odd = ((uint128_t) words[0] << (128 - excess_bits))
 	| ((uint128_t) words[1] << (64 - excess_bits)) | (words[2] >> excess_bits);
 
-      /* round to odd: if anything was shifted out, set the lowest bit, so an inexact value is always odd.
-       * Truncation alone can leave the value exactly halfway between two T values while the dropped bits put
-       * the coefficient above it, and the cast would round that to even, down; an odd value is never such
-       * a midpoint, so the cast rounds it as it would the coefficient itself (Boldo-Melquiond) */
+      /* round to odd: if anything was shifted out, set the lowest bit, so an inexact value is always odd
+       *   - truncation alone can leave the value exactly halfway between two T values while the dropped bits put the
+       *     coefficient above it, and the cast would round that to even, down
+       *   - an odd value is never such a midpoint, so the cast rounds it as it would the coefficient itself
+       *     (Boldo-Melquiond) */
       rounded_to_odd |= (uint128_t) ((words[2] & ((1ULL << excess_bits) - 1)) != 0);
       coefficient = std::ldexp ((T) rounded_to_odd, excess_bits);
     }
 
-  /* T holds the value coefficient / 10^scale (12.345 = 12345 / 10^3, 1.50 = 150 / 10^2, 15 = 15 / 10^0)
-   * as m x 2^e, which rounds it once: the cast above where scale is 0, the division where both are exact;
-   * a zero is exact at any scale. Exact in T are every power of ten up to 10^exact_pow10_max and every integer
-   * below exact_int_limit:
+  /* T holds the value coefficient / 10^scale (12.345 = 12345 / 10^3, 1.50 = 150 / 10^2, 15 = 15 / 10^0) as m x 2^e,
+   * rounded once:
+   *   - by the cast above, where scale is 0
+   *   - by the division, where the coefficient and 10^scale are both exact
+   *   - not at all for a zero, exact at any scale
+   * Exact in T are every power of ten up to 10^exact_pow10_max and every integer below exact_int_limit:
    *            exact_pow10_max    exact_int_limit
    *   double   22                 2^53 (9007199254740992)
    *   float    10                 2^24 (16777216) */
-  if (coefficient != 0 && (scale > exact_pow10_max || (scale > 0 && coefficient >= exact_int_limit)))
+  if (scale < 0 && words[0] == 0 && -scale <= NUMERIC_AGG_EXPR_POW10_MAX_EXP
+      && coefficient_u128 <= ~(uint128_t) 0 / _gv_numeric_agg_expr_pow10_u128[-scale])
     {
-      /* the division would round twice: the quotient is corrected in integers */
+      /* a negative scale makes an integer (12300 at scale -2 is 123 x 100), within uint128: one cast, rounded once */
+      magnitude = (T) (coefficient_u128 * _gv_numeric_agg_expr_pow10_u128[-scale]);
+    }
+  else if (coefficient != 0 && (scale > exact_pow10_max || scale < 0 || (scale > 0 && coefficient >= exact_int_limit)))
+    {
+      /* the division would round twice: the quotient is corrected in integers. A negative scale's product past uint128
+       * takes the decimal string's way below. */
       double nearest = 0;	/* the double nearest to the quotient; 0 when the correction does not take it */
 
-      /* the fast way, in 128-bit integers: the coefficient fits them up to 38 digits, and 10^scale up to 10^38
-       * (_gv_numeric_agg_expr_pow10_u128; 10^39 is past 2^128); the division gives the estimate it corrects.
-       * The digits, not the value's size, decide it: a 40 digit coefficient is past it at any scale, and a tiny
-       * value of few digits takes it (1e-38: a coefficient of 1 at scale 38) */
-      if (words[0] == 0 && scale <= NUMERIC_AGG_EXPR_POW10_MAX_EXP)
+      /* the fast way, in 128-bit integers; the division gives the estimate it corrects. The 128-bit integers hold:
+       *   - the coefficient up to 38 digits
+       *   - 10^scale up to 10^38 (_gv_numeric_agg_expr_pow10_u128; 10^39 is past 2^128)
+       * The digits, not the value's size, decide it: a 40 digit coefficient is past it at any scale, and a tiny value
+       * of few digits takes it (1e-38: a coefficient of 1 at scale 38). */
+      if (words[0] == 0 && scale >= 0 && scale <= NUMERIC_AGG_EXPR_POW10_MAX_EXP)
 	{
 	  nearest = numeric_round_quotient_to_real<double> (coefficient_u128, scale,
 							    (double) coefficient_u128 / numeric_Pow_of_10_dbl[scale]);
 	}
 
-      /* the decimal string's way where the correction above did not take the value (nearest still 0), or took it
-       * and the quotient is below twice the smallest normal T, a float near the subnormals (1e-38), which the float
-       * correction does not take; only nearest tells the second, so this is no else of the if above */
+      /* the decimal string's way, where:
+       *   - the correction above did not take the value (nearest still 0)
+       *   - the correction above took it and the quotient is below twice the smallest normal T (a float near the
+       *     subnormals, 1e-38), which the float correction does not take
+       * Only nearest tells the second, so this is no else of the if above. */
       if (nearest < 2 * std::numeric_limits<T>::min ())
 	{
-	  /* strtod () or strtof () rounds the digits, with the sign, and the scale as an exponent ("-123450e-4")
-	   * once */
+	  /* strtod () or strtof () rounds the digits once (the sign, and the scale as an exponent: "-123450e-4",
+	   * "123e5" at scale -5) */
 	  char dec_str[TWICE_NUM_MAX_PREC + 8];
 
 	  numeric_coerce_num_to_dec_str (src, dec_str);
-	  sprintf (dec_str + strlen (dec_str), "e-%d", scale);
+	  sprintf (dec_str + strlen (dec_str), "e%d", -scale);
 	  if constexpr (std::is_same<T, double>::value)
 	    {
 	      *dest = strtod (dec_str, NULL);
@@ -7835,7 +7852,6 @@ numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest)
     {
       pow10_scale = (scale >= 0 && scale <= DB_MAX_NUMERIC_PRECISION)
 	? (T) numeric_Pow_of_10_dbl[scale] : (T) pow (10.0, scale);
-      /* magnitude = coefficient / 10^scale */
       magnitude = coefficient / pow10_scale;
     }
   *dest = (numeric_is_negative (src)) ? -magnitude : magnitude;
@@ -7849,16 +7865,20 @@ numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest)
  *   scale(in)      : the scale, up to NUMERIC_AGG_EXPR_POW10_MAX_EXP
  *   estimate(in)   : a T next to the quotient, at least twice the smallest normal T
  *
- * Note: the estimate m x 2^exp2 moves to its neighbour while the exact quotient lies past a midpoint.
- *       The test scales the gap to integers: gap = (coefficient / 10^scale - m x 2^exp2) x 10^scale,
- *       times 2^-exp2 when exp2 < 0, and a midpoint is at half of 10^scale x 2^exp2, or of 10^scale when exp2 < 0.
- *       A double estimate, the double quotient of the double coefficient and power of ten, is within 1.5 ulps
- *       when one of them is exact, and within 1 + e + 0.5 ulps when neither is, e (below 0.82) being the power of
- *       ten's rounding error in units of 2^-53: the gap is below 2.4 x 10^37 up to a scale of 37, and below
- *       1.6 x 10^38 at 38, where e is 0.2 and 10^38 ties the coefficient's mantissa to the quotient's (a quotient
- *       near the top of its binade has a coefficient rounded by less than 2^-53). A float estimate, the nearest
- *       double rounded to float, is within 0.5 + 2^-29 ulps: the gap is below 10^38. All are below 2^127,
- *       so 128-bit arithmetic that wraps gets them exact.
+ * The estimate m x 2^exp2 moves to its neighbour while the exact quotient lies past a midpoint. The test scales the gap
+ * to integers:
+ *   - gap = (coefficient / 10^scale - m x 2^exp2) x 10^scale, times 2^-exp2 when exp2 < 0
+ *   - a midpoint is at half of 10^scale x 2^exp2, or of 10^scale when exp2 < 0
+ *
+ * The gaps stay below 2^127, so 128-bit arithmetic that wraps gets them exact:
+ *   - A double estimate, the double quotient of the double coefficient and power of ten:
+ *       - is within 1.5 ulps when one of them is exact
+ *       - is within 1 + e + 0.5 ulps when neither is, e (below 0.82) being the power of ten's rounding error in units
+ *         of 2^-53
+ *       - gives a gap below 2.4 x 10^37 up to a scale of 37
+ *       - gives a gap below 1.6 x 10^38 at a scale of 38, where e is 0.2 and 10^38 ties the coefficient's mantissa to
+ *         the quotient's (a quotient near the top of its binade has a coefficient rounded by less than 2^-53)
+ *   - A float estimate, the nearest double rounded to float, is within 0.5 + 2^-29 ulps and gives a gap below 10^38.
  */
 /* *INDENT-OFF* */
 template <typename T>

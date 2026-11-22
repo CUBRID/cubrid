@@ -24,61 +24,60 @@
 
 #include "config.h"
 
-#include <stdio.h>
+#include "xasl_generation.h"
+
 #include <assert.h>
 #include <float.h>
 #include <search.h>
-
-#include "xasl_generation.h"
+#include <stdio.h>
 
 #include "authenticate.h"
-#include "misc_string.h"
+#include "compile_context.h"
+#include "db.h"
+#include "db_json.hpp"
+#include "dbtype.h"
+#include "dbtype_def.h"
+#include "domain_rules.h"
+#include "environment_variable.h"
 #include "error_manager.h"
+#include "execute_schema.h"
+#include "execute_statement.h"
+#include "histogram_cl.hpp"
+#include "intl_support.h"
+#include "jsp_cl.h"
+#include "locator_cl.h"
+#include "misc_string.h"
+#include "object_primitive.h"
+#include "object_print.h"
+#include "object_representation.h"
+#include "optimizer.h"
 #include "parser.h"
+#include "parser_message.h"
+#include "parser_support.h"
+#include "pl_signature.hpp"
+#include "porting.h"
+#include "px_query_checker.hpp"
+#include "px_scan_checker.hpp"
+#include "query_dump.h"
+#include "query_graph.h"
+#include "query_planner.h"
+#include "schema_manager.h"
+#include "schema_system_catalog_constants.h"
+#include "semantic_check.h"
+#include "set_object.h"
+#include "sp_catalog.hpp"
+#include "subquery_cache.h"
+#include "system_parameter.h"
+#include "view_transform.h"
+#include "virtual_object.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include "xasl_regu_alloc.hpp"
-#include "domain_rules.h"
-#include "db.h"
-#include "environment_variable.h"
-#include "parser.h"
-#include "schema_manager.h"
-#include "view_transform.h"
-#include "locator_cl.h"
-#include "optimizer.h"
-#include "histogram_cl.hpp"
-#include "parser_message.h"
-#include "virtual_object.h"
-#include "set_object.h"
-#include "object_primitive.h"
-#include "object_print.h"
-#include "object_representation.h"
-#include "intl_support.h"
-#include "system_parameter.h"
-#include "execute_schema.h"
-#include "porting.h"
-#include "execute_statement.h"
-#include "query_graph.h"
-#include "schema_system_catalog_constants.h"
-#include "query_planner.h"
-#include "semantic_check.h"
-#include "query_dump.h"
-#include "parser_support.h"
-#include "compile_context.h"
-#include "db_json.hpp"
-#include "jsp_cl.h"
-#include "subquery_cache.h"
-#include "dbtype_def.h"
-#include "pl_signature.hpp"
-#include "sp_catalog.hpp"
-#include "px_scan_checker.hpp"
-#include "px_query_checker.hpp"
+
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
-
-#include "dbtype.h"
 
 extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
 
@@ -7303,14 +7302,18 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
 }
 
 /*
- * pt_decide_hash_list_keys () - CBRD-27583: each key pair of a hash list scan converted into the domain it
- *   hashes in (domain_hashable_resolve ()), on the key regus' fetch, so that the values the scan's predicate finds
- *   equal hash alike and none that it compares fails to hash; a pair without one turns the scan's hash off
+ * pt_decide_hash_list_keys () - CBRD-27583: each key pair of a hash list scan converted into the domain it hashes in
+ *   (domain_hashable_resolve ()), on the key regus' fetch
  *   spec(in/out): a list scan spec
  *
- * A pair of two hash types (domain_hash_type ()) hashes in the pair's common domain, the comparison's type:
- * numbers, an exact one and a floating one, or collections, a SET and a MULTISET, as type checking casts any other
- * pair to one domain.
+ * The domain makes the values the scan's predicate finds equal hash alike, and none that it compares fails to hash.
+ * The scan's hash goes off for:
+ *   - a pair of no domain in which its values hash alike
+ *   - a key whose domain the execution fixes
+ *   - a key that converts already, into a domain other than the pair's common domain
+ *
+ * A pair of two hash types (domain_hash_type ()) hashes in the pair's common domain, the comparison's type: an exact
+ * and a floating number, or a SET and a MULTISET. Type checking casts any other pair to one domain.
  */
 static void
 pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
@@ -15924,12 +15927,17 @@ pt_list_element_domain (const TP_DOMAIN * set)
 }
 
 /*
- * pt_comparison_keeps_key () - CBRD-27583: whether a value (a list's elements) compares with a partition key as a
- *   value of the key's type - the comparison the type rule module decides for the two domains converts the element
- *   alone, into the key's type, or converts the key into a type that keeps any two keys apart. Pruning converts the
- *   value into the key's domain; where the comparison converts the key losing digits (a BIGINT key against a DOUBLE
- *   element compares in DOUBLE, and two keys can equal one element), the converted element would leave out a
- *   partition whose key the comparison finds equal
+ * pt_comparison_keeps_key () - CBRD-27583: whether a value (a list's elements) compares with a partition key as a value
+ *   of the key's type
+ *
+ * The comparison the type rule module decides for the two domains does one of:
+ *   - converts the element alone, into the key's type
+ *   - converts the key into a type that keeps any two keys apart
+ *
+ * Pruning converts the value into the key's domain. Where the comparison converts the key losing digits, the converted
+ * element would leave out a partition whose key the comparison finds equal.
+ *
+ * For example, a BIGINT key against a DOUBLE element compares in DOUBLE, and two keys can equal one element.
  */
 static bool
 pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
@@ -15956,8 +15964,8 @@ pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
       switch (TP_DOMAIN_TYPE (decided.target[0]))
 	{
 	case DB_TYPE_FLOAT:
-	  /* a FLOAT keeps FLT_DIG decimal digits,
-	   * and its normal range holds a NUMERIC key only with a scale in 0..precision */
+	  /* a FLOAT keeps FLT_DIG decimal digits, and its normal range holds a NUMERIC key only with a scale in
+	   * 0..precision */
 	  is_lossless_conversion = (key_type == DB_TYPE_SHORT
 				    || (key_type == DB_TYPE_NUMERIC && key->precision <= FLT_DIG
 					&& key->scale >= 0 && key->scale <= key->precision));
@@ -15980,10 +15988,13 @@ pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
 }
 
 /*
- * pt_set_prune_domains () - CBRD-27583: the domain into which a partitioned class's pruning converts a term's
- *   value to hash it or to evaluate a partition expression on it - the other side's - decided here, not at the scan
- *   (partition_prune_hash, partition_prune_for_function); a value prunes only when it compares with the key in the
- *   key's type (pt_comparison_keeps_key), an IN list only when its elements have one domain, its NULLs aside
+ * pt_set_prune_domains () - CBRD-27583: the domain into which a partitioned class's pruning converts a term's value,
+ *   the other side's, to hash it or to evaluate a partition expression on it
+ *
+ * The domain is decided here, not at the scan (partition_prune_hash (), partition_prune_for_function ()). A term prunes
+ * only when:
+ *   - its value compares with the key in the key's type (pt_comparison_keeps_key ())
+ *   - for an IN list, the list's elements have one domain, its NULLs aside
  */
 static void
 pt_set_prune_domains (PRED_EXPR * pred)

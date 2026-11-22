@@ -8235,10 +8235,14 @@ qexec_gby_aggs_follow_row_order (AGGREGATE_TYPE * agg_list)
  * qexec_gby_keys_hash_as_compared () - do the keys the comparison finds equal hash alike?
  *   return: false when two equal keys may hash apart
  *
- * The merge meets two groups only when their hashes are equal (qexec_gby_mtable_find (),
- * qexec_gby_merge_part_of ()), and where the group order does not reach the result it writes them out without the
- * sort that brings equal keys together. A string key without a loaded collation (lang_get_collation ()) has no
- * collation hash, and keys without compiled comparisons compare by their values' own types: those keys keep the sort.
+ * The merge relies on equal keys hashing alike:
+ *   - it meets two groups only when their hashes are equal (qexec_gby_mtable_find (), qexec_gby_merge_part_of ())
+ *   - where the group order does not reach the result, it writes the groups out without the sort that brings equal keys
+ *     together
+ *
+ * These keys keep the sort:
+ *   - a string key without a loaded collation (lang_get_collation ()): it has no collation hash
+ *   - keys without compiled comparisons: they compare by their values' own types
  */
 static bool
 qexec_gby_keys_hash_as_compared (const BUILDLIST_PROC_NODE * proc)
@@ -8362,9 +8366,9 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   order_free = !qexec_gby_order_reaches_result (xasl);
 
   /* the key sketch holds only the keys of the rows the table took, so the unsorted list is sampled instead when
-   * - the table stopped taking rows: the rows after it went to the list without a call
-   * - the table took no row, and its empty sketch estimates 0: a row with a set column goes to the list without it
-   *   (qexec_end_one_iteration ()) */
+   *   - the table stopped taking rows: the rows after that went to the list without passing the table
+   *   - the table took no row, and its empty sketch estimates 0: a row with a set column goes to the list without
+   *     passing the table (qexec_end_one_iteration ()) */
   groups = qdata_key_sketch_estimate (ctx->key_sketch);
   if (ctx->key_sketch_partial || ctx->state == HS_REJECT_ALL || groups == 0)
     {
@@ -23454,8 +23458,8 @@ qexec_bind_checksum (int count, const DB_VALUE * values)
       const DB_VALUE *value = &values[i];
       const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
       sum = sum * 31 + (unsigned int) type;
-      /* the types mht_valhash () hashes by value; another (an SA client binds an object as its MOP) counts by
-       * its type */
+      /* the types mht_valhash () hashes by value, and a LOB by the address of its DB_ELO; any other type (an SA client
+       * binds an object as its MOP) counts by its type alone */
       const bool hashed = (TP_IS_NUMERIC_TYPE (type) || TP_IS_CHAR_BIT_TYPE (type) || TP_IS_DATE_OR_TIME_TYPE (type)
 			   || TP_IS_SET_TYPE (type) || TP_IS_LOB_TYPE (type) || type == DB_TYPE_OID
 			   || type == DB_TYPE_VOBJ || type == DB_TYPE_ENUMERATION || type == DB_TYPE_JSON);
@@ -25782,7 +25786,7 @@ qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash
 {
   REGU_VARIABLE_LIST regulist;
   DB_VALUE *dbvalp;
-  unsigned int h = 0, col_hash;
+  unsigned int h = 0;
   int i = 0;
 
   regulist = outptr_list->valptrp;
@@ -25792,8 +25796,7 @@ qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash
       if (regulist->value.type == TYPE_CONSTANT)
 	{
 	  dbvalp = regulist->value.value.dbvalptr;
-	  col_hash = mht_valhash (dbvalp, UINT_MAX);
-	  h = ROTL32 (h, 13) ^ col_hash;
+	  h = mht_foldhash (h, mht_valhash (dbvalp, UINT_MAX));
 	}
 
       regulist = regulist->next;
@@ -25865,7 +25868,7 @@ qexec_connect_by_hash_from_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD 
 		  pr_clear_value (&dbval);
 		}
 	    }
-	  h = ROTL32 (h, 13) ^ col_hash;
+	  h = mht_foldhash (h, col_hash);
 	}
 
       regulist = regulist->next;

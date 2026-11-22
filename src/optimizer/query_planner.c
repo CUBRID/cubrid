@@ -24,41 +24,41 @@
 
 #include "config.h"
 
+#include "query_planner.h"
+
+#include <assert.h>
+#include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
-#include <ctype.h>
-#include <assert.h>
+
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */
-#include "json_builder.h"
 
-#include "parser.h"
-#include "object_domain.h"
+#include "dbtype.h"
+#include "domain_rules.h"	/* domain_hashable_resolve () */
+#include "environment_variable.h"
+#include "histogram_cl.hpp"
+#include "intl_support.h"
+#include "json_builder.h"
+#include "jsp_cl.h"		/* jsp_is_sp_parallel_eligible () */
+#include "memory_hash.h"	/* MHT_HLS_ENTRY for hash-join spill cost */
+#include "misc_string.h"
+#include "network_interface_cl.h"
+#include "object_domain.h"	/* tp_value_compare (), to tell an empty range from an out-of-range one */
 #include "object_primitive.h"
 #include "optimizer.h"
-#include "query_planner.h"
-#include "query_graph.h"
-#include "environment_variable.h"
-#include "misc_string.h"
-#include "system_parameter.h"
 #include "parser.h"
 #include "parser_message.h"
-#include "intl_support.h"
-#include "storage_common.h"
-#include "xasl_analytic.hpp"
-#include "xasl_generation.h"
+#include "query_graph.h"
+#include "regu_var.hpp"
 #include "schema_manager.h"
 #include "set_object.h"
-#include "network_interface_cl.h"
-#include "dbtype.h"
-#include "object_domain.h"	/* tp_value_compare (), to tell an empty range from an out-of-range one */
-#include "regu_var.hpp"
-#include "memory_hash.h"	/* MHT_HLS_ENTRY for hash-join spill cost */
-#include "histogram_cl.hpp"
-#include "jsp_cl.h"		/* jsp_is_sp_parallel_eligible () */
-#include "domain_rules.h"	/* domain_hashable_resolve () */
+#include "storage_common.h"
+#include "system_parameter.h"
+#include "xasl_analytic.hpp"
+#include "xasl_generation.h"
 
 #define TEST_DUMP_PLAN_SCAN_COST 0
 #define TEST_DUMP_PLAN_SORT_COST 0
@@ -373,7 +373,8 @@ static int qo_examine_merge_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BI
 				  BITSET *, int);
 static int qo_examine_hash_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
 				 BITSET *, int);
-static bool qo_is_hashable_term (QO_TERM * term);
+static bool qo_can_hash_terms (QO_ENV * env, BITSET * terms);
+static PT_NODE *qo_check_collection_type (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static int qo_examine_correlated_index (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *,
 					int *);
 static int qo_examine_follow (QO_INFO *, QO_TERM *, QO_INFO *, BITSET *, BITSET *);
@@ -10932,23 +10933,20 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
     {
       /* join hint: force idx-join */
     }
-  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
+  else if ((QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
+	   && (!qo_lenient_join_hint (info->env) || !bitset_is_empty (hash_terms)))
     {
       /* join hint: force merge-join; skip idx-join.  A merge join is examined only when the join has a mergeable
        * term: on the lenient retry (qo_lenient_join_hint ()) a hint without one is ignored for this join, instead of
        * leaving the join without a plan, which fails the optimization and drops every hint of the query. */
-      if (!qo_lenient_join_hint (info->env) || !bitset_is_empty (hash_terms))
-	{
-	  goto exit;
-	}
+      goto exit;
     }
-  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
+	   && (!qo_lenient_join_hint (info->env) || qo_can_hash_terms (info->env, hash_terms)))
     {
-      /* join hint: force hash-join; skip idx-join.  Ignored when the join has no hash term, as for USE_MERGE. */
-      if (!qo_lenient_join_hint (info->env) || !bitset_is_empty (hash_terms))
-	{
-	  goto exit;
-	}
+      /* join hint: force hash-join; skip idx-join - unless ignored for a join no hash join can be made of
+       * (qo_can_hash_terms ()), as USE_MERGE is without a mergeable term */
+      goto exit;
     }
   else
     {
@@ -11320,9 +11318,9 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	      goto exit;
 	    }
 	  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-		   && (!qo_lenient_join_hint (info->env) || !bitset_is_empty (hash_terms)))
+		   && (!qo_lenient_join_hint (info->env) || qo_can_hash_terms (info->env, hash_terms)))
 	    {
-	      /* join hint: force hash-join; skip nl-join - unless ignored for a join without a hash term */
+	      /* join hint: force hash-join; skip nl-join - unless ignored for a join no hash join can be made of */
 	      goto exit;
 	    }
 	  else
@@ -11333,13 +11331,16 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
       else
 	{
 	  /* the side to be the inner is already a join: a hint applies to it when it names all of its tables, as in
-	   * qo_examine_hash_join ().  Only a hash join is forced from here, and only when there is a hash term:
-	   * idx-join needs a single class inner, and merge-join may not be possible for this join, so nl-join is kept
-	   * for them. */
+	   * qo_examine_hash_join ().
+	   *
+	   * Only a hash join is forced from here, and only when one can be made of the terms. nl-join is kept for the
+	   * other hints:
+	   *   - idx-join needs a single class inner
+	   *   - merge-join may not be possible for this join */
 	  PT_HINT_ENUM hint = qo_join_hint_common_to_nodes (outer);
 
 	  if (!(hint & (PT_HINT_NO_USE_HASH | PT_HINT_USE_NL)) && (hint & PT_HINT_USE_HASH)
-	      && !bitset_is_empty (hash_terms))
+	      && qo_can_hash_terms (info->env, hash_terms))
 	    {
 	      /* join hint: force hash-join; skip nl-join */
 	      goto exit;
@@ -11380,9 +11381,9 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  goto exit;
 	}
       else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-	       && (!qo_lenient_join_hint (info->env) || !bitset_is_empty (hash_terms)))
+	       && (!qo_lenient_join_hint (info->env) || qo_can_hash_terms (info->env, hash_terms)))
 	{
-	  /* join hint: force hash-join; skip nl-join - unless ignored for a join without a hash term */
+	  /* join hint: force hash-join; skip nl-join - unless ignored for a join no hash join can be made of */
 	  goto exit;
 	}
       else
@@ -11800,11 +11801,11 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	{
 	  goto exit;		/* give up */
 	}
+    }
 
-      if (!qo_is_hashable_term (term))
-	{
-	  goto exit;		/* give up */
-	}
+  if (!qo_can_hash_terms (info->env, hash_join_terms))
+    {
+      goto exit;		/* give up */
     }
 
   /* inner_node is the single-class inner used for the key-limit / index checks below. */
@@ -11939,39 +11940,94 @@ exit:
 }
 
 /*
- * qo_is_hashable_term () - CBRD-28060: whether a term's operands may be hashed: they hash in a domain whose hash
- *   follows the term's comparison, as they are or in the common domain both convert to
- *   (domain_hashable_resolve ()), so that a type not known to hash alike is compared without a hash
- *   return: false for a term that is not a comparison of two operands, which a hash join term always is
- *   term(in): a term
+ * qo_check_collection_type () - find a node of a collection type (SET, MULTISET, SEQUENCE)
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_check_collection_type (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  if (PT_IS_COLLECTION_TYPE (tree->type_enum))
+    {
+      *(bool *) arg = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * qo_can_hash_terms () - CBRD-28060: whether a hash join can be made of a join's terms: there is one, and the
+ *   operands of every one hash alike whenever the term's comparison finds them equal
+ *   return: false for no term, or a term not known to hash alike
+ *   env(in):
+ *   terms(in): the mergeable terms of a join
+ *
+ * The operands hash alike as they are or in the common domain both convert to (domain_hashable_resolve ()). A term of a
+ * type not known to hash alike is compared without a hash.
  */
 static bool
-qo_is_hashable_term (QO_TERM * term)
+qo_can_hash_terms (QO_ENV * env, BITSET * terms)
 {
-  PARSER_CONTEXT *parser = QO_ENV_PARSER (QO_TERM_ENV (term));
-  PT_NODE *expr = QO_TERM_PT_EXPR (term);
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  BITSET_ITERATOR iter;
 
-  /* a hash join term is an equi-join term or a path term: a comparison of two operands */
-  if (unlikely (expr == NULL || expr->node_type != PT_EXPR || expr->info.expr.arg1 == NULL
-		|| expr->info.expr.arg2 == NULL))
+  if (bitset_is_empty (terms))
     {
-      assert (false);
       return false;
     }
 
-  /* an OBJECT's values are OIDs on the server */
-  const TP_DOMAIN *domain[2] = {
-    domain_key_value_domain (pt_xasl_node_to_domain (parser, expr->info.expr.arg1)),
-    domain_key_value_domain (pt_xasl_node_to_domain (parser, expr->info.expr.arg2))
-  };
-  if (domain[0] == NULL || domain[1] == NULL)
+  for (int t = bitset_iterate (terms, &iter); t != -1; t = bitset_next_member (&iter))
     {
-      /* no domain made (pt_xasl_node_to_domain () has set the error): nothing says that they hash alike */
-      return false;
-    }
+      PT_NODE *expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, t));
 
-  const TP_DOMAIN *common;
-  return domain_hashable_resolve (domain[0], domain[1], &common);
+      /* a hash join term is an equi-join term or a path term: a comparison of two operands */
+      if (unlikely (expr == NULL || expr->node_type != PT_EXPR || expr->info.expr.arg1 == NULL
+		    || expr->info.expr.arg2 == NULL))
+	{
+	  assert (false);
+	  return false;
+	}
+
+      /* an OBJECT's values are OIDs on the server */
+      const TP_DOMAIN *domain[2] = {
+	domain_key_value_domain (pt_xasl_node_to_domain (parser, expr->info.expr.arg1)),
+	domain_key_value_domain (pt_xasl_node_to_domain (parser, expr->info.expr.arg2))
+      };
+      if (domain[0] == NULL || domain[1] == NULL)
+	{
+	  /* no domain made (pt_xasl_node_to_domain () has set the error): nothing says that they hash alike */
+	  return false;
+	}
+
+      if (TP_DOMAIN_TYPE (domain[0]) == DB_TYPE_VARIABLE || TP_DOMAIN_TYPE (domain[1]) == DB_TYPE_VARIABLE)
+	{
+	  /* a type the bound values fix (an expression of a host variable): XASL generation fixes a scalar type before it
+	   * decides the key pair (domain_decide_hash_join_key ()), but not the element domain of a collection
+	   * (h1.mv - ? = h2.mv), so a term with an operand of a collection type is not known to hash alike */
+	  bool has_collection = false;
+
+	  (void) parser_walk_tree (parser, expr->info.expr.arg1, qo_skip_subquery, NULL, qo_check_collection_type,
+				   &has_collection);
+	  (void) parser_walk_tree (parser, expr->info.expr.arg2, qo_skip_subquery, NULL, qo_check_collection_type,
+				   &has_collection);
+	  if (has_collection)
+	    {
+	      return false;
+	    }
+	  continue;
+	}
+
+      const TP_DOMAIN *common;
+      if (!domain_hashable_resolve (domain[0], domain[1], &common))
+	{
+	  return false;
+	}
+    }
+  return true;
 }
 
 /*
