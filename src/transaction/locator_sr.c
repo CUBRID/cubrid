@@ -12717,6 +12717,14 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
   OID cls_oid;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   MVCCID threshold_mvccid = MVCCID_NULL;
+  HEAP_CACHE_ATTRINFO attr_info;
+  bool is_attrinfo_started = false;
+  RECDES *insert_recdes = NULL;
+  RECDES new_recdes;
+  MVCC_REC_HEADER mvcc_header;
+  /* *INDENT-OFF* */
+  record_descriptor new_record;
+  /* *INDENT-ON* */
 
   assert (tdes != NULL);
 
@@ -12773,6 +12781,14 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	  goto exit;
 	}
       is_part_scancache_started = true;
+
+      /* the latest representation of the promoted partition, to rebuild its rows stored in an older one */
+      error = heap_attrinfo_start (thread_p, &oid_list[i], -1, NULL, &attr_info);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+      is_attrinfo_started = true;
 
       /* VACUUM all cleanable heap objects before upgrading the domain */
       error = heap_vacuum_all_objects (thread_p, &scan_cache, threshold_mvccid);
@@ -12857,13 +12873,45 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 		  goto exit;
 		}
 
+	      /* The insert below keeps the record bytes and only relabels its representation id with the latest one of
+	       * the target partition. A row stored in an older representation is rebuilt in the latest one first,
+	       * keeping its MVCC header, so that its bytes match the representation id. */
+	      insert_recdes = &recdes;
+	      if (or_rep_id (&recdes) != attr_info.last_classrepr->id)
+		{
+		  error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);
+		  if (error != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+		  if (heap_attrinfo_transform_to_disk_except_lob (thread_p, &attr_info, NULL, &new_record) != S_SUCCESS)
+		    {
+		      ASSERT_ERROR_AND_SET (error);
+		      goto exit;
+		    }
+		  error = or_mvcc_get_header (&recdes, &mvcc_header);
+		  if (error != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+		  mvcc_header.repid = attr_info.last_classrepr->id;
+		  new_recdes = new_record.get_recdes ();
+		  error = or_mvcc_set_header (&new_recdes, &mvcc_header);
+		  if (error != NO_ERROR)
+		    {
+		      goto exit;
+		    }
+		  new_record.set_record_length (new_recdes.length);
+		  insert_recdes = &new_recdes;
+		}
+
 	      /* No supplemental log for insert is appended due to DDL statement */
 	      thread_p->no_supplemental_log = true;
 
 	      /* make sure that pruning does not change the given class OID */
 	      COPY_OID (&cls_oid, class_oid);
 	      error =
-		locator_insert_force (thread_p, &class_hfid, &cls_oid, &oid, &recdes, true, SINGLE_ROW_INSERT,
+		locator_insert_force (thread_p, &class_hfid, &cls_oid, &oid, insert_recdes, true, SINGLE_ROW_INSERT,
 				      &parent_scan_cache, &force_count, DB_PARTITIONED_CLASS, &pcontext, NULL,
 				      UPDATE_INPLACE_OLD_MVCCID, NULL, false, false);
 
@@ -12884,6 +12932,11 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	{
 	  (void) heap_scancache_end (thread_p, &scan_cache);
 	  is_part_scancache_started = false;
+	}
+      if (is_attrinfo_started == true)
+	{
+	  heap_attrinfo_end (thread_p, &attr_info);
+	  is_attrinfo_started = false;
 	}
     }
 
@@ -12907,6 +12960,10 @@ exit:
   if (is_pcontext_inited == true)
     {
       partition_clear_pruning_context (&pcontext);
+    }
+  if (is_attrinfo_started == true)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
     }
 
   return error;
