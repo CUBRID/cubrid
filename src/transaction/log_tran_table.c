@@ -4039,6 +4039,9 @@ logtb_tran_log_unique_stats_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   int length;
   char *data, *datap;
   int error_code;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  LOG_CRUMB redo_crumb;
+  LOG_PRIOR_NODE *node;
 
   if (tdes->state != TRAN_ACTIVE)
     {
@@ -4071,7 +4074,21 @@ logtb_tran_log_unique_stats_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   if (error_code == NO_ERROR)
     {
       assert (datap == data + length);
-      log_append_redo_data2 (thread_p, RVBT_2PC_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, length, data);
+
+      /* Append directly rather than through log_append_redo_data2, which returns nothing when it cannot allocate the
+       * record. The caller must then fail the prepare: a prepare record without this one loses the statistics. */
+      redo_crumb.data = data;
+      redo_crumb.length = length;
+      node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_REDO_DATA, RVBT_2PC_UNIQUE_STATS, &addr, 0, NULL, 1,
+					      &redo_crumb);
+      if (node == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	}
+      else
+	{
+	  (void) prior_lsa_next_record (thread_p, node, tdes);
+	}
     }
 
   db_private_free_and_init (thread_p, data);
