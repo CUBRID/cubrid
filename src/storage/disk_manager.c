@@ -304,6 +304,11 @@ struct disk_reserve_context
 /* minimum volume sectors for create/expand... at least one allocation table unit */
 #define DISK_MIN_VOLUME_SECTS DISK_STAB_UNIT_BIT_COUNT
 
+/* DISK_MIN_FIRST_VOLUME_SECTS (disk_manager.h) must stay a whole number of allocation table units, so that
+ * disk_sectors_to_extend_npages leaves it as it is */
+static_assert (DISK_MIN_FIRST_VOLUME_SECTS % DISK_STAB_UNIT_BIT_COUNT == 0,
+	       "DISK_MIN_FIRST_VOLUME_SECTS must be a multiple of the allocation table unit");
+
 /* when allocating remaining disk space, leave out 64MB for safety */
 #define DISK_SAFE_OSDISK_FREE_SPACE (64 * 1024 * 1024)
 #define DISK_SAFE_OSDISK_FREE_SECTS (DISK_SAFE_OSDISK_FREE_SPACE / IO_SECTORSIZE)
