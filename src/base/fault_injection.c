@@ -91,6 +91,7 @@ FI_TEST_ITEM fi_Test_array[] = {
 #if defined (SERVER_MODE) || defined (SA_MODE)
   {FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT, fi_handler_page_latch_timeout, FI_INIT_STATE},
 #endif /* SERVER_MODE || SA_MODE */
+  {FI_TEST_HEAP_PREV_VERSION_WALK_HOLD, fi_handler_hold, FI_INIT_STATE},
 };
 
 const FI_TEST_CODE fi_Group_none[] = {

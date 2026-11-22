@@ -90,6 +90,7 @@
 #include "subquery_cache.h"
 #include "query_hash_join.h"
 #include "memoize.hpp"
+#include "memory_private_allocator.hpp"
 #include "ftab_set.hpp"
 
 #if SERVER_MODE && !WINDOWS
@@ -105,6 +106,7 @@
 #endif /* SERVER_MODE */
 #include <atomic>
 #include <mutex>
+#include <set>
 #include <vector>
 #include "dblink_scan.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -348,6 +350,21 @@ struct gby_skip_state
   DB_VALUE *part_cnt_vals;
 };
 
+/* The rows of an UPDATE's select that qexec_defer_update_row () wrote without their assignments */
+// *INDENT-OFF*
+struct upd_deferred_rows
+{
+  struct oid_less
+  {
+    bool operator() (const OID &a, const OID &b) const
+    {
+      return oid_compare (&a, &b) < 0;
+    }
+  };
+  std::set<OID, oid_less> oids;
+};
+// *INDENT-ON*
+
 typedef struct analytic_function_state ANALYTIC_FUNCTION_STATE;
 struct analytic_function_state
 {
@@ -517,6 +534,28 @@ struct upddel_class_info_internal
 							 * referenced in conditions */
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns;
 };
+
+/* what the wait pass of a settling DELETE or UPDATE leaves for its write pass; the destructor frees it */
+typedef struct qexec_settle_state QEXEC_SETTLE_STATE;
+// *INDENT-OFF*
+struct qexec_settle_state
+{
+  template <typename T> using private_vector = std::vector<T, cubmem::private_allocator<T>>;
+
+  THREAD_ENTRY *thread_p;
+  LOCATOR_REFERENCED_KEY key;		/* the class's referenced primary key, while started */
+  private_vector<int> rows;		/* per row of the list, see qexec_settle_row () */
+  private_vector<DB_VALUE> values;	/* the assignments the wait pass computed again */
+  private_vector<OID> marked_rows;	/* the rows whose keys the write pass will delete-mark */
+  size_t next = 0;			/* the write pass's position in rows */
+  bool started = false;
+
+  explicit qexec_settle_state (THREAD_ENTRY *thread_p);
+  ~qexec_settle_state ();
+  int start (LOCATOR_LOCK_POLICY base_lock_policy, UPDDEL_CLASS_INSTANCE_LOCK_INFO *lock_info,
+	     UPDDEL_CLASS_INFO *upd_cls, INT64 tuple_cnt);
+};
+// *INDENT-ON*
 
 enum analytic_stage
 {
@@ -721,6 +760,12 @@ static int qexec_init_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * b
 static void qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * buildlist);
 static int qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete, XASL_STATE * xasl_state);
 static int qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+static int qexec_settle_row (THREAD_ENTRY * thread_p, QEXEC_SETTLE_STATE * settle,
+			     UPDDEL_CLASS_INFO_INTERNAL * internal_class, const OID * class_oid,
+			     MVCC_REEV_DATA * mvcc_reev_data, LOCATOR_LOCK_POLICY lock_policy, OID * oid,
+			     UPDDEL_CLASS_INFO * upd_cls);
+static int qexec_next_settled_row (QEXEC_SETTLE_STATE * settle, OID * oid, UPDDEL_CLASS_INFO_INTERNAL * internal_class,
+				   UPDDEL_CLASS_INFO * upd_cls, bool * writes);
 static int qexec_collect_remote_insert_vals (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VALUE ** vals, int num_vals,
 					     int odku_start, int num_odku);
 static int qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VALUE ** bindv,
@@ -978,6 +1023,9 @@ static void qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_
 static bool qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p,
 						   UPDDEL_CLASS_INFO_INTERNAL * internal_class, const OID * class_oid);
 static bool qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p);
+static bool qexec_spec_is_for_update (THREAD_ENTRY * thread_p, const ACCESS_SPEC_TYPE * spec);
+static bool qexec_is_value_error (int error);
+static bool qexec_defer_update_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static LOCATOR_LOCK_POLICY qexec_base_lock_policy (const UPDDEL_CLASS_INSTANCE_LOCK_INFO * lock_info);
 static LOCATOR_LOCK_POLICY qexec_make_lock_policy_transient (THREAD_ENTRY * thread_p, LOCATOR_LOCK_POLICY base_policy,
 							     bool statement_ends_locks,
@@ -1478,7 +1526,11 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       tpldescr_status = qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd);
       if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
 	{
-	  GOTO_EXIT_ON_ERROR;
+	  if (!qexec_defer_update_row (thread_p, xasl))
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  return NO_ERROR;
 	}
 
 
@@ -1556,7 +1608,12 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  if ((qdata_copy_valptr_list_to_tuple (thread_p, xasl->outptr_list, &xasl_state->vd, &xasl->list_id->type_list,
 						tplrec) != NO_ERROR))
 	    {
-	      GOTO_EXIT_ON_ERROR;
+	      /* the columns after a SET-type value are computed here, not by the descriptor */
+	      if (!qexec_defer_update_row (thread_p, xasl))
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      return NO_ERROR;
 	    }
 
 	  if ((qfile_add_tuple_to_list (thread_p, xasl->list_id, tplrec->tpl) != NO_ERROR))
@@ -1609,6 +1666,106 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 exit_on_error:
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * qexec_is_value_error () - may the same row computed from another version not raise this error?
+ *   return: false for no error and for an interrupt, an abort or an out-of-memory, which end the statement as before
+ *   error(in): the error a row's values raised
+ */
+static bool
+qexec_is_value_error (int error)
+{
+  return (error != NO_ERROR && error != ER_INTERRUPTED && error != ER_LK_UNILATERALLY_ABORTED
+	  && error != ER_OUT_OF_VIRTUAL_MEMORY);
+}
+
+/*
+ * qexec_defer_update_row () - Put off an error the select of an UPDATE raised computing the assignments of a row
+ *			       another transaction changed after the snapshot
+ *   return: true when deferred: the row's tuple holds its OIDs only, and the force phase computes it from the last
+ *	     version (qexec_execute_update ())
+ *   xasl(in): the select of the UPDATE
+ */
+static bool
+qexec_defer_update_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  UPD_DEFERRED_ROWS *deferred = (xasl->type == BUILDLIST_PROC) ? xasl->proc.buildlist.upd_deferred_rows : NULL;
+  ACCESS_SPEC_TYPE *spec = xasl->spec_list;
+  QFILE_LIST_ID *list_id = xasl->list_id;
+  QFILE_TUPLE_DESCRIPTOR *tpl_descr = &list_id->tpl_descr;
+  const OID *oid;
+  const HEAP_SCANCACHE *scan_cache;
+  DB_VALUE oids[2], null_value;
+  int error, i, size = 0;
+  bool has_null = false;
+
+  if (deferred == NULL || spec == NULL || spec->next != NULL || spec->s_id.mvcc_select_lock_needed
+      || !ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED))
+    {
+      return false;
+    }
+  switch (spec->s_id.type)
+    {
+    case S_HEAP_SCAN:
+      oid = &spec->s_id.s.hsid.curr_oid;
+      scan_cache = &spec->s_id.s.hsid.scan_cache;
+      break;
+    case S_INDX_SCAN:
+      oid = spec->s_id.s.isid.curr_oidp;
+      scan_cache = &spec->s_id.s.isid.scan_cache;
+      break;
+    default:
+      return false;
+    }
+
+  error = er_errid ();
+  if (!scan_cache->last_version_unseen || !qexec_is_value_error (error))
+    {
+      return false;
+    }
+
+  /* the select list starts with the instance OID and the class OID (pt_to_upd_del_query ()) */
+  assert (xasl->upd_del_class_cnt == 1 && list_id->type_list.type_cnt >= 2);
+  db_make_oid (&oids[0], oid);
+  db_make_oid (&oids[1], &ACCESS_SPEC_CLS_OID (spec));
+  db_make_null (&null_value);
+  for (i = 0; i < list_id->type_list.type_cnt; i++)
+    {
+      tpl_descr->f_valp[i] = (i < 2) ? &oids[i] : &null_value;
+      size = qfile_tuple_size_add_value (&list_id->type_list.column_layout_array[i], tpl_descr->f_valp[i],
+					 &tpl_descr->f_len[i], size, &has_null);
+      if (size < 0)
+	{
+	  return false;
+	}
+    }
+  tpl_descr->f_cnt = list_id->type_list.type_cnt;
+  tpl_descr->has_null = has_null;
+  tpl_descr->tpl_size = qfile_tuple_size_finalize (&list_id->type_list, size, has_null);
+
+  if (qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL) != NO_ERROR)
+    {
+      return false;
+    }
+  // *INDENT-OFF*
+  try
+    {
+      deferred->oids.insert (*oid);
+    }
+  catch (const std::bad_alloc &)
+    {
+      return false;
+    }
+  // *INDENT-ON*
+  er_clear ();
+
+  /* the failed row may have left the program's prologue marked done: the next row runs it again */
+  if (xasl->outptr_list->eval_prog_state == 1 && xasl->outptr_list->eval_prog != NULL)
+    {
+      expr_prog_reset ((EXPR_PROG *) xasl->outptr_list->eval_prog);
+    }
+  return true;
 }
 
 /*
@@ -10967,7 +11124,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
       else
 	{
-	  mvcc_select_lock_needed = ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE);
+	  mvcc_select_lock_needed = qexec_spec_is_for_update (thread_p, curr_spec);
 	}
     }
 
@@ -12549,7 +12706,7 @@ qexec_nl_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * outer, XASL_NODE * inne
    * a time by their partition walk */
   if (XASL_IS_FLAGED (inner, XASL_NL_FOLLOWING_JOIN) || XASL_IS_FLAGED (inner, XASL_NO_ROW_BATCH) || spec == NULL
       || (XASL_IS_NL_SEMI_OR_ANTI (inner) && spec->parts != NULL) || spec->type != TARGET_CLASS
-      || spec->access != ACCESS_METHOD_INDEX || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE)
+      || spec->access != ACCESS_METHOD_INDEX || qexec_spec_is_for_update (thread_p, spec)
       || outer->val_list == NULL || outer->dptr_list != NULL || outer->bptr_list != NULL || outer->fptr_list != NULL
       || outer->spec_list == NULL || (outer->spec_list->type != TARGET_CLASS && outer->spec_list->type != TARGET_LIST))
     {
@@ -13323,8 +13480,7 @@ memoize_lookup:
 	  if (xasl->bptr_list)
 	    {
 	      qexec_clear_head_lists (thread_p, xasl->bptr_list);
-	      scan_operation_type =
-		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
+	      scan_operation_type = qexec_spec_is_for_update (thread_p, xasl->curr_spec) ? S_UPDATE : S_SELECT;
 	    }
 	  /* evaluate bptr list */
 	  for (xptr = xasl->bptr_list; qualified && xptr != NULL; xptr = xptr->next)
@@ -13419,8 +13575,7 @@ memoize_lookup:
 	  if (xasl->fptr_list)
 	    {
 	      qexec_clear_head_lists (thread_p, xasl->fptr_list);
-	      scan_operation_type =
-		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
+	      scan_operation_type = qexec_spec_is_for_update (thread_p, xasl->curr_spec) ? S_UPDATE : S_SELECT;
 	    }
 	  /* evaluate fptr list */
 	  for (xptr = xasl->fptr_list; qualified && xptr != NULL; xptr = xptr->next)
@@ -13804,7 +13959,7 @@ qexec_sq_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   spec = sq_xasl->spec_list;
   if ((sq_xasl->type != BUILDVALUE_PROC && sq_xasl->type != BUILDLIST_PROC) || spec == NULL || spec->next != NULL
       || spec->type != TARGET_CLASS || spec->access != ACCESS_METHOD_INDEX || spec->indexptr == NULL
-      || spec->pruning_type != DB_NOT_PARTITIONED_CLASS || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE)
+      || spec->pruning_type != DB_NOT_PARTITIONED_CLASS || qexec_spec_is_for_update (thread_p, spec)
       || sq_xasl->scan_ptr != NULL || sq_xasl->aptr_list != NULL || sq_xasl->dptr_list != NULL
       || sq_xasl->bptr_list != NULL || sq_xasl->fptr_list != NULL || sq_xasl->merge_spec != NULL
       || sq_xasl->scan_op_type != S_SELECT)
@@ -14433,7 +14588,7 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
       return error;
     }
 
-  if (!COMPOSITE_LOCK (scan_op_type) && !(ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE)))
+  if (!COMPOSITE_LOCK (scan_op_type) && !qexec_spec_is_for_update (thread_p, spec))
     {
       lock = IS_LOCK;
     }
@@ -16531,8 +16686,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (xasl->bptr_list)
 	    {
-	      scan_operation_type =
-		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
+	      scan_operation_type = qexec_spec_is_for_update (thread_p, xasl->curr_spec) ? S_UPDATE : S_SELECT;
 	    }
 
 	  /* evaluate bptr list */
@@ -16589,8 +16743,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		  /* evaluate fptr list */
 		  if (xasl->fptr_list)
 		    {
-		      scan_operation_type =
-			(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
+		      scan_operation_type = qexec_spec_is_for_update (thread_p, xasl->curr_spec) ? S_UPDATE : S_SELECT;
 		    }
 
 		  for (xptr = xasl->fptr_list; qualified && xptr != NULL; xptr = xptr->next)
@@ -17299,8 +17452,11 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
       return ER_FAILED;
     }
 
-  /* Make sure reev data is initialized, or else it will crash later */
-  memset (reev_data, 0, sizeof (MVCC_UPDDEL_REEV_DATA));
+  /* start from the struct's empty state, so a field this function does not fill cannot carry over */
+  *reev_data = MVCC_UPDDEL_REEV_DATA ();
+
+  /* the value descriptor is bound on every path, including the one that carries no reevaluation class */
+  reev_data->vd = &xasl_state->vd;
 
   if (num_reev_classes == 0)
     {
@@ -17325,6 +17481,7 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
       cond_reev_class = &cond_reev_classes[idx];
       cond_reev_class->class_index = mvcc_reev_indexes[idx];
       OID_SET_NULL (&cond_reev_class->cls_oid);
+      HFID_SET_NULL (&cond_reev_class->cls_hfid);
       cond_reev_class->inst_oid = NULL;
       cond_reev_class->rest_attrs = NULL;
       cond_reev_class->rest_regu_list = NULL;
@@ -17365,7 +17522,6 @@ prepare_mvcc_reev_data (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * 
   reev_data->curr_attrinfo = NULL;
   reev_data->copyarea = NULL;
   reev_data->cons_pred = cons_pred;
-  reev_data->vd = &xasl_state->vd;
 
   if (qexec_create_mvcc_reev_assignments (thread_p, aptr, has_delete, internal_classes, num_classes, num_assigns,
 					  assigns, mvcc_reev_assigns) != NO_ERROR)
@@ -17434,6 +17590,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   int mvcc_reev_class_cnt = 0, mvcc_reev_class_idx = 0;
   bool scan_open = false;
   int should_delete = 0;
+  UPD_DEFERRED_ROWS deferred_rows;	/* rows the select wrote without their assignments */
+  bool reevaluates_at_force = false;	/* the select did not lock the rows: the force phase reevaluates them */
+  bool row_deferred;
   int current_op_type = SINGLE_ROW_UPDATE;
   PRUNING_CONTEXT *pcontext = NULL;
   DEL_LOB_INFO *del_lob_info_list = NULL;
@@ -17445,6 +17604,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   bool statement_ends_locks;
   LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* base_lock_policy, for the current class */
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
+  bool wait_pass = false, writes;
+  QEXEC_SETTLE_STATE settle (thread_p);
 
   /* remote UPDATE + local subquery sink: evaluate the local subqueries here and push the remote UPDATE via
    * CCI; this has no local class (num_classes == 0) so it must not enter the local update path below. */
@@ -17504,13 +17665,36 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       p_class_instance_lock_info = &class_instance_lock_info;
     }
 
+  if (aptr->type == BUILDLIST_PROC && p_class_instance_lock_info != NULL && mvcc_reev_assigns != NULL)
+    {
+      /* the force phase can compute the assignments again (prepare_mvcc_reev_data ()) */
+      aptr->proc.buildlist.upd_deferred_rows = &deferred_rows;
+    }
   error = qexec_execute_mainblock (thread_p, aptr, xasl_state, p_class_instance_lock_info);
+  if (aptr->type == BUILDLIST_PROC)
+    {
+      aptr->proc.buildlist.upd_deferred_rows = NULL;
+    }
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
   base_lock_policy = qexec_base_lock_policy (p_class_instance_lock_info);
+  reevaluates_at_force = (p_class_instance_lock_info != NULL && !p_class_instance_lock_info->instances_locked
+			  && mvcc_reev_assigns != NULL && aptr->spec_list != NULL
+			  && ACCESS_SPEC_IS_FLAGED (aptr->spec_list, ACCESS_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED)
+			  && !mvcc_is_mvcc_disabled_class (&p_class_instance_lock_info->class_oid));
+
+  if (!has_delete)
+    {
+      error = settle.start (base_lock_policy, p_class_instance_lock_info, update->classes, aptr->list_id->tuple_cnt);
+      if (error != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      wait_pass = settle.started;
+    }
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
    * type list. */
@@ -17545,6 +17729,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   specp = xasl->spec_list;
   /* force_select_lock = false */
   assert (xasl->scan_op_type == S_SELECT);
+  /* each pass over the list starts here: the wait pass of a settling statement, then its write pass */
+scan_targets:
   if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan,
 		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL, xasl,
 		       xasl->upd_del_class_cnt > 0) != NO_ERROR)
@@ -17581,9 +17767,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	    }
 	  tuple_cnt++;
 
+	  row_deferred = (!deferred_rows.oids.empty () && !DB_IS_NULL (s_id->val_list->valp->val)
+			  && deferred_rows.oids.count (*db_get_oid (s_id->val_list->valp->val)) > 0);
+
 	  /* evaluate constraint predicate */
 	  satisfies_constraints = V_UNKNOWN;
-	  if (update->cons_pred != NULL)
+	  if (update->cons_pred != NULL && !row_deferred)
 	    {
 	      satisfies_constraints = eval_pred (thread_p, update->cons_pred, &xasl_state->vd, NULL);
 	      if (satisfies_constraints == V_ERROR)
@@ -17592,11 +17781,17 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		}
 	    }
 
-	  if (update->cons_pred != NULL && satisfies_constraints != V_TRUE)
+	  if (update->cons_pred != NULL && !row_deferred && satisfies_constraints != V_TRUE)
 	    {
-	      /* currently there are only NOT NULL constraints */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
-	      GOTO_EXIT_ON_ERROR;
+	      if (!reevaluates_at_force)
+		{
+		  /* currently there are only NOT NULL constraints */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      /* computed from the version the snapshot sees: the force phase computes the row again from the last one
+	       * and checks NOT NULL there */
+	      row_deferred = true;
 	    }
 
 	  /* should delete? */
@@ -17646,7 +17841,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      upd_cls = &update->classes[class_oid_idx];
 	      internal_class = &internal_classes[class_oid_idx];
 
-	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+	      if (mvcc_reev_class_idx < mvcc_reev_class_cnt
+		  && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
 		{
 		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
 		}
@@ -17938,7 +18134,13 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		}
 	      if (rc != NO_ERROR)
 		{
-		  GOTO_EXIT_ON_ERROR;
+		  if (!reevaluates_at_force || !qexec_is_value_error (er_errid ()))
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  /* converted from the version the snapshot sees: the force phase converts the last version again */
+		  er_clear ();
+		  row_deferred = true;
 		}
 	    }
 
@@ -17951,9 +18153,17 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      internal_class = &internal_classes[class_oid_idx];
 	      upd_cls = &update->classes[class_oid_idx];
 
-	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+	      /* The classes are walked right to left here, so the reevaluation cursor walks down with them.  It
+	       * starts above them -- a class that appears only on the right-hand side of an assignment carries a
+	       * class_index past the last updated class -- so step it down to this class first.  Walking it up,
+	       * as this loop used to, matched the first class and then read past the array. */
+	      while (mvcc_reev_class_idx >= 0 && mvcc_reev_classes[mvcc_reev_class_idx].class_index > class_oid_idx)
 		{
-		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
+		  mvcc_reev_class_idx--;
+		}
+	      if (mvcc_reev_class_idx >= 0 && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+		{
+		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx--];
 		}
 	      else
 		{
@@ -17967,7 +18177,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		{
 		  continue;
 		}
-
 	      if (upd_cls->needs_pruning)
 		{
 		  pcontext = &internal_class->context;
@@ -17985,12 +18194,41 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      lock_policy =
 		qexec_make_lock_policy_transient (thread_p, base_lock_policy, statement_ends_locks, internal_class,
 						  internal_class->class_oid);
+	      mvcc_upddel_reev_data.must_recompute = row_deferred;
+	      mvcc_upddel_reev_data.recomputed = false;
+	      if (wait_pass)
+		{
+		  error =
+		    qexec_settle_row (thread_p, &settle, internal_class, &p_class_instance_lock_info->class_oid,
+				      &mvcc_reev_data, lock_policy, oid, upd_cls);
+		  mvcc_upddel_reev_data.must_recompute = false;
+		  if (error != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  continue;
+		}
+	      if (settle.started)
+		{
+		  /* the wait pass computed the assignments the select could not */
+		  mvcc_upddel_reev_data.must_recompute = false;
+		  error = qexec_next_settled_row (&settle, oid, internal_class, upd_cls, &writes);
+		  if (error != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  if (!writes)
+		    {
+		      continue;
+		    }
+		}
 	      error =
 		locator_attribute_info_force (thread_p, internal_class->class_hfid, oid, &internal_class->attr_info,
 					      &upd_cls->att_id[internal_class->subclass_idx * upd_cls->num_attrs],
 					      upd_cls->num_attrs, LC_FLUSH_UPDATE, op_type, internal_class->scan_cache,
 					      &force_count, false, repl_info, internal_class->needs_pruning, pcontext,
 					      NULL, &mvcc_reev_data, UPDATE_INPLACE_NONE, NULL, lock_policy);
+	      mvcc_upddel_reev_data.must_recompute = false;
 	      if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 		{
 		  error = NO_ERROR;
@@ -18035,6 +18273,25 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       GOTO_EXIT_ON_ERROR;
     }
 
+  if (wait_pass)
+    {
+      qexec_end_scan (thread_p, specp);
+      qexec_close_scan (thread_p, specp);
+      scan_open = false;
+      error =
+	locator_wait_for_child_writers (thread_p, &settle.key, settle.marked_rows.data (),
+					(int) settle.marked_rows.size (), &p_class_instance_lock_info->class_oid,
+					internal_classes[0].scan_cache, true);
+      if (error != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      wait_pass = false;
+      base_lock_policy = LOCATOR_LOCK_AT_SELECT;
+      /* the write pass */
+      goto scan_targets;
+    }
+
   for (s = 0; s < class_oid_cnt; s++)
     {
       internal_class = &internal_classes[s];
@@ -18056,6 +18313,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	    }
 	}
     }
+
+  assert (settle.next == settle.rows.size ());
 
   /* Later writers wait on our MVCCID self-lock, so the row locks can end here unless our stamp can go before commit */
   lock_transient_scope_end (thread_p, locator_statement_ends_row_locks (thread_p, STMT_ROW_CHANGE_UNCOMMITTED));
@@ -18328,6 +18587,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   bool statement_ends_locks;
   LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* base_lock_policy, for the current class */
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
+  bool wait_pass = false, writes;
+  QEXEC_SETTLE_STATE settle (thread_p);
 
   /* remote DELETE + local subquery sink: evaluate the WHERE subquery locally and push one remote
    * DELETE per value via CCI; this has no local class (num_classes == 0) so it must not enter the local delete
@@ -18398,6 +18659,13 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   /* At force with no reevaluation class there is no predicate to re-check (pt_to_delete_xasl () keeps the
    * select-phase lock when it cannot replay one), so a changed version is deleted, not skipped. */
 
+  error = settle.start (base_lock_policy, p_class_instance_lock_info, NULL, aptr->list_id->tuple_cnt);
+  if (error != NO_ERROR)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
+  wait_pass = settle.started;
+
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
    * type list. */
   if ((qexec_setup_list_id (thread_p, xasl) != NO_ERROR)
@@ -18430,6 +18698,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   specp = xasl->spec_list;
   assert (xasl->scan_op_type == S_SELECT);
+  /* each pass over the list starts here: the wait pass of a settling statement, then its write pass */
+scan_targets:
   /* force_select_lock = false */
   if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan, specp->grouped_scan,
 		       true, &specp->s_id, xasl_state->query_id, S_SELECT, false, NULL, xasl,
@@ -18479,6 +18749,13 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  continue;
 		}
 	      oid = db_get_oid (valp);
+
+	      if (mvcc_reev_class != NULL)
+		{
+		  /* this class's own row, the way the UPDATE path binds it.  Binding it later, from the
+		   * loop over the classes being deleted, would hand every entry the target's OID. */
+		  mvcc_reev_class->inst_oid = oid;
+		}
 
 	      /* class OID */
 	      valp = val_list->next->val;
@@ -18567,7 +18844,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		qexec_make_lock_policy_transient (thread_p, base_lock_policy, statement_ends_locks, internal_class,
 						  class_oid);
 
-	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
+	      if (mvcc_reev_class_idx < mvcc_reev_class_cnt
+		  && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
 		{
 		  mvcc_reev_class = &mvcc_reev_classes[mvcc_reev_class_idx++];
 		}
@@ -18576,10 +18854,34 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  mvcc_reev_class = NULL;
 		}
 	      mvcc_upddel_reev_data.curr_upddel = mvcc_reev_class;
+	      /* inst_oid was bound per class while scanning; do not overwrite it with the target's */
 
 	      if (oid == NULL)
 		{
 		  continue;
+		}
+	      if (wait_pass)
+		{
+		  error =
+		    qexec_settle_row (thread_p, &settle, internal_class, &p_class_instance_lock_info->class_oid,
+				      &mvcc_reev_data, lock_policy, oid, NULL);
+		  if (error != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  continue;
+		}
+	      if (settle.started)
+		{
+		  error = qexec_next_settled_row (&settle, oid, internal_class, NULL, &writes);
+		  if (error != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  if (!writes)
+		    {
+		      continue;
+		    }
 		}
 
 	      if (internal_class->crt_del_lob_info)
@@ -18650,7 +18952,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 	    }
 
-	  while (val_list)
+	  while (!wait_pass && val_list)
 	    {
 	      valp = val_list->val;
 	      if (!db_value_is_null (valp))
@@ -18684,6 +18986,25 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       GOTO_EXIT_ON_ERROR;
     }
 
+  if (wait_pass)
+    {
+      qexec_end_scan (thread_p, specp);
+      qexec_close_scan (thread_p, specp);
+      scan_open = false;
+      error =
+	locator_wait_for_child_writers (thread_p, &settle.key, settle.marked_rows.data (),
+					(int) settle.marked_rows.size (), &p_class_instance_lock_info->class_oid,
+					internal_classes[0].scan_cache, false);
+      if (error != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      wait_pass = false;
+      base_lock_policy = LOCATOR_LOCK_AT_SELECT;
+      /* the write pass */
+      goto scan_targets;
+    }
+
   /* reflect local statistical information into transaction's statistical information */
   for (s = 0; s < class_oid_cnt; s++)
     {
@@ -18702,6 +19023,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  GOTO_EXIT_ON_ERROR;
 	}
     }
+
+  assert (settle.next == settle.rows.size ());
 
   /* As in qexec_execute_update (); the prepare record carries our MVCCID self-lock across 2PC. */
   lock_transient_scope_end (thread_p, locator_statement_ends_row_locks (thread_p, STMT_ROW_CHANGE_UNCOMMITTED));
@@ -18794,6 +19117,185 @@ exit_on_error:
     }
 
   return ER_FAILED;
+}
+
+/*
+ * qexec_settle_state::start () - decide whether a DELETE or UPDATE settles its rows before it writes any
+ *
+ * return: NO_ERROR or error code
+ *   lock_info(in): the statement's one target class, NULL for more
+ *   upd_cls(in): an UPDATE's class, NULL for a DELETE
+ *
+ * Note: started when a foreign key refers to the class's primary key and the statement deletes or assigns it.
+ *	 A delete-marked key and the children its actions lock make other writers wait on the statement. Locking row
+ *	 by row, it would wait on the writer of a later row holding them, so it settles every row and waits out the
+ *	 children's writers first. A single row holds nothing while it waits and stays on the force path.
+ */
+// *INDENT-OFF*
+qexec_settle_state::qexec_settle_state (THREAD_ENTRY *thread_p)
+  : thread_p (thread_p)
+  , rows (cubmem::private_allocator<int> (thread_p))
+  , values (cubmem::private_allocator<DB_VALUE> (thread_p))
+  , marked_rows (cubmem::private_allocator<OID> (thread_p))
+{
+}
+
+qexec_settle_state::~qexec_settle_state ()
+{
+  for (DB_VALUE &value : values)
+    {
+      pr_clear_value (&value);
+    }
+  if (started)
+    {
+      locator_end_referenced_key (thread_p, &key);
+    }
+}
+
+int
+qexec_settle_state::start (LOCATOR_LOCK_POLICY base_lock_policy, UPDDEL_CLASS_INSTANCE_LOCK_INFO *lock_info,
+			   UPDDEL_CLASS_INFO *upd_cls, INT64 tuple_cnt)
+{
+  int error;
+
+  if (base_lock_policy != LOCATOR_LOCK_AT_FORCE || lock_info == NULL || tuple_cnt <= 1
+      || mvcc_is_mvcc_disabled_class (&lock_info->class_oid))
+    {
+      return NO_ERROR;
+    }
+  error = locator_start_referenced_key (thread_p, &lock_info->class_oid, upd_cls != NULL ? upd_cls->att_id : NULL,
+					upd_cls != NULL ? upd_cls->num_attrs : 0, &key);
+  if (error != NO_ERROR || key.pk_i < 0)
+    {
+      locator_end_referenced_key (thread_p, &key);
+      return error;
+    }
+  started = true;
+  rows.reserve (tuple_cnt);
+  return NO_ERROR;
+}
+// *INDENT-ON*
+
+/*
+ * qexec_settle_row () - lock, settle and reevaluate a row in the wait pass
+ *
+ * return: NO_ERROR or error code
+ *   upd_cls(in): an UPDATE's class, NULL for a DELETE
+ *
+ * Note: settle->rows gets -1 when the row is not written, 0 when it is written with the select's values, k > 0 when
+ *	 with the k-th set of values (settle->values, upd_cls->num_attrs each) computed again here. The write pass needs
+ *	 them: an action of the statement may change the row before it is written, and the row is then the
+ *	 statement's own version, which reevaluates nothing.
+ */
+static int
+qexec_settle_row (THREAD_ENTRY * thread_p, QEXEC_SETTLE_STATE * settle, UPDDEL_CLASS_INFO_INTERNAL * internal_class,
+		  const OID * class_oid, MVCC_REEV_DATA * mvcc_reev_data, LOCATOR_LOCK_POLICY lock_policy, OID * oid,
+		  UPDDEL_CLASS_INFO * upd_cls)
+{
+  MVCC_UPDDEL_REEV_DATA *upddel = mvcc_reev_data->upddel_reev_data;
+  HEAP_ATTRVALUE *value;
+  RECDES recdes = RECDES_INITIALIZER;
+  OID locked_class_oid;
+  SCAN_CODE scan;
+  bool marked = true;
+  int i, error;
+
+  settle->rows.push_back (-1);
+
+  /* as locator_attribute_info_force () does: recompute from a COPY, which unconverted values may point into */
+  COPY_OID (&locked_class_oid, class_oid);
+  upddel->caller_builds_record = (upd_cls != NULL);
+  scan =
+    locator_lock_and_get_object_with_evaluation (thread_p, oid, &locked_class_oid, upd_cls != NULL ? &recdes : NULL,
+						 internal_class->scan_cache, upd_cls != NULL ? COPY : PEEK, NULL_CHN,
+						 mvcc_reev_data, LOG_WARNING_IF_DELETED,
+						 LOCATOR_LOCK_IS_TRANSIENT (lock_policy), true,
+						 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+  upddel->caller_builds_record = false;
+  if (scan == S_DOESNT_EXIST)
+    {
+      return NO_ERROR;
+    }
+  if (scan != S_SUCCESS)
+    {
+      error = er_errid ();
+      if (error == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  er_clear ();
+	  return NO_ERROR;
+	}
+      return (error == NO_ERROR) ? ER_FAILED : error;
+    }
+  /* locator_lock_and_get_object_with_evaluation () unlocked a row it rejected */
+  if (mvcc_reev_data->filter_result != V_TRUE)
+    {
+      return NO_ERROR;
+    }
+
+  if (upd_cls != NULL)
+    {
+      error = locator_key_changes (thread_p, &settle->key, oid, &recdes, &internal_class->attr_info, &marked);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  if (marked)
+    {
+      settle->marked_rows.push_back (*oid);
+    }
+
+  settle->rows.back () = 0;
+  if (upd_cls != NULL && upddel->recomputed)
+    {
+      for (i = 0; i < upd_cls->num_attrs; i++)
+	{
+	  value = heap_attrvalue_locate (upd_cls->att_id[i], &internal_class->attr_info);
+	  if (value == NULL || value->state != HEAP_WRITTEN_ATTRVALUE)
+	    {
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return ER_GENERIC_ERROR;
+	    }
+	  settle->values.emplace_back ();
+	  error = pr_clone_value (&value->dbvalue, &settle->values.back ());
+	  if (error != NO_ERROR)
+	    {
+	      db_make_null (&settle->values.back ());
+	      return error;
+	    }
+	}
+      settle->rows.back () = (int) (settle->values.size () / upd_cls->num_attrs);
+    }
+  return NO_ERROR;
+}
+
+/*
+ * qexec_next_settled_row () - the wait pass's verdict on the next row, with the values it computed put back
+ *
+ * return: NO_ERROR or error code
+ *   writes(out): the row is written
+ */
+static int
+qexec_next_settled_row (QEXEC_SETTLE_STATE * settle, OID * oid, UPDDEL_CLASS_INFO_INTERNAL * internal_class,
+			UPDDEL_CLASS_INFO * upd_cls, bool * writes)
+{
+  int kept, i, error;
+
+  assert (settle->next < settle->rows.size ());
+  kept = settle->rows[settle->next++];
+  *writes = (kept >= 0);
+  for (i = 0; kept > 0 && i < upd_cls->num_attrs; i++)
+    {
+      error =
+	heap_attrinfo_set (oid, upd_cls->att_id[i], &settle->values[(kept - 1) * upd_cls->num_attrs + i],
+			   &internal_class->attr_info);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -34698,7 +35200,7 @@ qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * scan_list
     {
       for (specp = scan->spec_list; specp; specp = specp->next)
 	{
-	  if (specp->type == TARGET_CLASS && ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FOR_UPDATE))
+	  if (specp->type == TARGET_CLASS && qexec_spec_is_for_update (thread_p, specp))
 	    {
 	      /* lock the class */
 	      if (lock_object (thread_p, &ACCESS_SPEC_CLS_OID (specp), oid_Root_class_oid, class_lock, LK_UNCOND_LOCK)
@@ -36485,11 +36987,23 @@ qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 
   if (curr_spec == NULL)
     {
-      return ER_FAILED;
+      /* The plan does not scan this class with a spec of its own, so there are no filters to re-evaluate
+       * with.  A statement shaped that way is meant to keep its select-phase locks and carry no
+       * reevaluation class at all -- pt_upd_del_reevaluates_at_force () turns away a derived table, a
+       * spec below a subquery, a class hierarchy and a partitioned class -- so getting
+       * here means a shape slipped past them.  Fail the statement and say so: the other answers are to
+       * modify a version the predicate never saw, or to skip it without a word. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
     }
 
   mvcc_reev_class->init (curr_spec->s_id);
   mvcc_reev_class->cls_oid = *class_oid;
+  if (heap_get_class_hfid (thread_p, class_oid, &mvcc_reev_class->cls_hfid, NULL) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
 
   return NO_ERROR;
 }
@@ -36535,6 +37049,28 @@ qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p)
   (void) lock_transient_scope_start (thread_p);
 
   return locator_statement_ends_row_locks (thread_p, STMT_ROW_CHANGE_UNCOMMITTED);
+}
+
+/*
+ * qexec_spec_is_for_update () - Does the scan of this spec lock its rows at select, as FOR UPDATE does?
+ *   return: true for a FOR UPDATE spec, and for a DML target left to the force-phase reevaluation when that does not
+ *	     run: above READ COMMITTED, where the force phase reports a serialization conflict for a row changed after
+ *	     the snapshot, and with mvcc_reevaluate_at_force off.  The row is then locked at select as before, and the
+ *	     other writer waits.  Both are read here, not when the plan is made, since one cached plan serves every
+ *	     session.
+ *   thread_p(in):
+ *   spec(in):
+ */
+static bool
+qexec_spec_is_for_update (THREAD_ENTRY * thread_p, const ACCESS_SPEC_TYPE * spec)
+{
+  if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE))
+    {
+      return true;
+    }
+  return (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED)
+	  && (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
+	      || !prm_get_bool_value (PRM_ID_MVCC_REEVALUATE_AT_FORCE)));
 }
 
 /*
