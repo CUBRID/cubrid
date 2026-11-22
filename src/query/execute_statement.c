@@ -7695,7 +7695,8 @@ block_declares_record (const char *block, const char *name)
  * Note:
  *    The procedure takes the shape of its stored code, which the owner change compiles again.
  *    So both compilations report an error at the same line.
- *    The block starts at the sixth line when a correlation name is declared, or at the third.
+ *    The declarations, BEGIN and the assignments are on the second line.
+ *    So the block starts at the third.
  *    A correlation name is a record declared from a cursor that selects a NULL of each column type.
  *    So the procedure reads no table and needs no privilege on the class.
  *    The names made here carry the prefix of the procedure.
@@ -7769,7 +7770,6 @@ make_block_procedure_sql (PARSER_CONTEXT * parser, const char *quoted_name, cons
 	}
       sql = append_block_text (parser, sql, "; ");
     }
-  sql = append_block_text (parser, sql, "\n");
 
   /* obj [__trsp_c_obj]%ROWTYPE; new [__trsp_c_new]%ROWTYPE; */
   for (i = 0; i < n_names; i++)
@@ -7779,7 +7779,7 @@ make_block_procedure_sql (PARSER_CONTEXT * parser, const char *quoted_name, cons
       sql = append_block_text (parser, sql, names[i]);
       sql = append_block_text (parser, sql, "]%ROWTYPE; ");
     }
-  sql = append_block_text (parser, sql, "\nBEGIN\n");
+  sql = append_block_text (parser, sql, "BEGIN ");
 
   /* obj.[c1] := [__trsp_obj__c1]; obj.[c2] := [__trsp_obj__c2]; new.[c1] := ... */
   for (i = 0; i < n_names; i++)
