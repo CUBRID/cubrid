@@ -334,9 +334,9 @@ static bool logpb_check_if_exists (const char *fname, char *first_vol);
 #if defined(SERVER_MODE)
 static void logpb_set_backup_info_in_header (LOG_HEADER * log_hdr, FILEIO_BACKUP_LEVEL backup_level,
 					     INT64 bkup_attime, const LOG_LSA * chkpt_lsa);
+#endif /* SERVER_MODE */
 static int logpb_backup_needed_archive_logs (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session,
 					     int first_arv_num, int last_arv_num);
-#endif /* SERVER_MODE */
 static bool logpb_remote_ask_user_before_delete_volumes (THREAD_ENTRY * thread_p, const char *volpath);
 static int logpb_initialize_flush_info (void);
 static void logpb_finalize_flush_info (void);
@@ -8256,10 +8256,10 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   char bkpath_without_units[PATH_MAX] = { 0, };
   const char *db_nopath_name_p;
   int keys_vdes = NULL_VOLDES;
-#if defined(SERVER_MODE)
   int first_arv_needed = -1;	/* for self contained, consistent */
   int last_arv_needed = -1;	/* last archive of the frozen set */
 
+#if defined(SERVER_MODE)
   int rv;
   time_t wait_checkpoint_begin_time;
   bool print_backupdb_waiting_reason = false;
@@ -8748,45 +8748,65 @@ loop:
     {
       first_arv_needed = log_Gl.hdr.nxarv_num;
     }
+#endif /* SERVER_MODE */
 
-  vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
-  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld\n", vacuum_first_pageid);
-
-  if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
-      int min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
-
-      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d\n",
-		     min_arv_required_for_vacuum);
-
-      if (min_arv_required_for_vacuum >= 0)
+      /* Vacuum data is not loaded and archives are not removed while vacuum is disabled, so the log that vacuum still
+       * has to process, once enabled again, can be in any archive that is left. Keep them all. Stand-alone mode
+       * does not vacuum everything at boot either in this case, so its backup needs them too. */
+      if (first_arv_needed < 0 || first_arv_needed > log_Gl.hdr.last_deleted_arv_num + 1)
 	{
-	  if (first_arv_needed >= 0)
+	  first_arv_needed = log_Gl.hdr.last_deleted_arv_num + 1;
+	}
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "Vacuum is disabled. First archive needed for backup is %d\n",
+		     first_arv_needed);
+    }
+#if defined(SERVER_MODE)
+  else
+    {
+      vacuum_first_pageid = vacuum_min_log_pageid_to_keep (thread_p);
+      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First log pageid in vacuum data is %lld\n", vacuum_first_pageid);
+
+      if (vacuum_first_pageid != NULL_PAGEID && logpb_is_page_in_archive (vacuum_first_pageid))
+	{
+	  int min_arv_required_for_vacuum = logpb_get_archive_number (thread_p, vacuum_first_pageid);
+
+	  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive number used for vacuum is %d\n",
+			 min_arv_required_for_vacuum);
+
+	  if (min_arv_required_for_vacuum >= 0)
 	    {
-	      first_arv_needed = MIN (first_arv_needed, min_arv_required_for_vacuum);
+	      if (first_arv_needed >= 0)
+		{
+		  first_arv_needed = MIN (first_arv_needed, min_arv_required_for_vacuum);
+		}
+	      else
+		{
+		  first_arv_needed = min_arv_required_for_vacuum;
+		}
 	    }
 	  else
 	    {
-	      first_arv_needed = min_arv_required_for_vacuum;
+	      /* Page should be in archive. */
+	      assert (false);
 	    }
-	}
-      else
-	{
-	  /* Page should be in archive. */
-	  assert (false);
-	}
 
-      vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive needed for backup is %d\n", first_arv_needed);
+	  vacuum_er_log (VACUUM_ER_LOG_ARCHIVES, "First archive needed for backup is %d\n", first_arv_needed);
+	}
     }
+#endif /* SERVER_MODE */
 
-  if (first_arv_needed < log_Gl.hdr.nxarv_num)
+  if (first_arv_needed >= 0 && first_arv_needed < log_Gl.hdr.nxarv_num)
     {
       /* Freeze the archive set and pin it against removal. It is transferred after the critical section is
-       * released; an archive never changes once nxarv_num has passed it, so the pin is all it needs. */
+       * released; an archive never changes once nxarv_num has passed it, so the pin is all it needs. Stand-alone mode
+       * removes no archive while it backs up and needs no pin. */
       last_arv_needed = log_Gl.hdr.nxarv_num - 1;
+#if defined(SERVER_MODE)
       log_Gl.backup_first_arv_num_needed = first_arv_needed;
+#endif /* SERVER_MODE */
     }
-#endif
 
   if (fileio_is_volume_exist (log_Name_info) == true)
     {
@@ -8848,7 +8868,6 @@ loop:
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 
-#if defined(SERVER_MODE)
   if (first_arv_needed >= 0 && first_arv_needed <= last_arv_needed)
     {
       /* Once per backup: the only trace of a phase that ER_LOG_BACKUP_CS_ENTER and _EXIT no longer bracket. */
@@ -8864,7 +8883,6 @@ loop:
 
       _er_log_debug (ARG_FILE_LINE, "Backup of log archives %d to %d finished", first_arv_needed, last_arv_needed);
     }
-#endif
 
   if (fileio_finish_backup (thread_p, &session) == NULL)
     {
@@ -11454,7 +11472,6 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_fl
     }
 }
 
-#if defined(SERVER_MODE)
 /*
  * logpb_backup_needed_archive_logs - Backup active log archives
  *
@@ -11491,14 +11508,15 @@ logpb_backup_needed_archive_logs (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 
       /* Archive i is in the backup now. The pin must move as we go: holding the whole range while streaming to a
        * slow destination stops removal long enough to fill the log volume, which takes the server down. */
+#if defined(SERVER_MODE)
       LOG_CS_ENTER (thread_p);
       log_Gl.backup_first_arv_num_needed = (i == last_arv_num) ? -1 : i + 1;
       LOG_CS_EXIT (thread_p);
+#endif /* SERVER_MODE */
     }
 
   return error_code;
 }
-#endif /* SERVER_MODE */
 
 /*
  * logpb_remote_ask_user_before_delete_volumes - Remote prompt before arv deletion
