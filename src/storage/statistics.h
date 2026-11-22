@@ -124,8 +124,10 @@ struct hist_stats
 				 * kept in attribute order after schema updates */
   DB_VALUE **histogram;		/* column histogram , null if not exists */
   double *null_frequency;	/* column null frequency , 0 if not exists */
-  unsigned int stats_time_stamp;	/* time_stamp of the class statistics when read; 0 if there were none */
+  unsigned int class_stats_time_stamp;	/* STATS_CLASS_TIME_STAMP () of the class statistics it was read with */
 };
+
+#define STATS_CLASS_TIME_STAMP(stats) ((stats) != NULL ? (stats)->time_stamp : 0)
 
 /* Statistical Information about the attribute NDV */
 typedef struct attr_ndv ATTR_NDV;

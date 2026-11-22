@@ -4049,7 +4049,6 @@ sm_get_class_with_statistics (MOP classop)
 {
   SM_CLASS *class_ = NULL;
   int is_class = 0;
-  unsigned int stats_time_stamp;
 
   /* only try to get statistics if we know the class has been flushed if it has a temporary oid, it isn't flushed and
    * there are no statistics */
@@ -4111,12 +4110,10 @@ sm_get_class_with_statistics (MOP classop)
 	}
     }
 
-  /* get the histogram of the class, again when it was read with other class statistics than these */
-  stats_time_stamp = (class_->stats != NULL) ? class_->stats->time_stamp : 0;
-  if (class_->histogram != NULL && class_->histogram->stats_time_stamp != stats_time_stamp)
+  /* a cached histogram is valid only with the class statistics it was read with */
+  if (class_->histogram != NULL && class_->histogram->class_stats_time_stamp != STATS_CLASS_TIME_STAMP (class_->stats))
     {
-      stats_free_histogram_and_init (class_->histogram);
-      class_->histogram = NULL;
+      stats_free_histogram_and_init_and_set_null (class_->histogram);
     }
   if (class_->histogram == NULL)
     {
@@ -15592,7 +15589,7 @@ sm_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool wit
   if (error == ER_BTREE_UNIQUE_FAILED)
     {
       /* Another session inserted this column's row while we were inserting ours.  The existence
-       * check above reads under a snapshot of the request and takes no lock (CBRD-27369), so it
+       * check above reads under a catalog read snapshot and takes no lock (CBRD-27369), so it
        * cannot see a concurrent uncommitted insert -- this unique violation is the only place
        * that race shows, and any two sessions first-collecting the same column reach it.  The
        * unique insert waits for the other transaction, so by the time this error comes back that

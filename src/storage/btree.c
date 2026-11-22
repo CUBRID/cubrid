@@ -30138,11 +30138,11 @@ btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION
 	    }
 	  else if (oid_check_cached_class_oid (OID_CACHE_HISTOGRAM_CLASS_ID, class_oid))
 	    {
-	      /* the optimizer reads _db_histogram (stats_get_histogram ()) without waiting for an uncommitted UPDATE
-	       * STATISTICS. One snapshot of this request judges every version of a row alike; the transaction snapshot
-	       * is left unbuilt (see need_skip_mvcc_snapshot). Writers that lock the row use S_SELECT_WITH_LOCK or
-	       * S_UPDATE. */
+	      /* _db_histogram is read without waiting for an uncommitted UPDATE STATISTICS: no lock, and one catalog
+	       * read snapshot judges every version of the row at the same point in time; the transaction snapshot is
+	       * not built here (see need_skip_mvcc_snapshot) */
 	      find_unique_helper.snapshot = logtb_get_catalog_read_snapshot (thread_p, &catalog_read_snapshot);
+	      assert (find_unique_helper.snapshot != NULL);
 	      key_function = btree_key_find_unique_version_oid;
 	      find_unique_helper.lock_mode = NULL_LOCK;
 	    }

@@ -2545,6 +2545,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 
     case LC_FETCH_CATALOG_VERSION:
       mvcc_snapshot = logtb_get_catalog_read_snapshot (thread_p, &mvcc_snapshot_catalog);
+      assert (mvcc_snapshot != NULL);
       break;
 
     case LC_FETCH_CURRENT_VERSION:

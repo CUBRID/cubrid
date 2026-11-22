@@ -249,7 +249,7 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
       /* The entry existed when the statement checked it (sm_add_histogram ()), and the scan has
        * already produced this column's histogram -- a concurrent DROP HISTOGRAM committed in
        * between and removed the row.  The existence check takes no lock (CBRD-27369) and reads under
-       * a snapshot of the request, so it could not see that DROP while it was uncommitted.  Returning success
+       * a catalog read snapshot, so it could not see that DROP while it was uncommitted.  Returning success
        * here would leave the statement reporting a collection it never stored, so put the entry
        * back and write into it.  The bucket count is not part of the row (smt_add_histogram ()
        * stores class_of, key_attr, with_fullscan, null_frequency and the blob), hence -1. */
@@ -2633,10 +2633,9 @@ db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
  *
  * Note: db_get_histogram () S-locks the row it finds, so while an UPDATE STATISTICS holds the class's _db_histogram
  *   rows X-locked until it commits, every query compile on that class would wait behind it. This reads the row
- *   without a lock, under a snapshot of each request, and leaves the transaction's MVCC snapshot alone
- *   (obj_find_multi_attr_catalog ()). Writers take the row X right at the lookup (db_find_multi_unique_for_update ()),
- *   and the existence check reads unlocked (db_find_multi_unique_catalog ()); db_get_histogram () is left to
- *   ;info histogram and the DDL paths.
+ *   without a lock, under a catalog read snapshot (obj_find_multi_attr_catalog ()). Writers take the row X right at
+ *   the lookup (db_find_multi_unique_for_update ()), and the existence check reads unlocked
+ *   (db_find_multi_unique_catalog ()); db_get_histogram () is left to ;info histogram and the DDL paths.
  */
 int
 db_get_histogram_for_optimizer (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
@@ -2707,7 +2706,7 @@ stats_get_histogram (MOP classop, HIST_STATS **histogram)
   memset (*histogram, 0, sizeof (HIST_STATS));
 
   (*histogram)->n_attrs = attr_count;
-  (*histogram)->stats_time_stamp = (class_->stats != NULL) ? class_->stats->time_stamp : 0;
+  (*histogram)->class_stats_time_stamp = STATS_CLASS_TIME_STAMP (class_->stats);
   if (attr_count == 0)
     {
       (*histogram)->histogram = NULL;
@@ -2763,7 +2762,7 @@ stats_get_histogram (MOP classop, HIST_STATS **histogram)
       const char *attname = (char *) att->header.name;
       DB_VALUE *histogram_value = NULL;
       DB_VALUE null_frequency_value;
-      /* unlocked, under a snapshot of the request: must not wait on a concurrent UPDATE STATISTICS (CBRD-27369) */
+      /* unlocked: must not wait on a concurrent UPDATE STATISTICS (CBRD-27369) */
       error = db_get_histogram_for_optimizer (classop, attname, &histogram_obj);
 
       if (*histogram == NULL || (*histogram)->histogram == NULL || (*histogram)->null_frequency == NULL)
