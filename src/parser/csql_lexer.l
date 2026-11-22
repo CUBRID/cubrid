@@ -111,6 +111,7 @@ int msg_ptr;
 int yybuffer_pos;
 int is_dblink_query_string = 0;
 int expecting_pl_lang_spec = 0;
+int expecting_trigger_plcsql_block = 0;
 
 /* TODO: 
  * For now, I've set it to ignore warnings in the automatically generated code. 
@@ -208,7 +209,17 @@ IDL       [a-zA-Z0-9_]
 [aA][uU][tT][hH][iI][dD]						{ csql_yylval.cptr = pt_makename(yytext);
                                                                           return AUTHID; }
 [bB][eE][fF][oO][rR][eE]						{ return BEFORE; }
-[bB][eE][gG][iI][nN]							{ return BEGIN_; }
+[bB][eE][gG][iI][nN]							{
+                                                                          if (expecting_trigger_plcsql_block) {
+                                                                                /* reread it as PL/CSQL text */
+                                                                                expecting_trigger_plcsql_block = 0;
+                                                                                BEGIN(PLCSQL_TEXT);
+                                                                                init_plcsql_lexing();
+                                                                                CSQL_YY_LESS(0);
+                                                                          } else {
+                                                                                return BEGIN_;
+                                                                          }
+                                                                        }
 [bB][eE][nN][cC][hH][mM][aA][rR][kK]					{ csql_yylval.cptr = pt_makename(yytext);
                                                                           return BENCHMARK; }
 [bB][eE][tT][wW][eE][eE][nN]						{ return BETWEEN; }
@@ -327,7 +338,17 @@ IDL       [a-zA-Z0-9_]
 [dD][eE][aA][lL][lL][oO][cC][aA][tT][eE]				{ return DEALLOCATE; }
 [dD][eE][cC]								{ return NUMERIC; }
 [dD][eE][cC][iI][mM][aA][lL]						{ return NUMERIC; }
-[dD][eE][cC][lL][aA][rR][eE]						{ return DECLARE; }
+[dD][eE][cC][lL][aA][rR][eE]						{
+                                                                          if (expecting_trigger_plcsql_block) {
+                                                                                /* reread it as PL/CSQL text */
+                                                                                expecting_trigger_plcsql_block = 0;
+                                                                                BEGIN(PLCSQL_TEXT);
+                                                                                init_plcsql_lexing();
+                                                                                CSQL_YY_LESS(0);
+                                                                          } else {
+                                                                                return DECLARE;
+                                                                          }
+                                                                        }
 [dD][eE][cC][rR][eE][mM][eE][nN][tT]					{ csql_yylval.cptr = pt_makename(yytext);
 									  return DECREMENT; }
 [dD][eE][dD][uU][pP][lL][iI][cC][aA][tT][eE] 	                        { csql_yylval.cptr = pt_makename(yytext);
@@ -393,6 +414,10 @@ IDL       [a-zA-Z0-9_]
 									  return FIRST_VALUE; }
 [fF][oO][rR][cC][eE]							{ csql_yylval.cptr = pt_makename(yytext);
                                                                           return FORCE; }
+[fF][oO][rR][cC][eE][_][iI][nN][lL][iI][nN][eE]				{ csql_yylval.cptr = pt_makename(yytext);
+									  return FORCE_INLINE; }
+[fF][oO][rR][cC][eE][_][oO][uU][tT][lL][iI][nN][eE]			{ csql_yylval.cptr = pt_makename(yytext);
+									  return FORCE_OUTLINE; }
 [fF][oO][rR][eE][iI][gG][nN]						{ return FOREIGN; }
 [fF][oO][uU][nN][dD]							{ return FOUND; }
 [fF][rR][oO][mM]							{ return FROM; }
@@ -669,6 +694,8 @@ IDL       [a-zA-Z0-9_]
 [oO][nN][lL][iI][nN][eE]						{ csql_yylval.cptr = pt_makename(yytext);
                                                                           return ONLINE; }
 [oO][nN][lL][yY]							{ return ONLY; }
+[oO][oO][sS]								{ csql_yylval.cptr = pt_makename(yytext);
+									  return OOS; }
 [oO][pP][eE][nN]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return OPEN; }
 [oO][pP][tT][iI][mM][iI][zZ][aA][tT][iI][oO][nN]			{ return OPTIMIZATION; }
@@ -716,6 +743,10 @@ IDL       [a-zA-Z0-9_]
 									  return PORT; }
 [pP][oO][sS][iI][tT][iI][oO][nN]					{ return POSITION; }
 [pP][rR][eE][cC][iI][sS][iI][oO][nN]					{ return PRECISION; }
+[pP][rR][eE][fF][eE][rR][_][iI][nN][lL][iI][nN][eE]			{ csql_yylval.cptr = pt_makename(yytext);
+										  return PREFER_INLINE; }
+[pP][rR][eE][fF][eE][rR][_][oO][uU][tT][lL][iI][nN][eE]			{ csql_yylval.cptr = pt_makename(yytext);
+										  return PREFER_OUTLINE; }
 [pP][rR][eE][pP][aA][rR][eE]						{ return PREPARE; }
 [pP][rR][eE][sS][eE][rR][vV][eE]					{ return PRESERVE; }
 [pP][rR][iI][mM][aA][rR][yY]						{ return PRIMARY; }
@@ -868,6 +899,8 @@ IDL       [a-zA-Z0-9_]
 									  return STDDEV_POP; }
 [sS][tT][dD][dD][eE][vV][_][sS][aA][mM][pP]				{ csql_yylval.cptr = pt_makename(yytext);
 									  return STDDEV_SAMP; }
+[sS][tT][oO][rR][aA][gG][eE]						{ csql_yylval.cptr = pt_makename(yytext);
+									  return STORAGE; }
 [sS][tT][rR][_][tT][oO][_][dD][aA][tT][eE]				{ csql_yylval.cptr = pt_makename(yytext);
 									  return STR_TO_DATE; }
 [sS][uU][bB][cC][lL][aA][sS][sS]					{ return SUBCLASS; }

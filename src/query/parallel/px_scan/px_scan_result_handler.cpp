@@ -327,8 +327,6 @@ namespace parallel_scan
 	      }
 	    tl.agg_hash_state = HS_ACCEPT_ALL;
 	    qdata_link_shared_accumulators (curr_xasl->proc.buildlist.g_agg_list, vd);
-	    /* the worker's partial list is written at its finalize: it takes its domains as the leader's does */
-	    qexec_setup_hash_aggregate_lists (&curr_xasl->proc.buildlist);
 	  }
 	if (m_.gby_skip)
 	  {
@@ -2240,8 +2238,10 @@ namespace parallel_scan
 	    continue;
 	  }
 
+	/* interpolation funcs must cast the value to the function domain first, so accumulate_node handles them */
 	if (agg_node->option == Q_DISTINCT
-	    && agg_node->function != PT_MIN && agg_node->function != PT_MAX)
+	    && agg_node->function != PT_MIN && agg_node->function != PT_MAX
+	    && !QPROC_IS_INTERPOLATION_FUNC (agg_node))
 	  {
 	    /* DISTINCT inserts only the first operand (the aggregated value) into the
 	     * distinct list file. Additional operands (e.g. the GROUP_CONCAT separator)

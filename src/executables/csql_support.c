@@ -83,7 +83,9 @@ typedef enum csql_statement_substate
   CSQL_SUBSTATE_PL_LANG_SPEC,
   CSQL_SUBSTATE_SEEN_LANGUAGE,
   CSQL_SUBSTATE_PLCSQL_TEXT,
-  CSQL_SUBSTATE_SEEN_END
+  CSQL_SUBSTATE_SEEN_END,
+  CSQL_SUBSTATE_SEEN_TRIGGER,
+  CSQL_SUBSTATE_TRIGGER_EXECUTE
 } CSQL_STATEMENT_SUBSTATE;
 
 /* editor buffer management */
@@ -103,10 +105,13 @@ typedef struct
   int *skipped_lines;		/* line_count when each input line was skipped (session commands) */
   int skipped_count;
   int skipped_alloc;
+  // a line longer than the read buffer is appended in pieces, and it is walked as a whole when it ends
+  int line_offset;		/* offset of the last line in contents */
+  bool is_line_open;		/* true if the last line has not ended yet */
 } CSQL_EDIT_CONTENTS;
 
 static CSQL_EDIT_CONTENTS csql_Edit_contents =
-  { NULL, 0, 0, CSQL_STATE_GENERAL, CSQL_SUBSTATE_INITIAL, 0, 0, 0, 0, NULL, 0, 0 };
+  { NULL, 0, 0, CSQL_STATE_GENERAL, CSQL_SUBSTATE_INITIAL, 0, 0, 0, 0, NULL, 0, 0, 0, false };
 
 
 static bool is_identifier_letter (const char c);
@@ -1053,6 +1058,11 @@ csql_edit_contents_append (const char *str, bool flag_append_new_line)
     {
       return CSQL_FAILURE;
     }
+  if (!csql_Edit_contents.is_line_open)
+    {
+      csql_Edit_contents.line_offset = csql_Edit_contents.data_size;
+    }
+  csql_Edit_contents.is_line_open = !flag_append_new_line && (str_len == 0 || str[str_len - 1] != '\n');
   memcpy (csql_Edit_contents.contents + csql_Edit_contents.data_size, str, str_len);
   csql_Edit_contents.data_size = new_data_size;
   if (flag_append_new_line)
@@ -1068,6 +1078,30 @@ csql_edit_contents_append (const char *str, bool flag_append_new_line)
     }
 
   return CSQL_SUCCESS;
+}
+
+/*
+ * csql_edit_contents_walk_line() - walk the last line in the editor contents
+ *   return: true if the line contains a non-whitespace/non-comment token, false otherwise
+ *
+ * Note: a line longer than the read buffer is appended in pieces. Walking each piece as a new line ends a '--' or
+ *       '//' comment at the end of the piece and splits a token at its end, so the line is walked as a whole
+ *       after its last piece is appended.
+ */
+bool
+csql_edit_contents_walk_line (void)
+{
+  if (csql_Edit_contents.data_size <= 0)
+    {
+      return false;
+    }
+
+  assert (csql_Edit_contents.line_offset <= csql_Edit_contents.data_size);
+
+  /* the line is walked once: text appended after it is a new line, even if the line has no new line char */
+  csql_Edit_contents.is_line_open = false;
+
+  return csql_walk_statement (csql_Edit_contents.contents + csql_Edit_contents.line_offset);
 }
 
 /*
@@ -1253,8 +1287,66 @@ csql_walk_statement (const char *str)
 		  substate = CSQL_SUBSTATE_EXPECTING_IS_OR_AS;
 		  continue;
 		}
+	      else if (match_word_ci ("trigger", &p))
+		{
+		  substate = CSQL_SUBSTATE_SEEN_TRIGGER;
+		  continue;
+		}
 	      else
 		{
+		  substate = CSQL_SUBSTATE_INITIAL;
+		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_SEEN_TRIGGER:
+	      if (match_word_ci ("execute", &p))
+		{
+		  substate = CSQL_SUBSTATE_TRIGGER_EXECUTE;
+		  continue;
+		}
+	      else
+		{
+		  // keep the substate CSQL_SUBSTATE_SEEN_TRIGGER until the action
+		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_TRIGGER_EXECUTE:
+	      if (match_word_ci ("after", &p) || match_word_ci ("deferred", &p))
+		{
+		  continue;
+		}
+	      else if (match_word_ci ("declare", &p))
+		{
+		  // TRANSITION to CSQL_SUBSTATE_PLCSQL_TEXT!!!
+		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+		  plcsql_begin_end_balance = 0;
+		  plcsql_nest_level = 0;
+		  continue;
+		}
+	      else
+		{
+		  const char *word_p = p;
+
+		  if (match_word_ci ("begin", &word_p))
+		    {
+		      // TRANSITION to CSQL_SUBSTATE_PLCSQL_TEXT!!!
+		      substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+		      plcsql_begin_end_balance = 0;
+		      plcsql_nest_level = 0;
+		      goto substate_transition;	// use goto to count the begin in CSQL_SUBSTATE_PLCSQL_TEXT
+		    }
+
+		  if ((*p == '/' && (*(p + 1) == '/' || *(p + 1) == '*')) || (*p == '-' && *(p + 1) == '-'))
+		    {
+		      // a comment can come before the action
+		      // keep the substate CSQL_SUBSTATE_TRIGGER_EXECUTE
+		      // break and proceed to the second switch
+		      break;
+		    }
+
+		  // not a PL/CSQL block
 		  substate = CSQL_SUBSTATE_INITIAL;
 		  // break and proceed to the second switch
 		}
@@ -1660,6 +1752,8 @@ csql_edit_contents_clear ()
   csql_Edit_contents.line_count = 0;
   csql_Edit_contents.start_line_no = 0;
   csql_Edit_contents.skipped_count = 0;
+  csql_Edit_contents.line_offset = 0;
+  csql_Edit_contents.is_line_open = false;
 }
 
 void
@@ -1705,7 +1799,16 @@ csql_edit_read_file (FILE * fp)
       // to continue recognizing the end of PL/CSQL SP CREATE statements
       // at the right recognizer status (state, substate, etc of csql_Edit_contents)
       // after this editor session
-      csql_walk_statement (line_begin);
+      if (!csql_Edit_contents.is_line_open)
+	{
+	  (void) csql_edit_contents_walk_line ();
+	}
+    }
+
+  if (csql_Edit_contents.is_line_open)
+    {
+      /* the last line of the file has no new line char */
+      (void) csql_edit_contents_walk_line ();
     }
   return CSQL_SUCCESS;
 }

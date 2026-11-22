@@ -2376,6 +2376,26 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			      goto exit;
 			    }
 
+			  if (agg_p->function == PT_AGG_BIT_AND || agg_p->function == PT_AGG_BIT_OR
+			      || agg_p->function == PT_AGG_BIT_XOR)
+			    {
+			      error = qdata_aggregate_value_to_accumulator (thread_p, &agg_p->accumulator,
+				      &agg_p->accumulator_domain, agg_p->function, agg_domain,
+				      &dbval, false);
+			      if (error != NO_ERROR)
+				{
+				  ASSERT_ERROR ();
+				  (void) pr_clear_value (&dbval);
+				  qfile_close_scan (thread_p, &scan_id);
+				  qfile_close_list (thread_p, list_id_p);
+				  qfile_destroy_list (thread_p, list_id_p);
+				  goto exit;
+				}
+			      /* a zero count makes the accumulator take the value instead of combining with it */
+			      agg_p->accumulator.curr_cnt++;
+			      continue;
+			    }
+
 			  if (agg_p->function == PT_VARIANCE || agg_p->function == PT_STDDEV
 			      || agg_p->function == PT_VAR_POP || agg_p->function == PT_STDDEV_POP
 			      || agg_p->function == PT_VAR_SAMP || agg_p->function == PT_STDDEV_SAMP)
@@ -2725,7 +2745,6 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
   int i, nloops, cmp;
   REGU_VARIABLE_LIST regu_var_list, regu_var_node, regu_tmp_node;
   AGGREGATE_DIST_PERCENT_INFO *info_p;
-  const PR_TYPE *pr_type_p;
   SORT_LIST *sort_p;
   SORT_ORDER s_order;
   SORT_NULLS s_nulls;
@@ -2836,12 +2855,10 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
 	}
       else
 	{
-	  /* non-NULL values comparison, in the ORDER BY item's domain the constant was coerced into; a list column of a
-	   * variable domain compares in its value's type */
+	  /* non-NULL values comparison, in the ORDER BY item's domain the constant was coerced into */
 	  const TP_DOMAIN *order_domain = regu_var_node->value.domain;
-	  pr_type_p = TP_DOMAIN_TYPE (order_domain) != DB_TYPE_VARIABLE ? order_domain->type
-		      : pr_type_from_id (DB_VALUE_DOMAIN_TYPE (val_node));
-	  cmp = pr_type_p->cmpval (val_node, info_p->const_array[i], 1, 0, NULL, order_domain->collation_id);
+	  assert (TP_DOMAIN_TYPE (order_domain) != DB_TYPE_VARIABLE);
+	  cmp = order_domain->type->cmpval (val_node, info_p->const_array[i], 1, 0, NULL, order_domain->collation_id);
 
 	  assert (cmp != DB_UNK);
 	}
@@ -3558,11 +3575,9 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
     {
       /* a key from the scan and one read back from a partial list are values of the key's one domain (the scan's key
        * regu's, which types the partial list's column): they hash alike when they compare equal, but for JSON and
-       * a collation with expansions (qdata_hash_agg_hkey ()). Exception to deciding before the rows: keys whose
-       * domains leave a value's type to the data compare by their values */
-      result = ckey1->compares != NULL ? domain_compare_in_domain (ckey1->compares[i], ckey1->values[i],
-	       ckey2->values[i], 0, 1)
-	       : tp_value_compare (ckey1->values[i], ckey2->values[i], 0, 1);
+       * a collation with expansions (qdata_hash_agg_hkey ()) */
+      assert (ckey1->compares != NULL);
+      result = domain_compare_in_domain (ckey1->compares[i], ckey1->values[i], ckey2->values[i], 0, 1);
       if (result != DB_EQ)
 	{
 	  *diff_pos = i;

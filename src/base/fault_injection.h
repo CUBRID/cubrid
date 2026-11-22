@@ -93,11 +93,24 @@ typedef enum
   FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6 = 600003,	/* after (4),(3) before (5) enqueue to daemon */
   FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7 = 600004,	/* after (6) send decision, before (7) DELETE row */
 
+  /* CONNECTION WORKER: each fires once per worker, the first time the worker reaches it after the code is set */
+  FI_TEST_CONNECTION_WORKER_NEW_CLIENT_REGISTER_FAIL = 700000,	/* epoll registration of a new connection */
+  FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL = 700001,	/* epoll registration of a connection moved in */
+  FI_TEST_CONNECTION_WORKER_QUEUE_TIMER_STOP_FAIL = 700002,	/* disarming the queue timer */
+  FI_TEST_CONNECTION_WORKER_CLOSE_HOLD = 700003,	/* hold a close before it drains the worker's queue */
+
   /* SERIAL */
   FI_TEST_SERIAL_DDL_UNDO_HOLD_AFTER_CLR = 700010,	/* flush the compensation of a serial row undo, then hold */
   FI_TEST_SERIAL_DDL_UNDO_FALLBACK = 700011,	/* (FI_INSERTED only) the serial row undo restores the replaced row */
   FI_TEST_SERIAL_REPL_APPLY_HOLD = 700012,	/* hold the log applier's serial row image before its write */
   FI_TEST_SERIAL_APPLIER_DDL_WRITE_HOLD = 700013,	/* hold the serial row write of a DDL the log applier runs */
+
+  /* VACUUM */
+  FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT = 800000,	/* vacuum's wait for a busy heap header fails at once as a latch
+							 * timeout; arg is the header VPID */
+
+  /* HEAP MANAGER */
+  FI_TEST_HEAP_PREV_VERSION_WALK_HOLD = 900000,	/* hold a version walk under a non-transaction snapshot */
 
   /* etc .... */
 

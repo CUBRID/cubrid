@@ -78,12 +78,9 @@ struct xasl_unpack_info
   bool use_xasl_clone;		/* true, if uses xasl clone */
   bool index_stream;		/* a filter or function index predicate or expression: its domains need not describe its
 				 * values (stx_decide_stream_compare) */
-#if !defined (NDEBUG)
-  /* CBRD-27583: what the compiler left without a domain (VARIABLE): regus, operator nodes, list positions */
-  int n_undecided_regu;
-  int n_undecided_arith;
-  int n_undecided_position;
-#endif
+  /* CBRD-27817: the domains the compilation left to the values (stx_unpack_domain) and the first one's type */
+  int n_undecided;
+  int undecided_type;		/* DB_TYPE */
 };
 
 XASL_UNPACK_INFO *get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p);
