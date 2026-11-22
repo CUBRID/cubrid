@@ -8642,6 +8642,13 @@ locator_collect_wset_key (THREAD_ENTRY * thread_p, bool need_replication, HEAP_C
     }
 
   assert (key != NULL);
+  /* A NULL unique key, or a composite one with every column NULL, is not stored in the B-tree and cannot conflict
+   * with another row (the same test as the unique check), so it orders nothing. A PRIMARY KEY is never NULL. */
+  if (db_value_is_null (key) || btree_multicol_key_is_null (key))
+    {
+      return NO_ERROR;
+    }
+
   lend_domain = DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY && key->data.midxkey.domain == NULL;
   if (lend_domain)
     {

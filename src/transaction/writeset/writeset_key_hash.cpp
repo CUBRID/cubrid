@@ -727,8 +727,8 @@ wset_hash_key (const VFID *index_vfid, DB_VALUE *key, UINT64 *hash_out, bool *is
 
   *is_nan_out = false;
 
-  /* A NULL unique key has no character data to collation-hash; it falls through and is
-   * hashed below as its packed NULL representation (conservative design policy). */
+  /* A NULL unique key is not collected (locator_collect_wset_key skips it, as the unique check does). Any other
+   * NULL key has no character data to collation-hash; it falls through and is hashed below as its packed NULL. */
   if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (key)) && !DB_IS_NULL (key))
     {
       return wset_string_hash (index_vfid, key, hash_out);
