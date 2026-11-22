@@ -7275,6 +7275,19 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " invisible ");
     }
 
+  if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage prefer_inline ");
+    }
+  else if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage force_outline ");
+    }
+  else if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_INLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage force_inline ");
+    }
+
   if (p->info.attr_def.data_default)
     {
       r1 = pt_print_bytes (parser, p->info.attr_def.data_default);
@@ -13260,6 +13273,11 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
       q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
       q = pt_append_nulstring (parser, q, "(");
+      /* the printed text is the XASL cache key and the stored view definition */
+      if (code == PT_MEDIAN && p->info.function.all_or_distinct == PT_DISTINCT)
+	{
+	  q = pt_append_nulstring (parser, q, "distinct ");
+	}
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
     }
