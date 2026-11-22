@@ -4754,6 +4754,9 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
 	  && ((is_commit && repl_rec->must_flush != LOG_REPL_DONT_NEED_FLUSH)
 	      || repl_rec->must_flush == LOG_REPL_NEED_FLUSH))
 	{
+	  /* an update record gets its target LSA when the update succeeds, or is dropped (CBRD-28251) */
+	  assert ((repl_rec->rcvindex != RVREPL_DATA_UPDATE && repl_rec->rcvindex != RVREPL_DATA_UPDATE_START
+		   && repl_rec->rcvindex != RVREPL_DATA_UPDATE_END) || !LSA_ISNULL (&repl_rec->lsa));
 	  node =
 	    prior_lsa_alloc_and_copy_data (thread_p, repl_rec->repl_type, RV_NOT_DEFINED, NULL, repl_rec->length,
 					   repl_rec->repl_data, 0, NULL);

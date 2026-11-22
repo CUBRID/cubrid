@@ -111,6 +111,8 @@ extern int repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * r
 extern void repl_start_flush_mark (THREAD_ENTRY * thread_p);
 extern void repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo);
 extern int repl_log_abort_after_lsa (LOG_TDES * tdes, LOG_LSA * start_lsa);
+extern int repl_get_record_count (THREAD_ENTRY * thread_p);
+extern void repl_cancel_unfilled_update (THREAD_ENTRY * thread_p, int from);
 #if !defined (NDEBUG)
 extern void repl_assert_oos_items_follow_row (const LOG_TDES * tdes, int from, bool row_may_follow);
 #endif /* !NDEBUG */
