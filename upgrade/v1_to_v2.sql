@@ -14,14 +14,16 @@
 --   limitations under the License.
 --
 
--- CBRD-27508: catalog classes of the parallel applylogdb.
--- Same definitions as system_catalog_initializer::get_ha_apply_stat, get_ha_apply_worker_stat and
--- get_ha_applied_tx_marker (schema_system_catalog_install.cpp). upgradedb marks them as system classes after the
--- scripts run.
+-- System metadata version 1 to 2.
+--
+-- CBRD-27508 (parallel applylogdb): the stream ID of _db_ha_apply_info and three catalog classes.
+-- Same definitions as system_catalog_initializer::get_ha_apply_info, get_ha_apply_stat, get_ha_apply_worker_stat
+-- and get_ha_applied_tx_marker (schema_system_catalog_install.cpp). upgradedb marks the new classes as system
+-- classes after the scripts run.
 
 -- A class attribute allocates IDs even after every apply-info row has been removed.
 ALTER TABLE _db_ha_apply_info ADD CLASS ATTRIBUTE last_stream_id BIGINT DEFAULT 0;
-ALTER TABLE _db_ha_apply_info ADD COLUMN stream_id BIGINT;
+ALTER TABLE _db_ha_apply_info ADD COLUMN stream_id BIGINT FIRST;
 UPDATE _db_ha_apply_info a SET stream_id =
   (SELECT COUNT(*) + 1 FROM _db_ha_apply_info b
    WHERE b.db_name < a.db_name OR (b.db_name = a.db_name AND b.copied_log_path < a.copied_log_path));
@@ -93,12 +95,11 @@ CREATE TABLE _db_ha_apply_worker_stat (
 
 GRANT SELECT ON _db_ha_apply_worker_stat TO information_schema;
 
--- commits an applylogdb on this node has applied above its stored position: range, list or single markers
+-- commits an applylogdb on this node has applied above its stored position: range or list markers
 CREATE TABLE _db_ha_applied_tx_marker (
   stream_id BIGINT NOT NULL,
   commit_pageid BIGINT NOT NULL,
   commit_offset INTEGER NOT NULL,
-  covers_preceding INTEGER NOT NULL,
   applied_lsas VARCHAR(4096),
   UNIQUE (stream_id, commit_pageid, commit_offset)
 ) DONT_REUSE_OID;
