@@ -1538,6 +1538,15 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
       /* Now proceed as participant of the distributed transaction */
     }
 
+  /* The commit applies the unique statistics the transaction collected in memory. Restart reads them back from this
+   * record to commit an in-doubt transaction. It finds the record as the one before the prepare record in the
+   * transaction's chain (prev_tranlsa), so the transaction must log nothing between the two; the lock release below
+   * logs nothing. Logging before the release keeps the shared locks when it fails. */
+  if (logtb_tran_log_unique_stats_for_2pc (thread_p, tdes) != NO_ERROR)
+    {
+      return TRAN_UNACTIVE_UNKNOWN;
+    }
+
   lock_unlock_all_shared_get_all_exclusive (thread_p, &acq_locks);
 
   /*

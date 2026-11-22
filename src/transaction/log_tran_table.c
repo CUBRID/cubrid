@@ -136,7 +136,9 @@ static void logtb_tran_clear_update_stats (LOG_TRAN_UPDATE_STATS * log_upd_stats
 static unsigned int logtb_tran_btid_hash_func (const void *key, const unsigned int ht_size);
 static int logtb_tran_btid_hash_cmp_func (const void *key1, const void *key2);
 static LOG_TRAN_CLASS_COS *logtb_tran_create_class_cos (THREAD_ENTRY * thread_p, const OID * class_oid);
-static LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid);
+static LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
+									const BTID * btid);
+static int logtb_tran_pack_unique_stats_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_tran_reset_cos_func (THREAD_ENTRY * thread_p, void *data, void *args);
@@ -3597,14 +3599,14 @@ logtb_tran_btid_hash_cmp_func (const void *key1, const void *key2)
  * return	    : The address of newly created statistics structure or NULL
  *		      in case of error.
  * thread_p(in)	    :
+ * tdes(in)	    : transaction that collects the statistics
  * btid (in)	    : Id of unique index for which the statistics will be
  *		      created
  */
 static LOG_TRAN_BTID_UNIQUE_STATS *
-logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid)
+logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BTID * btid)
 {
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = NULL;
-  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
   if (btid == NULL)
     {
@@ -3794,7 +3796,7 @@ logtb_tran_find_btid_stats (THREAD_ENTRY * thread_p, const BTID * btid, bool cre
   if (unique_stats == NULL && create)
     {
       /* create if not found */
-      unique_stats = logtb_tran_create_btid_unique_stats (thread_p, btid);
+      unique_stats = logtb_tran_create_btid_unique_stats (thread_p, tdes, btid);
     }
 
   return unique_stats;
@@ -3983,6 +3985,216 @@ logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p)
   (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   return error_code;
+}
+
+/* RVBT_2PC_UNIQUE_STATS data: the number of indexes, then for each index its BTID, whether it was deleted and the
+ * transaction's null, oid and key counts. */
+#define LOG_2PC_UNIQUE_STATS_ENTRY_SIZE (OR_BTID_ALIGNED_SIZE + OR_INT_SIZE + 3 * OR_BIGINT_SIZE)
+
+/*
+ * logtb_tran_pack_unique_stats_func () - pack the statistics of one index into RVBT_2PC_UNIQUE_STATS data
+ *
+ * return	    : NO_ERROR
+ * thread_p(in)	    :
+ * data(in)	    : unique statistics of an index (LOG_TRAN_BTID_UNIQUE_STATS)
+ * args(in/out)	    : address of the cursor in the data, moved past the packed entry
+ */
+static int
+logtb_tran_pack_unique_stats_func (THREAD_ENTRY * thread_p, void *data, void *args)
+{
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = (LOG_TRAN_BTID_UNIQUE_STATS *) data;
+  char **datap = (char **) args;
+  char *ptr = *datap;
+
+  OR_PUT_BTID (ptr, &unique_stats->btid);
+  ptr += OR_BTID_ALIGNED_SIZE;
+  OR_PUT_INT (ptr, unique_stats->deleted ? 1 : 0);
+  ptr += OR_INT_SIZE;
+  OR_PUT_BIGINT (ptr, &unique_stats->tran_stats.num_nulls);
+  ptr += OR_BIGINT_SIZE;
+  OR_PUT_BIGINT (ptr, &unique_stats->tran_stats.num_oids);
+  ptr += OR_BIGINT_SIZE;
+  OR_PUT_BIGINT (ptr, &unique_stats->tran_stats.num_keys);
+  ptr += OR_BIGINT_SIZE;
+
+  *datap = ptr;
+  return NO_ERROR;
+}
+
+/*
+ * logtb_tran_log_unique_stats_for_2pc () - log the unique statistics a transaction collected, just before it prepares
+ *
+ * return	    : error code or NO_ERROR
+ * thread_p(in)	    :
+ * tdes(in)	    : transaction about to log its 2PC prepare
+ *
+ * Note: The statistics live only in memory until the commit applies them to the indexes. A prepared transaction may
+ *	 be committed after a restart, so restart recovery reads them back from this record
+ *	 (log_recovery_2pc_restore_unique_stats), which must directly precede the prepare record.
+ */
+int
+logtb_tran_log_unique_stats_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  unsigned int count;
+  int length;
+  char *data, *datap;
+  int error_code;
+
+  if (tdes->state != TRAN_ACTIVE)
+    {
+      /* A site that is also the coordinator left TRAN_ACTIVE in its nested prepare. The records of that state are not
+       * logged, so its statistics stay out of the log as before. */
+      return NO_ERROR;
+    }
+
+  count = mht_count (tdes->log_upd_stats.unique_stats_hash);
+  if (count == 0)
+    {
+      return NO_ERROR;
+    }
+
+  length = OR_INT_SIZE + LOG_2PC_UNIQUE_STATS_ENTRY_SIZE * (int) count;
+  data = (char *) db_private_alloc (thread_p, length);
+  if (data == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) length);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  /* OR_PUT_BTID leaves the alignment padding of each entry unset */
+  memset (data, 0, length);
+
+  datap = data;
+  OR_PUT_INT (datap, (int) count);
+  datap += OR_INT_SIZE;
+  error_code = mht_map_no_key (thread_p, tdes->log_upd_stats.unique_stats_hash, logtb_tran_pack_unique_stats_func,
+			       &datap);
+  if (error_code == NO_ERROR)
+    {
+      assert (datap == data + length);
+      log_append_redo_data2 (thread_p, RVBT_2PC_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, length, data);
+    }
+
+  db_private_free_and_init (thread_p, data);
+  return error_code;
+}
+
+/*
+ * logtb_rv_redo_2pc_unique_stats () - redo of RVBT_2PC_UNIQUE_STATS: nothing
+ *
+ * return	    : NO_ERROR
+ * thread_p(in)	    :
+ * rcv(in)	    : recovery structure (no page)
+ *
+ * Note: The record changes nothing by itself. Restart reads it back at the end of redo, for the transactions still
+ *	 in doubt (log_recovery_2pc_restore_unique_stats). The function exists so that redo does not log a warning about
+ *	 a missing redo function for every such record.
+ */
+int
+logtb_rv_redo_2pc_unique_stats (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return NO_ERROR;
+}
+
+/*
+ * logtb_rv_2pc_restore_unique_stats () - give an in-doubt transaction back the unique statistics it logged before
+ *					  its prepare
+ *
+ * return	    : error code or NO_ERROR
+ * thread_p(in)	    :
+ * tdes(in/out)	    : in-doubt transaction
+ * data(in)	    : data of its RVBT_2PC_UNIQUE_STATS record
+ * length(in)	    : length of data
+ */
+int
+logtb_rv_2pc_restore_unique_stats (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const char *data, int length)
+{
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats;
+  const char *datap = data;
+  BTID btid;
+  int count, deleted, i;
+
+  count = OR_GET_INT (datap);
+  datap += OR_INT_SIZE;
+  /* compare count before multiplying, so that a damaged count cannot overflow the product */
+  if (length < OR_INT_SIZE || count < 0 || count > (length - OR_INT_SIZE) / LOG_2PC_UNIQUE_STATS_ENTRY_SIZE
+      || length != OR_INT_SIZE + count * LOG_2PC_UNIQUE_STATS_ENTRY_SIZE)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  /* a second restart reads the same record again */
+  logtb_tran_clear_update_stats (&tdes->log_upd_stats);
+
+  for (i = 0; i < count; i++)
+    {
+      OR_GET_BTID (datap, &btid);
+      datap += OR_BTID_ALIGNED_SIZE;
+
+      unique_stats = logtb_tran_create_btid_unique_stats (thread_p, tdes, &btid);
+      if (unique_stats == NULL)
+	{
+	  /* mht_put may fail without setting an error */
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    }
+	  return er_errid ();
+	}
+
+      deleted = OR_GET_INT (datap);
+      datap += OR_INT_SIZE;
+      unique_stats->deleted = (deleted != 0);
+      OR_GET_BIGINT (datap, &unique_stats->tran_stats.num_nulls);
+      datap += OR_BIGINT_SIZE;
+      OR_GET_BIGINT (datap, &unique_stats->tran_stats.num_oids);
+      datap += OR_BIGINT_SIZE;
+      OR_GET_BIGINT (datap, &unique_stats->tran_stats.num_keys);
+      datap += OR_BIGINT_SIZE;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * logtb_rv_2pc_clear_unique_stats () - drop the unique statistics restored for an in-doubt transaction
+ *
+ * return	    : nothing
+ * thread_p(in)	    :
+ * tdes(in/out)	    : in-doubt transaction
+ *
+ * Note: Restart calls it when it fails to read them back whole; a partial restore could apply some twice.
+ */
+void
+logtb_rv_2pc_clear_unique_stats (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  logtb_tran_clear_update_stats (&tdes->log_upd_stats);
+}
+
+/*
+ * logtb_rv_2pc_skip_applied_unique_stats () - drop from the restored statistics of an in-doubt transaction an index
+ *					       whose new statistics its interrupted commit already logged
+ *
+ * return	    : nothing
+ * thread_p(in)	    :
+ * tdes(in/out)	    : in-doubt transaction
+ * btid(in)	    : index whose RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT the transaction logged after its prepare
+ *
+ * Note: Restart redo has applied that record, so the resumed commit must add nothing more for the index.
+ */
+void
+logtb_rv_2pc_skip_applied_unique_stats (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BTID * btid)
+{
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats;
+
+  unique_stats = (LOG_TRAN_BTID_UNIQUE_STATS *) mht_get (tdes->log_upd_stats.unique_stats_hash, btid);
+  if (unique_stats != NULL)
+    {
+      unique_stats->tran_stats.num_nulls = 0;
+      unique_stats->tran_stats.num_oids = 0;
+      unique_stats->tran_stats.num_keys = 0;
+    }
 }
 
 /*
@@ -5527,8 +5739,21 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
       datap += OR_BIGINT_SIZE;
       redo_rec.length = CAST_BUFLEN (datap - redo_rec.data);
 
-      log_append_undoredo_data2 (thread_p, RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL, NULL, HEADER, undo_rec.length,
-				 redo_rec.length, undo_rec.data, redo_rec.data);
+      if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE || tdes->state == TRAN_UNACTIVE_2PC_COMMIT_DECISION)
+	{
+	  /* A 2PC transaction gets here only to commit after the commit decision, so this is never undone. For a
+	   * prepared transaction (participant), restart recovery leaves the indexes logged here out of the restored
+	   * statistics (log_recovery_2pc_restore_unique_stats), so a commit resumed after a crash does not apply
+	   * them twice. A coordinator's statistics are not restored at all; its resumed commit applies nothing, as
+	   * before. */
+	  log_append_redo_data2 (thread_p, RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL, NULL, HEADER, redo_rec.length,
+				 redo_rec.data);
+	}
+      else
+	{
+	  log_append_undoredo_data2 (thread_p, RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, NULL, NULL, HEADER,
+				     undo_rec.length, redo_rec.length, undo_rec.data, redo_rec.data);
+	}
       LSA_COPY (&stats->last_log_lsa, &tdes->tail_lsa);
     }
   else if (!LSA_ISNULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa))

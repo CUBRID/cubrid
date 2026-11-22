@@ -931,7 +931,13 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    NULL,
-   repl_data_insert_log_dump}
+   repl_data_insert_log_dump},
+  {RVBT_2PC_UNIQUE_STATS,
+   "RVBT_2PC_UNIQUE_STATS",
+   NULL,
+   logtb_rv_redo_2pc_unique_stats,
+   NULL,
+   NULL}
 };
 
 /*

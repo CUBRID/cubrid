@@ -168,6 +168,7 @@ static int rv;
 #define LOG_IS_PAGELESS_RCVINDEX(RCVI) \
    (((RCVI) == RVBT_MVCC_INCREMENTS_UPD) \
     || ((RCVI) == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
+    || ((RCVI) == RVBT_2PC_UNIQUE_STATS) \
     || ((RCVI) == RVBT_NO_LOGGING_INDEX_DURABLE) \
     || ((RCVI) == RVBT_NO_LOGGING_INDEX_COMMITTED) \
     || ((RCVI) == RVBT_REMOVE_UNIQUE_STATS) \
@@ -2240,7 +2241,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
    */
-  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
+  if (tdes->topops.last < 0 && !LOG_ISTRAN_LOGGABLE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
     {
       /*
        * We do not log anything when the transaction is unactive and it is not
@@ -2417,7 +2418,7 @@ log_append_undo_crumbs_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
    */
-  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
+  if (tdes->topops.last < 0 && !LOG_ISTRAN_LOGGABLE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
     {
       /*
        * We do not log anything when the transaction is unactive and it is not
@@ -2579,7 +2580,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
    */
-  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
+  if (tdes->topops.last < 0 && !LOG_ISTRAN_LOGGABLE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
     {
       /*
        * We do not log anything when the transaction is unactive and it is not
@@ -2855,7 +2856,7 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
    */
-  if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
+  if (tdes->topops.last < 0 && !LOG_ISTRAN_LOGGABLE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
     {
       /*
        * We do not log anything when the transaction is unactive and it is not
