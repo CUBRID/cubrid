@@ -50,7 +50,7 @@ enum
   LK_NOTGRANTED_DUE_ERROR = 5,
   LK_GRANTED_PUSHINSET_LOCKONE = 6,
   LK_GRANTED_PUSHINSET_RELOCKALL = 7,
-  LK_NOTGRANTED_HELD_BY_WRITERS = 8	/* lock_object_ahead_of_waiters () only */
+  LK_NOTGRANTED_HELD_BY_WRITERS = 8	/* by lock_object_ahead_of_waiters (), locator_lock_object_unless_ours () */
 };
 
 enum
@@ -277,6 +277,7 @@ extern void lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock);
 extern int lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int waiter_index, LK_RES * res);
 extern int lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock);
 extern bool lock_is_held_only_by_writers (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid);
+extern bool lock_class_has_other_writer (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern int lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag);
 extern int lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock, LOCK * ex_lock);
 extern void lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid);

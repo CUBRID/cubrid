@@ -13,17 +13,21 @@ or storage maintenance utilities.
 | `statistics.h` | Shared statistics structures and client-facing declarations |
 | `statistics_cl.c` | Client-side statistics fetch/unpack/dump helpers |
 | `statistics_sr.c/h` | Server-side statistics collection, update, and class stats dump |
+| `statistics_ndv.c` | Sample-based NDV estimator |
 | `compactdb_sr.c` | Server-side compactdb/heap compaction support |
 
 ## Mode Boundaries
 
-- `system_catalog.c`, `catalog_class.c`, `statistics_sr.c`, and `compactdb_sr.c` are server/SA code.
+- `system_catalog.c`, `catalog_class.c`, `statistics_sr.c`, `statistics_ndv.c`, and `compactdb_sr.c` are server/SA code.
 - `statistics_cl.c` builds in CS and SA.
 - Standalone includes both client and server statistics code.
 
 ## System Catalog
 
 The system catalog stores class representation metadata and class info used by heap/schema/statistics code.
+It also caches representation locations and directory OIDs by class OID and representation ID.
+`catalog_get_dir_oid_from_cache()` falls back to the class record. Preserve this cache's invalidation separately from
+the heap class-representation cache; see [system_catalog.c](../system_catalog.c).
 
 Important entry points:
 
@@ -38,7 +42,9 @@ Important entry points:
 - `catalog_start_access_with_dir_oid()`, `catalog_end_access_with_dir_oid()`
 
 `CATALOG_ACCESS_INFO` tracks class OID, representation directory OID, lock/update state, and debug system-op state. Keep
-start/end balanced on every error path.
+start/end cleanup balanced and pass the actual operation error to end access. Update access aborts its system operation
+on error; success commits or attaches it to the outer operation according to mode and schema lock. Before restart or
+with a null directory OID, start access returns without acquiring a lock.
 
 ## Catalog Class
 
@@ -63,26 +69,35 @@ install/query specs when behavior changes.
 Client-side:
 
 - `stats_get_statistics()`
-- `stats_client_unpack_statistics()`
+- `stats_client_unpack_statistics()`, internal to `statistics_cl.c`
 - `stats_free_statistics()`
 - `stats_dump()`
 - `stats_ndv_dump()`
-- `stats_get_ndv_by_query()`
 
 Server-side:
 
 - `stats_get_time_stamp()`
-- `stats_dump_class_statistics()`
-- `stats_update_partitioned_statistics()`
+- `xstats_update_statistics()`
+- `stats_dump_class_statistics()`, built only with `CUBRID_DEBUG`
+- `stats_update_partitioned_statistics()`, internal to `statistics_sr.c`
 - B-tree statistics collection calls into `btree_get_stats()` and related B-tree paths.
+
+Server updates reuse supplied NDVs when they cover every supported column. Otherwise they call
+`xstats_collect_ndv_by_fullscan_reservoir()` in
+[histogram_sampler_sr.cpp](../../optimizer/histogram/histogram_sampler_sr.cpp).
+`stats_estimate_ndv_from_sample()` in [statistics_ndv.c](../statistics_ndv.c) estimates NDV from a sample.
+Parent partition statistics merge HLL sketches when available; the fallback sums partition NDV estimates and clamps
+the result to the total row count. Distinct counts are not generally additive across partitions.
 
 Statistics structures combine class-level data, attribute NDV/cardinality, and B-tree statistics. If changing serialized
 statistics buffers, update client unpacking and dump code together.
 
 ## Maintenance
 
-`compactdb_sr.c` is a server-side maintenance entry for compacting heap data. It touches heap, B-tree, locking, and
-catalog metadata through storage APIs rather than owning those formats directly.
+`boot_compact_db()` in [compactdb_sr.c](../compactdb_sr.c) processes locked instances, clears invisible OID references,
+and rewrites outdated representations. When requested, it drops old catalog representations only after a complete
+class pass with no failed objects, an unchanged representation ID, and a granted class X lock.
+`boot_heap_compact_pages()` separately delegates heap page compaction.
 
 ## Gotchas
 
