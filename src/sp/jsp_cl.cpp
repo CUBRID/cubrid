@@ -2173,6 +2173,22 @@ drop_stored_procedure_code (MOP sp_mop)
 	  goto error;
 	}
 
+#if !defined (NDEBUG)
+      {
+	DB_VALUE sp_owner_val, code_owner_val;
+
+	db_make_null (&sp_owner_val);
+	db_make_null (&code_owner_val);
+	if (db_get (sp_mop, SP_ATTR_OWNER, &sp_owner_val) == NO_ERROR
+	    && db_get (code_mop, SP_ATTR_OWNER, &code_owner_val) == NO_ERROR)
+	  {
+	    assert (ws_is_same_object (db_get_object (&sp_owner_val), db_get_object (&code_owner_val)));
+	  }
+	pr_clear_value (&sp_owner_val);
+	pr_clear_value (&code_owner_val);
+      }
+#endif
+
       // TODO: If a unreloadable SP is deleted, mark a flag in PL server to block calling the deleted SP
       err = obj_delete (code_mop);
     }
