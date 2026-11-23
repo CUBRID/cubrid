@@ -34163,11 +34163,9 @@ pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * n
 
   sq_key_struct = (SQ_KEY *) pt_alloc_packing_buf (sizeof (SQ_KEY));
   sq_key_struct->dbv_array = (DB_VALUE **) pt_alloc_packing_buf (n_elements * sizeof (DB_VALUE *));
-  sq_key_struct->domains = (TP_DOMAIN **) pt_alloc_packing_buf (n_elements * sizeof (TP_DOMAIN *));
   for (i = 0; i < n_elements; i++)
     {
       sq_key_struct->dbv_array[i] = dbv_list->val;
-      sq_key_struct->domains[i] = dbv_list->dom;
       dbv_list = dbv_list->next;
     }
   sq_key_struct->n_elements = n_elements;
@@ -34698,7 +34696,6 @@ pt_make_memoize_key (PARSER_CONTEXT * parser, PT_NODE ** names, int n_names)
       return NULL;
     }
   key->dbv_array = NULL;
-  key->domains = NULL;
   key->n_elements = 0;
   if (n_names == 0)
     {
@@ -34706,8 +34703,7 @@ pt_make_memoize_key (PARSER_CONTEXT * parser, PT_NODE ** names, int n_names)
     }
 
   key->dbv_array = (DB_VALUE **) pt_alloc_packing_buf (n_names * sizeof (DB_VALUE *));
-  key->domains = (TP_DOMAIN **) pt_alloc_packing_buf (n_names * sizeof (TP_DOMAIN *));
-  if (key->dbv_array == NULL || key->domains == NULL)
+  if (key->dbv_array == NULL)
     {
       return NULL;
     }
@@ -34745,7 +34741,6 @@ pt_make_memoize_key (PARSER_CONTEXT * parser, PT_NODE ** names, int n_names)
 	  continue;
 	}
       key->dbv_array[n] = dbval;
-      key->domains[n] = domain;
       n++;
     }
   key->n_elements = n;

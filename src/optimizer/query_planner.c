@@ -11796,7 +11796,6 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
        bitset_index = bitset_next_member (&bitset_iter))
     {
       term = QO_ENV_TERM (info->env, bitset_index);
-
       if (QO_IS_PATH_TERM (term) && QO_TERM_JOIN_TYPE (term) != JOIN_INNER)
 	{
 	  goto exit;		/* give up */

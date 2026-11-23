@@ -7742,6 +7742,8 @@ template <typename T>
 static void
 numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest)
 {
+  static_assert (std::is_same<T, double>::value || std::is_same<T, float>::value, "T is a double or a float");
+
   constexpr T exact_int_limit = (T) (1ULL << std::numeric_limits<T>::digits);
   constexpr int exact_pow10_max =
     (std::is_same<T, double>::value) ? NUMERIC_DOUBLE_EXACT_POW10_MAX : NUMERIC_FLOAT_EXACT_POW10_MAX;
@@ -7831,7 +7833,6 @@ numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest)
 	    }
 	  else
 	    {
-	      static_assert (std::is_same<T, float>::value, "T is a double or a float");
 	      *dest = strtof (dec_str, NULL);
 	    }
 	  return;
@@ -7843,7 +7844,6 @@ numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest)
 	}
       else
 	{
-	  static_assert (std::is_same<T, float>::value, "T is a double or a float");
 	  /* the float nearest to the double is the float nearest to the quotient or its neighbour */
 	  magnitude = numeric_round_quotient_to_real<float> (coefficient_u128, scale, (float) nearest);
 	}

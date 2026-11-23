@@ -110,10 +110,12 @@ static unsigned int mht_3str_pseudo_key (const void *key, int key_size, const un
 static unsigned int mht_4str_pseudo_key (const void *key, int key_size);
 static unsigned int mht_5str_pseudo_key (const void *key, int key_size);
 
+STATIC_INLINE unsigned int mht_mixhash (unsigned int hash) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE unsigned int mht_mixhash64_to_32 (UINT64 hash) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE unsigned int mht_hash_double (double d) __attribute__ ((ALWAYS_INLINE));
-static unsigned int mht_hash_element (const DB_VALUE * val);
 STATIC_INLINE unsigned int mht_hash_multiset (const DB_VALUE * val) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE unsigned int mht_hash_sequence (const DB_VALUE * val) __attribute__ ((ALWAYS_INLINE));
+static unsigned int mht_hash_element (const DB_VALUE * val);
 
 static int mht_rehash (MHT_TABLE * ht);
 
@@ -570,6 +572,51 @@ mht_ptrhash (const void *key, const unsigned int ht_size)
 }
 
 /*
+ * mht_mixhash () - mix the bits of a 32-bit hash by MurmurHash3's fmix32
+ *   return: hash value
+ *   hash(in): the hash
+ *
+ * mht_valhash () mixes the hash of every value with it once, a value of 64 bits after mht_mixhash64_to_32 () cuts it to
+ * 32 bits. The hash tables index by the low bits (hash & mask in mht_put_hls ()), and a value's hash can keep patterns
+ * there:
+ *   - a DATE is its own hash
+ *   - the FNV-1a multiplies carry only into the high bits
+ *
+ * The mix makes the low bits depend on all the bits.
+ */
+STATIC_INLINE unsigned int
+mht_mixhash (unsigned int hash)
+{
+  hash ^= hash >> 16;
+  hash *= 0x85ebca6bu;
+  hash ^= hash >> 13;
+  hash *= 0xc2b2ae35u;
+  hash ^= hash >> 16;
+
+  return hash;
+}
+
+/*
+ * mht_mixhash64_to_32 () - mix the bits of a 64-bit value by MurmurHash3's fmix64 and take the high 32 bits
+ *   return: hash value
+ *   hash(in): the value
+ *
+ * The value is mixed before the cut to 32 bits: high ^ low would hash alike every value whose halves XOR to the same
+ * word, such as (a << 32) | a.
+ */
+STATIC_INLINE unsigned int
+mht_mixhash64_to_32 (UINT64 hash)
+{
+  hash ^= hash >> 33;
+  hash *= 0xff51afd7ed558ccdULL;
+  hash ^= hash >> 33;
+  hash *= 0xc4ceb9fe1a85ec53ULL;
+  hash ^= hash >> 33;
+
+  return (unsigned int) (hash >> 32);
+}
+
+/*
  * mht_hash_double () - hash a FLOAT, DOUBLE or MONETARY value by the bits of the DOUBLE it equals
  *   return: hash value
  *   d(in): the value; a FLOAT is widened to DOUBLE, a MONETARY gives its amount
@@ -745,7 +792,8 @@ mht_hash_element (const DB_VALUE * val)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
       /* hashed as a multiset whatever its type:
-       *   - a collection element equals one of another collection type (SET {1, 2} = SEQUENCE {1, 2})
+       *   - a collection element can equal one of another collection type in another order
+       *     (MULTISET {1, 2} = SEQUENCE {2, 1})
        *   - the planner cannot refuse its hash: a column's parser domain keeps only the leaf types (SEQUENCE OF SET OF
        *     INTEGER as SEQUENCE OF INTEGER) */
       return mht_hash_multiset (val);
@@ -768,7 +816,7 @@ mht_hash_element (const DB_VALUE * val)
  * Across the families the comparison converts to DOUBLE and loses digits (BIGINT 2^53 and 2^53 + 1 both equal DOUBLE
  * 2^53):
  *   - no hash of the exact value can follow the comparison
- *   - a caller hashes such a pair in its common domain (domain_hashable_resolve_common ())
+ *   - a caller hashes such a pair in its common domain (domain_resolve_hash_key ())
  */
 unsigned int
 mht_valhash (const void *key, const unsigned int ht_size)

@@ -2933,7 +2933,7 @@ xts_save_key_val_array (const KEY_VAL_RANGE * key_val_array, int nelements)
   return offset;
 }
 
-/* CBRD-27993: -1 for no key, else the slot count, the slots and their domains */
+/* CBRD-27993: -1 for no key, else the slot count and the slots */
 static char *
 xts_process_memoize_key (char *ptr, const SQ_KEY * key)
 {
@@ -2956,10 +2956,6 @@ xts_process_memoize_key (char *ptr, const SQ_KEY * key)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
-  for (int i = 0; i < key->n_elements; i++)
-    {
-      ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, key->domains[i], 0, 0);
-    }
 
   return ptr;
 }
@@ -2980,11 +2976,6 @@ xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache)
 	  return NULL;
 	}
       ptr = or_pack_int (ptr, offset);
-      /* CBRD-27583: the key positions' regu domains, which compare the keys (domain_key_values_equal) */
-      for (int i = 0; i < n_elements; i++)
-	{
-	  ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, sq_cache->sq_key_struct->domains[i], 0, 0);
-	}
     }
   else
     {
@@ -6762,14 +6753,6 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + OR_INT_SIZE	/* memoize key n_elements */
 	   + PTR_SIZE		/* memoize key slots */
 	   + OR_INT_SIZE);	/* parallelism */
-  for (int i = 0; xasl->sq_cache != NULL && i < xasl->sq_cache->sq_key_struct->n_elements; i++)
-    {
-      size += or_packed_domain_size (xasl->sq_cache->sq_key_struct->domains[i], 0);	/* sq_cache key domains */
-    }
-  for (int i = 0; xasl->memoize_key != NULL && i < xasl->memoize_key->n_elements; i++)
-    {
-      size += or_packed_domain_size (xasl->memoize_key->domains[i], 0);	/* memoize key domains */
-    }
 
   return size;
 }

@@ -412,6 +412,9 @@ bool domain_compare_equal (const DOMAIN_COMPARE * a, const DOMAIN_COMPARE * b);
 void domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs,
 					  DOMAIN_COMPARE * result);
 
+int domain_resolve_hash_key (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common);
+bool domain_hashable_resolve (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common);
+
 /* How a side of a hash join key reaches the common domain (domain_decide_hash_join_key ()'s conv_kind): as it is, by
  * the IMPLICIT converter into it, or by tp_value_coerce at the row (a JSON value, which converts by its scalar). */
 enum
@@ -423,11 +426,6 @@ enum
 
 int domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, const TP_DOMAIN ** common,
 				 int conv_kind[2], DOMAIN_COMPARE * compare);
-DB_TYPE domain_hash_type (DB_TYPE type);
-bool domain_hashable_resolve (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common);
-int domain_hashable_resolve_common (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common);
-bool domain_hashable (const TP_DOMAIN * first, const TP_DOMAIN * second);
-bool domain_hashable_collections (const TP_DOMAIN * first, const TP_DOMAIN * second);
 
 /*
  * domain_compare_in_domain () - two values of one domain fixed before any row (a GROUP BY or an analytic sort key's),
@@ -460,7 +458,6 @@ const DOMAIN_COMPARE *domain_compare_row_entry (int row, const DB_VALUE * elemen
 DB_VALUE_COMPARE_RESULT domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
 					       const DB_VALUE * value2, int total_order, bool * can_compare);
 
-bool domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * first, const DB_VALUE * second);
 bool domain_key_values_identical (const DB_VALUE * first, const DB_VALUE * second);
 
 /* Kernel CONVERT alone (domain_compare_values' case), for a caller that has switched on the comparison method

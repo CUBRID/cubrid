@@ -7740,9 +7740,12 @@ btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
   int size = (str != NULL) ? db_get_string_size (value) : 0;
   int coll_id = db_get_string_collation (value);
   LANG_COLLATION *lang_coll = lang_get_collation (coll_id);
-  unsigned int hash_key = lang_coll->mht2str (lang_coll, str, size);
+  unsigned int hash_key;
   int zeros = 0;		/* trailing weights 0, which mht2str leaves out */
 
+  assert (lang_coll != NULL);
+
+  hash_key = lang_coll->mht2str (lang_coll, str, size);
   hash = btree_get_stats_hash_bytes (hash, &hash_key, sizeof (hash_key));
 
   if (coll_id == LANG_COLL_BINARY || DB_VALUE_TYPE (value) != DB_TYPE_VARCHAR

@@ -471,10 +471,10 @@ namespace memoize
   bool key::equal::operator() (const key *k1, const key *k2) const
   {
     size_t sz = k1->m_values.size();
-    assert (sz == k2->m_values.size() && sz == m_domains->size ());
+    assert (sz == k2->m_values.size());
     for (size_t i = 0; i < sz; i++)
       {
-	if (!domain_key_values_equal ((*m_domains)[i], &k1->m_values[i], &k2->m_values[i]))
+	if (!domain_key_values_identical (&k1->m_values[i], &k2->m_values[i]))
 	  {
 	    return false;
 	  }
@@ -488,7 +488,6 @@ namespace memoize
     const SQ_KEY *memoize_key = xasl->memoize_key;
     int key_cnt, value_cnt;
     std::vector<DB_VALUE *> key_ptr_src;
-    std::vector<const TP_DOMAIN *> key_domains;
 
     /* the key and the reuse check were decided at XASL generation (CBRD-27993); an inner without a key, or whose
      * terms a reuse must not replay, is not memoized. An empty key (the inner reads no outer value) is one key. */
@@ -502,7 +501,6 @@ namespace memoize
     for (int i = 0; i < key_cnt; i++)
       {
 	key_ptr_src.push_back (memoize_key->dbv_array[i]);
-	key_domains.push_back (memoize_key->domains[i]);
       }
 
     if (value_cnt == 0 && !match_only)
@@ -517,7 +515,7 @@ namespace memoize
 	return NULL;
       }
     storage_p = placement_new (storage_p, thread_p, max_storage_size, key_cnt, value_cnt, val_list, match_only);
-    storage_p->init (key_ptr_src, key_domains);
+    storage_p->init (key_ptr_src);
 
     return storage_p;
   }
@@ -539,8 +537,7 @@ namespace memoize
     , m_hash_sz (0)
     , m_last_key (nullptr)
     , m_keyptr_src ()
-    , m_key_domains ()
-    , m_key_value_map (0, key::hash (), key::equal {&m_key_domains})
+    , m_key_value_map (0, key::hash (), key::equal ())
     , m_current_value_list ()
     , disabled (false)
     , insert_stopped (false)
@@ -577,7 +574,6 @@ namespace memoize
 
     m_keyptr_src.clear();
     m_key_value_map.clear();
-    m_key_domains.clear();
     db_change_private_heap (thread_get_thread_entry_info(), heap_id);
   }
 
@@ -595,13 +591,12 @@ namespace memoize
     TSC_ADD_TIMEVAL (m_elapsed_time, tv_diff);
   }
 
-  void storage::init (std::vector<DB_VALUE *> &arg_key_ptr_src, std::vector<const TP_DOMAIN *> &key_domains)
+  void storage::init (std::vector<DB_VALUE *> &arg_key_ptr_src)
   {
     for (auto &dbval : arg_key_ptr_src)
       {
 	m_keyptr_src.push_back (dbval);
       }
-    m_key_domains = key_domains;
   }
 
   result_code storage::get ()

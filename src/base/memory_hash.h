@@ -101,8 +101,6 @@ extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
 
 extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size);
 extern unsigned int mht_valhash (const void *key, const unsigned int ht_size);
-STATIC_INLINE unsigned int mht_mixhash (unsigned int hash) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE unsigned int mht_mixhash64_to_32 (UINT64 hash) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE unsigned int mht_foldhash (unsigned int hash, unsigned int value_hash) __attribute__ ((ALWAYS_INLINE));
 extern int mht_compare_identifiers_equal (const void *key1, const void *key2);
 extern int mht_compare_strings_are_equal (const void *key1, const void *key2);
@@ -202,51 +200,6 @@ extern unsigned int mht_calculate_htsize (unsigned int ht_size);
 extern unsigned int mht_calculate_htsize_for_pow2 (unsigned int ht_size);
 extern unsigned int mht_hls_slot_count (int est_size);
 /* for HASH LIST SCAN (end) */
-
-/*
- * mht_mixhash () - mix the bits of a 32-bit hash by MurmurHash3's fmix32
- *   return: hash value
- *   hash(in): the hash
- *
- * mht_valhash () mixes the hash of every value with it once, a value of 64 bits after mht_mixhash64_to_32 () cuts it to
- * 32 bits. The hash tables index by the low bits (hash & mask in mht_put_hls ()), and a value's hash can keep patterns
- * there:
- *   - a DATE is its own hash
- *   - the FNV-1a multiplies carry only into the high bits
- *
- * The mix makes the low bits depend on all the bits.
- */
-STATIC_INLINE unsigned int
-mht_mixhash (unsigned int hash)
-{
-  hash ^= hash >> 16;
-  hash *= 0x85ebca6bu;
-  hash ^= hash >> 13;
-  hash *= 0xc2b2ae35u;
-  hash ^= hash >> 16;
-
-  return hash;
-}
-
-/*
- * mht_mixhash64_to_32 () - mix the bits of a 64-bit value by MurmurHash3's fmix64 and take the high 32 bits
- *   return: hash value
- *   hash(in): the value
- *
- * The value is mixed before the cut to 32 bits: high ^ low would hash alike every value whose halves XOR to the same
- * word, such as (a << 32) | a.
- */
-STATIC_INLINE unsigned int
-mht_mixhash64_to_32 (UINT64 hash)
-{
-  hash ^= hash >> 33;
-  hash *= 0xff51afd7ed558ccdULL;
-  hash ^= hash >> 33;
-  hash *= 0xc4ceb9fe1a85ec53ULL;
-  hash ^= hash >> 33;
-
-  return (unsigned int) (hash >> 32);
-}
 
 /*
  * mht_foldhash () - fold the hash of one value into the hash of the values before it

@@ -296,6 +296,8 @@ static int lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is
 static int lang_split_key_euckr (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
 				 const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
 				 int *byte_size, bool ignore_trailing_space);
+STATIC_INLINE unsigned int lang_cp_to_weight_utf8 (const unsigned int cp, const unsigned int *weights,
+						   const int w_count) __attribute__ ((ALWAYS_INLINE));
 static unsigned int lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
 static unsigned int lang_mht2str_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char *str,
 					       const int size);
@@ -313,6 +315,9 @@ STATIC_INLINE UINT64 lang_hash_u64_nul_as_space (UINT64 chunk) __attribute__ ((A
 STATIC_INLINE UINT64 lang_hash_u64_upper (UINT64 chunk) __attribute__ ((ALWAYS_INLINE));
 static unsigned int lang_mht2str_ko (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
 static unsigned int lang_mht2str_binary (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
+#if !defined (NDEBUG)
+static void lang_verify_mht2str_weights (const LANG_COLLATION * lang_coll);
+#endif
 static void lang_init_coll_en_ci (LANG_COLLATION * lang_coll);
 static void lang_init_coll_en_cs (LANG_COLLATION * lang_coll);
 static void lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll);
@@ -934,6 +939,9 @@ lang_init_builtin (void)
   for (i = 0; i < (int) (sizeof (built_In_collations) / sizeof (built_In_collations[0])); i++)
     {
       lang_set_byte_lockstep_like (built_In_collations[i]);
+
+      /* the hash functions repeat the weights the init functions write */
+      lang_verify_mht2str_weights (built_In_collations[i]);
     }
 
   /* register all built-in locales allowed in current charset Support for multiple locales is required for switching
@@ -2995,37 +3003,8 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match, const unsig
 	    }
 	}
 
-      if (cp1 < (unsigned int) alpha_cnt)
-	{
-	  if (cp1 == SPACE)
-	    {
-	      w_cp1 = ZERO;
-	    }
-	  else
-	    {
-	      w_cp1 = weight_ptr[cp1];
-	    }
-	}
-      else
-	{
-	  w_cp1 = cp1;
-	}
-
-      if (cp2 < (unsigned int) alpha_cnt)
-	{
-	  if (cp2 == SPACE)
-	    {
-	      w_cp2 = ZERO;
-	    }
-	  else
-	    {
-	      w_cp2 = weight_ptr[cp2];
-	    }
-	}
-      else
-	{
-	  w_cp2 = cp2;
-	}
+      w_cp1 = lang_cp_to_weight_utf8 (cp1, weight_ptr, alpha_cnt);
+      w_cp2 = lang_cp_to_weight_utf8 (cp2, weight_ptr, alpha_cnt);
 
       if (w_cp1 != w_cp2)
 	{
@@ -3285,13 +3264,34 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
 }
 
 /*
+ * lang_cp_to_weight_utf8 () - the weight of a code point, which lang_strmatch_utf8 () compares and lang_mht2str_utf8 ()
+ *   hashes
+ *   return: weight
+ *   cp(in): code point
+ *   weights(in): weight table of the collation
+ *   w_count(in): code points the table weighs
+ *
+ * A space weighs 0 whatever the table holds, and a code point past the table weighs itself.
+ */
+STATIC_INLINE unsigned int
+lang_cp_to_weight_utf8 (const unsigned int cp, const unsigned int *weights, const int w_count)
+{
+  if (cp >= (unsigned int) w_count)
+    {
+      return cp;
+    }
+  return (cp == SPACE) ? ZERO : weights[cp];
+}
+
+/*
  * lang_mht2str_utf8 () - hash a UTF-8 string as lang_strcmp_utf8 () compares it
  *   return: hash value
  *   lang_coll(in): collation without contractions and expansions
  *   str(in):
  *   size(in):
  *
- * A space weighs 0, as in weights_ti of a built-in collation, and a code point past the weights weighs itself. Trailing
+ * A code point weighs as the compare function weighs it (lang_cp_to_weight_utf8 ()), by weights_ti of a built-in
+ * collation; weights differs from it only in the space (lang_verify_mht2str_weights ()), which both weigh 0. Trailing
  * weights 0 are not hashed, so strings that differ only in them hash alike.
  *
  * Steps:
@@ -3310,7 +3310,7 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
   int zeros = 0;		/* weights 0 not hashed yet */
   unsigned int cp, weight;
 
-  /* Step 1: leave out the trailing spaces; a UTF-8 byte 0x20 is a space */
+  /* Step 1: leave out the trailing spaces; a UTF-8 byte 0x20 is a space, which weighs 0 */
   while (str_end > str && str_end[-1] == ASCII_SPACE)
     {
       str_end--;
@@ -3321,11 +3321,7 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
       /* Step 2: read the weight of the next code point */
       cp = intl_utf8_to_cp (str, CAST_BUFLEN (str_end - str), &str_next);
       str = str_next;
-      weight = cp;
-      if (cp < (unsigned int) coll_data->w_count)
-	{
-	  weight = (cp == ASCII_SPACE) ? 0 : weights[cp];
-	}
+      weight = lang_cp_to_weight_utf8 (cp, weights, coll_data->w_count);
 
       /* Step 3: hash the weight, holding a weight 0 back */
       lang_hash_weight (&hash_key, &zeros, weight, true);
@@ -5995,6 +5991,85 @@ lang_hash_u64_upper (UINT64 chunk)
 
   return chunk ^ (lower >> 2);
 }
+
+#if !defined (NDEBUG)
+/*
+ * lang_verify_mht2str_weights () - assert that the hash function of a built-in collation hashes alike the strings its
+ *   weights and weights_ti compare equal
+ *   return: void
+ *   lang_coll(in): built-in collation with its weights filled
+ *
+ * Two hash functions repeat what the init function writes in the weights:
+ *   - lang_mht2str_utf8 () hashes by weights_ti only, so weights may differ from it only in the space, which
+ *     lang_cp_to_weight_utf8 () weighs 0
+ *   - lang_hash_bytes () hashes a byte as another one, 8 bytes at a time: a NUL as a space, and 'a' to 'z' as 'A' to
+ *     'Z' for lang_mht2str_byte (). The bytes of one weight must hash as one byte, and the bytes of weight 0, which it
+ *     leaves out at the end, as the space.
+ *
+ * Steps:
+ *   Step 1: assert that weights and weights_ti differ only in the space, for lang_mht2str_utf8 ().
+ *   Step 2: assert that the bytes of each weight hash as one byte, for lang_hash_bytes ().
+ */
+static void
+lang_verify_mht2str_weights (const LANG_COLLATION * lang_coll)
+{
+  const COLL_DATA *coll_data = &(lang_coll->coll);
+  const unsigned int *weight_tables[] = { coll_data->weights, coll_data->weights_ti };
+  int byte_of_weight[LANG_CHAR_COUNT_EN];	/* the byte the bytes of a weight hash as; -1 before the first */
+  bool to_upper;
+  unsigned int byte, weight, hashed_byte;
+  int cp, i;
+
+  /* Step 1: assert that weights and weights_ti differ only in the space */
+  if (lang_coll->mht2str == lang_mht2str_utf8)
+    {
+      for (cp = 0; cp < coll_data->w_count; cp++)
+	{
+	  assert (lang_cp_to_weight_utf8 (cp, coll_data->weights, coll_data->w_count)
+		  == lang_cp_to_weight_utf8 (cp, coll_data->weights_ti, coll_data->w_count));
+	}
+      return;
+    }
+
+  if (lang_coll->mht2str != lang_mht2str_byte && lang_coll->mht2str != lang_mht2str_byte_en_cs)
+    {
+      return;
+    }
+
+  /* Step 2: assert that the bytes of each weight hash as one byte; lang_fastcmp_byte () weighs every byte */
+  assert (coll_data->w_count >= LANG_CHAR_COUNT_EN);
+  to_upper = (lang_coll->mht2str == lang_mht2str_byte);
+  for (i = 0; i < (int) DIM (weight_tables); i++)
+    {
+      for (weight = 0; weight < LANG_CHAR_COUNT_EN; weight++)
+	{
+	  byte_of_weight[weight] = -1;
+	}
+      byte_of_weight[ZERO] = SPACE;
+
+      for (byte = 0; byte < LANG_CHAR_COUNT_EN; byte++)
+	{
+	  weight = lang_cp_to_weight_utf8 (byte, weight_tables[i], coll_data->w_count);
+	  hashed_byte = byte;
+	  if (byte == 0)
+	    {
+	      hashed_byte = SPACE;
+	    }
+	  else if (to_upper && byte >= 'a' && byte <= 'z')
+	    {
+	      hashed_byte = byte - ('a' - 'A');
+	    }
+
+	  assert (weight < LANG_CHAR_COUNT_EN);
+	  if (byte_of_weight[weight] == -1)
+	    {
+	      byte_of_weight[weight] = (int) hashed_byte;
+	    }
+	  assert (byte_of_weight[weight] == (int) hashed_byte);
+	}
+    }
+}
+#endif
 
 /*
  * lang_next_alpha_char_iso88591() - computes the next alphabetical char

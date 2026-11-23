@@ -116,7 +116,6 @@ typedef enum
   FHS_ERROR_OCCURRED
 } FHS_RESULT;
 
-
 static void inline fhs_read_tftid_from_record (char *record_p, TFTID * tftid_p);
 static void inline fhs_read_key_from_record (char *record_p, int *key);
 static void inline fhs_read_flag_from_record (char *record_p, short *flag);
