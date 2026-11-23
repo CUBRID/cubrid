@@ -2891,7 +2891,8 @@ locator_fetch_all_next (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_FILE_OR
 {
   if (file_order_scan != NULL)
     {
-      return heap_file_order_scan_next (thread_p, file_order_scan, class_oid, oid, recdes, scan_cache, COPY);
+      return heap_file_order_scan_next (thread_p, file_order_scan, class_oid, oid, recdes, scan_cache, COPY,
+					HEAP_RECDES_CONSUME_RAW_BYTES);
     }
 
   return heap_next (thread_p, hfid, class_oid, oid, recdes, scan_cache, COPY, HEAP_RECDES_CONSUME_RAW_BYTES);
@@ -3003,14 +3004,19 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
     case LC_FETCH_DIRTY_VERSION:
       mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
       mvcc_snapshot = &mvcc_snapshot_dirty;
+      /* file order needs the snapshot taken before the sectors; a dirty read has none (and no build_serial) */
+      in_file_order = false;
       break;
 
     case LC_FETCH_CURRENT_VERSION:
       mvcc_snapshot = NULL;
+      /* unloaddb --latest-image: no snapshot, so the page links */
+      in_file_order = false;
       break;
 
     default:
       assert (0);
+      in_file_order = false;
     }
 
   /* Set OID to last fetched object */

@@ -522,7 +522,8 @@ struct heap_file_order_scan
 extern void heap_file_order_scan_start (const HFID * hfid, const HEAP_FILE_ORDER_CACHE * cache, int nparts, int part,
 					const OID * resume_oid, HEAP_FILE_ORDER_SCAN * scan);
 extern SCAN_CODE heap_file_order_scan_next (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_SCAN * scan, OID * class_oid,
-					    OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
+					    OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
+					    HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 
 extern SCAN_CODE heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 					RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,

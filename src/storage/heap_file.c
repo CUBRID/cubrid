@@ -880,6 +880,10 @@ static SCAN_CODE heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid,
 				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, bool ispeeking,
 				     HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy, bool reversed_direction,
 				     DB_VALUE ** cache_recordinfo);
+static SCAN_CODE heap_next_1page_internal (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid,
+					   OID * class_oid, OID * next_oid, RECDES * recdes,
+					   HEAP_SCANCACHE * scan_cache, int ispeeking,
+					   HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 static SCAN_CODE heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						     RECDES * recdes, RECDES * peeked_recdes,
 						     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
@@ -3191,11 +3195,12 @@ heap_file_order_scan_start (const HFID * hfid, const HEAP_FILE_ORDER_CACHE * cac
  *   scan(in/out): the walk
  *   class_oid(in): the heap's class
  *   oid(out): the row returned
- *   recdes(in/out), scan_cache(in), ispeeking(in): as for heap_next ()
+ *   recdes(in/out), scan_cache(in), ispeeking(in), recdes_consumption_policy(in): as for heap_next ()
  */
 SCAN_CODE
 heap_file_order_scan_next (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_SCAN * scan, OID * class_oid, OID * oid,
-			   RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking)
+			   RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
+			   HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
   SCAN_CODE code;
 
@@ -3251,9 +3256,9 @@ heap_file_order_scan_next (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_SCAN * scan,
 	  scan->vpid = vpid;
 	}
 
-      /* heap_next_1page () uses the page held in the scan cache's watcher and moves last_oid only on S_SUCCESS */
-      code = heap_next_1page (thread_p, &scan->hfid, &scan->vpid, class_oid, &scan->last_oid, recdes, scan_cache,
-			      ispeeking);
+      /* heap_next_1page_internal () uses the page held in the scan cache's watcher and moves last_oid only on S_SUCCESS */
+      code = heap_next_1page_internal (thread_p, &scan->hfid, &scan->vpid, class_oid, &scan->last_oid, recdes,
+				       scan_cache, ispeeking, recdes_consumption_policy);
       if (code == S_END)
 	{
 	  /* the page is done */
@@ -8577,11 +8582,26 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
  *
  * Note: Find the next record in the current page. If next_oid is NULL,
  *       find the first record in the page. The record is either peeked
- *       or copied according to ispeeking parameter.
+ *       or copied according to ispeeking parameter.  The record keeps its OOS references: its values are read
+ *       through the attribute layer (heap_next_1page_internal () for a caller that consumes the raw bytes).
  */
 SCAN_CODE
 heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, OID * class_oid, OID * next_oid,
 		 RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking)
+{
+  return heap_next_1page_internal (thread_p, hfid, vpid, class_oid, next_oid, recdes, scan_cache, ispeeking,
+				   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+}
+
+/*
+ * heap_next_1page_internal () - heap_next_1page () with the consumption policy of the record returned
+ *   recdes_consumption_policy(in): HEAP_RECDES_CONSUME_RAW_BYTES expands the record's OOS values, for a caller
+ *				    that hands the raw bytes on (unloaddb's fetch, heap_file_order_scan_next ())
+ */
+static SCAN_CODE
+heap_next_1page_internal (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, OID * class_oid,
+			  OID * next_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
+			  HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
   VPID *vpidptr_incache;
   INT16 type = REC_UNKNOWN;
@@ -8747,7 +8767,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
 	scan =
 	  heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
-					 NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES, is_cached_scan);
+					 NULL_CHN, recdes_consumption_policy, is_cached_scan);
 	scan_cache->cache_last_fix_page = cache_last_fix_page_save;
       }
 
