@@ -122,8 +122,8 @@ namespace cubquery
     unsigned char key_sketch[QDATA_KEY_SKETCH_REGS];
     bool key_sketch_partial;	/* rows went by the table (it stopped taking them): the sketch missed some keys */
 
-    /* the partitions the table let go whole, and the rows of theirs it did not take since (qexec_hash_gby_agg_tuple ());
-     * NULL when the table lets its groups go one by one instead */
+    /* the lists the table lets its groups go to by their keys' partitions (qexec_gby_spill_check ()); NULL where
+     * the leftovers cannot be folded by partition (qexec_gby_spill_init ()) */
     struct qexec_gby_spill *spill;
   };
 

@@ -29428,13 +29428,16 @@ pt_mark_gby_order_free_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
  * pt_orderby_has_group_keys () - does the ORDER BY of a GROUP BY block have every key of the GROUP BY?
  *   return: true when the ORDER BY orders the groups whole (CBRD-28181, XASL_G_ORDER_FREE_ORDERBY)
  *
- * A key is had when an ORDER BY item names the select list position the key is at.
+ * A key is had when an ORDER BY item names the select list position the key is at, and the item there is the key: a
+ * CAST of it takes the key's position too (pt_check_compatible_node_for_orderby ()), but may narrow it (CAST of a
+ * DOUBLE key to INT), when groups the ORDER BY ties keep the order the group sort gave them.
  */
 static bool
 pt_orderby_has_group_keys (PARSER_CONTEXT * parser, PT_NODE * select_node)
 {
-  PT_NODE *group, *order;
+  PT_NODE *group, *order, *item;
   QFILE_TUPLE_VALUE_POSITION pos;
+  int i;
 
   if (select_node->info.query.order_by == NULL || select_node->info.query.q.select.group_by == NULL
       || select_node->info.query.q.select.group_by->flag.with_rollup)
@@ -29451,6 +29454,14 @@ pt_orderby_has_group_keys (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
       pt_to_pos_descr (parser, &pos, group->info.sort_spec.expr, select_node, NULL, false);
       if (pos.pos_no <= 0)
+	{
+	  return false;
+	}
+      for (item = select_node->info.query.q.select.list, i = 1; item != NULL && i < pos.pos_no; item = item->next, i++)
+	{
+	  ;
+	}
+      if (item == NULL || (item->node_type == PT_EXPR && item->info.expr.op == PT_CAST))
 	{
 	  return false;
 	}

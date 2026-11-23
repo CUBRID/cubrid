@@ -155,14 +155,28 @@ static int
 qdata_distinct_mem_add (cubthread::entry *thread_p, const VAL_DESCR *vd, cubxasl::aggregate_list_node *agg_p,
 			DB_VALUE *value, bool *kept)
 {
-  int i, error;
+  int i, lo, hi, error;
+  DB_VALUE_COMPARE_RESULT c;
 
   *kept = true;
-  for (i = 0; i < agg_p->distinct_cnt; i++)
+  /* the values kept in order: a binary search finds the value or where it goes */
+  lo = 0;
+  hi = agg_p->distinct_cnt;
+  while (lo < hi)
     {
-      if (tp_value_compare (value, &agg_p->distinct_vals[i], 1, 1) == DB_EQ)
+      i = (lo + hi) / 2;
+      c = tp_value_compare (value, &agg_p->distinct_vals[i], 1, 1);
+      if (c == DB_EQ)
 	{
 	  return NO_ERROR;
+	}
+      if (c == DB_LT)
+	{
+	  hi = i;
+	}
+      else
+	{
+	  lo = i + 1;
 	}
     }
   if (agg_p->distinct_vals == NULL)
@@ -170,12 +184,18 @@ qdata_distinct_mem_add (cubthread::entry *thread_p, const VAL_DESCR *vd, cubxasl
       agg_p->distinct_vals = (DB_VALUE *) db_private_alloc (thread_p, QDATA_DISTINCT_MEM_MAX * sizeof (DB_VALUE));
       if (agg_p->distinct_vals == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  QDATA_DISTINCT_MEM_MAX * sizeof (DB_VALUE));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
   if (agg_p->distinct_cnt < QDATA_DISTINCT_MEM_MAX)
     {
-      return pr_clone_value (value, &agg_p->distinct_vals[agg_p->distinct_cnt++]);
+      /* the eligible types hold no pointer (qdata_distinct_mem_eligible ()): the values after lo move as bytes */
+      memmove (&agg_p->distinct_vals[lo + 1], &agg_p->distinct_vals[lo],
+	       (agg_p->distinct_cnt - lo) * sizeof (DB_VALUE));
+      agg_p->distinct_cnt++;
+      return pr_clone_value (value, &agg_p->distinct_vals[lo]);
     }
 
   /* more than the memory takes: the list file, with every value so far */
