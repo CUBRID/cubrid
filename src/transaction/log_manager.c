@@ -243,6 +243,8 @@ static int log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 #endif /* SERVER_MODE */
 static LOG_LSA *log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDES * tdes,
 				       LOG_LSA * savept_lsa);
+static int log_append_undo_crumbs_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+					    int num_crumbs, const LOG_CRUMB * crumbs, MVCCID explicit_mvccid);
 static bool log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const LOG_TDES * tdes,
 				       LOG_DATA_ADDR * addr);
 static bool log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, LOG_DATA_ADDR * addr);
@@ -525,6 +527,8 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_DUMMY_HA_SERVER_STATE";
     case LOG_DUMMY_OVF_RECORD:
       return "LOG_DUMMY_OVF_RECORD";
+    case LOG_DUMMY_OOS_RECORD:
+      return "LOG_DUMMY_OOS_RECORD";
     case LOG_DUMMY_GENERIC:
       return "LOG_DUMMY_GENERIC";
     case LOG_SUPPLEMENTAL_INFO:
@@ -2322,6 +2326,11 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
 	  assert (tdes->is_active_worker_transaction ());
 	}
+      else if (rcvindex == RVOOS_INSERT && !tdes->oos_suppress_insert_lsa_queueing)
+	{
+	  tdes->oos_insert_lsa_queue.push (tdes->tail_lsa);
+	  assert (tdes->is_active_worker_transaction ());
+	}
     }
 }
 
@@ -2340,6 +2349,49 @@ void
 log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int num_crumbs,
 			const LOG_CRUMB * crumbs)
 {
+  (void) log_append_undo_crumbs_internal (thread_p, rcvindex, addr, num_crumbs, crumbs, MVCCID_NULL);
+}
+
+/*
+ * log_append_mvcc_undo_data_with_mvccid - log an MVCC undo record under a given MVCCID
+ *
+ * return: NO_ERROR, or an error code when the record could not be appended
+ *
+ *   rcvindex(in): Index to recovery function; an MVCC operation
+ *   addr(in): Address of data; vfid names the file vacuum checks for a drop
+ *   length(in): Length of undo data
+ *   data(in): Undo data
+ *   mvccid(in): MVCCID the record carries
+ *
+ * NOTE: For a record appended after its transaction completed its MVCC info, e.g. by a commit postpone.
+ *       Vacuum reads the record once mvccid precedes every active snapshot (RVOOS_NOTIFY_VACUUM).
+ */
+int
+log_append_mvcc_undo_data_with_mvccid (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+				       int length, const void *data, MVCCID mvccid)
+{
+  LOG_CRUMB undo_crumb;
+
+  assert (LOG_IS_MVCC_OPERATION (rcvindex));
+  assert (MVCCID_IS_VALID (mvccid));
+  assert (0 <= length);
+  assert (0 == length || data != NULL);
+
+  undo_crumb.data = data;
+  undo_crumb.length = length;
+
+  return log_append_undo_crumbs_internal (thread_p, rcvindex, addr, 1, &undo_crumb, mvccid);
+}
+
+/*
+ * log_append_undo_crumbs_internal - append an undo record; see log_append_undo_crumbs
+ *
+ * return: NO_ERROR, also when no record is needed, or an error code when the record could not be appended
+ */
+static int
+log_append_undo_crumbs_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+				 int num_crumbs, const LOG_CRUMB * crumbs, MVCCID explicit_mvccid)
+{
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
   int error_code = NO_ERROR;
@@ -2351,7 +2403,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
   if (RV_fun[rcvindex].undofun == NULL)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
 #endif /* CUBRID_DEBUG */
 
@@ -2363,7 +2415,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	{
 	  log_skip_logging (thread_p, addr);
 	}
-      return;
+      return NO_ERROR;
     }
 
   /* Find transaction descriptor for current logging transaction */
@@ -2373,7 +2425,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
-      return;
+      return error_code;
     }
 
   /*
@@ -2386,7 +2438,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
        * We do not log anything when the transaction is unactive and it is not
        * in the process of aborting.
        */
-      return;
+      return NO_ERROR;
     }
 
   /*
@@ -2396,18 +2448,20 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
     {
       /* undo logging is ignored at this point */
       ;				/* NO-OP */
-      return;
+      return NO_ERROR;
     }
 
   /*
    * NOW do the UNDO ...
    */
 
-  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL);
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL,
+					  explicit_mvccid);
   if (node == NULL)
     {
       assert (false);
-      return;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 
   if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
@@ -2433,7 +2487,8 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	  if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	    {
 	      assert (false);
-	      return;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
 	    }
 	}
     }
@@ -2445,13 +2500,16 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
 	  assert (false);
-	  return;
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
 	}
     }
   if (addr->pgptr != NULL && LOG_IS_MVCC_OPERATION (rcvindex))
     {
       pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -2596,6 +2654,11 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
 	{
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
+	  assert (tdes->is_active_worker_transaction ());
+	}
+      else if (rcvindex == RVOOS_INSERT && !tdes->oos_suppress_insert_lsa_queueing)
+	{
+	  tdes->oos_insert_lsa_queue.push (tdes->tail_lsa);
 	  assert (tdes->is_active_worker_transaction ());
 	}
     }
@@ -2829,7 +2892,7 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
 /*
  * log_append_postpone - Log postpone after data, for redo
  *
- * return: nothing
+ * return: NO_ERROR, or an error code when the postpone record could not be appended
  *
  *   rcvindex(in): Index to recovery function
  *   addr(in): Index to recovery function
@@ -2841,7 +2904,7 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
  *              This distinction is needed due to log sequence number in the
  *              log and the data pages which are used to avoid redos.
  */
-void
+int
 log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int length, const void *data)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
@@ -2861,12 +2924,12 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
        */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_POSTPONE_INTERFACE, 0);
       error_code = ER_LOG_POSTPONE_INTERFACE;
-      return;
+      return error_code;
     }
   if (RV_fun[rcvindex].redofun == NULL)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
 #endif /* CUBRID_DEBUG */
 
@@ -2886,7 +2949,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 
       LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED (thread_p);
       log_skip_logging (thread_p, addr);
-      return;
+      return NO_ERROR;
     }
 
   /* Find transaction descriptor for current logging transaction */
@@ -2896,7 +2959,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
-      return;
+      return error_code;
     }
 
   skipredo = log_can_skip_redo_logging (rcvindex, tdes, addr);
@@ -2918,7 +2981,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 	  log_append_redo_data (thread_p, rcvindex, addr, length, data);
 	}
 
-      return;
+      return NO_ERROR;
     }
 
   /*
@@ -2936,7 +2999,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_POSTPONE, rcvindex, addr, 0, NULL, length, (char *) data);
   if (node == NULL)
     {
-      return;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 
   if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
@@ -2946,7 +3010,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 	  if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	    {
 	      assert (false);
-	      return;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
 	    }
 	}
     }
@@ -2975,6 +3040,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
    * Note: The lsa of the page is not set for postpone log records since
    * the change has not been done (has been postpone) to the page.
    */
+
+  return NO_ERROR;
 }
 
 /*
@@ -4688,6 +4755,10 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
     {
       tdes->append_repl_recidx = 0;
     }
+#if !defined (NDEBUG)
+  /* no OOS item is written apart from its row */
+  repl_assert_oos_items_follow_row (tdes, tdes->append_repl_recidx, false);
+#endif
 
   /* there is any replication info */
   while (tdes->append_repl_recidx < tdes->cur_repl_record)
@@ -6788,6 +6859,18 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
       type = "RVREPL_DATA_DELETE";
       dump_function = log_repl_data_dump;
       break;
+    case RVREPL_OOS_INSERT:
+      type = "RVREPL_OOS_INSERT";
+      dump_function = log_repl_data_dump;
+      break;
+    case RVREPL_DUMMY_OOS_RECORD:
+      type = "RVREPL_DUMMY_OOS_RECORD";
+      dump_function = log_repl_data_dump;
+      break;
+    case RVREPL_OOS_REUSE:
+      type = "RVREPL_OOS_REUSE";
+      dump_function = log_repl_data_dump;
+      break;
     default:
       type = "RVREPL_SCHEMA";
       dump_function = log_repl_schema_dump;
@@ -7210,6 +7293,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_OOS_RECORD:
     case LOG_DUMMY_GENERIC:
       fprintf (out_fp, "\n");
       /* That is all for this kind of log record */
@@ -8125,6 +8209,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_SYSOP_ATOMIC_START:
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
+	    case LOG_DUMMY_OOS_RECORD:
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_SUPPLEMENTAL_INFO:
 	      break;
@@ -8560,6 +8645,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_SYSOP_ATOMIC_START:
 		    case LOG_DUMMY_HA_SERVER_STATE:
 		    case LOG_DUMMY_OVF_RECORD:
+		    case LOG_DUMMY_OOS_RECORD:
 		    case LOG_DUMMY_GENERIC:
 		    case LOG_SUPPLEMENTAL_INFO:
 		      break;
@@ -12355,6 +12441,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
 	    LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
 
+	    //TODO : Additional handling for OOS columns in CDC will be needed later.
 	    if (rcvindex == RVHF_INSERT || rcvindex == RVHF_INSERT_NEWHOME)
 	      {
 		if (ZIP_CHECK (redo_length))
@@ -12887,8 +12974,11 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
 
       LSA_COPY (&prev_lsa, &current_log_record->prev_tranlsa);
 
-      if (current_log_record->trid != trid || current_log_record->type == LOG_DUMMY_OVF_RECORD)
+      if (current_log_record->trid != trid || current_log_record->type == LOG_DUMMY_OVF_RECORD
+	  || current_log_record->type == LOG_DUMMY_OOS_RECORD)
 	{
+	  /* TODO: add CDC support for rebuilding multi-chunk OOS records after a LOG_DUMMY_OOS_RECORD marker. */
+
 	  if (!is_redo && current_log_record->type == LOG_DUMMY_OVF_RECORD)
 	    {
 	      /*get one more */
@@ -15148,7 +15238,8 @@ cdc_read_password_string (THREAD_ENTRY * thread_p, const OID * password_oid, cha
    * returned, which may be an uncommitted change of another transaction */
   scan.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 
-  if (heap_get_visible_version (thread_p, password_oid, &class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, password_oid, &class_oid, &recdes, &scan, PEEK, NULL_CHN,
+				HEAP_RECDES_DONT_CONSUME_RAW_BYTES) != S_SUCCESS)
     {
       goto end;
     }
@@ -15307,7 +15398,8 @@ cdc_find_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *passwo
    * is returned, which may be an uncommitted change of another transaction */
   scan.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 
-  if (heap_get_visible_version (thread_p, &user_oid, oid_User_class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, &user_oid, oid_User_class_oid, &recdes, &scan, PEEK, NULL_CHN,
+				HEAP_RECDES_DONT_CONSUME_RAW_BYTES) != S_SUCCESS)
     {
       goto end;
     }
