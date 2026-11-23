@@ -172,6 +172,18 @@ typedef enum
 
 typedef enum
 {
+  SENSITIVITY_LABEL_CLASS_OF,
+  SENSITIVITY_LABEL_CLASS_NAME,
+  SENSITIVITY_LABEL_ATTR_NAME,
+  SENSITIVITY_LABEL_GRADE,
+  SENSITIVITY_LABEL_INFO_TYPE,
+  SENSITIVITY_LABEL_SOURCE,
+
+  SENSITIVITY_LABEL_VALUE_INDEX_MAX
+} SENSITIVITY_LABEL_VALUE_INDEX;
+
+typedef enum
+{
   EXTRACT_CLASS_ALL,
   EXTRACT_CLASS,
   EXTRACT_VCLASS
@@ -241,6 +253,7 @@ static int emit_stored_procedure_code (extract_context & ctxt, print_output & ou
 
 static int emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int export_sensitivity_label_components (extract_context & ctxt, print_output & output_ctx);
+static int emit_sensitivity_label (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static void emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
@@ -1510,6 +1523,11 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	{
 	  fprintf (stderr, " Check the value of _db_synonym object.\n");
 	}
+    }
+
+  if (ctxt.classes != NULL && (emit_sensitivity_label (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR))
+    {
+      err_count++;
     }
 
   if (emit_grant (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR)
@@ -4988,6 +5006,112 @@ exit:
   db_value_clear (&name_value);
   db_value_clear (&level_value);
   db_value_clear (&comment_value);
+
+  AU_RESTORE (save);
+
+  return error;
+}
+
+/*
+ * emit_sensitivity_label - emit the sensitivity labels on the columns of the given classes
+ *    return: NO_ERROR if successful, error code otherwise
+ *    ctxt(in): extract context
+ *    output_ctx(in/out): output context
+ *    classes(in): MOP list for dump sensitivity label
+ *
+ *    Written only for a DBA unload; see export_sensitivity_label_components ().
+ */
+static int
+emit_sensitivity_label (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes)
+{
+  int error = NO_ERROR;
+  int i, save;
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE values[SENSITIVITY_LABEL_VALUE_INDEX_MAX];
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char class_name[DB_MAX_CLASS_LENGTH] = { '\0' };
+
+  /*
+   * You must check SENSITIVITY_LABEL_VALUE_INDEX enum defined on the top of this file
+   * when changing the following query. Notice the order of the result.
+   * def_order restarts for class attributes, hence attr_type.
+   */
+  const char *query =
+    "SELECT [l].[class_of], [c].[unique_name], [a].[attr_name], "
+    "[l].[grade].[name], [l].[info_type].[name], [l].[source].[name] "
+    "FROM [_db_sensitivity_label] [l], [_db_class] [c], [_db_attribute] [a] "
+    "WHERE [l].[class_of] = [c].[class_of] AND [a].[class_of] = [c] AND [a].[attr_id] = [l].[attr_id] "
+    "ORDER BY [c].[unique_name], [a].[def_order], [a].[attr_type]";
+
+  if (!(ctxt.is_dba_user || ctxt.is_dba_group_member))
+    {
+      return NO_ERROR;
+    }
+
+  for (i = 0; i < SENSITIVITY_LABEL_VALUE_INDEX_MAX; i++)
+    {
+      db_make_null (&values[i]);
+    }
+
+  AU_SAVE_AND_DISABLE (save);
+
+  /* error is row count if not negative. */
+  error = db_compile_and_execute_local (query, &query_result, &query_error);
+  if (error < 0)
+    {
+      goto exit;
+    }
+
+  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+    {
+      for (i = 0; i < SENSITIVITY_LABEL_VALUE_INDEX_MAX; i++)
+	{
+	  if (db_query_get_tuple_value (query_result, i, &values[i]) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      goto exit;
+	    }
+	}
+
+      if (ml_find (classes, db_get_object (&values[SENSITIVITY_LABEL_CLASS_OF])))
+	{
+	  SPLIT_USER_SPECIFIED_NAME (db_get_string (&values[SENSITIVITY_LABEL_CLASS_NAME]), owner_name, class_name);
+	  output_ctx ("\nCREATE SENSITIVITY LABEL ON COLUMN %s%s%s.%s%s%s.%s%s%s ( GRADE = ",
+		      PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name),
+		      PRINT_IDENTIFIER (db_get_string (&values[SENSITIVITY_LABEL_ATTR_NAME])));
+	  desc_value_print (output_ctx, &values[SENSITIVITY_LABEL_GRADE]);
+	  if (!DB_IS_NULL (&values[SENSITIVITY_LABEL_INFO_TYPE]))
+	    {
+	      output_ctx (", INFO_TYPE = ");
+	      desc_value_print (output_ctx, &values[SENSITIVITY_LABEL_INFO_TYPE]);
+	    }
+	  if (!DB_IS_NULL (&values[SENSITIVITY_LABEL_SOURCE]))
+	    {
+	      output_ctx (", SOURCE = ");
+	      desc_value_print (output_ctx, &values[SENSITIVITY_LABEL_SOURCE]);
+	    }
+	  output_ctx (" );\n");
+	}
+
+      for (i = 0; i < SENSITIVITY_LABEL_VALUE_INDEX_MAX; i++)
+	{
+	  db_value_clear (&values[i]);
+	}
+    }
+
+  error = NO_ERROR;
+
+exit:
+  if (query_result != NULL)
+    {
+      db_query_end (query_result);
+    }
+
+  for (i = 0; i < SENSITIVITY_LABEL_VALUE_INDEX_MAX; i++)
+    {
+      db_value_clear (&values[i]);
+    }
 
   AU_RESTORE (save);
 
