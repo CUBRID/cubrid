@@ -59,6 +59,7 @@
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_manager.h"
+#include "log_recovery.h"
 #include "log_prior_inflight.hpp"
 #include "log_comm.h"
 #include "log_reader.hpp"
@@ -8048,107 +8049,103 @@ logpb_destroy_backup_read_worker_pool ()
 
 #if defined (SERVER_MODE)
 /*
- * logpb_backup_ensure_fresh_checkpoint - Force a checkpoint that completes strictly after entry, before an
- *                                        online FULL backup proceeds
- *
- * return: NO_ERROR if a fresh checkpoint completed, ER status otherwise
- *
- *   session(in): the backup session (for verbose output only)
- *
- * NOTE: A no-logging (no-redo) index build appends a replay-barrier record, and media recovery refuses to
- *   replay past it.  An online full backup is self-consistent only when the checkpoint it starts from lies
- *   after every such barrier.  Forcing a fresh checkpoint here establishes the invariant R >= T > B
- *   (R: log_Gl.chkpt_redo_lsa of the completed checkpoint, T: append LSA captured at entry, B: any barrier
- *   appended before the backup started), without tracking barrier LSAs and without changing any backup or
- *   log header format.
- *
- *   logpb_checkpoint () returns NULL_PAGEID both when another checkpoint is already running and on failure,
- *   so success is judged only by R reaching T.  A checkpoint that was already in progress at entry is waited
- *   out but never counted as fresh (its redo LSA may predate T).  If R never reaches T within the bounded
- *   attempts, the backup fails -- the caller has not yet deleted any previous backup volume at this point.
+ * A no-logging index build writes its pages without logging their contents, so a page that a backup copied before
+ * the build flushed it cannot be repaired by any log record.  The two never overlap: a backup about to copy pages
+ * waits until no such build is registered, and a build that starts while a backup waits or copies pages logs its
+ * pages instead, so the backup waits only for the builds registered before it.  A build stays registered until its
+ * pages are on disk and its barrier record is logged.
  */
-static int
-logpb_backup_ensure_fresh_checkpoint (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session)
+static pthread_mutex_t logpb_No_logging_index_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int logpb_No_logging_index_builds = 0;	/* registered no-logging index builds */
+static bool logpb_Backup_waits_for_builds = false;	/* an online backup waits for the registered builds */
+static bool logpb_Backup_copies_pages = false;	/* an online backup is copying pages */
+#endif /* SERVER_MODE */
+
+/*
+ * logpb_no_logging_index_build_begin - Register a no-logging index build unless an online backup waits for the
+ *					registered builds or copies pages
+ *
+ * return: true if the build may write its pages without logging them, false if it must log them
+ *
+ * NOTE: A registered build calls logpb_no_logging_index_build_end () once its barrier record is logged, or when it
+ *	 ends without one.
+ */
+bool
+logpb_no_logging_index_build_begin (void)
 {
-  LOG_LSA target_lsa;		/* T: append LSA at entry */
-  LOG_LSA redo_lsa;		/* R: redo LSA of the last completed checkpoint */
-  const int max_attempts = 3;
-  int attempt;
-  int rv;
-  bool continue_check;
-  bool save_check_interrupt;
+#if defined (SERVER_MODE)
+  bool is_registered;
 
-  LOG_CS_ENTER (thread_p);
-  target_lsa = log_Gl.hdr.append_lsa;
-  LOG_CS_EXIT (thread_p);
-
-  if (session->verbose_fp != NULL)
+  pthread_mutex_lock (&logpb_No_logging_index_mutex);
+  is_registered = !logpb_Backup_waits_for_builds && !logpb_Backup_copies_pages;
+  if (is_registered)
     {
-      /* Keep the pre-existing wait message: tools and testcases grep this exact phrase, and it stays true --
-       * the backup starts only after the forced checkpoint completes. */
-      fprintf (session->verbose_fp, "[ Database backup will start after checkpointing is complete. ]\n\n");
+      logpb_No_logging_index_builds++;
     }
+  pthread_mutex_unlock (&logpb_No_logging_index_mutex);
 
-  for (attempt = 0; attempt < max_attempts; attempt++)
+  return is_registered;
+#else /* SERVER_MODE */
+  return false;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * logpb_no_logging_index_build_end - Release a registration of logpb_no_logging_index_build_begin ()
+ *
+ * return: nothing
+ */
+void
+logpb_no_logging_index_build_end (void)
+{
+#if defined (SERVER_MODE)
+  pthread_mutex_lock (&logpb_No_logging_index_mutex);
+  assert (logpb_No_logging_index_builds > 0);
+  logpb_No_logging_index_builds--;
+  pthread_mutex_unlock (&logpb_No_logging_index_mutex);
+#endif /* SERVER_MODE */
+}
+
+#if defined (SERVER_MODE)
+/*
+ * logpb_backup_try_begin_page_copy - Mark that an online backup copies pages, unless a no-logging index build is
+ *				      registered
+ *
+ * return: true if marked, false if a build is registered (the backup waits and tries again)
+ *
+ * NOTE: While the backup waits, a new build logs its pages, so the registered builds only drain.
+ */
+static bool
+logpb_backup_try_begin_page_copy (void)
+{
+  bool is_marked;
+
+  pthread_mutex_lock (&logpb_No_logging_index_mutex);
+  is_marked = (logpb_No_logging_index_builds == 0);
+  if (is_marked)
     {
-      /* wait out any in-progress checkpoint; it may have started before T and is never counted as fresh */
-      while (true)
-	{
-	  LOG_CS_ENTER (thread_p);
-	  if (log_Gl.run_nxchkpt_atpageid != NULL_PAGEID)
-	    {
-	      LOG_CS_EXIT (thread_p);
-	      break;
-	    }
-	  LOG_CS_EXIT (thread_p);
-
-	  if (logtb_get_check_interrupt (thread_p) == true
-	      && logtb_is_interrupted (thread_p, true, &continue_check) == true)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	      return ER_INTERRUPTED;
-	    }
-	  thread_sleep (1000);	/* 1000 msec, same cadence as the checkpoint wait in logpb_backup () */
-	}
-
-      /* any checkpoint that completed after T -- ours or the daemon's -- satisfies the invariant */
-      rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-      redo_lsa = log_Gl.chkpt_redo_lsa;
-      pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
-      if (LSA_GE (&redo_lsa, &target_lsa))
-	{
-	  return NO_ERROR;
-	}
-
-      /* NULL_PAGEID means either the daemon won the race (the next attempt observes its result) or the
-       * checkpoint failed (R stays below T and the bounded attempts run out). */
-      /* interrupts off like every other caller: an interrupt wake inside the pgbuf FLUSH wait aborts the flush */
-      save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-      (void) logpb_checkpoint (thread_p);
-      (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
-
-      rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-      redo_lsa = log_Gl.chkpt_redo_lsa;
-      pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
-      if (LSA_GE (&redo_lsa, &target_lsa))
-	{
-	  return NO_ERROR;
-	}
+      logpb_Backup_copies_pages = true;
     }
+  logpb_Backup_waits_for_builds = !is_marked;
+  pthread_mutex_unlock (&logpb_No_logging_index_mutex);
 
-  /* leave the R/T LSAs behind so a non-convergence (pages that never flush) can be diagnosed */
-  _er_log_debug (ARG_FILE_LINE,
-		 "logpb_backup_ensure_fresh_checkpoint: no fresh checkpoint after %d attempts; "
-		 "chkpt_redo_lsa (%lld|%d) is still below the target append LSA (%lld|%d)\n",
-		 max_attempts, LSA_AS_ARGS (&redo_lsa), LSA_AS_ARGS (&target_lsa));
-  if (session->verbose_fp != NULL)
-    {
-      fprintf (session->verbose_fp,
-	       "[ Backup failed: no fresh checkpoint completed; redo LSA (%lld|%d) < target LSA (%lld|%d). ]\n\n",
-	       LSA_AS_ARGS (&redo_lsa), LSA_AS_ARGS (&target_lsa));
-    }
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DBBACKUP_FAIL, 1, log_Gl.hdr.prefix_name);
-  return ER_LOG_DBBACKUP_FAIL;
+  return is_marked;
+}
+
+/*
+ * logpb_backup_end_page_copy - Clear the marks of logpb_backup_try_begin_page_copy ()
+ *
+ * return: nothing
+ *
+ * NOTE: Also called when the backup ends while it waits for the registered builds.
+ */
+static void
+logpb_backup_end_page_copy (void)
+{
+  pthread_mutex_lock (&logpb_No_logging_index_mutex);
+  logpb_Backup_waits_for_builds = false;
+  logpb_Backup_copies_pages = false;
+  pthread_mutex_unlock (&logpb_No_logging_index_mutex);
 }
 #endif /* SERVER_MODE */
 
@@ -8239,6 +8236,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   VOLID volid;			/* Current volume to backup */
   LOG_LSA bkup_start_lsa;	/* Start point of backup */
   LOG_LSA chkpt_lsa;		/* Checkpoint address where the backup process starts */
+  LOG_LSA bkup_start_log_end_lsa;	/* Log end when this backup starts copying pages; recorded in the backup header */
 #if defined(SERVER_MODE)
   LOG_PAGEID saved_run_nxchkpt_atpageid = NULL_PAGEID;
 #endif /* SERVER_MODE */
@@ -8263,6 +8261,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   int rv;
   time_t wait_checkpoint_begin_time;
   bool print_backupdb_waiting_reason = false;
+  bool print_no_logging_index_waiting = false;
 #endif /* SERVER_MODE */
   int error_code = NO_ERROR;
   FILEIO_BACKUP_HEADER *io_bkup_hdr_p;
@@ -8332,18 +8331,6 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
       goto error;
     }
 
-  if (backup_level != FILEIO_BACKUP_BIG_INCREMENT_LEVEL && backup_level != FILEIO_BACKUP_SMALL_INCREMENT_LEVEL)
-    {
-      /* Online FULL backup: force a fresh checkpoint so that the checkpoint this backup starts from
-       * postdates any no-logging index build replay barrier already in the log.  Runs strictly before
-       * any previous backup volume is deleted below, so a failure here loses nothing. */
-      error_code = logpb_backup_ensure_fresh_checkpoint (thread_p, &session);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
   print_backupdb_waiting_reason = false;
   wait_checkpoint_begin_time = time (NULL);
 loop:
@@ -8362,6 +8349,8 @@ loop:
 	{
 	  fprintf (session.verbose_fp, "[ Database backup will start after checkpointing is complete. ]\n\n");
 	  print_backupdb_waiting_reason = true;
+	  /* a checkpoint can start again while the backup waits for a no-logging index build below */
+	  wait_checkpoint_begin_time = time (NULL);
 	}
       /* wait until checkpoint process is finished */
 
@@ -8384,6 +8373,36 @@ loop:
 
       fprintf (session.verbose_fp, "[ Database backup has been suspended for %lld seconds due to checkpoint. ]\n\n",
 	       (long long int) (time (NULL) - wait_checkpoint_begin_time));
+      /* print it once: a wait for a no-logging index build below comes back through this point */
+      print_backupdb_waiting_reason = false;
+    }
+
+  /* copy no page while a no-logging index build is registered; from here on new builds log their pages */
+  if (logpb_backup_try_begin_page_copy () == false)
+    {
+      bool continue_check;
+
+      LOG_CS_EXIT (thread_p);
+      if (print_no_logging_index_waiting == false && session.verbose_fp != NULL)
+	{
+	  fprintf (session.verbose_fp,
+		   "[ Database backup will start after the no-logging index build is complete. ]\n\n");
+	  print_no_logging_index_waiting = true;
+	}
+
+      /* interrupt check */
+      if (logtb_get_check_interrupt (thread_p) == true)
+	{
+	  if (logtb_is_interrupted (thread_p, true, &continue_check) == true)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      error_code = ER_INTERRUPTED;
+	      goto error;
+	    }
+	}
+
+      thread_sleep (1000);	/* 1000 msec */
+      goto loop;
     }
 
   /* block checkpoint process */
@@ -8395,6 +8414,12 @@ loop:
   rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
   LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
+
+  /* Log end when this backup starts copying pages, read after logpb_backup_try_begin_page_copy (): every no-logging
+   * index build whose barrier record precedes it had flushed and synced its pages, and no build skips logging after
+   * it.  Media recovery compares a build's barrier against it.  LOG_CS -> prior_lsa_mutex is the order
+   * logpb_prior_lsa_append_all_list () already uses. */
+  log_get_prior_lsa (&bkup_start_log_end_lsa);
 
   LOG_CS_EXIT (thread_p);
 
@@ -8628,6 +8653,7 @@ loop:
   /* Begin backing up in earnest */
   assert (!skip_activelog);
   session.bkup.bkuphdr->skip_activelog = skip_activelog;
+  LSA_COPY (&session.bkup.bkuphdr->start_log_end_lsa, &bkup_start_log_end_lsa);
 
   if (fileio_start_backup (thread_p, log_Db_fullname, &log_Gl.hdr.db_creation, backup_level, &bkup_start_lsa,
 			   &chkpt_lsa, all_bkup_info, &session, zip_method, zip_level) == NULL)
@@ -8932,6 +8958,7 @@ loop:
 #if defined(SERVER_MODE)
   LOG_CS_ENTER (thread_p);
   log_Gl.run_nxchkpt_atpageid = saved_run_nxchkpt_atpageid;
+  logpb_backup_end_page_copy ();
   log_Gl.backup_in_progress = false;
   log_Gl.backup_first_arv_num_needed = -1;
   LOG_CS_EXIT (thread_p);
@@ -8965,6 +8992,7 @@ error:
     {
       log_Gl.run_nxchkpt_atpageid = saved_run_nxchkpt_atpageid;
     }
+  logpb_backup_end_page_copy ();
   log_Gl.backup_in_progress = false;
   log_Gl.backup_first_arv_num_needed = -1;
   LOG_CS_EXIT (thread_p);
@@ -9333,6 +9361,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
       /* add new bkvinf entry into cache data */
       fileio_add_volume_to_backup_info (session->bkup.vlabel, try_level, session->bkup.bkuphdr->unit_num,
 					FILEIO_SECOND_BACKUP_VOL_INFO);
+
+      /* hand where this level started copying pages to media recovery, which judges no-logging index builds */
+      log_recovery_set_restore_backup_level ((int) try_level, &session->bkup.bkuphdr->start_log_end_lsa);
 
       if (first_time)
 	{
