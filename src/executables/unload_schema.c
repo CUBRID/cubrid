@@ -240,6 +240,7 @@ static int emit_stored_procedure_code (extract_context & ctxt, print_output & ou
 				       const char *owner_name, DB_VALUE * comment);
 
 static int emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
+static int export_sensitivity_label_components (extract_context & ctxt, print_output & output_ctx);
 static int emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static void emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
@@ -1450,6 +1451,11 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	{
 	  fprintf (stderr, " Check the value of _db_serial object.\n");
 	}
+      err_count++;
+    }
+
+  if (required_class_only == false && export_sensitivity_label_components (ctxt, schema_output_ctx) != NO_ERROR)
+    {
       err_count++;
     }
 
@@ -4891,6 +4897,101 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
     }
 
   return NO_ERROR;
+}
+
+/*
+ * export_sensitivity_label_components - export the grades, info types and sources of sensitivity labels
+ *    return: NO_ERROR if successful, error code otherwise
+ *    ctxt(in): extract context
+ *    output_ctx(in/out): output context
+ *
+ *    Written only for a DBA unload (DBA, or a DBA group member with --as-dba), like GRANT ... ON SENSITIVITY
+ *    LABEL: labels and their components belong to the system object SENSITIVITY LABEL, which the DBA owns,
+ *    and a non-DBA unload writes only what the user owns.
+ */
+static int
+export_sensitivity_label_components (extract_context & ctxt, print_output & output_ctx)
+{
+  int error = NO_ERROR;
+  int save;
+  size_t i;
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE name_value, level_value, comment_value;
+  const char *keywords[] = { "GRADE", "INFO_TYPE", "SOURCE" };
+  const char *queries[] = {
+    "SELECT [name], [grade_level], [comment] FROM [_db_sensitivity_label_grade] ORDER BY [grade_level]",
+    "SELECT [name], NULL, [comment] FROM [_db_sensitivity_label_info_type] ORDER BY [name]",
+    "SELECT [name], NULL, [comment] FROM [_db_sensitivity_label_source] ORDER BY [name]"
+  };
+
+  if (!(ctxt.is_dba_user || ctxt.is_dba_group_member))
+    {
+      return NO_ERROR;
+    }
+
+  db_make_null (&name_value);
+  db_make_null (&level_value);
+  db_make_null (&comment_value);
+
+  AU_SAVE_AND_DISABLE (save);
+
+  for (i = 0; i < sizeof (queries) / sizeof (queries[0]); i++)
+    {
+      /* error is row count if not negative. */
+      error = db_compile_and_execute_local (queries[i], &query_result, &query_error);
+      if (error < 0)
+	{
+	  goto exit;
+	}
+
+      while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
+	{
+	  if (db_query_get_tuple_value (query_result, 0, &name_value) != NO_ERROR
+	      || db_query_get_tuple_value (query_result, 1, &level_value) != NO_ERROR
+	      || db_query_get_tuple_value (query_result, 2, &comment_value) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      goto exit;
+	    }
+
+	  output_ctx ("\nCREATE SENSITIVITY LABEL %s ", keywords[i]);
+	  desc_value_print (output_ctx, &name_value);
+	  if (!DB_IS_NULL (&level_value))
+	    {
+	      output_ctx (" LEVEL %d", db_get_int (&level_value));
+	    }
+	  if (!DB_IS_NULL (&comment_value))
+	    {
+	      output_ctx (" COMMENT ");
+	      desc_value_print (output_ctx, &comment_value);
+	    }
+	  output_ctx (";\n");
+
+	  db_value_clear (&name_value);
+	  db_value_clear (&level_value);
+	  db_value_clear (&comment_value);
+	}
+
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  error = NO_ERROR;
+
+exit:
+  if (query_result != NULL)
+    {
+      db_query_end (query_result);
+    }
+
+  db_value_clear (&name_value);
+  db_value_clear (&level_value);
+  db_value_clear (&comment_value);
+
+  AU_RESTORE (save);
+
+  return error;
 }
 
 static int
