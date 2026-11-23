@@ -456,7 +456,6 @@ static bool qo_mjoin_input_sorted (QO_PLAN * input, QO_EQCLASS * order, BITSET *
 static bool qo_mjoin_terms_are_names (QO_ENV * env, BITSET * join_terms);
 static int qo_mjoin_sort_segs (QO_PLAN * join, int *outer_segs, int *inner_segs);
 static bool qo_plan_has_sorted_mjoin_input (QO_PLAN * plan);
-static bool qo_plan_has_on_cond_const_eq (QO_PLAN * plan);
 static PT_NODE *qo_plan_compute_mjoin_sort_list (QO_PLAN * root, PT_NODE * order_by);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
@@ -4806,41 +4805,6 @@ qo_mjoin_terms_are_names (QO_ENV * env, BITSET * join_terms)
 }
 
 /*
- * qo_plan_has_on_cond_const_eq () - checks whether an outer join ON condition compares a plan column to a constant
- *   return: true if found
- *   plan(in): plan
- *
- * Note: such a term does not filter the preserved side, yet the index scan order of the plan treats its key column
- *	 as fixed, so the order is not the ORDER BY order.
- */
-static bool
-qo_plan_has_on_cond_const_eq (QO_PLAN * plan)
-{
-  QO_ENV *env = plan->info->env;
-  QO_TERM *term;
-  PT_NODE *expr;
-  int i;
-
-  for (i = 0; i < env->nterms; i++)
-    {
-      term = QO_ENV_TERM (env, i);
-      if (!QO_ON_COND_TERM (term) || !bitset_intersects (&(QO_TERM_NODES (term)), &(plan->info->nodes)))
-	{
-	  continue;
-	}
-
-      expr = QO_TERM_PT_EXPR (term);
-      if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ)
-	  && (PT_IS_CONST (expr->info.expr.arg1) || PT_IS_CONST (expr->info.expr.arg2)))
-	{
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/*
  * qo_plan_has_sorted_mjoin_input () - checks whether a merge join in the plan reads an index scan as is
  *   return: true if found
  *   plan(in): plan tree
@@ -5269,6 +5233,33 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   bitset_assign (&(plan->sarged_terms), sarged_terms);
   bitset_difference (&(plan->sarged_terms), &sarg_out_terms);
 
+  /* An OR-derived key range or key filter that reads two specs (qo_or_extract_join_keys (),
+   * qo_or_extract_key_filters ()) is there for an index on the inner of a nested loop, which takes it
+   * below the join.  A hash or merge join has no such index: there the term is implied by the factor it
+   * was derived from, which the join evaluates anyway, and a hash join cannot even fetch a function
+   * index expression it reads (make_hashjoin_proc ()).  Drop it there, as make_pred_from_plan () drops
+   * it from a scan no index adopted it on. */
+  if (join_method == QO_JOINMETHOD_HASH_JOIN || join_method == QO_JOINMETHOD_MERGE_JOIN)
+    {
+      BITSET derived_terms;
+      int t;
+
+      bitset_init (&derived_terms, info->env);
+      for (t = 0; t < info->env->nterms; t++)
+	{
+	  if (QO_TERM_IS_FLAGED (QO_ENV_TERM (info->env, t), QO_TERM_OR_DERIVED_EXPENSIVE)
+	      && !BITSET_MEMBER (plan->plan_un.join.hash_terms, t))
+	    {
+	      bitset_add (&derived_terms, t);
+	    }
+	}
+      bitset_difference (&(plan->sarged_terms), &derived_terms);
+      bitset_difference (&(plan->plan_un.join.join_terms), &derived_terms);
+      bitset_difference (&(plan->plan_un.join.during_join_terms), &derived_terms);
+      bitset_difference (&(plan->plan_un.join.after_join_terms), &derived_terms);
+      bitset_delset (&derived_terms);
+    }
+
   /* Make sure that the pinned subqueries and the sargs are placed on the same node: by now the pinned subqueries are
    * very likely pinned here precisely because they're used by these sargs. Separating them (so that they get evaluated
    * in some different order) will yield incorrect results.
@@ -5309,10 +5300,9 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   if (join_method == QO_JOINMETHOD_MERGE_JOIN)
     {
       /* The output follows the outer rows. An outer that is re-sorted by the join columns (S_ASC) loses the index
-       * order ORDER BY skip relies on; an outer read as is keeps it, unless an outer join emits NULL-padded outer rows
-       * or the index order skipped a key fixed only by an outer join ON condition.
+       * order ORDER BY skip relies on; an outer read as is keeps it, unless an outer join emits NULL-padded outer rows.
        */
-      if (outer_sorted && (join_type == JOIN_INNER || join_type == JOIN_LEFT) && !qo_plan_has_on_cond_const_eq (outer))
+      if (outer_sorted && (join_type == JOIN_INNER || join_type == JOIN_LEFT))
 	{
 	  plan->need_final_sort = outer->need_final_sort;
 	}
@@ -19032,6 +19022,13 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
 	  is_const_eq_term = false;
 	  for (j = bitset_iterate (terms, &bi); j != -1; j = bitset_next_member (&bi))
 	    {
+	      /* only a term this scan evaluates fixes the column */
+	      if (!BITSET_MEMBER (plan->plan_un.scan.terms, j) && !BITSET_MEMBER (plan->plan_un.scan.kf_terms, j)
+		  && !BITSET_MEMBER (plan->sarged_terms, j))
+		{
+		  continue;
+		}
+
 	      expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, j));
 	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ)
 		  && (PT_IS_CONST (expr->info.expr.arg1) || PT_IS_CONST (expr->info.expr.arg2)))
