@@ -2137,12 +2137,12 @@ qo_add_inner_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * node)
 
 /*
  * qo_add_connected_dummy_join_terms () - Add dummy join terms until every node
- *					  an outer join's ON clause reads is connected
- *					  without going through that outer join
+ *					  an outer, semi or anti join's ON clause reads
+ *					  is connected without going through that join
  *   return:
  *   env(in):
  *
- * Note: An outer join must run after every node its ON clause reads,
+ * Note: An outer, semi or anti join must run after every node its ON clause reads,
  *	and planner_visit_node () grows a join order along join edges only.
  *	A cross join carries no ON clause, and merging a view whose own FROM clause is
  *	a plain cartesian product splices its tables in as PT_JOIN_NONE specs,
@@ -2183,7 +2183,19 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 
       outerjoin_node = QO_ENV_NODE (env, outerjoin_idx);
 
-      if (!QO_NODE_IS_OUTER_JOIN (outerjoin_node))
+      /* A semi or anti join, as an IN or EXISTS subquery unnests into, is placed the same way,
+       * so "outer join" below stands for it too.
+       *
+       * e.g. select count(*)
+       *        from ta
+       *             cross join tb
+       *       where cast (1 as varchar) in (select tc.ca from tc where tc.ca = tc.ca or ta.cb = ta.cb);
+       *
+       *      The rewrite turns it into ta cross join tb semi join tc
+       *      on tc.ca = cast (1 as varchar) and (cast (1 as varchar) = cast (1 as varchar) or ta.cb = ta.cb).
+       *      No term joins tc with ta, and qo_optimize_helper () hangs tc on tb, so tc depends on ta and tb.
+       */
+      if (!QO_NODE_IS_OUTER_JOIN (outerjoin_node) && !QO_NODE_IS_SEMI_ANTI_JOIN (outerjoin_node))
 	{
 	  continue;
 	}
