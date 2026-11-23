@@ -15292,19 +15292,20 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
 {
-  const bool is_integer1 = (DB_VALUE_TYPE (value1) == DB_TYPE_INTEGER || DB_VALUE_TYPE (value1) == DB_TYPE_BIGINT);
-  const bool is_integer2 = (DB_VALUE_TYPE (value2) == DB_TYPE_INTEGER || DB_VALUE_TYPE (value2) == DB_TYPE_BIGINT);
-  const DB_VALUE *integer_value = (is_integer1) ? value1 : value2;
-  const DB_VALUE *other_value = (is_integer1) ? value2 : value1;
-  DB_BIGINT integer;
-  double number, truncated;
+  const bool is_discrete1 = TP_IS_DISCRETE_NUMBER_TYPE (DB_VALUE_TYPE (value1));
+  const bool is_discrete2 = TP_IS_DISCRETE_NUMBER_TYPE (DB_VALUE_TYPE (value2));
+  DB_BIGINT discrete;
+  double number, integral, fraction;
   int sign;
   DB_DATA_STATUS data_status;
 
-  if (is_integer1 == is_integer2)
+  if (is_discrete1 == is_discrete2)
     {
       return DB_UNK;
     }
+
+  const DB_VALUE *discrete_value = (is_discrete1) ? value1 : value2;
+  const DB_VALUE *other_value = (is_discrete1) ? value2 : value1;
 
   /* the other value is a DOUBLE or a string. A string is a number when tp_value_coerce () converts it to DOUBLE: read
    * whole and without overflow ('1e0' = 1, '0x10' = 16), as mht_hash_json () reads it. tp_string_to_real () sets an
@@ -15319,10 +15320,33 @@ mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
       return DB_UNK;
     }
 
-  integer =
-    (DB_VALUE_TYPE (integer_value) == DB_TYPE_INTEGER) ? db_get_int (integer_value) : db_get_bigint (integer_value);
+  /* NaN ('nan' read as a number) passes neither range check below and has no BIGINT: the comparison through DOUBLE
+   * orders it after every number, as mht_hash_json () hashes it as a DOUBLE */
+  if (isnan (number))
+    {
+      return DB_UNK;
+    }
 
-  /* -2^63 <= number < 2^63: the truncated number converts to a BIGINT exactly */
+  switch (DB_VALUE_TYPE (discrete_value))
+    {
+    case DB_TYPE_SMALLINT:
+      discrete = db_get_short (discrete_value);
+      break;
+
+    case DB_TYPE_INTEGER:
+      discrete = db_get_int (discrete_value);
+      break;
+
+    case DB_TYPE_BIGINT:
+      discrete = db_get_bigint (discrete_value);
+      break;
+
+    default:
+      assert (false);
+      return DB_UNK;
+    }
+
+  /* -2^63 <= number < 2^63: the integral part converts to a BIGINT exactly */
   if (number >= 9223372036854775808.0)
     {
       sign = -1;
@@ -15333,20 +15357,20 @@ mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
     }
   else
     {
-      truncated = trunc (number);
-      if (integer != (DB_BIGINT) truncated)
+      fraction = modf (number, &integral);
+      if (discrete != (DB_BIGINT) integral)
 	{
-	  sign = (integer < (DB_BIGINT) truncated) ? -1 : 1;
+	  sign = (discrete < (DB_BIGINT) integral) ? -1 : 1;
 	}
       else
 	{
-	  /* the fraction decides: number - truncated is exact */
-	  sign = (number > truncated) ? -1 : (number < truncated) ? 1 : 0;
+	  /* the fraction decides */
+	  sign = (fraction > 0) ? -1 : (fraction < 0) ? 1 : 0;
 	}
     }
 
-  /* sign is of the integer against the number */
-  if (!is_integer1)
+  /* sign is of the discrete number against the number */
+  if (!is_discrete1)
     {
       sign = -sign;
     }

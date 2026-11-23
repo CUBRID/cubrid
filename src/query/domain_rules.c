@@ -2007,6 +2007,7 @@ end:
  * Keys equal by cmpval can give different results, so some types compare further (domain_key_values_identical ()):
  *   - a string byte by byte instead (mht_compare_strings_are_identical ()): keys equal only under a case-insensitive
  *     collation
+ *   - a BIT and a VARBIT by bit length as well (CBRD-28060): B'1' and B'10' are one byte
  *   - a TIMESTAMPTZ and a DATETIMETZ by zone as well (CBRD-27804): one instant in two zones casts differently
  *   - a NUMERIC by scale, a MONETARY by currency, and a FLOAT, a DOUBLE and a MONETARY by sign (-0 and 0, -NaN and NaN)
  *     as well (CBRD-28060)
@@ -2047,6 +2048,7 @@ domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * first, const
  * Note: a cached result (memoize, the subquery cache, the query result cache) may depend on what a comparison ignores,
  *   so equality under it is not enough:
  *   - a string's bytes: 'A' and 'a' for ASCII (key)
+ *   - a bit string's bit length: B'1' and B'10' for BIT_LENGTH (key)
  *   - a NUMERIC's scale: 1.0 and 1.00
  *   - a DOUBLE's sign: -0 and 0
  *   - a JSON value's own type: 1 and 1.0
@@ -2077,21 +2079,31 @@ domain_key_values_identical (const DB_VALUE * first, const DB_VALUE * second)
       /* strings equal only under the collation ('A' and 'a') can give different results, e.g. ASCII (key) */
       return mht_compare_strings_are_identical (first, second) != 0;
 
-    case DB_TYPE_TIMESTAMPTZ:
-      /* one instant in two zones compares equal but can give different results, e.g. CAST (key AS VARCHAR) */
-      if (pr_type->cmpval ((DB_VALUE *) first, (DB_VALUE *) second, 1, 1, NULL, 0) != DB_EQ)
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      /* bit strings of one byte but two bit lengths (B'1' and B'10') compare equal but can give different results,
+       * e.g. BIT_LENGTH (key) */
+      if (db_get_string_length (first) != db_get_string_length (second))
 	{
 	  return false;
 	}
-      return db_get_timestamptz (first)->tz_id == db_get_timestamptz (second)->tz_id;
+      return pr_type->cmpval ((DB_VALUE *) first, (DB_VALUE *) second, 1, 1, NULL, 0) == DB_EQ;
+
+    case DB_TYPE_TIMESTAMPTZ:
+      /* one instant in two zones compares equal but can give different results, e.g. CAST (key AS VARCHAR) */
+      if (db_get_timestamptz (first)->tz_id != db_get_timestamptz (second)->tz_id)
+	{
+	  return false;
+	}
+      return pr_type->cmpval ((DB_VALUE *) first, (DB_VALUE *) second, 1, 1, NULL, 0) == DB_EQ;
 
     case DB_TYPE_DATETIMETZ:
       /* the same as TIMESTAMPTZ */
-      if (pr_type->cmpval ((DB_VALUE *) first, (DB_VALUE *) second, 1, 1, NULL, 0) != DB_EQ)
+      if (db_get_datetimetz (first)->tz_id != db_get_datetimetz (second)->tz_id)
 	{
 	  return false;
 	}
-      return db_get_datetimetz (first)->tz_id == db_get_datetimetz (second)->tz_id;
+      return pr_type->cmpval ((DB_VALUE *) first, (DB_VALUE *) second, 1, 1, NULL, 0) == DB_EQ;
 
     case DB_TYPE_FLOAT:
       /* -0.0 and 0.0, or -NaN and NaN, compare equal and hash alike (mht_hash_double ()), but can give different
