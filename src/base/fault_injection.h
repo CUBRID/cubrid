@@ -74,6 +74,9 @@ typedef enum
   /* FILE MANAGER */
   FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER = 200000,	/* unused */
   FI_TEST_FILE_MANAGER_DESTROY_HOLD = 200001,	/* hold a destroy after its pages are discarded, before its sectors are freed */
+  FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_FAIL = 200002,	/* fail an allocation that reused the first partial table page,
+							 * after the init of the page */
+  FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_HOLD = 200003,	/* hold that allocation after the init, its log flushed */
 
   /* BTREE MANAGER */
   FI_TEST_BTREE_MANAGER_RANDOM_EXIT = 300000,
