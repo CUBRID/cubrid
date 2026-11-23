@@ -31781,9 +31781,13 @@ qexec_analytic_stream_add_row (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analyti
 	}
       else
 	{
-	  /* the group is large: its next rows go to list files */
-	  stream->spill = qfile_open_list (thread_p, &analytic_state->input_scan->list_id.type_list, NULL,
-					   analytic_state->xasl_state->query_id, 0, NULL);
+	  /* the group is large: its next rows go to list files. The file takes the tuple header size of the input
+	   * list (a top-most XASL's is a backward list), so the tuples are written and read back verbatim */
+	  QFILE_TUPLE_VALUE_TYPE_LIST *input_type_list = &analytic_state->input_scan->list_id.type_list;
+	  int flag = (input_type_list->hdr_size == QFILE_TUPLE_HDR_SIZE_BACKWARD) ? QFILE_FLAG_BACKWARD : 0;
+
+	  stream->spill = qfile_open_list (thread_p, input_type_list, NULL, analytic_state->xasl_state->query_id, flag,
+					   NULL);
 	  if (stream->spill == NULL)
 	    {
 	      return ER_FAILED;

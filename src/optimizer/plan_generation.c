@@ -5162,6 +5162,12 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
       return false;
     }
 
+  if (pt_has_analytic (parser, query))
+    {
+      // the analytic functions are evaluated on all the rows of the scan, before ORDER BY ... LIMIT keeps the top N
+      return false;
+    }
+
   if (pt_has_aggregate (parser, query))
     {
       // CBRD-22696

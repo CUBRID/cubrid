@@ -6334,6 +6334,8 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
 
   ptr = or_unpack_int (ptr, &indx_info->groupby_skip);
 
+  ptr = or_unpack_int (ptr, &indx_info->analytic_desc);
+
   ptr = or_unpack_int (ptr, &indx_info->use_iss);
 
   ptr = or_unpack_int (ptr, &indx_info->ils_prefix_len);

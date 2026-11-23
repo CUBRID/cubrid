@@ -15608,6 +15608,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
   /* 0 for now, see gen optimized plan for its computation */
   indx_infop->orderby_desc = 0;
   indx_infop->groupby_desc = 0;
+  indx_infop->analytic_desc = 0;
 
   indx_infop->use_iss = 0;	/* init */
   if (qo_is_index_iss_scan (plan))
@@ -18917,6 +18918,19 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 	      if (gb->info.sort_spec.asc_or_desc == PT_DESC)
 		{
 		  xasl->spec_list->indexptr->groupby_desc = 1;
+		}
+	    }
+
+	  /* check direction of the first sort column of the analytic evaluation that skips its sort. see also
+	   * scan_get_index_oidset() in scan_manager.c */
+	  if (xasl->spec_list && xasl->spec_list->indexptr && xasl->type == BUILDLIST_PROC
+	      && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
+	    {
+	      ANALYTIC_EVAL_TYPE *eval = xasl->proc.buildlist.a_eval_list;
+
+	      if (eval != NULL && eval->sort_list != NULL && eval->sort_list->s_order == S_DESC)
+		{
+		  xasl->spec_list->indexptr->analytic_desc = 1;
 		}
 	    }
 

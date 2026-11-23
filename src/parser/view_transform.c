@@ -471,6 +471,11 @@ static bool mq_check_outer_join_select_list (PARSER_CONTEXT * parser, PT_NODE * 
 
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select_list,
 						   PT_NODE * old_select_list);
+static PT_NODE *mq_remove_constant_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list, PT_NODE * select_list);
+static void mq_remove_analytic_constant_sort_specs (PARSER_CONTEXT * parser, PT_NODE * node_list,
+						    PT_NODE * select_list);
+static PT_NODE *mq_resolve_n_check_using_index (PARSER_CONTEXT * parser, PT_NODE * statement,
+						bool aggregate_rewrote_as_derived);
 static int mq_update_analytic_pos (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * new_select_list,
 				   PT_NODE * old_select_list);
 
@@ -7347,6 +7352,12 @@ mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
        * and keep the parent statement for the analytics */
       mq_rewrite_aggregate_as_derived (parser, select_statement);
       mq_reset_ids_in_statement (parser, select_statement);
+
+      /* the USING INDEX clause moved to the derived table, where mq_translate_local () does not look for it */
+      if (!pt_has_error (parser) && mq_resolve_n_check_using_index (parser, select_statement, true) == NULL)
+	{
+	  return NULL;
+	}
     }
 
   return select_statement;
@@ -13681,6 +13692,97 @@ mq_lambda_node_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int
 
 
 /*
+ * mq_remove_constant_sort_specs() - remove the sort specs of an analytic function that became a constant
+ *   return: the list without them
+ *   parser(in):
+ *   list(in): PARTITION BY or ORDER BY list of an analytic function
+ *   select_list(in): select list of the analytic function's query
+ *
+ * NOTE: pt_check_analytic_function () replaced the sort expressions which match a select list item with the position
+ * of the item, a PT_VALUE with pos_descr.pos_no set. A PT_VALUE without a position is a constant column of a view or
+ * a derived table, substituted for its name, and so is the select list item of a position. A constant does not order
+ * the rows, and the first would be read as a position.
+ */
+static PT_NODE *
+mq_remove_constant_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list, PT_NODE * select_list)
+{
+  PT_NODE *item, *next, *expr, *col;
+  PT_NODE *head = NULL, *tail = NULL;
+
+  for (item = list; item != NULL; item = next)
+    {
+      next = item->next;
+      item->next = NULL;
+
+      expr = (item->node_type == PT_SORT_SPEC) ? item->info.sort_spec.expr : NULL;
+      if (expr != NULL && expr->node_type == PT_VALUE)
+	{
+	  if (item->info.sort_spec.pos_descr.pos_no <= 0)
+	    {
+	      parser_free_tree (parser, item);
+	      continue;
+	    }
+
+	  col = pt_get_node_from_list (select_list, item->info.sort_spec.pos_descr.pos_no - 1);
+	  if (col != NULL && col->node_type == PT_VALUE)
+	    {
+	      parser_free_tree (parser, item);
+	      continue;
+	    }
+	}
+
+      if (tail == NULL)
+	{
+	  head = item;
+	}
+      else
+	{
+	  tail->next = item;
+	}
+      tail = item;
+    }
+
+  return head;
+}
+
+/*
+ * mq_remove_analytic_constant_sort_specs() - remove the constant sort specs of the analytic functions found in
+ *                                            node_list
+ *   return:
+ *   parser(in):
+ *   node_list(in): nodes in which analytic functions are searched for
+ *   select_list(in): select list of the query
+ *
+ * NOTE: An analytic function can be nested in an expression or a function, as mq_update_analytic_pos () searches.
+ */
+static void
+mq_remove_analytic_constant_sort_specs (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * select_list)
+{
+  PT_NODE *col;
+
+  for (col = node_list; col != NULL; col = col->next)
+    {
+      if (PT_IS_ANALYTIC_NODE (col))
+	{
+	  col->info.function.analytic.partition_by =
+	    mq_remove_constant_sort_specs (parser, col->info.function.analytic.partition_by, select_list);
+	  col->info.function.analytic.order_by =
+	    mq_remove_constant_sort_specs (parser, col->info.function.analytic.order_by, select_list);
+	}
+      else if (PT_IS_EXPR_NODE (col))
+	{
+	  mq_remove_analytic_constant_sort_specs (parser, col->info.expr.arg1, select_list);
+	  mq_remove_analytic_constant_sort_specs (parser, col->info.expr.arg2, select_list);
+	  mq_remove_analytic_constant_sort_specs (parser, col->info.expr.arg3, select_list);
+	}
+      else if (PT_IS_FUNCTION (col))
+	{
+	  mq_remove_analytic_constant_sort_specs (parser, col->info.function.arg_list, select_list);
+	}
+    }
+}
+
+/*
  * mq_lambda_node() - applies the lambda test to the node passed to it,
  *             and conditionally substitutes a copy of its corresponding tree
  *   return:
@@ -13843,6 +13945,12 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 	{
 	  parser_free_tree (parser, result->data_type);
 	  result->data_type = parser_copy_tree_list (parser, dt2);
+	}
+      /* a constant substituted for a name is not a sort key of an analytic function */
+      if (PT_SELECT_INFO_IS_FLAGED (result, PT_SELECT_INFO_HAS_ANALYTIC))
+	{
+	  mq_remove_analytic_constant_sort_specs (parser, result->info.query.q.select.list,
+						  result->info.query.q.select.list);
 	}
       /* pop the extra spec frame and add any extra specs to the from list */
       spec_frame = lambda_arg->spec_frames;

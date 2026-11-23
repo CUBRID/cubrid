@@ -116,6 +116,7 @@ struct indx_info
   int use_desc_index;		/* using descending index */
   int orderby_skip;		/* order by skip information */
   int groupby_skip;		/* group by skip information */
+  int analytic_desc;		/* first sort column of the analytic evaluation that skips its sort is desc */
   int use_iss;			/* flag set if using index skip scan */
   int func_idx_col_id;		/* function expression column position, if the index is a function index */
   KEY_RANGE iss_range;		/* placeholder range used for ISS; must be created on the broker */

@@ -2153,9 +2153,10 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
        * desc. */
       if ((indx_infop->range_type == R_KEYLIST || indx_infop->range_type == R_RANGELIST)
 	  && ((indx_infop->orderby_desc && indx_infop->orderby_skip)
-	      || (indx_infop->groupby_desc && indx_infop->groupby_skip)))
+	      || (indx_infop->groupby_desc && indx_infop->groupby_skip) || indx_infop->analytic_desc))
 	{
-	  /* in both cases we should reverse the key lists if we have a reverse order by or group by which is skipped */
+	  /* in these cases we should reverse the key lists if we have a reverse order by, group by or analytic sort
+	   * which is skipped */
 	  check_key_vals (key_vals, key_cnt, reverse_key_list, indx_infop->key_ranges_compares);
 	}
 
