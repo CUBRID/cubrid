@@ -1960,6 +1960,8 @@ qdump_arith_opcode_name (OPERATOR_TYPE opcode)
       return "T_TO_NUMBER";
     case T_CURRENT_VALUE:
       return "T_CURRENT_VALUE";
+    case T_CURRENT_VALUE_BY_OID:
+      return "T_CURRENT_VALUE_BY_OID";
     case T_NEXT_VALUE:
       return "T_NEXT_VALUE";
     case T_CAST:

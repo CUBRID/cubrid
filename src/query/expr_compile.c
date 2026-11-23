@@ -5075,6 +5075,7 @@ expr_generic_operand_spec (OPERATOR_TYPE op, const TP_DOMAIN * exec_domain)
     case T_BIT_TO_BLOB:
     case T_CHAR_TO_CLOB:
     case T_LOB_LENGTH:
+    case T_CURRENT_VALUE_BY_OID:
       return "L";
 
       /* the right operand */
@@ -5273,6 +5274,7 @@ expr_arith_side_effect (OPERATOR_TYPE opcode)
     {
     case T_NEXT_VALUE:
     case T_CURRENT_VALUE:
+    case T_CURRENT_VALUE_BY_OID:
     case T_INCR:
     case T_DECR:
     case T_RAND:

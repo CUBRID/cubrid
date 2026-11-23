@@ -3142,6 +3142,25 @@ fetch_op_current_value (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 }
 
 
+/* T_CURRENT_VALUE_BY_OID */
+static int
+fetch_op_current_value_by_oid (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+  DB_VALUE *peek_left = a->peek_left;
+
+  if (DB_IS_NULL (peek_left))
+    {
+      PRIM_SET_NULL (arithptr->value);
+    }
+  else if (xserial_get_current_value_by_oid (thread_p, arithptr->value, db_get_oid (peek_left)) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
+
 /* T_NEXT_VALUE */
 static int
 fetch_op_next_value (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
@@ -5178,6 +5197,8 @@ fetch_arith_op (OPERATOR_TYPE opcode)
       return fetch_op_to_number;
     case T_CURRENT_VALUE:
       return fetch_op_current_value;
+    case T_CURRENT_VALUE_BY_OID:
+      return fetch_op_current_value_by_oid;
     case T_NEXT_VALUE:
       return fetch_op_next_value;
     case T_CAST:

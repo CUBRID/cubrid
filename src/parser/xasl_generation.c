@@ -12085,17 +12085,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    }
 
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
-
-		  /* not the real cached_num (the serial varies per row): any value > 1 reads the cache entry first */
-		  regu_alloc (val);
-		  if (val == NULL)
-		    {
-		      break;
-		    }
-		  db_make_int (val, 2);
-		  r2 = pt_make_regu_constant (parser, val, DB_TYPE_INTEGER, NULL);
-
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_CURRENT_VALUE, domain);
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_CURRENT_VALUE_BY_OID, domain);
 		  if (parser->parent_proc_xasl != NULL)
 		    {
 		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
