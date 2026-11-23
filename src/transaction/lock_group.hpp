@@ -303,6 +303,7 @@ class lock_group_guard
 };
 
 extern void lock_group_set_abort_error (int tran_index, int error);
+extern void lock_group_check_sections_closed (void);
 
 /* from lock_manager.c */
 extern lock_group *lock_get_tran_group (int tran_index);

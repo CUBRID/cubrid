@@ -8380,6 +8380,7 @@ void
 lock_reset_request_state (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
+  lock_group_check_sections_closed ();
   thread_p->deferred_wake.request.recheck = lk_thread_deferred_wake::recheck_record ();
   /* a pool thread may hand its epoch to this one at any time (lock_end_parallel_task ()) */
   __atomic_store_n (&thread_p->deferred_wake.request.epoch_seen, (UINT64) 0, __ATOMIC_RELAXED);
@@ -8494,6 +8495,7 @@ lock_end_parallel_task (THREAD_ENTRY * thread_p, THREAD_ENTRY * reserver_p)
     {
       return;
     }
+  lock_group_check_sections_closed ();
   thread_p->deferred_wake.request.recheck = lk_thread_deferred_wake::recheck_record ();
   /* no one else writes this thread's epoch now: the tasks of a pool it reserved have retired */
   if (__atomic_load_n (&thread_p->deferred_wake.request.epoch_seen, __ATOMIC_RELAXED) == 0)

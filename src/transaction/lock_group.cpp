@@ -65,6 +65,9 @@
 #endif
 #define LK_GROUP_OWN_SPINS 64
 
+/* the parallel sections this thread opened and has not closed (lock_group_check_sections_closed ()) */
+static thread_local int lk_sections_opened_here = 0;
+
 lock_group::lock_group (int tran_index)
   : m_tran_index (tran_index)
   , m_sections (0)
@@ -922,6 +925,7 @@ lock_group_section_begin (int tran_index)
   if (tran_index > LOG_SYSTEM_TRAN_INDEX)
     {
       lock_get_tran_group (tran_index)->section_begin ();
+      lk_sections_opened_here++;
     }
 #endif /* SERVER_MODE */
 }
@@ -937,9 +941,28 @@ lock_group_section_end (int tran_index)
   if (tran_index > LOG_SYSTEM_TRAN_INDEX)
     {
       lock_get_tran_group (tran_index)->section_end ();
+      lk_sections_opened_here--;
     }
 #endif /* SERVER_MODE */
 }
+
+#if defined (SERVER_MODE)
+/*
+ * lock_group_check_sections_closed () - a request or a parallel task ends, and the sections its thread opened are
+ *					  closed: one left open would refuse every commit of the transaction
+ */
+void
+lock_group_check_sections_closed (void)
+{
+  if (lk_sections_opened_here != 0)
+    {
+      _er_log_debug (ARG_FILE_LINE, "lock_group: a request or task ends with %d parallel sections of its thread open\n",
+		     lk_sections_opened_here);
+      assert (false);
+      lk_sections_opened_here = 0;
+    }
+}
+#endif /* SERVER_MODE */
 
 /*
  * lock_group_clear () - no thread of the transaction index is left: its client unregisters, or the index is given
