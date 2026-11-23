@@ -233,9 +233,10 @@ sq_hash_func (const void *key, unsigned int ht_size)
   int i;
   unsigned int h = 0;
 
+  /* each value's whole hash (UINT_MAX), folded by rotation: a shift would push the earlier values' bits out */
   for (i = 0; i < k->n_elements; i++)
     {
-      h = mht_foldhash (h, mht_valhash (k->dbv_array[i], ht_size));
+      h = mht_foldhash (h, mht_valhash (k->dbv_array[i], UINT_MAX));
     }
   return h % ht_size;
 }
