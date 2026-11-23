@@ -1197,8 +1197,7 @@ parser_create_parser (void)
   srand48_r (t.tv_usec, &rand_buf);
   lrand48_r (&rand_buf, &parser->lrand);
   drand48_r (&rand_buf, &parser->drand);
-  /* 1 for an evaluation outside a statement execution; 0 marks a seeded random call not decided yet */
-  parser->rand_execution = parser->rand_executions = 1;
+  parser->rand_execution = parser->rand_executions = PT_RAND_OUTSIDE_EXECUTION;
   parser->uuidv7_last_ms = 0;
   parser->uuidv7_seq = 0;
   db_make_null (&parser->sys_datetime);

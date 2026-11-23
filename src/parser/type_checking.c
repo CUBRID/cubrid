@@ -13369,19 +13369,29 @@ pt_evaluate_seeded_rand (PARSER_CONTEXT * parser, PT_NODE * expr, int seed, bool
 {
   struct drand48_data local;
   struct drand48_data *buf = &expr->info.expr.rand_buf;
+  bool reseeds;
 
-  /* decide once in each statement execution; a fixed seed seeds the generator the call keeps for the rest of it */
-  if (expr->info.expr.rand_execution != parser->rand_execution)
+  if (parser->rand_execution == PT_RAND_OUTSIDE_EXECUTION)
     {
-      expr->info.expr.rand_execution = parser->rand_execution;
-      expr->info.expr.rand_reseeds = !pt_is_fixed_in_statement (parser, expr->info.expr.arg1);
-      if (!expr->info.expr.rand_reseeds)
+      /* a statement of its own that evaluates the call once: the first value, and nothing kept for later */
+      reseeds = true;
+    }
+  else
+    {
+      /* decide once in each statement execution; a fixed seed seeds the generator the call keeps for the rest of it */
+      if (expr->info.expr.rand_execution != parser->rand_execution)
 	{
-	  srand48_r ((long) seed, buf);
+	  expr->info.expr.rand_execution = parser->rand_execution;
+	  expr->info.expr.rand_reseeds = !pt_is_fixed_in_statement (parser, expr->info.expr.arg1);
+	  if (!expr->info.expr.rand_reseeds)
+	    {
+	      srand48_r ((long) seed, buf);
+	    }
 	}
+      reseeds = expr->info.expr.rand_reseeds;
     }
 
-  if (expr->info.expr.rand_reseeds)
+  if (reseeds)
     {
       buf = &local;
       srand48_r ((long) seed, buf);

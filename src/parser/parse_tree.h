@@ -4077,6 +4077,10 @@ struct pt_static_sql_star
   PT_STATIC_SQL_STAR *next;
 };
 
+/* parser->rand_execution outside any statement execution; each seeded random call evaluated there is a statement of
+ * its own */
+#define PT_RAND_OUTSIDE_EXECUTION 1
+
 struct parser_context
 {
   PT_INT_FUNCTION next_char;	/* the next character function */
@@ -4179,7 +4183,8 @@ struct parser_context
 
   long int lrand;		/* integer random value used by rand() */
   double drand;			/* floating-point random value used by drand() */
-  UINT64 rand_execution;	/* the statement execution running now, for the fixed-seed random calls' generators */
+  UINT64 rand_execution;	/* the statement execution running now, for the fixed-seed random calls' generators;
+				 * PT_RAND_OUTSIDE_EXECUTION when none runs */
   UINT64 rand_executions;	/* the last number given to a statement execution; never given twice */
   UINT64 uuidv7_last_ms;	/* last used millisecond timestamp for local UUIDv7 generation */
   UINT8 uuidv7_seq;		/* local UUIDv7 sequence within the same millisecond */
