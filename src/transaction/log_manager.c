@@ -15371,7 +15371,8 @@ cdc_find_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *passwo
   DB_VALUE *value;
   OID user_oid, dba_oid;
   int saved_tran_index = thread_p->tran_index;
-  bool dba_found, borrowed_tran = false;
+  LOG_TDES *tdes = NULL;
+  bool dba_found, borrowed_tran = false, had_snapshot = true;
   bool scan_started = false, attrinfo_started = false;
   int result = ER_FAILED;
 
@@ -15392,6 +15393,11 @@ cdc_find_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *passwo
 	  return ER_FAILED;
 	}
       borrowed_tran = true;
+    }
+  else
+    {
+      tdes = LOG_FIND_CURRENT_TDES (thread_p);
+      had_snapshot = (tdes == NULL || tdes->mvccinfo.snapshot.valid);
     }
 
   if (cdc_load_user_attr_ids (thread_p) != NO_ERROR)
@@ -15492,6 +15498,13 @@ end:
       (void) xtran_server_commit (thread_p, false);
       logtb_free_tran_index (thread_p, thread_p->tran_index);
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, saved_tran_index);
+    }
+  else if (!had_snapshot && tdes->mvccinfo.snapshot.valid)
+    {
+      /* this read is not a statement of the caller's transaction: leave the snapshot
+       * to its first statement, as before the account was read */
+      tdes->mvccinfo.snapshot.valid = false;
+      logtb_tran_reset_count_optim_state (thread_p);
     }
 
   return result;
