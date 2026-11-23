@@ -8380,6 +8380,39 @@ lock_is_held_only_by_writers (THREAD_ENTRY * thread_p, const OID * oid, const OI
 }
 
 /*
+ * lock_class_has_other_writer () - does another transaction hold IX or a stronger lock on the class?
+ *
+ * Note: a writer keeps its class lock until it ends, so with no such holder no instance of the class has a change
+ *	 that another transaction has not committed.
+ */
+bool
+lock_class_has_other_writer (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+#if !defined (SERVER_MODE)
+  return false;
+#else /* !SERVER_MODE */
+  LK_RES_KEY search_key = lock_create_search_key (class_oid, oid_Root_class_oid);
+  LK_RES *res_ptr;
+  LK_ENTRY *holder;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  bool found = false;
+
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      return false;
+    }
+  /* find() leaves the resource mutex locked. */
+  for (holder = res_ptr->holder; holder != NULL && !found; holder = holder->next)
+    {
+      found = (holder->tran_index != tran_index && holder->granted_mode >= IX_LOCK);
+    }
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  return found;
+#endif /* !SERVER_MODE */
+}
+
+/*
  * lock_has_xlock - Does transaction have an exclusive lock on any resource ?
  *
  * return:
@@ -8727,7 +8760,7 @@ lock_notify_isolation_incons (THREAD_ENTRY * thread_p, bool (*fun) (const OID * 
   isolation = logtb_find_isolation (tran_index);
   if (isolation == TRAN_REPEATABLE_READ || isolation == TRAN_SERIALIZABLE)
     {
-      return;			/* Nothing was released */
+      return;			/* Nothing went to the non-2PL list */
     }
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];

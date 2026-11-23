@@ -1674,10 +1674,13 @@ typedef enum
   PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
   PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000,	/* this spec was originally a subquery but was resolved to a table
 					 * during dummy SELECT removal; invisible columns should be excluded from this spec */
-  PT_SPEC_FLAG_DBLINK_DML_SRC = 0x40000	/* the remote source spec of a DML statement, and the derived table
-					 * generated around it (pt_check_sub_query_spec ()). That derived table is not a scope the statement
-					 * asked for, so it must not hide the remote invisible columns the statement references - unlike
-					 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
+  PT_SPEC_FLAG_DBLINK_DML_SRC = 0x40000,	/* the remote source spec of a DML statement, and the derived table
+						 * generated around it (pt_check_sub_query_spec ()). That derived table is not a scope the statement
+						 * asked for, so it must not hide the remote invisible columns the statement references - unlike
+						 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
+  PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED = 0x80000	/* a DML target left to the force-phase reevaluation; locked
+							 * at select as FOR UPDATE where the executor does not
+							 * reevaluate */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -3051,6 +3054,12 @@ struct pt_query_info
 				 * do_replan_statement_with_bind_peek ()) restore the level to 0
 				 * first, so the subquery keeps its XASL_ZERO_CORR_LEVEL
 				 * (uncorrelated, parallel-executable) marking. */
+    unsigned stays_query:1;	/* a set operation of a statement typed again with its bound values
+				 * (db_execute_and_keep_statement_local ()): it folds into an empty operand,
+				 * never into a value (pt_check_union_is_foldable ()) */
+    unsigned folded_distinct:1;	/* a SELECT DISTINCT from a derived table of the operand a set operation
+				 * without ALL folded to (pt_fold_union_as_derived ()): where only the set of
+				 * its rows counts, the operand takes its place (pt_fold_union_unwrap ()) */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */

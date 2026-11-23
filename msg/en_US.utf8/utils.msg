@@ -534,6 +534,12 @@ valid options:\n\
                                  WARNING: Cannot be used with the -s option.\n
 
 
+128 The object file was written in a binary format this build cannot read: format version %1$d, %2$d bit, byte order %3$d, while this build reads format version %4$d or %5$d, %6$d bit, byte order %7$d.\n
+129 The binary section of the object file is truncated.\n
+130 The %%format command line of the object file is malformed.\n
+131 The object file uses the data format %1$d, which this build does not support.\n
+132 Line %1$d: a row, or a compressed block of rows, of the binary section is %2$lld bytes, which is over the %3$lld bytes loaddb can send to the server at once in CS mode. Load the object file in SA mode (-S).\n
+133 A compressed block of the binary section of the object file is corrupted.\n
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pages value is invalid.\n
 42 cached-page-size value is invalid.\n
@@ -547,6 +553,7 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 50 Maximum length of class name is %1$d bytes.\n
 51 Maximum length of user name is %1$d bytes.\n
 52 Class %1$s not found.\n
+53 A row of class %1$s is %2$lld bytes, which is over the %3$lld bytes a row of the binary format can hold. Unload the class without --data-format.\n
 60 \
 unloaddb: Export objects and schemas from the database.\n\
 usage: %1$s unloaddb [OPTION] database-name\n\
@@ -566,6 +573,7 @@ valid options:\n\
       --hash-file=FILE        FILE for hash; default: generate by tmpnam()\n\
       --latest-image          when dumping objects, it dumps the latest image of objects in data volumes, not referring to log volumes (ignoring MVCC)\n\
                               It could include uncommitted data and deleted data which is not vacuummed; default: disabled\n\
+      --data-format=NUMBER    0: text, 1: binary, 2: binary compressed with LZ4; default: 0\n\
   -t, --thread-count=COUNT    Number of threads; default: 1 maximum: 127\n\
       --enhanced-estimates    Obtaining the exact number of records in the table to unload; default: disabled\n\
   -v, --verbose               enable verbose status messages; default: disabled\n\
