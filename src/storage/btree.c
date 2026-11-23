@@ -611,13 +611,13 @@ struct btree_find_fk_object
   LOCK lock_mode;
   const BTREE_FK_SEEN *seen;	/* the entries the caller saw being written after it marked the key */
   int n_seen;
-  MVCCID deferred_writer;	/* the writer to wait for when no committed child turned up */
+  LK_STAMP_SEEN deferred_writer;	/* the writer to wait for when no committed child turned up */
 #endif				/* SERVER_MODE */
 };
 /* BTREE_FIND_FK_OBJECT static initializer */
 #if defined (SERVER_MODE)
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
-  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK, NULL, 0, MVCCID_NULL }
+  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK, NULL, 0, { MVCCID_NULL, 0 } }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
   { OID_INITIALIZER }
@@ -1759,6 +1759,8 @@ STATIC_INLINE void btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE
 STATIC_INLINE void btree_insert_sysop_end (THREAD_ENTRY * thread_p, BTREE_INSERT_HELPER * helper)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *btree_purpose_to_string (BTREE_OP_PURPOSE purpose) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE PGBUF_LATCH_MODE btree_purpose_object_page_latch (BTREE_OP_PURPOSE purpose)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *btree_op_type_to_string (int op_type) __attribute__ ((ALWAYS_INLINE));
 
 static bool btree_is_class_oid_packed (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first);
@@ -6627,7 +6629,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   key_val_range kv_range;
   BTREE_FIND_FK_OBJECT find_fk_object = BTREE_FIND_FK_OBJECT_INITIALIZER;
 #if defined (SERVER_MODE)
-  MVCCID writer;
+  LK_STAMP_SEEN writer;
 #endif /* SERVER_MODE */
 
   assert (btid != NULL);
@@ -6675,16 +6677,16 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
       assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
 #if defined (SERVER_MODE)
       writer = find_fk_object.deferred_writer;
-      if (error_code != NO_ERROR || !OID_ISNULL (&find_fk_object.found_oid) || writer == MVCCID_NULL)
+      if (error_code != NO_ERROR || !OID_ISNULL (&find_fk_object.found_oid) || writer.owner == MVCCID_NULL)
 	{
 	  break;
 	}
       /* no committed child: wait for the writer passed over, then read the key again */
-      find_fk_object.deferred_writer = MVCCID_NULL;
+      find_fk_object.deferred_writer.owner = MVCCID_NULL;
       btree_scan_clear_key (&btree_scan);
-      if (logtb_is_active_other_mvccid (thread_p, writer))
+      if (logtb_is_active_other_mvccid (thread_p, writer.owner))
 	{
-	  error_code = logtb_wait_for_tran_end (thread_p, writer);
+	  error_code = logtb_wait_for_tran_end (thread_p, &writer);
 	  if (error_code != NO_ERROR)
 	    {
 	      break;
@@ -9885,7 +9887,7 @@ btree_check_all (THREAD_ENTRY * thread_p)
 
 /*
  * btree_keyoid_checkscan_start () -
- *   return: NO_ERROR
+ *   return: error code
  *   btid(in): B+tree index identifier
  *   btscan(out): Set to key-oid check scan structure.
  *
@@ -9894,23 +9896,29 @@ btree_check_all (THREAD_ENTRY * thread_p)
 int
 btree_keyoid_checkscan_start (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CHECKSCAN * btscan)
 {
+  PAGE_PTR root_page = NULL;
+  int error_code = NO_ERROR;
+
   assert (btid != NULL);
 
-  /* initialize scan structure */
   btscan->btid = *btid;
-  BTREE_INIT_SCAN (&btscan->btree_scan);
 
-  /* Initialize OID list. */
-  btscan->oid_list.oidp = (OID *) os_malloc (ISCAN_OID_BUFFER_CAPACITY);
-  if (btscan->oid_list.oidp == NULL)
+  /* Objects are matched against the transaction's snapshot. */
+  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, ISCAN_OID_BUFFER_CAPACITY);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      /* System transactions have no snapshot. */
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
     }
-  btscan->oid_list.oid_cnt = 0;
-  btscan->oid_list.capacity = ISCAN_OID_BUFFER_CAPACITY / OR_OID_SIZE;
-  btscan->oid_list.max_oid_cnt = btscan->oid_list.capacity;
-  btscan->oid_list.next_list = NULL;
+
+  root_page = btree_fix_root_with_info (thread_p, &btscan->btid, PGBUF_LATCH_READ, NULL, NULL, &btscan->btid_int);
+  if (root_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  pgbuf_unfix_and_init (thread_p, root_page);
 
   return NO_ERROR;
 }
@@ -9923,78 +9931,116 @@ btree_keyoid_checkscan_start (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CHECKS
  *   key(in): Key pointer
  *   oid(in): Object identifier for the key
  *
- * Note: Check if the given key-oid pair exists in the index.
+ * Note: Check if the given key-oid pair exists in the index, as an object visible to the transaction's snapshot.
+ *	 The object is looked up the way insert and delete find it, instead of reading every object of the key.
  */
 DISK_ISVALID
 btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan, OID * cls_oid, DB_VALUE * key,
 			      OID * oid)
 {
-  int k;			/* Loop iteration variable */
-  INDX_SCAN_ID isid;
-  DISK_ISVALID status;
-  key_val_range kv_range;
-  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
-
-  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (mvcc_snapshot == NULL)
-    {
-      ASSERT_ERROR ();
-      return DISK_INVALID;
-    }
-
-  /* initialize scan structure */
-  BTREE_INIT_SCAN (&btscan->btree_scan);
-
-  scan_init_index_scan (&isid, &btscan->oid_list, mvcc_snapshot);
+  BTID_INT *btid_int = &btscan->btid_int;
+  PAGE_PTR leaf_page = NULL;
+  PAGE_PTR found_page = NULL;
+  INT16 slot_id = NULL_SLOTID;
+  bool found = false;
+  RECDES leaf_record;
+  LEAF_REC leaf_rec_info;
+  int offset_after_key = 0;
+  int offset_to_object = NOT_FOUND;
+  bool dummy_clear_key = false;
+  DISK_ISVALID status = DISK_ERROR;
 
   assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (key)));
 
-  pr_share_value (key, &kv_range.key1);
-  pr_share_value (key, &kv_range.key2);
-  kv_range.range = GE_LE;
-  kv_range.num_index_term = 0;
-
-  do
+  if (btree_locate_key (thread_p, btid_int, key, NULL, DB_EQ, NULL, &slot_id, &leaf_page, &found) != NO_ERROR)
     {
-      /* search index */
-      btscan->oid_list.oid_cnt =
-	btree_keyval_search (thread_p, &btscan->btid, S_SELECT, &btscan->btree_scan, &kv_range, cls_oid, NULL,
-			     &isid, false);
-      assert (btscan->oid_list.oid_cnt <= btscan->oid_list.capacity);
+      ASSERT_ERROR ();
+      return DISK_ERROR;
+    }
 
-      if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY && key->data.midxkey.domain == NULL)
+  if (!found)
+    {
+      status = DISK_INVALID;
+      goto end;
+    }
+
+  if (spage_get_record (thread_p, leaf_page, slot_id, &leaf_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      goto end;
+    }
+
+  if (btree_read_record (thread_p, btid_int, leaf_page, &leaf_record, NULL, &leaf_rec_info, BTREE_LEAF_NODE,
+			 &dummy_clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (btree_find_oid_and_its_page (thread_p, btid_int, oid, leaf_page, BTREE_OP_CHECK_KEY_OID, NULL, &leaf_record,
+				   &leaf_rec_info, offset_after_key, &found_page, NULL, &offset_to_object, NULL,
+				   NULL) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (offset_to_object == NOT_FOUND)
+    {
+      status = DISK_INVALID;
+      goto end;
+    }
+
+  if (BTREE_IS_UNIQUE (btid_int->unique_pk) && cls_oid != NULL && !OID_ISNULL (cls_oid))
+    {
+      /* a unique index can hold the objects of several classes (a class hierarchy, or the partitions of a partitioned
+       * table), so the class of the found object must also be the class of the row */
+      RECDES found_record;
+      BTREE_NODE_TYPE node_type;
+      int found_after_key_offset;
+      OID found_oid, found_class_oid;
+      BTREE_MVCC_INFO found_mvcc_info;
+
+      if (found_page == leaf_page)
 	{
-	  /* set the appropriate domain, as it might be needed for printing if the given key-oid pair does not exist in
-	   * the index. */
-	  key->data.midxkey.domain = btscan->btree_scan.btid_int.key_type;
+	  found_record = leaf_record;
+	  node_type = BTREE_LEAF_NODE;
+	  found_after_key_offset = offset_after_key;
 	}
-
-      if (btscan->oid_list.oid_cnt < 0)
+      else if (spage_get_record (thread_p, found_page, 1, &found_record, PEEK) == S_SUCCESS)
 	{
-	  status = DISK_ERROR;
+	  node_type = BTREE_OVERFLOW_NODE;
+	  found_after_key_offset = 0;
+	}
+      else
+	{
+	  assert_release (false);
 	  goto end;
 	}
 
-      /* search current set of OIDs to see if given <key-oid> pair exists */
-      for (k = 0; k < btscan->oid_list.oid_cnt; k++)
+      if (btree_unpack_object (found_record.data + offset_to_object, btid_int, node_type, &found_record,
+			       found_after_key_offset, &found_oid, &found_class_oid, &found_mvcc_info) == NULL)
 	{
-	  if (OID_EQ (&btscan->oid_list.oidp[k], oid))
-	    {			/* <key-oid> pair found */
-	      status = DISK_VALID;
-	      goto end;
-	    }
+	  goto end;
+	}
+      if (!OID_EQ (&found_class_oid, cls_oid))
+	{
+	  status = DISK_INVALID;
+	  goto end;
 	}
     }
-  while (!BTREE_END_OF_SCAN (&btscan->btree_scan));
 
-  /* indicate <key_oid> pair is not found */
-  status = DISK_INVALID;
+  status = DISK_VALID;
 
 end:
-
-  btree_scan_clear_key (&btscan->btree_scan);
-
-  /* do not use copy_buf for key-val scan, only use for key-range scan */
+  if (found_page != NULL && found_page != leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, found_page);
+    }
+  if (leaf_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, leaf_page);
+    }
 
   return status;
 }
@@ -10004,18 +10050,11 @@ end:
  *   return:
  *   btscan(in): B+tree key-oid check scan structure.
  *
- * Note: End the <key-oid> check scan on the index.
+ * Note: End the <key-oid> check scan on the index. The scan holds no resource between checks.
  */
 void
 btree_keyoid_checkscan_end (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan)
 {
-  /* Deallocate allocated areas */
-  if (btscan->oid_list.oidp)
-    {
-      os_free_and_init (btscan->oid_list.oidp);
-      btscan->oid_list.capacity = 0;
-      btscan->oid_list.max_oid_cnt = 0;
-    }
 }
 
 /*
@@ -13876,7 +13915,9 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
   thread_p->read_ovfl_pages_count = 0;	/* For Vacuum only; directory fixes below count too. */
 
   PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-  first_ovf_page = pgbuf_fix (thread_p, first_ovf_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  first_ovf_page =
+    pgbuf_fix (thread_p, first_ovf_vpid, OLD_PAGE, btree_purpose_object_page_latch (purpose),
+	       PGBUF_UNCONDITIONAL_LATCH);
   btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
   if (first_ovf_page == NULL)
     {
@@ -13987,7 +14028,9 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 	  if (!VPID_ISNULL (&prev_vpid))
 	    {
 	      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-	      prev_data_page = pgbuf_fix (thread_p, &prev_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	      prev_data_page =
+		pgbuf_fix (thread_p, &prev_vpid, OLD_PAGE, btree_purpose_object_page_latch (purpose),
+			   PGBUF_UNCONDITIONAL_LATCH);
 	      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
 	      if (prev_data_page == NULL)
 		{
@@ -13998,7 +14041,9 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 	}
 
       PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-      target_page = pgbuf_fix (thread_p, &target_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      target_page =
+	pgbuf_fix (thread_p, &target_vpid, OLD_PAGE, btree_purpose_object_page_latch (purpose),
+		   PGBUF_UNCONDITIONAL_LATCH);
       btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
       if (target_page == NULL)
 	{
@@ -16684,7 +16729,9 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
   do
     {
       PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-      overflow_page = pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      overflow_page =
+	pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, btree_purpose_object_page_latch (purpose),
+		   PGBUF_UNCONDITIONAL_LATCH);
       btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
       if (overflow_page == NULL)
 	{
@@ -16899,6 +16946,26 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
       /* Unreachable. */
       assert_release (false);
       return ER_FAILED;
+
+    case BTREE_OP_CHECK_KEY_OID:
+      {
+	/* Match an object visible to the transaction's snapshot, the test an index scan applies. */
+	MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
+	MVCC_REC_HEADER mvcc_header;
+
+	if (snapshot == NULL)
+	  {
+	    assert_release (false);
+	    return ER_FAILED;
+	  }
+	btree_mvcc_info_to_heap_mvcc_header (mvcc_info, &mvcc_header);
+	if (snapshot->snapshot_fnc == NULL
+	    || snapshot->snapshot_fnc (thread_p, &mvcc_header, snapshot) == SNAPSHOT_SATISFIED)
+	  {
+	    *is_match = true;
+	  }
+      }
+      return NO_ERROR;
 
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_INSERT_MVCC_DELID:
@@ -32214,10 +32281,12 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	}
       /* the writer may hold no row lock (an inserter takes none, a deleter may have given it back), so a lock could
        * be granted at once: btree_find_foreign_key () waits for its transaction once no committed child turned up */
-      if (find_fk_obj->deferred_writer == MVCCID_NULL)
+      if (find_fk_obj->deferred_writer.owner == MVCCID_NULL)
 	{
-	  find_fk_obj->deferred_writer = (satisfy_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
+	  find_fk_obj->deferred_writer.owner = (satisfy_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
 	    ? BTREE_MVCC_INFO_INSID (mvcc_info) : BTREE_MVCC_INFO_DELID (mvcc_info);
+	  /* read while the leaf is still fixed: see lock_get_tran_wake_generation () */
+	  find_fk_obj->deferred_writer.wake_gen = lock_get_tran_wake_generation ();
 	}
       return NO_ERROR;
 #else	/* !SERVER_MODE */		   /* SA_MODE */
@@ -34309,6 +34378,19 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
       insert_helper->is_unique_key_added_or_deleted = false;
 #if defined (SERVER_MODE)
       /* We don't want to unlock the object we will relocate. Others cannot delete it until we are finished. */
+      if (!OID_ISNULL (&insert_helper->saved_locked_oid)
+	  && locator_can_release_row_lock_at_statement_end (thread_p, &insert_helper->saved_locked_class_oid,
+							    STMT_ROW_CHANGE_UNCOMMITTED))
+	{
+	  /* finished is the statement's end: count the lock as its own row locks are, so that it also ends after the
+	   * undo of a statement that fails */
+	  if (lock_object_transient (thread_p, &insert_helper->saved_locked_oid,
+				     &insert_helper->saved_locked_class_oid, X_LOCK, LK_COND_LOCK) == LK_GRANTED)
+	    {
+	      lock_unlock_object_donot_move_to_non2pl (thread_p, &insert_helper->saved_locked_oid,
+						       &insert_helper->saved_locked_class_oid, X_LOCK);
+	    }
+	}
       OID_SET_NULL (&insert_helper->saved_locked_oid);
 #endif
     }
@@ -39597,10 +39679,24 @@ btree_purpose_to_string (BTREE_OP_PURPOSE purpose)
       return "BTREE_OP_ONLINE_INDEX_IB_INSERT";
     case BTREE_OP_ONLINE_INDEX_IB_DELETE:
       return "BTREE_OP_ONLINE_INDEX_IB_DELETE";
+    case BTREE_OP_CHECK_KEY_OID:
+      return "BTREE_OP_CHECK_KEY_OID";
     default:
       assert (false);
       return "** UNKNOWN PURPOSE **";
     }
+}
+
+/*
+ * btree_purpose_object_page_latch () - Latch mode for an overflow page searched for an object
+ *
+ * return       : PGBUF_LATCH_READ if the purpose only reads the object, PGBUF_LATCH_WRITE otherwise
+ * purpose (in) : purpose
+ */
+STATIC_INLINE PGBUF_LATCH_MODE
+btree_purpose_object_page_latch (BTREE_OP_PURPOSE purpose)
+{
+  return (purpose == BTREE_OP_CHECK_KEY_OID) ? PGBUF_LATCH_READ : PGBUF_LATCH_WRITE;
 }
 
 /*
