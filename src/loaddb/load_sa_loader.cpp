@@ -3780,7 +3780,7 @@ ldr_float_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val
   int err = NO_ERROR;
 
   val->domain = ldr_float_tmpl.domain;
-  /* strtof (): a float rounded from the double strtod () reads would round twice */
+  /* strtof (): rounding the double that strtod () reads to float would round twice */
   f = strtof (str, &str_ptr);
 
   /* The ascii representation should be ok, check for overflow */

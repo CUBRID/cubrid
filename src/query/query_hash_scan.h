@@ -27,7 +27,7 @@
 #include "system.h"		/* HL_HEAPID */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "memory_hash.h"	/* mht_foldhash, mht_valhash */
+#include "memory_hash.h"	/* mht_foldhash (), mht_valhash () */
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #define HASH_LIST_SCAN_DUMP_HASH_TABLE 0
@@ -133,7 +133,6 @@ struct hash_list_scan
   unsigned int curr_hash_key;	/* current hash key */
 };
 
-/* the method of a hash table over a list's tuples: the tuples in memory, their positions in memory, or a hash file */
 HASH_METHOD qdata_hash_scan_method (const QFILE_LIST_ID * list_id, const UINT64 mem_limit);
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);

@@ -2904,31 +2904,31 @@ hjoin_fetch_val_list (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASH
   return NO_ERROR;
 }
 
-/* Two join column values once converted, compared as the compiler decided:
+/* Two join column values once converted, compared as the compiler decided (domain_decide_hash_join_key ()):
  *   - tp_value_compare without coercion
- *   - with coercion, for two types of one hash type hashed as they are and for JSON and collection keys, whose contents
- *     the join term's comparison coerces
+ *   - with coercion for two types of one hash type, hashed as they are, and for JSON and collection keys, whose
+ *     contents the join term's comparison coerces
  *
- * No key compares by its values: the compiler reads an OBJECT column as OID and decides no NULL or variable column
- * (xts_pack_hash_join_keys).
+ * No key compares by its values:
+ *   - the compiler reads an OBJECT column as OID
+ *   - the compiler decides no variable column (xts_pack_hash_join_keys ())
+ *   - a NULL-typed column holds only NULLs, which hjoin_fetch_key () skips before the comparison
  *
- * The comparison is decided outer first (source[0] the outer type, source[1] the inner) and takes the outer value
- * first: it converts or coerces each side by its own source type.
+ * The comparison is decided outer first (source[0] the outer type, source[1] the inner) and converts or coerces each
+ * side by its own source type, so it takes the outer value first.
  *
- * Where the build input is the inner one (a left, anti or semi join, or an inner join whose outer is not the smaller),
- * the build value (value1) is the inner one and the values are swapped:
- *   - the order matters only for two types of one hash type hashed as they are (domain_decide_hash_join_key), which
- *     differ
- *   - every other pair is read in one type (the same type, or both converted to a common domain),
- *     source[0] == source[1], and keeps its order
- *   - only DB_EQ is asked for, so the sign of a swapped pair does not matter */
+ * value1 is the build value. Where the build input is the inner one (a left, anti or semi join, or an inner join whose
+ * outer is not the smaller), the values are swapped:
+ *   - only a pair of two types of one hash type, hashed as they are, has source[0] != source[1] and needs the swap
+ *   - every other pair is read in one type (the same type, or both converted to a common domain) and keeps its order
+ *   - only DB_EQ is asked for, so the sign of a swapped result does not matter */
 static inline DB_VALUE_COMPARE_RESULT
 hjoin_compare_key (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2)
 {
   assert (compare->method != DOMAIN_COMPARE_OBJECT && compare->method != DOMAIN_COMPARE_VALUES);
   if (DB_VALUE_DOMAIN_TYPE (value1) != compare->source[0])
     {
-      /* the build is the inner input: the outer value goes first */
+      /* the build is the inner input and the two types differ: the outer value goes first */
       assert (DB_VALUE_DOMAIN_TYPE (value2) == compare->source[0]);
       assert (DB_VALUE_DOMAIN_TYPE (value1) == compare->source[1]);
       return domain_compare_values (compare, value2, value1, 0, NULL);

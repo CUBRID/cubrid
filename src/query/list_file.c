@@ -5993,7 +5993,7 @@ qfile_hash_db_value_array (const void *key, unsigned int htsize)
 
   if (key != NULL && array->size > 0)
     {
-      /* each value's whole hash, so no value's bits shift out */
+      /* each value's whole hash (UINT_MAX), folded by rotation: a shift would push the earlier values' bits out */
       for (i = 0, val = array->vals; i < array->size; i++, val++)
 	{
 	  hash = mht_foldhash (hash, mht_valhash (val, UINT_MAX));
@@ -6028,7 +6028,8 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
       return false;
     }
 
-  /* CBRD-27583: identical, not equal under a comparison (domain_key_values_identical ()) */
+  /* CBRD-28060: values a comparison finds equal can give different results ('A' and 'a', 1.0 and 1.00), so a cached
+   * result serves only identical values (domain_key_values_identical ()) */
   for (i = 0, val1 = array1->vals, val2 = array2->vals; i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
       if (!domain_key_values_identical (val1, val2))

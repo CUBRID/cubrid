@@ -15282,9 +15282,9 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 }
 
 /*
- * mr_cmpval_json_number () - compare a JSON integer and a JSON number of another kind by their values
+ * mr_cmpval_json_number () - compare a JSON integer and a DOUBLE or a string that converts to one by their values
  *   return: the comparison; DB_UNK to leave any other pair to the scalars' own comparison, which is exact for two
- *	     integers (INTEGER, BIGINT) and for two DOUBLEs
+ *     integers (INTEGER, BIGINT) and for two DOUBLEs
  *
  * The comparison through DOUBLE rounds an integer above 2^53 (2^62 + 1 = 2^62.0), which mht_hash_json () cannot
  * follow: it hashes an integer by its value.
@@ -15308,8 +15308,9 @@ mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
   const DB_VALUE *other_value = (is_discrete1) ? value2 : value1;
 
   /* the other value is a DOUBLE or a string. A string is a number when tp_value_coerce () converts it to DOUBLE: read
-   * whole and without overflow ('1e0' = 1, '0x10' = 16), as mht_hash_json () reads it. tp_string_to_real () sets an
-   * error only when out of memory, so a string that does not convert leaves no error */
+   * whole and without overflow ('1e0' = 1, '0x10' = 16), as mht_hash_json () reads it.
+   *
+   * tp_string_to_real () sets an error only when out of memory, so a string that does not convert leaves no error */
   if (DB_VALUE_TYPE (other_value) == DB_TYPE_DOUBLE)
     {
       number = db_get_double (other_value);
@@ -15320,8 +15321,8 @@ mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
       return DB_UNK;
     }
 
-  /* NaN ('nan' read as a number) passes neither range check below and has no BIGINT: the comparison through DOUBLE
-   * orders it after every number, as mht_hash_json () hashes it as a DOUBLE */
+  /* NaN ('nan' read as a number) passes neither range check below and has no BIGINT. The comparison through DOUBLE
+   * orders it after every number, and mht_hash_json () hashes it as a DOUBLE */
   if (isnan (number))
     {
       return DB_UNK;
@@ -15466,8 +15467,10 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
     }
 
   /* of the scalar pairs a coercion converts, only an integer against a DOUBLE or a number string compares through a
-   * DOUBLE that rounds the integer: mr_cmpval_json_number () picks that pair out by the two types and leaves the rest
-   * (DB_UNK), which compare as mht_hash_json () hashes them */
+   * DOUBLE that rounds the integer.
+   *
+   * mr_cmpval_json_number () compares that pair by value and leaves the rest (DB_UNK) to the comparison below, which
+   * compares them as mht_hash_json () hashes them */
   cmp_result = (do_coercion) ? mr_cmpval_json_number (&scalar_value1, &scalar_value2) : DB_UNK;
   if (cmp_result == DB_UNK)
     {

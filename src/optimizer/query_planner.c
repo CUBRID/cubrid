@@ -37,7 +37,7 @@
 #endif /* !WINDOWS */
 
 #include "dbtype.h"
-#include "domain_rules.h"	/* domain_hashable_resolve () */
+#include "domain_rules.h"	/* domain_hashable_resolve (), domain_key_value_domain () */
 #include "environment_variable.h"
 #include "histogram_cl.hpp"
 #include "intl_support.h"
@@ -10957,8 +10957,8 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
   else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
 	   && (!qo_lenient_join_hint (info->env) || qo_can_hash_terms (info->env, hash_terms)))
     {
-      /* join hint: force hash-join; skip idx-join - unless ignored for a join no hash join can be made of
-       * (qo_can_hash_terms ()), as USE_MERGE is without a mergeable term */
+      /* join hint: force hash-join; skip idx-join. On the lenient retry the hint is ignored for a join no hash join
+       * can be made of (qo_can_hash_terms ()), as USE_MERGE is for a join without a mergeable term */
       goto exit;
     }
   else
@@ -11333,7 +11333,8 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
 		   && (!qo_lenient_join_hint (info->env) || qo_can_hash_terms (info->env, hash_terms)))
 	    {
-	      /* join hint: force hash-join; skip nl-join - unless ignored for a join no hash join can be made of */
+	      /* join hint: force hash-join; skip nl-join. On the lenient retry the hint is ignored for a join no hash
+	       * join can be made of (qo_can_hash_terms ()) */
 	      goto exit;
 	    }
 	  else
@@ -11396,7 +11397,8 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
       else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
 	       && (!qo_lenient_join_hint (info->env) || qo_can_hash_terms (info->env, hash_terms)))
 	{
-	  /* join hint: force hash-join; skip nl-join - unless ignored for a join no hash join can be made of */
+	  /* join hint: force hash-join; skip nl-join. On the lenient retry the hint is ignored for a join no hash join
+	   * can be made of (qo_can_hash_terms ()) */
 	  goto exit;
 	}
       else
@@ -11972,14 +11974,14 @@ qo_check_collection_type (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
 }
 
 /*
- * qo_can_hash_terms () - CBRD-28060: whether a hash join can be made of a join's terms: there is one, and the
- *   operands of every one hash alike whenever the term's comparison finds them equal
+ * qo_can_hash_terms () - CBRD-28060: whether a hash join can be made of a join's terms: there is a term, and the
+ *   operands of every term hash alike whenever the term's comparison finds them equal
  *   return: false for no term, or a term not known to hash alike
  *   env(in):
  *   terms(in): the mergeable terms of a join
  *
- * The operands hash alike as they are or in the common domain both convert to (domain_hashable_resolve ()). A term of a
- * type not known to hash alike is compared without a hash.
+ * The operands hash alike as they are or in the common domain both convert to (domain_hashable_resolve ()). A join
+ * with a term not known to hash alike gets no hash join plan.
  */
 static bool
 qo_can_hash_terms (QO_ENV * env, BITSET * terms)
@@ -12017,9 +12019,10 @@ qo_can_hash_terms (QO_ENV * env, BITSET * terms)
 
       if (TP_DOMAIN_TYPE (domain[0]) == DB_TYPE_VARIABLE || TP_DOMAIN_TYPE (domain[1]) == DB_TYPE_VARIABLE)
 	{
-	  /* a type the bound values fix (an expression of a host variable): XASL generation fixes a scalar type before it
-	   * decides the key pair (domain_decide_hash_join_key ()), but not the element domain of a collection
-	   * (h1.mv - ? = h2.mv), so a term with an operand of a collection type is not known to hash alike */
+	  /* a type the bound values fix (an expression of a host variable):
+	   *   - XASL generation fixes a scalar type before it decides the key pair (domain_decide_hash_join_key ())
+	   *   - it does not fix the element domain of a collection (h1.mv - ? = h2.mv), so a term with an operand of a
+	   *     collection type is not known to hash alike */
 	  bool has_collection = false;
 
 	  (void) parser_walk_tree (parser, expr->info.expr.arg1, qo_skip_subquery, NULL, qo_check_collection_type,

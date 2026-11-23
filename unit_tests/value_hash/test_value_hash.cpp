@@ -17,7 +17,7 @@
  */
 
 /*
- * test_value_hash.cpp - mht_valhash () hashes the values that compare equal alike, whatever their type
+ * test_value_hash.cpp - mht_valhash () hashes the numbers that compare equal alike within a family (exact, floating)
  *
  * - SMALLINT, INTEGER, BIGINT and NUMERIC (fixed or float, of any precision and scale) of one value hash alike
  * - a FLOAT and a DOUBLE of one value hash alike, and -0.0 as 0.0
@@ -120,7 +120,8 @@ namespace
     return hash_numeric_of (digits, precision, scale, true);
   }
 
-  /* the NUMERICs of an integer: of its own digits, NUMERIC(38,0) float, and with two zeros after the point */
+  /* the NUMERICs of an integer: fixed of its own precision, float NUMERIC (38, 0), and fixed and float with two zeros
+   * after the point */
   void
   check_numerics_of (int64_t integer, unsigned int expected)
   {
@@ -168,7 +169,7 @@ TEST_CASE ("SMALLINT, INTEGER, BIGINT and NUMERIC of one value hash alike", "[va
       check_numerics_of (integer, expected);
     }
 
-  /* past 2^61 - 1, where the value is reduced mod the prime */
+  /* from 2^61 - 1 on in magnitude, where the value is reduced mod the prime */
   const int64_t past_prime[] = { (int64_t) ((1ULL << 61) - 1), (int64_t) (1ULL << 61), INT64_MAX, INT64_MIN };
 
   for (int64_t integer : past_prime)

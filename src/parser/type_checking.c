@@ -22041,7 +22041,8 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser, const PT_NOD
       break;
 
     case PT_DATA_TYPE:
-      /* the element domain of an inner collection: pt_get_collation_of_collection () takes only its collation */
+      /* the data type of an element collection: the caller, pt_get_collation_of_collection (), reads only its collation
+       * and codeset */
       break;
 
     default:

@@ -44,8 +44,8 @@
 #define MHT_FNV_PRIME 16777619u
 
 /*
- * round (2^64 / pi), an odd number: the multiplier of FxHasher (rustc-hash 1.x, from Firefox). Used in a folded
- * multiply, which XORs the high half of the 128-bit product into the low half.
+ * round (2^64 / pi), an odd number: the 64-bit multiplier of FxHasher (rustc-hash 1.x). lang_hash_u64_add () uses it
+ * in a folded multiply, which XORs the high half of the 128-bit product into the low half.
  */
 #define MHT_FX_MULTIPLIER 0x517cc1b727220a95ULL
 
@@ -207,7 +207,7 @@ extern unsigned int mht_hls_slot_count (int est_size);
  *   hash(in): the hash of the values before it, 0 for the first
  *   value_hash(in): the hash of the value
  *
- * Every hash of several values (a key of columns, a collection, a midxkey) folds them in order with it: the rotation
+ * Every hash of several values in order (a key of columns, a SEQUENCE, a midxkey) folds them with it: the rotation
  * makes the order of the values count, so (a, b) and (b, a) hash apart.
  */
 STATIC_INLINE unsigned int

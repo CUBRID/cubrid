@@ -576,11 +576,12 @@ mht_ptrhash (const void *key, const unsigned int ht_size)
  *   return: hash value
  *   hash(in): the hash
  *
- * mht_valhash () mixes the hash of every value with it once, a value of 64 bits after mht_mixhash64_to_32 () cuts it to
- * 32 bits. The hash tables index by the low bits (hash & mask in mht_put_hls ()), and a value's hash can keep patterns
+ * mht_valhash () mixes every value's hash with it once, a 64-bit value after mht_mixhash64_to_32 () cuts it to 32 bits.
+ *
+ * A table that indexes by the low bits (hash & mask, as mht_get_hls () does) meets the patterns a value's hash can keep
  * there:
  *   - a DATE is its own hash
- *   - the FNV-1a multiplies carry only into the high bits
+ *   - an FNV-1a multiply carries only into the high bits
  *
  * The mix makes the low bits depend on all the bits.
  */
@@ -645,7 +646,8 @@ mht_hash_double (double d)
  *     'false', and a string against a number as the DOUBLE tp_value_coerce () makes of it ('1e0' = 1, '0x10' = 16)
  *   - an integer against a DOUBLE or such a string by their values (mr_cmpval_json_number ())
  *
- * So a DOUBLE and a string that converts hash as the number they equal, any other string as the string.
+ * So an integer, a DOUBLE or a string that converts hashes as the number it equals, an integral one as the BIGINT; any
+ * other string hashes as the string.
  */
 static unsigned int
 mht_hash_json (const DB_VALUE * val)
@@ -746,8 +748,8 @@ mht_hash_multiset (const DB_VALUE * val)
  *   return: hash value
  *   val(in): a non-NULL SEQUENCE
  *
- * The hash is rotated before each element, so {a, b} and {b, a} hash apart, as the comparison takes two sequences
- * element by element in order.
+ * The elements are folded in order (mht_foldhash ()), as the comparison takes two sequences element by element in
+ * order: {a, b} and {b, a} hash apart.
  */
 STATIC_INLINE unsigned int
 mht_hash_sequence (const DB_VALUE * val)
@@ -775,7 +777,7 @@ mht_hash_sequence (const DB_VALUE * val)
  *   return: hash value
  *   val(in): the element
  *
- * A scalar hashes as a key (mht_valhash ()): within one family of numbers by its value. The planner refuses a pair of
+ * A scalar hashes as a key (mht_valhash ()): a number by its value within its family. The planner refuses a pair of
  * collections whose elements of two families could meet (domain_hashable_collections ()).
  */
 static unsigned int
@@ -809,7 +811,8 @@ mht_hash_element (const DB_VALUE * val)
  *   key(in): the DB_VALUE
  *   ht_size(in): size of hash table; UINT_MAX for the whole hash
  *
- * Numbers a comparison finds equal hash alike within two families:
+ * Numbers a comparison finds equal hash alike within two families, the hash types NUMERIC and DOUBLE of
+ * domain_hash_type ():
  *   - the exact ones (SMALLINT, INTEGER, BIGINT, NUMERIC), by the value mod 2^61 - 1
  *   - the floating ones (FLOAT, DOUBLE, MONETARY), by the bits of the DOUBLE the value equals
  *
@@ -876,7 +879,9 @@ mht_valhash (const void *key, const unsigned int ht_size)
 		size = (int) strlen (str);
 	      }
 
-	    /* the collation's hash leaves out what its comparison ignores, trailing spaces among them */
+	    /* the collation's hash leaves out what its comparison ignores, trailing spaces among them. A bit string has
+	     * collation 0 (iso88591_bin): its hash also leaves out trailing NUL and space bytes the bit comparison
+	     * counts, which only adds collisions */
 	    hash = MHT2STR_COLL (db_get_string_collation (val), (unsigned char *) str, size);
 	  }
       }
@@ -948,8 +953,8 @@ mht_valhash (const void *key, const unsigned int ht_size)
 
     case DB_TYPE_MIDXKEY:
       {
-	/* by every column in order, as the comparison takes a key: the hash is rotated before each column, so (a, b)
-	 * and (b, a) hash apart */
+	/* the columns are folded in order (mht_foldhash ()), as the comparison takes a key column by column in order:
+	 * (a, b) and (b, a) hash apart */
 	DB_MIDXKEY *midxkey = db_get_midxkey (val);
 	DB_VALUE element;
 	int prev_index = 0;
@@ -970,8 +975,8 @@ mht_valhash (const void *key, const unsigned int ht_size)
       break;
 
     case DB_TYPE_OID:
-      /* OID_PSEUDO_KEY () keeps the slot apart from the page: the two XORed together fold most OIDs of a volume onto a
-       * few values */
+      /* OID_PSEUDO_KEY () shifts the page 8 bits up before the XOR: the page and the slot XORed as they are fold most
+       * OIDs of a volume onto a few values */
       hash = OID_PSEUDO_KEY (db_get_oid (val));
       break;
 

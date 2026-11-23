@@ -7813,7 +7813,7 @@ pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
 	  return;
 	}
 
-      /* a pair of no domain that hashes alike (an OBJECT's values are OIDs on the server) */
+      /* a pair of no domain in which its values hash alike (an OBJECT's values are OIDs on the server) */
       if (!domain_hashable_resolve (domain_key_value_domain (key[0]->domain),
 				    domain_key_value_domain (key[1]->domain), &common))
 	{
@@ -7846,7 +7846,8 @@ pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
       if (!domain_hashable_resolve (domain_key_value_domain (key[0]->domain),
 				    domain_key_value_domain (key[1]->domain), &common))
 	{
-	  /* the pair hashed above: only the common domain's allocation fails here, and the keys serve only the hash */
+	  /* the first loop resolved this pair, so only the common domain's allocation fails here; the keys converted
+	   * before serve only the hash, which goes off */
 	  spec->s.list_node.hash_list_scan_yn = 0;
 	  return;
 	}
@@ -16406,15 +16407,16 @@ pt_list_element_domain (const TP_DOMAIN * set)
 }
 
 /*
- * pt_comparison_keeps_key () - CBRD-27583: whether a value (a list's elements) compares with a partition key as a value
- *   of the key's type
+ * pt_comparison_keeps_key () - CBRD-27583: whether a term's value, or a list's element, compares with a partition key
+ *   as a value of the key's type
+ *   return: true when the comparison the type rule module decides for the two domains converts:
+ *	       - the key not at all, or into a type that keeps any two keys apart
+ *	       - the element not at all, or into the key's type
+ *	     false also for a domain that leaves its values' type or collation to the execution
+ *	     (domain_decide_comparison ())
  *
- * The comparison the type rule module decides for the two domains does one of:
- *   - converts the element alone, into the key's type
- *   - converts the key into a type that keeps any two keys apart
- *
- * Pruning converts the value into the key's domain. Where the comparison converts the key losing digits, the converted
- * element would leave out a partition whose key the comparison finds equal.
+ * Pruning converts the value into the key's domain. Where the comparison converts the key and loses digits, the
+ * converted element would leave out a partition whose key the comparison finds equal.
  *
  * For example, a BIGINT key against a DOUBLE element compares in DOUBLE, and two keys can equal one element.
  */
@@ -16472,8 +16474,8 @@ pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
  *
  * The domain is decided here, not at the scan (partition_prune_hash (), partition_prune_for_function ()). A term prunes
  * only when:
- *   - its value compares with the key in the key's type (pt_comparison_keeps_key ())
- *   - for an IN list, the list's elements have one domain, its NULLs aside
+ *   - its value, or each element of an IN list, compares with the key in the key's type (pt_comparison_keeps_key ())
+ *   - for an IN list, the list's elements have one domain, their NULLs aside (pt_list_element_domain ())
  */
 static void
 pt_set_prune_domains (PRED_EXPR * pred)

@@ -372,8 +372,8 @@ static void lang_initloc_en_binary (LANG_LOCALE_DATA * ld);
  *   trailing spaces and NULs, which lang_fastcmp_byte () weighs 0.
  * upper: 'a' to 'z' hash as 'A' to 'Z'.
  * contraction weights: a contraction weighs as one unit, other code points by themselves.
- * loaded: a collation of a locale library (cubrid genlocale), with expansions (uca_exp_num > 1), with contractions
- *   (count_contr > 0) or with neither.
+ * loaded: a collation of a locale library (cubrid genlocale), with expansions (uca_exp_num > 1), with contractions and
+ *   no expansions (count_contr > 0) or with neither.
  *
  * The code point and EUC-KR collations do not hash 8 bytes at a time: intl_utf8_to_cp () reads some different bytes of
  * an invalid UTF-8 string as the same code point, and an EUC space counts only at a character's start.
@@ -940,8 +940,10 @@ lang_init_builtin (void)
     {
       lang_set_byte_lockstep_like (built_In_collations[i]);
 
-      /* the hash functions repeat the weights the init functions write */
+#if !defined (NDEBUG)
+      /* assert what the hash functions assume of the weights the init functions write */
       lang_verify_mht2str_weights (built_In_collations[i]);
+#endif
     }
 
   /* register all built-in locales allowed in current charset Support for multiple locales is required for switching
@@ -3290,9 +3292,12 @@ lang_cp_to_weight_utf8 (const unsigned int cp, const unsigned int *weights, cons
  *   str(in):
  *   size(in):
  *
- * A code point weighs as the compare function weighs it (lang_cp_to_weight_utf8 ()), by weights_ti of a built-in
- * collation; weights differs from it only in the space (lang_verify_mht2str_weights ()), which both weigh 0. Trailing
- * weights 0 are not hashed, so strings that differ only in them hash alike.
+ * A code point weighs as the compare function weighs it (lang_cp_to_weight_utf8 ()):
+ *   - a built-in collation by weights_ti; weights differs from it only in the space (lang_verify_mht2str_weights ()),
+ *     which lang_cp_to_weight_utf8 () weighs 0 by either table
+ *   - a loaded collation by weights
+ *
+ * Trailing weights 0 are not hashed, so strings that differ only in them hash alike.
  *
  * Steps:
  *   Step 1: leave out the trailing spaces (a CHAR's pad) without decoding them.
@@ -3337,7 +3342,7 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
  *   str(in):
  *   size(in):
  *
- * A contraction weighs as one unit, and a code point past the weights weighs itself. Trailing weights 0 are not hashed,
+ * A contraction weighs as one unit, and a code point past the table weighs itself. Trailing weights 0 are not hashed,
  * so strings that differ only in them hash alike.
  *
  * Steps:
@@ -3375,7 +3380,7 @@ lang_mht2str_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char
  *   hold_zero(in): true to hold a weight 0 back, false to skip it
  *
  * A weight 0 held back is hashed only when a nonzero weight follows it: the compare functions leave out the trailing
- * ones. The UCA compare functions skip a weight 0 unless it is a space's.
+ * ones. hold_zero false is for the UCA compare functions, which skip a weight 0 unless it is a space's.
  *
  * A weight is one FNV-1a step, taken whole, not byte by byte; a weight 0 held back is the step (hash ^ 0) x prime.
  */
@@ -5999,7 +6004,7 @@ lang_hash_u64_upper (UINT64 chunk)
  *   return: void
  *   lang_coll(in): built-in collation with its weights filled
  *
- * Two hash functions repeat what the init function writes in the weights:
+ * Two hash functions assume what the init function writes in the weights:
  *   - lang_mht2str_utf8 () hashes by weights_ti only, so weights may differ from it only in the space, which
  *     lang_cp_to_weight_utf8 () weighs 0
  *   - lang_hash_bytes () hashes a byte as another one, 8 bytes at a time: a NUL as a space, and 'a' to 'z' as 'A' to
@@ -6913,6 +6918,8 @@ lang_strmatch_binary (const LANG_COLLATION * lang_coll, bool is_match, const uns
  *   lang_coll(in): collation
  *   str(in):
  *   size(in):
+ *
+ * A byte weighs itself, and the trailing NULs are left out.
  */
 static unsigned int
 lang_mht2str_binary (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)

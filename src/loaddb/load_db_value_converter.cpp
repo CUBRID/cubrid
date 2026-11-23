@@ -903,7 +903,7 @@ namespace cubload
     char *str_ptr;
 
     db_make_float (val, (float) 0.0);
-    /* strtof (): a float rounded from the double strtod () reads would round twice */
+    /* strtof (): rounding the double that strtod () reads to float would round twice */
     f = strtof (str, &str_ptr);
 
     /* The ascii representation should be ok, check for overflow */

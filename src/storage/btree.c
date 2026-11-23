@@ -7738,7 +7738,7 @@ btree_get_stats_hash_finalize (UINT64 hash)
  *
  * Where they count, 'a' and 'a ' are two values the Duj1 estimate must tell apart: a hash table allows the two to hash
  * alike, a distinct count does not. So the number of trailing weights 0 is mixed in as well, counted as:
- *   - euckr_bin: the spaces and EUC spaces at a character's start (lang_next_byte_weight_ko ())
+ *   - euckr_bin: the bytes lang_next_byte_weight_ko () weighs 0 (a NUL, a space or an EUC space at a character's start)
  *   - any other: the ASCII spaces and NULs, which the byte and UTF-8 comparisons weigh alike
  *
  * A UCA comparison does not weigh a NUL as a space: a NUL rarely ends a value, and miscounting it only shifts the
@@ -7762,7 +7762,7 @@ btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
   if (coll_id == LANG_COLL_BINARY || DB_VALUE_TYPE (value) != DB_TYPE_VARCHAR
       || prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE))
     {
-      /* the trailing spaces do not count */
+      /* the trailing spaces do not count, or the binary collation's hash keeps them */
       return hash;
     }
 
@@ -7849,7 +7849,7 @@ btree_get_stats_value_hash (const DB_VALUE * value)
 	return btree_get_stats_hash_bytes (hash, &residue, sizeof (residue));
       }
 
-      /* FLOAT, DOUBLE and MONETARY: -0.0 equals 0.0, and a NaN every other NaN (MR_CMP_FLOATING ()) */
+      /* FLOAT, DOUBLE and MONETARY: -0.0 equals 0.0, and a NaN equals every other NaN (MR_CMP_FLOATING ()) */
     case DB_TYPE_FLOAT:
       {
 	float f = db_get_float (value);

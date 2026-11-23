@@ -3503,8 +3503,9 @@ qdata_key_sketch_estimate (const unsigned char *regs)
  *   key(in): key
  *   ht_size(in): hash table size (in buckets)
  *
- * Keys the comparison finds equal hash alike (mht_valhash ()): the hash merge of the GROUP BY leftovers
- * (qexec_gby_hash_merge ()) meets two groups only when their hashes are equal.
+ * Keys the comparison finds equal hash alike (mht_valhash ()). The hash merge of the GROUP BY leftovers
+ * (qexec_gby_hash_merge ()) meets two groups only when their hashes are equal, and leaves to the sort the keys for
+ * which this does not hold (qexec_gby_keys_hash_as_compared ()).
  */
 unsigned int
 qdata_hash_agg_hkey (const void *key, unsigned int ht_size)

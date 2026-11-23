@@ -367,7 +367,7 @@ extern "C"
   extern int lang_check_locale_compat (const LANG_LOCALE_COMPAT * loc_array, const int loc_cnt, const char *client_text,
 				       const char *server_text);
 #ifdef __cplusplus
-}				// extern "C"
+}				/* extern "C" */
 #endif
 
 /*

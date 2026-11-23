@@ -8369,9 +8369,9 @@ qexec_gby_aggs_follow_row_order (AGGREGATE_TYPE * agg_list)
  *   - where the group order does not reach the result, it writes the groups out without the sort that brings equal keys
  *     together
  *
- * These keys keep the sort:
+ * The function gives false, and the keys keep the sort, for:
  *   - a string key without a loaded collation (lang_get_collation ()): it has no collation hash
- *   - keys without compiled comparisons: they compare by their values' own types
+ *   - keys without compiled comparisons (g_hk_compares): they compare by their values' own types
  */
 static bool
 qexec_gby_keys_hash_as_compared (const BUILDLIST_PROC_NODE * proc)
@@ -8494,10 +8494,10 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
     }
   order_free = !qexec_gby_order_reaches_result (xasl);
 
-  /* the key sketch holds only the keys of the rows the table took, so the unsorted list is sampled instead when
+  /* The key sketch holds only the keys of the rows the table took. The unsorted list is sampled instead when:
    *   - the table stopped taking rows: the rows after that went to the list without passing the table
-   *   - the table took no row, and its empty sketch estimates 0: a row with a set column goes to the list without
-   *     passing the table (qexec_end_one_iteration ()) */
+   *   - the table took no row and its empty sketch estimates 0: a row with a set column, or one too big for a list
+   *     page, goes to the list without passing the table (qexec_end_one_iteration ()) */
   groups = qdata_key_sketch_estimate (ctx->key_sketch);
   if (ctx->key_sketch_partial || ctx->state == HS_REJECT_ALL || groups == 0)
     {

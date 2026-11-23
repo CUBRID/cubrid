@@ -2933,7 +2933,7 @@ xts_save_key_val_array (const KEY_VAL_RANGE * key_val_array, int nelements)
   return offset;
 }
 
-/* CBRD-27993: -1 for no key, else the slot count and the slots */
+/* CBRD-27993: -1 for no key, else the slot count and, for a nonzero count, the offset of the saved slot values */
 static char *
 xts_process_memoize_key (char *ptr, const SQ_KEY * key)
 {

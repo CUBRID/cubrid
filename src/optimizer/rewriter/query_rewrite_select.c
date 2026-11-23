@@ -4622,7 +4622,7 @@ qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
     {
       if (!PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
 	{
-	  /* one written in the query */
+	  /* a cast written in the query */
 	  *found = true;
 	  *continue_walk = PT_STOP_WALK;
 	}
@@ -4632,8 +4632,8 @@ qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 	  const PT_TYPE_ENUM to = node->type_enum;
 	  assert (arg != NULL);
 
-	  /* one the compiler wrapped from a string to another type, or from an ENUM to a type neither a string nor a
-	   * number, which reads its label as a string (a number takes its index) */
+	  /* a wrapped cast from a string, or from an ENUM into a type that reads its label (a number takes the ENUM's
+	   * index) */
 	  if ((PT_IS_CHAR_STRING_TYPE (arg->type_enum) && !PT_IS_CHAR_STRING_TYPE (to))
 	      || (arg->type_enum == PT_TYPE_ENUMERATION && !PT_IS_CHAR_STRING_TYPE (to) && !PT_IS_NUMERIC_TYPE (to)))
 	    {
@@ -4728,8 +4728,8 @@ qo_hq_has_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * pred)
  *       - only such an index finds the children of a parent by a key range: (pid) or (grp, pid) for PRIOR id = pid AND
  *         grp = 7 or grp IN (7, 8)
  *       - an expression over the column (PRIOR id = pid + 0) cannot use any index
- *   - The single-table plan is also kept when an equality conjunct is unsafe as a hash key (see
- *     qo_hq_is_unsafe_hash_key): a build side with a cast that can fail.
+ *   - The single-table plan is also kept when an equality conjunct is unsafe as a hash key
+ *     (qo_hq_is_unsafe_hash_key ()): a build side with a cast that can fail.
  */
 static bool
 qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)

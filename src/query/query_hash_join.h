@@ -479,19 +479,19 @@ extern void hjoin_prehash_release (THREAD_ENTRY * thread_p, HJOIN_PREHASH * preh
  *
  * Note:
  *   - The hash table of a partition takes the slot of a tuple from the low bits of the same hash key (hash & (size - 1)
- *     in mht_put_hls ()).
- *   - hash_key % part_cnt would fix those bits in a partition when part_cnt is even: with 2^k dividing part_cnt, the
- *     tuples start probing from only 1 / 2^k of the slots.
+ *     in mht_put_hls ()), and probes linearly from there.
+ *   - hash_key % part_cnt would fix those bits within a partition when part_cnt is even: with 2^k dividing part_cnt,
+ *     the tuples of a partition start probing from only 1 / 2^k of the slots.
  *   - The partition comes from the high bits of the hash key instead, which leave the low bits free. mht_valhash ()
- *     mixes every value of the key, so the high bits spread as the low ones do.
+ *     mixes the hash of every key value, so the high bits spread as the low ones do.
  */
 STATIC_INLINE UINT32
 hjoin_get_partition_id (UINT32 hash_key, UINT32 part_cnt, bool has_null_fill_side)
 {
   UINT32 hash_part_cnt = (has_null_fill_side) ? part_cnt - 1 : part_cnt;
 
-  /* hash_part_cnt ranges of the hash key, one per partition: the high 32 bits of the product (Lemire's fast range
-   * reduction), without a division */
+  /* partition = (hash_key x hash_part_cnt) >> 32: hash_part_cnt equal ranges of the hash key, one per partition,
+   * without a division (Lemire's fast range reduction) */
   return (UINT32) (((UINT64) hash_key * hash_part_cnt) >> 32);
 }
 

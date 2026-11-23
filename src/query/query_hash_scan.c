@@ -227,7 +227,7 @@ qdata_hash_scan_method (const QFILE_LIST_ID * list_id, const UINT64 mem_limit)
   slot_array_size = (UINT64) mht_hls_slot_count ((int) tuple_cnt) * sizeof (MHT_HLS_SLOT);
   entries_size = (UINT64) tuple_cnt *sizeof (MHT_HLS_ENTRY);
 
-  /* IN_MEM: slot array + one entry (header) per row + the tuples themselves */
+  /* IN_MEM: slot array + one entry (header) per row + the list's pages, which hold the tuples */
   payload_size = (UINT64) list_id->page_cnt * DB_PAGESIZE;
   in_mem_size = slot_array_size + entries_size + payload_size;
 

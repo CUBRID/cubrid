@@ -428,8 +428,8 @@ numeric_repr_write_disk (unsigned char *digits, const unsigned char *buf, int di
  *   return: the value mod 2^61 - 1
  *   value(in): a value below 2^122, such as the product of two residues
  *
- * Note: each fold adds the bits above bit 61 to the bits below it. Two folds bring the value to at most the prime, and
- *       one subtraction below it.
+ * Note: each fold adds the bits from bit 61 up to the 61 bits below them, 2^61 being 1 mod the prime. Two folds bring
+ *       the value to at most the prime, and one subtraction below it.
  */
 STATIC_INLINE constexpr uint64_t
 numeric_hash_mod (uint128_t value)
