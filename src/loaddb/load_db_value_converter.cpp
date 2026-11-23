@@ -1545,7 +1545,8 @@ namespace cubload
      * digits than its precision would be stored as it is and read back as a wrong value, so it is
      * refused here, as a damaged section.
      */
-    if (numeric_get_precision_digits (const_cast<unsigned char *> (magnitude)) > precision)
+    int digits = numeric_get_precision_digits (const_cast<unsigned char *> (magnitude));
+    if (digits > precision)
       {
 	return binary_corrupted (col);
       }
@@ -1564,8 +1565,18 @@ namespace cubload
 	  }
       }
 
+    if (is_floating)
+      {
+	digits = precision;
+      }
+    else if (digits == 0)
+      {
+	/* zero has one digit */
+	digits = 1;
+      }
+
     return db_make_numeric (val, (DB_C_NUMERIC) magnitude, precision, scale, DB_NUMERIC_BUF_SIZE, is_negative,
-			    is_floating);
+			    digits, is_floating);
   }
 
   /*

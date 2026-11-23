@@ -4368,6 +4368,15 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	  if (ret == BTREE_KEY_NOTFOUND)
 	    {
 	      char *val_print = NULL;
+	      TP_DOMAIN *key_type = NULL;
+
+	      /* the search gave a multi-column key the domain of the parent index, whose NUMERIC precision and
+	       * scale can differ, so print it in the domain of its own index */
+	      if (DB_VALUE_TYPE (key_dbvalue) == DB_TYPE_MIDXKEY
+		  && xbtree_get_key_type (thread_p, btid, &key_type) == NO_ERROR)
+		{
+		  key_dbvalue->data.midxkey.domain = key_type;
+		}
 
 	      val_print = pr_valstring (key_dbvalue);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, index->fk->fkname,

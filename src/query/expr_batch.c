@@ -5097,7 +5097,7 @@ eb_share_snapshot (EXPR_BATCH_PLAN * plan, int kid, int r, DB_LOGICAL ev)
 	      int prec, scale;
 	      bool is_float;
 
-	      db_get_numeric_precision_and_scale (src, &prec, &scale, &is_float);
+	      db_get_numeric_precision_and_scale (src, &prec, &scale, NULL, &is_float);
 	      v->precs[r] = (unsigned char) (is_float ? (EB_PREC_FLOAT | prec) : prec);
 	    }
 	    break;
@@ -5653,8 +5653,9 @@ eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r, DB_VALUE *
 		buf[i] = (unsigned char) (c & 0xFF);
 		c >>= 8;
 	      }
-	    db_make_numeric (out, buf, precision & ~EB_PREC_FLOAT, scale, DB_NUMERIC_BUF_SIZE, num->is_negative,
-			     is_float);
+	    precision &= ~EB_PREC_FLOAT;
+	    db_make_numeric (out, buf, precision, scale, DB_NUMERIC_BUF_SIZE, num->is_negative,
+			     is_float ? precision : numeric_get_precision_digits (buf), is_float);
 	  }
 	else
 	  {

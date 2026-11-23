@@ -8367,11 +8367,11 @@ mr_setmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
     {
       DB_C_NUMERIC num, src_num;
       DB_C_NUMERIC data_dest;
-      int precision, scale, byte_size;
+      int precision, scale, digits, byte_size;
       bool is_float_numeric = false;
 
       src_num = db_get_numeric (value);
-      db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
+      db_get_numeric_precision_and_scale (value, &precision, &scale, &digits, &is_float_numeric);
 
       /* this should have been handled by now */
       if (src_num == NULL || (is_float_numeric == false && (precision != domain->precision || scale != domain->scale)))
@@ -8384,17 +8384,13 @@ mr_setmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	  unsigned char header[NUMERIC_HEADER_SIZE];
 	  bool is_value_negative = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value);
 
-	  if (is_float_numeric)
-	    {
-	      assert (precision >= 0 && precision <= DB_MAX_NUMERIC_PRECISION);
-	      byte_size = numeric_repr_disk_size_by_precision (precision);
-	    }
-	  else
-	    {
-	      byte_size = numeric_repr_disk_size_by_value (src_num);
-	    }
+	  assert (digits >= 0 && digits <= DB_MAX_NUMERIC_PRECISION);
+	  byte_size = numeric_repr_disk_size_by_precision (digits);
 
 	  assert ((byte_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
+
+	  /* the header stores the digits of the value, not its type */
+	  precision = digits;
 
 	  header[0] = byte_size | (is_value_negative ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
 	  if (scale < 0)
@@ -8473,7 +8469,17 @@ mr_getmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy
 
       num = (DB_C_NUMERIC) ((char *) cur + NUMERIC_HEADER_SIZE);
 
-      error = db_make_numeric (value, num, precision, scale, byte_size, is_value_negative, is_float_numeric);
+      if (is_float_numeric)
+	{
+	  error = db_make_numeric (value, num, precision, scale, byte_size, is_value_negative, precision, true);
+	}
+      else
+	{
+	  /* the declared type comes from the domain, the digits from the header */
+	  assert (precision <= domain->precision && scale == domain->scale);
+	  error =
+	    db_make_numeric (value, num, domain->precision, scale, byte_size, is_value_negative, precision, false);
+	}
       value->need_clear = false;
     }
 
@@ -8632,10 +8638,10 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   else
     {
       DB_C_NUMERIC src_numeric;
-      int precision, scale;
+      int precision, scale, digits;
       bool is_float_numeric = false;
 
-      db_get_numeric_precision_and_scale (src, &precision, &scale, &is_float_numeric);
+      db_get_numeric_precision_and_scale (src, &precision, &scale, &digits, &is_float_numeric);
 
       src_numeric = (DB_C_NUMERIC) db_get_numeric (src);
 
@@ -8652,7 +8658,7 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	   */
 	  error =
 	    db_make_numeric (dest, src_numeric, precision, scale, DB_NUMERIC_BUF_SIZE,
-			     DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (src), is_float_numeric);
+			     DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (src), digits, is_float_numeric);
 	}
     }
   return error;
@@ -8671,24 +8677,12 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
 
   if (value != NULL)
     {
-      int precision;
-      bool is_float_numeric = false;
+      int digits = 0;
 
       /* better have a non-NULL value by the time writeval is called ! */
-      precision = db_get_numeric_precision (value, &is_float_numeric);
-      if (is_float_numeric)
-	{
-	  assert (precision >= 0 && precision <= DB_MAX_NUMERIC_PRECISION);
-	  len = numeric_repr_disk_size_by_precision (precision);
-	}
-      else
-	{
-	  DB_C_NUMERIC numeric = db_get_numeric (value);
-	  if (numeric != NULL)
-	    {
-	      len = numeric_repr_disk_size_by_value (numeric);
-	    }
-	}
+      (void) db_get_numeric_precision (value, &digits, NULL);
+      assert (digits >= 0 && digits <= DB_MAX_NUMERIC_PRECISION);
+      len = numeric_repr_disk_size_by_precision (digits);
     }
   return len;
 }
@@ -8707,24 +8701,19 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
   if (value != NULL)
     {
       DB_C_NUMERIC numeric;
-      int precision, scale, disk_size;
-      bool is_float_numeric = false;
+      int precision, scale, digits, disk_size;
 
       numeric = db_get_numeric (value);
       if (numeric != NULL)
 	{
-	  db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
+	  db_get_numeric_precision_and_scale (value, &precision, &scale, &digits, NULL);
 	  unsigned char header[NUMERIC_HEADER_SIZE];
 
-	  if (is_float_numeric)
-	    {
-	      disk_size = numeric_repr_disk_size_by_precision (precision);
-	    }
-	  else
-	    {
-	      disk_size = numeric_repr_disk_size_by_value (numeric);
-	    }
+	  disk_size = numeric_repr_disk_size_by_precision (digits);
 	  assert ((disk_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
+
+	  /* the header stores the digits of the value, not its type */
+	  precision = digits;
 
 	  header[0] = disk_size | (DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value) ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
 	  if (scale < 0)
@@ -8787,9 +8776,22 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	  rc = or_advance (buf, size);
 	}
     }
-  else if (size == 0 || (domain->type->id == DB_TYPE_NUMERIC && domain->precision == 0))
+  else if (size == 0)
     {
-      /* its NULL */
+      /* its NULL. Make the value NULL as the other types do, or a value reused for each row keeps the last one. A
+       * variable domain has no precision, so it takes the default one */
+      if (domain->type->id == DB_TYPE_NUMERIC && domain->precision > 0)
+	{
+	  rc = db_value_domain_init (value, DB_TYPE_NUMERIC, domain->precision, domain->scale);
+	}
+      else
+	{
+	  rc = db_value_domain_init (value, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	}
+    }
+  else if (domain->type->id == DB_TYPE_NUMERIC && domain->precision == 0)
+    {
+      /* numeric(0,0) of an old view or CAST reads as NULL */
       rc = or_advance (buf, 0);
     }
   else
@@ -8824,7 +8826,16 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 
       num = (DB_C_NUMERIC) (buf->ptr + NUMERIC_HEADER_SIZE);
 
-      rc = db_make_numeric (value, num, precision, scale, size, is_value_negative, is_float_numeric);
+      if (is_float_numeric)
+	{
+	  rc = db_make_numeric (value, num, precision, scale, size, is_value_negative, precision, true);
+	}
+      else
+	{
+	  /* the declared type comes from the domain, the digits from the header */
+	  assert (precision <= domain->precision && scale == domain->scale);
+	  rc = db_make_numeric (value, num, domain->precision, scale, size, is_value_negative, precision, false);
+	}
 
       value->need_clear = false;
       or_advance (buf, size);
@@ -8852,15 +8863,16 @@ mr_data_cmpdisk_numeric (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
 
   assert (domain != NULL);
 
+  /* the disk header holds the digits and scale of each key, so compare them as float values */
   or_init (&buf, (char *) mem1, 0);
-  rc = mr_data_readval_numeric (&buf, &value1, domain, -1, 0, NULL, 0);
+  rc = mr_data_readval_numeric (&buf, &value1, &tp_Numeric_domain, -1, 0, NULL, 0);
   if (rc != NO_ERROR)
     {
       return DB_UNK;
     }
 
   or_init (&buf, (char *) mem2, 0);
-  rc = mr_data_readval_numeric (&buf, &value2, domain, -1, 0, NULL, 0);
+  rc = mr_data_readval_numeric (&buf, &value2, &tp_Numeric_domain, -1, 0, NULL, 0);
   if (rc != NO_ERROR)
     {
       return DB_UNK;

@@ -125,12 +125,12 @@
 #define DB_VALUE_NUMERIC_HEADER_SCALE(value)           ((value)->data.num.header.scale)
 #define DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE(value)      ((value)->domain.numeric_info.is_value_negative)
 
-#define DB_GET_NUMERIC_PRECISION(value, is_float_numeric) \
-  db_get_numeric_precision(value, is_float_numeric)
+#define DB_GET_NUMERIC_PRECISION(value, digits, is_float_numeric) \
+  db_get_numeric_precision(value, digits, is_float_numeric)
 #define DB_GET_NUMERIC_SCALE(value, is_float_numeric) \
   db_get_numeric_scale(value, is_float_numeric)
-#define DB_GET_NUMERIC_PRECISION_AND_SCALE(value, precision, scale, is_float_numeric) \
-  db_get_numeric_precision_and_scale(value, precision, scale, is_float_numeric)
+#define DB_GET_NUMERIC_PRECISION_AND_SCALE(value, precision, scale, digits, is_float_numeric) \
+  db_get_numeric_precision_and_scale(value, precision, scale, digits, is_float_numeric)
 
 #define DB_GET_STRING_PRECISION(v) \
     ((v)->domain.char_info.length)

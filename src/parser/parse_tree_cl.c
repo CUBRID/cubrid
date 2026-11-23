@@ -19806,7 +19806,7 @@ pt_get_exact_number_digits (const PT_NODE * node, int *int_digits, int *scale)
 	  return false;
 	}
       /* a constant carries its own precision and scale */
-      db_get_numeric_precision_and_scale (&node->info.value.db_value, &prec, scale, NULL);
+      db_get_numeric_precision_and_scale (&node->info.value.db_value, &prec, scale, NULL, NULL);
       *int_digits = prec - *scale;
       return true;
     }

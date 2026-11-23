@@ -929,7 +929,7 @@ numeric_to_string (DB_VALUE * value, bool commas)
 
   numeric_db_value_print (value, str_buf);
 
-  db_get_numeric_precision_and_scale (value, &prec, &scale, NULL);
+  db_get_numeric_precision_and_scale (value, &prec, &scale, NULL, NULL);
   digits = (scale < 0) ? (prec - scale) : (scale > prec ? scale : prec);
 
   comma_length = COMMAS_OFFSET (commas, digits);

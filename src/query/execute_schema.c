@@ -11063,9 +11063,9 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
       goto exit;
     }
 
-  is_srv_update_needed = (((change_mode == SM_ATTR_CHG_WITH_ROW_UPDATE || change_mode == SM_ATTR_CHG_BEST_EFFORT)
-			   && attr_chg_prop.name_space == ID_ATTRIBUTE)
-			  || is_att_prop_set (attr_chg_prop.p[P_TYPE], ATT_CHG_TYPE_NUMERIC_PREC_INCR)) ? true : false;
+  /* ATT_CHG_TYPE_NUMERIC_PREC_INCR changes only the schema, the rows keep their digits and scale */
+  is_srv_update_needed = ((change_mode == SM_ATTR_CHG_WITH_ROW_UPDATE || change_mode == SM_ATTR_CHG_BEST_EFFORT)
+			  && attr_chg_prop.name_space == ID_ATTRIBUTE) ? true : false;
   if (is_srv_update_needed)
     {
       COPY_OID (&class_oid, &(ctemplate->op->oid_info.oid));
@@ -11177,7 +11177,9 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 	}
     }
 
-  if (is_srv_update_needed || is_att_prop_set (attr_chg_prop.p[P_TYPE], ATT_CHG_TYPE_PREC_INCR))
+  /* the indexes of a NUMERIC changed by its schema only are made again for the new key domain */
+  if (is_srv_update_needed || is_att_prop_set (attr_chg_prop.p[P_TYPE], ATT_CHG_TYPE_PREC_INCR)
+      || is_att_prop_set (attr_chg_prop.p[P_TYPE], ATT_CHG_TYPE_NUMERIC_PREC_INCR))
     {
       error = do_drop_att_constraints (class_mop, attr_chg_prop.constr_info);
       if (error != NO_ERROR)
@@ -12874,7 +12876,11 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       else if (TP_DOMAIN_TYPE (attr_db_domain) == TP_DOMAIN_TYPE (att->domain)
 	       && TP_DOMAIN_TYPE (attr_db_domain) == DB_TYPE_NUMERIC)
 	{
-	  if (attr_db_domain->scale == att->domain->scale && attr_db_domain->precision > att->domain->precision)
+	  /* a stored value carries its digits and scale, so a fixed NUMERIC read as a float one, or with more
+	   * precision and the same scale, needs no change to its rows */
+	  if ((attr_db_domain->precision == DB_DEFAULT_NUMERIC_PRECISION
+	       && att->domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
+	      || (attr_db_domain->scale == att->domain->scale && attr_db_domain->precision > att->domain->precision))
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NUMERIC_PREC_INCR;
 	    }

@@ -7847,7 +7847,7 @@ btree_get_stats_value_hash (const DB_VALUE * value)
 	uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
 	DB_C_NUMERIC num = db_locate_numeric (value);
 
-	db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
+	db_get_numeric_precision_and_scale (value, &precision, &scale, NULL, &is_float_numeric);
 	if (is_float_numeric)
 	  {
 	    /* a float NUMERIC keeps its own scale per value: the normalization of mht_valhash ()
@@ -7884,8 +7884,8 @@ btree_get_stats_value_hash (const DB_VALUE * value)
 		DB_VALUE coefficient;
 		double d_value, d_coefficient;
 
-		db_make_numeric (&coefficient, calc_buf, DB_MAX_NUMERIC_PRECISION, 0, DB_NUMERIC_BUF_SIZE, false,
-				 false);
+		const int digits = numeric_get_precision_digits ((uint8_t *) calc_buf);
+		db_make_numeric (&coefficient, calc_buf, digits, 0, DB_NUMERIC_BUF_SIZE, false, digits, true);
 		numeric_coerce_num_to_double (value, 0, &d_value);
 		numeric_coerce_num_to_double (&coefficient, 0, &d_coefficient);
 		left_scale = scale - (int) lround (log10 (fabs (d_value) / d_coefficient));

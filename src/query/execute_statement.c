@@ -390,7 +390,6 @@ auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALU
     {
       goto end;
     }
-  FLOAT_TO_FIXED_NUMERIC (&range_val);
 
   /* ABS (cached_num * inc_val) <= range_val */
   db_make_int (&cached_num_int_val, cached_num);
@@ -414,7 +413,6 @@ auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALU
     {
       goto end;
     }
-  FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
   error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
   if (error != NO_ERROR)
@@ -2068,7 +2066,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
-      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
@@ -3115,7 +3112,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
-      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)

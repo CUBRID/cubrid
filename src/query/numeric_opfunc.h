@@ -125,7 +125,9 @@ typedef enum
 
 #define FIXED_TO_FLOAT_NUMERIC(value) \
   do { \
-    (value)->data.num.header.precision = (value)->domain.numeric_info.precision; \
+    int fixed_digits = 0; \
+    (void) db_get_numeric_precision ((value), &fixed_digits, NULL); \
+    (value)->data.num.header.precision = fixed_digits; \
     (value)->data.num.header.scale = (value)->domain.numeric_info.scale; \
     (value)->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION; \
     (value)->domain.numeric_info.scale = 0; \
@@ -133,10 +135,11 @@ typedef enum
 
 #define FLOAT_TO_FIXED_NUMERIC(value) \
   do { \
-    (value)->domain.numeric_info.precision = (value)->data.num.header.precision; \
-    (value)->domain.numeric_info.scale = (value)->data.num.header.scale; \
-    (value)->data.num.header.precision = 0; \
-    (value)->data.num.header.scale = 0; \
+    if ((value)->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION) \
+      { \
+        (value)->domain.numeric_info.precision = (value)->data.num.header.precision; \
+        (value)->domain.numeric_info.scale = (value)->data.num.header.scale; \
+      } \
   } while(0)
 
 /* Arithmetic routines */
@@ -167,7 +170,8 @@ extern int numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUME
 extern int numeric_coerce_string_to_num (const char *astring, int astring_len, INTL_CODESET codeset, DB_VALUE * num);
 
 extern int numeric_coerce_num_to_num (const DB_VALUE * src_value, int src_prec, int src_scale, int dest_prec,
-				      int dest_scale, DB_C_NUMERIC dest_num, bool * dest_num_is_negative);
+				      int dest_scale, DB_C_NUMERIC dest_num, bool * dest_num_is_negative,
+				      int *dest_digits);
 
 #if defined (__cplusplus)
 /* Fixed-type operations shared by the legacy dispatchers and the converters. */
@@ -305,7 +309,7 @@ extern int numeric_sum_acc_snapshot (const SUM_ACC * acc, DB_VALUE * result);
  * big-endian binary integer of DB_NUMERIC_BUF_SIZE bytes; the disk keeps its low bytes, the header plus the digits
  * padded to a multiple of 4. Plain C: dbtype_function.c is compiled as C. */
 
-/* disk size (header included) of a float NUMERIC by its precision */
+/* disk size (header included) of a NUMERIC by its digits */
 static inline int
 numeric_repr_disk_size_by_precision (int precision)
 {
@@ -316,37 +320,6 @@ numeric_repr_disk_size_by_precision (int precision)
   };
 
   return size_by_precision[precision];
-}
-
-/* disk size (header included) of a fixed NUMERIC by its value: a fixed precision is at most 38, so the magnitude
- * fits in the low 16 bytes */
-static inline int
-numeric_repr_disk_size_by_value (const unsigned char *buf)
-{
-  static const int size_by_bytes[17] = {
-    0, 4, 8, 8, 8, 8, 12, 12, 12, 12, 16, 16, 16, 16, 20, 20, 20
-  };
-  uint64_t word_buf[2];
-
-  /* the bytes stay big-endian: on a little-endian host the leading zero bytes are the trailing zero bits */
-  memcpy (word_buf, buf + 1, sizeof (word_buf));
-  if (word_buf[0] != 0)
-    {
-#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-      return size_by_bytes[16 - (__builtin_ctzll (word_buf[0]) >> 3)];
-#else
-      return size_by_bytes[16 - (__builtin_clzll (word_buf[0]) >> 3)];
-#endif
-    }
-  if (word_buf[1] != 0)
-    {
-#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-      return size_by_bytes[8 - (__builtin_ctzll (word_buf[1]) >> 3)];
-#else
-      return size_by_bytes[8 - (__builtin_clzll (word_buf[1]) >> 3)];
-#endif
-    }
-  return size_by_bytes[1];	/* zero */
 }
 
 /* the buffer from the digits of a disk value of disk_size bytes, or from a whole buffer (DB_NUMERIC_BUF_SIZE); 0 for

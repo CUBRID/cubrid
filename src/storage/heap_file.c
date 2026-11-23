@@ -12142,6 +12142,26 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
 	}
     }
 
+  /* an ALTER that changes a fixed NUMERIC by its schema only (to float, or to more precision with the same
+   * scale) keeps the rows, so a row of an older representation takes the current domain and keeps the digits and
+   * scale it was read with. Any other change rewrites the rows, which cast the value as it was read */
+  if (attrepr != value->last_attrepr && attrepr->type == DB_TYPE_NUMERIC && value->last_attrepr != NULL
+      && value->last_attrepr->type == DB_TYPE_NUMERIC && !DB_IS_NULL (&value->dbvalue)
+      && value->dbvalue.domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      const TP_DOMAIN *last_domain = value->last_attrepr->domain;
+
+      if (last_domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  FIXED_TO_FLOAT_NUMERIC (&value->dbvalue);
+	}
+      else if (last_domain->scale == value->dbvalue.domain.numeric_info.scale
+	       && last_domain->precision > value->dbvalue.domain.numeric_info.precision)
+	{
+	  value->dbvalue.domain.numeric_info.precision = last_domain->precision;
+	}
+    }
+
   return NO_ERROR;
 }
 
@@ -20904,8 +20924,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
 	      if (dest_prec == DB_DEFAULT_NUMERIC_PRECISION)
 		{
-		  /* this handles both ATT_CHG_TYPE_NUMERIC_PREC_INCR and SM_ATTR_CHG_WITH_ROW_UPDATE cases.
-		   * For float numeric, precision must be calculated accurately from the actual value.
+		  /* a fixed to float ALTER keeps its rows and does not come here. A rewrite that ends in a float
+		   * NUMERIC takes the digits of the value as its precision
 		   */
 		  value->dbvalue.data.num.header.precision =
 		    numeric_get_precision_digits (value->dbvalue.data.num.d.buf);
@@ -20914,8 +20934,8 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 		}
 	      else if (src_scale == dest_scale && src_prec < dest_prec)
 		{
-		  /* optimize ATT_CHG_TYPE_NUMERIC_PREC_INCR case: when numeric precision increases
-		   * with same scale, only update domain metadata (no value cast needed).
+		  /* an ALTER that only raises the precision keeps its rows and does not come here. A rewrite that
+		   * does the same needs no cast, only the domain changes
 		   */
 		  can_skip_cast = true;
 		}

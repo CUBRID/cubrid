@@ -34730,7 +34730,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       pr_clear_value (&db_str_precision);
       pr_clear_value (pprec_scale_arg1);
 
-      if (scale >= 0)
+      if (id == DB_TYPE_NUMERIC)
 	{
 	  db_make_int (&db_int_scale, scale);
 	  db_make_null (&db_str_scale);

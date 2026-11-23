@@ -13327,7 +13327,8 @@ error:
 
 /*
  * cdc_check_if_schema_changed - compare the representation in record descriptor with latest representation,
- *                               then check if they have different representation ID
+ *                               then check if they have different representation ID, other than a NUMERIC
+ *                               ALTER that keeps the rows
  *
  * return: TRUE if schema has been changed
  *
@@ -13341,10 +13342,67 @@ error:
  *       So this function is used to check if the schema has changed.
  */
 static bool
-cdc_check_if_schema_changed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+cdc_check_if_schema_changed (THREAD_ENTRY * thread_p, const OID * classoid, RECDES * recdes,
+			     HEAP_CACHE_ATTRINFO * attr_info)
 {
-  /* schema has been changed */
-  return or_rep_id (recdes) != attr_info->last_classrepr->id;
+  OR_CLASSREP *old_rep;
+  const OR_CLASSREP *last_rep = attr_info->last_classrepr;
+  int idx_incache = -1;
+  int i, j;
+  bool is_changed = false;
+
+  if (or_rep_id (recdes) == last_rep->id)
+    {
+      return false;
+    }
+
+  /* an ALTER that changes a fixed NUMERIC by its schema only (to float, or to more precision with the same
+   * scale) keeps the rows in the older representation. Such a row has the same attributes, and the heap reads it in
+   * the current domain, so it is not a changed schema here */
+  old_rep = heap_classrepr_get (thread_p, classoid, NULL, or_rep_id (recdes), &idx_incache);
+  if (old_rep == NULL)
+    {
+      er_clear ();
+      return true;
+    }
+
+  if (old_rep->n_attributes != last_rep->n_attributes)
+    {
+      is_changed = true;
+    }
+
+  for (i = 0; i < last_rep->n_attributes && !is_changed; i++)
+    {
+      const OR_ATTRIBUTE *last_att = &last_rep->attributes[i];
+      const OR_ATTRIBUTE *old_att = NULL;
+
+      for (j = 0; j < old_rep->n_attributes; j++)
+	{
+	  if (old_rep->attributes[j].id == last_att->id)
+	    {
+	      old_att = &old_rep->attributes[j];
+	      break;
+	    }
+	}
+
+      if (old_att == NULL || old_att->type != last_att->type)
+	{
+	  is_changed = true;
+	}
+      else if (old_att->domain != last_att->domain
+	       && !tp_domain_match (old_att->domain, last_att->domain, TP_EXACT_MATCH))
+	{
+	  is_changed = !(last_att->type == DB_TYPE_NUMERIC
+			 && old_att->domain->precision != DB_DEFAULT_NUMERIC_PRECISION
+			 && (last_att->domain->precision == DB_DEFAULT_NUMERIC_PRECISION
+			     || (last_att->domain->scale == old_att->domain->scale
+				 && last_att->domain->precision > old_att->domain->precision)));
+	}
+    }
+
+  heap_classrepr_free_and_init (old_rep, &idx_incache);
+
+  return is_changed;
 }
 
 static int
@@ -13564,7 +13622,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   if (undo_recdes != NULL)
     {
-      if (cdc_check_if_schema_changed (undo_recdes, &attr_info))
+      if (cdc_check_if_schema_changed (thread_p, &classoid, undo_recdes, &attr_info))
 	{
 	  FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
 
@@ -13599,7 +13657,8 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
 	  assert (heap_value->read_attrepr != NULL);
 
-	  oldval_deforder = heap_value->read_attrepr->def_order;
+	  /* an older representation has no def_order, and its attributes are the current ones */
+	  oldval_deforder = heap_value->last_attrepr->def_order;
 
 	  /* reading redo_recdes below reuses attr_info and clears each dbvalue, which frees any buffer
 	   * the dbvalue owns (e.g. the decompressed buffer of a compressed string).
@@ -13625,7 +13684,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
   if (redo_recdes != NULL)
     {
-      if (cdc_check_if_schema_changed (redo_recdes, &attr_info))
+      if (cdc_check_if_schema_changed (thread_p, &classoid, redo_recdes, &attr_info))
 	{
 	  FLASHBACK_ERROR_HANDLING (is_flashback, ER_FLASHBACK_SCHEMA_CHANGED, classoid, classname);
 
@@ -13656,7 +13715,8 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
 	  assert (heap_value->read_attrepr != NULL);
 
-	  newval_deforder = heap_value->read_attrepr->def_order;
+	  /* an older representation has no def_order, and its attributes are the current ones */
+	  newval_deforder = heap_value->last_attrepr->def_order;
 
 	  memcpy (&new_values[newval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
 
