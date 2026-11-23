@@ -1303,6 +1303,15 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP 
       sm_bump_local_schema_version ();
     }
 
+  if (obj_type == DB_OBJECT_PROCEDURE || obj_type == DB_OBJECT_PACKAGE)
+    {
+      /*
+       * the old owner had every authorization by being the owner, and the object (MOP) stays the same.
+       * clear the cache for the object to make sure we recalculate it the next time it is referenced
+       */
+      Au_cache.reset_cache_for_user_and_proc_or_pkg (object_mop);
+    }
+
 exit:
   return (error);
 }
