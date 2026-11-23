@@ -142,6 +142,7 @@ extern void do_print_on_method (DB_OBJECT * self, DB_VALUE * result, DB_VALUE * 
 
 extern int do_rename (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int do_flush_before_trigger (void);
 extern int do_scope (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_select (PARSER_CONTEXT * parser, PT_NODE * statement);
