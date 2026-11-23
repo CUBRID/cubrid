@@ -1568,6 +1568,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      }
 	    goto error;
 	  }
+
+	/* an operator such as ABS returns its fixed operand without conversion */
+	numeric_db_value_to_float_domain (arithptr->value, args.domain);
       }
   }
 
