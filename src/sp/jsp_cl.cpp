@@ -4081,6 +4081,103 @@ jsp_set_pkg_comment (MOP pkg_mop, const char *comment)
 }
 
 /*
+ * jsp_rebuild_pkg - compile the stored source of a package again, and rebuild the rows of the package
+ *   return: error code
+ *   parser(in/out): parser environment, to record a compile error in
+ *   unique_name(in): the unique name of the package
+ *   pkg_mop(in): the _db_package row of the package
+ *   owner(in): the owner to compile the package for and to give it to. It is the current owner for ALTER PACKAGE ...
+ *              COMPILE, and the new owner for ALTER PACKAGE ... OWNER TO.
+ *   owner_name(in): the downcased name of the owner
+ *   new_unique_name(in): the unique name of the package under the owner. It is unique_name for the current owner.
+ *
+ * Note: it does what CREATE OR REPLACE PACKAGE does with the stored spec and body. The _db_package row is kept,
+ *       and so are the privileges granted on it (CBRD-27720) and its comment. The other rows of the package are
+ *       made again from the compile result. A compile error leaves them to the caller to roll back.
+ */
+static int
+jsp_rebuild_pkg (PARSER_CONTEXT *parser, const char *unique_name, MOP pkg_mop, MOP owner, const char *owner_name,
+		 const char *new_unique_name)
+{
+  int err, save;
+  DB_VALUE scode_spec_value, scode_body_value, comment_value;
+  PLCSQL_COMPILE_REQUEST pkg_compile_request;
+  PLCSQL_COMPILE_RESPONSE pkg_compile_response;
+  std::string comment;
+
+  db_make_null (&scode_spec_value);
+  db_make_null (&scode_body_value);
+  db_make_null (&comment_value);
+
+  AU_SAVE_AND_DISABLE (save);
+
+  // the stored source and comment
+  err = jsp_get_pkg_scode_spec (unique_name, &scode_spec_value);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+  // every package that has a _db_package row, but a system generated one, has its spec source
+  assert (!DB_IS_NULL (&scode_spec_value));
+
+  err = jsp_get_pkg_scode_body (unique_name, &scode_body_value);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  err = db_get (pkg_mop, PKG_ATTR_COMMENT, &comment_value);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+  if (!DB_IS_NULL (&comment_value))
+    {
+      comment.assign (db_get_string (&comment_value));
+    }
+
+  pkg_compile_request.type = PLCSQL_COMPILE_TYPE_PKG_SPEC;
+  pkg_compile_request.code.assign (db_get_string (&scode_spec_value));
+  if (!DB_IS_NULL (&scode_body_value))
+    {
+      pkg_compile_request.body_code.assign (db_get_string (&scode_body_value));
+    }
+  pkg_compile_request.owner.assign (owner_name);
+
+  // as jsp_create_pkg_spec () does, delete the rows of the package but its _db_package row before compiling it
+  err = jsp_drop_pkg_contents (unique_name, pkg_mop);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  au_perform_push_user (owner);
+  err = plcsql_compile (pkg_compile_request, pkg_compile_response);
+  au_perform_pop_user ();
+
+  if (err != NO_ERROR || pkg_compile_response.err_code != NO_ERROR)
+    {
+      err = ER_PKG_COMPILE_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, pkg_compile_response.err_msg.c_str ());
+      pt_record_error (parser, parser->statement_number, pkg_compile_response.err_line, pkg_compile_response.err_column,
+		       er_msg (), NULL);
+      goto exit;
+    }
+
+  err = sp_add_pkg_and_related (new_unique_name, owner_name, owner, pkg_compile_request.code.data (),
+				pkg_compile_request.body_code.data (), comment.c_str (), pkg_compile_response, pkg_mop);
+
+exit:
+  AU_RESTORE (save);
+
+  pr_clear_value (&scode_spec_value);
+  pr_clear_value (&scode_body_value);
+  pr_clear_value (&comment_value);
+
+  return err;
+}
+
+/*
  * jsp_alter_package - ALTER PACKAGE <package> { COMPILE | [OWNER TO <user>] [COMMENT '<comment>'] }
  *   return: error code
  *   parser(in/out): parser environment
@@ -4183,12 +4280,21 @@ jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
   has_savepoint = true;
 
-  if (statement->info.pkg.recompile || new_owner_mop != NULL)
+  if (new_owner_mop != NULL)
     {
-      // TODO package: ALTER PACKAGE ... COMPILE and ALTER PACKAGE ... OWNER TO are not implemented yet
+      // TODO package: ALTER PACKAGE ... OWNER TO is not implemented yet
       err = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
       goto exit;
+    }
+
+  if (statement->info.pkg.recompile)
+    {
+      err = jsp_rebuild_pkg (parser, unique_name, pkg_mop, owner_mop, owner_name, unique_name);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
     }
 
   if (statement->info.pkg.comment != NULL)
