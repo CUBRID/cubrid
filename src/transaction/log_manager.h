@@ -96,6 +96,8 @@ extern void log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvinde
 extern void log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 					int num_undo_crumbs, int num_redo_crumbs, const LOG_CRUMB * undo_crumbs,
 					const LOG_CRUMB * redo_crumbs);
+extern int log_append_mvcc_undo_data_with_mvccid (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
+						  LOG_DATA_ADDR * addr, int length, const void *data, MVCCID mvccid);
 extern void log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				    int num_crumbs, const LOG_CRUMB * crumbs);
 extern void log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
@@ -118,8 +120,8 @@ extern void log_append_redo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvin
 				     PGLENGTH offset, const RECDES * recdes);
 
 extern void log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int length, const void *data);
-extern void log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int length,
-				 const void *data);
+extern int log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int length,
+				const void *data);
 extern void log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
 				   PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes);
 extern void log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
@@ -182,7 +184,7 @@ extern void log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_RE
 extern int log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, OID * classoid,
 					LOG_LSA * undo_lsa, LOG_LSA * redo_lsa);
 
-extern int log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recdes);
+extern int log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recdes, TDE_ALGORITHM tde_algo);
 
 extern int log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name, int cached_num,
 					   OID * classoid, const OID * serial_oid);
@@ -310,6 +312,8 @@ extern LOG_EXTRACT_OWNER cdc_Session_owner;
 
 /* cdc functions */
 extern int cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * input_time, LOG_LSA * start_lsa);
+extern int cdc_find_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
+			       bool * is_dba_group, bool * is_loginable);
 extern bool cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
 			       bool * is_dba_group);
 extern int cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user,

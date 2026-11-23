@@ -45,7 +45,8 @@ struct btree_find_unique_helper
   LOCK lock_mode;		/* Lock mode for found unique object. */
   bool lock_found_object;	/* Take lock_mode on the found object here.  False when the caller settles on the heap's
 				 * last version instead: an update of a non-key column leaves the key entry as its
-				 * inserter wrote it, so only the heap shows the row's owner. */
+				 * inserter wrote it, so only the heap shows the row's owner.  False also for the
+				 * foreign-key existence probe, which takes no lock on a committed parent. */
   MVCC_SNAPSHOT *snapshot;	/* Snapshot used to filter objects not visible. If NULL, objects are not filtered. */
   bool found_object;		/* Set to true if object was found. */
 
@@ -54,6 +55,8 @@ struct btree_find_unique_helper
 #if defined (SERVER_MODE)
   OID locked_oid;		/* Locked object. */
   OID locked_class_oid;		/* Locked object class OID. */
+  bool owner_bypass_ok;		/* Pass an object we stamped, as locator_lock_object_unless_ours () does. */
+  OID passed_oid;		/* Object passed that way: found, but not locked. */
 #endif				/* SERVER_MODE */
 };
 /* BTREE_FIND_UNIQUE_HELPER static initializer. */
@@ -67,7 +70,9 @@ struct btree_find_unique_helper
     false, /* found_object */ \
     PERF_UTIME_TRACKER_INITIALIZER, /* time_track */ \
     OID_INITIALIZER, /* locked_oid */ \
-    OID_INITIALIZER /* locked_class_oid */ \
+    OID_INITIALIZER, /* locked_class_oid */ \
+    false, /* owner_bypass_ok */ \
+    OID_INITIALIZER /* passed_oid */ \
   }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define BTREE_FIND_UNIQUE_HELPER_INITIALIZER \

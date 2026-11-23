@@ -178,7 +178,6 @@ set(MAJOR_RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRI
 set(PACKAGE_STRING "${PROJECT_NAME} ${MAJOR_RELEASE_STRING}")
 set(PRODUCT_STRING "${MAJOR_RELEASE_STRING}")
 # TODO: change to string type for RELEASE_STRING, BUILD_NUMBER, BUILD_OS
-# TODO: remove #if defined (VERSION_STRING) in src/base/release_string.c
 set(RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION})
 # BUILD_NUMBER (digital only version string) for legacy codes
 set(BUILD_NUMBER ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION})
@@ -608,6 +607,8 @@ endif(UNIX)
 configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
 configure_file(cmake/version.h.cmake version.h)
+# build_version.h has the per-commit version: never include it from config.h or version.h (see CBRD-27124).
+configure_file(cmake/build_version.h.cmake build_version.h)
 
 if(MULTI_CONN_TO_A_SERVER)
   add_definitions(-DMULTI_CONN_TO_A_SERVER)
@@ -817,6 +818,11 @@ if(WIN32)
     list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
 endif(WIN32)
 
+if(AT_LEAST_ONE_UNIT_TEST)
+  enable_testing()
+  add_compile_definitions(CUBRID_UNIT_TEST_ENABLED)
+endif()
+
 # include subdirectories
 add_subdirectory(upgrade)
 add_subdirectory(sa)
@@ -825,6 +831,23 @@ add_subdirectory(cubrid)
 add_subdirectory(util)
 if(WITH_CCI)
   add_subdirectory(cubrid-cci)
+  # CCI sources got the version macros from config.h (cci_network.c sends BUILD_NUMBER to the broker as the
+  # driver version). They are in build_version.h now, so force-include it into the CCI library without changing
+  # the cubrid-cci submodule. Otherwise MAKE_STR (BUILD_NUMBER) silently becomes "BUILD_NUMBER".
+  set(cci_target_found FALSE)
+  foreach(cci_target cascci cascci_static)
+    if(TARGET ${cci_target})
+      set(cci_target_found TRUE)
+      if(MSVC)
+        target_compile_options(${cci_target} PRIVATE "/FI${CMAKE_BINARY_DIR}/build_version.h")
+      else(MSVC)
+        target_compile_options(${cci_target} PRIVATE "SHELL:-include \"${CMAKE_BINARY_DIR}/build_version.h\"")
+      endif(MSVC)
+    endif(TARGET ${cci_target})
+  endforeach(cci_target)
+  if(NOT cci_target_found)
+    message(FATAL_ERROR "No CCI library target (cascci or cascci_static) to force-include build_version.h into")
+  endif(NOT cci_target_found)
 endif(WITH_CCI)
 add_subdirectory(broker)
 add_subdirectory(cm_common)

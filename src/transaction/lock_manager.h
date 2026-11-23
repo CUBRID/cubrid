@@ -50,7 +50,7 @@ enum
   LK_NOTGRANTED_DUE_ERROR = 5,
   LK_GRANTED_PUSHINSET_LOCKONE = 6,
   LK_GRANTED_PUSHINSET_RELOCKALL = 7,
-  LK_NOTGRANTED_HELD_BY_WRITERS = 8	/* lock_object_ahead_of_waiters () only */
+  LK_NOTGRANTED_HELD_BY_WRITERS = 8	/* by lock_object_ahead_of_waiters (), locator_lock_object_unless_ours () */
 };
 
 enum
@@ -96,7 +96,6 @@ struct lk_entry
   LK_ENTRY *tran_prev;		/* list of locks that trans. holds */
   LK_ENTRY *class_entry;	/* ptr. to class lk_entry */
   int ngranules;		/* number of finer granules */
-  int instant_lock_count;	/* number of instant lock requests */
   int bind_index_in_tran;
   XASL_ID xasl_id;
   int transient_count;		/* requests on this entry that the statement gives up before commit */
@@ -268,9 +267,6 @@ extern void lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
 extern int lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlocks, int tran_index);
 extern void lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlocks);
 extern void lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks);
-extern void lock_start_instant_lock_mode (int tran_index);
-extern void lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index, bool need_unlock);
-extern bool lock_is_instant_lock_mode (int tran_index);
 extern void lock_clear_deadlock_victim (int tran_index);
 extern unsigned int lock_get_number_object_locks (void);
 extern int lock_initialize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock);
@@ -281,6 +277,7 @@ extern void lock_abort_composite_lock (LK_COMPOSITE_LOCK * comp_lock);
 extern int lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int waiter_index, LK_RES * res);
 extern int lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock);
 extern bool lock_is_held_only_by_writers (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid);
+extern bool lock_class_has_other_writer (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern int lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag);
 extern int lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock, LOCK * ex_lock);
 extern void lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid);

@@ -210,6 +210,9 @@
 #define FILEIO_BACKUP_CURRENT_HEADER_VERSION       2
 #define FILEIO_CHECK_FOR_INTERRUPT_INTERVAL       100
 
+/* the most bytes of formatted pages that a restore writes at once to the pages that no backup level holds */
+#define FILEIO_RESTORE_FORMAT_WRITE_SIZE          (1024 * 1024)
+
 #define FILEIO_PAGE_SIZE_FULL_LEVEL (IO_PAGESIZE * FILEIO_FULL_LEVEL_EXP)
 #define FILEIO_BACKUP_PAGE_OVERHEAD \
   (offsetof(FILEIO_BACKUP_PAGE, iopage) + sizeof(PAGEID))
@@ -556,7 +559,7 @@ static FILEIO_BACKUP_SESSION *fileio_initialize_restore (THREAD_ENTRY * thread_p
 							 const char *restore_verbose_file_path, bool newvolpath);
 static int fileio_read_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, int toread_nbytes);
 static void *fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page_bitmap, int vdes,
-				   void *io_pgptr, VOLID vol_id, PAGEID page_id, FILEIO_BACKUP_LEVEL level);
+				   void *io_pgptr, VOLID vol_id, PAGEID page_id);
 static int fileio_read_restore_header (FILEIO_BACKUP_SESSION * session);
 static FILEIO_RELOCATION_VOLUME fileio_find_restore_volume (THREAD_ENTRY * thread_p, const char *dbname,
 							    char *to_volname, int unit_num, FILEIO_BACKUP_LEVEL level,
@@ -4451,6 +4454,25 @@ fileio_fsync_pending (void)
       return false;
     }
   return true;
+}
+
+/*
+ * fileio_read_ahead_hint () - tell the OS that these pages of a volume are read soon
+ *   vol_fd(in): volume descriptor
+ *   page_id(in): first page
+ *   num_pages(in): number of consecutive pages
+ *   page_size(in): page size
+ *
+ * Note: A hint: nothing is read into the caller's memory and nothing is reported back. The OS reads the pages
+ *       into its cache without making the caller wait; the reads that follow copy from there.
+ */
+void
+fileio_read_ahead_hint (int vol_fd, PAGEID page_id, int num_pages, size_t page_size)
+{
+#if defined (LINUX)
+  (void) posix_fadvise (vol_fd, FILEIO_GET_FILE_SIZE (page_size, page_id), (off_t) num_pages * page_size,
+			POSIX_FADV_WILLNEED);
+#endif /* LINUX */
 }
 
 /*
@@ -10145,7 +10167,7 @@ fileio_fill_hole_during_restore (THREAD_ENTRY * thread_p, int *next_page_id_p, i
        * formatted pages.
        */
       if (fileio_write_restore (thread_p, page_bitmap, session_p->dbfile.vdes, malloc_io_pgptr, session_p->dbfile.volid,
-				*next_page_id_p, session_p->dbfile.level) == NULL)
+				*next_page_id_p) == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_RESTORE_READ_ERROR, 1, session_p->bkup.bkuphdr->unit_num);
 	  return ER_FAILED;
@@ -10464,7 +10486,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
       for (i = 0; i < unit && next_page_id < npages; i++)
 	{
 	  if (fileio_write_restore (thread_p, bitmap, session_p->dbfile.vdes, buffer_p + i * IO_PAGESIZE,
-				    session_p->dbfile.volid, next_page_id, session_p->dbfile.level) == NULL)
+				    session_p->dbfile.volid, next_page_id) == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_RESTORE_READ_ERROR, 1, backup_header_p->unit_num);
 	      goto error;
@@ -10621,7 +10643,6 @@ error:
  *   io_pgptr(in): In-memory address where the current content of page resides
  *   vol_id(in): volume identifier
  *   page_id(in): Page identifier
- *   level(in): backup level page restored from
  *
  * Note: The contents of the page stored on io_pgptr buffer which is
  *       IO_PAGESIZE long are sent to disk using fileio_write. The restore pageid
@@ -10629,7 +10650,7 @@ error:
  */
 static void *
 fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page_bitmap, int vol_fd, void *io_page_p,
-		      VOLID vol_id, PAGEID page_id, FILEIO_BACKUP_LEVEL level)
+		      VOLID vol_id, PAGEID page_id)
 {
   bool is_set;
   FILEIO_WRITE_MODE write_mode = FILEIO_WRITE_DEFAULT_WRITE;
@@ -10658,10 +10679,8 @@ fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page
 	      return NULL;
 	    }
 
-	  if (level > FILEIO_BACKUP_FULL_LEVEL)
-	    {
-	      fileio_page_bitmap_set (page_bitmap, page_id);
-	    }
+	  /* the full level is restored last; its pages are recorded too, for fileio_restore_format_unrestored_pages */
+	  fileio_page_bitmap_set (page_bitmap, page_id);
 	}
     }
 
@@ -11730,6 +11749,117 @@ fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, PGLENGTH 
  */
 
 /*
+ * fileio_restore_format_unrestored_pages - format the pages of the restored volumes that no backup level restored
+ *   return: error code
+ *   page_bitmap_list(in): the pages each level restored, by volume
+ *   failed_bitmap(out): the volume whose pages could not be formatted, on failure
+ *
+ * Note: an incremental backup holds only the pages changed since the backup of the level below it, and the full
+ *       level fills the holes only of the volume as it was then. so a page of a volume added or extended after a
+ *       lower level backup, and not written before the next one, is in no backup level, and the restore left it as
+ *       the volume was created: zeros, not a formatted page. recovery could not fix such a page to redo its first
+ *       changes. format these pages as the full level formats its holes, writing each run of them at once.
+ */
+int
+fileio_restore_format_unrestored_pages (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
+					FILEIO_RESTORE_PAGE_BITMAP ** failed_bitmap)
+{
+  FILEIO_RESTORE_PAGE_BITMAP *page_bitmap;
+  FILEIO_WRITE_MODE write_mode;
+  char *format_pages = NULL;
+  int max_run_pages = MAX (FILEIO_RESTORE_FORMAT_WRITE_SIZE / IO_PAGESIZE, 1);
+  int vdes;
+  int page_id, run_end, i;
+  int error_code = NO_ERROR;
+
+  *failed_bitmap = NULL;
+  write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
+
+  for (page_bitmap = page_bitmap_list->head; page_bitmap != NULL; page_bitmap = page_bitmap->next)
+    {
+      for (page_id = 0; page_id < page_bitmap->npages; page_id++)
+	{
+	  if (!fileio_page_bitmap_is_set (page_bitmap, page_id))
+	    {
+	      break;
+	    }
+	}
+      if (page_id >= page_bitmap->npages)
+	{
+	  /* every page was restored */
+	  continue;
+	}
+
+      if (format_pages == NULL)
+	{
+	  format_pages = (char *) malloc ((size_t) max_run_pages * IO_PAGESIZE);
+	  if (format_pages == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) max_run_pages * IO_PAGESIZE);
+	      *failed_bitmap = page_bitmap;
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  memset (format_pages, 0, (size_t) max_run_pages * IO_PAGESIZE);
+	  for (i = 0; i < max_run_pages; i++)
+	    {
+	      (void) fileio_initialize_res (thread_p, (FILEIO_PAGE *) (format_pages + (size_t) i * IO_PAGESIZE),
+					    IO_PAGESIZE);
+	    }
+	}
+
+      vdes = fileio_mount (thread_p, NULL, page_bitmap->vol_label, page_bitmap->vol_id, false, false);
+      if (vdes == NULL_VOLDES)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  *failed_bitmap = page_bitmap;
+	  break;
+	}
+
+      while (page_id < page_bitmap->npages)
+	{
+	  /* the run of pages that no level restored, from page_id up to run_end */
+	  for (run_end = page_id + 1; run_end < page_bitmap->npages && run_end - page_id < max_run_pages; run_end++)
+	    {
+	      if (fileio_page_bitmap_is_set (page_bitmap, run_end))
+		{
+		  break;
+		}
+	    }
+
+	  if (fileio_write_pages (thread_p, vdes, format_pages, page_id, run_end - page_id, IO_PAGESIZE, write_mode)
+	      == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      *failed_bitmap = page_bitmap;
+	      break;
+	    }
+
+	  for (page_id = run_end; page_id < page_bitmap->npages; page_id++)
+	    {
+	      if (!fileio_page_bitmap_is_set (page_bitmap, page_id))
+		{
+		  break;
+		}
+	    }
+	}
+
+      fileio_dismount (thread_p, vdes);
+      if (error_code != NO_ERROR)
+	{
+	  break;
+	}
+    }
+
+  if (format_pages != NULL)
+    {
+      free_and_init (format_pages);
+    }
+
+  return error_code;
+}
+
+/*
  * fileio_page_bitmap_list_init - initialize a page bitmap list
  *   return: void
  *   page_bitmap_list(in/out): head of the page bitmap list
@@ -11747,9 +11877,10 @@ fileio_page_bitmap_list_init (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list
  *   return: page bitmap
  *   vol_id(in): the number of the page bitmap identification
  *   total_pages(in): the number of total pages
+ *   vol_label(in): the restored volume
  */
 FILEIO_RESTORE_PAGE_BITMAP *
-fileio_page_bitmap_create (int vol_id, int total_pages)
+fileio_page_bitmap_create (int vol_id, int total_pages, const char *vol_label)
 {
   FILEIO_RESTORE_PAGE_BITMAP *page_bitmap;
   int page_bitmap_size;
@@ -11766,6 +11897,8 @@ fileio_page_bitmap_create (int vol_id, int total_pages)
   page_bitmap->next = NULL;
   page_bitmap->vol_id = vol_id;
   page_bitmap->size = page_bitmap_size;
+  page_bitmap->npages = total_pages;
+  strncpy_bufsize (page_bitmap->vol_label, vol_label);
   page_bitmap->bitmap = (unsigned char *) malloc (page_bitmap_size);
   if (page_bitmap->bitmap == NULL)
     {

@@ -125,6 +125,9 @@ extern void repl_start_flush_mark (THREAD_ENTRY * thread_p);
 extern void repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo);
 extern void repl_keep_flush_marked_with_outer (THREAD_ENTRY * thread_p, int begin_index);
 extern int repl_log_abort_after_lsa (LOG_TDES * tdes, LOG_LSA * start_lsa);
+#if !defined (NDEBUG)
+extern void repl_assert_oos_items_follow_row (const LOG_TDES * tdes, int from, bool row_may_follow);
+#endif /* !NDEBUG */
 #if defined(CUBRID_DEBUG)
 extern void repl_debug_info ();
 #endif /* CUBRID_DEBUG */

@@ -136,8 +136,12 @@ enum log_rectype
   LOG_SUPPLEMENTAL_INFO = 52,	/* used for supplemental logs to support CDC interface.
 				 * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
 				 * or undo images that never retrieved from the log. */
+  LOG_DUMMY_OOS_RECORD = 53,	/* boundary marker indicating the start of a multi-chunk OOS record;
+				 * emitted by the master before the RVOOS_INSERT chunks so the slave
+				 * applier can distinguish a multi-chunk OOS record from a series of
+				 * independent single-chunk OOS inserts. */
 
-  LOG_DUMMY_WSET_LABEL = 53,	/* carries dependency metadata before COMMIT or independent SYSOP_END.
+  LOG_DUMMY_WSET_LABEL = 54,	/* carries dependency metadata before COMMIT or independent SYSOP_END.
 				 * No-op for crash recovery; read by the replication applier to gate parallel apply. */
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
