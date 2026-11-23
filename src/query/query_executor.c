@@ -637,7 +637,7 @@ static void qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p, GROUPBY_
 static int qexec_gby_finalize_group_dim (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, const RECDES * recdes);
 static int qexec_gby_finalize_group_level (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, const RECDES * recdes,
 					   int rollup_level);
-static void qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int N, bool keep_list_file);
+static void qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int N);
 static void qexec_gby_put_partial_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, AGGREGATE_HASH_KEY * key,
 					 AGGREGATE_HASH_VALUE * value, INT64 * recs);
 static SORT_STATUS qexec_hash_gby_get_next (THREAD_ENTRY * thread_p, RECDES * recdes, void *arg);
@@ -21915,7 +21915,7 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   if (buildvalue->agg_list
-      && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false, &xasl_state->vd) != NO_ERROR)
+      && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, &xasl_state->vd) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -28296,7 +28296,7 @@ qexec_gby_finalize_group_level (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate
 {
   int j;
 
-  qexec_gby_finalize_group (thread_p, gbstate, 0, gbstate->with_rollup);
+  qexec_gby_finalize_group (thread_p, gbstate, 0);
   if (gbstate->state == SORT_PUT_STOP)
     {
       return 0;
@@ -28312,7 +28312,7 @@ qexec_gby_finalize_group_level (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate
 	{
 	  assert (gbstate->g_dim[j].d_flag & GROUPBY_DIM_FLAG_ROLLUP);
 
-	  qexec_gby_finalize_group (thread_p, gbstate, j, true);
+	  qexec_gby_finalize_group (thread_p, gbstate, j);
 #if 0				/* TODO - sus-11454 */
 	  if (gbstate->state == SORT_PUT_STOP)
 	    {
@@ -28320,12 +28320,6 @@ qexec_gby_finalize_group_level (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate
 	    }
 #endif
 	  qexec_gby_start_group (thread_p, gbstate, NULL, j);
-	}
-
-      if (gbstate->g_dim != NULL && gbstate->g_dim[0].d_agg_list != NULL)
-	{
-	  qfile_close_list (thread_p, gbstate->g_dim[0].d_agg_list->list_id);
-	  qfile_destroy_list (thread_p, gbstate->g_dim[0].d_agg_list->list_id);
 	}
     }
 
@@ -28339,10 +28333,9 @@ qexec_gby_finalize_group_level (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate
  *   return:
  *   gbstate(in):
  *   N(in):
- *   keep_list_file(in) : whether keep the list file for reuse
  */
 static void
-qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int N, bool keep_list_file)
+qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int N)
 {
   QPROC_TPLDESCR_STATUS tpldescr_status;
   XASL_NODE *xptr;
@@ -28363,8 +28356,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 
   assert (gbstate->g_dim[N].d_flag != GROUPBY_DIM_FLAG_NONE);
 
-  error_code =
-    qdata_finalize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, keep_list_file, &gbstate->xasl_state->vd);
+  error_code = qdata_finalize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, &gbstate->xasl_state->vd);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -28820,7 +28812,10 @@ qexec_gby_init_group_dim (GROUPBY_STATE * gbstate)
 	   * dimension must neither share it nor release it.  Start every dimension list
 	   * from zero, as stream_to_xasl () does for the head: it compiles its own program
 	   * on its first evaluated row (qdata_evaluate_aggregate_list ()) and
-	   * qexec_gby_clear_group_dim () releases what it built. */
+	   * qexec_gby_clear_group_dim () releases what it built.
+	   * With rollup, the copies would also share the list file that collects a DISTINCT or
+	   * sorted aggregate's values, and a dimension starting its next group would empty the
+	   * values the other dimensions collected: every dimension collects in its own. */
 	  for (aggr = gbstate->g_dim[i].d_agg_list; aggr != NULL; aggr = aggr->next)
 	    {
 	      aggr->operand_prog = NULL;
@@ -28829,6 +28824,22 @@ qexec_gby_init_group_dim (GROUPBY_STATE * gbstate)
 	      aggr->operand_prog_base = -1;
 	      aggr->operand_prog_share_spec = NULL;
 	      aggr->operand_prog_link_stamp = 0;
+
+	      if (gbstate->with_rollup && aggr->list_id != NULL)
+		{
+		  aggr->list_id = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
+		  if (aggr->list_id == NULL)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_LIST_ID));
+		      /* the rest still point to the head's; qexec_gby_clear_group_dim () must not free them */
+		      for (aggr = aggr->next; aggr != NULL; aggr = aggr->next)
+			{
+			  aggr->list_id = NULL;
+			}
+		      return ER_FAILED;
+		    }
+		  QFILE_CLEAR_LIST_ID (aggr->list_id);
+		}
 	    }
 	}
       else
@@ -28881,6 +28892,11 @@ qexec_gby_clear_group_dim (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 		  /* close and destroy temporary list files */
 		  qfile_close_list (thread_p, agg->list_id);
 		  qfile_destroy_list (thread_p, agg->list_id);
+		  if (gbstate->with_rollup)
+		    {
+		      /* the dimension's own; see qexec_gby_init_group_dim () */
+		      QFILE_FREE_AND_INIT_LIST_ID (agg->list_id);
+		    }
 		}
 
 	      db_private_free (NULL, agg);

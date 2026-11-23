@@ -174,7 +174,7 @@ int qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::agg
 					HFID *root_hfid, BTID *root_btid,
 					cubquery::hierarchy_aggregate_helper *helper, const struct val_descr *vd);
 int qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list,
-				   bool keep_list_file, const struct val_descr *vd);
+				   const struct val_descr *vd);
 
 cubquery::aggregate_hash_key *qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals,
     const tp_domain **compares);

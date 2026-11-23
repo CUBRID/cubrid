@@ -2158,13 +2158,12 @@ qdata_propagate_shared_accumulators (cubxasl::aggregate_list_node *agg_list)
  * qdata_finalize_aggregate_list () -
  *   return: NO_ERROR, or ER_code
  *   agg_list(in)       : Aggregate expression node list
- *   keep_list_file(in) : whether keep the list file for reuse
  *
  * Note: Make the final evaluation on the aggregate expression list.
  */
 int
 qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
-			       bool keep_list_file, const VAL_DESCR *vd)
+			       const VAL_DESCR *vd)
 {
   int error = NO_ERROR;
   AGGREGATE_TYPE *agg_p;
@@ -2572,11 +2571,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    }
 
 	  /* close and destroy temporary list files */
-	  if (!keep_list_file)
-	    {
-	      qfile_close_list (thread_p, agg_p->list_id);
-	      qfile_destroy_list (thread_p, agg_p->list_id);
-	    }
+	  qfile_close_list (thread_p, agg_p->list_id);
+	  qfile_destroy_list (thread_p, agg_p->list_id);
 	}
 
       if (agg_p->function == PT_GROUP_CONCAT && !DB_IS_NULL (agg_p->accumulator.value))
