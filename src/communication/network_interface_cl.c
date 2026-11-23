@@ -4629,6 +4629,11 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
       if (error != NO_ERROR)
 	{
 	  free_and_init (request);
+	  if (area != NULL)
+	    {
+	      /* the reply may still carry data; it is not read on an error */
+	      free_and_init (area);
+	    }
 	  return error;
 	}
 
