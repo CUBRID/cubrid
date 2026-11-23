@@ -781,6 +781,12 @@ au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop,
       goto end;
     }
 
+  /* changing the owner to the current one changes nothing, and the procedure is not compiled again */
+  if (ws_is_same_object (owner, new_owner_mop))
+    {
+      goto end;
+    }
+
   if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
     {
       ASSERT_ERROR_AND_SET (error);

@@ -5180,10 +5180,19 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
     }
 
-  err = db_update_obj_timestamp (sp_mop);
-  if (err != NO_ERROR)
+  /* OWNER TO the current owner alone changes nothing (see au_change_sp_owner_with_transfer_privileges ()) */
+  if (sp_comment == NULL && new_owner_mop != NULL && ws_is_same_object (new_owner_mop, owner_mop))
     {
-      goto error;
+        // do not update timestamp
+        // nothing has happened in au_change_sp_owner_with_transfer_privileges()
+    }
+  else
+    {
+      err = db_update_obj_timestamp (sp_mop);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
 error:
