@@ -5541,6 +5541,56 @@ ws_repl::ws_clear_all_repl_objs (void)
 }
 
 /*
+ * ws_discard_last_repl_objs() - free the objects added last
+ *   count(in): how many of the last added objects to free
+ *
+ * Note: the log applier takes back the OOS records it buffered for a row that then failed to apply; flushed without
+ *       their row they would be paired with the next row.
+ */
+void
+ws_repl::ws_discard_last_repl_objs (int count)
+{
+  WS_REPL_OBJ *obj, *next_obj, *last_kept = NULL;
+  int keep, i;
+
+  assert (count >= 0 && count <= m_Repl_objs.num_items);
+  if (count <= 0)
+    {
+      return;
+    }
+  if (count > m_Repl_objs.num_items)
+    {
+      count = m_Repl_objs.num_items;
+    }
+
+  keep = m_Repl_objs.num_items - count;
+  obj = m_Repl_objs.head;
+  for (i = 0; i < keep; i++)
+    {
+      last_kept = obj;
+      obj = obj->next;
+    }
+
+  while (obj != NULL)
+    {
+      next_obj = obj->next;
+      ws_free_repl_obj (obj);
+      obj = next_obj;
+    }
+
+  if (last_kept == NULL)
+    {
+      m_Repl_objs.head = NULL;
+    }
+  else
+    {
+      last_kept->next = NULL;
+    }
+  m_Repl_objs.tail = last_kept;
+  m_Repl_objs.num_items = keep;
+}
+
+/*
  * ws_add_to_repl_obj_list() - create a repl object and add it
  *  class_oid(in):
  *  key(in):

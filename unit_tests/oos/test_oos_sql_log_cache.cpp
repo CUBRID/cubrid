@@ -28,9 +28,9 @@
 #include <vector>
 
 // Native cache/decoder seam; item retirement is driven explicitly, without WAL or a server.
-extern int bridge_la_oos_cache_store (TRANID tranid, const OID *oid, const char *data, int length);
-extern int bridge_la_oos_cache_resolve (TRANID tranid, const OID *oid, int length, TP_DOMAIN *domain, DB_VALUE *value);
-extern bool bridge_la_oos_cache_contains (TRANID tranid, const OID *oid);
+extern int bridge_la_oos_cache_store (const OID *oid, const char *data, int length);
+extern int bridge_la_oos_cache_resolve (const OID *oid, int length, TP_DOMAIN *domain, DB_VALUE *value);
+extern bool bridge_la_oos_cache_contains (const OID *oid);
 extern void bridge_la_oos_cache_retire ();
 extern void bridge_la_oos_cache_clear ();
 extern size_t bridge_la_oos_cache_bytes ();
@@ -61,11 +61,11 @@ namespace
 	return data;
       }
 
-      void resolve_bits (TRANID tranid, const OID &oid, const std::vector<char> &data, const std::string &expected)
+      void resolve_bits (const OID &oid, const std::vector<char> &data, const std::string &expected)
       {
 	DB_VALUE value;
 	db_make_null (&value);
-	ASSERT_EQ (bridge_la_oos_cache_resolve (tranid, &oid, data.size (), tp_domain_resolve_default (DB_TYPE_VARBIT),
+	ASSERT_EQ (bridge_la_oos_cache_resolve (&oid, data.size (), tp_domain_resolve_default (DB_TYPE_VARBIT),
 						&value), NO_ERROR);
 	int bit_length;
 	const char *bits = db_get_bit (&value, &bit_length);
@@ -89,12 +89,12 @@ TEST_F (oos_sql_log_cache, CompletedRowsReleasePayloadsAcrossManyRowGroups)
     {
       OID first = {row * 2, 1, 1};
       OID second = {row * 2 + 1, 1, 1};
-      ASSERT_EQ (bridge_la_oos_cache_store (41, &first, data.data (), data.size ()), NO_ERROR);
-      ASSERT_EQ (bridge_la_oos_cache_store (41, &second, data.data (), data.size ()), NO_ERROR);
-      ASSERT_NO_FATAL_FAILURE (resolve_bits (41, first, data, bytes));
+      ASSERT_EQ (bridge_la_oos_cache_store (&first, data.data (), data.size ()), NO_ERROR);
+      ASSERT_EQ (bridge_la_oos_cache_store (&second, data.data (), data.size ()), NO_ERROR);
+      ASSERT_NO_FATAL_FAILURE (resolve_bits (first, data, bytes));
       // The row and any retry must still see both attributes until item retirement.
-      ASSERT_NO_FATAL_FAILURE (resolve_bits (41, first, data, bytes));
-      ASSERT_NO_FATAL_FAILURE (resolve_bits (41, second, data, bytes));
+      ASSERT_NO_FATAL_FAILURE (resolve_bits (first, data, bytes));
+      ASSERT_NO_FATAL_FAILURE (resolve_bits (second, data, bytes));
       bridge_la_oos_cache_retire ();
       ASSERT_EQ (bridge_la_oos_cache_bytes (), 0u) << "retired row " << row;
       ASSERT_EQ (bridge_la_oos_cache_count (), 0);
@@ -110,23 +110,24 @@ TEST_F (oos_sql_log_cache, RetirementPreservesOtherPendingValuesAndReplacementKe
   pr_clear_value (&original);
   OID consumed = {7, 1, 1};
   OID pending = {8, 1, 1};
-  ASSERT_EQ (bridge_la_oos_cache_store (51, &pending, data.data (), data.size ()), NO_ERROR);
-  ASSERT_EQ (bridge_la_oos_cache_store (51, &consumed, data.data (), data.size ()), NO_ERROR);
-  ASSERT_NO_FATAL_FAILURE (resolve_bits (51, consumed, data, bytes));
+  ASSERT_EQ (bridge_la_oos_cache_store (&pending, data.data (), data.size ()), NO_ERROR);
+  ASSERT_EQ (bridge_la_oos_cache_store (&consumed, data.data (), data.size ()), NO_ERROR);
+  ASSERT_NO_FATAL_FAILURE (resolve_bits (consumed, data, bytes));
   // mht_put replaces both key and data. Releasing the consumed old owner must preserve the new mapping.
-  ASSERT_EQ (bridge_la_oos_cache_store (52, &consumed, data.data (), data.size ()), NO_ERROR);
+  ASSERT_EQ (bridge_la_oos_cache_store (&consumed, data.data (), data.size ()), NO_ERROR);
   bridge_la_oos_cache_retire ();
   ASSERT_EQ (bridge_la_oos_cache_count (), 2);
   ASSERT_EQ (bridge_la_oos_cache_bytes (), data.size () * 2);
-  EXPECT_FALSE (bridge_la_oos_cache_contains (52, &pending));
-  EXPECT_FALSE (bridge_la_oos_cache_contains (51, &consumed));
-  ASSERT_NO_FATAL_FAILURE (resolve_bits (52, consumed, data, bytes));
+  // the unresolved owner and the replacing entry both stay reachable
+  EXPECT_TRUE (bridge_la_oos_cache_contains (&pending));
+  EXPECT_TRUE (bridge_la_oos_cache_contains (&consumed));
+  ASSERT_NO_FATAL_FAILURE (resolve_bits (consumed, data, bytes));
   bridge_la_oos_cache_retire ();
   ASSERT_EQ (bridge_la_oos_cache_count (), 1);
   // Appending after removal of the consumed tail must preserve the unresolved owner.
-  ASSERT_EQ (bridge_la_oos_cache_store (52, &consumed, data.data (), data.size ()), NO_ERROR);
-  ASSERT_NO_FATAL_FAILURE (resolve_bits (51, pending, data, bytes));
-  ASSERT_NO_FATAL_FAILURE (resolve_bits (52, consumed, data, bytes));
+  ASSERT_EQ (bridge_la_oos_cache_store (&consumed, data.data (), data.size ()), NO_ERROR);
+  ASSERT_NO_FATAL_FAILURE (resolve_bits (pending, data, bytes));
+  ASSERT_NO_FATAL_FAILURE (resolve_bits (consumed, data, bytes));
   bridge_la_oos_cache_retire ();
   EXPECT_EQ (bridge_la_oos_cache_count (), 0);
   EXPECT_EQ (bridge_la_oos_cache_bytes (), 0u);
@@ -136,16 +137,16 @@ TEST_F (oos_sql_log_cache, PendingValuesSurviveEmptyRetirementAndFullCleanupIsRe
 {
   const char payload[] = "pending";
   OID oid = {9, 1, 1};
-  ASSERT_EQ (bridge_la_oos_cache_store (71, &oid, payload, sizeof (payload)), NO_ERROR);
+  ASSERT_EQ (bridge_la_oos_cache_store (&oid, payload, sizeof (payload)), NO_ERROR);
   bridge_la_oos_cache_retire ();
   bridge_la_oos_cache_retire ();
-  EXPECT_TRUE (bridge_la_oos_cache_contains (71, &oid));
+  EXPECT_TRUE (bridge_la_oos_cache_contains (&oid));
   EXPECT_EQ (bridge_la_oos_cache_bytes (), sizeof (payload));
   bridge_la_oos_cache_clear ();
   bridge_la_oos_cache_clear ();
   EXPECT_EQ (bridge_la_oos_cache_count (), 0);
   EXPECT_EQ (bridge_la_oos_cache_bytes (), 0u);
-  EXPECT_FALSE (bridge_la_oos_cache_contains (71, &oid));
+  EXPECT_FALSE (bridge_la_oos_cache_contains (&oid));
 }
 
 TEST_F (oos_sql_log_cache, DecodedVarcharOwnsItsBytesAfterRetirement)
@@ -157,10 +158,10 @@ TEST_F (oos_sql_log_cache, DecodedVarcharOwnsItsBytesAfterRetirement)
   const auto data = serialize (&original);
   pr_clear_value (&original);
   OID oid = {12, 1, 1};
-  ASSERT_EQ (bridge_la_oos_cache_store (61, &oid, data.data (), data.size ()), NO_ERROR);
+  ASSERT_EQ (bridge_la_oos_cache_store (&oid, data.data (), data.size ()), NO_ERROR);
   DB_VALUE decoded;
   db_make_null (&decoded);
-  ASSERT_EQ (bridge_la_oos_cache_resolve (61, &oid, data.size (), tp_domain_resolve_default (DB_TYPE_VARCHAR),
+  ASSERT_EQ (bridge_la_oos_cache_resolve (&oid, data.size (), tp_domain_resolve_default (DB_TYPE_VARCHAR),
 					  &decoded), NO_ERROR);
   bridge_la_oos_cache_retire ();
   EXPECT_EQ (bridge_la_oos_cache_bytes (), 0u);

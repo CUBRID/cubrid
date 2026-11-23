@@ -697,6 +697,7 @@ public:
 			       int packed_prior_value_length);
   void ws_init_repl_objs (void);
   void ws_clear_all_repl_objs (void);
+  void ws_discard_last_repl_objs (int count);
   void ws_free_repl_obj (WS_REPL_OBJ * obj);
   int ws_get_repl_obj_count (void) const;
   WS_REPL_OBJ *ws_get_repl_obj_from_list (void);

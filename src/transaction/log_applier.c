@@ -302,7 +302,6 @@ struct la_oos_cache_entry
 {
   bool consumed;		/* decoded by the heap item; retain until its retry decision */
   LA_OOS_CACHE_ENTRY *next;
-  TRANID tranid;		/* tx scope guard against cross-tx OID reuse across SYSOP_END */
   OID head_oid;			/* hash key: master's chunk_index=0 OID */
   int length;			/* payload bytes (no OOS header prefix) */
   char data[1];			/* flexible array — entry + payload share one alloc */
@@ -488,14 +487,14 @@ static int la_Apply_free_capacity = 0;
  *
  * Every worker applies its own transactions on its own thread, and an OOS value is always applied in the same task
  * as the heap row that reads it: the master logs the OOS items right before the row's item, in the same system
- * operation when one wraps them. So the cache, the transaction it serves and the row state below are kept per
- * thread. Each thread frees its hash table when it ends (la_release_oos_thread_state). */
+ * operation when one wraps them. So the cache and the row state below are kept per thread and emptied when a task
+ * ends; an entry never outlives the transaction that stored it. Each thread frees its hash table when it ends
+ * (la_release_oos_thread_state). */
 #define LA_OOS_CACHE_HASH_SIZE  1024
 
 static thread_local LA_OOS_CACHE_ENTRY *la_oos_cache_head = NULL;
 static thread_local LA_OOS_CACHE_ENTRY *la_oos_cache_tail = NULL;
 static thread_local MHT_TABLE *la_oos_cache_hash = NULL;
-static thread_local TRANID la_oos_current_tranid = NULL_TRANID;
 
 /* The OOS items of the heap row being assembled, in attribute order: true for a column the master's UPDATE reused.
  * The UPDATE did not assign such a column, so the row's sql.log line omits it. When an item could not be recorded no
@@ -505,9 +504,14 @@ static thread_local std::vector<bool> la_oos_row_reused;
 /* *INDENT-ON* */
 static thread_local bool la_oos_row_reused_lost = false;
 
-/* An OOS item is buffered and the heap row that follows it is not yet: a flush now would send the OOS record without
+/* These two describe the worker's replication buffer, which is thread-local too (__gv_locator_repl).
+ *
+ * An OOS item is buffered and the heap row that follows it is not yet: a flush now would send the OOS record without
  * its row. Set by the OOS items, cleared by the row and by every flush. */
 static thread_local bool la_oos_pending_flush = false;
+/* OOS objects buffered since the last heap row. When that row does not reach the buffer (it fails, or it is an update
+ * the master rolled back), la_discard_unpaired_oos_objects takes them back out. */
+static thread_local int la_oos_unpaired_count = 0;
 
 static bool la_applier_need_shutdown = false;
 static thread_local LA_PINNED_PAGE_BUFFER *la_Pinned_page_buffers = NULL;
@@ -641,6 +645,8 @@ static void la_note_oos_item (bool reused);
 static bool la_oos_item_is_reused (int ordinal);
 static void la_forget_oos_row (void);
 static void la_release_oos_thread_state (void);
+static void la_discard_unpaired_oos_objects (void);
+static bool la_is_oos_item (const LA_ITEM * item);
 static int la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM_ATTRIBUTE * att,
 					     DB_VALUE * value);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
@@ -1188,6 +1194,8 @@ la_worker_abort_batch (LA_APPLY_WORKER_CONTEXT * context)
 
   (void) db_abort_transaction ();
   __gv_loc_repl.ws_clear_all_repl_objs ();
+  la_oos_pending_flush = false;
+  la_oos_unpaired_count = 0;
 }
 
 /*
@@ -5465,8 +5473,6 @@ la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size)
 
 /*
  * la_lookup_oos_value () - O(1) cache lookup by master's head OID.
- *   Tranid filter rejects stale entries surviving across LOG_SYSOP_END
- *   mini-batches that happen to land on a recycled OOS slot OID.
  */
 static LA_OOS_CACHE_ENTRY *
 la_lookup_oos_value (const OID * head_oid)
@@ -5479,7 +5485,7 @@ la_lookup_oos_value (const OID * head_oid)
     }
 
   entry = (LA_OOS_CACHE_ENTRY *) mht_get (la_oos_cache_hash, head_oid);
-  if (entry == NULL || entry->tranid != la_oos_current_tranid)
+  if (entry == NULL)
     {
       return NULL;
     }
@@ -5534,8 +5540,10 @@ la_clear_oos_cache (void)
 
   /* mht_clear (no rem_func) drops bucket entries; linked list owns memory.
    * MHT_TABLE itself is kept alive across transactions to amortize bucket
-   * array alloc; la_release_oos_thread_state frees it when the thread ends. */
-  if (la_oos_cache_hash != NULL)
+   * array alloc; la_release_oos_thread_state frees it when the thread ends.
+   * mht_clear walks every bucket, so an empty table is skipped: a worker that
+   * once applied OOS would otherwise pay that walk for every later task. */
+  if (la_oos_cache_hash != NULL && mht_count (la_oos_cache_hash) > 0)
     {
       (void) mht_clear (la_oos_cache_hash, NULL, NULL);
     }
@@ -5595,6 +5603,39 @@ la_release_oos_thread_state (void)
       la_oos_cache_hash = NULL;
     }
   la_oos_pending_flush = false;
+  la_oos_unpaired_count = 0;
+}
+
+/*
+ * la_discard_unpaired_oos_objects() - take back the OOS objects buffered for a row that did not reach the buffer
+ *
+ * Note: The server pairs each run of OOS records in a flush with the row right after it. OOS records left without
+ *       their row, because the row failed to apply or is an update the master rolled back, would be paired with the
+ *       next row, which in a worker batch may belong to another transaction.
+ */
+static void
+la_discard_unpaired_oos_objects (void)
+{
+  if (la_oos_unpaired_count > 0)
+    {
+      __gv_loc_repl.ws_discard_last_repl_objs (la_oos_unpaired_count);
+    }
+
+  la_oos_unpaired_count = 0;
+  la_oos_pending_flush = false;
+}
+
+/*
+ * la_is_oos_item() - whether a replication item is an OOS item of a heap row
+ *   return: true for RVREPL_OOS_INSERT, RVREPL_DUMMY_OOS_RECORD and RVREPL_OOS_REUSE
+ *   item(in):
+ */
+static bool
+la_is_oos_item (const LA_ITEM * item)
+{
+  return (item->log_type == LOG_REPLICATION_DATA
+	  && (item->item_type == RVREPL_OOS_INSERT || item->item_type == RVREPL_DUMMY_OOS_RECORD
+	      || item->item_type == RVREPL_OOS_REUSE));
 }
 
 /*
@@ -5738,13 +5779,12 @@ la_cache_oos_value (const OID * head_oid, const char *payload, int payload_lengt
     }
 
   entry->next = NULL;
-  entry->tranid = la_oos_current_tranid;
   entry->head_oid = *head_oid;
   entry->length = payload_length;
   entry->consumed = false;
   memcpy (entry->data, payload, payload_length);
 
-  /* mht_put overwrites a stale mapping for the same OID (cross-tx OID reuse).
+  /* mht_put overwrites an earlier mapping for the same OID.
    * The previous owner stays in the list until retirement or full cleanup,
    * but is no longer reachable via lookup. */
   if (mht_put (la_oos_cache_hash, &entry->head_oid, entry) == NULL)
@@ -5811,18 +5851,16 @@ la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 int
-bridge_la_oos_cache_store (TRANID tranid, const OID * oid, const char *data, int length)
+bridge_la_oos_cache_store (const OID * oid, const char *data, int length)
 {
-  la_oos_current_tranid = tranid;
   return la_cache_oos_value (oid, data, length);
 }
 
 int
-bridge_la_oos_cache_resolve (TRANID tranid, const OID * oid, int length, TP_DOMAIN * domain, DB_VALUE * value)
+bridge_la_oos_cache_resolve (const OID * oid, int length, TP_DOMAIN * domain, DB_VALUE * value)
 {
   SM_ATTRIBUTE att;
 
-  la_oos_current_tranid = tranid;
   memset (&att, 0, sizeof (att));
   att.domain = domain;
   att.type = domain->type;
@@ -5830,9 +5868,8 @@ bridge_la_oos_cache_resolve (TRANID tranid, const OID * oid, int length, TP_DOMA
 }
 
 bool
-bridge_la_oos_cache_contains (TRANID tranid, const OID * oid)
+bridge_la_oos_cache_contains (const OID * oid)
 {
-  la_oos_current_tranid = tranid;
   return la_lookup_oos_value (oid) != NULL;
 }
 
@@ -7761,6 +7798,7 @@ la_flush_repl_items (bool immediate, LA_STATS * stats, const OID * marker_class_
 
       stats->num_unflushed = 0;
       la_oos_pending_flush = false;
+      la_oos_unpaired_count = 0;
       __gv_loc_repl.ws_clear_all_repl_objs ();
     }
 
@@ -7938,8 +7976,8 @@ end:
     {
       la_stat_note_class (stats, item->class_name);
       stats->delete_counter++;
-      stats->num_unflushed++;
       la_oos_pending_flush = false;
+      la_oos_unpaired_count = 0;
       error = la_flush_repl_items (false, stats, NULL);
     }
 
@@ -8129,8 +8167,8 @@ end:
     {
       la_stat_note_class (stats, item->class_name);
       stats->update_counter++;
-      stats->num_unflushed++;
       la_oos_pending_flush = false;
+      la_oos_unpaired_count = 0;
       error = la_flush_repl_items (false, stats, NULL);
     }
 
@@ -8243,9 +8281,12 @@ la_apply_dummy_oos_log (LA_APPLY * apply, LA_ITEM * item, LA_STATS * stats)
 {
   if (apply->need_oos_rebuild)
     {
-      la_log_apply_error ("apply_dummy_oos", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, ER_FAILED, stats);
+      /* the previous boundary was not followed by its OOS insert */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "a multi-chunk OOS boundary follows another one without its OOS insert");
+      la_log_apply_error ("apply_dummy_oos", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, ER_HA_GENERIC_ERROR, stats);
 
-      return ER_FAILED;
+      return ER_HA_GENERIC_ERROR;
     }
 
   apply->need_oos_rebuild = true;
@@ -8379,7 +8420,10 @@ la_apply_oos_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LA
   error = la_repl_add_object (class_obj, item, recdes);
 
 end:
-  if (rebuild_oos)
+  /* Cleared only when the value was rebuilt and buffered: a retry of this item after a failure must rebuild it
+   * again, or it would take the tail chunk at target_lsa for the whole value. The row's end clears it otherwise
+   * (la_apply_repl_log). */
+  if (rebuild_oos && error == NO_ERROR)
     {
       apply->need_oos_rebuild = false;
     }
@@ -8396,8 +8440,8 @@ end:
 	  la_note_oos_item (false);
 	}
       stats->insert_counter++;
-      stats->num_unflushed++;
       la_oos_pending_flush = true;
+      la_oos_unpaired_count++;
     }
 
   if (old_pageid != NULL_PAGEID)
@@ -8430,7 +8474,9 @@ la_apply_oos_reuse_log (LA_APPLY * apply, LA_ITEM * item, LA_STATS * stats)
     {
       /* a multi-chunk boundary announces an OOS insert, not a reused chain */
       apply->need_oos_rebuild = false;
-      error = ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "an OOS reuse marker follows a multi-chunk OOS boundary");
+      error = ER_HA_GENERIC_ERROR;
       goto end;
     }
 
@@ -8456,8 +8502,8 @@ end:
 	{
 	  la_note_oos_item (true);
 	}
-      stats->num_unflushed++;
       la_oos_pending_flush = true;
+      la_oos_unpaired_count++;
     }
 
   return error;
@@ -8576,8 +8622,8 @@ end:
     {
       la_stat_note_class (stats, item->class_name);
       stats->insert_counter++;
-      stats->num_unflushed++;
       la_oos_pending_flush = false;
+      la_oos_unpaired_count = 0;
       error = la_flush_repl_items (false, stats, NULL);
     }
 
@@ -9028,10 +9074,6 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
       return NO_ERROR;
     }
 
-  /* the OOS values cached for the sql log belong to this transaction; an entry left by another one with the same
-   * OID must not match */
-  la_oos_current_tranid = apply->tranid;
-
   already_committed = (LSA_LE (commit_lsa, &la_Info.last_committed_lsa) || la_applied_tx_marker_exists (commit_lsa));
   if (apply->head == NULL || already_committed)
     {
@@ -9211,6 +9253,15 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
 	  la_release_consumed_oos_values ();
 	  la_forget_oos_row ();
 	}
+
+      /* The row is done and will not be retried. If it did not reach the buffer (it failed, or it is an update the
+       * master rolled back), its OOS objects are still there without it. */
+      if (item->log_type == LOG_REPLICATION_DATA && !la_is_oos_item (item))
+	{
+	  la_discard_unpaired_oos_objects ();
+	  /* a multi-chunk OOS item of this row that failed for good leaves the rebuild mark set */
+	  apply->need_oos_rebuild = false;
+	}
       next_item = la_get_next_repl_item (item, apply->is_long_trans, &apply->last_lsa, &error);
       if (error != NO_ERROR)
 	{
@@ -9231,6 +9282,11 @@ end:
   *total_rows += apply_repl_log_cnt;
   la_free_all_repl_items (apply);
   la_clear_oos_cache ();
+  /* A row's OOS items are written with the row (repl_oos_items_follow_row on the master), so they land in the same
+   * task and a task that ends normally leaves none without its row. */
+  assert (error != NO_ERROR || la_oos_unpaired_count == 0);
+  /* OOS objects of this task's last row must not reach the next task in the same buffer */
+  la_discard_unpaired_oos_objects ();
 
   return error;
 }
