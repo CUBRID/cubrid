@@ -156,6 +156,8 @@ extern "C"
   extern PT_NODE *pt_compile (PARSER_CONTEXT * parser, PT_NODE * volatile statement);
 
   extern PT_NODE *pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info);
+  extern int pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info);
+  extern int pt_semantic_type_term_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info);
 
   extern void pt_report_to_ersys (const PARSER_CONTEXT * parser, const PT_ERROR_TYPE error_type);
 
@@ -633,6 +635,8 @@ extern "C"
 
   extern PT_NODE *pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE num_op,
 					      bool is_gby_num);
+  extern void pt_cast_limit_string_operands (PARSER_CONTEXT * parser, PT_NODE * limit);
+  extern bool pt_cast_limit_rewritten_sum (PARSER_CONTEXT * parser, PT_NODE * sum);
   extern PT_NODE *pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value);
   extern PT_NODE *pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement,
 						PT_NODE_WALK_FUNCTION post, void *post_arg);
