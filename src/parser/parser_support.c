@@ -8846,7 +8846,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
         "ORDER BY 1;";
   // *INDENT-ON*
 
-  const int buffer_size = 4096;	// length of query (2195) + identifier (255) * 6 < 4096
+  const int buffer_size = 4096;	// length of query (2180) + identifier (255) * 6 < 4096
   char buffer[buffer_size];
   memset (buffer, 0, buffer_size);
 
