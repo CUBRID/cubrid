@@ -3091,8 +3091,8 @@ lock_is_deadlock_victim (const THREAD_ENTRY * thread_p)
 
 #if defined(SERVER_MODE)
 /*
- * lock_suspend - lock_suspend_internal (), then the entrance owner waits for a guest let in while it slept; not
- *		  before, as a guest that joined the owner's wait train is woken only in there
+ * lock_suspend - lock_suspend_internal (), then the entrance owner waits for a guest let in while it slept, on every
+ *		  way out of the wait
  */
 static LOCK_WAIT_STATE
 lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
@@ -4243,6 +4243,8 @@ lock_join_existing_wait_train (THREAD_ENTRY * thrd_entry, int tran_index, LK_ENT
       return;
     }
 
+  /* no train forms while the threads take turns: a guest never asks for the resource the owner waits for */
+  assert (!lk_Gl.tran_lock_table[tran_index].group.is_gated ());
   thrd_entry->tran_next_wait = lead_entry->thrd_entry->tran_next_wait;
   lead_entry->thrd_entry->tran_next_wait = thrd_entry;
 
