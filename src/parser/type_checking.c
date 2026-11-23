@@ -7411,18 +7411,21 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return NULL;
 	}
 
-      /* rewrite WHERE as false: the query may be false by another clause (HAVING, a folded derived table or CTE in
-       * its FROM), and the WHERE it had refers to the FROM list removed above */
-      parser_free_tree (parser, subq->where);
-      subq->where = parser_new_node (parser, PT_VALUE);
-      if (subq->where == NULL)
+      /* rewrite WHERE as false unless it is: the query may be false by another clause (HAVING, a folded derived
+       * table or CTE in its FROM), and the WHERE it had then refers to the FROM list removed above */
+      if (!pt_false_search_condition (parser, subq->where))
 	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	  return NULL;
+	  parser_free_tree (parser, subq->where);
+	  subq->where = parser_new_node (parser, PT_VALUE);
+	  if (subq->where == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return NULL;
+	    }
+	  subq->where->type_enum = PT_TYPE_LOGICAL;
+	  subq->where->info.value.data_value.i = 0;
+	  (void) pt_value_to_db (parser, subq->where);
 	}
-      subq->where->type_enum = PT_TYPE_LOGICAL;
-      subq->where->info.value.data_value.i = 0;
-      (void) pt_value_to_db (parser, subq->where);
 
       /* clear unnecessary node info */
       if (node->info.query.order_by && !node->info.query.q.select.connect_by)
