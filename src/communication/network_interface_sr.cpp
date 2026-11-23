@@ -9866,6 +9866,9 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
 	  error = ER_AU_INVALID_PASSWORD;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	  (void) return_error_to_client (thread_p, rid);
+	  /* an error reply carries no data, as on the other error paths here */
+	  free_and_init (area);
+	  area_size = 0;
 	}
 
       if (current_user != NULL)
@@ -11256,7 +11259,6 @@ sloaddb_load_batch (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   bool is_batch_accepted = false;
   load_session *session = NULL;
 
-  session_get_load_session (thread_p, session);
   int error_code = session_get_load_session (thread_p, session);
   if (error_code == NO_ERROR)
     {
