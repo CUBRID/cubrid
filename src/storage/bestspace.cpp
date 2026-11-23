@@ -1183,8 +1183,9 @@ namespace cubstorage
     bestspace_entry entry;
     bestspace_map *map = m_parent.m_map;
     std::size_t num_claimed, num_candidates, num_dirty, fit_index, i, j;
+    std::uint64_t feedback_seen = 0;
     std::uint8_t min_code;
-    bool found, valid;
+    bool found, valid, same_tier = false;
     status result;
     int error;
 
@@ -1203,10 +1204,22 @@ namespace cubstorage
       }
 
     // claim pages of a higher tier, whose lower bound fits the request; a page of the same tier may not fit and is left
-    // for smaller requests. A request in the top tier claims its own tier
+    // for smaller requests. A request in the top tier claims its own tier. Without a page of a higher tier, claim pages
+    // of the request's own tier: the checks below measure them, and the next such claim moves past the ones taken
     min_code = code_of (needed_size);
     num_claimed = map->claim (min_code < bestspace_map::CODE_MAX_TIER ? min_code + 1 : bestspace_map::CODE_MAX_TIER,
 			      picked, ALLOC_BATCH_SIZE);
+    if (num_claimed == 0 && min_code != bestspace_map::CODE_NONE && min_code < bestspace_map::CODE_MAX_TIER)
+      {
+	feedback_seen = map->feedback_count ();
+	// pages filled up by inserts stay in the request's tier: without a feedback since, the last miss holds
+	if (feedback_seen != m_parent.m_tier_miss_feedback.load (std::memory_order_relaxed)
+	    || needed_size < m_parent.m_tier_miss_size.load (std::memory_order_relaxed))
+	  {
+	    num_claimed = map->claim_tier (min_code, picked, ALLOC_BATCH_SIZE);
+	    same_tier = true;
+	  }
+      }
 
     // highest tier first: a page with more room takes more of the rows before the next refill
     for (i = 0; i < num_claimed; i++)
@@ -1316,6 +1329,19 @@ namespace cubstorage
 	break;
       }
 
+    if (same_tier)
+      {
+	if (found)
+	  {
+	    m_parent.m_tier_miss_size.store (std::numeric_limits<std::uint16_t>::max (), std::memory_order_relaxed);
+	  }
+	else
+	  {
+	    m_parent.m_tier_miss_feedback.store (feedback_seen, std::memory_order_relaxed);
+	    m_parent.m_tier_miss_size.store (needed_size, std::memory_order_relaxed);
+	  }
+      }
+
     num_candidates = 0;
     if (found)
       {
@@ -1402,6 +1428,8 @@ namespace cubstorage
     , m_map (map)
     , m_absorbed (false)
     , m_orphan_suspect (false)
+    , m_tier_miss_feedback (0)
+    , m_tier_miss_size (std::numeric_limits<std::uint16_t>::max ())
     , m_layout_mutex ()
     , m_orphan_num_hints (0)
     , m_orphan_walk (false)

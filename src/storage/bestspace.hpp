@@ -452,6 +452,10 @@ namespace cubstorage
       bestspace_map *m_map;	// owned: freed with this object
       std::atomic<bool> m_absorbed;
       std::atomic<bool> m_orphan_suspect;
+      // a refill's claim of pages of the request's own tier found none that fits: the map's feedback count then, and
+      // the request size. A refill for a request that large skips that claim until a feedback measured a page again
+      std::atomic<std::uint64_t> m_tier_miss_feedback;
+      std::atomic<std::uint16_t> m_tier_miss_size;
 
       // under m_layout_mutex: the orphan hints not taken yet, and the map layout on disk
       std::mutex m_layout_mutex;

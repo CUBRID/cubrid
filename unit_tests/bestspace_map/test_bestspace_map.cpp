@@ -555,6 +555,111 @@ TEST_CASE ("a claim stops after CLAIM_VISIT_LIMIT stale sectors and the next cla
   REQUIRE (claims <= static_cast<int> (stale / bestspace_map::CLAIM_VISIT_LIMIT) + 2);
 }
 
+TEST_CASE ("claim_tier hands out pages of its tier only, from where the previous call stopped", "[bestspace_map]")
+{
+  bestspace_map map;
+  bestspace_map_page out[4];
+
+  REQUIRE (map.feedback (0, page_of (0, 1), 3));
+  REQUIRE (map.feedback (0, page_of (0, 2), 4));
+  REQUIRE (map.feedback (0, page_of (1, 0), 3));
+  REQUIRE (map.feedback (0, page_of (2, 5), 3));
+  REQUIRE (map.feedback (0, page_of (3, 7), 2));
+  REQUIRE_FALSE (map.is_inline ());
+
+  // one page per call: each call starts with the sector the previous one stopped in
+  REQUIRE (map.claim_tier (3, out, 1) == 1);
+  REQUIRE (out[0].pageid == page_of (0, 1));
+  REQUIRE (out[0].code == 3);
+  REQUIRE (map.claim_tier (3, out, 1) == 1);
+  REQUIRE (out[0].pageid == page_of (1, 0));
+  REQUIRE (map.claim_tier (3, out, 1) == 1);
+  REQUIRE (out[0].pageid == page_of (2, 5));
+  REQUIRE (map.claim_tier (3, out, 4) == 0);
+
+  // a page that went back with its tier (too small for that request) comes out again only after the walk wrapped
+  map.release (0, page_of (0, 1), 3, true);
+  map.release (0, page_of (2, 5), 3, true);
+  REQUIRE (map.claim_tier (3, out, 1) == 1);
+  REQUIRE (out[0].pageid == page_of (0, 1));
+  REQUIRE (map.claim_tier (3, out, 1) == 1);
+  REQUIRE (out[0].pageid == page_of (2, 5));
+
+  // the other tiers are still there for claim ()
+  REQUIRE (map.claim (2, out, 4) == 2);
+  std::set<std::int32_t> got = { out[0].pageid, out[1].pageid };
+  REQUIRE (got == std::set<std::int32_t> { page_of (0, 2), page_of (3, 7) });
+}
+
+TEST_CASE ("claim_tier looks at no more than CLAIM_VISIT_LIMIT sectors a call and goes on from there",
+	   "[bestspace_map]")
+{
+  bestspace_map map;
+  bestspace_map_page out[4];
+  const std::int32_t sectors = 200;
+
+  for (std::int32_t s = 0; s < sectors - 1; s++)
+    {
+      REQUIRE (map.feedback (0, page_of (s, 0), 1));
+    }
+  REQUIRE (map.feedback (0, page_of (sectors - 1, 9), 5));
+
+  int calls = 1;
+  while (map.claim_tier (5, out, 4) == 0)
+    {
+      REQUIRE (calls < 10);
+      calls++;
+    }
+  REQUIRE (out[0].pageid == page_of (sectors - 1, 9));
+  REQUIRE (calls == (sectors + static_cast<int> (bestspace_map::CLAIM_VISIT_LIMIT) - 1)
+	   / static_cast<int> (bestspace_map::CLAIM_VISIT_LIMIT));
+}
+
+TEST_CASE ("concurrent claim_tier, claim and release never hand out a page twice", "[bestspace_map]")
+{
+  bestspace_map map;
+  const std::int32_t num_sectors = 128;
+  std::vector<std::atomic<int>> holders (num_sectors * 64);
+  std::atomic<bool> double_claim (false);
+  std::vector<std::thread> threads;
+
+  for (std::int32_t pageid = 0; pageid < num_sectors * 64; pageid++)
+    {
+      REQUIRE (map.feedback (0, pageid, static_cast<std::uint8_t> (1 + pageid % 8)));
+    }
+  for (int t = 0; t < 8; t++)
+    {
+      threads.emplace_back ([ &, t] ()
+      {
+	std::mt19937 rng (t);
+	bestspace_map_page out[4];
+	for (int i = 0; i < 20000; i++)
+	  {
+	    std::uint8_t code = static_cast<std::uint8_t> (1 + rng () % 8);
+	    std::size_t n = t % 2 == 0 ? map.claim_tier (code, out, 4) : map.claim (code, out, 4);
+	    for (std::size_t k = 0; k < n; k++)
+	      {
+		if (holders[out[k].pageid].fetch_add (1) != 0)
+		  {
+		    double_claim = true;
+		  }
+	      }
+	    for (std::size_t k = 0; k < n; k++)
+	      {
+		holders[out[k].pageid].fetch_sub (1);
+		map.release (out[k].volid, out[k].pageid, static_cast<std::uint8_t> (1 + rng () % 8), true);
+	      }
+	  }
+      });
+    }
+  for (std::thread &th : threads)
+    {
+      th.join ();
+    }
+  REQUIRE_FALSE (double_claim.load ());
+  REQUIRE (drain (map, 1).size () == static_cast<std::size_t> (num_sectors * 64));
+}
+
 TEST_CASE ("concurrent feedback, claim and release never hand out a page twice", "[bestspace_map]")
 {
   bestspace_map map;

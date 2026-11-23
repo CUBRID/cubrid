@@ -110,6 +110,7 @@ namespace cubstorage
     , m_bytes (sizeof (bestspace_map))
     , m_failed_alloc_bytes (0)
     , m_reserved_for (std::numeric_limits<std::size_t>::max ())
+    , m_tier_cursor (0)
   {
     std::size_t i;
 
@@ -1205,6 +1206,51 @@ namespace cubstorage
     return found;
   }
 
+  std::size_t
+  bestspace_map::claim_tier (std::uint8_t code, bestspace_map_page *out, std::size_t max_count)
+  {
+    std::size_t found = 0, looked = 0, n, total, limit, start, pos, s, off;
+
+    n = m_num_sectors.load (std::memory_order_acquire);
+    if (code < 1 || code > CODE_MAX_TIER || max_count == 0 || n == 0)
+      {
+	return 0;
+      }
+
+    total = n * PAGES_PER_SECTOR;
+    limit = (n < CLAIM_VISIT_LIMIT ? n : CLAIM_VISIT_LIMIT) * PAGES_PER_SECTOR;
+    start = m_tier_cursor.load (std::memory_order_relaxed) % total;
+    while (looked < limit && found < max_count)
+      {
+	pos = (start + looked) % total;
+	s = pos / PAGES_PER_SECTOR;
+	record *rec = sector_at (s);
+	std::uint64_t key = key_at (s);
+	for (off = pos % PAGES_PER_SECTOR; off < PAGES_PER_SECTOR && looked < limit && found < max_count;
+	     off++, looked++)
+	  {
+	    std::uint64_t bit = 1ULL << off;
+	    if (get_code (rec, off) != code || (rec->resident.load () & bit) != 0)
+	      {
+		continue;
+	      }
+	    if ((rec->resident.fetch_or (bit) & bit) != 0)
+	      {
+		continue;
+	      }
+	    rec->dirty.fetch_and (~bit);
+	    out[found].volid = key_volid (key);
+	    out[found].pageid = key_first_pageid (key) + static_cast<std::int32_t> (off);
+	    out[found].code = get_code (rec, off);
+	    found++;
+	  }
+      }
+    // the next call starts right after the last page looked at
+    m_tier_cursor.store ((start + looked) % total, std::memory_order_relaxed);
+    count (CNT_CLAIMED, found);
+    return found;
+  }
+
   bool
   bestspace_map::may_claim (std::uint8_t min_code)
   {
@@ -1720,6 +1766,12 @@ namespace cubstorage
   bestspace_map::count (counter id, std::uint64_t value)
   {
     m_counters[id].fetch_add (value, std::memory_order_relaxed);
+  }
+
+  std::uint64_t
+  bestspace_map::feedback_count () const
+  {
+    return m_counters[CNT_FEEDBACK].load (std::memory_order_relaxed);
   }
 
   void
