@@ -3440,6 +3440,9 @@ end:
 /* statement execution state; per connection (thread-local for multiple connections) */
 CUB_THREAD_LOCAL bool do_Trigger_involved;
 
+/* nesting depth of client UPDATEs that keep rows changing a unique key in the workspace until the statement end */
+static CUB_THREAD_LOCAL int do_Unique_check_deferred = 0;
+
 /* do_Trigger_involved does not accurately distinguish
  * whether the corresponding query is a trigger syntax.
  * Therefore, a separate global variable is set to distinguish whether the query is related to a trigger */
@@ -8128,6 +8131,7 @@ static int init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIEN
 static int do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLASS_INFO * cls);
 static int update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_NODE * statement,
 				      bool savepoint_started);
+static bool update_changes_unique_key (const CLIENT_UPDATE_CLASS_INFO * cls_info, int cls_count);
 static int update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, PT_NODE ** non_null_attrs,
 			     int has_uniques);
@@ -8542,6 +8546,7 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement, UPDATE_TYPE 
       DB_VALUE *dbvals = NULL;
       PT_ASSIGNMENTS_HELPER ea;
       PT_NODE *rhs = NULL, *lhs = NULL;
+      bool was_dirty = WS_ISDIRTY (oid);
 
       /* Before we start evaluating assignments, we need to first lock the object. Assignments may depend on current
        * object values which cannot be modified by others. */
@@ -8550,6 +8555,11 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement, UPDATE_TYPE 
 	{
 	  PT_INTERNAL_ERROR (parser, "update_object_by_oid failed to lock object.");
 	  return error;
+	}
+      /* the lock marks the row dirty before it changes: a flush during the assignments need not write it */
+      if (!was_dirty && !oid->is_vid)
+	{
+	  ws_clean (oid);
 	}
 
       /* load structures for update */
@@ -9002,6 +9012,46 @@ error_return:
 }
 
 /*
+ * update_changes_unique_key () - whether the assignments change an attribute that a unique index keys on
+ *   return: true if so
+ *   cls_info(in): classes updated on the client, each with its assignments
+ *   cls_count(in): number of classes
+ *
+ * Note: a spec may name classes that are not subclasses of one another (a class list, a union of views, multiple
+ *       inheritance), so every class is asked. A class that cannot be read counts as changing a unique key.
+ */
+static bool
+update_changes_unique_key (const CLIENT_UPDATE_CLASS_INFO * cls_info, int cls_count)
+{
+  const CLIENT_UPDATE_INFO *assign;
+  const PT_NODE *entity;
+  SM_CLASS *smclass;
+  SM_ATTRIBUTE *att;
+  int idx;
+
+  for (idx = 0; idx < cls_count; idx++)
+    {
+      for (assign = cls_info[idx].first_assign; assign != NULL; assign = assign->next)
+	{
+	  for (entity = cls_info[idx].spec->info.spec.flat_entity_list; entity != NULL; entity = entity->next)
+	    {
+	      if (au_fetch_class_force (entity->info.name.db_object, &smclass, AU_FETCH_READ) != NO_ERROR)
+		{
+		  return true;
+		}
+	      att = classobj_find_attribute (smclass, assign->upd_col_name->info.name.original, 0);
+	      if (att != NULL && classobj_has_unique_constraint (att->constraints))
+		{
+		  return true;
+		}
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * update_objs_for_list_file - Updates oid attributes for every oid
  *				in a list file
  *   return: Number of affected objects if success, otherwise an error code
@@ -9023,6 +9073,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL;
   int turn_off_unique_check;
   int turn_off_server_serializable_conflict_check;
+  bool keeps_unique_rows = false;
   CURSOR_ID cursor_id;
   DB_VALUE *dbvals = NULL;
   const char *savepoint_name = NULL;
@@ -9086,6 +9137,12 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
        * performed on the client */
       turn_off_unique_check = 1;
       turn_off_server_serializable_conflict_check = 1;
+      /* a row that changes no unique key can reach the server before the statement ends */
+      if (update_changes_unique_key (cls_info, upd_cls_cnt))
+	{
+	  keeps_unique_rows = true;
+	  do_Unique_check_deferred++;
+	}
     }
 
   /* open cursor */
@@ -9200,6 +9257,11 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
     }
 
 done:
+  if (keeps_unique_rows)
+    {
+      do_Unique_check_deferred--;
+    }
+
   /* free classes information array */
   if (cls_info)
     {
@@ -12132,6 +12194,7 @@ static int do_replace_into (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * 
 static int is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed);
 static PT_NODE *pt_append_odku_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *do_check_insert_server_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *do_find_insert_id_reader (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *do_set_insert_server_not_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 						  int *continue_walk);
 /*
@@ -12726,8 +12789,22 @@ is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  if (do_Trigger_involved)
+    {
+      /* the client reads LAST_INSERT_ID () before the action runs, when the session still hands out the id of an
+       * earlier statement; the server reads it inside the trigger, when the session does not */
+      bool reads_insert_id = false;
+
+      (void) parser_walk_tree (parser, statement, do_find_insert_id_reader, &reads_insert_id, NULL, NULL);
+      if (reads_insert_id)
+	{
+	  goto end;
+	}
+    }
+
   /* Even if unique indexes are defined on the class, the operation could be performed on server. */
-  if (!trigger_involved && !do_Trigger_involved)
+  /* an action of a client UPDATE that keeps rows changing a unique key cannot flush them: stay on the client */
+  if (!trigger_involved && !(do_Trigger_involved && do_Unique_check_deferred > 0))
     {
       statement->info.insert.server_allowed = SERVER_INSERT_IS_ALLOWED;
     }
@@ -12777,6 +12854,22 @@ do_check_insert_server_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void *a
       *server_allowed = 0;
       *continue_walk = PT_STOP_WALK;
     }
+  return node;
+}
+
+/*
+ * do_find_insert_id_reader () - parser_walk_tree function: sets *arg when the tree reads LAST_INSERT_ID (), directly
+ *				 or possibly through a stored procedure or function
+ */
+static PT_NODE *
+do_find_insert_id_reader (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (PT_IS_SP (node) || (node->node_type == PT_EXPR && node->info.expr.op == PT_LAST_INSERT_ID))
+    {
+      *(bool *) arg = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
   return node;
 }
 
@@ -17704,6 +17797,25 @@ end:
  * Implements the scope statement.
  *
  */
+
+/*
+ * do_flush_before_trigger () - flush the rows that the statement firing a trigger left in the workspace
+ *   return: error of the flush
+ *
+ * Note: a statement in the trigger condition or action that runs on the server sees only flushed rows. An error of
+ *       this flush belongs to the firing statement, so the caller returns it as it is, not as an error of the trigger.
+ */
+int
+do_flush_before_trigger (void)
+{
+  /* a client UPDATE that changes a unique key keeps its rows back to check them together at its end */
+  if (do_Unique_check_deferred > 0 || !ws_need_flush ())
+    {
+      return NO_ERROR;
+    }
+
+  return locator_all_flush ();
+}
 
 /*
  * do_scope() - scopes a statement
