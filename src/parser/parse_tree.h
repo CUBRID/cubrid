@@ -1678,7 +1678,10 @@ typedef enum
 						 * generated around it (pt_check_sub_query_spec ()). That derived table is not a scope the statement
 						 * asked for, so it must not hide the remote invisible columns the statement references - unlike
 						 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
-  PT_SPEC_FLAG_UNNESTED_SUBQUERY = 0x80000	/* derived SEMI/ANTI spec unnested from a [NOT] EXISTS / [NOT] IN subquery
+  PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED = 0x80000,	/* a DML target left to the force-phase reevaluation; locked
+							 * at select as FOR UPDATE where the executor does not
+							 * reevaluate */
+  PT_SPEC_FLAG_UNNESTED_SUBQUERY = 0x100000	/* derived SEMI/ANTI spec unnested from a [NOT] EXISTS / [NOT] IN subquery
 						 * over several tables, or the derived table that reads a SEMI JOIN table with its
 						 * duplicates removed.  Its XASL is made once the query keeps it */
 } PT_SPEC_FLAG;

@@ -52,6 +52,7 @@ namespace cubload
 
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
+      void process_binary_line (const string_type *row) override;
 
     private:
       /*
