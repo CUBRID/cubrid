@@ -5037,14 +5037,13 @@ emit_sensitivity_label (extract_context & ctxt, print_output & output_ctx, DB_OB
   /*
    * You must check SENSITIVITY_LABEL_VALUE_INDEX enum defined on the top of this file
    * when changing the following query. Notice the order of the result.
-   * def_order restarts for class attributes, hence attr_type.
    */
   const char *query =
     "SELECT [l].[class_of], [c].[unique_name], [a].[attr_name], "
     "[l].[grade].[name], [l].[info_type].[name], [l].[source].[name] "
     "FROM [_db_sensitivity_label] [l], [_db_class] [c], [_db_attribute] [a] "
     "WHERE [l].[class_of] = [c].[class_of] AND [a].[class_of] = [c] AND [a].[attr_id] = [l].[attr_id] "
-    "ORDER BY [c].[unique_name], [a].[def_order], [a].[attr_type]";
+    "ORDER BY [c].[unique_name], [a].[def_order]";
 
   if (!(ctxt.is_dba_user || ctxt.is_dba_group_member))
     {
