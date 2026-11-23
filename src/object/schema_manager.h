@@ -268,6 +268,7 @@ extern int sm_get_trigger_cache (DB_OBJECT * class_, const char *attribute, int 
 
 
 extern int sm_invalidate_trigger_cache (DB_OBJECT * classop);
+extern void sm_invalidate_cached_trigger_cache (DB_OBJECT * classop);
 
 extern int sm_add_trigger (DB_OBJECT * classop, const char *attribute, int class_attribute, DB_OBJECT * trigger);
 

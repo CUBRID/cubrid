@@ -93,6 +93,7 @@ typedef struct tr_trigger
    */
   int chn;
   const char *comment;
+  bool altered;			/* changed by ALTER TRIGGER in this transaction */
 } TR_TRIGGER;
 
 

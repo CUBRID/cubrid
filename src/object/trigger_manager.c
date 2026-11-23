@@ -252,7 +252,9 @@ static int its_deleted (DB_OBJECT * object);
 
 static int map_flush_helper (const void *key, void *data, void *args);
 static int reset_trigger_cache_helper (const void *key, void *data, void *args);
-static void reset_trigger_caches (void);
+static void reset_trigger_caches (bool end_transaction);
+static int forget_altered_trigger_helper (const void *key, void *data, void *args);
+static void forget_altered_triggers (void);
 static int define_trigger_classes (void);
 
 static TR_RECURSION_DECISION tr_check_recursivity (OID oid, OID stack[], int stack_size, bool is_statement);
@@ -418,6 +420,7 @@ tr_make_trigger (void)
   trigger->temp_refname = NULL;
   trigger->chn = NULL_CHN;
   trigger->comment = NULL;
+  trigger->altered = false;
 
   return trigger;
 }
@@ -1838,6 +1841,7 @@ validate_trigger (TR_TRIGGER * trigger)
 	  return error;
 	}
 
+      new_trigger.altered = trigger->altered;
       tr_clear_trigger (trigger);
       *trigger = new_trigger;
     }
@@ -5858,6 +5862,12 @@ tr_check_commit_triggers (DB_TRIGGER_TIME time)
 {
   int error = NO_ERROR;
 
+  if (time == TR_TIME_AFTER && tr_Trigger_cache_modified)
+    {
+      forget_altered_triggers ();
+      tr_Trigger_cache_modified = 0;
+    }
+
   /*
    * If trigger firing has been disabled, do nothing.
    * This is currently used by the loader to disable triggers firing.
@@ -5865,11 +5875,6 @@ tr_check_commit_triggers (DB_TRIGGER_TIME time)
   if (!TR_EXECUTION_ENABLED)
     {
       return NO_ERROR;
-    }
-
-  if (time == TR_TIME_AFTER)
-    {
-      tr_Trigger_cache_modified = 0;
     }
 
   /*
@@ -5930,6 +5935,12 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
 {
   TR_TRIGLIST *t, *next;
 
+  if (tr_Trigger_cache_modified)
+    {
+      reset_trigger_caches (true);
+      tr_Trigger_cache_modified = 0;
+    }
+
   /*
    * If trigger firing has been disabled, do nothing.
    * This is currently used by the loader to disable triggers firing.
@@ -5978,12 +5989,6 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
       tr_User_triggers_valid = 0;
       tr_User_triggers_modified = 0;
     }
-
-  if (tr_Trigger_cache_modified)
-    {
-      reset_trigger_caches ();
-      tr_Trigger_cache_modified = 0;
-    }
 }
 
 /*
@@ -6000,7 +6005,7 @@ tr_check_partial_rollback_triggers (void)
 
   if (tr_Trigger_cache_modified)
     {
-      reset_trigger_caches ();
+      reset_trigger_caches (false);
     }
 }
 
@@ -6035,6 +6040,12 @@ tr_check_timeout_triggers (void)
 void
 tr_check_abort_triggers (void)
 {
+  if (tr_Trigger_cache_modified)
+    {
+      reset_trigger_caches (true);
+      tr_Trigger_cache_modified = 0;
+    }
+
   /*
    * If trigger firing has been disabled, do nothing.
    * This is currently used by the loader to disable triggers firing.
@@ -7037,6 +7048,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
     }
 
   trigger->name = new_name;
+  trigger->altered = true;
   tr_Trigger_cache_modified = 1;
 
 end:
@@ -7104,6 +7116,7 @@ tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_f
 	}
       else
 	{
+	  trigger->altered = true;
 	  tr_Trigger_cache_modified = 1;
 
 	  /*
@@ -7173,6 +7186,7 @@ tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api
 	}
       else
 	{
+	  trigger->altered = true;
 	  tr_Trigger_cache_modified = 1;
 
 	  if (trigger->class_mop != NULL)
@@ -7250,6 +7264,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
 	    }
 	  else
 	    {
+	      trigger->altered = true;
 	      tr_Trigger_cache_modified = 1;
 	      if (oldcomment != NULL)
 		{
@@ -7353,16 +7368,27 @@ tr_init (void)
 }
 
 /*
- * reset_trigger_cache_helper() - Makes a cached trigger be read again on its next validation
+ * reset_trigger_cache_helper() - Makes a trigger changed by ALTER TRIGGER be read again on its next validation
  *    return: NO_ERROR
  *    key(in): trigger object
  *    data(in): trigger structure
- *    args(in): not used
+ *    args(in): whether the transaction ends, which also forgets the change
  */
 static int
 reset_trigger_cache_helper (const void *key, void *data, void *args)
 {
   TR_TRIGGER *trigger = (TR_TRIGGER *) data;
+  bool end_transaction = *(bool *) args;
+
+  if (!trigger->altered)
+    {
+      return NO_ERROR;
+    }
+
+  if (end_transaction)
+    {
+      trigger->altered = false;
+    }
 
   if ((trigger->condition != NULL && trigger->condition->in_use > 0)
       || (trigger->action != NULL && trigger->action->in_use > 0))
@@ -7374,33 +7400,59 @@ reset_trigger_cache_helper (const void *key, void *data, void *args)
 
   if (trigger->class_mop != NULL)
     {
-      (void) sm_invalidate_trigger_cache (trigger->class_mop);
+      sm_invalidate_cached_trigger_cache (trigger->class_mop);
     }
 
   return NO_ERROR;
 }
 
 /*
- * reset_trigger_caches() - Makes the cached triggers be read again after a rollback of ALTER TRIGGER
+ * reset_trigger_caches() - Makes the triggers changed by ALTER TRIGGER be read again after a rollback
  *    return: none
+ *    end_transaction(in): true for the rollback of the transaction, false for a rollback to a savepoint
  *
  * Note:
  *    The rollback restores the trigger objects with their old cache coherency numbers,
  *    so the triggers changed in the cache by ALTER TRIGGER would not be read again.
  */
 static void
-reset_trigger_caches (void)
+reset_trigger_caches (bool end_transaction)
 {
   int save;
 
   er_stack_push ();
   AU_DISABLE (save);
 
-  (void) mht_map (tr_object_map, reset_trigger_cache_helper, NULL);
+  (void) mht_map (tr_object_map, reset_trigger_cache_helper, &end_transaction);
   tr_invalidate_user_cache ();
 
   AU_ENABLE (save);
   er_stack_pop ();
+}
+
+/*
+ * forget_altered_trigger_helper() - Forgets that ALTER TRIGGER changed a trigger
+ *    return: NO_ERROR
+ *    key(in): trigger object
+ *    data(in): trigger structure
+ *    args(in): not used
+ */
+static int
+forget_altered_trigger_helper (const void *key, void *data, void *args)
+{
+  ((TR_TRIGGER *) data)->altered = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * forget_altered_triggers() - Forgets the triggers changed by ALTER TRIGGER after the commit
+ *    return: none
+ */
+static void
+forget_altered_triggers (void)
+{
+  (void) mht_map (tr_object_map, forget_altered_trigger_helper, NULL);
 }
 
 /* Helper routine for tr_final */
