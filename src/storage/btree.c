@@ -30170,7 +30170,7 @@ btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION
 	  else if (oid_check_cached_class_oid (OID_CACHE_HISTOGRAM_CLASS_ID, class_oid))
 	    {
 	      /* _db_histogram is read without waiting for an uncommitted UPDATE STATISTICS: no lock, and one catalog
-	       * read snapshot judges every version of the row at the same point in time; the transaction snapshot is
+	       * read snapshot judges every object of the key at the same point in time; the transaction snapshot is
 	       * not built here (see need_skip_mvcc_snapshot) */
 	      find_unique_helper.snapshot = logtb_get_catalog_read_snapshot (thread_p, &catalog_read_snapshot);
 	      assert (find_unique_helper.snapshot != NULL);

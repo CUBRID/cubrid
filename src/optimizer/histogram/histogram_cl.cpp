@@ -2762,7 +2762,6 @@ stats_get_histogram (MOP classop, HIST_STATS **histogram)
       const char *attname = (char *) att->header.name;
       DB_VALUE *histogram_value = NULL;
       DB_VALUE null_frequency_value;
-      /* unlocked: must not wait on a concurrent UPDATE STATISTICS (CBRD-27369) */
       error = db_get_histogram_for_optimizer (classop, attname, &histogram_obj);
 
       if (*histogram == NULL || (*histogram)->histogram == NULL || (*histogram)->null_frequency == NULL)

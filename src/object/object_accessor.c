@@ -3873,8 +3873,9 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
       obj = ws_mop (&oid, NULL);
       if (lookup == OBJ_FIND_CATALOG_READ && obj != NULL && ws_get_lock (obj) == NULL_LOCK && !WS_ISDIRTY (obj))
 	{
-	  /* locator_can_skip_fetch_from_server () would reuse an unlocked copy while the workspace snapshot version
-	   * holds, all of a REPEATABLE READ transaction; a copy this transaction locked or changed cannot be stale */
+	  /* locator_can_skip_fetch_from_server () reuses an unlocked copy until the workspace snapshot version
+	   * changes, which under REPEATABLE READ is the end of the transaction. A copy this transaction locked cannot
+	   * be stale, and a dirty one holds its change not yet flushed */
 	  ws_decache (obj);
 	}
       if (au_fetch_instance_force (obj, NULL, fetchmode,
@@ -3934,11 +3935,12 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
  *       the row X-locked blocks the caller until it commits. This variant takes
  *       no lock. The lookup and the fetch are two server requests, and each
  *       reads under its own catalog read snapshot: the rows committed when it
- *       runs plus this transaction's own changes, with the transaction's MVCC
- *       snapshot left alone. It is for catalog data read as a hint, e.g. the
- *       optimizer's histograms; the returned object must not be used as the
- *       base of an update. Only _db_histogram is read this way: it is the one
- *       class xbtree_find_unique () looks up under a catalog read snapshot.
+ *       runs plus this transaction's own changes, with the transaction
+ *       snapshot left alone. A copy this transaction locked or changed is read
+ *       from the workspace instead. It is for the optimizer's histograms; the
+ *       returned object must not be used as the base of an update. Only
+ *       _db_histogram is read this way: it is the one class
+ *       btree_find_unique_internal () looks up under a catalog read snapshot.
  */
 MOP
 obj_find_multi_attr_catalog (MOP op, int size, const char *attr_names[], const DB_VALUE * values[])
