@@ -270,6 +270,16 @@ struct btree_scan
 
   bool key_range_max_value_equal;
 
+  /* CBRD-28141: the next upper_key_keys_decided keys of the current leaf, in scan order, are before the upper key, so
+   * btree_apply_key_range_and_filter does not compare them with it. upper_key_keys_to_check counts the keys still
+   * compared one by one after the range starts or resumes; at 0 the current leaf is decided at its next key, and
+   * below 0 the current leaf is already decided. The leaf (upper_key_page_vpid at upper_key_page_lsa) is kept for
+   * debug checks only. */
+  int upper_key_keys_decided;
+  int upper_key_keys_to_check;
+  VPID upper_key_page_vpid;
+  LOG_LSA upper_key_page_lsa;
+
   /*
    * cur_leaf_lsa
    */
@@ -309,6 +319,26 @@ struct btree_scan
   void *bts_other;
 };
 
+/* CBRD-28141: keys compared one by one after a range starts or resumes; past them each leaf is decided at once against
+ * the upper key before its keys are compared */
+#define BTREE_UPPER_KEY_PAGE_CHECK_AFTER_KEYS 2
+
+/* the leaf is left: its decision against the upper key is dropped, and the next leaf is decided at its first key unless
+ * the first keys of the range are still compared one by one */
+#define BTREE_UPPER_KEY_PAGE_CLEAR(bts)   do {                                         \
+              (bts)->upper_key_keys_decided = 0;                                       \
+              if ((bts)->upper_key_keys_to_check < 0)                                  \
+                {                                                                      \
+                  (bts)->upper_key_keys_to_check = 0;                                  \
+                }                                                                      \
+       } while(0)
+
+/* no leaf is decided against the upper key, and the first keys of the range are compared one by one */
+#define BTREE_UPPER_KEY_PAGE_RESET(bts)   do {                                         \
+              (bts)->upper_key_keys_decided = 0;                                       \
+              (bts)->upper_key_keys_to_check = BTREE_UPPER_KEY_PAGE_CHECK_AFTER_KEYS;  \
+       } while(0)
+
 #define BTREE_INIT_SCAN(bts)				\
   do {							\
     (bts)->P_vpid.pageid = NULL_PAGEID;			\
@@ -336,6 +366,9 @@ struct btree_scan
     (bts)->qualified_keys = 0;				\
     (bts)->key_range_max_value_equal = false;		\
     LSA_SET_NULL (&(bts)->cur_leaf_lsa);		\
+    BTREE_UPPER_KEY_PAGE_RESET (bts);			\
+    VPID_SET_NULL (&(bts)->upper_key_page_vpid);	\
+    LSA_SET_NULL (&(bts)->upper_key_page_lsa);		\
     (bts)->lock_mode = NULL_LOCK;			\
     (bts)->key_record.data = NULL;			\
     (bts)->offset = 0;					\
@@ -376,6 +409,9 @@ struct btree_scan
     (bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN;  \
     btree_clear_key_value (&(bts)->clear_common_prefix_key, &(bts)->common_prefix_key); \
     COMMON_PREFIX_PAGE_DEBUG_INFO_RESET((bts));         \
+    BTREE_UPPER_KEY_PAGE_RESET (bts);			\
+    VPID_SET_NULL (&(bts)->upper_key_page_vpid);	\
+    LSA_SET_NULL (&(bts)->upper_key_page_lsa);		\
     pr_clear_value (&(bts)->cur_key);			\
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
