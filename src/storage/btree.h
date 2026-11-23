@@ -415,8 +415,7 @@ typedef struct btree_checkscan BTREE_CHECKSCAN;
 struct btree_checkscan
 {
   BTID btid;			/* B+tree index identifier */
-  BTREE_SCAN btree_scan;	/* B+tree search scan structure */
-  BTREE_ISCAN_OID_LIST oid_list;	/* Data area to store OIDs */
+  BTID_INT btid_int;		/* B+tree info. btid_int.sys_btid points to btid, so the structure must not move. */
 };				/* B+tree <key-oid> check scan structure */
 
 struct btree_ovfl_oid_capacity
@@ -583,7 +582,9 @@ enum btree_op_purpose
   BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF,	/* Insert done by a transaction with DELETE_FLAG set. */
   BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT,	/* Undo an insert */
   BTREE_OP_ONLINE_INDEX_TRAN_DELETE,	/* Delete done by a transaction. */
-  BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE	/* Undo a delete. */
+  BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE,	/* Undo a delete. */
+
+  BTREE_OP_CHECK_KEY_OID	/* Read-only: find an object visible to the transaction's snapshot (checkdb). */
 };
 typedef enum btree_op_purpose BTREE_OP_PURPOSE;
 
