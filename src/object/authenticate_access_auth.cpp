@@ -1347,6 +1347,9 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
       break;
+    case DB_OBJECT_PACKAGE:
+      sprintf (obj_fetch_query, sql_query, "SELECT [pkg] FROM " CT_PACKAGE_NAME "[pkg] WHERE [unique_name] = ?");
+      break;
     default:
       error = ER_FAILED;
       ASSERT_ERROR_AND_SET (error);
@@ -1609,6 +1612,9 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      break;
+    case DB_OBJECT_PACKAGE:
+      sprintf (obj_fetch_query, sql_query, "SELECT [pkg] FROM " CT_PACKAGE_NAME "[pkg] WHERE [unique_name] = ?");
       break;
     default:
       error = ER_FAILED;

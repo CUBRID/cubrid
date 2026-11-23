@@ -4193,6 +4193,9 @@ jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
   const char *unique_name;
   char downcased[DB_MAX_IDENTIFIER_LENGTH + 1];
   char owner_name[DB_MAX_USER_LENGTH];
+  char new_owner_name[DB_MAX_USER_LENGTH];
+  char new_unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  char *name;
   MOP owner_mop, pkg_mop, new_owner_mop = NULL;
   bool is_system;
   bool has_savepoint = false;
@@ -4280,12 +4283,59 @@ jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
   has_savepoint = true;
 
-  if (new_owner_mop != NULL)
+  // changing the owner to the current one changes nothing
+  if (new_owner_mop != NULL && !ws_is_same_object (new_owner_mop, owner_mop))
     {
-      // TODO package: ALTER PACKAGE ... OWNER TO is not implemented yet
-      err = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-      goto exit;
+      // the unique name of the package under the new owner
+      name = au_get_user_name (new_owner_mop);
+      if (name == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto exit;
+	}
+      sm_downcase_name (name, new_owner_name, DB_MAX_USER_LENGTH);
+      db_ws_free_and_init (name);
+      snprintf (new_unique_name, sizeof (new_unique_name), "%s.%s", new_owner_name, sm_remove_qualifier_name (unique_name));
+
+      // the new owner must not have a package of the name, nor a package body created without its spec
+      if (jsp_find_pkg (new_unique_name) != NULL)
+	{
+	  err = ER_PKG_ALREADY_EXIST;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, new_unique_name);
+	  goto exit;
+	}
+      else if (er_errid () != NO_ERROR)
+	{
+	  err = er_errid ();
+	  goto exit;
+	}
+      if (jsp_find_pkg_code (new_unique_name) != NULL)
+	{
+	  err = ER_PKG_BODY_ALREADY_EXIST;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, new_unique_name);
+	  goto exit;
+	}
+      else if (er_errid () != NO_ERROR)
+	{
+	  err = er_errid ();
+	  goto exit;
+	}
+
+      // the privileges granted by the old owner become those granted by the new owner,
+      // and those granted to the new owner are revoked
+      err = au_object_owner_change_privileges (DB_OBJECT_PACKAGE, pkg_mop, owner_mop, new_owner_mop, unique_name);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      // the unique name and the generated class name have the owner name, and the unqualified names in the
+      // package are now resolved for the new owner
+      err = jsp_rebuild_pkg (parser, unique_name, pkg_mop, new_owner_mop, new_owner_name, new_unique_name);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
     }
 
   if (statement->info.pkg.recompile)
