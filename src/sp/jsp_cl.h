@@ -51,6 +51,7 @@ extern int jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * stateme
 extern int jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int jsp_check_return_type_supported (DB_TYPE type);
+extern int jsp_check_out_args_of_call (PARSER_CONTEXT * parser, PT_NODE * node);
 
 extern int jsp_make_pl_signature (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * subquery_as_attr_list,
 				  cubpl::pl_signature & signature);
@@ -63,6 +64,7 @@ extern char *jsp_get_owner_name (const char *name, char *buf, int buf_size);
 extern int jsp_get_return_type (const char *name);
 extern int jsp_get_sp_type (const char *name);
 extern bool jsp_is_sp_parallel_eligible (const char *name);
+extern bool jsp_is_sp_deterministic (PARSER_CONTEXT * parser, PT_NODE * node);
 extern MOP jsp_find_stored_procedure (const char *name, DB_AUTH purpose);
 extern MOP jsp_find_stored_procedure_code (const char *name);
 extern int jsp_find_sp_of_another_owner (const char *name, MOP * return_mop);

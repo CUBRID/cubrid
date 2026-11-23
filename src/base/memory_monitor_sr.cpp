@@ -26,9 +26,10 @@
 #include <algorithm>
 
 #include "memory_monitor_sr.hpp"
+#include "scope_exit.hpp"
 
 bool mmon_disabled = true;
-THREAD_LOCAL_TRIVIAL bool mmon_in_add_stat = false;
+THREAD_LOCAL_TRIVIAL bool mmon_untracked = false;
 
 namespace cubmem
 {
@@ -37,6 +38,7 @@ namespace cubmem
   memory_monitor::memory_monitor (const char *server_name)
     : m_server_name {server_name},
       m_stat_name_map {MMON_MAP_RESERVE_SIZE},
+      m_next_stat_id {0},
 #if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
       m_stat_alloc_count {},
       m_stat_free_count {},
@@ -79,12 +81,14 @@ retry:
       }
 
     std::pair<tbb::concurrent_unordered_map<std::string, int>::iterator, bool> insert_success;
-    stat_id = m_stat_name_map.size ();
+    // not m_stat_name_map.size (): two call sites inserted at the same time would get one id
+    stat_id = m_next_stat_id++;
     assert (stat_id < MMON_MAP_RESERVE_SIZE);
     // stat_id starts with 0
     insert_success = m_stat_name_map.insert (std::pair <std::string, int> (stat_name, stat_id));
     if (!insert_success.second)
       {
+	// another thread inserted this call site first; stat_id stays unused
 	goto retry;
       }
     return stat_id;
@@ -277,6 +281,10 @@ retry:
 
   void memory_monitor::aggregate_server_info (MMON_SERVER_INFO &server_info)
   {
+    // stat_info is not counted: it grows after the total is read, so only the entries would include it
+    mmon_untracked = true;
+    auto track_again = make_scope_exit ([] { mmon_untracked = false; });
+
     strncpy (server_info.server_name, m_server_name.c_str (), m_server_name.size () + 1);
     server_info.total_mem_usage = get_total_mem_usage ();
     server_info.total_metainfo_mem_usage = get_meta_alloc_count () * MMON_METAINFO_SIZE;

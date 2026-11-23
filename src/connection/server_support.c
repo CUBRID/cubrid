@@ -2096,6 +2096,7 @@ css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_i
   thread_p->lockwait_state = -1;
   thread_p->query_entry = NULL;
   thread_p->tran_next_wait = NULL;
+  thread_p->oos_oids.clear ();
 
   thread_p->end_resource_tracks ();
   thread_clear_recursion_depth (thread_p);
@@ -2201,10 +2202,6 @@ css_server_task::execute (context_type &thread_ref)
   if (m_conn.end_working_task () == 0 && m_conn.status == CONN_CLOSING)
     {
       css_request_shutdown_conn (&m_conn, static_cast <uint8_t> (cubconn::connection::ignore_level::DONT_IGNORE), false, 0 /* no wait */);
-    }
-  else
-    {
-      css_wakeup_handler (&m_conn);
     }
 }
 

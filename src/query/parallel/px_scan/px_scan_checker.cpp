@@ -49,6 +49,10 @@ namespace parallel_scan
   /* the checked part calls an SP not declared PARALLEL_ENABLE or a method: a px worker cannot
    * run it, since its callbacks to the client are never answered (CBRD-27596) */
   const possible_flags CANNOT_RUN_IN_WORKER = 0x1 << 3;
+  /* survives a subquery boundary: a subquery that reads or writes the session state keeps the
+   * scan serial as the same access in the block itself does */
+  const possible_flags SESSION_STATE_ACCESS = 0x1 << 4;
+  const possible_flags SUBQUERY_BLOCKERS = CANNOT_RUN_IN_WORKER | SESSION_STATE_ACCESS;
 
   static bool
   is_buildvalue_opt_supported_function (FUNC_CODE function)
@@ -242,6 +246,7 @@ namespace parallel_scan
     if (arg->xasl)
       {
 	temp = sibling_check<is_outptr_list> (arg->xasl);
+	result |= temp & SESSION_STATE_ACCESS;
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
@@ -302,7 +307,7 @@ namespace parallel_scan
 	break;
       case TYPE_REGU_VAR_LIST:
 	temp = check<is_outptr_list> (arg->value.regu_var_list);
-	result |= temp & CANNOT_RUN_IN_WORKER;
+	result |= temp & SUBQUERY_BLOCKERS;
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
@@ -386,6 +391,10 @@ namespace parallel_scan
 	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_NEXT_VALUE)
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
+      }
+    if (arg->opcode == T_TRACE_STATS || arg->opcode == T_EVALUATE_VARIABLE || arg->opcode == T_DEFINE_VARIABLE)
+      {
+	set_flag (result, SESSION_STATE_ACCESS);
       }
     return result;
   }
@@ -611,7 +620,7 @@ namespace parallel_scan
       }
 
     /* the key filter and key ranges are evaluated by the thread that runs this scan too, for an NL
-     * inner at every outer row. Only an SP or method there counts, so a plan without one stays. */
+     * inner at every outer row. Only an SP, a method or a session state access there counts. */
     possible_flags temp = check<false> (arg->where_key) | check<false> (arg->where_range);
     if (arg->type == TARGET_CLASS && arg->indexptr != NULL)
       {
@@ -639,6 +648,7 @@ namespace parallel_scan
 	set_flag (result, CANNOT_RUN_IN_WORKER);
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
+    result |= temp & SESSION_STATE_ACCESS;
     return result;
   }
 
@@ -671,7 +681,7 @@ namespace parallel_scan
     for (XASL_NODE *xaslp = sibling->aptr_list; xaslp; xaslp = xaslp->next)
       {
 	result |= check<is_outptr_list> (xaslp);
-	result |= sibling_check<false> (xaslp) & CANNOT_RUN_IN_WORKER;
+	result |= sibling_check<false> (xaslp) & SUBQUERY_BLOCKERS;
       }
 
     if (sibling->bptr_list || sibling->fptr_list)
@@ -686,7 +696,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
-	result |= temp & CANNOT_RUN_IN_WORKER;
+	result |= temp & SUBQUERY_BLOCKERS;
       }
 
     if (sibling->connect_by_ptr)
@@ -701,7 +711,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
-	result |= temp & CANNOT_RUN_IN_WORKER;
+	result |= temp & SUBQUERY_BLOCKERS;
       }
 
     if (sibling->if_pred)
@@ -711,7 +721,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
-	result |= temp & CANNOT_RUN_IN_WORKER;
+	result |= temp & SUBQUERY_BLOCKERS;
       }
 
     if ((sibling->instnum_pred || sibling->instnum_val) && !is_renumberable_instnum (sibling)
@@ -727,7 +737,7 @@ namespace parallel_scan
 
     /* the thread that runs this block evaluates the rest of it as well: its select list, aggregates,
      * GROUP BY / analytic lists, later join tables, merged method scans, hierarchical query and nested
-     * blocks. Of these only an SP or method counts, so a subquery without one keeps its plan (CBRD-27596). */
+     * blocks. Of these only an SP, a method or a session state access counts. */
     temp = sibling_check<false> (sibling->scan_ptr);
     for (ACCESS_SPEC_TYPE *specp = sibling->merge_spec; specp; specp = specp->next)
       {
@@ -804,7 +814,11 @@ namespace parallel_scan
       default:
 	break;
       }
-    result |= temp & CANNOT_RUN_IN_WORKER;
+    result |= temp & SUBQUERY_BLOCKERS;
+    if (is_flag_set (result, SESSION_STATE_ACCESS))
+      {
+	set_flag (result, CANNOT_PARALLEL_SCAN);
+      }
 
     cache[sibling] = result;
     return result;
