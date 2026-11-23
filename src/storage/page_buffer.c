@@ -6047,7 +6047,8 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
  * Note: Keep the scope to a fix whose caller cannot act on a refusal - the disk manager's volume header and
  *       sector allocation table. Those two pass PGBUF_UNCONDITIONAL_LATCH and offer no conditional variant,
  *       and disk_reserve_sectors treats anything but an interrupt or an IO error as a disk cache
- *       inconsistency.
+ *       inconsistency. The OOS reclaim of a committed intent (oos_rv_reclaim_on_postpone) is the third: it runs
+ *       in a commit and stops the server on any error.
  *       Both no-wait values are lifted although they have different owners - LK_ZERO_WAIT carries the user's
  *       lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. A finite or an already infinite
  *       waiting time is kept, because pgbuf_timed_sleep () classifies a watchdog expiry by this very value and
@@ -7899,12 +7900,23 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
   while (bufptr->next_wait_thrd != NULL)
     {
       curr_thrd_entry = bufptr->next_wait_thrd;
+
+      /* Check under the entry lock of the waiter that it still waits for a READ latch before adding its fix count, as
+       * pgbuf_wakeup_reader_writer () does. A waiter that times out gives up its request under this lock, and a fix
+       * count added for it would never be released. */
+      thread_lock_entry (curr_thrd_entry);
+      if (curr_thrd_entry->request_latch_mode != PGBUF_LATCH_READ)
+	{
+	  thread_unlock_entry (curr_thrd_entry);
+	  break;
+	}
+
       do
 	{
 	  can_grant = false;
 	  impl = get_impl (&bufptr->atomic_latch);
 	  impl_new = impl;
-	  if (impl.impl.latch_mode == PGBUF_LATCH_READ && curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
+	  if (impl.impl.latch_mode == PGBUF_LATCH_READ)
 	    {
 	      can_grant = true;
 	      impl_new.impl.fcnt += curr_thrd_entry->request_fix_count;
@@ -7912,31 +7924,21 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
 	}
       while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, impl_new.raw, std::memory_order_acq_rel,
 							  std::memory_order_acquire));
-      if (can_grant)
+      if (!can_grant)
 	{
-	  /* grant the request */
-	  thread_lock_entry (curr_thrd_entry);
-	  if (curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
-	    {
-	      /* do not handle BCB holder entry, at here. refer pgbuf_latch_bcb_upon_fix () */
-
-	      /* remove thrd_entry from BCB waiting queue. */
-	      bufptr->next_wait_thrd = curr_thrd_entry->next_wait_thrd;
-	      curr_thrd_entry->next_wait_thrd = NULL;
-
-	      /* wake up the thread */
-	      pgbuf_wakeup (curr_thrd_entry);
-	    }
-	  else
-	    {
-	      thread_unlock_entry (curr_thrd_entry);
-	      break;
-	    }
-	}
-      else
-	{
+	  thread_unlock_entry (curr_thrd_entry);
 	  break;
 	}
+
+      /* grant the request */
+      /* do not handle BCB holder entry, at here. refer pgbuf_latch_bcb_upon_fix () */
+
+      /* remove thrd_entry from BCB waiting queue. */
+      bufptr->next_wait_thrd = curr_thrd_entry->next_wait_thrd;
+      curr_thrd_entry->next_wait_thrd = NULL;
+
+      /* wake up the thread */
+      pgbuf_wakeup (curr_thrd_entry);
     }
 
   return NO_ERROR;
@@ -8009,6 +8011,10 @@ try_again:
     }
   else if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
+      /* The wait returns without the entry lock. Take it again before the check below: pgbuf_wakeup_reader_writer ()
+       * grants the latch under this lock, so the check and giving up the request must be one step. */
+      thread_lock_entry (thread_p);
+
       /* rollback operation, postpone operation, etc. */
       if (thread_p->resume_status == THREAD_PGBUF_RESUMED)
 	{
@@ -8018,6 +8024,7 @@ try_again:
 
       if (logtb_is_current_active (thread_p) == false)
 	{
+	  /* wait again, with the entry lock held as for the first wait */
 	  goto try_again;
 	}
 
@@ -15989,6 +15996,17 @@ pgbuf_get_hold_count (THREAD_ENTRY * thread_p)
   return pgbuf_Pool.thrd_holder_info[me].num_hold_cnt;
 }
 
+/* pgbuf_get_page_type_for_stat () casts a stored PAGE_TYPE to PERF_PAGE_TYPE */
+static_assert ((int) PERF_PAGE_UNKNOWN == (int) PAGE_UNKNOWN && (int) PERF_PAGE_FTAB == (int) PAGE_FTAB
+	       && (int) PERF_PAGE_HEAP == (int) PAGE_HEAP && (int) PERF_PAGE_VOLHEADER == (int) PAGE_VOLHEADER
+	       && (int) PERF_PAGE_VOLBITMAP == (int) PAGE_VOLBITMAP && (int) PERF_PAGE_QRESULT == (int) PAGE_QRESULT
+	       && (int) PERF_PAGE_EHASH == (int) PAGE_EHASH && (int) PERF_PAGE_OVERFLOW == (int) PAGE_OVERFLOW
+	       && (int) PERF_PAGE_AREA == (int) PAGE_AREA && (int) PERF_PAGE_CATALOG == (int) PAGE_CATALOG
+	       && (int) PERF_PAGE_BTREE_GENERIC == (int) PAGE_BTREE && (int) PERF_PAGE_LOG == (int) PAGE_LOG
+	       && (int) PERF_PAGE_DROPPED_FILES == (int) PAGE_DROPPED_FILES
+	       && (int) PERF_PAGE_VACUUM_DATA == (int) PAGE_VACUUM_DATA && (int) PERF_PAGE_OOS == (int) PAGE_OOS
+	       && (int) PERF_PAGE_BTREE_ROOT == (int) PAGE_LAST + 1, "PERF_PAGE_TYPE must mirror PAGE_TYPE");
+
 /*
  * pgbuf_get_page_type_for_stat () - Return the page type for current page
  *
@@ -18430,6 +18448,7 @@ pgbuf_scan_bcb_table ()
 	      break;
 	    case PAGE_OVERFLOW:
 	    case PAGE_HEAP:
+	    case PAGE_OOS:
 	      show_status_snapshot->num_data_pages++;
 	      break;
 	    case PAGE_CATALOG:

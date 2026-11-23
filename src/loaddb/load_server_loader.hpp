@@ -26,6 +26,8 @@
 #include "dbtype_def.h"
 #include "heap_attrinfo.h"
 #include "heap_file.h"
+#include "heap_pending_record.hpp"
+#include "record_descriptor.hpp"
 #include "load_common.hpp"
 #include "memory_private_allocator.hpp"
 #include "partition_sr.h"
@@ -82,6 +84,7 @@ namespace cubload
 
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
+      void process_binary_line (const string_type *row) override;
       void finish_line () override;
       void flush_records () override;
 
@@ -102,6 +105,7 @@ namespace cubload
       bool report_value_error ();
       int process_generic_constant (constant_type *cons, const attribute &attr, bool is_element);
       int process_collection_constant (constant_type *cons, const attribute &attr);
+      int process_binary_value (binary_row_reader &reader, const binary_column &col, const attribute &attr);
 
       void clear_db_values ();
       db_value &get_attribute_db_value (size_t attr_index);
@@ -122,7 +126,9 @@ namespace cubload
       bool m_attrinfo_started;
       heap_cache_attrinfo m_attrinfo;
       std::vector<db_value> m_db_values;
-      std::vector<record_descriptor> m_recdes_collected;
+      std::vector<heap_pending_record> m_recdes_collected;
+      std::size_t m_retained_bytes;
+      int m_pruning_type;
 
       bool m_scancache_started;
       heap_scancache m_scancache;
