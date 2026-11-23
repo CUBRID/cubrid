@@ -567,6 +567,12 @@ is_stmt_based_repl_type (const PT_NODE * node)
  * The set is owned by the row-loop owner (do_insert_template,
  * insert_subquery_results) and is the only place a DEFAULT is evaluated on this
  * path (do_evaluate_row_default_expr_for_otemplate).
+ *
+ * The values reach the rows through att->default_value.value, which populate_defaults
+ * copies into each row's template.  That attribute belongs to the class, so another
+ * statement run in the middle of this one (a trigger action inserting into the same
+ * class) writes its own values there.  Each entry keeps the value it found, and
+ * releasing the set puts it back, so the enclosing statement finds its values again.
  */
 typedef struct cdt_eval_entry CDT_EVAL_ENTRY;
 struct cdt_eval_entry
@@ -574,6 +580,7 @@ struct cdt_eval_entry
   SM_ATTRIBUTE *att;		/* residual attribute this entry maps to */
   PT_NODE *tree;		/* rehydrated Compact DEFAULT Tree, shared parser memory owned by the CDT registry (never freed here) */
   PT_VOLATILITY vol;		/* effective volatility */
+  DB_VALUE saved;		/* att->default_value.value before this statement wrote it, put back on release */
 };
 
 typedef struct cdt_eval_set CDT_EVAL_SET;
@@ -586,27 +593,45 @@ struct cdt_eval_set
   CDT_EVAL_ENTRY *entries;
   struct pt_rand_state *rand_states;	/* seeded random generators of the DEFAULTs of this statement, those in
 					 * its ON DUPLICATE KEY UPDATE assignments too (pt_free_rand_states) */
+  MOP class_mop;		/* the object of smclass, to tell at release whether smclass is still its cached class */
 };
 
 /*
- * do_release_cdt_eval_entries () - release the entry array of a CDT eval set and
- *	reset it to unbuilt; the seeded random states are kept.  The trees belong to
- *	the parser's CDT registry and are not touched.  Safe on an unbuilt
+ * do_release_cdt_eval_entries () - put back the attribute values the entries replaced, release the entry array
+ *	of a CDT eval set and reset it to unbuilt; the seeded random states are kept.  The values are not put back
+ *	when a DDL or a decache has replaced the attributes since the build: those hold their own values.  The
+ *	trees belong to the parser's CDT registry and are not touched.  Safe on an unbuilt
  *	(zero-initialized) eval set.
  */
 static void
 do_release_cdt_eval_entries (CDT_EVAL_SET * eval_set)
 {
+  bool restore;
+  int j;
+
   if (eval_set == NULL)
     {
       return;
     }
   if (eval_set->entries)
     {
+      restore = (eval_set->smclass != NULL && eval_set->class_mop != NULL
+		 && eval_set->class_mop->object == (void *) eval_set->smclass
+		 && eval_set->schema_version == sm_local_schema_version ());
+      for (j = 0; j < eval_set->count; j++)
+	{
+	  if (restore)
+	    {
+	      pr_clear_value (&eval_set->entries[j].att->default_value.value);
+	      (void) pr_clone_value (&eval_set->entries[j].saved, &eval_set->entries[j].att->default_value.value);
+	    }
+	  pr_clear_value (&eval_set->entries[j].saved);
+	}
       free_and_init (eval_set->entries);
     }
   eval_set->count = 0;
   eval_set->smclass = NULL;
+  eval_set->class_mop = NULL;
 }
 
 /*
@@ -667,6 +692,7 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
     }
 
   eval_set->smclass = smclass;
+  eval_set->class_mop = (otemplate != NULL) ? otemplate->classobj : NULL;
   eval_set->schema_version = sm_local_schema_version ();
   eval_set->count = 0;
   eval_set->entries = NULL;
@@ -712,6 +738,14 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
       eval_set->entries[eval_set->count].att = att;
       eval_set->entries[eval_set->count].tree = residual;
       eval_set->entries[eval_set->count].vol = vol;
+      if (pr_clone_value (&att->default_value.value, &eval_set->entries[eval_set->count].saved) != NO_ERROR)
+	{
+	  int error;
+
+	  ASSERT_ERROR_AND_SET (error);
+	  do_release_cdt_eval_entries (eval_set);
+	  return error;
+	}
       eval_set->count++;
     }
 
@@ -14180,7 +14214,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   DB_VALUE *value = NULL;
   DB_SEQ *seq = NULL;
   int obj_count = 0;
-  CDT_EVAL_SET cdt_eval = { NULL, 0, 0, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
+  CDT_EVAL_SET cdt_eval = { NULL, 0, 0, NULL, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (otemplate != NULL);
   if (otemplate == NULL)
@@ -14737,7 +14771,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   DB_SEQ *seq = NULL;
   DB_VALUE db_value;
   DB_VALUE *value = NULL;
-  CDT_EVAL_SET cdt_eval = { NULL, 0, 0, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
+  CDT_EVAL_SET cdt_eval = { NULL, 0, 0, NULL, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (parser != NULL);
 
