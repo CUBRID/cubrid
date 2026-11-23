@@ -2474,9 +2474,11 @@ struct pt_expr_info
   PT_TYPE_ENUM recursive_type;	/* common type for recursive expression arguments (like PT_GREATEST, PT_LEAST,...) */
   int coll_modifier;		/* collation modifier = collation + 1 */
   int pred_order;		/* for view-merge or predicate-push. pred is ordered by pred_order in qo_discover_edges */
-  UINT64 rand_execution;	/* a fixed-seed random call the client evaluates: the statement execution that seeded
-				 * rand_buf (parser->rand_execution), 0 for none; a copy starts with none */
-  struct drand48_data rand_buf;	/* that call's generator, as the server keeps one in the arithmetic node */
+  bool rand_reseeds;		/* a seeded random call the client evaluates: its seed may change from row to row, so
+				 * every evaluation reseeds */
+  UINT64 rand_execution;	/* the statement execution (parser->rand_execution) that decided rand_reseeds and, for a
+				 * fixed seed, seeded rand_buf; 0 for none; a copy starts with none */
+  struct drand48_data rand_buf;	/* a fixed-seed call's generator, as the server keeps one in the arithmetic node */
 };
 
 /* FILE PATH INFO */

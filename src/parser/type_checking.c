@@ -13364,18 +13364,20 @@ pt_evaluate_seeded_rand (PARSER_CONTEXT * parser, PT_NODE * expr, int seed, bool
   struct drand48_data local;
   struct drand48_data *buf = &expr->info.expr.rand_buf;
 
-  /* only a fixed seed stamps the call, so a call stamped with this execution goes on with its sequence */
+  /* decide once in each statement execution; a fixed seed seeds the generator the call keeps for the rest of it */
   if (expr->info.expr.rand_execution != parser->rand_execution)
     {
-      if (pt_is_fixed_in_statement (parser, expr->info.expr.arg1))
+      expr->info.expr.rand_execution = parser->rand_execution;
+      expr->info.expr.rand_reseeds = !pt_is_fixed_in_statement (parser, expr->info.expr.arg1);
+      if (!expr->info.expr.rand_reseeds)
 	{
-	  /* the call keeps its generator for the rest of the statement execution */
-	  expr->info.expr.rand_execution = parser->rand_execution;
+	  srand48_r ((long) seed, buf);
 	}
-      else
-	{
-	  buf = &local;
-	}
+    }
+
+  if (expr->info.expr.rand_reseeds)
+    {
+      buf = &local;
       srand48_r ((long) seed, buf);
     }
 
