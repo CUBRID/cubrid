@@ -10957,8 +10957,8 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
   else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
 	   && (!qo_lenient_join_hint (info->env) || qo_can_hash_terms (info->env, hash_terms)))
     {
-      /* join hint: force hash-join; skip idx-join. On the lenient retry the hint is ignored for a join no hash join
-       * can be made of (qo_can_hash_terms ()), as USE_MERGE is for a join without a mergeable term */
+      /* join hint: force hash-join; skip idx-join. On the lenient retry the hint is ignored for a join whose terms
+       * qo_can_hash_terms () refuses, as USE_MERGE is for a join without a mergeable term */
       goto exit;
     }
   else
@@ -11333,8 +11333,8 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
 		   && (!qo_lenient_join_hint (info->env) || qo_can_hash_terms (info->env, hash_terms)))
 	    {
-	      /* join hint: force hash-join; skip nl-join. On the lenient retry the hint is ignored for a join no hash
-	       * join can be made of (qo_can_hash_terms ()) */
+	      /* join hint: force hash-join; skip nl-join. On the lenient retry the hint is ignored for a join whose
+	       * terms qo_can_hash_terms () refuses */
 	      goto exit;
 	    }
 	  else
@@ -11347,8 +11347,8 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  /* the side to be the inner is already a join: a hint applies to it when it names all of its tables, as in
 	   * qo_examine_hash_join ().
 	   *
-	   * Only a hash join is forced from here, and only when one can be made of the terms. nl-join is kept for the
-	   * other hints:
+	   * Only a hash join is forced from here, and only when qo_can_hash_terms () takes the terms. nl-join is kept
+	   * for the other hints:
 	   *   - idx-join needs a single class inner
 	   *   - merge-join may not be possible for this join */
 	  PT_HINT_ENUM hint = qo_join_hint_common_to_nodes (outer);
@@ -11397,8 +11397,8 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
       else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
 	       && (!qo_lenient_join_hint (info->env) || qo_can_hash_terms (info->env, hash_terms)))
 	{
-	  /* join hint: force hash-join; skip nl-join. On the lenient retry the hint is ignored for a join no hash join
-	   * can be made of (qo_can_hash_terms ()) */
+	  /* join hint: force hash-join; skip nl-join. On the lenient retry the hint is ignored for a join whose terms
+	   * qo_can_hash_terms () refuses */
 	  goto exit;
 	}
       else
@@ -11981,8 +11981,10 @@ qo_check_collection_type (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
  *   terms(in): the mergeable terms of a join
  *
  * Behavior:
- *   The operands hash alike as they are or in the common domain both convert to (domain_hashable_resolve ()). A join
- *   with a term not known to hash alike gets no hash join plan.
+ *   - The operands hash alike as they are or in the common domain both convert to (domain_hashable_resolve ()).
+ *   - A term with an operand of a type the bound values fix (DB_TYPE_VARIABLE) is taken unless an operand has a
+ *     collection type.
+ *   - A join with a term not known to hash alike gets no hash join plan.
  */
 static bool
 qo_can_hash_terms (QO_ENV * env, BITSET * terms)

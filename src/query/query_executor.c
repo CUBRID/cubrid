@@ -26268,8 +26268,9 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD *
  *  hash_out(out):
  *
  * Behavior:
- *   must fold the same columns, in the same order, with the same formula as qexec_connect_by_hash_from_tuple;
- *   non-TYPE_CONSTANT columns are skipped exactly like qexec_compare_valptr_with_tuple skips them.
+ *   - A row hashes as qexec_connect_by_hash_from_tuple () hashes its stored tuple: the same columns, in the same order,
+ *     folded the same way (mht_foldhash () of mht_valhash ()).
+ *   - The non-TYPE_CONSTANT columns are skipped, as qexec_compare_valptr_with_tuple () skips them.
  */
 static void
 qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash_out)
@@ -26318,7 +26319,8 @@ qexec_connect_by_bind_tuple (QFILE_TUPLE_RECORD * slot, QFILE_TUPLE tpl, const Q
  *  hash_out(out):
  *
  * Reason:
- *   deserialization mirrors qexec_compare_valptr_with_tuple so both hash paths produce the same value for equal tuples.
+ *   The columns are read as qexec_compare_valptr_with_tuple () reads them, so equal rows hash alike here and in
+ *   qexec_connect_by_hash_from_valptr ().
  */
 static int
 qexec_connect_by_hash_from_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD * tplrec,

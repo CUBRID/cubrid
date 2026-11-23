@@ -2920,16 +2920,17 @@ hjoin_fetch_val_list (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASH
  *       + the compiler decides no variable column (xts_pack_hash_join_keys ())
  *       + a pair of NULL-typed columns is decided as DOMAIN_COMPARE_VALUES, but holds only NULLs, which
  *         hjoin_fetch_key () skips before the comparison
- *   - The comparison is decided outer first (source[0] the outer type, source[1] the inner) and converts or coerces
- *     each side by its own source type, so it takes the outer value first.
  *
  * Method:
- *   Where the build is the inner input (a left, anti or semi join, or an inner join whose outer is not the smaller),
- *   value1 is the inner value:
- *     - a pair of two types of one hash type, hashed as they are, has source[0] != source[1]: value1's type shows that
- *       it is the inner value, and the values are swapped
- *     - every other pair is read in one type (the same type, or both converted to a common domain) and keeps its order
- *     - only DB_EQ is asked for, so the sign of a swapped result does not matter
+ *   - The comparison is decided outer first (source[0] the outer type, source[1] the inner) and converts or coerces
+ *     each side by its own source type, so it takes the outer value first.
+ *   - Where the build is the inner input (a left, anti or semi join, or an inner join whose outer is not the smaller),
+ *     value1 is the inner value:
+ *       + a pair of two types of one hash type, hashed as they are, has source[0] != source[1]: value1's type shows
+ *         that it is the inner value, and the values are swapped
+ *       + every other pair is read in one type (the same type, or both converted to a common domain) and keeps its
+ *         order
+ *       + only DB_EQ is asked for, so the sign of a swapped result does not matter
  */
 static inline DB_VALUE_COMPARE_RESULT
 hjoin_compare_key (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2)
@@ -5208,11 +5209,11 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
  *       + NUMERIC:
  *           . the digits are written without their leading zero bytes
  *           . they are read back zero-filled into the same 17 bytes, with the precision and scale the write recorded,
- *             as a float numeric when the column is one and as a fixed one otherwise
+ *             as a float NUMERIC when the column is one and as a fixed one otherwise
  *           . the hash is of the value those bytes and that scale make (mr_data_writeval_numeric (),
  *             mr_data_readval_numeric (), db_make_numeric (), numeric_db_value_hash ())
- *           . read back as a fixed numeric, a value written with precision DB_DEFAULT_NUMERIC_PRECISION (40) has the
- *             precision of a float numeric, whose scale numeric_db_value_hash () reads from the header
+ *           . read back as a fixed NUMERIC, a value written with precision DB_DEFAULT_NUMERIC_PRECISION (40) has the
+ *             precision of a float NUMERIC, whose scale numeric_db_value_hash () reads from the header
  *           . the read leaves that header scale 0, so such a value gives false
  */
 static bool

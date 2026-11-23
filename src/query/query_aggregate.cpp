@@ -3448,7 +3448,7 @@ qdata_key_sketch_add_hashed (unsigned char *regs, unsigned int h)
   unsigned int w;
   unsigned char rank;
 
-  /* h needs no mixing: mht_valhash () mixes every value of the key */
+  /* h needs no mixing: mht_valhash () ends the hash of every key value with a mix (mht_mixhash ()) */
   w = h << 10;
   /* 1 + the leading zeros of the 22 bits after the prefix, 23 when all are zero */
   rank = (w == 0) ? 23 : (unsigned char) (__builtin_clz (w) + 1);
@@ -3573,7 +3573,7 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
   for (i = 0; i < ckey1->val_count; i++)
     {
       /* a key from the scan and one read back from a partial list are values of the key's one domain (the scan's key
-       * regu's, which types the partial list's column): they hash alike when they compare equal, but for the keys
+       * regu's, which types the partial list's column): keys the comparison finds equal hash alike, but for the keys
        * qexec_gby_keys_hash_as_compared () rejects (qdata_hash_agg_hkey ()) */
       assert (ckey1->compares != NULL);
       result = domain_compare_in_domain (ckey1->compares[i], ckey1->values[i], ckey2->values[i], 0, 1);

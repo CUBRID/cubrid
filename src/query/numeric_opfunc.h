@@ -150,8 +150,8 @@ typedef enum
     (value)->data.num.header.scale = 0; \
   } while(0)
 
-/* 10^-scale mod NUMERIC_HASH_PRIME for every scale, in a struct because numeric_hash_make_inverse_pow10_table (), a
- * constexpr function, cannot return an array */
+/* 10^-scale mod NUMERIC_HASH_PRIME per scale, in a struct because numeric_hash_make_inverse_pow10_table () cannot
+ * return an array */
 typedef struct numeric_hash_inverse_pow10_table NUMERIC_HASH_INVERSE_POW10_TABLE;
 struct numeric_hash_inverse_pow10_table
 {
@@ -429,7 +429,7 @@ numeric_repr_write_disk (unsigned char *digits, const unsigned char *buf, int di
  *   value(in): a value below 2^122, such as the product of two residues
  *
  * Method:
- *   each fold adds value >> 61 to the low 61 bits of value, as 2^61 is 1 mod the prime. Two folds bring a value below
+ *   Each fold adds value >> 61 to the low 61 bits of value, as 2^61 is 1 mod the prime. Two folds bring a value below
  *   2^122 to at most the prime, and one subtraction below the prime.
  */
 STATIC_INLINE constexpr uint64_t
@@ -459,7 +459,7 @@ numeric_hash_mul (uint64_t residue1, uint64_t residue2)
  *   value(in): an integer
  *
  * Behavior:
- *   a SMALLINT, an INTEGER, a BIGINT and a NUMERIC of one value (e.g., 5 and 5.00) give one residue.
+ *   A SMALLINT, an INTEGER, a BIGINT and a NUMERIC equal in value (e.g., 5 and 5.00) give one residue.
  */
 STATIC_INLINE constexpr uint64_t
 numeric_hash_int64 (int64_t value)
@@ -481,11 +481,12 @@ static_assert (numeric_hash_int64 (INT64_MIN) == NUMERIC_HASH_PRIME - 4, "2^63 i
  *   value(in): a NUMERIC value, fixed or float
  *
  * Behavior:
- *   Equivalent numeric values (1.5 as 15 at scale 1, 1.50 as 150 at scale 2) give one residue, whatever their precision
- *   and scale, with no zero stripped or appended. Unlike float_numeric_normalize_for_sort (), the hash keeps no order.
+ *   NUMERIC values equal in value (1.5 as 15 at scale 1, 1.50 as 150 at scale 2) give one residue, whatever their
+ *   precision and scale. Unlike float_numeric_normalize_for_sort (), the hash keeps no order.
  *
  * Method:
- *   The value is its magnitude x 10^-scale, and 10 has an inverse mod the prime.
+ *   The value is its magnitude x 10^-scale, and 10 has an inverse mod the prime, so no trailing zero is stripped or
+ *   appended.
  *
  * Reason:
  *   db_get_numeric_precision_and_scale () cannot be called here, as dbtype.h includes this header before

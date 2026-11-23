@@ -4865,10 +4865,13 @@ tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp)
  *		      DATA_STATUS_TRUNCATED. If there exists some characters
  *		      that are not numeric codes or spaces then it is set to
  *		      DATA_STATUS_NOT_CONSUMED.
- * Note:
- *   - Accepts strings that are not null terminated. Don't call this unless src is a string db_value.
- *   - A float is read by strtof (): rounding the double that strtod () reads to a float would round twice
- *     ('1.0000000596046447753906250001' to 1.0, not to 1 + 2^-23).
+ *
+ * Behavior:
+ *   Accepts strings that are not null terminated. Don't call this unless src is a string db_value.
+ *
+ * Method:
+ *   A FLOAT is read by strtof (): rounding the double that strtod () reads to a float would round twice
+ *   ('1.0000000596046447753906250001' to 1.0, not to 1 + 2^-23).
  */
 /* *INDENT-OFF* */
 template <typename T>

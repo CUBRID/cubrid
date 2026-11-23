@@ -7738,16 +7738,16 @@ btree_get_stats_hash_finalize (UINT64 hash)
  * Method:
  *   - (CBRD-27701) The string is mixed in by the hash of its collation (mht2str), which leaves out the trailing weights
  *     0, the trailing spaces among them.
- *   - Where the trailing spaces count, 'a' and 'a ' are two values the Duj1 estimate must tell apart: a hash table
- *     allows the two to hash alike, a distinct count does not.
- *   - So the number of trailing weights 0 is mixed in as well, counted as:
- *       + euckr_bin: the bytes lang_next_byte_weight_ko () weighs 0 (a NUL, a space or an EUC space at a character's
- *         start)
+ *   - Where the trailing spaces count, the number of trailing weights 0 is mixed in as well, counted as:
+ *       + euckr_bin: the weights 0 lang_next_byte_weight_ko () returns (a NUL, or a space or an EUC space at a
+ *         character's start)
  *       + any other: the ASCII spaces and NULs, which the byte and UTF-8 comparisons weigh alike
  *
  * Reason:
- *   A UCA comparison does not weigh a NUL as a space: a NUL rarely ends a value, and miscounting it only shifts the
- *   estimate.
+ *   - Where the trailing spaces count, 'a' and 'a ' are two values the Duj1 estimate must tell apart: a hash table
+ *     allows the two to hash alike, a distinct count does not.
+ *   - A UCA comparison does not weigh a NUL as a space: a NUL rarely ends a value, and miscounting it only shifts the
+ *     estimate.
  */
 static UINT64
 btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
@@ -7798,14 +7798,15 @@ btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
  *   return: 64-bit hash
  *   value(in): key element
  *
- * Note:
+ * Method:
+ *   - btree_get_stats_value_hash () mixes the whole value into 64 bits; only a type it does not list falls back to
+ *     mht_valhash (). Strings follow the comparison of their collation (btree_get_stats_hash_string ()).
+ *   - The result is finalized (CBRD-28213).
+ *
+ * Reason:
  *   - (CBRD-27701) The Duj1 estimate counts distinct hashes, so the hash must be equal for equal values and distinct
  *     for distinct ones.
  *   - mht_valhash () is made for hash table buckets (32 bits, where a collision costs only a comparison).
- *   - btree_get_stats_value_hash () mixes the whole value into 64 bits instead; only a type it does not list falls back
- *     to mht_valhash ().
- *   - Strings follow the comparison of their collation (btree_get_stats_hash_string ()).
- *   - The result is finalized (CBRD-28213).
  */
 static UINT64
 btree_get_stats_prefix_value_hash (const DB_VALUE * value)

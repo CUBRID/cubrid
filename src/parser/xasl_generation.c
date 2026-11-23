@@ -7784,8 +7784,8 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
  * Behavior:
  *   - The domain makes the values the scan's predicate finds equal hash alike, and none that it compares fails to hash.
  *   - The scan's hash goes off for:
- *       + a pair of no domain in which its values hash alike
  *       + a key whose domain the execution fixes
+ *       + a pair of no domain in which its values hash alike
  *       + a key that converts already, into a domain other than the pair's common domain
  *   - A pair of two hash types (domain_hash_type ()) hashes in the pair's common domain, the comparison's type: an
  *     exact and a floating number, or a SET and a MULTISET. Type checking casts any other pair to one domain.
@@ -16447,8 +16447,8 @@ pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
       switch (TP_DOMAIN_TYPE (decided.target[0]))
 	{
 	case DB_TYPE_FLOAT:
-	  /* a FLOAT keeps FLT_DIG decimal digits, and its normal range holds a NUMERIC key only with a scale in
-	   * 0..precision */
+	  /* a FLOAT keeps FLT_DIG decimal digits; a NUMERIC key is taken only with a scale in 0..precision, whose
+	   * values the FLOAT's normal range holds */
 	  is_lossless_conversion = (key_type == DB_TYPE_SHORT
 				    || (key_type == DB_TYPE_NUMERIC && key->precision <= FLT_DIG
 					&& key->scale >= 0 && key->scale <= key->precision));
@@ -16477,10 +16477,14 @@ pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
  *   pred(in/out): a predicate of a partitioned class's scan
  *
  * Behavior:
- *   The domain is the one of the term's other side, decided here, not at the scan (partition_prune_hash (),
- *   partition_prune_for_function ()). A term prunes only when:
- *     - its value, or each element of an IN list, compares with the key in the key's type (pt_comparison_keeps_key ())
- *     - for an IN list, the list's elements have one domain, their NULLs aside (pt_list_element_domain ())
+ *   - The domain is the one of the term's other side, decided here, not at the scan (partition_prune_hash (),
+ *     partition_prune_for_function ()).
+ *   - A term prunes only when:
+ *       + the value's domain and the other side's have a type, neither VARIABLE nor NULL
+ *         (pt_domain_takes_pruning_conversion ())
+ *       + its value, or each element of an IN list, compares with the key in the key's type
+ *         (pt_comparison_keeps_key ())
+ *       + for an IN list, the list's elements have one domain, their NULLs aside (pt_list_element_domain ())
  */
 static void
 pt_set_prune_domains (PRED_EXPR * pred)

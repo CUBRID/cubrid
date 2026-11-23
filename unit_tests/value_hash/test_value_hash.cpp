@@ -95,7 +95,8 @@ namespace
     return hash_of (value);
   }
 
-  /* a NUMERIC of the digits (a leading '-' for a negative one, no point), the last scale of them after the point */
+  /* the hash of the NUMERIC of the digits (a leading '-' for a negative one, no point), the last scale of them after
+   * the point */
   unsigned int
   hash_numeric_of (const std::string &digits, int precision, int scale, bool is_float)
   {
@@ -121,8 +122,8 @@ namespace
     return hash_numeric_of (digits, precision, scale, true);
   }
 
-  /* the NUMERICs of an integer: fixed of its own precision, float NUMERIC (38, 0), and fixed and float with two zeros
-   * after the point */
+  /* check that the NUMERICs of an integer hash as expected: fixed of its own precision, float NUMERIC (38, 0), and
+   * fixed and float with two zeros after the point */
   void
   check_numerics_of (int64_t integer, unsigned int expected)
   {
@@ -170,7 +171,7 @@ TEST_CASE ("SMALLINT, INTEGER, BIGINT and NUMERIC of one value hash alike", "[va
       check_numerics_of (integer, expected);
     }
 
-  /* from 2^61 - 1 on in magnitude, where the value is reduced mod the prime */
+  /* magnitudes of 2^61 - 1 and above, which the hash reduces mod the prime 2^61 - 1 */
   const int64_t past_prime[] = { (int64_t) ((1ULL << 61) - 1), (int64_t) (1ULL << 61), INT64_MAX, INT64_MIN };
 
   for (int64_t integer : past_prime)

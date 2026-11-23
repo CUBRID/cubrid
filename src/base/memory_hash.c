@@ -577,8 +577,7 @@ mht_ptrhash (const void *key, const unsigned int ht_size)
  *   hash(in): the hash
  *
  * Behavior:
- *   mht_valhash () mixes every value's hash with it once, a 64-bit value after mht_mixhash64_to_32 () cuts it to 32
- *   bits.
+ *   mht_valhash () mixes every value's 32-bit hash with it once, after mht_mixhash64_to_32 () cuts a 64-bit hash.
  *
  * Reason:
  *   - A table that indexes by the low bits (hash & mask, as mht_get_hls () does) sees only them, and a value's hash can
@@ -626,8 +625,11 @@ mht_mixhash64_to_32 (UINT64 hash)
  *   d(in): the value; a FLOAT is widened to DOUBLE, a MONETARY gives its amount
  *
  * Behavior:
- *   -0.0 equals 0.0 but has a different sign bit: adding 0.0 turns -0.0 into 0.0 before the bits are read. A NaN equals
- *   every other NaN, whatever its sign and bits (MR_CMP_FLOATING ()): every NaN hashes as NAN.
+ *   - -0.0 and 0.0 hash alike: they compare equal but differ in the sign bit.
+ *   - Every NaN hashes alike: a NaN equals every other NaN, whatever its sign and fraction bits (MR_CMP_FLOATING ()).
+ *
+ * Method:
+ *   Before the bits are read, adding 0.0 turns -0.0 into 0.0 and every NaN is replaced by NAN.
  */
 STATIC_INLINE unsigned int
 mht_hash_double (double d)
@@ -692,7 +694,7 @@ mht_hash_json (const DB_VALUE * val)
 	}
       else
 	{
-	  /* fall through */
+	  /* an INTEGER, a BIGINT or the NULL of a JSON null: hashed below as it is */
 	}
 
       if (is_number)
@@ -824,8 +826,8 @@ mht_hash_element (const DB_VALUE * val)
  *     domain_hash_type ():
  *       + the exact ones (SMALLINT, INTEGER, BIGINT, NUMERIC), by the value mod 2^61 - 1
  *       + the floating ones (FLOAT, DOUBLE, MONETARY), by the bits of the DOUBLE the value equals
- *   - Across the families the comparison converts to DOUBLE and loses digits (BIGINT 2^53 and 2^53 + 1 both equal
- *     DOUBLE 2^53):
+ *   - Across the families the comparison converts the exact side to the floating side's type and can lose digits
+ *     (BIGINT 2^62 + 1 equals DOUBLE 2^62):
  *       + no hash of the exact value can follow the comparison
  *       + a caller hashes such a pair in its common domain (domain_resolve_hash_key ())
  */
@@ -1009,8 +1011,8 @@ mht_valhash (const void *key, const unsigned int ht_size)
       /* SUB, ERROR, DB_VALUE, RESULTSET, TABLE and the like are not keys: the address of a DB_VALUE would hash equal
        * values apart, so a release build puts them all in one bucket.
        *
-       * A type given a case here must hash alike whatever its comparison finds equal, and domain_hashable () takes it
-       * only once a case there says so */
+       * A type given a case here must hash alike the values its comparison finds equal, and domain_hashable () takes
+       * it only once a case there says so */
       er_log_debug (ARG_FILE_LINE, "mht_valhash: type %d is not hashed", db_value_type (val));
       assert (false);
       break;
@@ -1112,9 +1114,9 @@ mht_compare_dbvalues_are_equal (const void *key1, const void *key2)
  *   key2(in): pointer to a string DB_VALUE
  *
  * Reason:
- *   - Callers rely on identity, not on equality by the comparison; do not compare by collation.
- *   - For keys of cached results (memoize, subquery cache, query result cache), strings equal only under their
- *     collation ('A' and 'a') can give different results, e.g. ASCII (key).
+ *   - The keys of cached results (memoize, subquery cache, query result cache) must be identical: strings equal only
+ *     under their collation ('A' and 'a') can give different results, e.g. ASCII (key). Two strings of one collation
+ *     compare by their bytes.
  *   - Identical values are also equal by the comparison, so mht_valhash () still applies.
  */
 int
@@ -1149,9 +1151,9 @@ mht_compare_strings_are_identical (const void *key1, const void *key2)
  *   key2(in): pointer to a JSON DB_VALUE
  *
  * Reason:
- *   - Callers rely on identity, not on equality by the comparison; do not compare by value.
- *   - For keys of cached results (memoize, subquery cache, query result cache), JSON values equal only as SQL values (1
- *     and 1.0, true and "true") can give different results, e.g. JSON_TYPE (key).
+ *   - The keys of cached results (memoize, subquery cache, query result cache) must be identical: JSON values equal
+ *     only as SQL values (1 and 1.0, true and "true") can give different results, e.g. JSON_TYPE (key). Two JSON values
+ *     compare by their body text.
  *   - Identical values are also equal by the comparison, so mht_valhash () still applies.
  */
 int

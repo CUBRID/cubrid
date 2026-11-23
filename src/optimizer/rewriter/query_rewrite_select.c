@@ -4651,8 +4651,14 @@ qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 /*
  * qo_hq_is_unsafe_hash_key () - checks whether one PT_EQ conjunct, as a key of
  *   the hash list scan, can give a result other than the single-table plan
- * Note: the build key is evaluated on every row, even one no parent reaches, so a cast there can fail where the
- *       single-table plan never evaluates it.
+ *
+ * Behavior:
+ *   A conjunct is unsafe when its build side, or its column side paired with a constant, has a cast that can fail
+ *   (qo_hq_cast_walker ()).
+ *
+ * Reason:
+ *   The build key is evaluated on every row, even one no parent reaches, so a cast there can fail where the
+ *   single-table plan never evaluates it.
  */
 static bool
 qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
@@ -4722,7 +4728,8 @@ qo_hq_has_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * pred)
  *   generic path, whose hash list scan finds children in O(N+E) instead of
  *   rescanning the table for every parent row
  *   return: true to use the generic (materialize + hash list scan) path
- * Note:
+ *
+ * Behavior:
  *   - The single-table plan is kept only when the leading columns of an index are all fixed by equalities of the
  *     CONNECT BY predicate, and one of them is the bare build-side column of a hashable equality:
  *       + an equality fixes a column to a constant, a host variable or a PRIOR expression, or to one of several such

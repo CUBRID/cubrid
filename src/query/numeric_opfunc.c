@@ -960,7 +960,7 @@ static const uint64_t _gv_numeric_sum_acc_pow10_max_prec[SUM_ACC_NUMERIC_WORDS] 
  *
  * Steps:
  *   Step 1: find the inverse of 10, 10^(p - 2) mod p (p = NUMERIC_HASH_PRIME), by Fermat's little theorem (10^(p - 1)
- *           is 1 mod p), squaring 10 and multiplying the squares at the bits set in p - 2.
+ *           is 1 mod p), with square-and-multiply: squaring 10 and multiplying the squares at the bits set in p - 2.
  *   Step 2: fill scale 0 and up, each entry the one before times the inverse of 10.
  *   Step 3: fill scale -1 and down, each entry the one after times 10.
  */
@@ -973,7 +973,7 @@ numeric_hash_make_inverse_pow10_table (void)
   uint64_t exponent = NUMERIC_HASH_PRIME - 2;
   int scale = 0;
 
-  /* Step 1: find the inverse of 10, 10^(p - 2) mod p by Fermat */
+  /* Step 1: find the inverse of 10, 10^(p - 2) mod p by Fermat's little theorem */
   for (; exponent != 0; exponent >>= 1, base = numeric_hash_mul (base, base))
     {
       if (exponent & 1)
@@ -5008,9 +5008,9 @@ numeric_sum_acc_snapshot (const SUM_ACC * acc, DB_VALUE * result)
 /*
  * numeric_coerce_num_to_double () - the double nearest to a numeric value (numeric_coerce_num_to_real ())
  *   return:
- *   src(in)  : DB_VALUE
- *   scale(in): integer value of the scale
- *   dest(out): ptr to the returned double value
+ *   src(in) : DB_VALUE
+ *   scale(in) : integer value of the scale
+ *   dest(out) : ptr to the returned double value
  */
 void
 numeric_coerce_num_to_double (const DB_VALUE * src, int scale, double *dest)
@@ -5188,9 +5188,9 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
 /*
  * numeric_coerce_num_to_float () - the float nearest to a numeric value (numeric_coerce_num_to_real ())
  *   return:
- *   src(in)  : DB_VALUE
- *   scale(in): integer value of the scale
- *   dest(out): ptr to the returned float value
+ *   src(in) : DB_VALUE
+ *   scale(in) : integer value of the scale
+ *   dest(out) : ptr to the returned float value
  */
 void
 numeric_coerce_num_to_float (const DB_VALUE * src, int scale, float *dest)
@@ -7008,14 +7008,15 @@ numeric_words_to_bytes (const uint64_t * src, int src_words, uint8_t * dest)
 /*
  * numeric_db_value_coerce_to_num () -
  *   return: NO_ERROR, or ER_code
- *   src(in)     : ptr to a DB_VALUE of some numerical type
- *   dest(in/out): ptr to a DB_VALUE of type DB_TYPE_NUMERIC
- *   data_status(out): ptr to a DB_DATA_STATUS value
+ *   src(in) : ptr to a DB_VALUE of some numerical type
+ *   dest(in/out) : ptr to a DB_VALUE of type DB_TYPE_NUMERIC
+ *   data_status(out) : ptr to a DB_DATA_STATUS value
  *
  * Behavior:
  *   - This routine converts a DB_VALUE of some numerical type into a DB_VALUE of type DB_TYPE_NUMERIC.
- *   - The precision and scale fields of are assumed to represent the desired values of the output:
- *       + If they are set to DB_DEFAULT_PRECISION/SCALE, the default values are implied.
+ *   - The precision and scale of dest are assumed to represent the desired values of the output:
+ *       + If the precision is DB_DEFAULT_NUMERIC_PRECISION, dest is a float NUMERIC with the precision and scale of the
+ *         converted value.
  *       + If they are set to 0, the precision and scale are set to be the maximum amount necessary in order to preserve
  *         as much data as possible.
  */
@@ -7763,9 +7764,9 @@ numeric_db_value_fixed_to_float_domain (DB_VALUE * value, const DB_DOMAIN * doma
 /*
  * numeric_coerce_num_to_real () - the double or float nearest to a numeric value
  *   return:
- *   src(in)  : DB_VALUE
- *   scale(in): integer value of the scale
- *   dest(out): ptr to the returned double or float value
+ *   src(in) : DB_VALUE
+ *   scale(in) : integer value of the scale
+ *   dest(out) : ptr to the returned double or float value
  *
  * Behavior:
  *   The value is coefficient / 10^scale, rounded once to the nearest T, so one value gives one T whatever its scale
@@ -7777,19 +7778,20 @@ numeric_db_value_fixed_to_float_domain (DB_VALUE * value, const DB_DOMAIN * doma
  *       + A coefficient of 2^128 or more (39 or 40 digits, words[0] nonzero) is rounded to odd at 128 bits first:
  *           . 128 bits is 2 or more bits wider than T, so rounding to odd keeps the final round-to-nearest correct
  *             (Boldo-Melquiond)
- *           . the 2^excess_bits rescale is exact
+ *           . the 2^excess_bits rescale is exact for a double. For a float it gives infinity, the nearest float, as
+ *             every coefficient of 2^128 or more is past FLT_MAX; only scale 0 returns it, other scales go to strtof ()
  *   - A negative scale makes an integer, the coefficient times 10^-scale (12300 at scale -2 is 123 x 100):
  *       + its product in 128-bit integers converts with one cast
- *       + a product past uint128 converts from the decimal string ("123e2")
- *   - Any other quotient would round twice, so numeric_round_quotient_to_real () corrects it in integers to the nearest
- *     T:
+ *       + a product past uint128 converts from the decimal string
+ *   - A quotient the division in T would round twice (Reason) is corrected in integers to the nearest T by
+ *     numeric_round_quotient_to_real ():
  *       + A float is corrected from the nearest double. Rounding the double to float would round twice: it takes
  *         1.0000000596046447753906250001 to 1.0, not to 1 + 2^-23.
  *       + The correction does not take the values below. strtod () or strtof () converts them from the decimal string,
  *         rounding once:
  *           . a coefficient of 2^128 or more (39 or 40 digits)
  *           . a scale above NUMERIC_AGG_EXPR_POW10_MAX_EXP (38)
- *           . a float quotient near the subnormals
+ *           . a float quotient below twice the smallest normal float (1e-38)
  *
  * Reason:
  *   The division in T rounds once where the scale is 0, or where the coefficient and 10^scale are both exact: a
@@ -7835,7 +7837,7 @@ numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest)
 
       /* round to odd (Boldo-Melquiond): if anything was shifted out, set the lowest bit, so an inexact value is odd:
        *   - truncation alone can leave the value exactly halfway between two T values while the dropped bits put the
-       *     coefficient above it, and the cast would round that to even, down
+       *     coefficient above it, and the cast would round that tie to even, down when the lower T value is even
        *   - a midpoint of two T values has 54 (double) or 25 (float) significant bits, so at 128 bits it is even, and
        *     the cast rounds an odd value as it would the coefficient itself */
       rounded_to_odd |= (uint128_t) ((words[2] & ((1ULL << excess_bits) - 1)) != 0);
@@ -7875,13 +7877,13 @@ numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest)
 
       /* the decimal string's way, where:
        *   - the correction above did not take the value (nearest still 0)
-       *   - the correction above took it and the quotient is below twice the smallest normal T (a float near the
-       *     subnormals, 1e-38), which the float correction does not take
+       *   - the correction above took it and the quotient is below twice the smallest normal T (1e-38 for a
+       *     float), which the float correction does not take
        * Only nearest shows the second, so this test is not the else of the if above. */
       if (nearest < 2 * std::numeric_limits<T>::min ())
 	{
-	  /* strtod () or strtof () rounds the decimal string once: the digits with the sign, and the scale as an
-	   * exponent ("-123450e-4" at scale 4, "123e5" at scale -5) */
+	  /* strtod () or strtof () rounds the decimal string once: the sign and the zero-padded digits, and the scale
+	   * as an exponent ("-0...0123450e-4" at scale 4, "0...0123e5" at scale -5) */
 	  char dec_str[TWICE_NUM_MAX_PREC + 8];
 
 	  numeric_coerce_num_to_dec_str (src, dec_str);
@@ -7926,9 +7928,9 @@ numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest)
 /*
  * numeric_round_quotient_to_real () - the double or float nearest to coefficient / 10^scale
  *   return: the double or float
- *   coefficient(in): the coefficient, above 0
- *   scale(in)      : the scale, 1 to NUMERIC_AGG_EXPR_POW10_MAX_EXP: 10^scale is even, so its half is an integer
- *   estimate(in)   : a T next to the quotient, at least twice the smallest normal T
+ *   coefficient(in) : the coefficient, above 0
+ *   scale(in) : the scale, 1 to NUMERIC_AGG_EXPR_POW10_MAX_EXP: 10^scale is even, so its half is an integer
+ *   estimate(in) : a T next to the quotient, at least twice the smallest normal T
  *
  * Method:
  *   The estimate m x 2^exp2 moves to its neighbour while the exact quotient lies past a midpoint. The test scales the
@@ -7943,8 +7945,8 @@ numeric_coerce_num_to_real (const DB_VALUE *src, int scale, T *dest)
  *         + is within 1 + e + 0.5 ulps when neither is, e (below 0.82) being the power of ten's relative rounding error
  *           in units of 2^-53
  *         + gives a gap below 2.4 x 10^37 up to a scale of 37
- *         + gives a gap below 1.6 x 10^38 at a scale of 38, where e is 0.203 and 10^38 ties the coefficient's mantissa
- *           to the quotient's (a quotient near the top of its binade has a coefficient rounded by less than 2^-53)
+ *         + gives a gap below 1.6 x 10^38 at a scale of 38, where e is 0.203 and 10^38 is 1.18 x 2^126: a quotient near
+ *           the top of its binade has a coefficient mantissa near 1.18, rounded by at most 0.85 x 2^-53
  *     - A float estimate, the nearest double rounded to float, is within 0.5 + 2^-29 ulps and gives a gap below 10^38.
  */
 /* *INDENT-OFF* */

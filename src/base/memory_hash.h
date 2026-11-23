@@ -208,7 +208,7 @@ extern unsigned int mht_hls_slot_count (int est_size);
  *   value_hash(in): the hash of the value
  *
  * Method:
- *   The hashes of several values in order (a key of columns, a SEQUENCE, a midxkey) fold them with it: the rotation
+ *   Callers fold the hashes of several values in order (a key of columns, a SEQUENCE, a midxkey) with it. The rotation
  *   makes the order of the values count, so (a, b) and (b, a) hash apart.
  */
 STATIC_INLINE unsigned int

@@ -2010,7 +2010,7 @@ end:
  *
  * Method:
  *   - For some types cmpval ignores what a result can see (a string's case under a case-insensitive collation, a
- *     NUMERIC's scale), so those also compare by it, or compare by their bytes or body text instead (a string, JSON).
+ *     NUMERIC's scale), so those also compare by that part, or by their bytes or body text instead (a string, JSON).
  *   - A collection key compares element by element, each element as a key.
  *
  * Reason:
@@ -3130,7 +3130,7 @@ domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
  * Behavior:
  *   The domain is of the type the pair's comparison converts both sides to (domain_resolve_comparison ()), with a
  *   precision and scale that hold both columns' values:
- *     - a NUMERIC: the integral digits and the scale of both, the default NUMERIC past 38 digits (CBRD-27575)
+ *     - a NUMERIC: the integral digits and the scale of both, the float NUMERIC past 38 digits (CBRD-27575)
  *     - a string or a bit string: the length that holds both
  *     - a type of fixed precision: as the side of that type has it
  *
@@ -3191,8 +3191,7 @@ domain_resolve_hash_key (const TP_DOMAIN * first, const TP_DOMAIN * second, cons
     }
 
   /* Step 3: the precision and scale that hold both sides' values. A side the comparison converts holds its values in
-   * the domain it converts them into: its own precision is not in the compare type's units (an ENUM's, against a
-   * string) */
+   * its target domain: its own precision is not in the compare type's units (an ENUM's, against a string) */
   const TP_DOMAIN *compare_domain[2] = { (compare.conv[0] != NULL) ? compare.target[0] : first,
     (compare.conv[1] != NULL) ? compare.target[1] : second
   };
@@ -3205,8 +3204,8 @@ domain_resolve_hash_key (const TP_DOMAIN * first, const TP_DOMAIN * second, cons
   switch (compare_type)
     {
     case DB_TYPE_NUMERIC:
-      /* the integral digits and the scale that hold both sides' values, the default NUMERIC past 38 digits; a default
-       * NUMERIC side (precision 40, its scale in each value) has 40 integral digits and so gives the default NUMERIC */
+      /* the integral digits and the scale that hold both sides' values, the float NUMERIC past 38 digits; a float
+       * NUMERIC side (precision 40, its scale in each value) has 40 integral digits and so gives the float NUMERIC */
       if (compare_domain[0]->precision == TP_FLOATING_PRECISION_VALUE
 	  || compare_domain[1]->precision == TP_FLOATING_PRECISION_VALUE)
 	{
@@ -3340,8 +3339,8 @@ domain_hashable_resolve (const TP_DOMAIN * first, const TP_DOMAIN * second, cons
  *   type(in): the type of a value
  *
  * Behavior:
- *   Values of two types of one hash type, strings of one collation, hash alike when they compare equal, so a pair of
- *   them hashes as it is.
+ *   Values of two types of one hash type hash alike when they compare equal, strings when they are also of one
+ *   collation. domain_hashable () decides which pairs of one hash type hash as they are.
  */
 static DB_TYPE
 domain_hash_type (DB_TYPE type)
@@ -3436,7 +3435,7 @@ domain_hashable (const TP_DOMAIN * first, const TP_DOMAIN * second)
     case DB_TYPE_SEQUENCE:
       return domain_hashable_collections (first, second);
 
-      /* a type whose hash does not follow its comparison */
+      /* a type whose hash is not known to follow its comparison */
     case DB_TYPE_NULL:
     case DB_TYPE_VARIABLE:
       /* no type fixed: the values decide it at the row */
@@ -3457,9 +3456,9 @@ domain_hashable (const TP_DOMAIN * first, const TP_DOMAIN * second)
  * Reason:
  *   - The comparison coerces the elements (tp_value_compare () with coercion): '1' equals 1, a DATE equals the DATETIME
  *     at its midnight, BIGINT 2^62 + 1 equals DOUBLE 2^62, and the element hash tells each of these pairs apart.
- *   - An untyped collection, or one of element types of two hash types, can hold such elements in one column.
- *   - No common domain converts a pair of two hash types: the parser domain of a column keeps only its leaf types
- *     (SEQUENCE OF SET OF INTEGER as SEQUENCE OF INTEGER), so a conversion could meet an element collection.
+ *   - An untyped collection, or one whose element domains are of two hash types, can hold such elements in one column.
+ *   - Elements of two hash types are not converted to a common domain: the parser domain of a column keeps only its
+ *     leaf types (SEQUENCE OF SET OF INTEGER as SEQUENCE OF INTEGER), so a conversion could meet an element collection.
  */
 static bool
 domain_hashable_collections (const TP_DOMAIN * first, const TP_DOMAIN * second)
@@ -3521,8 +3520,8 @@ domain_hashable_elements (const TP_DOMAIN * base, int base_depth, const TP_DOMAI
 
   for (const TP_DOMAIN * element = elements; element != NULL; element = element->next)
     {
-      /* mht_hash_element () hashes an element collection by the sum of its elements' hashes and any other element by
-       * itself, so every scalar element of both keys must lie at the depth of base */
+      /* mht_hash_element () hashes an element collection by the sum of its elements' hashes and any other element as a
+       * key (mht_valhash ()), so every scalar element of both keys must lie at the depth of base */
       if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (element)))
 	{
 	  /* depth == base_depth: a collection where the scalars of base lie, whose own scalars would lie deeper */

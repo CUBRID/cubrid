@@ -93,9 +93,12 @@ typedef struct hashjoin_input_domain_info
 {
   TP_DOMAIN **domains;
   int *value_indexes;
+
   /* [key] the converter of this input's value into the key's common domain (coerce_domains), NULL none */
   TP_VALUE_CONVERTER *converters;
-  /* [key] the comparison of the two inputs' values once converted: tp_value_compare without coercion, decided */
+
+  /* [key] the comparison of the two inputs' values once converted, as domain_decide_hash_join_key () decided:
+   * with coercion for keys of two types and for JSON and collection keys, without it otherwise */
   DOMAIN_COMPARE *compares;
 } HASHJOIN_INPUT_DOMAIN_INFO;
 

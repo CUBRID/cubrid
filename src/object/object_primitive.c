@@ -15289,8 +15289,8 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
  *   value2(in): the second value, of the same kind
  *
  * Reason:
- *   The comparison through DOUBLE rounds an integer above 2^53 (2^62 + 1 = 2^62.0), which mht_hash_json () cannot
- *   follow: it hashes an integer by its value.
+ *   The comparison through DOUBLE rounds an integer above 2^53 (2^62 + 1 equals 2^62.0), and mht_hash_json () hashes
+ *   an integer by its value, so two values equal through DOUBLE would not hash alike.
  */
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
@@ -15350,7 +15350,7 @@ mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
       return DB_UNK;
     }
 
-  /* -2^63 <= number < 2^63: the integral part converts to a BIGINT exactly */
+  /* the integral part of -2^63 <= number < 2^63 converts to a BIGINT exactly; any other number is past every BIGINT */
   if (number >= 9223372036854775808.0)
     {
       sign = -1;
@@ -15373,7 +15373,7 @@ mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
 	}
     }
 
-  /* sign is of the discrete number against the number */
+  /* sign is the discrete number against the number: flip it when the discrete number is value2 */
   if (!is_discrete1)
     {
       sign = -sign;
