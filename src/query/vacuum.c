@@ -742,8 +742,8 @@ static void vacuum_data_unload_first_and_last_page (THREAD_ENTRY * thread_p);
 static void vacuum_data_empty_update_last_blockid (THREAD_ENTRY * thread_p);
 
 #if defined (SA_MODE)
-static void vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial,
-			       PERF_UTIME_TRACKER & perf_tracker);
+static int vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial,
+			      PERF_UTIME_TRACKER & perf_tracker);
 #endif // SA_MODE
 
 #if !defined (NDEBUG)
@@ -935,7 +935,7 @@ static vacuum_worker_context_manager *vacuum_Worker_context_manager = NULL;  // 
 /* *INDENT-ON* */
 
 #if defined (SA_MODE)
-static void
+static int
 vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial,
 		   PERF_UTIME_TRACKER & perf_tracker)
 {
@@ -947,13 +947,14 @@ vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry
   assert (save_type == thread_type::TT_VACUUM_MASTER);
 
   VACUUM_DATA_ENTRY copy_data_entry = data_entry;
-  vacuum_process_log_block (thread_p, &copy_data_entry, is_partial);
+  int error_code = vacuum_process_log_block (thread_p, &copy_data_entry, is_partial);
 
   vacuum_convert_thread_to_master (thread_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_WORKER);
   vacuum_Worker_context_manager->retire_worker (*worker_p);
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+  return error_code;
 }
 #endif // SA_MODE
 
@@ -1015,16 +1016,18 @@ xvacuum (THREAD_ENTRY * thread_p)
     {
       if (logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
 	{
-	  cursor.unload ();
-	  vacuum_Data.update ();
-	  return NO_ERROR;
+	  goto end;
 	}
 
       if (cursor.get_current_entry ().is_available ())
 	{
 	  cursor.start_job_on_current_entry ();
 	  // job will be executed immediately
-	  vacuum_sa_run_job (thread_p, cursor.get_current_entry (), false, perf_tracker);
+	  error_code = vacuum_sa_run_job (thread_p, cursor.get_current_entry (), false, perf_tracker);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto end;
+	    }
 	}
       else
 	{
@@ -1061,12 +1064,19 @@ xvacuum (THREAD_ENTRY * thread_p)
       // *INDENT-OFF*
       vacuum_data_entry partial_entry { log_Gl.hdr };
       // *INDENT-ON*
+      /* Do not publish this partial block while vacuum appends its own log records. */
       log_Gl.hdr.does_block_need_vacuum = false;
 
       // can't be interrupted
       bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-      vacuum_sa_run_job (thread_p, partial_entry, true, perf_tracker);
+      error_code = vacuum_sa_run_job (thread_p, partial_entry, true, perf_tracker);
       (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
+      if (error_code != NO_ERROR)
+	{
+	  /* The saved LSA and MVCC bounds are unchanged; a later run must finish this partial block. */
+	  log_Gl.hdr.does_block_need_vacuum = true;
+	  goto end;
+	}
     }
 
   /* All vacuum complete. */
@@ -1091,11 +1101,20 @@ xvacuum (THREAD_ENTRY * thread_p)
 
   vacuum_Data.is_vacuum_complete = true;
 
+end:
+  if (!vacuum_Data.is_vacuum_complete)
+    {
+      /* Persist completed/interrupted jobs, but retain unfinished blocks and partial-block header information. */
+      cursor.unload ();
+      vacuum_Data.update ();
+      vacuum_data_unload_first_and_last_page (thread_p);
+    }
+
   PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
 
   vacuum_restore_thread (thread_p, save_type);
 
-  return NO_ERROR;
+  return error_code;
 #endif /* SA_MODE */
 }
 
@@ -7700,6 +7719,24 @@ vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
     }
 
   vacuum_data_load_first_and_last_page (thread_p);
+
+#if defined (SA_MODE)
+  if (!vacuum_Data.is_vacuum_complete)
+    {
+      /* A failed or skipped vacuum may leave full blocks, or a partial block published by later shutdown logging.
+       * Persist queued entries before log_final, and never reflect unfinished blocks as already covered. */
+      thread_type save_type;
+      vacuum_convert_thread_to_master (thread_p, save_type);
+      vacuum_Data.update ();
+      vacuum_restore_thread (thread_p, save_type);
+
+      if (!vacuum_Data.is_empty () || log_Gl.hdr.does_block_need_vacuum)
+	{
+	  vacuum_data_unload_first_and_last_page (thread_p);
+	  return;
+	}
+    }
+#endif /* SA_MODE */
 
   VACUUM_LOG_BLOCKID last_blockid = logpb_last_complete_blockid ();
 
