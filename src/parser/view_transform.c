@@ -3324,7 +3324,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	}
       else
 	{
-	  PT_NODE *query_spec_copy = NULL;
+	  PT_NODE *query_spec_copy = NULL, *merge_spec = query_spec;
 
 	  /* expand vclass_query in parent statement */
 	  mq_copy_sql_hint (parser, tmp_result, query_spec);
@@ -3345,13 +3345,13 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 			{
 			  goto exit_on_error;
 			}
-		      query_spec = query_spec_copy;
+		      merge_spec = query_spec_copy;
 		    }
 
 		  /* update the position number of order by clause and add a hidden column into the output list if
 		   * necessary. */
 		  tmp_result =
-		    mq_update_order_by (parser, tmp_result, query_spec, class_, NULL, skip_adding_hidden_col);
+		    mq_update_order_by (parser, tmp_result, merge_spec, class_, NULL, skip_adding_hidden_col);
 		  if (tmp_result == NULL)
 		    {
 		      goto exit_on_error;
@@ -3359,7 +3359,7 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 		}
 	    }
 
-	  result = mq_substitute_select_in_statement (parser, tmp_result, query_spec, class_);
+	  result = mq_substitute_select_in_statement (parser, tmp_result, merge_spec, class_);
 
 	  if (query_spec_copy != NULL)
 	    {
