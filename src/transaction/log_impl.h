@@ -526,6 +526,8 @@ struct log_tdes
   struct log_repl *repl_records;	/* replication records */
   LOG_LSA repl_insert_lsa;	/* insert or mvcc update target lsa */
   LOG_LSA repl_update_lsa;	/* in-place update target lsa */
+  LOG_LSA_QUEUE oos_insert_lsa_queue;	/* for oos replication log */
+  bool oos_suppress_insert_lsa_queueing;	/* skip auto queueing of chunk LSAs during multi-chunk OOS logging */
   void *first_save_entry;	/* first save entry for the transaction */
 
   int suppress_replication;	/* suppress writing replication logs when flag is set */
@@ -1200,10 +1202,11 @@ extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
-extern bool logtb_has_active_savepoint (THREAD_ENTRY * thread_p);
-extern int logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid);
+extern int logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen);
+extern int logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen, LK_HELD_ROW * held);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
+extern MVCC_SNAPSHOT *logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local);
 extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
