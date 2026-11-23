@@ -14543,10 +14543,10 @@ heap_oos_find_vfid_internal (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * 
 	      goto exit_on_error;
 	    }
 
-	  /* Log undo, then redo */
-	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
+	  /* Log undo, then redo: the statistics part only, as every RVHF_STATS record */
+	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr, HEAP_HDR_STATS_LOGGED_SIZE, heap_hdr);
 	  VFID_COPY (&heap_hdr->oos_vfid, oos_vfid);
-	  log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
+	  log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, HEAP_HDR_STATS_LOGGED_SIZE, heap_hdr);
 	  pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
 
 	  log_sysop_commit (thread_p);
