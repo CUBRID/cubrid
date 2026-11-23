@@ -577,7 +577,7 @@ db_sign_dbval (DB_VALUE * result, DB_VALUE * value)
 
 /*
  * db_abs_dbval () - take absolute value of db_value
- *   return: NO_ERROR
+ *   return: NO_ERROR or error code (ER_IT_DATA_OVERFLOW for the minimum of SMALLINT, INTEGER and BIGINT)
  *   result(out) : resultant db_value
  *   value(in)   : input db_value
  */
@@ -602,16 +602,28 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
     {
     case DB_TYPE_SHORT:
       stmp = db_get_short (value);
+      if (stmp == DB_INT16_MIN)
+	{
+	  goto overflow;
+	}
       stmp = abs (stmp);
       db_make_short (result, stmp);
       break;
     case DB_TYPE_INTEGER:
       itmp = db_get_int (value);
+      if (itmp == DB_INT32_MIN)
+	{
+	  goto overflow;
+	}
       itmp = abs (itmp);
       db_make_int (result, itmp);
       break;
     case DB_TYPE_BIGINT:
       bitmp = db_get_bigint (value);
+      if (bitmp == DB_BIGINT_MIN)
+	{
+	  goto overflow;
+	}
       bitmp = llabs (bitmp);
       db_make_bigint (result, bitmp);
       break;
@@ -667,6 +679,18 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
     }
 
   return er_status;
+
+overflow:
+  /* the result keeps the type of the value, and the absolute value of the type's minimum is one past its maximum:
+   * abs () hands the minimum of SMALLINT back unchanged and is undefined for INTEGER and BIGINT, so it is an
+   * overflow as for a CAST */
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (res_type));
+  return ER_IT_DATA_OVERFLOW;
 }
 
 /*
