@@ -1174,6 +1174,7 @@ extern void logtb_exec_end (THREAD_ENTRY * thread_p);
 extern bool logtb_exec_yield (THREAD_ENTRY * thread_p);
 extern void logtb_exec_resume (THREAD_ENTRY * thread_p, bool yielded);
 extern bool logtb_exec_try_take (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+extern void logtb_exec_untake (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern void logtb_exec_switch (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern bool logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid);
 extern void logtb_disable_update (THREAD_ENTRY * thread_p);

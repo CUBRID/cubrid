@@ -124,6 +124,8 @@ logtb_exec_begin (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (thread_p->tran_index);
   assert (tdes != NULL);
   tdes->exec_token.own (thread_p);
+  /* a client sends no request that moves its connection to another index (a 2PC attach) while one of it waits */
+  assert (thread_p->conn_entry == NULL || thread_p->conn_entry->get_tran_index () == thread_p->tran_index);
   thread_p->exec_token = &tdes->exec_token;
 #endif /* SERVER_MODE */
 }
@@ -134,7 +136,10 @@ logtb_exec_end (THREAD_ENTRY * thread_p)
 #if defined (SERVER_MODE)
   if (thread_p->exec_token != NULL)
     {
-      (void) thread_p->exec_token->give_back (thread_p);
+      if (!thread_p->exec_token->give_back (thread_p))
+	{
+	  assert (false);
+	}
       thread_p->exec_token = NULL;
     }
 #endif /* SERVER_MODE */
@@ -184,6 +189,21 @@ logtb_exec_try_take (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 #endif /* SERVER_MODE */
 }
 
+/* logtb_exec_untake () - give back the token logtb_exec_try_take () took, for an attach that fails before the switch */
+void
+logtb_exec_untake (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+#if defined (SERVER_MODE)
+  if (thread_p->exec_token != NULL && thread_p->exec_token != &tdes->exec_token)
+    {
+      if (!tdes->exec_token.give_back (thread_p))
+	{
+	  assert (false);
+	}
+    }
+#endif /* SERVER_MODE */
+}
+
 /* the request now runs tdes: give back the token of the transaction it left */
 void
 logtb_exec_switch (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
@@ -191,7 +211,10 @@ logtb_exec_switch (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 #if defined (SERVER_MODE)
   if (thread_p->exec_token != NULL)
     {
-      (void) thread_p->exec_token->give_back (thread_p);
+      if (!thread_p->exec_token->give_back (thread_p))
+	{
+	  assert (false);
+	}
       thread_p->exec_token = &tdes->exec_token;
     }
 #endif /* SERVER_MODE */

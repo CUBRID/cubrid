@@ -1370,6 +1370,7 @@ log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
       if (log_2pc_attach_client (thread_p, tdes, client_tdes) != NO_ERROR)
 	{
+	  logtb_exec_untake (thread_p, tdes);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_2PC_CANNOT_ATTACH, 2, gtrid, client_tdes->trid);
 
 	  TR_TABLE_CS_EXIT (thread_p);
@@ -1397,6 +1398,7 @@ log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
       if (log_2pc_attach_client (thread_p, tdes, client_tdes) != NO_ERROR)
 	{
+	  logtb_exec_untake (thread_p, tdes);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_2PC_CANNOT_ATTACH, 2, gtrid, client_tdes->trid);
 
 	  TR_TABLE_CS_EXIT (thread_p);
