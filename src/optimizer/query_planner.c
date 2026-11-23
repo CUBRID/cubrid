@@ -6225,16 +6225,23 @@ qo_scan_has_join_term (QO_PLAN * plan)
  *	 that reads it whole, as a nested loop inner, a hash or merge join input or a sort input, charges it whole
  *	 again (QO_PLAN_VARIABLE_CPU_COST_WHOLE ()). An index join inner is read once per outer row and is not
  *	 discounted. For an ORDER BY the share is the query's (qo_orderby_limit_fraction ()); for a GROUP BY it is
- *	 the LIMIT groups times the rows per group (CBRD-27685) over the rows of the scan.
+ *	 the rows of the LIMIT groups (CBRD-27685) over the rows of the key range. An index skip scan and a loose
+ *	 index scan do not stop at the LIMIT and are charged whole.
  */
 static double
 qo_scan_limit_fraction (QO_PLAN * plan)
 {
   QO_PLANNER *planner;
-  double rows_per_group, rows;
+  double rows_per_group, rows, range_rows, filter_sel, group_prob;
 
   if (plan == NULL || plan->info == NULL || plan->plan_un.scan.index == NULL || !qo_is_interesting_order_scan (plan)
       || qo_is_index_mro_scan (plan))
+    {
+      return 1.0;
+    }
+
+  /* an index skip scan and a loose index scan search the index for every prefix value whatever the LIMIT */
+  if (qo_is_index_iss_scan (plan) || qo_is_index_loose_scan (plan))
     {
       return 1.0;
     }
@@ -6255,8 +6262,13 @@ qo_scan_limit_fraction (QO_PLAN * plan)
       rows_per_group = qo_groupby_skip_rows_per_group (plan, QO_ENV_PT_TREE (plan->info->env));
       if (rows_per_group < DBL_MAX)
 	{
-	  rows = planner->groupby_limit_groups * rows_per_group;
-	  return MIN (1.0, rows / MAX (1.0, (plan->info)->cardinality));
+	  /* the rows of the key range read for the LIMIT groups: rows_per_group counts the rows of a group before
+	   * the filters, and a group is one of the LIMIT only when a row of it passes them */
+	  range_rows = MAX (1.0, plan->iscan_range_rows);
+	  filter_sel = MIN (1.0, (plan->info)->cardinality / range_rows);
+	  group_prob = 1.0 - pow (1.0 - filter_sel, MAX (1.0, rows_per_group));
+	  rows = planner->groupby_limit_groups * rows_per_group / MAX (group_prob, 1.0 / range_rows);
+	  return MIN (1.0, rows / range_rows);
 	}
     }
 
