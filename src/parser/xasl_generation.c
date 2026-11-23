@@ -281,14 +281,12 @@ static int pt_init_pred_expr_context (PARSER_CONTEXT * parser, PT_NODE * predica
 				      PRED_EXPR_WITH_CONTEXT * pred_expr);
 static bool validate_regu_key_function_index (REGU_VARIABLE * regu_var);
 static XASL_NODE *pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
-#if !defined (DEFAULT_EXPR_REGU_STREAM)
 static int pt_to_insert_default_slots (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, INSERT_PROC_NODE * insert,
 				       PT_NODE * value_clauses, PT_NODE * err_node);
 static int pt_to_insert_listed_default_slots (PARSER_CONTEXT * parser, SM_CLASS * smclass, INSERT_PROC_NODE * insert,
 					      PT_NODE * value_clauses);
 static PT_NODE *pt_own_default_slot_tree (PARSER_CONTEXT * parser, PT_NODE * value, PT_NODE * tree,
 					  const TP_DOMAIN * domain);
-#endif
 static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * non_null_attrs,
 					   PT_NODE * default_expr_attrs);
 static PT_NODE *pt_append_assignment_references (PARSER_CONTEXT * parser, PT_NODE * assignments, PT_NODE * from,
@@ -24827,7 +24825,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      insert->num_vals = num_vals + num_default_expr;
 	      insert->num_default_expr = num_default_expr;
 
-#if !defined (DEFAULT_EXPR_REGU_STREAM)
 	      if (error >= NO_ERROR)
 		{
 		  error = pt_to_insert_default_slots (parser, class_obj, insert,
@@ -24835,7 +24832,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 						       && value_clauses->info.node_list.list_type == PT_IS_VALUE)
 						      ? value_clauses : NULL, default_expr_attrs);
 		}
-#endif
 	    }
 	  else
 	    {
@@ -31707,8 +31703,8 @@ outofmem:
  *   parser(in): parser context
  *   tree(in): the DEFAULT expression
  *
- * The DDL check, the DEFAULT slots of an INSERT and the stored REGU form all compile through here, so the DDL
- * check sees what an INSERT compiles.
+ * The DDL check and the DEFAULT slots of an INSERT both compile through here, so the DDL check sees what an
+ * INSERT compiles.
  */
 static REGU_VARIABLE *
 pt_default_tree_to_regu (PARSER_CONTEXT * parser, PT_NODE * tree)
@@ -31727,106 +31723,6 @@ pt_default_tree_to_regu (PARSER_CONTEXT * parser, PT_NODE * tree)
 
   return regu;
 }
-
-#if defined (DEFAULT_EXPR_REGU_STREAM)
-/*
- * pt_to_default_expr_stream () - compiles a residual DEFAULT expression to a
- *	serialized REGU form (a FUNC_PRED stream) for Server Evaluation
- *   return: NO_ERROR or error code
- *   parser(in): parser context
- *   expr(in): the residual DEFAULT expression (no column references)
- *   stream(out): malloc'ed serialized stream (caller frees)
- *   stream_size(out): stream size in bytes
- *
- * Modeled on the function-index path (pt_to_func_pred +
- * xts_map_func_pred_to_stream), but a DEFAULT expression is admissible only
- * without column references, so no class spec or attribute cache binding is
- * needed; the FUNC_PRED carries an empty HEAP_CACHE_ATTRINFO.
- *
- * Why FUNC_PRED and not a bare REGU_VARIABLE: the only public stream entry
- * points are FUNC_PRED-granular (xts_map_func_pred_to_stream /
- * stx_map_stream_to_func_pred, shared with function indexes and partition
- * pruning); xts_save_regu_variable / stx_restore_regu_variable are internal
- * to their files, so a regu-only stream would mean introducing and
- * maintaining a new public serialization format.  The cache_attrinfo member
- * exists for function-index expressions, which reference table columns and
- * need their values bound from the heap record before evaluation
- * (heap_attrinfo_start / heap_attrinfo_read_dbvalues).  A DEFAULT expression
- * has no column references, so the empty attrinfo is never consulted at
- * evaluation time and costs only a few bytes in the stream
- * (see qexec_eval_default_expr, which evaluates func_regu alone).
- */
-int
-pt_to_default_expr_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *stream_size)
-{
-  FUNC_PRED *func_pred = NULL;
-  SYMBOL_INFO *symbols = NULL;
-  PT_NODE *unclassified_node = NULL;
-  PT_VOLATILITY volatility;
-
-  assert (parser != NULL && expr != NULL && stream != NULL && stream_size != NULL);
-
-  int error = NO_ERROR;
-
-  *stream = NULL;
-  *stream_size = 0;
-
-  /* the compiled FUNC_PRED lives in the packing buffer only until it is
-   * serialized into the malloc'ed stream */
-  pt_enter_packing_buf ();
-
-  if ((parser->symbols = pt_symbol_info_alloc ()) == NULL)
-    {
-      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
-      error = ER_FAILED;
-      goto end;
-    }
-  symbols = parser->symbols;
-
-  regu_alloc (symbols->cache_attrinfo);
-  if (symbols->cache_attrinfo == NULL)
-    {
-      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
-      error = ER_FAILED;
-      goto end;
-    }
-
-  regu_alloc (func_pred);
-  if (func_pred == NULL)
-    {
-      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
-      error = ER_FAILED;
-      goto end;
-    }
-
-  func_pred->func_regu = pt_default_tree_to_regu (parser, expr);
-  func_pred->cache_attrinfo = symbols->cache_attrinfo;
-
-  if (func_pred->func_regu == NULL)
-    {
-      pt_report_to_ersys (parser, PT_SEMANTIC);
-      error = er_errid ();
-      goto end;
-    }
-
-  /* Stamp the residual's effective volatility onto the root regu (riding the
-   * already-serialized regu flags).  Server Evaluation reads it to decide
-   * once-per-statement (STABLE) vs once-per-row (VOLATILE) without a parser.
-   * The tree was validated as a STABLE/VOLATILE residual by pt_check_data_default,
-   * so this never yields UNSET. */
-  volatility = pt_get_expr_tree_volatility (expr, &unclassified_node);
-  assert (PT_VOLATILITY_IS_RESIDUAL (volatility));
-  REGU_VARIABLE_SET_DEFAULT_VOLATILITY (func_pred->func_regu, volatility);
-
-  error = xts_map_func_pred_to_stream (func_pred, stream, stream_size);
-
-end:
-  parser->symbols = NULL;
-  pt_exit_packing_buf ();
-
-  return error;
-}
-#endif /* DEFAULT_EXPR_REGU_STREAM */
 
 /*
  * pt_check_default_expr_compile () - check at DDL time that the Compact DEFAULT Tree of a residual DEFAULT
@@ -31882,7 +31778,6 @@ pt_check_default_expr_compile (PARSER_CONTEXT * parser, const char *stream, int 
   return error;
 }
 
-#if !defined (DEFAULT_EXPR_REGU_STREAM)
 /*
  * pt_to_insert_default_slots () - compile the residual DEFAULTs of the attributes an INSERT leaves out into the
  *	DEFAULT slots of its XASL
@@ -32132,7 +32027,6 @@ end:
     }
   return error;
 }
-#endif /* !DEFAULT_EXPR_REGU_STREAM */
 
 /*
  * validate_regu_key_function_index () - checks if a regu variable can be used
@@ -33441,12 +33335,10 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	  insert->num_vals = num_vals + num_default_expr;
 	  insert->num_default_expr = num_default_expr;
 
-#if !defined (DEFAULT_EXPR_REGU_STREAM)
 	  if (error >= 0)
 	    {
 	      error = pt_to_insert_default_slots (parser, class_obj, insert, NULL, default_expr_attrs);
 	    }
-#endif
 	}
       else
 	{

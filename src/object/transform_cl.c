@@ -3225,12 +3225,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 	      pr_clear_value (&value);
 	    }
 
-	  /* residual DEFAULT: restore the Compact DEFAULT Tree (and the serialized REGU form) */
-#if defined (DEFAULT_EXPR_REGU_STREAM)
-	  tf_attribute_restore_stream_prop (att, "default_expr_regu",
-					    &att->default_value.default_expr.default_expr_regu_stream,
-					    &att->default_value.default_expr.default_expr_regu_stream_size);
-#endif
+	  /* residual DEFAULT: restore the Compact DEFAULT Tree */
 	  tf_attribute_restore_stream_prop (att, "default_expr_tree",
 					    &att->default_value.default_expr.default_expr_tree_stream,
 					    &att->default_value.default_expr.default_expr_tree_stream_size);
@@ -4517,9 +4512,6 @@ tf_class_lost_default_expr_props (SM_CLASS * class_)
 	  default_expr = &att->default_value.default_expr;
 
 	  if (tf_attribute_lost_default_expr_prop (att, "default_expr_literal", default_expr->default_expr_text)
-#if defined (DEFAULT_EXPR_REGU_STREAM)
-	      || tf_attribute_lost_default_expr_prop (att, "default_expr_regu", default_expr->default_expr_regu_stream)
-#endif
 	      || tf_attribute_lost_default_expr_prop (att, "default_expr_tree", default_expr->default_expr_tree_stream))
 	    {
 	      return true;
@@ -4909,17 +4901,9 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 	  classobj_drop_prop (attr->properties, "default_expr_literal");
 	}
 
-      /* residual DEFAULT: persist the Compact DEFAULT Tree (and the serialized REGU form), each stored like a
-       * function-index expr_stream: a sized string value */
+      /* residual DEFAULT: persist the Compact DEFAULT Tree, stored like a function-index expr_stream: a sized
+       * string value */
       int rc;
-#if defined (DEFAULT_EXPR_REGU_STREAM)
-      rc = tf_attribute_put_stream_prop (attr, "default_expr_regu", default_expr->default_expr_regu_stream,
-					 default_expr->default_expr_regu_stream_size);
-      if (rc != NO_ERROR)
-	{
-	  return rc;
-	}
-#endif
       rc = tf_attribute_put_stream_prop (attr, "default_expr_tree", default_expr->default_expr_tree_stream,
 					 default_expr->default_expr_tree_stream_size);
       if (rc != NO_ERROR)

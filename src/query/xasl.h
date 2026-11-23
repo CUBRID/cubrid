@@ -29,6 +29,7 @@
 
 #include "access_json_table.hpp"
 #include "access_spec.hpp"
+#include "eval_prop_def.h"
 #include "memory_hash.h"
 
 #include "query_hash_join.h"

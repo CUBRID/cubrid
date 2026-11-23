@@ -6318,8 +6318,6 @@ classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr)
   assert (default_expr != NULL);
 
   default_expr->default_expr_text = NULL;
-  default_expr->default_expr_regu_stream = NULL;
-  default_expr->default_expr_regu_stream_size = 0;
   default_expr->default_expr_tree_stream = NULL;
   default_expr->default_expr_tree_stream_size = 0;
 }

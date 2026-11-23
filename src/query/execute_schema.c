@@ -8253,8 +8253,7 @@ do_resolve_oos_storage_flag (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_N
  * do_build_default_expr () - the Stored DEFAULT Forms of a DEFAULT (of an attribute, or of a stored procedure
  *	parameter) from its PT_DATA_DEFAULT node:
  *	the source text of an expression DEFAULT and, for a residual (STABLE or VOLATILE), the Compact DEFAULT
- *	Tree, which an INSERT compiles into its XASL or evaluates locally (and, in a DEFAULT_EXPR_REGU_STREAM
- *	build, the serialized REGU form the server evaluates)
+ *	Tree, which an INSERT compiles into its XASL or evaluates locally
  *   return: Error code
  *   parser(in): Parser context
  *   data_default(in): PT_DATA_DEFAULT node (may be NULL)
@@ -8283,16 +8282,6 @@ do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAU
     }
 
   residual_expr = data_default->info.data_default.default_value;
-
-#if defined (DEFAULT_EXPR_REGU_STREAM)
-  error = pt_to_default_expr_stream (parser, residual_expr, &stream, &stream_size);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  dest->default_expr_regu_stream = stream;
-  dest->default_expr_regu_stream_size = stream_size;
-#endif
 
   error = pt_compact_default_tree_to_stream (parser, residual_expr, &stream, &stream_size);
   if (error != NO_ERROR)
@@ -8323,10 +8312,6 @@ do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAU
 void
 do_free_default_expr_streams (DB_DEFAULT_EXPR * dest)
 {
-#if defined (DEFAULT_EXPR_REGU_STREAM)
-  free_and_init (dest->default_expr_regu_stream);
-  dest->default_expr_regu_stream_size = 0;
-#endif
   free_and_init (dest->default_expr_tree_stream);
   dest->default_expr_tree_stream_size = 0;
 }

@@ -46,8 +46,7 @@
  * UNSET sentinel (NOT volatile): an un-annotated overload reaching DEFAULT
  * processing is treated as not constant-foldable, never silently as Volatile.
  * The values are ordered (IMMUTABLE < STABLE < VOLATILE).  The Compact DEFAULT
- * Tree persists them per node, and a DEFAULT_EXPR_REGU_STREAM build in two
- * regu-flag bits (REGU_VARIABLE_DEFAULT_VOLATILITY_*), so they must not change.
+ * Tree persists them per node, so they must not change.
  */
 typedef enum
 {

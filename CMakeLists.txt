@@ -610,10 +610,6 @@ if(MULTI_CONN_TO_A_SERVER)
   add_definitions(-DMULTI_CONN_TO_A_SERVER)
 endif(MULTI_CONN_TO_A_SERVER)
 
-# Store residual column DEFAULTs in their REGU form as well and evaluate that form on the server
-# (the DEFAULT is otherwise compiled with each INSERT)
-#add_definitions(-DDEFAULT_EXPR_REGU_STREAM)
-
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system

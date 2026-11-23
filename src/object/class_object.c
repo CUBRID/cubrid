@@ -8730,7 +8730,6 @@ classobj_clear_default_expr (DB_DEFAULT_EXPR * default_expr)
   assert (default_expr != NULL);
 
   ws_free_string (default_expr->default_expr_text);
-  db_ws_free ((void *) default_expr->default_expr_regu_stream);
   db_ws_free ((void *) default_expr->default_expr_tree_stream);
 
   classobj_initialize_default_expr (default_expr);
@@ -8803,13 +8802,6 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
   else
     {
       dest->default_expr_text = NULL;
-    }
-
-  error = classobj_copy_default_expr_stream (src->default_expr_regu_stream, src->default_expr_regu_stream_size,
-					     &dest->default_expr_regu_stream, &dest->default_expr_regu_stream_size);
-  if (error != NO_ERROR)
-    {
-      goto error_rollback;
     }
 
   error = classobj_copy_default_expr_stream (src->default_expr_tree_stream, src->default_expr_tree_stream_size,
