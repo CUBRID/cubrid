@@ -328,6 +328,7 @@ extern bool lock_group_defer_abort (THREAD_ENTRY * thread_p, int tran_index);
 extern bool lock_group_defer_abort_to_pl_caller (THREAD_ENTRY * thread_p, int tran_index);
 extern int lock_group_fail_if_abort_deferred (int tran_index);
 extern bool lock_group_is_abort_deferred (int tran_index);
+extern void lock_group_set_error_for_own_wait (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock);
 
 #if defined (SERVER_MODE)
 extern void lock_deadlock_detect_daemon_get_stats (UINT64 * statsp);

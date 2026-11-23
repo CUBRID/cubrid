@@ -943,7 +943,6 @@ static int heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERA
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 					       PGBUF_WATCHER * home_hint_p);
-static void heap_set_error_for_new_slot_timeout (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock);
 static int heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_context, RECDES * recdes_p,
 				OID * out_oid_p, PGBUF_WATCHER * newhome_pg_watcher);
@@ -24272,9 +24271,9 @@ retry:
       else if (lk_result == LK_NOTGRANTED_DUE_TIMEOUT && slot_id == slot_count
 	       && context->home_page_watcher_p != home_hint_p)
 	{
-	  /* No other transaction holds a new slot: a thread of ours in the lock manager sleeps for a lock (see
-	   * lock_group_guard). Wait for it with the page unfixed, then look for a slot again; the slot may be gone
-	   * by then, so the lock taken to wait is not kept. */
+	  /* No other transaction holds a new slot: a thread of ours in the lock manager sleeps for a lock
+	   * (lock_group::enter ()). Wait for it with the page unfixed, then look for a slot again; the slot may be
+	   * gone by then, so the lock taken to wait is not kept. */
 	  pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
 	  if (lock_object (thread_p, &context->res_oid, &context->class_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED)
 	    {
@@ -24288,7 +24287,7 @@ retry:
       else if (lk_result == LK_NOTGRANTED_DUE_TIMEOUT && slot_id == slot_count)
 	{
 	  /* the same on the caller's hint page, which it keeps fixed to fill and log as a whole: fail as timed out */
-	  heap_set_error_for_new_slot_timeout (thread_p, &context->res_oid, lock);
+	  lock_group_set_error_for_own_wait (thread_p, &context->res_oid, lock);
 	  break;
 	}
       else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
@@ -24324,24 +24323,6 @@ retry:
   assert (lk_result == LK_NOTGRANTED_DUE_ABORTED || lk_result == LK_NOTGRANTED_DUE_ERROR
 	  || (lk_result == LK_NOTGRANTED_DUE_TIMEOUT && er_errid () == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG));
   return ER_FAILED;
-}
-
-/*
- * heap_set_error_for_new_slot_timeout () - a conditional lock on a new slot failed: no other transaction holds one,
- *					    so it was the transaction's own thread asleep in the lock manager
- *					    (lock_group_guard). Reported as the lock timeout it is to the requester.
- */
-static void
-heap_set_error_for_new_slot_timeout (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock)
-{
-  const char *prog_name, *user_name, *host_name;
-  int pid, tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  char resource[64];
-
-  (void) logtb_find_client_name_host_pid (tran_index, &prog_name, &user_name, &host_name, &pid);
-  snprintf (resource, sizeof (resource), "OID %d|%d|%d", oid->volid, oid->pageid, oid->slotid);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG, 7, tran_index, user_name, host_name, pid,
-	  lock_to_lockmode_string (lock), resource, "another thread of this transaction");
 }
 
 /*

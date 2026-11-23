@@ -23,6 +23,7 @@
 #include "lock_group.hpp"
 
 #include "error_manager.h"
+#include "lock_table.h"
 #include "log_impl.h"
 #include "oid.h"
 #include "page_buffer.h"
@@ -1042,6 +1043,24 @@ lock_group_fail_if_abort_deferred (int tran_index)
     }
 #endif /* SERVER_MODE */
   return NO_ERROR;
+}
+
+/*
+ * lock_group_set_error_for_own_wait () - a conditional request on an object no other transaction holds was refused:
+ *					   the transaction's own thread sleeps in the lock manager
+ *					   (lock_group::enter ()). Set as the lock timeout it is to the requester.
+ */
+void
+lock_group_set_error_for_own_wait (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock)
+{
+  const char *prog_name, *user_name, *host_name;
+  int pid, tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  char resource[64];
+
+  (void) logtb_find_client_name_host_pid (tran_index, &prog_name, &user_name, &host_name, &pid);
+  snprintf (resource, sizeof (resource), "OID %d|%d|%d", oid->volid, oid->pageid, oid->slotid);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG, 7, tran_index, user_name, host_name, pid,
+	  lock_to_lockmode_string (lock), resource, "another thread of this transaction");
 }
 
 /*
