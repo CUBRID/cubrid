@@ -562,12 +562,6 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
   if (PT_IS_QUERY_NODE_TYPE (node->node_type) || node->node_type == PT_UPDATE || node->node_type == PT_DELETE)
     {
       qo_auto_parameterize_limit_clause (parser, node);
-
-      /* auto parameterize for keylimit clause */
-      if (node->node_type == PT_SELECT || node->node_type == PT_UPDATE || node->node_type == PT_DELETE)
-	{
-	  qo_auto_parameterize_keylimit_clause (parser, node);
-	}
     }
 
   if (node->node_type == PT_SELECT)

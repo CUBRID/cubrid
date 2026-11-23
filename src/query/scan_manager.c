@@ -858,12 +858,6 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
 
   if (is_null)
     {
-      if (key_infop->is_user_given_keylimit == true)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	  return ER_QPROC_INVALID_DATATYPE;
-	}
-
       /* a NULL bound in the rownum predicate matches no row, as in the sequential scan */
       isidp->key_limit_lower = -1;
       isidp->key_limit_upper = 0;
@@ -872,13 +866,6 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
 
   if (key_infop->key_limit_l != NULL && isidp->key_limit_lower < 0)
     {
-      if (key_infop->is_user_given_keylimit == true)
-	{
-	  /* We don't allow users to give us a bad keylimit bound */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
-	  return ER_QPROC_INVALID_PARAMETER;
-	}
-
       /* SELECT * from t where ROWNUM = 0 order by a: this would sometimes get optimized using keylimit, if the
        * circumstances are right. in this case, the lower limit would be "0-1", effectiveley -1. We cannot allow
        * that to happen, since -1 is a special value meaning "there is no lower limit", and certain critical
@@ -891,13 +878,6 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
 
   if (key_infop->key_limit_u != NULL && isidp->key_limit_upper < 0)
     {
-      if (key_infop->is_user_given_keylimit == true)
-	{
-	  /* We don't allow users to give us a bad keylimit bound */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
-	  return ER_QPROC_INVALID_PARAMETER;
-	}
-
       /* Optimizer adopts keylimit optimization.
        * Try to sanitize the upper value — it might have been computed from operations on host variables,
        * which are unpredictable.

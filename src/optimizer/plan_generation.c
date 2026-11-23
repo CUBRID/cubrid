@@ -1090,8 +1090,6 @@ mark_access_as_outer_join (PARSER_CONTEXT * parser, XASL_NODE * xasl)
  * join bypasses that rewrite (the EXISTS node is gone before the rewriter reaches
  * it), and the join-level first-match gate (QPROC_SINGLE_INNER) does not stop the
  * btree: it only stops re-entry after the batch is read.  Restore the limit here.
- * A user KEYLIMIT already on the spec is merged with LEAST(); key_limit_reset is
- * left alone in that case so a multi-range user limit keeps its per-range reset.
  * The limit is re-evaluated by scan_init_index_key_limit on every scan block reset,
  * i.e. for every outer row, so a constant is enough.
  */
@@ -1100,7 +1098,6 @@ add_semi_anti_key_limit (PARSER_CONTEXT * parser, KEY_INFO * key_infop)
 {
   PT_NODE *node_one;
   REGU_VARIABLE *regu_one;
-  TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
 
   node_one = pt_make_integer_value (parser, 1);
   if (node_one == NULL)
@@ -1115,24 +1112,8 @@ add_semi_anti_key_limit (PARSER_CONTEXT * parser, KEY_INFO * key_infop)
       return ER_FAILED;
     }
 
-  if (key_infop->key_limit_u != NULL)
-    {
-      /* replace the user limit only once the merged node exists: on failure the caller carries on
-         without our limit, and the user's KEYLIMIT must survive that */
-      REGU_VARIABLE *merged = pt_make_key_limit_arith (key_infop->key_limit_u, regu_one, T_LEAST, dom_bigint);
-
-      if (merged == NULL)
-	{
-	  return ER_FAILED;
-	}
-      merged->domain = dom_bigint;
-      key_infop->key_limit_u = merged;
-    }
-  else
-    {
-      key_infop->key_limit_u = regu_one;
-      key_infop->key_limit_reset = false;
-    }
+  key_infop->key_limit_u = regu_one;
+  key_infop->key_limit_reset = false;
 
   return NO_ERROR;
 }

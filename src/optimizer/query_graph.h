@@ -163,9 +163,6 @@ struct qo_index_entry
    */
   char *statistics_attribute_name;
 
-  /* key limits */
-  PT_NODE *key_limit;
-
   /*
    * if the first indexed attribute is actually a function expression,
    * statistics will be retrieved from the B-tree , rather that attribute
@@ -245,7 +242,6 @@ struct qo_using_index_entry
 {
   const char *name;
   int force;
-  PT_NODE *key_limit;
 };
 
 struct qo_using_index
@@ -260,7 +256,6 @@ struct qo_using_index
 #define QO_UI_N(ui)	      ((ui)->n)
 #define QO_UI_INDEX(ui, n)    ((ui)->index[(n)].name)
 #define QO_UI_FORCE(ui, n)    ((ui)->index[(n)].force)
-#define QO_UI_KEYLIMIT(ui, n) ((ui)->index[(n)].key_limit)
 
 
 struct qo_node

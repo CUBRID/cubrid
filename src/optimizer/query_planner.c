@@ -3858,29 +3858,6 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "index: ");
       fprintf (f, "%s ", plan->plan_un.scan.index->head->constraints->name);
 
-      /* print key limit */
-      if (plan->plan_un.scan.index->head->key_limit)
-	{
-	  PT_NODE *key_limit = plan->plan_un.scan.index->head->key_limit;
-	  PT_NODE *saved_next = key_limit->next;
-	  PARSER_CONTEXT *parser = QO_ENV_PARSER (plan->info->env);
-	  PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
-
-	  parser->print_db_value = pt_print_node_value;
-	  if (saved_next)
-	    {
-	      saved_next->next = key_limit;
-	      key_limit->next = NULL;
-	    }
-	  fprintf (f, "keylimit %s ", parser_print_tree_list (parser, saved_next ? saved_next : key_limit));
-	  parser->print_db_value = saved_func;
-	  if (saved_next)
-	    {
-	      key_limit->next = saved_next;
-	      saved_next->next = NULL;
-	    }
-	}
-
       qo_termset_fprint ((plan->info)->env, &plan->plan_un.scan.terms, f);
 
       /* print index covering */
@@ -3995,28 +3972,6 @@ qo_scan_info_internal (QO_PLAN * plan, FILE * f, int howfar, bool parallel_scan)
       separator = ", ";
 
       fprintf (f, "%s%s", separator, plan->plan_un.scan.index->head->constraints->name);
-
-      /* print key limit */
-      if (plan->plan_un.scan.index->head->key_limit)
-	{
-	  PT_NODE *key_limit = plan->plan_un.scan.index->head->key_limit;
-	  PT_NODE *saved_next = key_limit->next;
-	  PARSER_CONTEXT *parser = QO_ENV_PARSER (plan->info->env);
-	  PT_PRINT_VALUE_FUNC saved_func = parser->print_db_value;
-	  parser->print_db_value = pt_print_node_value;
-	  if (saved_next)
-	    {
-	      saved_next->next = key_limit;
-	      key_limit->next = NULL;
-	    }
-	  fprintf (f, "(keylimit %s) ", parser_print_tree_list (parser, saved_next ? saved_next : key_limit));
-	  parser->print_db_value = saved_func;
-	  if (saved_next)
-	    {
-	      key_limit->next = saved_next;
-	      saved_next->next = NULL;
-	    }
-	}
 
       for (i = bitset_iterate (&(plan->plan_un.scan.terms), &bi); i != -1; i = bitset_next_member (&bi))
 	{
@@ -10973,7 +10928,6 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
 {
   QO_ENV *env = planner->env;
   QO_NODE *node;
-  QO_NODE_INDEX *node_index;
   QO_INFO *node_info, *distinct_info;
   QO_PLAN *node_plan, *distinct_plan;
   QO_TERM *term;
@@ -10981,7 +10935,7 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
   BITSET_ITERATOR si;
   double distinct_rows;
   bool ndv_known, eligible;
-  int i, j, t, sg;
+  int i, t, sg;
 
   if (planner->distinct_info == NULL)
     {
@@ -10995,18 +10949,6 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
   if (QO_ENV_PT_TREE (env)->info.query.q.select.hint & (PT_HINT_ORDERED | PT_HINT_LEADING))
     {
       goto exit;
-    }
-
-  for (i = 0; i < (signed) planner->N; i++)
-    {
-      node_index = QO_NODE_INDEXES (&planner->node[i]);
-      for (j = 0; node_index != NULL && j < QO_NI_N (node_index); j++)
-	{
-	  if (QO_NI_ENTRY (node_index, j)->head->key_limit != NULL)
-	    {
-	      goto exit;
-	    }
-	}
     }
 
   for (i = 0; i < (signed) planner->N; i++)
@@ -11717,13 +11659,12 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 		      int idx_join_cand)
 {
   QO_PLAN *outer_plan, *inner_plan;
-  QO_NODE *outer_node, *inner_node;
+  QO_NODE *inner_node;
   PT_HINT_ENUM hint;
-  QO_NODE_INDEX *node_index;
   QO_TERM *term;
   BITSET_ITERATOR bitset_iter;
   int bitset_index;
-  int i, n = 0;
+  int n = 0;
 
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
   if (mem_limit <= 0)
@@ -11773,7 +11714,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	}
     }
 
-  /* inner_node is the single-class inner used for the key-limit / index checks below. */
+  /* inner_node is the single-class inner used for the checks below. */
   inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
 
   /* The parser rejects a subquery in an ON clause, but view merging can bring one in.
@@ -11849,37 +11790,6 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   if (QO_ENV_PT_TREE (info->env)->flag.is_click_counter)
     {
       goto exit;		/* give up */
-    }
-
-  /* Check if a key limit is set. */
-  node_index = QO_NODE_INDEXES (inner_node);
-  if (node_index != NULL)
-    {
-      for (i = 0; i < QO_NI_N (node_index); i++)
-	{
-	  if (QO_NI_ENTRY (node_index, i)->head->key_limit != NULL)
-	    {
-	      goto exit;	/* give up */
-	    }
-	}
-    }
-
-  for (bitset_index = bitset_iterate (&outer->nodes, &bitset_iter); bitset_index != -1;
-       bitset_index = bitset_next_member (&bitset_iter))
-    {
-      outer_node = QO_ENV_NODE (outer->env, bitset_index);
-
-      node_index = QO_NODE_INDEXES (outer_node);
-      if (node_index != NULL)
-	{
-	  for (i = 0; i < QO_NI_N (node_index); i++)
-	    {
-	      if (QO_NI_ENTRY (node_index, i)->head->key_limit != NULL)
-		{
-		  goto exit;	/* give up */
-		}
-	    }
-	}
     }
 
   outer_plan = qo_find_best_list_input_on_info (outer, QO_UNORDERED);

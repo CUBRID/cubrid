@@ -5311,7 +5311,6 @@ xts_process_key_info (char *ptr, const KEY_INFO * key_info)
 
   ptr = or_pack_int (ptr, key_info->is_constant);
   ptr = or_pack_int (ptr, key_info->key_limit_reset);
-  ptr = or_pack_int (ptr, key_info->is_user_given_keylimit);
 
   offset = xts_save_regu_variable (key_info->key_limit_l);
   if (offset == ER_FAILED)
@@ -8278,7 +8277,6 @@ xts_sizeof_key_info (const KEY_INFO * key_info)
 	   + PTR_SIZE		/* key_vals */
 	   + OR_INT_SIZE	/* is_constant */
 	   + OR_INT_SIZE	/* key_limit_reset */
-	   + OR_INT_SIZE	/* is_user_given_keylimit */
 	   + PTR_SIZE		/* key_limit_l */
 	   + PTR_SIZE);		/* key_limit_u */
 

@@ -167,7 +167,7 @@ qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_NODE *using_index = NULL, *hint_node, *prev_node, *next_node;
 
-  bool is_sorted, is_idx_reversed, is_idx_match_nokl, is_hint_masked;
+  bool is_sorted, is_idx_reversed, is_idx_match, is_hint_masked;
 
   PT_NODE *hint_none, *root_node;
   PT_NODE dummy_hint_local, *dummy_hint;
@@ -281,7 +281,7 @@ qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
       hint_node = using_index;
     }
 
-  /* remove duplicate index hints and sort them; keep the same order for the hints of the same type with keylimit */
+  /* remove duplicate index hints and sort them */
   /* order: class_none, ignored, forced, used */
   is_sorted = false;
   while (!is_sorted)
@@ -292,7 +292,7 @@ qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
       while ((next_node = hint_node->next) != NULL)
 	{
 	  is_idx_reversed = false;
-	  is_idx_match_nokl = false;
+	  is_idx_match = false;
 	  if (PT_IDX_HINT_ORDER (hint_node) > PT_IDX_HINT_ORDER (next_node))
 	    {
 	      is_idx_reversed = true;
@@ -332,7 +332,7 @@ qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
 			intl_identifier_casecmp (hint_node->info.name.original, next_node->info.name.original);
 		      if (res_cmp_idx_names == 0)
 			{
-			  is_idx_match_nokl = true;
+			  is_idx_match = true;
 			}
 		      else
 			{
@@ -344,38 +344,13 @@ qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      /* hints are of the same type, name.original is either NULL or not NULL for both hints */
 		      assert (hint_node->info.name.original == NULL && next_node->info.name.original == NULL);
 		      /* both hints are "same-table.none"; identical */
-		      is_idx_match_nokl = true;
+		      is_idx_match = true;
 		    }
 		}
 	      else
 		{
 		  is_idx_reversed = (res_cmp_tbl_names > 0);
 		}
-
-	      if (is_idx_match_nokl)
-		{
-		  /* The same index is used in both hints; examine the keylimit clauses; if search_node does not have
-		   * keylimit, the IF below will skip, and search_node will be deleted */
-		  if (next_node->info.name.indx_key_limit != NULL)
-		    {
-		      /* search_node has keylimit */
-		      if (hint_node->info.name.indx_key_limit != NULL)
-			{
-			  /* hint_node has keylimit; no action is performed; we want to preserve the order of index
-			   * hints for the same index, with keylimit */
-			  is_idx_reversed = false;
-			  is_idx_match_nokl = false;
-			}
-		      else
-			{
-			  /* special case; need to delete hint_node and keep search_node, because this one has
-			   * keylimit; */
-			  assert (!is_idx_reversed);
-			  is_idx_reversed = true;
-			  /* reverse the two nodes so the code below can be reused for this situation */
-			}
-		    }		/* endif (search_node) */
-		}		/* endif (is_idx_match_nokl) */
 	    }
 
 	  if (is_idx_reversed)
@@ -390,7 +365,7 @@ qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      next_node = hint_node->next;
 	    }
 
-	  if (is_idx_match_nokl)
+	  if (is_idx_match)
 	    {
 	      /* remove search_node */
 	      hint_node->next = next_node->next;

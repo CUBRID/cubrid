@@ -399,8 +399,8 @@ static int pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int n
 			   KEY_INFO * key_infop);
 static int pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool multi_col,
 				KEY_INFO * key_infop, int rangelist_idx, int *multi_col_pos);
-static int pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * limit_infop,
-			    KEY_INFO * key_infop, bool key_limit_reset);
+static int pt_to_key_limit (PARSER_CONTEXT * parser, QO_LIMIT_INFO * limit_infop, KEY_INFO * key_infop,
+			    bool key_limit_reset);
 static int pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static int pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static const TP_DOMAIN *pt_key_element_domain (const REGU_VARIABLE * regu);
@@ -8644,7 +8644,7 @@ pt_make_regu_arith_over_copies (const REGU_VARIABLE * arg1, const REGU_VARIABLE 
 
 /*
  * pt_make_key_limit_arith () - build a key limit node (rownum < N is N - 1, a range is upper - lower,
- *                              a merge with a user KEYLIMIT is LEAST/GREATEST) and mark it as such,
+ *                              a merge of two key limits is LEAST/GREATEST) and mark it as such,
  *                              so key_limit_eval () can tell it from arithmetic written by the user
  *   return: a regu variable or NULL on error
  *   arg1(in), arg2(in): operands
@@ -14389,51 +14389,15 @@ error:
  * pt_to_key_limit () - Create index key limit regu variables
  *   return:
  *   parser(in):
- *   key_limit(in):
+ *   limit_infop(in):
  *   key_infop(in):
  *   key_limit_reset(in);
  */
 static int
-pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * limit_infop, KEY_INFO * key_infop,
-		 bool key_limit_reset)
+pt_to_key_limit (PARSER_CONTEXT * parser, QO_LIMIT_INFO * limit_infop, KEY_INFO * key_infop, bool key_limit_reset)
 {
   REGU_VARIABLE *regu_var_u = NULL, *regu_var_l = NULL;
-  PT_NODE *limit_u, *limit_l;
   TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
-
-  /* at least one of them should be NULL, although they both can */
-  assert (key_limit == NULL || limit_infop == NULL);
-
-  limit_u = key_limit;
-  if (limit_u != NULL)
-    {
-      /* user explicitly specifies keylimit */
-      key_infop->is_user_given_keylimit = true;
-
-      if (limit_u->type_enum == PT_TYPE_MAYBE)
-	{
-	  limit_u->expected_domain = dom_bigint;
-	}
-      regu_var_u = pt_to_regu_variable (parser, limit_u, UNBOX_AS_VALUE);
-      if (regu_var_u == NULL)
-	{
-	  goto error;
-	}
-
-      limit_l = limit_u->next;
-      if (limit_l != NULL)
-	{
-	  if (limit_l->type_enum == PT_TYPE_MAYBE)
-	    {
-	      limit_l->expected_domain = dom_bigint;
-	    }
-	  regu_var_l = pt_to_regu_variable (parser, limit_l, UNBOX_AS_VALUE);
-	  if (regu_var_l == NULL)
-	    {
-	      goto error;
-	    }
-	}
-    }
 
   if (limit_infop != NULL)
     {
@@ -14600,7 +14564,7 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
 		  continue;
 		}
 
-	      ret = pt_to_key_limit (parser, NULL, limit_infop, &(spec_list->indexptr->key_info), false);
+	      ret = pt_to_key_limit (parser, limit_infop, &(spec_list->indexptr->key_info), false);
 	      if (ret != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -15476,7 +15440,6 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
       assert (QO_ENTRY_MULTI_COL (index_entryp) == QO_ENTRY_MULTI_COL (head_idxp));
 
       assert (index_entryp->ils_prefix_len == head_idxp->ils_prefix_len);
-      assert (index_entryp->key_limit == head_idxp->key_limit);
 
       assert ((index_entryp->constraints->filter_predicate == NULL && head_idxp->constraints->filter_predicate == NULL)
 	      || (index_entryp->constraints->filter_predicate != NULL
@@ -15677,13 +15640,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
       return NULL;
     }
 
-  /* key limits */
   key_infop = &indx_infop->key_info;
-  if (pt_to_key_limit (parser, index_entryp->key_limit, NULL, key_infop, false) != NO_ERROR)
-    {
-      PT_INTERNAL_ERROR (parser, "index plan generation - invalid key limit");
-      return NULL;
-    }
 
   if (nterms == 0)
     {
@@ -25887,7 +25844,7 @@ static bool
 pt_upd_del_reevaluates_at_force (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * aptr_statement,
 				 bool has_partitioned, bool has_lob)
 {
-  PT_NODE *spec, *select_spec, *where, *limit, *using_index, *assignments = NULL;
+  PT_NODE *spec, *select_spec, *where, *limit, *assignments = NULL;
   bool row_local = true;
 
   if (statement->node_type == PT_DELETE)
@@ -25895,7 +25852,6 @@ pt_upd_del_reevaluates_at_force (PARSER_CONTEXT * parser, PT_NODE * statement, P
       spec = statement->info.delete_.spec;
       where = statement->info.delete_.search_cond;
       limit = statement->info.delete_.limit;
-      using_index = statement->info.delete_.using_index;
 
       /* qexec_execute_delete () schedules the removal of a row's LOB files before the force phase re-checks it */
       if (has_lob)
@@ -25909,7 +25865,6 @@ pt_upd_del_reevaluates_at_force (PARSER_CONTEXT * parser, PT_NODE * statement, P
       spec = statement->info.update.spec;
       where = statement->info.update.search_cond;
       limit = statement->info.update.limit;
-      using_index = statement->info.update.using_index;
       assignments = statement->info.update.assignment;
 
       if (statement->info.update.order_by != NULL || statement->info.update.check_where != NULL
@@ -25937,14 +25892,6 @@ pt_upd_del_reevaluates_at_force (PARSER_CONTEXT * parser, PT_NODE * statement, P
   if (limit != NULL || aptr_statement->info.query.q.select.group_by != NULL)
     {
       return false;
-    }
-  for (; using_index != NULL; using_index = using_index->next)
-    {
-      /* USING INDEX ... KEYLIMIT counts rows as LIMIT does */
-      if (using_index->node_type == PT_NAME && using_index->info.name.indx_key_limit != NULL)
-	{
-	  return false;
-	}
     }
 
   (void) parser_walk_tree (parser, where, pt_reev_check_row_local, &row_local, NULL, NULL);
@@ -30353,7 +30300,7 @@ pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser, QO_PLAN * pla
     }
 
   /* set an auto-resetting key limit for the iscan */
-  ret = pt_to_key_limit (parser, NULL, limit_infop, &scan->spec_list->indexptr->key_info, true);
+  ret = pt_to_key_limit (parser, limit_infop, &scan->spec_list->indexptr->key_info, true);
   db_private_free (NULL, limit_infop);
 
   if (ret != NO_ERROR)

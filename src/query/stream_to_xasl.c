@@ -6454,9 +6454,6 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
   ptr = or_unpack_int (ptr, &i);
   key_info->key_limit_reset = (bool) i;
 
-  ptr = or_unpack_int (ptr, &i);
-  key_info->is_user_given_keylimit = (bool) i;
-
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {

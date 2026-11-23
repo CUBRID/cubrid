@@ -316,7 +316,6 @@ static KEYWORD_RECORD keywords[] = {
   {JSON_UNQUOTE, "JSON_UNQUOTE", 1},
   {JSON_VALID, "JSON_VALID", 1},
   {KEY, "KEY", 0},
-  {KEYLIMIT, "KEYLIMIT", 1},
   {KEYS, "KEYS", 1},
   {KILL, "KILL", 1},
   {LAG, "LAG", 1},

@@ -189,16 +189,10 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, PT_HINT_ENUM
 
   /* USING INDEX travels to the enclosing SELECT when one table moves up. Every named form keeps applying to the spec
    * moving up, but USING INDEX NONE names no table and no index, applies to every table in scope, and lifted out
-   * would silence the outer tables too; reject that one.  A derived table keeps it.  KEYLIMIT is rejected on both
-   * paths: nested, its index scan restarts with each outer row; unnested, the planner may read that index first
-   * and cut its keys once for every outer row */
+   * would silence the outer tables too; reject that one.  A derived table keeps it. */
   for (hint = subq->info.query.q.select.using_index; hint != NULL; hint = hint->next)
     {
       if (inner_spec->next == NULL && hint->info.name.original == NULL && hint->info.name.resolved == NULL)
-	{
-	  return false;
-	}
-      if (hint->info.name.indx_key_limit != NULL)
 	{
 	  return false;
 	}
@@ -831,15 +825,7 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 void
 qo_rewrite_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *spec, *hint;
-
-  for (hint = node->info.query.q.select.using_index; hint != NULL; hint = hint->next)
-    {
-      if (hint->info.name.indx_key_limit != NULL)
-	{
-	  return;
-	}
-    }
+  PT_NODE *spec;
 
   for (spec = node->info.query.q.select.from; spec != NULL; spec = spec->next)
     {

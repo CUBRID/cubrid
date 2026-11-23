@@ -591,8 +591,6 @@ IDL       [a-zA-Z0-9_]
 [kK][iI][lL][lL]							{ csql_yylval.cptr = pt_makename(yytext);
                                                                           return KILL; }
 [lL][aA][nN][gG][uU][aA][gG][eE]					{ return LANGUAGE; }
-[kK][eE][yY][lL][iI][mM][iI][tT]					{ csql_yylval.cptr = pt_makename(yytext);
-                                                                          return KEYLIMIT; }
 [lL][aA][gG]								{ csql_yylval.cptr = pt_makename(yytext);
 									  return LAG; }
 [lL][aA][sS][tT]							{ return LAST; }

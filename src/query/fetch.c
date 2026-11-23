@@ -2335,7 +2335,7 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
  *   is_null(out)  : set to true when a NULL takes part in the expression
  *
  * Note: Key limits are built from T_SUB (rownum < N is N - 1, a range is upper - lower), T_LEAST and
- *       T_GREATEST (merge with a user KEYLIMIT). The optimizer marks those nodes with
+ *       T_GREATEST (merge of two key limits). The optimizer marks those nodes with
  *       REGU_VARIABLE_KEY_LIMIT_ARITH and they are computed here in BIGINT, so a bound beyond the BIGINT
  *       range never reaches the generic arithmetic. Any other node, including arithmetic written by the
  *       user such as rownum <= ? - ?, is fetched as a whole and only its value is looked at.
@@ -2344,7 +2344,7 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
  *       from N as ceil (N) - 1, not rounded after the subtraction (rownum < 2.4 keeps 2 rows, not 1).
  *
  *       A negative bound only means "nothing to skip" or "nothing to read", so it becomes -1 whatever its
- *       magnitude. The sign is kept for the KEYLIMIT check and the upper += lower adjustment in
+ *       magnitude. The sign is kept for the upper += lower adjustment in
  *       scan_init_index_key_limit (). A positive bound beyond the BIGINT range becomes DB_BIGINT_MAX.
  */
 static int

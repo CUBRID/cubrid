@@ -880,10 +880,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> opt_having_clause
 %type <node> index_name
 %type <node> index_hint_name
-%type <node> index_hint_name_keylimit
 %type <node> opt_using_index_clause
 %type <node> index_hint_name_list
-%type <node> index_hint_name_keylimit_list
 %type <node> opt_with_increment_clause
 %type <node> opt_update_orderby_clause
 %type <node> opt_orderby_clause
@@ -1618,7 +1616,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> PREFER_OUTLINE
 %token <cptr> STORAGE
 %token <cptr> ISNULL
-%token <cptr> KEYLIMIT
 %token <cptr> KEYS
 %token <cptr> KILL
 %token <cptr> JAVA
@@ -14213,7 +14210,7 @@ opt_using_index_clause
 		{{
 			$$ = NULL;
 		}}
-	| USING INDEX index_hint_name_keylimit_list
+	| USING INDEX index_hint_name_list
 		{{
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -14270,78 +14267,10 @@ opt_using_index_clause
 		}}
 	;
 
-index_hint_name_keylimit_list
-	: index_hint_name_keylimit_list ',' index_hint_name_keylimit
-		{{
-			$$ = parser_make_link ($1, $3);
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		}}
-	| index_hint_name_keylimit
-		{{
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		}}
-	;
-
 index_hint_name_list
 	: index_hint_name_list ',' index_hint_name
 		{{
 			$$ = parser_make_link ($1, $3);
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		}}
-	| index_hint_name
-		{{
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		}}
-	;
-
-index_hint_name_keylimit
-	: index_hint_name KEYLIMIT limit_expr
-		{{
-			PT_NODE *node = $1;
-			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
-
-			if (node)
-			  {
-			    if (node->etc == (void *) PT_IDX_HINT_NONE
-				|| node->etc == (void *) PT_IDX_HINT_CLASS_NONE)
-			      {
-				PT_ERRORm(this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_KEYLIMIT_INDEX_NONE);
-			      }
-			    else if (node->etc == (void *) PT_IDX_HINT_IGNORE)
-			      {
-				PT_ERRORmf(this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "KEYLIMIT");
-			      }
-			    else
-			      {
-				/* set key limit */
-				node->info.name.indx_key_limit = $3;
-			      }
-			  }
-			$$ = node;
-		}}
-	| index_hint_name KEYLIMIT limit_expr ',' limit_expr
-		{{
-			PT_NODE *node = $1;
-			if (node)
-			  {
-			    if (node->etc == (void *) PT_IDX_HINT_NONE
-				|| node->etc == (void *) PT_IDX_HINT_CLASS_NONE)
-			      {
-				PT_ERRORm(this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_KEYLIMIT_INDEX_NONE);
-			      }
-			    else
-			      {
-				/* set key limits */
-				node->info.name.indx_key_limit = $5;
-				if ($5)
-				  {
-				    ($5)->next = $3;
-				  }
-			      }
-			  }
-			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| index_hint_name
@@ -20946,7 +20875,6 @@ identifier
 	| JSON_TYPE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| JSON_UNQUOTE           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| JSON_VALID             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
-	| KEYLIMIT               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| KEYS                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| KILL                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| LAG                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
