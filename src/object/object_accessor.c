@@ -141,7 +141,8 @@ static int obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method
 				  DB_VALUE ** argarray);
 
 static bool find_unique_key_matches (const DB_VALUE * value, const TP_DOMAIN * domain);
-static MOP find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fetchmode);
+static bool find_unique_index (SM_CLASS * class_, SM_ATTRIBUTE * att, SM_CONSTRAINT_TYPE type, BTID * btid);
+static MOP find_unique (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fetchmode);
 static int flush_temporary_OID (MOP classop, DB_VALUE * key);
 
 static DB_VALUE *obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size);
@@ -3371,10 +3372,46 @@ find_unique_key_matches (const DB_VALUE * value, const TP_DOMAIN * domain)
 }
 
 /*
+ * find_unique_index () - find an index of the given type whose key is the attribute's own value: an index of this one
+ *   attribute, not a function index. The attribute's constraint cache also lists the multi-column indexes and the
+ *   function indexes that include the attribute; their keys are a multi-column key or the function's result, so a
+ *   search with the attribute's value would send a key of another shape than the index's.
+ *   return: true if found
+ *   class_(in): the class of the attribute
+ *   att(in): the attribute
+ *   type(in): constraint type
+ *   btid(out): the index, if found
+ */
+static bool
+find_unique_index (SM_CLASS * class_, SM_ATTRIBUTE * att, SM_CONSTRAINT_TYPE type, BTID * btid)
+{
+  SM_CONSTRAINT *c;
+  SM_CLASS_CONSTRAINT *cons;
+
+  for (c = att->constraints; c != NULL; c = c->next)
+    {
+      if (c->type != type)
+	{
+	  continue;
+	}
+
+      cons = classobj_find_class_constraint_by_btid (class_->constraints, type, c->index);
+      if (cons != NULL && cons->attributes[0] != NULL && cons->attributes[1] == NULL && cons->func_index_info == NULL)
+	{
+	  BTID_COPY (btid, &c->index);
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * find_unique - Internal function called by the various flavors of functions
  *               that look for unique attribute values.
  *    return: object pointer
  *    classop(in):
+ *    class_(in): class structure of classop
  *    att(in): attrubute descriptor
  *    value(in): value to look for
  *    fetchmode(in): access type   AU_FETCH_READ
@@ -3382,7 +3419,8 @@ find_unique_key_matches (const DB_VALUE * value, const TP_DOMAIN * domain)
  *
  * Note:
  *    This will try to find an object that has a particular value in either
- *    a unique btree or a regular query btree.
+ *    a unique btree or a regular query btree. It searches only an index of
+ *    the attribute alone (find_unique_index ()).
  *
  *    If the attribute is not associated with any index or other optimized
  *    lookup structure, we will fabricate a select statement that attempts
@@ -3396,7 +3434,7 @@ find_unique_key_matches (const DB_VALUE * value, const TP_DOMAIN * domain)
  *    object could not be found will be ER_OBJ_OBJECT_NOT_FOUND
  */
 static MOP
-find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fetchmode)
+find_unique (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fetchmode)
 {
   MOP found = NULL;
   OID unique_oid;
@@ -3419,23 +3457,23 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
   BTID_SET_NULL (&btid);
 
   /* look for a unique index on this attribute */
-  r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_UNIQUE, &btid);
+  r = find_unique_index (class_, att, SM_CONSTRAINT_UNIQUE, &btid);
   if (r == 0)
     {
       /* look for a primary key on this attribute */
-      r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_PRIMARY_KEY, &btid);
+      r = find_unique_index (class_, att, SM_CONSTRAINT_PRIMARY_KEY, &btid);
       if (r == 0)
 	{
 	  /* look for a reverse unique index on this attribute */
-	  r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_REVERSE_UNIQUE, &btid);
+	  r = find_unique_index (class_, att, SM_CONSTRAINT_REVERSE_UNIQUE, &btid);
 	  if (r == 0)
 	    {
 	      /* couldn't find one, check for a index */
-	      r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_INDEX, &btid);
+	      r = find_unique_index (class_, att, SM_CONSTRAINT_INDEX, &btid);
 	      if (r == 0)
 		{
 		  /* couldn't find one, check for a reverse index */
-		  r = classobj_get_cached_constraint (att->constraints, SM_CONSTRAINT_REVERSE_INDEX, &btid);
+		  r = find_unique_index (class_, att, SM_CONSTRAINT_REVERSE_INDEX, &btid);
 		  if (r == 0)
 		    {
 		      /* couldn't find anything to search in */
@@ -3589,7 +3627,7 @@ obj_desc_find_unique (MOP op, SM_DESCRIPTOR * desc, DB_VALUE * value, AU_FETCHMO
       /* map the descriptor into an actual pair of class/attribute structures */
       if (sm_get_descriptor_component (op, desc, 0, &class_, (SM_COMPONENT **) (&att)) == NO_ERROR)
 	{
-	  obj = find_unique (op, att, value, fetchmode);
+	  obj = find_unique (op, class_, att, value, fetchmode);
 	}
     }
 
@@ -3632,7 +3670,7 @@ obj_find_unique (MOP op, const char *attname, DB_VALUE * value, AU_FETCHMODE fet
 	}
       else
 	{
-	  obj = find_unique (op, att, value, fetchmode);
+	  obj = find_unique (op, class_, att, value, fetchmode);
 	}
     }
 
@@ -3740,6 +3778,7 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
   int i = 0;
   BTID unique_btid;
   DB_VALUE unique_key;
+  DB_VALUE *key = NULL;
   BTREE_SEARCH result;
   OID oid;
 
@@ -3765,7 +3804,8 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
 
   for (cons = class_->constraints; cons; cons = cons->next)
     {
-      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type))
+      /* a function index keys the function's result, not the values of its attributes */
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) && cons->func_index_info == NULL)
 	{
 	  attp = cons->attributes;
 	  namep = attr_names;
@@ -3829,10 +3869,24 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
 	}
     }
 
-  error = do_create_midxkey_from_values (values, size, cons, &unique_key);
-  if (error != NO_ERROR)
+  if (size == 1)
     {
-      goto end_find;
+      /* a one-column index keys the column's own value, not a multi-column key; the B-tree compares the key with
+       * its own keys only, so the value must have the column's type (a NULL key is just not found) */
+      if (!DB_IS_NULL (values[0]) && !find_unique_key_matches (values[0], cons->attributes[0]->domain))
+	{
+	  goto end_find;
+	}
+      key = (DB_VALUE *) values[0];
+    }
+  else
+    {
+      error = do_create_midxkey_from_values (values, size, cons, &unique_key);
+      if (error != NO_ERROR)
+	{
+	  goto end_find;
+	}
+      key = &unique_key;
     }
 
   BTID_COPY (&unique_btid, &cons->index_btid);
@@ -3850,7 +3904,7 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
       int found_count = 0;
 
       result =
-	btree_find_multi_uniques (ws_oid (op), DB_NOT_PARTITIONED_CLASS, &unique_btid, &unique_key, 1,
+	btree_find_multi_uniques (ws_oid (op), DB_NOT_PARTITIONED_CLASS, &unique_btid, key, 1,
 				  (lookup == OBJ_FIND_CATALOG_READ) ? S_SELECT : S_UPDATE, &found_oids, &found_count);
       if (result == BTREE_KEY_FOUND)
 	{
@@ -3864,7 +3918,7 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
     }
   else
     {
-      result = btree_find_unique (&unique_btid, &unique_key, ws_oid (op), &oid);
+      result = btree_find_unique (&unique_btid, key, ws_oid (op), &oid);
     }
 
   if (result == BTREE_KEY_FOUND)
