@@ -626,7 +626,7 @@ namespace parallel_scan
 	    snprintf (heap_time_buf, sizeof (heap_time_buf), "%lu..%lu", min_time, max_time);
 	    snprintf (heap_pages_buf, sizeof (heap_pages_buf), "%lu..%lu", min_pages, max_pages);
 	    snprintf (heap_rows_buf, sizeof (heap_rows_buf), "%lu..%lu", min_data_qualified_rows, max_data_qualified_rows);
-	    trace_json_object_set_new (parallel_obj, "bitmap heap",
+	    trace_json_object_set_new (parallel_obj, "bitmap heap lookup",
 				       trace_json_pack ("{s:s, s:s, s:s}", "time", heap_time_buf, "pages", heap_pages_buf,
 					   "rows", heap_rows_buf));
 	  }

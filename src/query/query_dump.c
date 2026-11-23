@@ -4137,7 +4137,7 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		    {
 		      /* the heap was read through a bitmap of the rows the index found: a second scan, under the
 		       * index scan */
-		      fprintf (fp, "\n%*cSCAN (bitmap heap: %s), ", indent + 2, ' ',
+		      fprintf (fp, "\n%*cSCAN (bitmap heap lookup: %s), ", indent + 2, ' ',
 			       class_name != NULL ? class_name : "unknown");
 		      scan_print_bitmap_heap_stats_text (fp, &spec->s_id);
 		      spec->s_id.s.pisid.trace_storage->dump_bitmap_heap_stats_text (fp, multi_spec_indent + 2);
@@ -4149,7 +4149,7 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	      else if (spec->s_id.scan_stats.bitmap_heap != 0)
 		{
 		  /* a serial scan's heap step */
-		  fprintf (fp, "\n%*cSCAN (bitmap heap: %s), ", indent + 2, ' ',
+		  fprintf (fp, "\n%*cSCAN (bitmap heap lookup: %s), ", indent + 2, ' ',
 			   class_name != NULL ? class_name : "unknown");
 		  scan_print_bitmap_heap_stats_text (fp, &spec->s_id);
 		}
@@ -4253,7 +4253,7 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		  if (scan_stats->bitmap_heap != 0)
 		    {
 		      /* the partition's heap was read through a bitmap: its heap step, as under the scan's own line */
-		      fprintf (fp, "\n%*cSCAN (bitmap heap: %s), ", multi_spec_indent + 4, ' ',
+		      fprintf (fp, "\n%*cSCAN (bitmap heap lookup: %s), ", multi_spec_indent + 4, ' ',
 			       class_name != NULL ? class_name : "unknown");
 		      scan_print_bitmap_heap_stats_text (fp, &spec->s_id);
 		    }

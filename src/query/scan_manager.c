@@ -10910,7 +10910,7 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
       return;
     }
 
-  /* the heap step of a scan through a bitmap is shown as a scan of its own ("bitmap heap") */
+  /* the heap step of a scan through a bitmap is shown as a scan of its own ("bitmap heap lookup") */
   scan = trace_json_pack ("{s:i, s:I, s:I}", "time",
 			  TO_MSEC (scan_id->scan_stats.elapsed_scan) - TO_MSEC (scan_id->scan_stats.bitmap_heap_time),
 			  "fetch", scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
@@ -10995,7 +10995,7 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
 				  "ioread", scan_id->scan_stats.bitmap_heap_ioreads,
 				  "pages", scan_id->scan_stats.bitmap_heap_pages,
 				  "rows", scan_id->scan_stats.data_qualified_rows);
-	  trace_json_object_set_new (scan_stats, "bitmap heap", heap);
+	  trace_json_object_set_new (scan_stats, "bitmap heap lookup", heap);
 	}
       else
 	{
