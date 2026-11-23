@@ -666,6 +666,7 @@ static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_
 				    VAL_LIST * vallist);
 
 static int pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list);
+static int pt_analytic_key_list_order (QO_PLAN * scan_plan, SORT_LIST * sort_list, int covered_size);
 static int pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_EVAL_TYPE * eval,
 						ANALYTIC_INFO * info);
 
@@ -18921,14 +18922,33 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 		}
 	    }
 
-	  /* check direction of the first sort column of the analytic evaluation that skips its sort. see also
+	  /* check the order of the key list for the analytic evaluation that skips its sort. see also
 	   * scan_get_index_oidset() in scan_manager.c */
 	  if (xasl->spec_list && xasl->spec_list->indexptr && xasl->type == BUILDLIST_PROC
 	      && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
 	    {
 	      ANALYTIC_EVAL_TYPE *eval = xasl->proc.buildlist.a_eval_list;
+	      QO_PLAN *scan_plan = plan;
 
-	      if (eval != NULL && eval->sort_list != NULL && eval->sort_list->s_order == S_DESC)
+	      /* the scan pt_count_analytic_covered_sort_list () counted on */
+	      while (scan_plan != NULL && scan_plan->plan_type != QO_PLANTYPE_SCAN)
+		{
+		  if (scan_plan->plan_type == QO_PLANTYPE_SORT)
+		    {
+		      scan_plan = scan_plan->plan_un.sort.subplan;
+		    }
+		  else if (scan_plan->plan_type == QO_PLANTYPE_JOIN)
+		    {
+		      scan_plan = scan_plan->plan_un.join.outer;
+		    }
+		  else
+		    {
+		      scan_plan = NULL;
+		    }
+		}
+
+	      if (eval != NULL && scan_plan != NULL
+		  && pt_analytic_key_list_order (scan_plan, eval->sort_list, eval->covered_size) > 0)
 		{
 		  xasl->spec_list->indexptr->analytic_desc = 1;
 		}
@@ -34975,13 +34995,117 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 	}
       else
 	{
-	  return covered_count;
+	  break;
 	}
 
       sort_list = sort_list->next;
     }
 
+  if (covered_count > 0 && pt_analytic_key_list_order (qo_plan, eval->sort_list, covered_count) < 0)
+    {
+      /* no order of the key list supplies the rows in the sort order */
+      return 0;
+    }
+
   return covered_count;
+}
+
+/*
+ * pt_analytic_key_list_order () - the order in which an index scan must read the keys of its key list (IN, an OR of
+ *                                 equalities or of ranges) to supply the rows in the order of an analytic sort
+ *   return: 0 as the scan sorts them, 1 reversed, -1 neither
+ *   scan_plan(in): index scan plan
+ *   sort_list(in): sort list of the analytic evaluation
+ *   covered_size(in): number of the leading sort columns that are the leading index columns
+ *
+ * NOTE: The scan sorts the keys by the values of the key columns, ascending, and reads them reversed on request
+ * (scan_get_index_oidset ()). Only a column that differs between the keys orders the rows: the column of an equality
+ * term has one value in all of them, so its sort direction does not count.
+ */
+static int
+pt_analytic_key_list_order (QO_PLAN * scan_plan, SORT_LIST * sort_list, int covered_size)
+{
+  QO_ENV *env;
+  QO_INDEX_ENTRY *index_entry;
+  QO_TERM *term;
+  PT_NODE *expr, *range;
+  SORT_LIST *sort;
+  BITSET_ITERATOR iter;
+  bool has_asc = false, has_desc = false;
+  int t, i, j, pos;
+
+  if (scan_plan == NULL || scan_plan->plan_type != QO_PLANTYPE_SCAN || scan_plan->plan_un.scan.index == NULL
+      || scan_plan->plan_un.scan.index->head == NULL || scan_plan->info == NULL || scan_plan->info->env == NULL)
+    {
+      return 0;
+    }
+
+  env = scan_plan->info->env;
+  index_entry = scan_plan->plan_un.scan.index->head;
+
+  for (t = bitset_iterate (&(scan_plan->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      term = QO_ENV_TERM (env, t);
+
+      pos = -1;
+      for (i = 0; i < term->can_use_index && i < 2 && pos == -1; i++)
+	{
+	  for (j = 0; j < index_entry->nsegs; j++)
+	    {
+	      if (index_entry->seg_idxs[j] == QO_SEG_IDX (term->index_seg[i]))
+		{
+		  pos = j;
+		  break;
+		}
+	    }
+	}
+      if (pos < 0 || pos >= covered_size)
+	{
+	  /* not a sort column */
+	  continue;
+	}
+
+      expr = QO_TERM_PT_EXPR (term);
+      if (expr == NULL || !PT_IS_EXPR_NODE (expr))
+	{
+	  continue;
+	}
+      if (expr->info.expr.op == PT_EQ)
+	{
+	  continue;
+	}
+      range = expr->info.expr.arg2;
+      if (expr->info.expr.op == PT_RANGE && range != NULL && PT_IS_EXPR_NODE (range)
+	  && range->info.expr.op == PT_BETWEEN_EQ_NA && range->or_next == NULL)
+	{
+	  /* one value */
+	  continue;
+	}
+
+      for (sort = sort_list, i = 0; sort != NULL && i < pos; sort = sort->next, i++)
+	{
+	  ;
+	}
+      if (sort == NULL)
+	{
+	  continue;
+	}
+      if (sort->s_order == S_DESC)
+	{
+	  has_desc = true;
+	}
+      else
+	{
+	  has_asc = true;
+	}
+    }
+
+  if (has_asc && has_desc)
+    {
+      return -1;
+    }
+
+  return has_desc ? 1 : 0;
 }
 
 /*
