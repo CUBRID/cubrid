@@ -219,6 +219,8 @@ static void (*oos_Test_reclaim_fail_stop_hook) (int error) = NULL;
 /* UPDATE drop postpones that still append their notification before the process stops; 0 when disarmed. */
 static std::atomic<int> oos_Test_exit_after_update_drop_notifications { 0 };
 static int oos_Test_exit_after_update_drop_notifications_code = 0;
+/* Exit code for stopping right after oos_reinit_empty_page flushes RVPGBUF_NEW_PAGE; 0 when disarmed. */
+static std::atomic<int> oos_Test_exit_after_empty_page_reinit_code { 0 };
 
 #define OOS_COUNTER_ADD(field, value) \
   do \
@@ -1579,6 +1581,15 @@ oos_reinit_empty_page (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr)
   spage_initialize (thread_p, page_ptr, ANCHORED, OOS_ALIGNMENT, false);
   pgbuf_log_redo_new_page (thread_p, page_ptr, SPAGE_HEADER_SIZE, PAGE_OOS);
   OOS_COUNTER_INC (reclaim_growth_reinit_pages);
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  const int exit_code = oos_Test_exit_after_empty_page_reinit_code.exchange (0, std::memory_order_relaxed);
+  if (exit_code != 0)
+    {
+      /* Crash after the redo-only RVPGBUF_NEW_PAGE reached disk, before the caller logs RVOOS_INSERT. */
+      logpb_force_flush_pages (thread_p);
+      std::_Exit (exit_code);
+    }
+#endif
 }
 
 /*
@@ -4846,6 +4857,12 @@ oos_test_exit_after_update_drop_notifications (int n_notifications, int exit_cod
 {
   oos_Test_exit_after_update_drop_notifications_code = exit_code;
   oos_Test_exit_after_update_drop_notifications.store (n_notifications, std::memory_order_relaxed);
+}
+
+void
+oos_test_exit_after_empty_page_reinit (int exit_code)
+{
+  oos_Test_exit_after_empty_page_reinit_code.store (exit_code, std::memory_order_relaxed);
 }
 
 /* Removes the synthetic-owner test files that still exist, so a test binary that ends with a commit leaves no

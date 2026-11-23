@@ -88,6 +88,10 @@ namespace
   const int EXIT_REUSE_FAILED = 34;
   const int EXIT_VALUE_LOST = 35;
   const int EXIT_FILE_GREW = 36;
+  const int EXIT_PAGE_NOT_REINITIALIZED = 37;
+  const int EXIT_OTHER_UNDO_FAILED = 38;
+  const int EXIT_CRASHED_BETWEEN_REINIT_AND_INSERT = 45;
+  const int EXIT_INSERT_RETURNED = 46;
 
   struct crash_layout
   {
@@ -436,6 +440,9 @@ namespace
     VFID oos_vfid;
     VPID dead_slot_vpid;
     int user_pages;
+    bool has_other_insert;
+    VFID other_oos_vfid;
+    OID other_oid;
   };
 
   const int NUM_DEAD_SLOTS = 3;	/* three dead ANCHORED slots leave no room for a maximum-size chunk */
@@ -569,14 +576,107 @@ namespace
     std::_Exit (EXIT_CRASHED_AFTER_REINIT);
   }
 
+  /* Step 1 (gap case): crash immediately after oos_reinit_empty_page flushes RVPGBUF_NEW_PAGE (redo-only),
+   * before oos_insert_record_in_fixed_page logs RVOOS_INSERT. When with_active_undo is true, the crashing
+   * transaction also holds an uncommitted RVOOS_INSERT in another OOS file so restart recovery runs its UNDO
+   * phase against this transaction. */
+  void
+  crash_between_reinit_and_insert (int layout_fd, bool with_active_undo)
+  {
+    reinit_layout layout {};
+    if (boot_server () != NO_ERROR || oos_create_file (thread_p, layout.oos_vfid) != NO_ERROR)
+      {
+	std::_Exit (EXIT_BOOT_FAILED);
+      }
+    if (with_active_undo)
+      {
+	if (oos_create_file (thread_p, layout.other_oos_vfid) != NO_ERROR)
+	  {
+	    std::_Exit (EXIT_SETUP_FAILED);
+	  }
+	layout.has_other_insert = true;
+      }
+
+    OID small_oids[NUM_DEAD_SLOTS + 1];
+    for (OID &oid : small_oids)
+      {
+	RECDES rec {};
+	if (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (100), rec)
+	    != NO_ERROR)
+	  {
+	    std::_Exit (EXIT_SETUP_FAILED);
+	  }
+	int err = test_oos_utils::oos_insert_from_recdes (thread_p, layout.oos_vfid, rec, oid);
+	recdes_free_data_area (&rec);
+	if (err != NO_ERROR || oid.pageid != small_oids[0].pageid)
+	  {
+	    std::_Exit (EXIT_SETUP_FAILED);
+	  }
+      }
+    for (const OID &oid : small_oids)
+      {
+	if (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, layout.oos_vfid, oid) != NO_ERROR)
+	  {
+	    std::_Exit (EXIT_SETUP_FAILED);
+	  }
+      }
+    layout.dead_slot_vpid.volid = small_oids[0].volid;
+    layout.dead_slot_vpid.pageid = small_oids[0].pageid;
+    layout.user_pages = count_user_pages (layout.oos_vfid);
+    if (!commit_current_tran () || layout.user_pages != 2 || !clear_bestspace_hints (layout.oos_vfid))
+      {
+	std::_Exit (EXIT_SETUP_FAILED);
+      }
+
+    if (with_active_undo)
+      {
+	RECDES other_rec {};
+	if (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (100), other_rec)
+	    != NO_ERROR)
+	  {
+	    std::_Exit (EXIT_SETUP_FAILED);
+	  }
+	int err = test_oos_utils::oos_insert_from_recdes (thread_p, layout.other_oos_vfid, other_rec, layout.other_oid);
+	recdes_free_data_area (&other_rec);
+	if (err != NO_ERROR)
+	  {
+	    std::_Exit (EXIT_SETUP_FAILED);
+	  }
+      }
+
+    const std::string largest = largest_chunk_string ();
+    RECDES rec {};
+    if (test_oos_utils::from_string_into_recdes (largest, rec) != NO_ERROR)
+      {
+	std::_Exit (EXIT_SETUP_FAILED);
+      }
+
+    if (write (layout_fd, &layout, sizeof (layout)) != (ssize_t) sizeof (layout))
+      {
+	std::_Exit (EXIT_SETUP_FAILED);
+      }
+
+    oos_test_exit_after_empty_page_reinit (EXIT_CRASHED_BETWEEN_REINIT_AND_INSERT);
+    OID large_oid = OID_INITIALIZER;
+    (void) test_oos_utils::oos_insert_from_recdes (thread_p, layout.oos_vfid, rec, large_oid);
+    oos_test_exit_after_empty_page_reinit (0);
+    recdes_free_data_area (&rec);
+    std::_Exit (EXIT_INSERT_RETURNED);
+  }
+
   /* Step 2: recovery has replayed the reinitialization and undone the insert. The page must be an empty OOS page,
    * and the next maximum-size insert must take it instead of growing the file. */
   void
-  recover_and_reuse_reinitialized_page (const reinit_layout &layout)
+  recover_and_reuse_reinitialized_page (const reinit_layout &layout, bool verify_reinitialized)
   {
     if (boot_server () != NO_ERROR)
       {
 	std::_Exit (EXIT_BOOT_FAILED);
+      }
+
+    if (layout.has_other_insert && !oos_unreadable (layout.other_oid))
+      {
+	std::_Exit (EXIT_OTHER_UNDO_FAILED);
       }
 
     PAGE_PTR page = pgbuf_fix (thread_p, &layout.dead_slot_vpid, OLD_PAGE, PGBUF_LATCH_READ,
@@ -586,10 +686,16 @@ namespace
 	std::_Exit (EXIT_PAGE_NOT_OOS);
       }
     const int records = spage_number_of_records (page);
+    const int max_space = spage_max_space_for_new_record (thread_p, page);
     pgbuf_unfix_and_init (thread_p, page);
     if (records != 0)
       {
 	std::_Exit (EXIT_PAGE_NOT_EMPTY);
+      }
+    if (verify_reinitialized
+	&& max_space < bridge_oos_get_max_chunk_size_within_page () - 1 + OOS_RECORD_HEADER_SIZE)
+      {
+	std::_Exit (EXIT_PAGE_NOT_REINITIALIZED);
       }
     if (count_user_pages (layout.oos_vfid) != layout.user_pages)
       {
@@ -602,6 +708,7 @@ namespace
       {
 	std::_Exit (EXIT_SETUP_FAILED);
       }
+    bridge_oos_debug_counters_reset ();
     OID reuse_oid = OID_INITIALIZER;
     if (test_oos_utils::oos_insert_from_recdes (thread_p, layout.oos_vfid, rec, reuse_oid) != NO_ERROR)
       {
@@ -611,6 +718,10 @@ namespace
     if (count_user_pages (layout.oos_vfid) != layout.user_pages || reuse_oid.pageid != layout.dead_slot_vpid.pageid)
       {
 	std::_Exit (EXIT_FILE_GREW);
+      }
+    if (verify_reinitialized && bridge_oos_debug_counters_get ().reclaim_growth_reinit_pages != 0ULL)
+      {
+	std::_Exit (EXIT_PAGE_NOT_REINITIALIZED);
       }
     RECDES out {};
     if (test_oos_utils::oos_read_with_alloc (thread_p, reuse_oid, out) != NO_ERROR
@@ -622,6 +733,11 @@ namespace
 
     VFID oos_vfid = layout.oos_vfid;
     (void) oos_remove_file (thread_p, oos_vfid);
+    if (layout.has_other_insert)
+      {
+	VFID other_vfid = layout.other_oos_vfid;
+	(void) oos_remove_file (thread_p, other_vfid);
+      }
     (void) commit_current_tran ();
     shutdown_server ();
     std::_Exit (0);
@@ -640,6 +756,45 @@ namespace
 	return 128 + WTERMSIG (status);
       }
     return WIFEXITED (status) ? WEXITSTATUS (status) : -1;
+  }
+  void
+  run_reinit_gap_recovery_test (bool with_active_undo)
+  {
+    int fds[2];
+    ASSERT_EQ (pipe (fds), 0);
+
+    fflush (NULL);
+    pid_t pid = fork ();
+    if (pid == 0)
+      {
+	close (fds[0]);
+	crash_between_reinit_and_insert (fds[1], with_active_undo);
+      }
+    close (fds[1]);
+    const int crashed = wait_child (pid);
+    reinit_layout layout {};
+    const ssize_t got = read (fds[0], &layout, sizeof (layout));
+    close (fds[0]);
+    ASSERT_EQ (crashed, EXIT_CRASHED_BETWEEN_REINIT_AND_INSERT)
+	<< "the child did not stop between empty-page reinitialization and OOS insert (" << EXIT_BOOT_FAILED
+	<< ": boot; " << EXIT_SETUP_FAILED << ": setup; " << EXIT_INSERT_RETURNED
+	<< ": insert returned without triggering reinit exit)";
+    ASSERT_EQ (got, (ssize_t) sizeof (layout));
+
+    fflush (NULL);
+    pid = fork ();
+    if (pid == 0)
+      {
+	recover_and_reuse_reinitialized_page (layout, true);
+      }
+    const int recovered = wait_child (pid);
+    EXPECT_EQ (recovered, 0) << "restart: " << EXIT_BOOT_FAILED << ": boot (recovery) failed; " << EXIT_PAGE_NOT_OOS
+			     << ": the page is not an OOS page; " << EXIT_PAGE_NOT_EMPTY << ": the page is not empty; "
+			     << EXIT_PAGE_NOT_REINITIALIZED << ": the page was not reinitialized by redo; "
+			     << EXIT_OTHER_UNDO_FAILED << ": active undo of prior insert did not run; "
+			     << EXIT_FILE_PAGES_CHANGED << ": the file's page count changed; " << EXIT_REUSE_FAILED
+			     << ": the insert failed; " << EXIT_FILE_GREW << ": the insert did not reuse the page; "
+			     << EXIT_VALUE_LOST << ": the value read back differs; 134: abort (assert)";
   }
 }
 
@@ -704,7 +859,7 @@ TEST (OosServerCrashRecovery, CrashAfterEmptyPageReinitBeforeCommitThenRestartKe
   pid = fork ();
   if (pid == 0)
     {
-      recover_and_reuse_reinitialized_page (layout);
+      recover_and_reuse_reinitialized_page (layout, false);
     }
   const int recovered = wait_child (pid);
   EXPECT_EQ (recovered, 0) << "restart: " << EXIT_BOOT_FAILED << ": boot (recovery) failed; " << EXIT_PAGE_NOT_OOS
@@ -712,6 +867,16 @@ TEST (OosServerCrashRecovery, CrashAfterEmptyPageReinitBeforeCommitThenRestartKe
 			   << EXIT_FILE_PAGES_CHANGED << ": the file's page count changed; " << EXIT_REUSE_FAILED
 			   << ": the insert failed; " << EXIT_FILE_GREW << ": the insert did not reuse the page; "
 			   << EXIT_VALUE_LOST << ": the value read back differs; 134: abort (assert)";
+}
+
+TEST (OosServerCrashRecovery, CrashBetweenEmptyPageReinitAndInsertThenRestartKeepsTheEmptyPageForReuse)
+{
+  run_reinit_gap_recovery_test (false);
+}
+
+TEST (OosServerCrashRecovery, CrashBetweenEmptyPageReinitAndInsertWithActiveUndoThenRestartKeepsTheEmptyPageForReuse)
+{
+  run_reinit_gap_recovery_test (true);
 }
 
 int
