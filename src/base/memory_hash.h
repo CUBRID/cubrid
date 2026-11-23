@@ -202,13 +202,14 @@ extern unsigned int mht_hls_slot_count (int est_size);
 /* for HASH LIST SCAN (end) */
 
 /*
- * mht_foldhash () - fold the hash of one value into the hash of the values before it
+ * mht_foldhash - fold the hash of one value into the hash of the values before it
  *   return: hash value
  *   hash(in): the hash of the values before it, 0 for the first
  *   value_hash(in): the hash of the value
  *
- * Every hash of several values in order (a key of columns, a SEQUENCE, a midxkey) folds them with it: the rotation
- * makes the order of the values count, so (a, b) and (b, a) hash apart.
+ * Method:
+ *   The hashes of several values in order (a key of columns, a SEQUENCE, a midxkey) fold them with it: the rotation
+ *   makes the order of the values count, so (a, b) and (b, a) hash apart.
  */
 STATIC_INLINE unsigned int
 mht_foldhash (unsigned int hash, unsigned int value_hash)

@@ -4601,13 +4601,15 @@ qo_hq_index_serves_child_lookup (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NOD
 /*
  * qo_hq_cast_walker () - detects a cast that can fail on a value it cannot convert
  *
- * The casts detected:
- *   - any cast written in the query
- *   - a cast the compiler wrapped from a string to another type
- *   - a cast the compiler wrapped from an ENUM to a type neither a string nor a number, which reads its label as a
- *     string
+ * Behavior:
+ *   The casts detected:
+ *     - any cast written in the query
+ *     - a cast the compiler wrapped from a string to another type
+ *     - a cast the compiler wrapped from an ENUM to a type neither a string nor a number, which reads its label as a
+ *       string
  *
- * The compiler's other wrapped casts only widen.
+ * Reason:
+ *   The compiler's other wrapped casts only widen.
  */
 static PT_NODE *
 qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -4632,8 +4634,8 @@ qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 	  const PT_TYPE_ENUM to = node->type_enum;
 	  assert (arg != NULL);
 
-	  /* a wrapped cast from a string, or from an ENUM into a type that reads its label (a number takes the ENUM's
-	   * index) */
+	  /* a wrapped cast from a string to another type, or from an ENUM to a type neither a string nor a number (a
+	   * number takes the ENUM's index) */
 	  if ((PT_IS_CHAR_STRING_TYPE (arg->type_enum) && !PT_IS_CHAR_STRING_TYPE (to))
 	      || (arg->type_enum == PT_TYPE_ENUMERATION && !PT_IS_CHAR_STRING_TYPE (to) && !PT_IS_NUMERIC_TYPE (to)))
 	    {
@@ -4723,11 +4725,11 @@ qo_hq_has_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * pred)
  * Note:
  *   - The single-table plan is kept only when the leading columns of an index are all fixed by equalities of the
  *     CONNECT BY predicate, and one of them is the bare build-side column of a hashable equality:
- *       - an equality fixes a column to a constant, a host variable or a PRIOR expression, or to one of several such
+ *       + an equality fixes a column to a constant, a host variable or a PRIOR expression, or to one of several such
  *         values by IN or OR
- *       - only such an index finds the children of a parent by a key range: (pid) or (grp, pid) for PRIOR id = pid AND
+ *       + only such an index finds the children of a parent by a key range: (pid) or (grp, pid) for PRIOR id = pid AND
  *         grp = 7 or grp IN (7, 8)
- *       - an expression over the column (PRIOR id = pid + 0) cannot use any index
+ *       + an expression over the column (PRIOR id = pid + 0) cannot use any index
  *   - The single-table plan is also kept when an equality conjunct is unsafe as a hash key
  *     (qo_hq_is_unsafe_hash_key ()): a build side with a cast that can fail.
  */

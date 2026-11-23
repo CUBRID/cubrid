@@ -21,7 +21,8 @@
  *
  * - SMALLINT, INTEGER, BIGINT and NUMERIC (fixed or float, of any precision and scale) of one value hash alike
  * - a FLOAT and a DOUBLE of one value hash alike, and -0.0 as 0.0
- * - every NaN hashes alike, as every NaN compares equal to every other NaN (MR_CMP_FLOATING ())
+ * - every NaN hashes alike, as a NaN equals every other NaN (MR_CMP_FLOATING ())
+ * - distinct integers hash apart
  */
 
 #include "catch2/catch.hpp"
@@ -94,7 +95,7 @@ namespace
     return hash_of (value);
   }
 
-  /* a NUMERIC of the digits (a leading '-' for a negative one, no point), scale of them after the point */
+  /* a NUMERIC of the digits (a leading '-' for a negative one, no point), the last scale of them after the point */
   unsigned int
   hash_numeric_of (const std::string &digits, int precision, int scale, bool is_float)
   {

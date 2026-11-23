@@ -8364,14 +8364,16 @@ qexec_gby_aggs_follow_row_order (AGGREGATE_TYPE * agg_list)
  * qexec_gby_keys_hash_as_compared () - do the keys the comparison finds equal hash alike?
  *   return: false when two equal keys may hash apart
  *
- * The merge relies on equal keys hashing alike:
- *   - it meets two groups only when their hashes are equal (qexec_gby_mtable_find (), qexec_gby_merge_part_of ())
- *   - where the group order does not reach the result, it writes the groups out without the sort that brings equal keys
- *     together
+ * Behavior:
+ *   It returns false, so that the keys keep the sort, for:
+ *     - a string key without a loaded collation (lang_get_collation ()): it has no collation hash
+ *     - keys without compiled comparisons (g_hk_compares): they compare by their values' own types
  *
- * The function gives false, and the keys keep the sort, for:
- *   - a string key without a loaded collation (lang_get_collation ()): it has no collation hash
- *   - keys without compiled comparisons (g_hk_compares): they compare by their values' own types
+ * Reason:
+ *   The merge relies on equal keys hashing alike:
+ *     - it meets two groups only when their hashes are equal (qexec_gby_mtable_find (), qexec_gby_merge_part_of ())
+ *     - where the group order does not reach the result, it writes the groups out without the sort that brings equal
+ *       keys together
  */
 static bool
 qexec_gby_keys_hash_as_compared (const BUILDLIST_PROC_NODE * proc)
@@ -8495,7 +8497,7 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   order_free = !qexec_gby_order_reaches_result (xasl);
 
   /* The key sketch holds only the keys of the rows the table took. The unsorted list is sampled instead when:
-   *   - the table stopped taking rows: the rows after that went to the list without passing the table
+   *   - the table stopped taking rows: the rows after that go to the list without passing the table
    *   - the table took no row and its empty sketch estimates 0: a row with a set column, or one too big for a list
    *     page, goes to the list without passing the table (qexec_end_one_iteration ()) */
   groups = qdata_key_sketch_estimate (ctx->key_sketch);
@@ -23946,8 +23948,8 @@ qexec_bind_checksum (int count, const DB_VALUE * values)
       const DB_VALUE *value = &values[i];
       const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
       sum = sum * 31 + (unsigned int) type;
-      /* the types mht_valhash () hashes by value, and a LOB by the address of its DB_ELO; any other type (an SA client
-       * binds an object as its MOP) counts by its type alone */
+      /* hashed: the types mht_valhash () hashes by value, and a LOB, which it hashes by the address of its DB_ELO; any
+       * other type (an SA client binds an object as its MOP) counts by its type alone */
       const bool hashed = (TP_IS_NUMERIC_TYPE (type) || TP_IS_CHAR_BIT_TYPE (type) || TP_IS_DATE_OR_TIME_TYPE (type)
 			   || TP_IS_SET_TYPE (type) || TP_IS_LOB_TYPE (type) || type == DB_TYPE_OID
 			   || type == DB_TYPE_VOBJ || type == DB_TYPE_ENUMERATION || type == DB_TYPE_JSON);
@@ -26265,9 +26267,9 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD *
  *  outptr_list(in):
  *  hash_out(out):
  *
- *  Note: must fold the same columns, in the same order, with the same formula
- *  as qexec_connect_by_hash_from_tuple; non-TYPE_CONSTANT columns are skipped
- *  exactly like qexec_compare_valptr_with_tuple skips them.
+ * Behavior:
+ *   must fold the same columns, in the same order, with the same formula as qexec_connect_by_hash_from_tuple;
+ *   non-TYPE_CONSTANT columns are skipped exactly like qexec_compare_valptr_with_tuple skips them.
  */
 static void
 qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash_out)
@@ -26315,8 +26317,8 @@ qexec_connect_by_bind_tuple (QFILE_TUPLE_RECORD * slot, QFILE_TUPLE tpl, const Q
  *  type_list(in):
  *  hash_out(out):
  *
- *  Note: deserialization mirrors qexec_compare_valptr_with_tuple so both hash
- *  paths produce the same value for equal tuples.
+ * Reason:
+ *   deserialization mirrors qexec_compare_valptr_with_tuple so both hash paths produce the same value for equal tuples.
  */
 static int
 qexec_connect_by_hash_from_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD * tplrec,

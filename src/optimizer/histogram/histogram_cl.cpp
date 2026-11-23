@@ -2942,8 +2942,8 @@ bind_fp_mix (std::uint64_t h, std::uint64_t v)
 
 /* mix every byte of a value's packed image into h; false when the value cannot be packed.
  *
- * mht_valhash () is not used: it is made for hash table buckets (32 bits, where a collision costs only a comparison),
- * and two distinct values hashed alike would reuse the first value's estimate or plan from then on. */
+ * mht_valhash () is not used: its 32 bits suit hash table buckets, where a collision costs one comparison, while two
+ * distinct values hashed alike here would reuse the first value's estimate or plan from then on. */
 static bool
 bind_value_image_mix (std::uint64_t *h, DB_VALUE *v)
 {

@@ -365,7 +365,7 @@ tp_value_convert_number (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN 
 	}
       else
 	{
-	  /* a FLOAT is read by strtof (): a float rounded from the double strtod () reads would round twice */
+	  /* a FLOAT is read by strtof (): rounding the double that strtod () reads to a float would round twice */
 	  std::conditional_t<DST == DB_TYPE_FLOAT, float, double> number = 0.0;
 	  if (tp_string_to_real (src, &number, &data_stat) != NO_ERROR || data_stat == DATA_STATUS_NOT_CONSUMED)
 	    {

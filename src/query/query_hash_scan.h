@@ -183,8 +183,9 @@ extern void fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid);
  *   value(in): the key value
  *   ht_size(in): hash table size (in buckets)
  *
- * Note: folding a key's values in key order from 0, then qdata_hash_scan_key_finish (), gives qdata_hash_scan_key ()'s
- *       hash, for a caller that has the values one at a time.
+ * Behavior:
+ *   folding a key's values in key order from 0, then qdata_hash_scan_key_finish (), gives qdata_hash_scan_key ()'s
+ *   hash, for a caller that has the values one at a time.
  */
 STATIC_INLINE unsigned int
 qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)

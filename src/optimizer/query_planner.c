@@ -11955,11 +11955,11 @@ exit:
 
 /*
  * qo_check_collection_type () - find a node of a collection type (SET, MULTISET, SEQUENCE)
- *   return:
- *   parser(in):
- *   tree(in):
+ *   return: tree, the visited node unchanged
+ *   parser(in): the parser context
+ *   tree(in): the node the walk visits
  *   arg(in/out): bool *, set when such a node is found
- *   continue_walk(in/out):
+ *   continue_walk(in/out): PT_STOP_WALK once such a node is found
  */
 static PT_NODE *
 qo_check_collection_type (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -11977,11 +11977,12 @@ qo_check_collection_type (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
  * qo_can_hash_terms () - CBRD-28060: whether a hash join can be made of a join's terms: there is a term, and the
  *   operands of every term hash alike whenever the term's comparison finds them equal
  *   return: false for no term, or a term not known to hash alike
- *   env(in):
+ *   env(in): the optimizer environment
  *   terms(in): the mergeable terms of a join
  *
- * The operands hash alike as they are or in the common domain both convert to (domain_hashable_resolve ()). A join
- * with a term not known to hash alike gets no hash join plan.
+ * Behavior:
+ *   The operands hash alike as they are or in the common domain both convert to (domain_hashable_resolve ()). A join
+ *   with a term not known to hash alike gets no hash join plan.
  */
 static bool
 qo_can_hash_terms (QO_ENV * env, BITSET * terms)

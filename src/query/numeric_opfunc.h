@@ -428,8 +428,9 @@ numeric_repr_write_disk (unsigned char *digits, const unsigned char *buf, int di
  *   return: the value mod 2^61 - 1
  *   value(in): a value below 2^122, such as the product of two residues
  *
- * Note: each fold adds the bits from bit 61 up to the 61 bits below them, 2^61 being 1 mod the prime. Two folds bring
- *       the value to at most the prime, and one subtraction below it.
+ * Method:
+ *   each fold adds value >> 61 to the low 61 bits of value, as 2^61 is 1 mod the prime. Two folds bring a value below
+ *   2^122 to at most the prime, and one subtraction below the prime.
  */
 STATIC_INLINE constexpr uint64_t
 numeric_hash_mod (uint128_t value)
@@ -457,7 +458,8 @@ numeric_hash_mul (uint64_t residue1, uint64_t residue2)
  *   return: the value mod 2^61 - 1, its bits not mixed
  *   value(in): an integer
  *
- * Note: a SMALLINT, an INTEGER, a BIGINT and a NUMERIC of one value (e.g., 5 and 5.00) give one residue.
+ * Behavior:
+ *   a SMALLINT, an INTEGER, a BIGINT and a NUMERIC of one value (e.g., 5 and 5.00) give one residue.
  */
 STATIC_INLINE constexpr uint64_t
 numeric_hash_int64 (int64_t value)
@@ -478,6 +480,17 @@ static_assert (numeric_hash_int64 (INT64_MIN) == NUMERIC_HASH_PRIME - 4, "2^63 i
  *   return: the value mod 2^61 - 1, its bits not mixed
  *   value(in): a NUMERIC value, fixed or float
  *
+ * Behavior:
+ *   Equivalent numeric values (1.5 as 15 at scale 1, 1.50 as 150 at scale 2) give one residue, whatever their precision
+ *   and scale, with no zero stripped or appended. Unlike float_numeric_normalize_for_sort (), the hash keeps no order.
+ *
+ * Method:
+ *   The value is its magnitude x 10^-scale, and 10 has an inverse mod the prime.
+ *
+ * Reason:
+ *   db_get_numeric_precision_and_scale () cannot be called here, as dbtype.h includes this header before
+ *   dbtype_function.i defines it.
+ *
  * Steps:
  *   Step 1: read the scale as db_get_numeric_precision_and_scale () reads it: a float NUMERIC keeps it in the value, a
  *           fixed one in its domain.
@@ -485,14 +498,6 @@ static_assert (numeric_hash_int64 (INT64_MIN) == NUMERIC_HASH_PRIME - 4, "2^63 i
  *   Step 3: reduce the magnitude mod the prime 2^61 - 1, 2^128 being 64 and 2^64 being 8 mod it (numeric_hash_mod ()).
  *   Step 4: divide by 10^scale, multiplying by 10^-scale mod the prime (numeric_hash_inverse_pow10).
  *   Step 5: negate a negative value: -x is the prime less x, so 1.5 and -1.5 hash apart and a zero keeps one hash.
- *
- * Note:
- *   - db_get_numeric_precision_and_scale () cannot be called here, as dbtype.h includes this header before
- *     dbtype_function.i defines it.
- *   - The value is its magnitude x 10^-scale, and 10 has an inverse mod the prime. Equivalent numeric values (1.5 as 15
- *     at scale 1, 1.50 as 150 at scale 2) give one residue, whatever their precision and scale, with no zero stripped
- *     or appended.
- *   - Unlike float_numeric_normalize_for_sort (), the hash keeps no order.
  */
 STATIC_INLINE uint64_t
 numeric_db_value_hash (const DB_VALUE * value)

@@ -227,11 +227,11 @@ qdata_hash_scan_method (const QFILE_LIST_ID * list_id, const UINT64 mem_limit)
   slot_array_size = (UINT64) mht_hls_slot_count ((int) tuple_cnt) * sizeof (MHT_HLS_SLOT);
   entries_size = (UINT64) tuple_cnt *sizeof (MHT_HLS_ENTRY);
 
-  /* IN_MEM: slot array + one entry (header) per row + the list's pages, which hold the tuples */
+  /* IN_MEM: slot array + one entry (header) per tuple + the list's pages, which hold the tuples */
   payload_size = (UINT64) list_id->page_cnt * DB_PAGESIZE;
   in_mem_size = slot_array_size + entries_size + payload_size;
 
-  /* HYBRID: slot array + one entry (header) per row + a tuple position per row; tuples stay on the temp file */
+  /* HYBRID: slot array + one entry (header) per tuple + a tuple position per tuple; tuples stay on the temp file */
   payload_size = (UINT64) tuple_cnt *sizeof (QFILE_TUPLE_SIMPLE_POS);
   hybrid_size = slot_array_size + entries_size + payload_size;
 

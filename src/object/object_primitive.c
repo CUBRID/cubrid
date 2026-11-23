@@ -15282,12 +15282,15 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 }
 
 /*
- * mr_cmpval_json_number () - compare a JSON integer and a DOUBLE or a string that converts to one by their values
+ * mr_cmpval_json_number - compare by value a JSON integer and a DOUBLE or a string that converts to a DOUBLE
  *   return: the comparison; DB_UNK to leave any other pair to the scalars' own comparison, which is exact for two
- *     integers (INTEGER, BIGINT) and for two DOUBLEs
+ *	     integers (INTEGER, BIGINT) and for two DOUBLEs
+ *   value1(in): the first value mr_cmpval_json () compares: a scalar's SQL value, or an array's or object's body text
+ *   value2(in): the second value, of the same kind
  *
- * The comparison through DOUBLE rounds an integer above 2^53 (2^62 + 1 = 2^62.0), which mht_hash_json () cannot
- * follow: it hashes an integer by its value.
+ * Reason:
+ *   The comparison through DOUBLE rounds an integer above 2^53 (2^62 + 1 = 2^62.0), which mht_hash_json () cannot
+ *   follow: it hashes an integer by its value.
  */
 static DB_VALUE_COMPARE_RESULT
 mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
@@ -15466,8 +15469,8 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	}
     }
 
-  /* of the scalar pairs a coercion converts, only an integer against a DOUBLE or a number string compares through a
-   * DOUBLE that rounds the integer.
+  /* of the scalar pairs a coercion converts, only an integer against a DOUBLE or a string that converts to one compares
+   * through a DOUBLE, which rounds an integer above 2^53.
    *
    * mr_cmpval_json_number () compares that pair by value and leaves the rest (DB_UNK) to the comparison below, which
    * compares them as mht_hash_json () hashes them */

@@ -472,6 +472,9 @@ namespace memoize
   {
     size_t sz = k1->m_values.size();
     assert (sz == k2->m_values.size());
+
+    /* CBRD-28060: values a comparison finds equal can give different results ('A' and 'a', 1.0 and 1.00), so a
+     * cached result serves only identical values (domain_key_values_identical ()) */
     for (size_t i = 0; i < sz; i++)
       {
 	if (!domain_key_values_identical (&k1->m_values[i], &k2->m_values[i]))

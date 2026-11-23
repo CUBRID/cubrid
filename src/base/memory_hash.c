@@ -572,18 +572,20 @@ mht_ptrhash (const void *key, const unsigned int ht_size)
 }
 
 /*
- * mht_mixhash () - mix the bits of a 32-bit hash by MurmurHash3's fmix32
+ * mht_mixhash - mix the bits of a 32-bit hash by MurmurHash3's fmix32
  *   return: hash value
  *   hash(in): the hash
  *
- * mht_valhash () mixes every value's hash with it once, a 64-bit value after mht_mixhash64_to_32 () cuts it to 32 bits.
+ * Behavior:
+ *   mht_valhash () mixes every value's hash with it once, a 64-bit value after mht_mixhash64_to_32 () cuts it to 32
+ *   bits.
  *
- * A table that indexes by the low bits (hash & mask, as mht_get_hls () does) meets the patterns a value's hash can keep
- * there:
- *   - a DATE is its own hash
- *   - an FNV-1a multiply carries only into the high bits
- *
- * The mix makes the low bits depend on all the bits.
+ * Reason:
+ *   - A table that indexes by the low bits (hash & mask, as mht_get_hls () does) sees only them, and a value's hash can
+ *     keep patterns there:
+ *       + a DATE is its own hash
+ *       + the low bits of FNV-1a depend only on the low bits of its inputs: a multiply carries only into the high bits
+ *   - The mix makes the low bits depend on all the bits.
  */
 STATIC_INLINE unsigned int
 mht_mixhash (unsigned int hash)
@@ -598,12 +600,13 @@ mht_mixhash (unsigned int hash)
 }
 
 /*
- * mht_mixhash64_to_32 () - mix the bits of a 64-bit value by MurmurHash3's fmix64 and take the high 32 bits
+ * mht_mixhash64_to_32 - mix the bits of a 64-bit value by MurmurHash3's fmix64 and take the high 32 bits
  *   return: hash value
  *   hash(in): the value
  *
- * The value is mixed before the cut to 32 bits: high ^ low would hash alike every value whose halves XOR to the same
- * word, such as (a << 32) | a.
+ * Reason:
+ *   The value is mixed before the cut to 32 bits: high ^ low would hash alike every value whose halves XOR to the same
+ *   word, such as (a << 32) | a.
  */
 STATIC_INLINE unsigned int
 mht_mixhash64_to_32 (UINT64 hash)
@@ -618,12 +621,13 @@ mht_mixhash64_to_32 (UINT64 hash)
 }
 
 /*
- * mht_hash_double () - hash a FLOAT, DOUBLE or MONETARY value by the bits of the DOUBLE it equals
+ * mht_hash_double - hash a FLOAT, DOUBLE or MONETARY value by the bits of the DOUBLE it equals
  *   return: hash value
  *   d(in): the value; a FLOAT is widened to DOUBLE, a MONETARY gives its amount
  *
- * -0.0 equals 0.0 but has another sign bit: adding 0.0 turns -0.0 into 0.0 before the bits are read. A NaN equals every
- * other NaN, whatever its sign and bits (MR_CMP_FLOATING ()): every NaN hashes as NAN.
+ * Behavior:
+ *   -0.0 equals 0.0 but has a different sign bit: adding 0.0 turns -0.0 into 0.0 before the bits are read. A NaN equals
+ *   every other NaN, whatever its sign and bits (MR_CMP_FLOATING ()): every NaN hashes as NAN.
  */
 STATIC_INLINE unsigned int
 mht_hash_double (double d)
@@ -636,18 +640,19 @@ mht_hash_double (double d)
 }
 
 /*
- * mht_hash_json () - hash a JSON value as mr_cmpval_json () compares it
+ * mht_hash_json - hash a JSON value as mr_cmpval_json () compares it
  *   return: hash value
  *   val(in): a non-NULL JSON value
  *
- * mr_cmpval_json () compares:
- *   - an array or an object by its body text
- *   - a scalar as the SQL value it converts to (db_convert_json_into_scalar ()): a boolean as the string 'true' or
- *     'false', and a string against a number as the DOUBLE tp_value_coerce () makes of it ('1e0' = 1, '0x10' = 16)
- *   - an integer against a DOUBLE or such a string by their values (mr_cmpval_json_number ())
- *
- * So an integer, a DOUBLE or a string that converts hashes as the number it equals, an integral one as the BIGINT; any
- * other string hashes as the string.
+ * Behavior:
+ *   - mr_cmpval_json () compares:
+ *       + an array or an object by its body text
+ *       + a scalar as the SQL value it converts to (db_convert_json_into_scalar ()): a boolean as the string 'true' or
+ *         'false', and a string against a number as the DOUBLE tp_value_coerce () makes of it ('1e0' = 1, '0x10' = 16)
+ *       + an integer against a DOUBLE or such a string by their values (mr_cmpval_json_number ())
+ *   - An integer, a DOUBLE and a string that converts to a DOUBLE hash as the number they equal: an integral number in
+ *     the BIGINT range as the BIGINT, any other as the DOUBLE.
+ *   - A string that does not convert hashes as the string.
  */
 static unsigned int
 mht_hash_json (const DB_VALUE * val)
@@ -679,7 +684,7 @@ mht_hash_json (const DB_VALUE * val)
 	{
 	  DB_DATA_STATUS data_status;
 
-	  /* a number as mr_cmpval_json_number () reads a string against one */
+	  /* the string as a number, as mr_cmpval_json_number () reads it */
 	  if (tp_string_to_real (&scalar, &number, &data_status) == NO_ERROR && data_status == DATA_STATUS_OK)
 	    {
 	      is_number = true;
@@ -705,7 +710,7 @@ mht_hash_json (const DB_VALUE * val)
 	}
       else
 	{
-	  /* an integer by its value, any other string as the string */
+	  /* an integer by its value, a string that does not convert as the string */
 	  hash = mht_valhash (&scalar, UINT_MAX);
 	}
     }
@@ -715,12 +720,13 @@ mht_hash_json (const DB_VALUE * val)
 }
 
 /*
- * mht_hash_multiset () - hash a collection as a multiset: by the sum of its elements' hashes
+ * mht_hash_multiset - hash a collection as a multiset: by the sum of its elements' hashes
  *   return: hash value
  *   val(in): a non-NULL SET, MULTISET or SEQUENCE
  *
- * The sum ignores the order: two collections that compare equal hold equal elements, as many of each, in any order and
- * of any collection type (setobj_compare (), setobj_compare_order ()).
+ * Behavior:
+ *   The sum ignores the order: two collections that compare equal hold equal elements, as many of each, in any order
+ *   and of any collection type (setobj_compare (), setobj_compare_order ()).
  */
 STATIC_INLINE unsigned int
 mht_hash_multiset (const DB_VALUE * val)
@@ -744,12 +750,13 @@ mht_hash_multiset (const DB_VALUE * val)
 }
 
 /*
- * mht_hash_sequence () - hash a collection as a sequence: by every element in order
+ * mht_hash_sequence - hash a collection as a sequence: by every element in order
  *   return: hash value
  *   val(in): a non-NULL SEQUENCE
  *
- * The elements are folded in order (mht_foldhash ()), as the comparison takes two sequences element by element in
- * order: {a, b} and {b, a} hash apart.
+ * Behavior:
+ *   The elements are folded in order (mht_foldhash ()), as the comparison takes two sequences element by element in
+ *   order: {a, b} and {b, a} hash apart.
  */
 STATIC_INLINE unsigned int
 mht_hash_sequence (const DB_VALUE * val)
@@ -773,12 +780,13 @@ mht_hash_sequence (const DB_VALUE * val)
 }
 
 /*
- * mht_hash_element () - hash an element of a collection
+ * mht_hash_element - hash an element of a collection
  *   return: hash value
  *   val(in): the element
  *
- * A scalar hashes as a key (mht_valhash ()): a number by its value within its family. The planner refuses a pair of
- * collections whose elements of two families could meet (domain_hashable_collections ()).
+ * Behavior:
+ *   A scalar hashes as a key (mht_valhash ()): a number by its value within its family. The planner refuses a pair of
+ *   collections whose elements of two families could meet (domain_hashable_collections ()).
  */
 static unsigned int
 mht_hash_element (const DB_VALUE * val)
@@ -806,20 +814,20 @@ mht_hash_element (const DB_VALUE * val)
 }
 
 /*
- * mht_valhash () - hash a DB_VALUE key
+ * mht_valhash - hash a DB_VALUE key
  *   return: hash value mod ht_size; 0 for a NULL value
  *   key(in): the DB_VALUE
  *   ht_size(in): size of hash table; UINT_MAX for the whole hash
  *
- * Numbers a comparison finds equal hash alike within two families, the hash types NUMERIC and DOUBLE of
- * domain_hash_type ():
- *   - the exact ones (SMALLINT, INTEGER, BIGINT, NUMERIC), by the value mod 2^61 - 1
- *   - the floating ones (FLOAT, DOUBLE, MONETARY), by the bits of the DOUBLE the value equals
- *
- * Across the families the comparison converts to DOUBLE and loses digits (BIGINT 2^53 and 2^53 + 1 both equal DOUBLE
- * 2^53):
- *   - no hash of the exact value can follow the comparison
- *   - a caller hashes such a pair in its common domain (domain_resolve_hash_key ())
+ * Behavior:
+ *   - Numbers a comparison finds equal hash alike within two families, the hash types NUMERIC and DOUBLE of
+ *     domain_hash_type ():
+ *       + the exact ones (SMALLINT, INTEGER, BIGINT, NUMERIC), by the value mod 2^61 - 1
+ *       + the floating ones (FLOAT, DOUBLE, MONETARY), by the bits of the DOUBLE the value equals
+ *   - Across the families the comparison converts to DOUBLE and loses digits (BIGINT 2^53 and 2^53 + 1 both equal
+ *     DOUBLE 2^53):
+ *       + no hash of the exact value can follow the comparison
+ *       + a caller hashes such a pair in its common domain (domain_resolve_hash_key ())
  */
 unsigned int
 mht_valhash (const void *key, const unsigned int ht_size)
@@ -879,9 +887,10 @@ mht_valhash (const void *key, const unsigned int ht_size)
 		size = (int) strlen (str);
 	      }
 
-	    /* the collation's hash leaves out what its comparison ignores, trailing spaces among them. A bit string has
-	     * collation 0 (iso88591_bin): its hash also leaves out trailing NUL and space bytes the bit comparison
-	     * counts, which only adds collisions */
+	    /* the collation's hash leaves out what its comparison ignores, trailing spaces among them.
+	     *
+	     * A bit string has collation 0 (iso88591_bin): its hash also leaves out the trailing NUL and space bytes
+	     * that the bit comparison counts, which only adds collisions */
 	    hash = MHT2STR_COLL (db_get_string_collation (val), (unsigned char *) str, size);
 	  }
       }
@@ -1102,7 +1111,7 @@ mht_compare_dbvalues_are_equal (const void *key1, const void *key2)
  *   key1(in): pointer to a string DB_VALUE
  *   key2(in): pointer to a string DB_VALUE
  *
- * Note:
+ * Reason:
  *   - Callers rely on identity, not on equality by the comparison; do not compare by collation.
  *   - For keys of cached results (memoize, subquery cache, query result cache), strings equal only under their
  *     collation ('A' and 'a') can give different results, e.g. ASCII (key).
@@ -1139,7 +1148,7 @@ mht_compare_strings_are_identical (const void *key1, const void *key2)
  *   key1(in): pointer to a JSON DB_VALUE
  *   key2(in): pointer to a JSON DB_VALUE
  *
- * Note:
+ * Reason:
  *   - Callers rely on identity, not on equality by the comparison; do not compare by value.
  *   - For keys of cached results (memoize, subquery cache, query result cache), JSON values equal only as SQL values (1
  *     and 1.0, true and "true") can give different results, e.g. JSON_TYPE (key).

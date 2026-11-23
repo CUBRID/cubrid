@@ -2904,24 +2904,33 @@ hjoin_fetch_val_list (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASH
   return NO_ERROR;
 }
 
-/* Two join column values once converted, compared as the compiler decided (domain_decide_hash_join_key ()):
- *   - tp_value_compare without coercion
- *   - with coercion for two types of one hash type, hashed as they are, and for JSON and collection keys, whose
- *     contents the join term's comparison coerces
+/*
+ * hjoin_compare_key () - compare two join column values, once converted, as the compiler decided
+ *   (domain_decide_hash_join_key ())
+ *   return: the comparison result; the caller asks only for DB_EQ
+ *   compare(in): the comparison of the key column pair
+ *   value1(in): the build value
+ *   value2(in): the probe value
  *
- * No key compares by its values:
- *   - the compiler reads an OBJECT column as OID
- *   - the compiler decides no variable column (xts_pack_hash_join_keys ())
- *   - a NULL-typed column holds only NULLs, which hjoin_fetch_key () skips before the comparison
+ * Behavior:
+ *   - The comparison is tp_value_compare without coercion, or with coercion for keys of two types and for JSON and
+ *     collection keys, whose contents the join term's comparison coerces.
+ *   - No comparison that reaches here has the method DOMAIN_COMPARE_OBJECT or DOMAIN_COMPARE_VALUES:
+ *       + the compiler reads an OBJECT column as OID
+ *       + the compiler decides no variable column (xts_pack_hash_join_keys ())
+ *       + a pair of NULL-typed columns is decided as DOMAIN_COMPARE_VALUES, but holds only NULLs, which
+ *         hjoin_fetch_key () skips before the comparison
+ *   - The comparison is decided outer first (source[0] the outer type, source[1] the inner) and converts or coerces
+ *     each side by its own source type, so it takes the outer value first.
  *
- * The comparison is decided outer first (source[0] the outer type, source[1] the inner) and converts or coerces each
- * side by its own source type, so it takes the outer value first.
- *
- * value1 is the build value. Where the build input is the inner one (a left, anti or semi join, or an inner join whose
- * outer is not the smaller), the values are swapped:
- *   - only a pair of two types of one hash type, hashed as they are, has source[0] != source[1] and needs the swap
- *   - every other pair is read in one type (the same type, or both converted to a common domain) and keeps its order
- *   - only DB_EQ is asked for, so the sign of a swapped result does not matter */
+ * Method:
+ *   Where the build is the inner input (a left, anti or semi join, or an inner join whose outer is not the smaller),
+ *   value1 is the inner value:
+ *     - a pair of two types of one hash type, hashed as they are, has source[0] != source[1]: value1's type shows that
+ *       it is the inner value, and the values are swapped
+ *     - every other pair is read in one type (the same type, or both converted to a common domain) and keeps its order
+ *     - only DB_EQ is asked for, so the sign of a swapped result does not matter
+ */
 static inline DB_VALUE_COMPARE_RESULT
 hjoin_compare_key (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2)
 {
@@ -5178,29 +5187,33 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
 }
 
 /*
- * hjoin_prehash_value_ok () - the value, read back from its column of the list, hashes as it does now
+ * hjoin_prehash_value_ok () - whether the value and the value read back from its column of the list hash alike
  *   return: true when mht_valhash () gives the value and the one the build reads back from the list the same number;
  *	     false for every other value
  *   v(in): the value the list's column was written from, after the write
  *   dom(in): the column's domain in the list
  *
- * The list writes the value with its own type (qfile_tuple_put_value ()); the build reads the column back with the
- * column's domain (qfile_slot_read_column_value (), hjoin_fetch_key () without coercion). With the two types the same:
- *   - INTEGER, SMALLINT, BIGINT, DATE, TIME, TIMESTAMP, DATETIME: fixed-size bits written and read back as they are;
- *     the hash is of those bits.
- *   - CHAR, VARCHAR with the column's collation:
- *       - the bytes are written as the value holds them after the write (a CHAR is padded in the value itself first),
- *         compressed or not, and read back as those bytes with the column's collation
- *       - the hash is of those bytes, by the collation
- *   - NUMERIC:
- *       - the digits are written without their leading zero bytes
- *       - they are read back zero-filled into the same 17 bytes, with the precision and scale the write recorded, as a
- *         float numeric when the column is one and as a fixed one otherwise
- *       - the hash is of the value those bytes and that scale make (mr_data_writeval_numeric (),
- *         mr_data_readval_numeric (), db_make_numeric (), numeric_db_value_hash ())
- *       - read back as a fixed numeric, a value written with precision DB_DEFAULT_NUMERIC_PRECISION (40) has the
- *         precision of a float numeric, whose scale numeric_db_value_hash () reads from the header
- *       - the read leaves that header scale 0, so such a value gives false
+ * Reason:
+ *   - The list writes the value with its own type (qfile_tuple_put_value ()).
+ *   - The build reads the column back with the column's domain (qfile_slot_read_column_value (), hjoin_fetch_key ()
+ *     without coercion).
+ *   - With the two types the same:
+ *       + INTEGER, SMALLINT, BIGINT, DATE, TIME, TIMESTAMP, DATETIME:
+ *           . the fixed-size bits are written and read back as they are
+ *           . the hash is of those bits
+ *       + CHAR, VARCHAR with the column's collation:
+ *           . the bytes are written as the value holds them after the write (a CHAR is padded in the value itself
+ *             first), compressed or not, and read back as those bytes with the column's collation
+ *           . the hash is of those bytes, by the collation
+ *       + NUMERIC:
+ *           . the digits are written without their leading zero bytes
+ *           . they are read back zero-filled into the same 17 bytes, with the precision and scale the write recorded,
+ *             as a float numeric when the column is one and as a fixed one otherwise
+ *           . the hash is of the value those bytes and that scale make (mr_data_writeval_numeric (),
+ *             mr_data_readval_numeric (), db_make_numeric (), numeric_db_value_hash ())
+ *           . read back as a fixed numeric, a value written with precision DB_DEFAULT_NUMERIC_PRECISION (40) has the
+ *             precision of a float numeric, whose scale numeric_db_value_hash () reads from the header
+ *           . the read leaves that header scale 0, so such a value gives false
  */
 static bool
 hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
@@ -5247,11 +5260,11 @@ hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
  *   thread_p(in): the thread that wrote the tuple
  *   input(in): an armed input, its tuple descriptor still holding the values the tuple was written from
  *
- * The hash is qdata_hash_scan_key ()'s over the key values in key order:
- *   - qdata_hash_scan_key_fold () with the build's table size, UINT_MAX
- *   - its file-method step (qdata_hash_scan_key_finish ()) left to the build
- *
- * A tuple with a NULL key is marked, as hjoin_fetch_key () has the build skip it.
+ * Behavior:
+ *   - The hash is the one qdata_hash_scan_key () gives over the key values in key order:
+ *       + each value folded by qdata_hash_scan_key_fold () with the build's table size, UINT_MAX
+ *       + the file-method step (qdata_hash_scan_key_finish ()) left to the build
+ *   - A tuple with a NULL key is marked, as hjoin_fetch_key () has the build skip it.
  */
 void
 hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input)

@@ -7778,16 +7778,17 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
 /*
  * pt_decide_hash_list_keys () - CBRD-27583: each key pair of a hash list scan converted into the domain it hashes in
  *   (domain_hashable_resolve ()), on the key regus' fetch
+ *   return: none
  *   spec(in/out): a list scan spec
  *
- * The domain makes the values the scan's predicate finds equal hash alike, and none that it compares fails to hash.
- * The scan's hash goes off for:
- *   - a pair of no domain in which its values hash alike
- *   - a key whose domain the execution fixes
- *   - a key that converts already, into a domain other than the pair's common domain
- *
- * A pair of two hash types (domain_hash_type ()) hashes in the pair's common domain, the comparison's type: an exact
- * and a floating number, or a SET and a MULTISET. Type checking casts any other pair to one domain.
+ * Behavior:
+ *   - The domain makes the values the scan's predicate finds equal hash alike, and none that it compares fails to hash.
+ *   - The scan's hash goes off for:
+ *       + a pair of no domain in which its values hash alike
+ *       + a key whose domain the execution fixes
+ *       + a key that converts already, into a domain other than the pair's common domain
+ *   - A pair of two hash types (domain_hash_type ()) hashes in the pair's common domain, the comparison's type: an
+ *     exact and a floating number, or a SET and a MULTISET. Type checking casts any other pair to one domain.
  */
 static void
 pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
@@ -16410,15 +16411,16 @@ pt_list_element_domain (const TP_DOMAIN * set)
  * pt_comparison_keeps_key () - CBRD-27583: whether a term's value, or a list's element, compares with a partition key
  *   as a value of the key's type
  *   return: true when the comparison the type rule module decides for the two domains converts:
- *	       - the key not at all, or into a type that keeps any two keys apart
- *	       - the element not at all, or into the key's type
- *	     false also for a domain that leaves its values' type or collation to the execution
- *	     (domain_decide_comparison ())
+ *	     - the key not at all, or into a type that keeps any two keys apart
+ *	     - the element not at all, or into the key's type
+ *	     false also for a domain that leaves its values' type or collation to the data (domain_decide_comparison ())
+ *   key(in): the partition key's domain
+ *   element(in): the domain of the term's value or of the list's elements
  *
- * Pruning converts the value into the key's domain. Where the comparison converts the key and loses digits, the
- * converted element would leave out a partition whose key the comparison finds equal.
- *
- * For example, a BIGINT key against a DOUBLE element compares in DOUBLE, and two keys can equal one element.
+ * Reason:
+ *   - Pruning converts the element into the key's domain. Where the comparison converts the key and loses digits, the
+ *     converted element would leave out a partition whose key the comparison finds equal.
+ *   - For example, a BIGINT key against a DOUBLE element compares in DOUBLE, and two keys can equal one element.
  */
 static bool
 pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
@@ -16469,13 +16471,16 @@ pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
 }
 
 /*
- * pt_set_prune_domains () - CBRD-27583: the domain into which a partitioned class's pruning converts a term's value,
- *   the other side's, to hash it or to evaluate a partition expression on it
+ * pt_set_prune_domains () - CBRD-27583: on each term of the predicate that prunes, set the domain into which a
+ *   partitioned class's pruning converts the term's value to hash it or to evaluate a partition expression on it
+ *   return: none
+ *   pred(in/out): a predicate of a partitioned class's scan
  *
- * The domain is decided here, not at the scan (partition_prune_hash (), partition_prune_for_function ()). A term prunes
- * only when:
- *   - its value, or each element of an IN list, compares with the key in the key's type (pt_comparison_keeps_key ())
- *   - for an IN list, the list's elements have one domain, their NULLs aside (pt_list_element_domain ())
+ * Behavior:
+ *   The domain is the one of the term's other side, decided here, not at the scan (partition_prune_hash (),
+ *   partition_prune_for_function ()). A term prunes only when:
+ *     - its value, or each element of an IN list, compares with the key in the key's type (pt_comparison_keeps_key ())
+ *     - for an IN list, the list's elements have one domain, their NULLs aside (pt_list_element_domain ())
  */
 static void
 pt_set_prune_domains (PRED_EXPR * pred)

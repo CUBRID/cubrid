@@ -6747,8 +6747,8 @@ qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, vo
  *   list_ht_no(in)     :
  *   params(in) :
  *
- * Note: Look up the hash table to get the cached result with the parameter
- *       values as the key.
+ * Behavior:
+ *   Look up the hash table to get the cached result with the parameter values as the key.
  */
 QFILE_LIST_CACHE_ENTRY *
 qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params,
@@ -6906,10 +6906,11 @@ qfile_is_early_time (struct timeval *a, struct timeval *b)
  *   list_id(in)        :
  *   query_string(in)   :
  *
- * Note: Put the query result into the proper hash table with the key of
- *       the parameter values (DB_VALUE array) and the data of LIST ID.
- *       If there already exists the entry with the same key, update its data.
- *       As a side effect, the given 'list_hash_no' will be change if it was -1.
+ * Behavior:
+ *   - Put the query result into the proper hash table with the key of the parameter values (DB_VALUE array) and the
+ *     data of LIST ID.
+ *   - If there already exists the entry with the same key, update its data.
+ *   - As a side effect, the given 'list_hash_no' will be change if it was -1.
  */
 QFILE_LIST_CACHE_ENTRY *
 qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB_VALUE_ARRAY * params,

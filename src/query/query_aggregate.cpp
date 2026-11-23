@@ -3503,9 +3503,11 @@ qdata_key_sketch_estimate (const unsigned char *regs)
  *   key(in): key
  *   ht_size(in): hash table size (in buckets)
  *
- * Keys the comparison finds equal hash alike (mht_valhash ()). The hash merge of the GROUP BY leftovers
- * (qexec_gby_hash_merge ()) meets two groups only when their hashes are equal, and leaves to the sort the keys for
- * which this does not hold (qexec_gby_keys_hash_as_compared ()).
+ * Behavior:
+ *   - Keys the comparison finds equal hash alike (mht_valhash ()), but for the keys qexec_gby_keys_hash_as_compared ()
+ *     rejects.
+ *   - The hash merge of the GROUP BY leftovers (qexec_gby_hash_merge ()) meets two groups only when their hashes are
+ *     equal, so it leaves those keys to the sort.
  */
 unsigned int
 qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
@@ -3571,7 +3573,8 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
   for (i = 0; i < ckey1->val_count; i++)
     {
       /* a key from the scan and one read back from a partial list are values of the key's one domain (the scan's key
-       * regu's, which types the partial list's column): they hash alike when they compare equal */
+       * regu's, which types the partial list's column): they hash alike when they compare equal, but for the keys
+       * qexec_gby_keys_hash_as_compared () rejects (qdata_hash_agg_hkey ()) */
       assert (ckey1->compares != NULL);
       result = domain_compare_in_domain (ckey1->compares[i], ckey1->values[i], ckey2->values[i], 0, 1);
       if (result != DB_EQ)

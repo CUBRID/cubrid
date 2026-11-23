@@ -477,13 +477,13 @@ extern void hjoin_prehash_release (THREAD_ENTRY * thread_p, HJOIN_PREHASH * preh
  *   part_cnt(in): the number of partitions
  *   has_null_fill_side(in): the join NULL-fills a side; the last partition then holds the tuples with a NULL key
  *
- * Note:
+ * Reason:
  *   - The hash table of a partition takes the slot of a tuple from the low bits of the same hash key (hash & (size - 1)
  *     in mht_put_hls ()), and probes linearly from there.
- *   - hash_key % part_cnt would fix those bits within a partition when part_cnt is even: with 2^k dividing part_cnt,
- *     the tuples of a partition start probing from only 1 / 2^k of the slots.
+ *   - hash_key % part_cnt would fix the low k bits within a partition when 2^k divides part_cnt: the tuples of a
+ *     partition would start probing from only 1 / 2^k of the slots.
  *   - The partition comes from the high bits of the hash key instead, which leave the low bits free. mht_valhash ()
- *     mixes the hash of every key value, so the high bits spread as the low ones do.
+ *     ends the hash of every key value with a mix (mht_mixhash ()), so the high bits spread as the low ones do.
  */
 STATIC_INLINE UINT32
 hjoin_get_partition_id (UINT32 hash_key, UINT32 part_cnt, bool has_null_fill_side)

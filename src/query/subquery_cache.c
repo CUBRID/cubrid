@@ -61,8 +61,9 @@ static int sq_rem_func (const void *key, void *data, void *args);
  *   return: Pointer to a newly allocated SQ_KEY structure, or NULL if no constant predicate is present.
  *   xasl(in): The XASL node of the scalar subquery.
  *
- * This function generates a key for caching the results of a scalar subquery. It checks the provided XASL node
- * for predicates (where_key, where_pred, where_range) and creates a DB_VALUE array to represent the key.
+ * Behavior:
+ *   This function generates a key for caching the results of a scalar subquery. It checks the provided XASL node for
+ *   predicates (where_key, where_pred, where_range) and creates a DB_VALUE array to represent the key.
  */
 SQ_KEY *
 sq_make_key (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
@@ -221,8 +222,9 @@ sq_unpack_val (SQ_VAL * v, REGU_VARIABLE * retp)
  *   key(in): The key to be hashed.
  *   ht_size(in): The size of the hash table.
  *   
- * Generates a hash value for the given key by hashing the elements of the DB_VALUE array within the SQ_KEY structure.
- * The hash value is then modulated by the size of the hash table to ensure it falls within valid bounds.
+ * Method:
+ *   Generates a hash value for the given key by hashing the elements of the DB_VALUE array within the SQ_KEY structure.
+ *   The hash value is then modulated by the size of the hash table to ensure it falls within valid bounds.
  */
 unsigned int
 sq_hash_func (const void *key, unsigned int ht_size)
@@ -244,8 +246,9 @@ sq_hash_func (const void *key, unsigned int ht_size)
  *   key1(in): The first key to compare.
  *   key2(in): The second key to compare.
  *
- * Compares two SQ_KEY structures to determine if they are equal. The comparison is based on the elements
- * of the DB_VALUE array within each key. The function returns 1 if the keys are considered equal, otherwise 0.
+ * Behavior:
+ *   Compares two SQ_KEY structures to determine if they are equal. The comparison is based on the elements of the
+ *   DB_VALUE array within each key. The function returns 1 if the keys are considered equal, otherwise 0.
  */
 int
 sq_cmp_func (const void *key1, const void *key2)
@@ -258,6 +261,8 @@ sq_cmp_func (const void *key1, const void *key2)
   sz2 = k2->n_elements;
   assert (sz1 == sz2);
 
+  /* CBRD-28060: values a comparison finds equal can give different results ('A' and 'a', 1.0 and 1.00), so a cached
+   * result serves only identical values (domain_key_values_identical ()) */
   for (i = 0; i < sz1; i++)
     {
       if (!domain_key_values_identical (k1->dbv_array[i], k2->dbv_array[i]))
