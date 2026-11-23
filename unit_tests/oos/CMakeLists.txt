@@ -53,6 +53,7 @@ set(SA_MODE_TESTS
   test_oos_reference_errors
   test_byte_span_writer
   test_oos_tde_gate
+  test_oos_boundaries
   test_oos_workspace
 )
 
@@ -285,6 +286,8 @@ set_tests_properties(test_oos_concurrent_insert_driver PROPERTIES TIMEOUT 30)
 # Register SA_MODE tests
 # =============================================================================
 add_test(NAME test_oos COMMAND test_oos)
+add_test(NAME test_oos_boundaries COMMAND test_oos_boundaries)
+set_tests_properties(test_oos_boundaries PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 60)
 add_test(NAME test_oos_delete COMMAND test_oos_delete)
 # the OOS reclaimer and reclaim intents (ADR-0008, CBRD-27781): redo-only, tail first, link stamps, fail-stop.
 add_test(NAME test_oos_reclaim COMMAND test_oos_reclaim)
