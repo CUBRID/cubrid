@@ -170,6 +170,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/fixed_size_allocator.hpp
+  ${BASE_DIR}/byte_span_writer.hpp
   ${BASE_DIR}/ifsys.hpp
   ${BASE_DIR}/filesys_parser.hpp
   ${BASE_DIR}/cgroup.hpp
@@ -318,6 +319,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c
+  ${QUERY_DIR}/vacuum_oos.cpp
   ${QUERY_DIR}/xasl_cache.c
   ${QUERY_DIR}/xasl_to_stream.c
   )
@@ -494,6 +496,7 @@ set(TRANSACTION_SOURCES
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
   ${TRANSACTION_DIR}/flashback.h
+  ${TRANSACTION_DIR}/lock_deferred_wake.hpp
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
   ${TRANSACTION_DIR}/log_archives.hpp
@@ -542,7 +545,12 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/file_manager.c
   ${STORAGE_DIR}/ftab_set.cpp
   ${STORAGE_DIR}/heap_file.c
+  ${STORAGE_DIR}/heap_oos.cpp
+  ${STORAGE_DIR}/heap_oos_value_ref.cpp
+  ${STORAGE_DIR}/heap_pending_record.cpp
   ${STORAGE_DIR}/oid.c
+  ${STORAGE_DIR}/oos_file.cpp
+  ${STORAGE_DIR}/oos_util.cpp
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
   ${STORAGE_DIR}/record_descriptor.cpp
