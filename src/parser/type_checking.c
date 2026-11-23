@@ -7411,6 +7411,19 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return NULL;
 	}
 
+      /* rewrite WHERE as false: the query may be false by another clause (HAVING, a folded derived table or CTE in
+       * its FROM), and the WHERE it had refers to the FROM list removed above */
+      parser_free_tree (parser, subq->where);
+      subq->where = parser_new_node (parser, PT_VALUE);
+      if (subq->where == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return NULL;
+	}
+      subq->where->type_enum = PT_TYPE_LOGICAL;
+      subq->where->info.value.data_value.i = 0;
+      (void) pt_value_to_db (parser, subq->where);
+
       /* clear unnecessary node info */
       if (node->info.query.order_by && !node->info.query.q.select.connect_by)
 	{
@@ -7465,6 +7478,12 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       subq->hint = PT_HINT_NONE;
+
+      /* neither an aggregate or analytic function nor GROUP BY is left. A query still taken as an aggregate one
+       * (pt_has_aggregate ()) would return a row for its empty input, and one taken as an analytic one
+       * (pt_has_analytic ()) finds no function to evaluate and fails */
+      PT_SELECT_INFO_CLEAR_FLAG (node, PT_SELECT_INFO_HAS_AGG);
+      PT_SELECT_INFO_CLEAR_FLAG (node, PT_SELECT_INFO_HAS_ANALYTIC);
     }
   else
     {
