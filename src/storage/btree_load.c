@@ -34,6 +34,7 @@
 #include "btree.h"
 
 #include "btree_sort.h"
+#include "fault_injection.h"
 #include "heap_file.h"
 #include "file_io.h"
 #include "file_manager.h"
@@ -1330,6 +1331,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   OID *notification_class_oid;
   bool is_sysop_started = false;
   bool built_nonempty_tree = false;
+  bool is_no_logging_build_registered = false;	/* holds a logpb_no_logging_index_build_begin () slot */
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -1370,6 +1372,28 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   VPID_SET_NULL (&load_args->report_last_leaf_vpid);
   VPID_SET_NULL (&load_args->vpid_last_leaf);
 #if defined (SERVER_MODE)
+  /* A no-logging build and the page copy of an online backup never overlap: while a backup waits for the registered
+   * builds or copies pages, build with logging instead, and a backup that is about to copy waits only for the builds
+   * already registered (see logpb_backup ()). */
+  if (eligible_no_redo)
+    {
+      if (logpb_no_logging_index_build_begin ())
+	{
+	  is_no_logging_build_registered = true;
+
+	  {
+	    /* lets a test request an online backup while a registered build has not written its pages */
+	    int hold_seconds = 20;
+	    (void) FI_TEST_ARG (thread_p, FI_TEST_BTREE_LOAD_NO_LOGGING_HOLD, &hold_seconds, FI_INIT_STATE);
+	  }
+	}
+      else
+	{
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BT_LOAD_NO_LOGGING_DURING_BACKUP, 1, bt_name);
+	  er_clear ();
+	  eligible_no_redo = false;
+	}
+    }
   /* The no-logging build writes no content redo at all; a logged build lets the shard workers put the leaves and
    * mails their content redo to the leader, unless index_build_parallel_leaf is off. */
   if (eligible_no_redo)
@@ -1764,6 +1788,12 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
       log_append_postpone (thread_p, RVBT_NO_LOGGING_INDEX_DURABLE, &addr, 0, NULL);
     }
+  if (is_no_logging_build_registered)
+    {
+      /* the pages written without logging are on disk and the barrier above covers them: a backup may copy them */
+      logpb_no_logging_index_build_end ();
+      is_no_logging_build_registered = false;
+    }
 
   bt_load_clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
 
@@ -1846,6 +1876,11 @@ error:
   if (is_sysop_started)
     {
       log_sysop_abort (thread_p);
+    }
+
+  if (is_no_logging_build_registered)
+    {
+      logpb_no_logging_index_build_end ();
     }
 
   return NULL;
