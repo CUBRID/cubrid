@@ -3357,6 +3357,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
   stx_build_list_proc->output_columns = (DB_VALUE **) 0;
   stx_build_list_proc->upddel_oid_locator_ehids = NULL;
   stx_build_list_proc->gby_skip_state = NULL;
+  stx_build_list_proc->upd_deferred_rows = NULL;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5774,7 +5775,7 @@ stx_build_element_compares (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM *
    * which compares nothing: the term is UNKNOWN, or an empty subquery decides it (CBRD-27574) */
 #if !defined (NDEBUG)
   const TP_DOMAIN *column = term->elemset == NULL ? NULL : term->elemset->type == TYPE_LIST_ID
-    ? domain_list_column_compared (term->elemset->xasl, 0) : term->elemset->domain;
+    ? domain_list_column_of (term->elemset->xasl, 0) : term->elemset->domain;
 #endif
   assert (term->elem == NULL || term->elemset == NULL || kind != 0
 	  || (term->elem->domain != NULL && TP_DOMAIN_TYPE (term->elem->domain) == DB_TYPE_NULL)
