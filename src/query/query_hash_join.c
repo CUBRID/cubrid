@@ -1010,7 +1010,7 @@ hjoin_init_merge_type_list (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 static int
 hjoin_change_to_merge_type_list (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
-  QFILE_TUPLE_VALUE_TYPE_LIST merge_type_list = { NULL, 0 };
+  QFILE_TUPLE_VALUE_TYPE_LIST merge_type_list = { };
   HASHJOIN_CONTEXT *single_context;
   UINT32 context_index;
 
@@ -4678,7 +4678,7 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
   QFILE_LIST_ID *list = first->list_id;
   HJOIN_RUNTIME_FILTER *rtf;
   QFILE_LIST_SCAN_ID sid;
-  QFILE_TUPLE_RECORD tr = { NULL, 0 };
+  QFILE_TUPLE_RECORD tr = QFILE_TUPLE_RECORD_INITIALIZER;
   TP_DOMAIN *dom;
   DB_VALUE *cell;
   DB_VALUE v;
