@@ -4898,7 +4898,47 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	}
     }
 
-<<<<<<< HEAD
+  ptr = or_unpack_int (ptr, &insert_info->remote_num_odku);
+  ptr = or_unpack_int (ptr, &insert_info->remote_odku_val_start);
+  ptr = or_unpack_int (ptr, &insert_info->remote_num_odku_bound);
+  if (insert_info->remote_num_odku == 0)
+    {
+      insert_info->remote_odku_cols = NULL;
+      insert_info->remote_odku_exprs = NULL;
+    }
+  else
+    {
+      insert_info->remote_odku_cols =
+	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_odku);
+      insert_info->remote_odku_exprs =
+	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_odku);
+      if (insert_info->remote_odku_cols == NULL || insert_info->remote_odku_exprs == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      for (i = 0; i < insert_info->remote_num_odku; i++)
+	{
+	  insert_info->remote_odku_cols[i] = stx_restore_string (thread_p, ptr);
+	  insert_info->remote_odku_exprs[i] = stx_restore_string (thread_p, ptr);
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  insert_info->att_domains = NULL;
+  if (offset != 0 && insert_info->num_vals > 0)
+    {
+      insert_info->att_domains =
+	stx_restore_domain_array (thread_p, &xasl_unpack_info->packed_xasl[offset], insert_info->num_vals);
+      if (insert_info->att_domains == NULL)
+	{
+	  return NULL;
+	}
+    }
+  /* planned with the node's value list (stx_plan_insert_assignments) */
+  insert_info->value_types = NULL;
+  insert_info->convs = NULL;
+
   ptr = or_unpack_int (ptr, &insert_info->num_default_slots);
   if (insert_info->num_default_slots == 0)
     {
@@ -4944,61 +4984,6 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	}
     }
 
-=======
-  ptr = or_unpack_int (ptr, &insert_info->remote_num_odku);
-  ptr = or_unpack_int (ptr, &insert_info->remote_odku_val_start);
-  ptr = or_unpack_int (ptr, &insert_info->remote_num_odku_bound);
-  if (insert_info->remote_num_odku == 0)
-    {
-      insert_info->remote_odku_cols = NULL;
-      insert_info->remote_odku_exprs = NULL;
-    }
-  else
-    {
-      insert_info->remote_odku_cols =
-	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_odku);
-      insert_info->remote_odku_exprs =
-	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_odku);
-      if (insert_info->remote_odku_cols == NULL || insert_info->remote_odku_exprs == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
-      for (i = 0; i < insert_info->remote_num_odku; i++)
-	{
-	  insert_info->remote_odku_cols[i] = stx_restore_string (thread_p, ptr);
-	  insert_info->remote_odku_exprs[i] = stx_restore_string (thread_p, ptr);
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  insert_info->att_domains = NULL;
-  if (offset != 0 && insert_info->num_vals > 0)
-    {
-      insert_info->att_domains =
-	stx_restore_domain_array (thread_p, &xasl_unpack_info->packed_xasl[offset], insert_info->num_vals);
-      if (insert_info->att_domains == NULL)
-	{
-	  return NULL;
-	}
-    }
-  ptr = or_unpack_int (ptr, &offset);
-  insert_info->default_types = NULL;
-  if (offset != 0 && insert_info->num_default_expr > 0)
-    {
-      insert_info->default_types =
-	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], insert_info->num_default_expr);
-      if (insert_info->default_types == NULL)
-	{
-	  return NULL;
-	}
-    }
-  /* planned with the node's value list (stx_plan_insert_assignments) */
-  insert_info->value_types = NULL;
-  insert_info->convs = NULL;
-  insert_info->default_convs = NULL;
-
->>>>>>> upstream/develop
   return ptr;
 
 error:
@@ -5103,9 +5088,8 @@ stx_plan_update_assignments (XASL_NODE * xasl, bool has_delete)
 
 /*
  * stx_plan_insert_assignments () - CBRD-27583: an INSERT's converters of each value into its attribute's
- *   domain: a default value comes in the attribute's domain, a row of values from its regus, a SELECT's (and a
- *   MERGE's) from the slots of the node's value list its scan fills; and each default's, from the type XASL
- *   generation decided it is made in, into its attribute's domain
+ *   domain: a default comes in the attribute's domain (a DEFAULT slot casts its value into it), a row of values
+ *   from its regus, a SELECT's (and a MERGE's) from the slots of the node's value list its scan fills
  *   return: NO_ERROR, or ER_FAILED out of memory
  */
 static int
@@ -5125,21 +5109,6 @@ stx_plan_insert_assignments (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       return ER_FAILED;
-    }
-  if (insert->default_types != NULL)
-    {
-      insert->default_convs =
-	(TP_VALUE_CONVERTER *) stx_alloc_struct (thread_p, sizeof (TP_VALUE_CONVERTER) * insert->num_default_expr);
-      if (insert->default_convs == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return ER_FAILED;
-	}
-      for (int k = 0; k < insert->num_default_expr; k++)
-	{
-	  insert->default_convs[k] =
-	    tp_value_find_converter ((DB_TYPE) insert->default_types[k], insert->att_domains[k], DOMAIN_CONVERT_ASSIGN);
-	}
     }
   for (int r = 0; r < rows; r++)
     {
@@ -8131,6 +8100,8 @@ stx_build_sp_type (THREAD_ENTRY * thread_p, char *ptr, SP_TYPE * sp)
 	  return NULL;
 	}
     }
+
+  ptr = or_unpack_int (ptr, &sp->num_default_args);
 
   return ptr;
 }

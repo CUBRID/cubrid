@@ -308,6 +308,7 @@ regu_init (cubxasl::sp_node &sp)
 {
   sp.args = NULL;
   sp.sig = NULL;
+  sp.num_default_args = 0;
 
   regu_alloc (sp.value);
 

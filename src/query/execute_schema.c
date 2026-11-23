@@ -237,8 +237,6 @@ static int drop_class_name (const char *name, bool is_cascade_constraints);
 static int check_procedure_grantable (MOP proc_mop);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
-static int do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAULT_EXPR * dest);
-static void do_free_default_expr_streams (DB_DEFAULT_EXPR * dest);
 static int do_check_kept_residual_default (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * attribute);
 static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
 static int lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name);
@@ -8169,17 +8167,18 @@ get_attr_name (PT_NODE * attribute)
 }
 
 /*
- * do_build_default_expr () - the Stored DEFAULT Forms of an attribute DEFAULT from its PT_DATA_DEFAULT node:
+ * do_build_default_expr () - the Stored DEFAULT Forms of a DEFAULT (of an attribute, or of a stored procedure
+ *	parameter) from its PT_DATA_DEFAULT node:
  *	the source text of an expression DEFAULT and, for a residual (STABLE or VOLATILE), the Compact DEFAULT
  *	Tree, which an INSERT compiles into its XASL or evaluates locally (and, in a DEFAULT_EXPR_REGU_STREAM
  *	build, the serialized REGU form the server evaluates)
  *   return: Error code
  *   parser(in): Parser context
- *   data_default(in): PT_DATA_DEFAULT node of the attribute (may be NULL)
+ *   data_default(in): PT_DATA_DEFAULT node (may be NULL)
  *   dest(out): DB_DEFAULT_EXPR receiving the text and the streams; the caller releases the streams with
  *		do_free_default_expr_streams
  */
-static int
+int
 do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAULT_EXPR * dest)
 {
   PT_NODE *residual_expr;
@@ -8238,7 +8237,7 @@ do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAU
  *   return: none
  *   dest(in/out): DB_DEFAULT_EXPR whose streams are released and nulled
  */
-static void
+void
 do_free_default_expr_streams (DB_DEFAULT_EXPR * dest)
 {
 #if defined (DEFAULT_EXPR_REGU_STREAM)

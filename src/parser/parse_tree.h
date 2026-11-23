@@ -43,7 +43,7 @@
 #include "system_parameter.h"
 #include "hide_password.h"
 #include "misctype_def.h"
-#include "volatility.h"
+#include "eval_prop_def.h"
 
 // forward definitions
 struct trace_json_t;
@@ -1464,6 +1464,8 @@ typedef enum
   PT_TABLE_OPTION_DONT_REUSE_OID
 } PT_TABLE_OPTION_TYPE;
 
+/* The codes are stored in the catalog, in the tree of a DEFAULT expression. Keep the order: add a new code right
+ * before PT_LAST_OPCODE, and do not remove or move an existing one. */
 typedef enum
 {
   PT_AND = 400, PT_OR, PT_NOT,
@@ -2417,6 +2419,10 @@ struct pt_expr_info
   PT_NODE *arg2;		/* PT_EXPR etc.  possible second argument */
   PT_NODE *value;		/* only set if we evaluate it */
   PT_OP_TYPE op;		/* binary or unary op code */
+  PT_VOLATILITY expr_volatility;	/* volatility of the overload matched for the node's argument types, stamped
+					 * by type checking or restored from a Compact DEFAULT Tree; the node's own
+					 * value, not its operands' (pt_get_expr_tree_volatility combines them) */
+  int expr_si_requirement;	/* SI requirement of that overload (bitmask of PT_SI_REQUIREMENT bits) */
   int paren_type;		/* 0 - none, else - () */
   PT_NODE *arg3;		/* possible third argument (like, between, or case) */
   PT_NODE *cast_type;		/* PT_DATA_TYPE, resultant cast domain */
@@ -2504,6 +2510,9 @@ struct pt_function_info
 {
   PT_NODE *arg_list;		/* PT_EXPR(list) */
   FUNC_CODE function_type;	/* PT_COUNT, PT_AVG, ... */
+  PT_VOLATILITY expr_volatility;	/* volatility of the signature matched for the node's argument types (see
+					 * PT_EXPR_INFO.expr_volatility) */
+  int expr_si_requirement;	/* SI requirement of that signature (bitmask of PT_SI_REQUIREMENT bits) */
   PT_MISC_TYPE all_or_distinct;	/* will be PT_ALL or PT_DISTINCT */
   const char *generic_name;	/* only for type PT_GENERIC */
   char hidden_column;		/* used for updates and deletes for the class OID column */
@@ -3946,18 +3955,16 @@ struct parser_node
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
-<<<<<<< HEAD
     unsigned is_restored_default:1;	/* root of a DEFAULT tree copy grafted into a statement: type checking
 					 * keeps the types it was restored with */
+    unsigned is_sp_default_arg:1;	/* an argument a stored procedure call left out, from its parameter's DEFAULT */
     unsigned is_own_default:1;	/* an INSERT value that is the DEFAULT of its own column (the DEFAULT keyword, or
 				 * DEFAULT (c) in the place of c): all of them share the DEFAULT slot of the column */
-=======
     unsigned is_dblink_odku_value:1;	/* a remote INSERT ... SELECT ODKU value bound from the source row, and its copy
 					 * at the end of the source select list */
     unsigned bind_watch_candidate:1;	/* the plan carries BIND_WATCH_CANDIDATE: this statement passed
 					 * target selection for bind-value plan variants, so its
 					 * executions choose among the query's plans by fingerprint */
->>>>>>> upstream/develop
     unsigned hv_pred_plan_unpeeked:1;	/* the plan this statement is about to execute was chosen with unbound
 					 * host-variable predicate markers (HV_PRED_PLAN_UNPEEKED in the XASL
 					 * header), so the first execution must replan under the real values.
@@ -4236,10 +4243,8 @@ struct parser_context
     unsigned is_generating_merge_xasl:1;	/* set while pt_to_merge_xasl () runs: the queries it plans, the USING source
 						 * included, execute under a system operation, so serially */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
-<<<<<<< HEAD
     unsigned print_client_values:1;	/* the XASL cache key being printed must carry the client values the
 					 * statement compiles (pt_op_reads_client_value) */
-=======
     unsigned print_host_var_source:1;	/* CBRD-27583: a plan dump or trace print: a derived host variable
 					 * position prints as the user position it is derived from */
     unsigned host_var_derive_later:1;	/* CBRD-27583: this later translation runs at every execution, cache hit or
@@ -4253,7 +4258,6 @@ struct parser_context
 					 * the values' format classes and ELT indexes */
     unsigned needs_bound_hostvar:1;	/* set to 1 when the compile failed because a host variable has no value yet
 					 * (UPDATE OBJECT ?, m () ON ?, TABLE (?)); see db_statement_needs_bound_values () */
->>>>>>> upstream/develop
   } flag;
 };
 

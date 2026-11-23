@@ -62,6 +62,8 @@ static int pt_free_label (const void *key, void *data, void *args);
 static int pt_associate_label_with_value (const char *label, DB_VALUE * val);
 static void pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_values, int values_count,
 				       bool having_serial);
+static void pt_evaluate_function_holder (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_values,
+					 bool having_serial);
 
 
 /*
@@ -925,6 +927,82 @@ pt_evaluate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_values,
 }
 
 /*
+ * pt_evaluate_function_holder () - evaluate a PT_FUNCTION_HOLDER expression by
+ *	recursively evaluating the held function's arguments, then invoking the
+ *	function on the resulting values
+ *   parser(in): the parser context
+ *   tree(in): a PT_EXPR node whose op is PT_FUNCTION_HOLDER
+ *   db_values(out): the function result on success; a parser error is raised
+ *		     otherwise
+ *   having_serial(in): passed through to argument evaluation
+ *
+ * pt_evaluate_function serves constant folding and takes only PT_VALUE arguments: there a column or a host variable
+ * must not be evaluated.  Here the tree is executed (a residual DEFAULT at DDL time, or its Compact DEFAULT Tree on
+ * the client), where an argument that is a STABLE or VOLATILE operator is evaluated too, into temporaries: the tree
+ * is not changed, so a cached DEFAULT never has an argument frozen into a constant.  The two share how the arguments
+ * are gathered and the function is called: keep them in step.
+ */
+static void
+pt_evaluate_function_holder (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_values, bool having_serial)
+{
+  PT_NODE *func = tree->info.expr.arg1;
+  PT_NODE *operand_node;
+  DB_VALUE *func_args = NULL, **func_arg_ptrs = NULL;
+  int func_num_args = 0, func_arg_i;
+
+  if (func == NULL || !pt_is_expr_wrapped_function (parser, func))
+    {
+      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+		  pt_short_print (parser, tree));
+      return;
+    }
+
+  func_num_args = pt_length_of_list (func->info.function.arg_list);
+  if (func_num_args > 0)
+    {
+      func_args = (DB_VALUE *) calloc (func_num_args, sizeof (DB_VALUE));
+      func_arg_ptrs = (DB_VALUE **) calloc (func_num_args, sizeof (DB_VALUE *));
+      if (func_args == NULL || func_arg_ptrs == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  func_num_args * (sizeof (DB_VALUE) + sizeof (DB_VALUE *)));
+	  PT_ERRORc (parser, tree, er_msg ());
+	  free_and_init (func_args);
+	  free_and_init (func_arg_ptrs);
+	  return;
+	}
+    }
+
+  operand_node = func->info.function.arg_list;
+  for (func_arg_i = 0; func_arg_i < func_num_args; func_arg_i++)
+    {
+      db_make_null (&func_args[func_arg_i]);
+      pt_evaluate_tree_internal (parser, operand_node, &func_args[func_arg_i], 1, having_serial);
+      if (pt_has_error (parser))
+	{
+	  break;
+	}
+      func_arg_ptrs[func_arg_i] = &func_args[func_arg_i];
+      operand_node = operand_node->next;
+    }
+
+  if (!pt_has_error (parser)
+      && pt_evaluate_function_w_args (parser, func->info.function.function_type, func_arg_ptrs,
+				      func_num_args, db_values) != 1)
+    {
+      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+		  pt_short_print (parser, tree));
+    }
+
+  for (func_arg_i = 0; func_arg_i < func_num_args; func_arg_i++)
+    {
+      db_value_clear (&func_args[func_arg_i]);
+    }
+  free_and_init (func_args);
+  free_and_init (func_arg_ptrs);
+}
+
+/*
  * pt_evaluate_tree_internal () -
  *   return: none
  *   parser(in):
@@ -1034,11 +1112,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
     case PT_EXPR:
       if (tree->info.expr.op == PT_FUNCTION_HOLDER)
 	{
-	  if (pt_evaluate_function (parser, tree->info.expr.arg1, db_values) != NO_ERROR)
-	    {
-	      PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
-			  pt_short_print (parser, tree));
-	    }
+	  pt_evaluate_function_holder (parser, tree, db_values, having_serial);
 	  break;
 	}
       if (tree->or_next)

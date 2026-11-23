@@ -8963,12 +8963,20 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return NULL;
 	}
 
-      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig));
+      /* the server evaluates the defaults, with its own statement clock */
+      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig), NULL);
       if (default_next_node_list == NULL && pt_has_error (parser))
 	{
 	  return NULL;
 	}
       node->info.method_call.arg_list = parser_append_node (default_next_node_list, node->info.method_call.arg_list);
+
+      /* the defaults are the last arguments: grafted here, or by an earlier compilation of the statement */
+      sp->num_default_args = 0;
+      for (PT_NODE * arg = node->info.method_call.arg_list; arg != NULL; arg = arg->next)
+	{
+	  sp->num_default_args = arg->flag.is_sp_default_arg ? sp->num_default_args + 1 : 0;
+	}
 
       DB_TYPE result_type = (DB_TYPE) sp->sig->result_type;
       if (result_type == DB_TYPE_RESULTSET)
@@ -23839,72 +23847,6 @@ pt_assigned_attribute_domain (DB_OBJECT * class_obj, const char *name)
 }
 
 /*
- * pt_default_value_type () - CBRD-27583: the type an omitted attribute's default is made in before the INSERT
- *   casts it into the attribute's domain (qexec_execute_insert, qexec_generate_row_default_expr): a date or time
- *   function's, UNIX_TIMESTAMP's INTEGER, USER's and SYS_GUID's VARCHAR, UUID's BIT; under TO_CHAR a VARCHAR, or a
- *   string attribute's type for the string it coerces; a default value's, the attribute's
- *   return: the type, DB_TYPE_NULL with the error set
- */
-static DB_TYPE
-pt_default_value_type (DB_OBJECT * class_obj, const char *name, const TP_DOMAIN * domain)
-{
-  SM_CLASS *cls;
-  if (au_fetch_class_force (class_obj, &cls, AU_FETCH_READ) != NO_ERROR)
-    {
-      return DB_TYPE_NULL;
-    }
-  const SM_ATTRIBUTE *att = classobj_find_attribute (cls, name, 0);
-  if (att == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 1, name);
-      return DB_TYPE_NULL;
-    }
-  const DB_DEFAULT_EXPR *expr = &att->default_value.default_expr;
-  const DB_TYPE attr_type = TP_DOMAIN_TYPE (domain);
-  DB_TYPE type;
-  switch (expr->default_expr_type)
-    {
-    case DB_DEFAULT_SYSTIME:
-    case DB_DEFAULT_CURRENTTIME:
-      type = DB_TYPE_TIME;
-      break;
-    case DB_DEFAULT_SYSDATE:
-    case DB_DEFAULT_CURRENTDATE:
-      type = DB_TYPE_DATE;
-      break;
-    case DB_DEFAULT_SYSDATETIME:
-    case DB_DEFAULT_CURRENTDATETIME:
-      type = DB_TYPE_DATETIME;
-      break;
-    case DB_DEFAULT_SYSTIMESTAMP:
-    case DB_DEFAULT_CURRENTTIMESTAMP:
-      type = DB_TYPE_TIMESTAMP;
-      break;
-    case DB_DEFAULT_UNIX_TIMESTAMP:
-      type = DB_TYPE_INTEGER;
-      break;
-    case DB_DEFAULT_USER:
-    case DB_DEFAULT_CURR_USER:
-    case DB_DEFAULT_SYSGUID:
-      type = DB_TYPE_VARCHAR;
-      break;
-    case DB_DEFAULT_UUIDV4:
-    case DB_DEFAULT_UUIDV7:
-      type = DB_TYPE_BIT;
-      break;
-    default:
-      /* a default value is kept in the attribute's domain */
-      return attr_type;
-    }
-  if (expr->default_expr_op == T_TO_CHAR)
-    {
-      /* db_to_char writes a date or a number as a VARCHAR and coerces a string into a string attribute's domain */
-      return TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (attr_type) ? attr_type : DB_TYPE_VARCHAR;
-    }
-  return type;
-}
-
-/*
  * pt_to_insert_xasl_remote_select () - Builds INSERT_PROC XASL for remote INSERT SELECT.
  *   Wires a local SELECT aptr and fills INSERT_PROC_NODE remote sink fields so
  *   the executor can stream rows via CCI into the remote table.
@@ -24813,8 +24755,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  insert->att_id = regu_int_array_alloc (num_vals + num_default_expr);
 	  regu_array_alloc (&insert->att_domains, num_vals + num_default_expr);
-	  insert->default_types = num_default_expr > 0 ? regu_int_array_alloc (num_default_expr) : NULL;
-	  if (insert->att_id && insert->att_domains && (num_default_expr == 0 || insert->default_types != NULL))
+	  if (insert->att_id && insert->att_domains)
 	    {
 	      /* the identifiers of the attributes that have a default expression are placed first */
 	      int save_au;
@@ -24825,10 +24766,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original);
 		  insert->att_domains[a] = pt_assigned_attribute_domain (class_obj, attr->info.name.original);
-		  if (insert->att_id[a] < 0 || insert->att_domains[a] == NULL
-		      || (insert->default_types[a] =
-			  pt_default_value_type (class_obj, attr->info.name.original,
-						 insert->att_domains[a])) == DB_TYPE_NULL)
+		  if (insert->att_id[a] < 0 || insert->att_domains[a] == NULL)
 		    {
 		      ASSERT_ERROR_AND_SET (error);
 		    }
@@ -32043,6 +31981,10 @@ pt_to_insert_listed_default_slots (PARSER_CONTEXT * parser, SM_CLASS * smclass, 
 	  regu_list->value.xasl = NULL;
 	  regu_list->value.vfetch_to = NULL;
 	  regu_list->value.value.dbvalptr = slots[p]->value;
+	  /* the slot holds its value in the domain of the attribute, which is the type the INSERT converts it from */
+	  regu_list->value.domain = insert->att_domains[insert->num_default_expr + p];
+	  regu_list->value.original_domain = NULL;
+	  regu_list->value.conv_mode = 0;
 	}
     }
 
@@ -33338,18 +33280,14 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     {
       insert->att_id = regu_int_array_alloc (num_vals + num_default_expr);
       regu_array_alloc (&insert->att_domains, num_vals + num_default_expr);
-      insert->default_types = num_default_expr > 0 ? regu_int_array_alloc (num_default_expr) : NULL;
-      if (insert->att_id && insert->att_domains && (num_default_expr == 0 || insert->default_types != NULL))
+      if (insert->att_id && insert->att_domains)
 	{
 	  /* the identifiers of the attributes that have a default expression are placed first */
 	  for (attr = default_expr_attrs, a = 0; error >= 0 && a < num_default_expr; attr = attr->next, ++a)
 	    {
 	      if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0
 		  || (insert->att_domains[a] =
-		      pt_assigned_attribute_domain (class_obj, attr->info.name.original)) == NULL
-		  || (insert->default_types[a] =
-		      pt_default_value_type (class_obj, attr->info.name.original,
-					     insert->att_domains[a])) == DB_TYPE_NULL)
+		      pt_assigned_attribute_domain (class_obj, attr->info.name.original)) == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();

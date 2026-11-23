@@ -784,6 +784,17 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
       goto error;
     }
 
+  if (!info.default_expr.empty ())
+    {
+      db_make_string (&value, info.default_expr.data ());
+    }
+  err = dbt_put_internal (obt_p, SP_ARG_ATTR_DEFAULT_EXPR, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
   object_p = dbt_finish_object (obt_p);
   if (!object_p)
     {

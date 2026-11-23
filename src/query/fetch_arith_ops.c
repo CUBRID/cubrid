@@ -2279,6 +2279,11 @@ fetch_op_unix_timestamp (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	  return ER_FAILED;
 	}
     }
+  else if (a->vd != NULL && a->vd->evaluating_default)
+    {
+      /* a DEFAULT reads the clock of its statement, as every other clock function does */
+      db_make_int (arithptr->value, (int) a->vd->sys_epochtime);
+    }
   else
     {
       DB_TIMESTAMP db_timestamp;

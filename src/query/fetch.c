@@ -1889,7 +1889,8 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	    goto exit_on_error;
 	  }
 
-	error = executor.fetch_args_peek (regu_var->value.sp_ptr->args, vd, obj_oid, tplrec);
+	error = executor.fetch_args_peek (regu_var->value.sp_ptr->args, vd, obj_oid, tplrec,
+					  regu_var->value.sp_ptr->num_default_args);
 	if (error != NO_ERROR || er_errid () != NO_ERROR)
 	  {
 	    /* the stack can be null when the executor refused to start (interrupt, expired session) */

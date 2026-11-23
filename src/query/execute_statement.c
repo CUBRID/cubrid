@@ -545,7 +545,7 @@ is_stmt_based_repl_type (const PT_NODE * node)
  * Literal is frozen to a value at DDL time and is stored without a CDT,
  * so it never appears here.  Tree and volatility come from the parser-wide CDT
  * registry (pt_cdt_registry_tree): decoded once per parser, shared with the
- * statement's Default References and its statement-clock probe, read-only parser
+ * statement's Default References and its DEFAULT slots, read-only parser
  * memory this set never frees.  The set pins, for one statement, WHICH CDTs it
  * consumes -- a column the object template already assigns a real value (an
  * explicitly listed INSERT column, a SELECT-supplied column, a Default Reference)
@@ -579,6 +579,8 @@ typedef struct cdt_eval_set CDT_EVAL_SET;
 struct cdt_eval_set
 {
   SM_CLASS *smclass;		/* class the entries were built for; NULL if not built */
+  unsigned int schema_version;	/* sm_local_schema_version () at build time: a DDL nested in the statement (a
+				 * trigger altering the class) rebuilds the attributes of smclass in place */
   int count;			/* number of residual entries */
   CDT_EVAL_ENTRY *entries;
   struct pt_rand_state *rand_states;	/* seeded random generators of the DEFAULTs of this statement, those in
@@ -664,6 +666,7 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
     }
 
   eval_set->smclass = smclass;
+  eval_set->schema_version = sm_local_schema_version ();
   eval_set->count = 0;
   eval_set->entries = NULL;
   if (n == 0)
@@ -810,8 +813,9 @@ do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * 
   smclass = otemplate->class_;
 
   /* the eval set holds the residuals this statement's template consumes; it is built lazily (and rebuilt
-   * for another class, e.g. a partition) and its STABLE residuals are evaluated once, right away */
-  if (eval_set->smclass != smclass)
+   * for another class, e.g. a partition, or after a nested DDL) and its STABLE residuals are evaluated once,
+   * right away */
+  if (eval_set->smclass != smclass || eval_set->schema_version != sm_local_schema_version ())
     {
       error = do_build_cdt_eval_set (parser, smclass, otemplate, eval_set);
       if (error == NO_ERROR)
@@ -13501,7 +13505,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   DB_VALUE *value = NULL;
   DB_SEQ *seq = NULL;
   int obj_count = 0;
-  CDT_EVAL_SET cdt_eval = { NULL, 0, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
+  CDT_EVAL_SET cdt_eval = { NULL, 0, 0, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (otemplate != NULL);
   if (otemplate == NULL)
@@ -14067,7 +14071,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   DB_SEQ *seq = NULL;
   DB_VALUE db_value;
   DB_VALUE *value = NULL;
-  CDT_EVAL_SET cdt_eval = { NULL, 0, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
+  CDT_EVAL_SET cdt_eval = { NULL, 0, 0, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (parser != NULL);
 
