@@ -13505,7 +13505,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   DB_VALUE *value = NULL;
   DB_SEQ *seq = NULL;
   int obj_count = 0;
-  CDT_EVAL_SET cdt_eval = { NULL, 0, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
+  CDT_EVAL_SET cdt_eval = { NULL, 0, 0, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (otemplate != NULL);
   if (otemplate == NULL)
@@ -14071,7 +14071,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   DB_SEQ *seq = NULL;
   DB_VALUE db_value;
   DB_VALUE *value = NULL;
-  CDT_EVAL_SET cdt_eval = { NULL, 0, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
+  CDT_EVAL_SET cdt_eval = { NULL, 0, 0, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (parser != NULL);
 
