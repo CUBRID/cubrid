@@ -3720,7 +3720,7 @@ cleanup1:
 
 /*
  * jsp_rewrite_pkg_code - print a CREATE PACKAGE [BODY] statement to be saved as the source of the package
- *   return: CREATE OR REPLACE PACKAGE [BODY] without the owner name and the comment
+ *   return: CREATE OR REPLACE PACKAGE [BODY] without the owner name and the comment, or NULL with an error set
  *   parser(in): parser context
  *   statement(in): a PT_CREATE_PACKAGE node
  *
@@ -3800,7 +3800,7 @@ jsp_create_pkg_body (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
 
   if (err == NO_ERROR && pkg_compile_response.err_code == NO_ERROR)
     {
-      const char *ocode, *compile_id;
+      const char *ocode, *compile_id, *source;
       if (pkg_compile_request.type == PLCSQL_COMPILE_TYPE_PKG_SPEC)
 	{
 	  compile_id = pkg_compile_response.compile_id.data();
@@ -3829,7 +3829,13 @@ jsp_create_pkg_body (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
 
       // package spec has not been updated, and hence no spec-related updates in system tables
       // save the rewritten code, not the user code sent to the compiler
-      err = jsp_set_pkg_scode_body_and_ocode (unique_name, owner_mop, jsp_rewrite_pkg_code (parser, statement), ocode);
+      source = jsp_rewrite_pkg_code (parser, statement);
+      if (source == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto error_exit;
+	}
+      err = jsp_set_pkg_scode_body_and_ocode (unique_name, owner_mop, source, ocode);
       if (err != NO_ERROR)
 	{
 	  goto error_exit;
@@ -3915,9 +3921,14 @@ jsp_create_pkg_spec (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
   if (err == NO_ERROR && pkg_compile_response.err_code == NO_ERROR)
     {
       // save the rewritten spec code, not the user code sent to the compiler. the body code is the saved one.
-      err = sp_add_pkg_and_related (unique_name, owner_name, owner_mop,
-				    jsp_rewrite_pkg_code (parser, statement), pkg_compile_request.body_code.data(), comment,
-				    pkg_compile_response, pkg_mop);
+      const char *source = jsp_rewrite_pkg_code (parser, statement);
+      if (source == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto error_exit;
+	}
+      err = sp_add_pkg_and_related (unique_name, owner_name, owner_mop, source, pkg_compile_request.body_code.data(),
+				    comment, pkg_compile_response, pkg_mop);
       if (err != NO_ERROR)
 	{
 	  goto error_exit;
@@ -4874,6 +4885,11 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
 
 	parser->custom_print = custom_print_saved;
       }
+      if (rewritten_code == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto error_exit;
+	}
 
       code_info.name = sp_info.target_class;
       code_info.compile_id = pl_sp_compile_response.compile_id;
