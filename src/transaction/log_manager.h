@@ -212,6 +212,7 @@ extern bool log_get_undo_record_from_buffer (THREAD_ENTRY * thread_p, const LOG_
 extern void log_sysop_start (THREAD_ENTRY * thread_p);
 extern void log_sysop_start_atomic (THREAD_ENTRY * thread_p);
 extern void log_sysop_abort (THREAD_ENTRY * thread_p);
+extern void log_sysop_abort_and_defer_wake (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa);
 extern void log_sysop_attach_to_outer (THREAD_ENTRY * thread_p);
 extern void log_sysop_commit (THREAD_ENTRY * thread_p);
 extern void log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid,
