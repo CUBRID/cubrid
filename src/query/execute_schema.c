@@ -11955,7 +11955,9 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	{
 	  goto exit;
 	}
-      if (attribute->info.attr_def.data_default == NULL)
+      /* an AUTO_INCREMENT drops the DEFAULT instead of keeping it */
+      if (attribute->info.attr_def.data_default == NULL
+	  && !is_att_prop_set (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_LOST))
 	{
 	  error = do_check_kept_default_expr (parser, old_att, attribute);
 	  if (error != NO_ERROR)
