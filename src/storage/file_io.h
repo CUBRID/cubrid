@@ -257,6 +257,8 @@ struct page_bitmap
   FILEIO_RESTORE_PAGE_BITMAP *next;
   int vol_id;
   int size;
+  int npages;			/* pages of the volume, from the most recent backup level that holds it */
+  char vol_label[PATH_MAX];	/* restored volume */
   unsigned char *bitmap;
 };
 
@@ -310,6 +312,9 @@ struct fileio_backup_header
   FILEIO_ZIP_METHOD zip_method;	/* compression method */
   FILEIO_ZIP_LEVEL zip_level;	/* compression level */
   int skip_activelog;
+  LOG_LSA start_log_end_lsa;	/* Log end (next LSA to be assigned) when this backup started copying pages.  Valid
+				 * from bk_hdr_version 3, NULL_LSA in older headers.  Media recovery lets a no-logging
+				 * index build's barrier pass when it precedes this LSA of the top restored level. */
 };
 
 /* Shouldn't this structure should use int and such? */
@@ -632,7 +637,10 @@ extern int fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void fileio_page_bitmap_list_init (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list);
-extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_create (int vol_id, int total_pages);
+extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_create (int vol_id, int total_pages, const char *vol_label);
+extern int fileio_restore_format_unrestored_pages (THREAD_ENTRY * thread_p,
+						   FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
+						   FILEIO_RESTORE_PAGE_BITMAP ** failed_bitmap);
 extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_list_find (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
 								 int vol_id);
 extern void fileio_page_bitmap_list_add (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,

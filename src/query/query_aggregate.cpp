@@ -2376,6 +2376,26 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			      goto exit;
 			    }
 
+			  if (agg_p->function == PT_AGG_BIT_AND || agg_p->function == PT_AGG_BIT_OR
+			      || agg_p->function == PT_AGG_BIT_XOR)
+			    {
+			      error = qdata_aggregate_value_to_accumulator (thread_p, &agg_p->accumulator,
+				      &agg_p->accumulator_domain, agg_p->function, agg_domain,
+				      &dbval, false);
+			      if (error != NO_ERROR)
+				{
+				  ASSERT_ERROR ();
+				  (void) pr_clear_value (&dbval);
+				  qfile_close_scan (thread_p, &scan_id);
+				  qfile_close_list (thread_p, list_id_p);
+				  qfile_destroy_list (thread_p, list_id_p);
+				  goto exit;
+				}
+			      /* a zero count makes the accumulator take the value instead of combining with it */
+			      agg_p->accumulator.curr_cnt++;
+			      continue;
+			    }
+
 			  if (agg_p->function == PT_VARIANCE || agg_p->function == PT_STDDEV
 			      || agg_p->function == PT_VAR_POP || agg_p->function == PT_STDDEV_POP
 			      || agg_p->function == PT_VAR_SAMP || agg_p->function == PT_STDDEV_SAMP)
@@ -2690,6 +2710,12 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      ASSERT_ERROR ();
 	      return ER_FAILED;
 	    }
+	}
+
+      /* the only distinct value is not converted through addition */
+      if (agg_p->function == PT_SUM)
+	{
+	  numeric_db_value_to_float_domain (agg_p->accumulator.value, agg_domain);
 	}
     }
 
