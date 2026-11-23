@@ -2377,14 +2377,21 @@ la_get_page (LOG_PAGEID pageid)
       return NULL;
     }
 
+  /* Retry only a page not yet available. An archive that cannot be read requests the applier shutdown
+   * (la_log_fetch), and so does a signal: a worker waiting here would never end, and the coordinator joins it. */
   do
     {
       cache_buffer = la_get_page_buffer (pageid, &error);
     }
-  while (cache_buffer == NULL && error == NO_ERROR);	/* retry only pages not yet available */
+  while (cache_buffer == NULL && error == NO_ERROR && !la_applier_need_shutdown);
 
   if (cache_buffer == NULL)
     {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "a log page was not read because the applier is shutting down");
+	}
       return NULL;
     }
 
