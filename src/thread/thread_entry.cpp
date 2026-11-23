@@ -117,6 +117,7 @@ namespace cubthread
     , lockwait_stime (0)
     , lockwait_msecs (0)
     , lockwait_state (-1)
+    , deferred_wake {}
     , query_entry (NULL)
     , tran_next_wait (NULL)
     , worker_thrd_list (NULL)
@@ -133,6 +134,7 @@ namespace cubthread
     , trace_format (0)
     , on_trace (false)
     , clear_trace (false)
+    , oos_read_stats ()
     , trace_plan_detail (false)
     , tran_entries ()
     , no_supplemental_log (false)

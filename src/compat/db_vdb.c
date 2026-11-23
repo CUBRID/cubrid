@@ -96,6 +96,7 @@ static int db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE 
 				      const PARSER_CONTEXT * bind_domains_from, DB_SESSION ** typed_p);
 static int db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * values);
 static int db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result);
+static void db_mark_set_operations_stay_queries (PT_NODE * node);
 static DB_OBJLIST *db_get_all_chosen_classes (int (*p) (MOBJ o));
 static int is_vclass_object (MOBJ class_);
 static char *get_reasonable_predicate (DB_ATTRIBUTE * att, char *predicate, int predicate_buf_sz);
@@ -3207,6 +3208,27 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 }
 
 /*
+ * db_mark_set_operations_stay_queries() - mark the set operations a statement typed again with its bound values is made
+ *					    of, to fold into an empty operand instead of a value
+ *   return: void
+ *   node(in): the statement, or one of its operands
+ *
+ * Note: the operands of the statement's set operations are PT_IS_UNION_QUERY (mq_set_union_query ()), so typing does
+ *	 not fold a SELECT operand into a value. It folds a set operation whose operands are all empty, which would
+ *	 then leave the set operation above it without a query to fold into.
+ */
+static void
+db_mark_set_operations_stay_queries (PT_NODE * node)
+{
+  while (PT_IS_UNION (node) || PT_IS_DIFFERENCE (node) || PT_IS_INTERSECTION (node))
+    {
+      node->info.query.flag.stays_query = 1;
+      db_mark_set_operations_stay_queries (node->info.query.q.union_.arg2);
+      node = node->info.query.q.union_.arg1;
+    }
+}
+
+/*
  * db_execute_and_keep_statement_local() - This function executes the SQL
  *    statement identified by the stmt argument and returns the result.
  *    The statement ID must have already been returned by a successful call
@@ -3609,6 +3631,15 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	   * execute with the new one and free the copied one before returning */
 	  statement = parser_copy_tree_list (parser, statement);
 	  statement = mq_reset_ids_in_statement (parser, statement);
+
+	  /* The bound values may fold the WHERE of every operand of a set operation of the statement to false. Typing
+	   * would then fold the set operation into a value, which is not the query the client prepared and which
+	   * do_statement () cannot execute: marked, it folds into one of its empty operands instead, which returns no
+	   * row (pt_check_union_is_foldable ()). A copy that failed is reported below. */
+	  if (statement != NULL)
+	    {
+	      db_mark_set_operations_stay_queries (statement);
+	    }
 
 	  sc_info.top_node = statement;
 	  sc_info.donot_fold = false;
