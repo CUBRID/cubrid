@@ -641,7 +641,8 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 	       * names another transaction, so log the one that failed. */
 	      snprintf (buf, sizeof (buf), "apply worker %d: transaction %d (commit %lld|%d) failed with error %d; "
 			"the %d tasks before it in the same slave transaction were rolled back with it",
-			context->worker_idx, task.tranid, LSA_AS_ARGS (&task.commit_lsa), result.error, batch.count);
+			context->worker_idx, task.tranid, (long long) task.commit_lsa.pageid, (int) task.commit_lsa.offset,
+			result.error, batch.count);
 	      er_stack_push ();
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buf);
 	      er_stack_pop ();
