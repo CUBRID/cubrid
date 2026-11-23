@@ -4314,6 +4314,8 @@ fetch_op_define_variable (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static bool
 fetch_rand_reseeds (const FETCH_ARITH_ARGS * a)
 {
+  assert (a->arithptr->thirdptr != NULL);
+
   return a->peek_third != NULL && !DB_IS_NULL (a->peek_third) && db_get_int (a->peek_third) != 0;
 }
 
