@@ -1610,6 +1610,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   XASL_ID_SET_NULL (&tdes->xasl_id);
   tdes->waiting_for_res = NULL;
   tdes->tran_abort_reason = TRAN_NORMAL;
+  tdes->abort_deferred = false;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
   tdes->m_log_postpone_cache.reset ();
@@ -1698,6 +1699,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->waiting_for_res = NULL;
   tdes->disable_modifications = db_Disable_modifications;
   tdes->tran_abort_reason = TRAN_NORMAL;
+  tdes->abort_deferred = false;
   tdes->num_exec_queries = 0;
 
   for (i = 0; i < MAX_NUM_EXEC_QUERY_HISTORY; i++)
@@ -3122,6 +3124,36 @@ logtb_is_current_active (THREAD_ENTRY * thread_p)
       assert (tdes == NULL || tdes->is_active_worker_transaction ());
       return false;
     }
+}
+
+/*
+ * logtb_is_abort_deferred () - whether the transaction's abort is left to the request that ends it
+ *				 (tran_defer_abort_to_pl_caller ())
+ */
+bool
+logtb_is_abort_deferred (int tran_index)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+  return tdes != NULL && tdes->abort_deferred;
+}
+
+/*
+ * logtb_fail_if_abort_deferred () - fail a statement whose transaction's abort is left to a request that ends it
+ *   return: ER_LK_UNILATERALLY_ABORTED (set) or NO_ERROR
+ */
+int
+logtb_fail_if_abort_deferred (int tran_index)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+  if (tdes != NULL && tdes->abort_deferred)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4, tran_index, tdes->client.get_db_user (),
+	      tdes->client.get_host_name (), tdes->client.process_id);
+      return ER_LK_UNILATERALLY_ABORTED;
+    }
+  return NO_ERROR;
 }
 
 /*

@@ -541,6 +541,8 @@ struct log_tdes
   int disable_modifications;	/* db_Disable_modification for each tran */
 
   TRAN_ABORT_REASON tran_abort_reason;
+  bool abort_deferred;		/* its abort is left to the request that ends it: a PL callback's caller
+				 * (tran_defer_abort_to_pl_caller ()) */
 
   /* bind values of executed queries in transaction */
   int num_exec_queries;
@@ -1146,6 +1148,8 @@ extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * co
 extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index);
 extern bool logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid);
 extern bool logtb_is_current_active (THREAD_ENTRY * thread_p);
+extern bool logtb_is_abort_deferred (int tran_index);
+extern int logtb_fail_if_abort_deferred (int tran_index);
 extern bool logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid);
 extern void logtb_disable_update (THREAD_ENTRY * thread_p);
 extern void logtb_enable_update (THREAD_ENTRY * thread_p);
