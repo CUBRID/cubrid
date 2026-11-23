@@ -1623,6 +1623,9 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     {
       return ER_FAILED;		/* the interpreter's error exit: the body set the error */
     }
+
+  /* an operator such as ABS returns its fixed operand without conversion */
+  numeric_db_value_to_float_domain (a.arithptr->value, a.domain);
   if (step->out != NULL)
     {
       pr_clear_value (step->out);

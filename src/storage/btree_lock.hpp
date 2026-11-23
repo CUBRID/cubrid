@@ -55,6 +55,8 @@ struct btree_find_unique_helper
 #if defined (SERVER_MODE)
   OID locked_oid;		/* Locked object. */
   OID locked_class_oid;		/* Locked object class OID. */
+  bool owner_bypass_ok;		/* Pass an object we stamped, as locator_lock_object_unless_ours () does. */
+  OID passed_oid;		/* Object passed that way: found, but not locked. */
 #endif				/* SERVER_MODE */
 };
 /* BTREE_FIND_UNIQUE_HELPER static initializer. */
@@ -68,7 +70,9 @@ struct btree_find_unique_helper
     false, /* found_object */ \
     PERF_UTIME_TRACKER_INITIALIZER, /* time_track */ \
     OID_INITIALIZER, /* locked_oid */ \
-    OID_INITIALIZER /* locked_class_oid */ \
+    OID_INITIALIZER, /* locked_class_oid */ \
+    false, /* owner_bypass_ok */ \
+    OID_INITIALIZER /* passed_oid */ \
   }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define BTREE_FIND_UNIQUE_HELPER_INITIALIZER \
