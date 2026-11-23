@@ -39,10 +39,37 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "server_support.h"
+#include "session.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+static bool xtran_end_meets_deferred_abort (THREAD_ENTRY * thread_p, int tran_index, TRAN_STATE * state);
+#if defined (SERVER_MODE)
+static bool tran_defer_abort_to_pl_caller (int tran_index);
+#endif /* SERVER_MODE */
+
+/*
+ * xtran_end_meets_deferred_abort () - a commit or 2PC prepare replaced by the abort deferred to it
+ *				       (logtb_is_abort_deferred ())
+ *   return: true with *state the request's result
+ */
+static bool
+xtran_end_meets_deferred_abort (THREAD_ENTRY * thread_p, int tran_index, TRAN_STATE * state)
+{
+  const char *prog_name, *user_name, *host_name;
+  int pid;
+
+  if (!logtb_is_abort_deferred (tran_index))
+    {
+      return false;
+    }
+  (void) logtb_find_client_name_host_pid (tran_index, &prog_name, &user_name, &host_name, &pid);
+  *state = xtran_server_abort (thread_p);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4, tran_index, user_name, host_name, pid);
+  return true;
+}
 
 /*
  * xtran_server_commit - Commit the current transaction
@@ -79,6 +106,11 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
    */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  if (xtran_end_meets_deferred_abort (thread_p, tran_index, &state))
+    {
+      return state;
+    }
 
   /* dblink transaction commit first */
   QMGR_TRAN_STATUS dblink_tran = qmgr_check_dblink_trans (thread_p, false);
@@ -190,6 +222,29 @@ tran_server_unilaterally_abort (THREAD_ENTRY * thread_p, int tran_index)
 
 #if defined(SERVER_MODE)
 /*
+ * tran_defer_abort_to_pl_caller () - leave the abort of a PL callback's transaction to the caller, which waits inside
+ *				       its statement for the callback's reply
+ *   return: true if deferred: a deadlock victim's abort, or one already deferred; not one for another error such as
+ *	     ER_DB_NO_MODIFICATIONS
+ *
+ * Note: no interrupt: the PL calls would report it as ER_INTERRUPTED over the deadlock error. Their statements fail
+ *	 as they return instead (logtb_fail_if_abort_deferred ()).
+ */
+static bool
+tran_defer_abort_to_pl_caller (int tran_index)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+  if (tran_index <= LOG_SYSTEM_TRAN_INDEX || tdes == NULL
+      || !(tdes->tran_abort_reason == TRAN_ABORT_DUE_DEADLOCK || tdes->abort_deferred))
+    {
+      return false;
+    }
+  tdes->abort_deferred = true;
+  return true;
+}
+
+/*
  * tran_server_unilaterally_abort_tran -
  *
  * return: state of operation
@@ -205,6 +260,12 @@ tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p)
       thread_p = thread_get_thread_entry_info ();
     }
 
+  /* a PL callback leaves the abort to its caller, which waits inside its statement for this reply. Not in
+   * xtran_server_abort (): a ROLLBACK the PL issues still undoes at once */
+  if (session_is_pl_callback (thread_p) && tran_defer_abort_to_pl_caller (LOG_FIND_THREAD_TRAN_INDEX (thread_p)))
+    {
+      return TRAN_UNACTIVE_ABORTED;
+    }
   return xtran_server_abort (thread_p);
 }
 #endif /* SERVER_MODE */
@@ -483,6 +544,13 @@ xtran_server_2pc_start (THREAD_ENTRY * thread_p)
 TRAN_STATE
 xtran_server_2pc_prepare (THREAD_ENTRY * thread_p)
 {
+  TRAN_STATE state;
+
+  if (xtran_end_meets_deferred_abort (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), &state))
+    {
+      return state;
+    }
+
   /* Make the transient classname entries permanent; If transaction aborted after this point, these operations will
    * also be undone, just like previous operations of the transaction.  */
   (void) locator_drop_transient_class_name_entries (thread_p, NULL);
@@ -557,6 +625,13 @@ xtran_server_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 TRAN_STATE
 xtran_server_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int global_tranid)
 {
+  TRAN_STATE state;
+
+  if (xtran_end_meets_deferred_abort (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), &state))
+    {
+      return state;
+    }
+
   /* Make the transient classname entries permanent; If transaction aborted after this point, these operations will
    * also be undone, just like previous operations of the transaction. */
   (void) locator_drop_transient_class_name_entries (thread_p, NULL);

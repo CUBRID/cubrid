@@ -313,6 +313,27 @@ namespace cubpl
     return false;
   }
 
+  /* thread_p serves a PL call: the outermost call (m_exec_stack[0]) is another thread's, which waits for the reply */
+  bool
+  session::is_callback_thread (cubthread::entry *thread_p)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    if (m_stack_idx < 0)
+      {
+	return false;
+      }
+    auto it = m_stack_map.find (m_exec_stack[0]);
+    if (it == m_stack_map.end ())
+      {
+	assert (false);		/* both are pushed and popped together */
+	return false;
+      }
+    cubthread::entry *outermost = it->second->get_thread_entry ();
+    /* an outermost call of another transaction came through another connection and waits for no reply of this one */
+    return outermost != thread_p && (outermost == NULL || outermost->tran_index == thread_p->tran_index);
+  }
+
   void
   session::set_interrupt (int reason, std::string msg)
   {

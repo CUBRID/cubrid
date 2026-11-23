@@ -56,6 +56,7 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "query_manager.h"
 #include "server_support.h"
+#include "session.h"
 #include "storage_common.h"
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
@@ -2168,6 +2169,16 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 
   /* The caller is holding the thread entry mutex */
 
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes != NULL && tdes->abort_deferred && logtb_is_current_active (thread_p))
+    {
+      /* a PL's further SQL while its abort is left to its caller (tran_defer_abort_to_pl_caller ()): the
+       * transaction stays a deadlock victim, so its wait would be left out of the graph */
+      thread_unlock_entry (entry_ptr->thrd_entry);
+      lock_set_error_for_aborted (entry_ptr);
+      return LOCK_RESUMED_ABORTED;
+    }
+
   if (lk_Gl.verbose_mode)
     {
       const char *__client_prog_name;	/* Client program name for transaction */
@@ -2194,8 +2205,6 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = entry_ptr->thrd_entry->lockwait_stime;
   lk_Gl.deadlock_and_timeout_detector++;
-
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
   /* I must not be a deadlock-victim thread */
   assert (tdes->tran_abort_reason == TRAN_NORMAL);
@@ -2269,8 +2278,12 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 	  lock_set_tran_abort_reason (entry_ptr->tran_index, TRAN_ABORT_DUE_DEADLOCK);
 
 	  /* wait until other threads finish their works A css_server_thread is always running for this transaction.
-	   * so, wait until css_count_transaction_worker_threads () becomes 1 (except me) */
-	  if (css_count_transaction_worker_threads (thread_p, entry_ptr->tran_index, css_get_client_id (thread_p)) >= 1)
+	   * so, wait until css_count_transaction_worker_threads () becomes 1 (except me).
+	   * Not a PL callback: its callers wait for its reply, so they would not end, and its abort is left to the
+	   * outermost one (tran_defer_abort_to_pl_caller ()). */
+	  if (!session_is_pl_callback (thread_p)
+	      && css_count_transaction_worker_threads (thread_p, entry_ptr->tran_index,
+						       css_get_client_id (thread_p)) >= 1)
 	    {
 	      logtb_set_tran_index_interrupt (thread_p, entry_ptr->tran_index, true);
 	      while (true)
