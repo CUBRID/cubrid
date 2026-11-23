@@ -1814,8 +1814,11 @@
 
 #define ER_VACUUM_OOS_LOOKUP_DEFERRED               -1402
 
-#define ER_LAST_ERROR                               -1403
+#define ER_LDR_CORRUPTED_BINARY_RECORD              -1403
 
+#define ER_BT_LOAD_NO_LOGGING_DURING_BACKUP         -1404
+
+#define ER_LAST_ERROR                               -1405
 
 /*
  * CAUTION!
