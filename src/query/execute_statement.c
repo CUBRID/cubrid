@@ -7697,11 +7697,11 @@ block_declares_record (const char *block, const char *name)
  *   reads(in): for each name and column, whether the block reads it, name by name
  *
  * Note:
- *    The procedure takes the shape of its stored code, which the owner change compiles again.
- *    So both compilations report an error at the same line.
- *    The declarations, BEGIN and the assignments are on the second line.
- *    So the block starts at the third.
- *    A correlation name is a record declared from a cursor that selects a NULL of each column type.
+ *    The text keeps the shape of its stored code.
+ *    So an error of the owner change is at the same line.
+ *    Line 2 has the declarations, BEGIN and the assignments. The block starts at line 3.
+ *    JSP_TRIGGER_BLOCK_LINE_OFFSET counts the two lines. Change it with this layout.
+ *    A correlation name is a record of a cursor that selects a NULL of each column type.
  *    So the procedure reads no table and needs no privilege on the class.
  *    The names made here carry the prefix of the procedure.
  *    So a column the block names in its SQL is not taken for one of them.

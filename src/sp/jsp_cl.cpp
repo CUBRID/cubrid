@@ -1444,6 +1444,8 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
       assert (statement->sql_user_text && statement->sql_user_text_len);
       compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
       compile_request.owner.assign ((owner_name[0] == '\0') ? au_get_current_user_name () : owner_name);
+      /* a system generated procedure compiled here is always the one of a block of a trigger */
+      compile_request.line_offset = is_system_generated ? JSP_TRIGGER_BLOCK_LINE_OFFSET : 0;
 
       // TODO: Only the owner's rights is supported for PL/CSQL
       au_perform_push_user (sp_info.owner);
@@ -2264,6 +2266,18 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   compile_request.code.assign (scode, scode_len);
   compile_request.owner.assign (owner_str);
   pr_clear_value (&scode_val);
+
+  /* the column is 1 for a procedure of a block of a trigger, and NULL for the others */
+  err = db_get (code_mop, SP_CODE_ATTR_IS_SYSTEM_GENERATED, &value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+  if (!DB_IS_NULL (&value) && db_get_int (&value) == 1)
+    {
+      compile_request.line_offset = JSP_TRIGGER_BLOCK_LINE_OFFSET;
+    }
+  pr_clear_value (&value);
 
   // TODO: Only the owner's rights is supported for PL/CSQL
   au_perform_push_user (sp_info.owner);

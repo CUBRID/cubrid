@@ -35,12 +35,13 @@ namespace cubpl
 //////////////////////////////////////////////////////////////////////////
 
 #define COMPILE_REQUEST_PACKER_ARGS() \
-  code, owner, mode
+  code, owner, mode, line_offset
 
   compile_request::compile_request ()
     : code {}
     , owner {}
     , mode {}
+    , line_offset {0}
   {
     //
   }

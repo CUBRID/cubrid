@@ -76,10 +76,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public final Set<Dependency> dependenciesOfStaticSql = new HashSet<>();
     public int dataAccessLevel = ServerConstants.SP_SQL_TYPE_NO_SQL;
 
-    public ParseTreeConverter(InstanceStore iStore, String spOwner, String compileSeqNo) {
+    public ParseTreeConverter(
+            InstanceStore iStore, String spOwner, String compileSeqNo, int lineOffset) {
         this.iStore = iStore;
         this.spOwner = Misc.getNormalizedText(spOwner);
         this.compileSeqNo = compileSeqNo;
+        this.lineOffset = lineOffset;
         this.sqlSerialNo = 1;
     }
 
@@ -2752,6 +2754,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private final String spOwner;
     private final String compileSeqNo;
 
+    // lines before the code of the user, subtracted from a line written in a message
+    private final int lineOffset;
+
     private StmtLoop.LoopOptimizables loopOptimizables = null;
 
     private String spName;
@@ -2792,7 +2797,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     Misc.getLineColumnOf(declCtx), // s068
                     String.format(
                             "name %s has already been used at line %d and column %d in the same declaration block",
-                            name, pos[0], pos[1]));
+                            name, pos[0] - lineOffset, pos[1]));
         }
     }
 

@@ -41,6 +41,12 @@
 #include "sp_constants.hpp"
 #include "pl_signature.hpp"
 
+/*
+ * Lines before a PL/CSQL block in the procedure of a block trigger.
+ * The compiler subtracts it, so a line of an error is a line of the block.
+ */
+#define JSP_TRIGGER_BLOCK_LINE_OFFSET 2
+
 extern int jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_create_system_generated_procedure (const char *create_sql);
 extern int jsp_drop_system_generated_procedure (const char *name);

@@ -73,13 +73,14 @@ public class PlcsqlCompilerMain {
         return compileSeqNo++;
     }
 
-    public static CompileInfo compilePLCSQL(String in, String owner, boolean verbose) {
-        return compilePLCSQL(in, verbose, owner, Long.toString(getCompileSeqNo()));
+    public static CompileInfo compilePLCSQL(
+            String in, String owner, boolean verbose, int lineOffset) {
+        return compilePLCSQL(in, verbose, owner, Long.toString(getCompileSeqNo()), lineOffset);
     }
     // end of temporary code
 
     public static CompileInfo compilePLCSQL(
-            String in, boolean verbose, String owner, String compileSeqNo) {
+            String in, boolean verbose, String owner, String compileSeqNo, int lineOffset) {
 
         // System.out.println("[TEMP] text to the compiler");
         // System.out.println(in);
@@ -87,18 +88,30 @@ public class PlcsqlCompilerMain {
         int optionFlags = verbose ? OPT_VERBOSE : 0;
         CharStream input = CharStreams.fromString(in);
         try {
-            return compileInner(new InstanceStore(), input, optionFlags, owner, compileSeqNo);
+            return compileInner(
+                    new InstanceStore(), input, optionFlags, owner, compileSeqNo, lineOffset);
         } catch (SyntaxError e) {
-            CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
-            return err;
+            return compileError(e.line - lineOffset, e.column, e.getMessage(), lineOffset);
         } catch (SemanticError e) {
-            CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
-            return err;
+            return compileError(e.line - lineOffset, e.column, e.getMessage(), lineOffset);
         } catch (Throwable e) {
             Server.log(e);
             CompileInfo err = new CompileInfo(-1, 0, 0, "internal error");
             return err;
         }
+    }
+
+    // A line before the code of the user is reported as 0, which means no position.
+    // Only the procedure of a trigger block has lines before the code. The engine reports its
+    // error as one of the trigger, so the message carries the position as a run-time error does.
+    private static CompileInfo compileError(int line, int column, String msg, int lineOffset) {
+        if (line <= 0) {
+            return new CompileInfo(-1, 0, 0, msg);
+        }
+        if (lineOffset > 0) {
+            msg = String.format("\n  (line %d, column %d) %s", line, column, msg);
+        }
+        return new CompileInfo(-1, line, column, msg);
     }
 
     public static List<CodeAndPosition> checkSyntaxAndGetStaticSqls(String code) {
@@ -220,7 +233,8 @@ public class PlcsqlCompilerMain {
             CharStream input,
             int optionFlags,
             String owner,
-            String compileSeqNo) {
+            String compileSeqNo,
+            int lineOffset) {
 
         boolean verbose = (optionFlags & OPT_VERBOSE) > 0;
 
@@ -262,7 +276,8 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // converting parse tree to AST
 
-        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, compileSeqNo);
+        ParseTreeConverter converter =
+                new ParseTreeConverter(iStore, owner, compileSeqNo, lineOffset);
         Unit unit = (Unit) converter.visit(tree);
 
         if (verbose) {
@@ -300,7 +315,9 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // Java code generation
 
-        String javaCode = new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls).buildCodeLines(unit);
+        String javaCode =
+                new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls, lineOffset)
+                        .buildCodeLines(unit);
 
         if (verbose) {
             logElapsedTime(logStore, "Java code generation", t0);

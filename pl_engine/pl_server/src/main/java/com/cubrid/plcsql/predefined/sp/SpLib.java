@@ -279,7 +279,14 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    // classes without a line offset call this, including the ones compiled before it was added
     public static List<CodeRangeMarker> buildCodeRangeMarkerList(String markers) {
+        return buildCodeRangeMarkerList(markers, 0);
+    }
+
+    // lineOffset(in): lines before the code of the user.
+    //   A line before it has no position, and the error is reported without one.
+    public static List<CodeRangeMarker> buildCodeRangeMarkerList(String markers, int lineOffset) {
 
         String[] split = markers.split(" ");
         assert split[0].length() == 0 && split[1].charAt(0) == '(';
@@ -299,12 +306,13 @@ public class SpLib {
                 stackHeight++;
                 String[] split2 = s.substring(1).split(",");
                 assert split2.length == 3;
-                ret.add(
-                        new CodeRangeMarker(
-                                true,
-                                Integer.parseInt(split2[0]),
-                                Integer.parseInt(split2[1]),
-                                Integer.parseInt(split2[2])));
+                int plcLine = Integer.parseInt(split2[1]) - lineOffset;
+                int plcColumn = Integer.parseInt(split2[2]);
+                if (plcLine <= 0) {
+                    plcLine = -1;
+                    plcColumn = -1;
+                }
+                ret.add(new CodeRangeMarker(true, Integer.parseInt(split2[0]), plcLine, plcColumn));
             } else {
                 // ending marker of the form ')<java-line>'
                 stackHeight--;

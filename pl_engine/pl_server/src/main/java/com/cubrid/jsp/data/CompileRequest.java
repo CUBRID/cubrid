@@ -36,9 +36,13 @@ public class CompileRequest {
     public String owner = null;
     public String mode = null;
 
+    // lines before the code of the user, which the compiler subtracts from the lines it reports
+    public int lineOffset = 0;
+
     public CompileRequest(CUBRIDUnpacker unpacker) {
         code = unpacker.unpackCString();
         owner = unpacker.unpackCString();
         mode = unpacker.unpackCString();
+        lineOffset = unpacker.unpackInt();
     }
 }
