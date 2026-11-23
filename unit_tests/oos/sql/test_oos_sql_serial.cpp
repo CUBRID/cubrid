@@ -119,7 +119,7 @@ TEST_F (OosSqlSerial, NextValueWritesNoCommentChain)
   db_commit_transaction ();
 
   const int created = serial_oos_record_count ();
-  ASSERT_LE (created, 1);
+  ASSERT_EQ (created, 0) << "CREATE SERIAL stores the comment inline";
   ASSERT_NO_FATAL_FAILURE (next_values (1));
   ASSERT_EQ (serial_oos_record_count (), created) << "NEXT VALUE wrote a comment chain";
 
@@ -147,6 +147,7 @@ TEST_F (OosSqlSerial, NextValueThatWidensCurrentValKeepsTheRow)
   ASSERT_GE (exec_sql (create.c_str ()), 0);
   db_commit_transaction ();
   const int created = serial_oos_record_count ();
+  ASSERT_EQ (created, 0) << "CREATE SERIAL stores the comment inline";
 
   ASSERT_NO_FATAL_FAILURE (next_values (10));
   ASSERT_NO_FATAL_FAILURE (expect_serial_row (comment, 259));
@@ -160,6 +161,7 @@ TEST_F (OosSqlSerial, CachedBlockThatWidensCurrentValKeepsTheRow)
   ASSERT_GE (exec_sql (create.c_str ()), 0);
   db_commit_transaction ();
   const int created = serial_oos_record_count ();
+  ASSERT_EQ (created, 0) << "CREATE SERIAL stores the comment inline";
 
   ASSERT_NO_FATAL_FAILURE (next_values (1));
   ASSERT_NO_FATAL_FAILURE (expect_serial_row (comment, 300));
