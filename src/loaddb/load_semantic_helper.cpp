@@ -155,6 +155,29 @@ namespace cubload
   {
     constant_type *con = NULL;
 
+    if (type == LDR_INT && val != NULL && ((string_type *)val)->val != NULL)
+      {
+	char *val_str = ((string_type *)val)->val;
+	int val_str_len = ((string_type *)val)->size;
+	const char *max_big_int[2] = {"9223372036854775807", "9223372036854775808"};
+	int idx = (*val_str == '-') ? 1 : 0;
+
+	if (*val_str == '-' || *val_str == '+')
+	  {
+	    val_str_len--;
+	    val_str++;
+	  }
+
+	if ((val_str_len < 19) || (val_str_len == 19 && (strcmp (val_str, max_big_int[idx]) <= 0)))
+	  {
+	    /* no-op */;
+	  }
+	else
+	  {
+	    type = LDR_NUMERIC;
+	  }
+      }
+
     if (m_constant_pool_idx < CONSTANT_POOL_SIZE)
       {
 	con = &m_constant_pool[m_constant_pool_idx++];
@@ -180,13 +203,13 @@ namespace cubload
 	return NULL;
       }
 
-    if (strchr (str->val, 'F') != NULL || strchr (str->val, 'f') != NULL)
-      {
-	return make_constant (LDR_FLOAT, str);
-      }
-    else if (strchr (str->val, 'E') != NULL || strchr (str->val, 'e') != NULL)
+    if (strchr (str->val, 'e') != NULL || strchr (str->val, 'E') != NULL)
       {
 	return make_constant (LDR_DOUBLE, str);
+      }
+    else if (strchr (str->val, 'f') != NULL || strchr (str->val, 'F') != NULL)
+      {
+	return make_constant (LDR_FLOAT, str);
       }
     else
       {
@@ -197,7 +220,12 @@ namespace cubload
   constant_type *
   semantic_helper::make_monetary_constant (int currency_type, string_type *amount)
   {
-    return make_constant (LDR_MONETARY, new monetary_type (amount, currency_type));
+    monetary_type *mon = new monetary_type (amount, currency_type);
+
+    // collect it in order to free the memory later, the same way strings and constants are collected.
+    m_monetary_list.push_front (mon);
+
+    return make_constant (LDR_MONETARY, mon);
   }
 
   void
@@ -258,7 +286,25 @@ namespace cubload
   }
 
   string_type *
-  semantic_helper::make_string_and_copy (const char *src, size_t str_size)
+  semantic_helper::make_string_by_reserve_size (std::size_t str_size)
+  {
+    return make_string_by_size (str_size);
+  }
+
+  /*
+   * make_string_by_reference () - make a string of bytes the caller holds, without copying them
+   *   return: the string, which is not null terminated and does not free val
+   *   val(in): the bytes, which have to outlive the line the string is used in
+   *   str_size(in): number of bytes
+   */
+  string_type *
+  semantic_helper::make_string_by_reference (char *val, std::size_t str_size)
+  {
+    return make_string (val, str_size, false);
+  }
+
+  string_type *
+  semantic_helper::make_string_by_size (std::size_t str_size)
   {
     string_type *str;
 
@@ -271,6 +317,14 @@ namespace cubload
 	// +1 for string null terminator
 	str = make_string (new char[str_size + 1], str_size, true);
       }
+
+    return str;
+  }
+
+  string_type *
+  semantic_helper::make_string_and_copy (const char *src, size_t str_size)
+  {
+    string_type *str = make_string_by_size (str_size);
 
     std::memcpy (str->val, src, str_size);
     str->val[str_size] = '\0';
@@ -327,6 +381,12 @@ namespace cubload
 	delete con;
       }
     m_constant_list.clear ();
+
+    for (monetary_type *mon : m_monetary_list)
+      {
+	delete mon;
+      }
+    m_monetary_list.clear ();
   }
 
   template<typename T>

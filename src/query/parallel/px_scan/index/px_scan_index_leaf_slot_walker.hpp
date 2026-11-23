@@ -29,6 +29,8 @@
 #include "scan_manager.h"
 #include "storage_common.h"
 
+#include <vector>
+
 namespace parallel_scan
 {
   class input_handler_index;
@@ -65,9 +67,18 @@ namespace parallel_index_scan
       /* Reset page/key cursor; unfix m_page if still held. */
       void cleanup_on_reset (THREAD_ENTRY *thread_p);
 
+      /* unfixes m_page through the dispatcher, which must know when the frontier leaf goes away. */
+      void release_leaf (THREAD_ENTRY *thread_p);
+
       bool has_page () const
       {
 	return m_page != nullptr;
+      }
+
+      /* the leaf this worker holds until its next leaf is fixed; get_next_page_with_fix may release it. */
+      PAGE_PTR &held_leaf ()
+      {
+	return m_page;
       }
 
       /* Sole resetter of m_current_range_idx — called by slot_iterator only on fetch's descent branch (range_idx >= 0). */
@@ -83,8 +94,71 @@ namespace parallel_index_scan
       /* Process a single OID (covering / non-covering paths). Used by FSM during drain. */
       SCAN_CODE process_oid (THREAD_ENTRY *thread_p, OID *oid);
 
+      /* a key record starts (a new slot, or a helper session on another key's overflow chain): a group by skip scan
+       * compares its group key only here (CBRD-27664), and the covered key is decoded again */
+      void begin_key_record ()
+      {
+	INDX_GBY_SKIP *gby = m_scan_id->s.isid.gby_skip;
+
+	m_key_values_ready = false;
+	if (gby != nullptr)
+	  {
+	    gby->key_start = true;
+	  }
+      }
+
+      /* before the lookup of the OID the drain just took: the heap pages of the OIDs that follow it in lookup order
+       * go to the OS, a window ahead (the rest of this key, then the keys evaluated ahead on this leaf) */
+      void read_ahead (THREAD_ENTRY *thread_p);
+
+      /* the OIDs that follow start a new sequence (an overflow page, a new leaf) */
+      void restart_read_ahead ()
+      {
+	m_scan_id->s.isid.ahead_next = 0;
+      }
+
+      /* drops the keys evaluated ahead: their values are cleared, their slots are read again if the walk goes on */
+      void clear_ahead ();
+
+      /* no key evaluated ahead is waiting for its lookups */
+      bool ahead_empty () const
+      {
+	return m_ahead_head == m_ahead.size ();
+      }
+
     private:
+      /* a key next_key returned: its value (COPY) and its overflow chain; its leaf OIDs are in the drain's buffer */
+      struct key_read
+      {
+	DB_VALUE key;
+	bool clear_key = false;
+	VPID ovfl = VPID_INITIALIZER;
+      };
+
+      /* a key evaluated ahead of the lookups: it qualified, nothing of it is reported yet */
+      struct ahead_key
+      {
+	int end;                                      /* its OIDs end here in the scan's OID buffer */
+	int next_slot;                                /* the slot after this key */
+	int read_keys;                                /* keys read since the key before it, itself included */
+      };
+
+      enum class slot_result
+      {
+	QUALIFIED,
+	LEAF_END,                                     /* no key left on m_page */
+	END,                                          /* past this worker's range */
+	ERROR
+      };
+
       int check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper, int *matched_range_idx);
+
+      /* reads the keys of m_page from *slot on (range, key filter) until one qualifies, with its visible OIDs; *slot
+       * moves past it and *read_keys counts the keys read. Ahead: an error is cleared and the range's end is not
+       * signaled; *slot, *read_keys and the range stay at that key, which the lookups read again when they reach it */
+      slot_result next_key (THREAD_ENTRY *thread_p, int *slot, bool ahead, key_read *out, int *read_keys);
+      slot_result stop_at_error (THREAD_ENTRY *thread_p, bool ahead);
+      bool evaluate_ahead (THREAD_ENTRY *thread_p);
 
       /* btree_key_process_objects callback (leaf-side gather). */
       static int collect_oid_callback (THREAD_ENTRY *thread_p, BTID_INT *btid_int, RECDES *record,
@@ -107,6 +181,16 @@ namespace parallel_index_scan
       DB_VALUE m_slot_key;                           /* retained across OID drain. */
       bool m_slot_key_valid;
       bool m_slot_clear_key;                          /* needs pr_clear_value. */
+      bool m_key_values_ready;                        /* the scan values hold this key record's covered key. */
+
+      /* keys of m_page evaluated ahead, in lookup order: [m_ahead_head, size); emptied (capacity kept) once drained. */
+      std::vector<ahead_key> m_ahead;
+      size_t m_ahead_head;
+      key_read m_ahead_last;                          /* the last key's value when it has an overflow chain. */
+      int m_ahead_slot;                               /* the slot after the last key of m_ahead, or where it stopped. */
+      bool m_ahead_end;                               /* evaluate_ahead found no more key to queue on m_page. */
+      int m_ahead_skipped_keys;                       /* read_keys of the slots skipped before that stop. */
+      bool m_ahead_interrupted;                       /* evaluate_ahead took the query's interrupt. */
   };
 }
 

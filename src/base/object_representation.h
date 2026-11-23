@@ -58,14 +58,8 @@ struct setobj;
 
 #define OR_CHECK_ASSIGN_OVERFLOW(dest, src) \
   (((src) > 0 && (dest) < 0) || ((src) < 0 && (dest) > 0))
-#define OR_CHECK_ADD_OVERFLOW(a, b, c) \
-  (((a) > 0 && (b) > 0 && (c) < 0) \
-   || ((a) < 0 && (b) < 0 && (c) >= 0))
 #define OR_CHECK_UNS_ADD_OVERFLOW(a, b, c) \
   (c) < (a) || (c) < (b)
-#define OR_CHECK_SUB_UNDERFLOW(a, b, c) \
-  (((a) < (b) && (c) > 0) \
-   || ((a) > (b) && (c) < 0))
 #define OR_CHECK_UNS_SUB_UNDERFLOW(a, b, c) \
   (b) > (a)
 #define OR_CHECK_MULT_OVERFLOW(a, b, c) \
@@ -73,9 +67,47 @@ struct setobj;
    : (((b) == -1) ? ((a) != 0 && (c) == (a)) : ((c) / (b) != (a))))
 #if defined (__GNUC__) || defined (__clang__)
 #define OR_MULT_OVERFLOW(a, b, r) __builtin_mul_overflow ((a), (b), (r))
+/* Unlike the OR_CHECK_* macros above, these compute the result and report overflow without
+ * relying on signed wraparound (undefined behavior) or volatile pinning of the operands. */
+#define OR_ADD_OVERFLOW(a, b, r) __builtin_add_overflow ((a), (b), (r))
+#define OR_SUB_OVERFLOW(a, b, r) __builtin_sub_overflow ((a), (b), (r))
 #else
+/* Same reasoning as the OR_ADD_OVERFLOW fallback below: the product must not be
+ * formed with a signed *, because that is itself the undefined behaviour the check
+ * is meant to catch. It is formed in unsigned arithmetic, which wraps in a well
+ * defined way, and OR_CHECK_MULT_OVERFLOW then reads the overflow off the wrapped
+ * value. That macro special cases b == 0 and b == -1, so the division it ends with
+ * can never be DB_BIGINT_MIN / -1. */
 #define OR_MULT_OVERFLOW(a, b, r) \
-  (*(r) = (a) * (b), OR_CHECK_MULT_OVERFLOW ((a), (b), *(r)))
+  (*(r) = (long long) ((unsigned long long) (a) * (unsigned long long) (b)), \
+   OR_CHECK_MULT_OVERFLOW ((a), (b), *(r)))
+#endif
+
+/* Signed integer addition and subtraction with overflow detection.
+ *
+ * These replace OR_CHECK_ADD_OVERFLOW and OR_CHECK_SUB_UNDERFLOW, which inspected the sign
+ * of a sum the caller had already formed with a plain + or -. Forming it is itself signed
+ * overflow, so a compiler may assume it never happened and delete the check. Clang did:
+ * an overflowing addition returned a wrapped result instead of raising
+ * ER_QPROC_OVERFLOW_ADDITION. The old macros are deleted rather than left unused, so that
+ * writing one again is a compile error. The builtins store the wrapped result through r,
+ * which is the value the old code left behind on the error path. */
+#if defined (__GNUC__) || defined (__clang__)
+#define OR_ADD_OVERFLOW(a, b, r) __builtin_add_overflow ((a), (b), (r))
+#define OR_SUB_OVERFLOW(a, b, r) __builtin_sub_overflow ((a), (b), (r))
+#else
+/* The branch for a compiler without the builtins, which in practice means MSVC.
+ * It must not compute the result with a signed + or -, because that is the very
+ * undefined behaviour this pair of macros exists to avoid. The arithmetic is done
+ * in unsigned, which wraps in a well defined way, and the overflow is read off the
+ * signs afterwards. Both operands are expected to have the type of *(r), which
+ * holds at every call site, and each is evaluated more than once. */
+#define OR_ADD_OVERFLOW(a, b, r) \
+  (*(r) = (long long) ((unsigned long long) (a) + (unsigned long long) (b)), \
+   (((a) < 0) == ((b) < 0)) && ((*(r) < 0) != ((a) < 0)))
+#define OR_SUB_OVERFLOW(a, b, r) \
+  (*(r) = (long long) ((unsigned long long) (a) - (unsigned long long) (b)), \
+   (((a) < 0) != ((b) < 0)) && ((*(r) < 0) != ((a) < 0)))
 #endif
 #define OR_CHECK_SHORT_DIV_OVERFLOW(a, b) \
   ((a) == DB_INT16_MIN && (b) == -1)
@@ -89,6 +121,24 @@ struct setobj;
 #define OR_CHECK_BIGINT_OVERFLOW(i) ((i) > DB_BIGINT_MAX || (i) < DB_BIGINT_MIN)
 #define OR_CHECK_USHRT_OVERFLOW(i)  ((i) > (int) DB_UINT16_MAX || (i) < 0)
 #define OR_CHECK_UINT_OVERFLOW(i)   ((i) > DB_UINT32_MAX || (i) < 0)
+
+/* Exact bounds of the integer domains, as powers of two. Unlike DB_INT32_MAX
+ * and DB_BIGINT_MAX these are representable in float and double without any
+ * rounding, so they are the operands to use when the value being range checked
+ * is a floating point number. */
+#define OR_INT32_BOUND_D  2147483648.0	/* 2^31, that is DB_INT32_MAX + 1 */
+#define OR_BIGINT_BOUND_D 9223372036854775808.0	/* 2^63, that is DB_BIGINT_MAX + 1 */
+
+/* Overflow checks for a floating point value about to be narrowed to an integer
+ * domain. OR_CHECK_INT_OVERFLOW (2147483648.0f) answers false, because
+ * DB_INT32_MAX rounds *up* to 2^31 when it is converted to float, so the naive
+ * check lets the out of range value through and the narrowing cast is undefined.
+ * These macros compare against the exact bound instead. A NaN fails both
+ * comparisons and is therefore reported as an overflow. */
+#define OR_CHECK_INT_OVERFLOW_FROM_FP(v) \
+  (!((double) (v) >= -OR_INT32_BOUND_D && (double) (v) < OR_INT32_BOUND_D))
+#define OR_CHECK_BIGINT_OVERFLOW_FROM_FP(v) \
+  (!((double) (v) >= -OR_BIGINT_BOUND_D && (double) (v) < OR_BIGINT_BOUND_D))
 
 #define OR_CHECK_FLOAT_OVERFLOW(i)         ((i) > FLT_MAX || (-(i)) > FLT_MAX)
 #define OR_CHECK_DOUBLE_OVERFLOW(i)        ((i) > DBL_MAX || (-(i)) > DBL_MAX)
@@ -416,6 +466,9 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_PUT_OFFSET(ptr, val) \
   OR_PUT_BIG_VAR_OFFSET ((ptr), (val))
 
+#define OR_PUT_LAST_VAR_OFFSET(ptr, val) \
+  OR_PUT_OFFSET ((ptr), OR_SET_VAR_LAST_ELEMENT (val))
+
 #define OR_GET_OFFSET(ptr) \
   OR_GET_BIG_VAR_OFFSET ((ptr))
 
@@ -437,15 +490,44 @@ OR_PUT_DOUBLE (char *ptr, double val)
   } while (0)
 
 #define OR_GET_OFFSET_INTERNAL(ptr, offset_size) \
-  ((offset_size) == OR_BYTE_SIZE) \
-   ? OR_GET_BYTE ((ptr)) \
-   : (((offset_size) == OR_SHORT_SIZE) \
-      ? OR_GET_SHORT ((ptr)) : OR_GET_INT ((ptr)))
+  OR_GET_VAR_OFFSET ( \
+    ((offset_size) == OR_BYTE_SIZE) \
+     ? OR_GET_BYTE ((ptr)) \
+     : (((offset_size) == OR_SHORT_SIZE) \
+        ? OR_GET_SHORT ((ptr)) : OR_GET_INT ((ptr))))
 
 /*
  * VARIABLE OFFSET TABLE ACCESSORS
  * The variable offset table is present in the headers of objects and sets.
  */
+
+
+/*
+ * Per-variable-column flags stored in each variable offset table entry.
+ * OR_VAR_BIT_OOS identifies one OOS inline stub; OR_RECORD_FLAG_HAS_OOS is
+ * the separate record-level summary flag in the first representation word.
+ */
+
+#define OR_VAR_BIT_OOS 0x1
+#define OR_VAR_BIT_LAST_ELEMENT 0x2
+#define OR_VAR_FLAG_MASK 0x3
+
+#define OR_SET_VAR_OOS(length) ((int) (length) | OR_VAR_BIT_OOS)
+#define OR_SET_VAR_LAST_ELEMENT(length) ((int) (length) | OR_VAR_BIT_LAST_ELEMENT)
+
+#define OR_GET_VAR_FLAG(length) ((int) (length) & OR_VAR_FLAG_MASK)
+#define OR_GET_VAR_OFFSET(length) ((int) (length) & (~OR_VAR_FLAG_MASK))
+
+#define OR_IS_OOS(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_OOS)
+#define OR_IS_LAST_ELEMENT(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_LAST_ELEMENT)
+
+/* OOS inline stub: head OOS OID (8 bytes) + full length (8 bytes) + identity stamp (8 bytes).
+ * The identity stamp is a LOG_LSA packed into one bigint (oos_pack_identity_stamp, oos_file.hpp)
+ * so the stub stays 8-byte aligned at 24 bytes (CBRD-26950). */
+#define OR_OOS_IDENTITY_STAMP_SIZE OR_BIGINT_SIZE
+#define OR_OOS_INLINE_SIZE (OR_OID_SIZE + OR_BIGINT_SIZE + OR_OOS_IDENTITY_STAMP_SIZE)
+
+/* variable offset */
 
 #define OR_VAR_TABLE_SIZE(vars) \
   (OR_VAR_TABLE_SIZE_INTERNAL (vars, BIG_VAR_OFFSET_SIZE))
@@ -462,10 +544,10 @@ OR_PUT_DOUBLE (char *ptr, double val)
 
 #define OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, index, offset_size) \
   ((offset_size == OR_BYTE_SIZE) \
-   ? (OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
+   ? (OR_GET_VAR_OFFSET (OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))) \
    : ((offset_size == OR_SHORT_SIZE) \
-      ? (OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
-      : (OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))))
+      ? (OR_GET_VAR_OFFSET (OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))) \
+      : (OR_GET_VAR_OFFSET (OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))))))
 
 #define OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL(table, index, offset_size) \
   (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (table, (index) + 1, offset_size) \
@@ -561,11 +643,17 @@ OR_PUT_DOUBLE (char *ptr, double val)
 
 #define OR_GET_MVCC_CHN(ptr) (OR_GET_INT ((char *) (ptr) + OR_CHN_OFFSET))
 
-#define OR_GET_MVCC_FLAG(ptr) \
+#define OR_GET_RECORD_FLAGS(ptr) \
   (((OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET)) \
-    >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK)
+    >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_FLAG_MASK)
 
-#define OR_GET_MVCC_REPID_AND_FLAG(ptr) \
+#define OR_GET_MVCC_FLAGS(ptr) \
+  (OR_GET_RECORD_FLAGS (ptr) & OR_RECORD_MVCC_FLAG_MASK)
+
+#define OR_RECORD_HAS_OOS(ptr) \
+  ((OR_GET_RECORD_FLAGS (ptr) & OR_RECORD_FLAG_HAS_OOS) != 0)
+
+#define OR_GET_RECORD_REPID_AND_FLAGS(ptr) \
   (OR_GET_INT (((char *) (ptr)) + OR_REP_OFFSET))
 
 /* VARIABLE OFFSET TABLE ACCESSORS */
@@ -1067,7 +1155,7 @@ extern "C"
   extern int db_string_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
   extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 
-  extern int valcnv_convert_value_to_string (DB_VALUE * value);
+  extern int valcnv_convert_value_to_string (DB_VALUE * value, bool is_collection_value_to_string = false);
   extern int valcnv_convert_collection_value_to_string_all_elements (DB_VALUE * value);
 
 #if defined __cplusplus
@@ -1078,9 +1166,9 @@ extern int or_rep_id (RECDES * record);
 extern int or_set_rep_id (RECDES * record, int repid);
 extern int or_chn (RECDES * record);
 extern int or_replace_chn (RECDES * record, int chn);
-extern int or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error);
-extern int or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit,
-					int variable_offset_size);
+extern int or_get_record_repid_and_flags (OR_BUF * buf, int *error);
+extern int or_set_record_repid_and_flags (OR_BUF * buf, int record_flags, int repid, int bound_bit,
+					  int variable_offset_size);
 extern char *or_class_name (RECDES * record);
 
 /* Pointer based decoding functions */
@@ -1318,8 +1406,6 @@ STATIC_INLINE int or_put_big_var_offset (OR_BUF * buf, int num) __attribute__ ((
 STATIC_INLINE int or_put_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_offset_internal (OR_BUF * buf, int num, int offset_size) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int or_get_big_var_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size) __attribute__ ((ALWAYS_INLINE));
 
 /* Data unpacking functions */
@@ -2546,21 +2632,15 @@ or_put_big_var_offset (OR_BUF * buf, int num)
 }
 
 STATIC_INLINE int
-or_get_big_var_offset (OR_BUF * buf, int *error)
-{
-  return or_get_int (buf, error);
-}
-
-STATIC_INLINE int
 or_put_offset (OR_BUF * buf, int num)
 {
   return or_put_big_var_offset (buf, num);
 }
 
 STATIC_INLINE int
-or_get_offset (OR_BUF * buf, int *error)
+or_put_last_var_offset (OR_BUF * buf, int num)
 {
-  return or_get_big_var_offset (buf, error);
+  return or_put_offset (buf, OR_SET_VAR_LAST_ELEMENT (num));
 }
 
 STATIC_INLINE int
@@ -2584,19 +2664,23 @@ or_put_offset_internal (OR_BUF * buf, int num, int offset_size)
 STATIC_INLINE int
 or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
 {
+  int val;
+
   if (offset_size == OR_BYTE_SIZE)
     {
-      return or_get_byte (buf, error);
+      val = or_get_byte (buf, error);
     }
   else if (offset_size == OR_SHORT_SIZE)
     {
-      return or_get_short (buf, error);
+      val = or_get_short (buf, error);
     }
   else
     {
       assert (offset_size == OR_INT_SIZE);
-      return or_get_int (buf, error);
+      val = or_get_int (buf, error);
     }
+
+  return OR_GET_VAR_OFFSET (val);
 }
 
 /*

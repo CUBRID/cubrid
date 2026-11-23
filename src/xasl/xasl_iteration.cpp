@@ -81,7 +81,47 @@ extern "C" {
     cubxasl::iterate_xasl_tree<bool> (xasl,dump_with_id,true);
 
     std::string result = oss.str();
-    _er_log_debug (ARG_FILE_LINE, result.c_str());
+    // the dump holds the query text, which can carry printf conversions such as %n: never pass it as the format
+    _er_log_debug (ARG_FILE_LINE, "%s", result.c_str());
+  }
+
+  /* like the scan's own figures: the longest clone's time, the clones' page counts added */
+  static void merge_oos_reads (OOS_READ_STATS &dst, const OOS_READ_STATS &src)
+  {
+    if (timercmp (&src.elapsed, &dst.elapsed, >))
+      {
+	dst.elapsed = src.elapsed;
+      }
+    dst.fetches += src.fetches;
+    dst.ioreads += src.ioreads;
+  }
+
+  /* the statistics of one partition of a clone's scan into the main thread's (xasl_merge_stats ()) */
+  static void xasl_merge_partition_stats (SCAN_STATS *dst, const SCAN_STATS *src)
+  {
+    if (timercmp (&src->elapsed_scan, &dst->elapsed_scan, >))
+      {
+	dst->elapsed_scan = src->elapsed_scan;
+      }
+    dst->num_fetches += src->num_fetches;
+    dst->num_ioreads += src->num_ioreads;
+    merge_oos_reads (dst->oos_reads, src->oos_reads);
+    dst->read_rows += src->read_rows;
+    dst->qualified_rows += src->qualified_rows;
+    dst->read_keys += src->read_keys;
+    dst->qualified_keys += src->qualified_keys;
+    dst->key_qualified_rows += src->key_qualified_rows;
+    dst->data_qualified_rows += src->data_qualified_rows;
+    if (timercmp (&src->elapsed_lookup, &dst->elapsed_lookup, >))
+      {
+	dst->elapsed_lookup = src->elapsed_lookup;
+      }
+    dst->covered_index = dst->covered_index ? true : src->covered_index;
+    dst->multi_range_opt = dst->multi_range_opt ? true : src->multi_range_opt;
+    dst->index_skip_scan = dst->index_skip_scan ? true : src->index_skip_scan;
+    dst->loose_index_scan = dst->loose_index_scan ? true : src->loose_index_scan;
+    dst->noscan = dst->noscan ? src->noscan : false;
+    dst->agl = NULL;
   }
 
   void xasl_merge_stats (XASL_NODE *src, XASL_NODE *dst)
@@ -102,7 +142,11 @@ extern "C" {
       dst_node->xasl_stats.ioreads += src_node->xasl_stats.ioreads;
       dst_node->xasl_stats.fetches += src_node->xasl_stats.fetches;
 
-      dst_node->groupby_stats.groupby_hash = (src_node->groupby_stats.groupby_hash != HS_NONE) ? src_node->groupby_stats.groupby_hash : dst_node->groupby_stats.groupby_hash;
+      /* HS_NONE < HS_ACCEPT_ALL < HS_REJECT_ALL: one clone that gave up hashing keeps the GROUP BY partial */
+      if (src_node->groupby_stats.groupby_hash > dst_node->groupby_stats.groupby_hash)
+	{
+	  dst_node->groupby_stats.groupby_hash = src_node->groupby_stats.groupby_hash;
+	}
       dst_node->groupby_stats.groupby_sort = dst_node->groupby_stats.groupby_sort ? true : src_node->groupby_stats.groupby_sort;
       dst_node->groupby_stats.run_groupby = dst_node->groupby_stats.run_groupby ? true : src_node->groupby_stats.run_groupby;
       dst_node->groupby_stats.groupby_pages += src_node->groupby_stats.groupby_pages;
@@ -113,66 +157,69 @@ extern "C" {
 	  dst_node->groupby_stats.groupby_time = src_node->groupby_stats.groupby_time;
 	}
 
-      if (timercmp (&src_node->spec_list->s_id.scan_stats.elapsed_scan, &dst_node->spec_list->s_id.scan_stats.elapsed_scan, >))
+      /* set operation and hash join nodes have no spec_list */
+      if (src_node->spec_list != nullptr && dst_node->spec_list != nullptr)
 	{
-	  dst_node->spec_list->s_id.scan_stats.elapsed_scan = src_node->spec_list->s_id.scan_stats.elapsed_scan;
-	}
-      dst_node->spec_list->s_id.scan_stats.num_fetches += src_node->spec_list->s_id.scan_stats.num_fetches;
-      dst_node->spec_list->s_id.scan_stats.num_ioreads += src_node->spec_list->s_id.scan_stats.num_ioreads;
-      dst_node->spec_list->s_id.scan_stats.read_rows += src_node->spec_list->s_id.scan_stats.read_rows;
-      dst_node->spec_list->s_id.scan_stats.qualified_rows += src_node->spec_list->s_id.scan_stats.qualified_rows;
-      dst_node->spec_list->s_id.type = dst_node->spec_list->s_id.type == 0 ? src_node->spec_list->s_id.type : dst_node->spec_list->s_id.type;
-      if (timercmp (&src_node->spec_list->s_id.scan_stats.elapsed_lookup, &dst_node->spec_list->s_id.scan_stats.elapsed_lookup, >))
-	{
-	  dst_node->spec_list->s_id.scan_stats.elapsed_lookup = src_node->spec_list->s_id.scan_stats.elapsed_lookup;
-	}
-      dst_node->spec_list->s_id.scan_stats.read_keys += src_node->spec_list->s_id.scan_stats.read_keys;
-      dst_node->spec_list->s_id.scan_stats.qualified_keys += src_node->spec_list->s_id.scan_stats.qualified_keys;
-      dst_node->spec_list->s_id.scan_stats.key_qualified_rows += src_node->spec_list->s_id.scan_stats.key_qualified_rows;
-      dst_node->spec_list->s_id.scan_stats.data_qualified_rows += src_node->spec_list->s_id.scan_stats.data_qualified_rows;
-      dst_node->spec_list->s_id.scan_stats.index_skip_scan = dst_node->spec_list->s_id.scan_stats.index_skip_scan ? true : src_node->spec_list->s_id.scan_stats.index_skip_scan;
-      dst_node->spec_list->s_id.scan_stats.loose_index_scan = dst_node->spec_list->s_id.scan_stats.loose_index_scan ? true : src_node->spec_list->s_id.scan_stats.loose_index_scan;
-      dst_node->spec_list->s_id.scan_stats.noscan = dst_node->spec_list->s_id.scan_stats.noscan ? true : src_node->spec_list->s_id.scan_stats.noscan;
-      dst_node->spec_list->s_id.scan_stats.min_max_only_scan = dst_node->spec_list->s_id.scan_stats.min_max_only_scan ? true : src_node->spec_list->s_id.scan_stats.min_max_only_scan;
-      dst_node->spec_list->s_id.scan_stats.covered_index = dst_node->spec_list->s_id.scan_stats.covered_index ? true : src_node->spec_list->s_id.scan_stats.covered_index;
-      dst_node->spec_list->s_id.scan_stats.multi_range_opt = dst_node->spec_list->s_id.scan_stats.multi_range_opt ? true : src_node->spec_list->s_id.scan_stats.multi_range_opt;
-      /* agl copy needed..? */
+	  if (timercmp (&src_node->spec_list->s_id.scan_stats.elapsed_scan, &dst_node->spec_list->s_id.scan_stats.elapsed_scan,
+			>))
+	    {
+	      dst_node->spec_list->s_id.scan_stats.elapsed_scan = src_node->spec_list->s_id.scan_stats.elapsed_scan;
+	    }
+	  dst_node->spec_list->s_id.scan_stats.num_fetches += src_node->spec_list->s_id.scan_stats.num_fetches;
+	  dst_node->spec_list->s_id.scan_stats.num_ioreads += src_node->spec_list->s_id.scan_stats.num_ioreads;
+	  merge_oos_reads (dst_node->spec_list->s_id.scan_stats.oos_reads, src_node->spec_list->s_id.scan_stats.oos_reads);
+	  dst_node->spec_list->s_id.scan_stats.read_rows += src_node->spec_list->s_id.scan_stats.read_rows;
+	  dst_node->spec_list->s_id.scan_stats.qualified_rows += src_node->spec_list->s_id.scan_stats.qualified_rows;
+	  dst_node->spec_list->s_id.type = dst_node->spec_list->s_id.type == 0 ? src_node->spec_list->s_id.type :
+					   dst_node->spec_list->s_id.type;
+	  if (timercmp (&src_node->spec_list->s_id.scan_stats.elapsed_lookup,
+			&dst_node->spec_list->s_id.scan_stats.elapsed_lookup, >))
+	    {
+	      dst_node->spec_list->s_id.scan_stats.elapsed_lookup = src_node->spec_list->s_id.scan_stats.elapsed_lookup;
+	    }
+	  dst_node->spec_list->s_id.scan_stats.read_keys += src_node->spec_list->s_id.scan_stats.read_keys;
+	  dst_node->spec_list->s_id.scan_stats.qualified_keys += src_node->spec_list->s_id.scan_stats.qualified_keys;
+	  dst_node->spec_list->s_id.scan_stats.key_qualified_rows += src_node->spec_list->s_id.scan_stats.key_qualified_rows;
+	  dst_node->spec_list->s_id.scan_stats.data_qualified_rows += src_node->spec_list->s_id.scan_stats.data_qualified_rows;
+	  dst_node->spec_list->s_id.scan_stats.index_skip_scan = dst_node->spec_list->s_id.scan_stats.index_skip_scan ? true :
+	      src_node->spec_list->s_id.scan_stats.index_skip_scan;
+	  dst_node->spec_list->s_id.scan_stats.loose_index_scan = dst_node->spec_list->s_id.scan_stats.loose_index_scan ? true :
+	      src_node->spec_list->s_id.scan_stats.loose_index_scan;
+	  dst_node->spec_list->s_id.scan_stats.noscan = dst_node->spec_list->s_id.scan_stats.noscan ? true :
+	      src_node->spec_list->s_id.scan_stats.noscan;
+	  dst_node->spec_list->s_id.scan_stats.min_max_only_scan = dst_node->spec_list->s_id.scan_stats.min_max_only_scan ? true :
+	      src_node->spec_list->s_id.scan_stats.min_max_only_scan;
+	  dst_node->spec_list->s_id.scan_stats.covered_index = dst_node->spec_list->s_id.scan_stats.covered_index ? true :
+	      src_node->spec_list->s_id.scan_stats.covered_index;
+	  dst_node->spec_list->s_id.scan_stats.multi_range_opt = dst_node->spec_list->s_id.scan_stats.multi_range_opt ? true :
+	      src_node->spec_list->s_id.scan_stats.multi_range_opt;
+	  /* agl copy needed..? */
 
-      /* partition stats copy needed */
-      if (dst_node->spec_list->s_id.partition_stats && src_node->spec_list->s_id.partition_stats)
-	{
-	  if (timercmp (&src_node->spec_list->s_id.partition_stats->elapsed_scan,
-			&dst_node->spec_list->s_id.partition_stats->elapsed_scan, >))
+	  /* partition stats copy needed */
+	  if (XASL_IS_PER_OUTER_ROW (src_node) && src_node->spec_list->parts != nullptr
+	      && dst_node->spec_list->parts != nullptr)
 	    {
-	      dst_node->spec_list->s_id.partition_stats->elapsed_scan = src_node->spec_list->s_id.partition_stats->elapsed_scan;
+	      /* a clone walking the partitions per outer row (CBRD-27493, CBRD-27866) scans every partition itself, not
+	       * only the one the main thread's scan block iteration opened, so each partition goes to the main thread's
+	       * partition of the same class */
+	      for (PARTITION_SPEC_TYPE *src_part = src_node->spec_list->parts; src_part != nullptr; src_part = src_part->next)
+		{
+		  for (PARTITION_SPEC_TYPE *dst_part = dst_node->spec_list->parts; dst_part != nullptr;
+		       dst_part = dst_part->next)
+		    {
+		      if (OID_EQ (&src_part->oid, &dst_part->oid))
+			{
+			  xasl_merge_partition_stats (&dst_part->scan_stats, &src_part->scan_stats);
+			  break;
+			}
+		    }
+		}
 	    }
-	  dst_node->spec_list->s_id.partition_stats->num_fetches += src_node->spec_list->s_id.partition_stats->num_fetches;
-	  dst_node->spec_list->s_id.partition_stats->num_ioreads += src_node->spec_list->s_id.partition_stats->num_ioreads;
-	  dst_node->spec_list->s_id.partition_stats->read_rows += src_node->spec_list->s_id.partition_stats->read_rows;
-	  dst_node->spec_list->s_id.partition_stats->qualified_rows += src_node->spec_list->s_id.partition_stats->qualified_rows;
-	  dst_node->spec_list->s_id.partition_stats->read_keys += src_node->spec_list->s_id.partition_stats->read_keys;
-	  dst_node->spec_list->s_id.partition_stats->qualified_keys += src_node->spec_list->s_id.partition_stats->qualified_keys;
-	  dst_node->spec_list->s_id.partition_stats->key_qualified_rows +=
-		  src_node->spec_list->s_id.partition_stats->key_qualified_rows;
-	  dst_node->spec_list->s_id.partition_stats->data_qualified_rows +=
-		  src_node->spec_list->s_id.partition_stats->data_qualified_rows;
-	  if (timercmp (&src_node->spec_list->s_id.partition_stats->elapsed_lookup,
-			&dst_node->spec_list->s_id.partition_stats->elapsed_lookup, >))
+	  else if (dst_node->spec_list->s_id.partition_stats && src_node->spec_list->s_id.partition_stats)
 	    {
-	      dst_node->spec_list->s_id.partition_stats->elapsed_lookup = src_node->spec_list->s_id.partition_stats->elapsed_lookup;
+	      xasl_merge_partition_stats (dst_node->spec_list->s_id.partition_stats,
+					  src_node->spec_list->s_id.partition_stats);
 	    }
-	  dst_node->spec_list->s_id.partition_stats->covered_index = dst_node->spec_list->s_id.partition_stats->covered_index ?
-	      true : src_node->spec_list->s_id.partition_stats->covered_index;
-	  dst_node->spec_list->s_id.partition_stats->multi_range_opt = dst_node->spec_list->s_id.partition_stats->multi_range_opt
-	      ? true : src_node->spec_list->s_id.partition_stats->multi_range_opt;
-	  dst_node->spec_list->s_id.partition_stats->index_skip_scan = dst_node->spec_list->s_id.partition_stats->index_skip_scan
-	      ? true : src_node->spec_list->s_id.partition_stats->index_skip_scan;
-	  dst_node->spec_list->s_id.partition_stats->loose_index_scan =
-		  dst_node->spec_list->s_id.partition_stats->loose_index_scan ? true :
-		  src_node->spec_list->s_id.partition_stats->loose_index_scan;
-	  dst_node->spec_list->s_id.partition_stats->noscan = dst_node->spec_list->s_id.partition_stats->noscan ?
-	      src_node->spec_list->s_id.partition_stats->noscan:false;
-	  dst_node->spec_list->s_id.partition_stats->agl = NULL;
 	}
 
       if (dst_node->sq_cache != nullptr && src_node->sq_cache != nullptr)

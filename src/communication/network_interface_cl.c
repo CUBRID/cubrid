@@ -29,6 +29,7 @@
 #include <assert.h>
 
 #include <algorithm>
+#include <chrono>
 
 #include "porting.h"
 #include "network.h"
@@ -54,6 +55,8 @@
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "authenticate.h"
+#include "authenticate_password.hpp"
 #include "log_comm.h"
 #include "log_writer.h"
 #include "arithmetic.h"
@@ -64,6 +67,7 @@
 #if !defined(CS_MODE)
 /* heap_file.h is server-only; the SA path below needs it, CS path does not */
 #include "heap_file.h"
+#include "xasl_cache.h"
 #endif /* !CS_MODE */
 #include "system_parameter.h"
 #include "replication.h"
@@ -89,6 +93,11 @@
 #include "locator_cl.h"
 #include "execute_schema.h"
 #include "authenticate.h"
+#include "stream_client.h"
+#include "stream_session.hpp"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -99,8 +108,8 @@
 
 #if defined (CS_MODE)
 #define NET_DEFER_END_QUERIES_MAX 5
-static QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX];
-static int net_Deferred_end_queries_count = 0;
+static CUB_THREAD_LOCAL QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX];
+static CUB_THREAD_LOCAL int net_Deferred_end_queries_count = 0;
 #endif /* CS_MODE */
 
 /*
@@ -4000,6 +4009,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  *tran_state = (TRAN_STATE) temp_int;
 
+	  assert (server_credential != NULL);
 	  ptr = or_unpack_string (ptr, &server_credential->db_full_name);
 	  ptr = or_unpack_string (ptr, &server_credential->host_name);
 	  ptr = or_unpack_string (ptr, &server_credential->lob_path);
@@ -4563,10 +4573,11 @@ boot_shutdown_server (ER_FINAL_CODE iserfinal)
  * session_id (in/out) : the id of the session to end
  * row_count (out)     : the value of row count for this session
  * server_session_key (in/out) :
+ * session_secret (in/out) :
  */
 int
-csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key, const char *db_user,
-				 const char *host, const char *program_name)
+csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key,
+				 char *session_secret, const char *db_user, const char *host, const char *program_name)
 {
 #if defined (CS_MODE)
   int req_error;
@@ -4586,6 +4597,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   request_size += length_const_string (db_user, &db_user_len);
   request_size += length_const_string (host, &host_len);
   request_size += length_const_string (program_name, &program_name_len);
+  request_size += or_packed_stream_length (SESSION_SECRET_SIZE);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4602,6 +4614,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   ptr = pack_const_string_with_length (ptr, db_user, db_user_len);
   ptr = pack_const_string_with_length (ptr, host, host_len);
   ptr = pack_const_string_with_length (ptr, program_name, program_name_len);
+  ptr = or_pack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
 
   req_error =
     net_client_request2 (NET_SERVER_SES_CHECK_SESSION, request, request_size, reply,
@@ -4614,6 +4627,11 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
       if (error != NO_ERROR)
 	{
 	  free_and_init (request);
+	  if (area != NULL)
+	    {
+	      /* the reply may still carry data; it is not read on an error */
+	      free_and_init (area);
+	    }
 	  return error;
 	}
 
@@ -4626,6 +4644,10 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	  if (update_parameter_values)
 	    {
 	      ptr = sysprm_unpack_session_parameters (ptr, &session_params);
+	    }
+	  if (ptr != NULL)
+	    {
+	      ptr = or_unpack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
 	    }
 
 	  free_and_init (area);
@@ -4645,12 +4667,38 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	      free_and_init (request);
 	      return error;
 	    }
-	  sysprm_update_client_session_parameters (session_params);
+	}
+
+#if defined(MULTI_CONN_TO_A_SERVER)
+      if (boot_is_sub_client ())
+	{
+	  /*
+	   * The parameter values on the client (prm_Def) are process-wide and shared with the main client and
+	   * the other sub-clients, so a sub-client must not rewrite them. Keep the session parameter values of
+	   * this sub-client in its own thread-local array instead (see sysprm_set_sub_client_session_parameters ()).
+	   * The session of a new sub-client is created with cached_session_parameters loaded by the main client.
+	   */
+	  error = sysprm_set_sub_client_session_parameters (update_parameter_values ? session_params :
+							    cached_session_parameters);
+	  if (error != NO_ERROR)
+	    {
+	      sysprm_free_session_parameters (&session_params);
+	      free_and_init (request);
+	      return error;
+	    }
 	}
       else
+#endif
 	{
-	  /* use the values stored in cached_session_parameters */
-	  sysprm_update_client_session_parameters (cached_session_parameters);
+	  if (update_parameter_values)
+	    {
+	      sysprm_update_client_session_parameters (session_params);
+	    }
+	  else
+	    {
+	      /* use the values stored in cached_session_parameters */
+	      sysprm_update_client_session_parameters (cached_session_parameters);
+	    }
 	}
       sysprm_free_session_parameters (&session_params);
     }
@@ -4665,15 +4713,15 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 
   if (db_Session_id == DB_EMPTY_SESSION)
     {
-      result = xsession_create_new (thread_p, &id);
+      result = xsession_create_new (thread_p, &id, session_secret);
     }
   else
     {
       id = db_Session_id;
-      if (xsession_check_session (thread_p, id) != NO_ERROR)
+      if (xsession_check_session (thread_p, id, session_secret) != NO_ERROR)
 	{
 	  /* create new session */
-	  if (xsession_create_new (thread_p, &id) != NO_ERROR)
+	  if (xsession_create_new (thread_p, &id, session_secret) != NO_ERROR)
 	    {
 	      result = ER_FAILED;
 	    }
@@ -4684,7 +4732,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   *session_id = db_Session_id;
 
   /* get row count */
-  if (result != ER_FAILED)
+  if (result == NO_ERROR)
     {
       xsession_get_row_count (thread_p, row_count);
     }
@@ -5264,6 +5312,169 @@ csession_delete_prepared_statement (const char *name)
   exit_server (*thread_p);
 
   return result;
+#endif
+}
+
+#if defined (CS_MODE)
+/*
+ * cau_copy_reply_string () - copy a string out of a challenge reply, trusting
+ *   its length prefix only once the string lies inside the reply.
+ *   return: the position after it, or NULL if it does not fit
+ */
+static char *
+cau_copy_reply_string (char *ptr, char *reply, int reply_size, char *out, int out_size)
+{
+  int declared_len;
+  char *after_len, *str = NULL;
+
+  if (reply_size - (int) (ptr - reply) < OR_INT_SIZE)
+    {
+      return NULL;
+    }
+
+  after_len = or_unpack_int (ptr, &declared_len);
+  if (declared_len <= 0 || declared_len > (reply_size - (int) (after_len - reply))
+      || memchr (after_len, '\0', declared_len) == NULL)
+    {
+      return NULL;
+    }
+
+  ptr = or_unpack_string_nocopy (ptr, &str);
+  if (str == NULL || (int) strlen (str) >= out_size)
+    {
+      return NULL;
+    }
+
+  strcpy (out, str);
+  return ptr;
+}
+#endif /* CS_MODE */
+
+/*
+ * cau_challenge () - ask the server for a one-time password challenge.
+ *   return: NO_ERROR, or the server's error (ER_AU_INVALID_USER for an unknown account,
+ *           ER_AU_LOGIN_DISABLED for one that may not log in)
+ *   user_name (in) : account to prove
+ *   scheme (out)   : form its password is stored in, 0 if none
+ *   nonce (out)    : the challenge
+ *   nonce_size (in): size of nonce
+ *   issued_at (out): when the server issued it
+ *   tag (out)      : the server's signature over it, sent back with the answer
+ *   tag_size (in)  : size of tag
+ *   salt (out)     : the salt of a salted password, empty otherwise
+ *   salt_size (in) : size of salt
+ *   stored_name (out): the account name as stored, for a salted password
+ *   stored_name_size (in): size of stored_name
+ */
+int
+cau_challenge (const char *user_name, int *scheme, char *nonce, int nonce_size, INT64 * issued_at, char *tag,
+	       int tag_size, char *salt, int salt_size, char *stored_name, int stored_name_size)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (CSS_AU_CHALLENGE_REPLY_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int reply_size = OR_ALIGNED_BUF_SIZE (a_reply);
+  char *request, *ptr;
+  int user_len, req_len, error;
+
+  req_len = length_const_string (user_name, &user_len);
+  request = (char *) malloc (req_len);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) req_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  pack_const_string_with_length (request, user_name, user_len);
+
+  memset (reply, 0, reply_size);
+  error = net_client_request (NET_SERVER_AU_CHALLENGE, request, req_len, reply, reply_size, NULL, 0, NULL, 0);
+  free_and_init (request);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  ptr = or_unpack_int (reply, &error);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  ptr = or_unpack_int (ptr, scheme);
+
+  /* reply: error | scheme | nonce | issued_at | tag | salt | stored_name */
+  ptr = cau_copy_reply_string (ptr, reply, reply_size, nonce, nonce_size);
+  /* or_unpack_int64 () aligns first, so check the room from the aligned position */
+  if (ptr != NULL && reply_size - (int) (PTR_ALIGN (ptr, MAX_ALIGNMENT) - reply) >= OR_BIGINT_SIZE)
+    {
+      ptr = or_unpack_int64 (ptr, issued_at);
+      ptr = cau_copy_reply_string (ptr, reply, reply_size, tag, tag_size);
+      ptr = (ptr != NULL) ? cau_copy_reply_string (ptr, reply, reply_size, salt, salt_size) : NULL;
+      ptr = (ptr != NULL) ? cau_copy_reply_string (ptr, reply, reply_size, stored_name, stored_name_size) : NULL;
+    }
+  else
+    {
+      ptr = NULL;
+    }
+
+  if (ptr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
+      return ER_NET_SERVER_DATA_RECEIVE;
+    }
+
+  return NO_ERROR;
+#else
+  return NO_ERROR;
+#endif
+}
+
+/*
+ * cau_response () - answer a challenge. The challenge goes back
+ *   with the answer, so the server can recognise its own without storing it.
+ *   return: NO_ERROR if the server accepted it, else ER_AU_INVALID_PASSWORD
+ *   user_name (in) : account the challenge was issued for
+ *   nonce (in)     : the challenge
+ *   issued_at (in) : when the server issued it
+ *   tag (in)       : the server's signature over it
+ *   answer (in)    : digest over the challenge and the password's stored form
+ */
+int
+cau_response (const char *user_name, const char *nonce, INT64 issued_at, const char *tag, const char *answer)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *a_request, *request, *ptr;
+  int req_len, error;
+
+  /* request: user | nonce | issued_at | tag | answer */
+  req_len = or_packed_string_length (user_name, NULL) + or_packed_string_length (nonce, NULL) + MAX_ALIGNMENT
+    + OR_BIGINT_SIZE + or_packed_string_length (tag, NULL) + or_packed_string_length (answer, NULL);
+  a_request = (char *) malloc (req_len + MAX_ALIGNMENT);
+  if (a_request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (req_len + MAX_ALIGNMENT));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  request = PTR_ALIGN (a_request, MAX_ALIGNMENT);
+  ptr = or_pack_string (request, user_name);
+  ptr = or_pack_string (ptr, nonce);
+  ptr = or_pack_int64 (ptr, issued_at);
+  ptr = or_pack_string (ptr, tag);
+  ptr = or_pack_string (ptr, answer);
+  req_len = (int) (ptr - request);
+
+  error = net_client_request (NET_SERVER_AU_RESPONSE, request, req_len, OR_ALIGNED_BUF_START (a_reply),
+			      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  free_and_init (a_request);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  or_unpack_int (OR_ALIGNED_BUF_START (a_reply), &error);
+  return error;
+#else
+  return NO_ERROR;
 #endif
 }
 
@@ -6157,15 +6368,75 @@ is_top_level_class (MOBJ mobj)
 }
 
 /*
+ * stats_progress_clock_msec - monotonic clock for the progress of UPDATE STATISTICS ON ALL CLASSES
+ *
+ * return: msec from an arbitrary origin
+ */
+INT64
+stats_progress_clock_msec (void)
+{
+  return std::chrono::duration_cast < std::chrono::milliseconds >
+    (std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+}
+
+/*
+ * stats_log_update_progress - report the progress of UPDATE STATISTICS ON ALL CLASSES to the server event log
+ *
+ * return: none; a failure to report never fails the run and leaves the current error as it was
+ *
+ *   classop(in):
+ *   phase(in): STATS_PROGRESS_STATISTICS or STATS_PROGRESS_HISTOGRAM
+ *   state(in): STATS_PROGRESS_STARTED or STATS_PROGRESS_FINISHED
+ *   seq(in): 1-based position of the class in the phase
+ *   total(in): number of classes in the phase
+ *   class_start_msec(in): stats_progress_clock_msec () when the class started
+ *   run_start_msec(in): stats_progress_clock_msec () when the run started
+ *   error(in): result of the class (finished only)
+ */
+void
+stats_log_update_progress (MOP classop, int phase, int state, int seq, int total, INT64 class_start_msec,
+			   INT64 run_start_msec, int error)
+{
+#if defined(CS_MODE)
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE * 7) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  INT64 now = stats_progress_clock_msec ();
+  INT64 class_ms = now - class_start_msec;
+  INT64 elapsed_ms = now - run_start_msec;
+
+  ptr = or_pack_oid (request, WS_OID (classop));
+  ptr = or_pack_int (ptr, phase);
+  ptr = or_pack_int (ptr, state);
+  ptr = or_pack_int (ptr, seq);
+  ptr = or_pack_int (ptr, total);
+  ptr = or_pack_int (ptr, (int) std::min (class_ms, (INT64) INT_MAX));
+  ptr = or_pack_int (ptr, (int) std::min (elapsed_ms, (INT64) INT_MAX));
+  ptr = or_pack_int (ptr, error);
+
+  er_stack_push ();
+  (void) net_client_request (NET_SERVER_QST_LOG_STATS_PROGRESS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			     OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  er_stack_pop ();
+#endif /* CS_MODE */
+  /* SA_MODE has no server event log */
+}
+
+/*
  * stats_update_all_statistics -
  *
  * return:
  *   with_fullscan(in): true iff WITH FULLSCAN
+ *   print_summary(in): print the summary line here; true only for WITH NO HISTOGRAM, which skips the
+ *                      histogram pass that normally prints it
+ *   run_start_msec(in): stats_progress_clock_msec () when the run started
  *
- * NOTE:
+ * NOTE: the progress of each class goes to the server event log.
  */
 int
-stats_update_all_statistics (int with_fullscan, int print_summary)
+stats_update_all_statistics (int with_fullscan, int print_summary, INT64 run_start_msec)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
@@ -6183,7 +6454,13 @@ stats_update_all_statistics (int with_fullscan, int print_summary)
       class_mop = lmops->mops[i];
       if (locator_fetch_class (class_mop, DB_FETCH_READ) != NULL)
 	{
+	  INT64 class_start_msec = stats_progress_clock_msec ();
+
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_STARTED, i + 1, lmops->num,
+				     class_start_msec, run_start_msec, NO_ERROR);
 	  error = stats_update_statistics (class_mop, with_fullscan);
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
+				     class_start_msec, run_start_msec, error);
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -6209,8 +6486,24 @@ stats_update_all_statistics (int with_fullscan, int print_summary)
   return error;
 }
 
+/*
+ * update_histogram_for_all_classes () - update the statistics and build the histograms of every top-level class
+ *                                       (UPDATE STATISTICS ON ALL CLASSES / optimizedb)
+ *   return: NO_ERROR or error code
+ *   with_fullscan(in): true iff WITH FULLSCAN
+ *   random_seed(in): sampling seed
+ *   skip_mops(in): classes to leave out of the histogram build (optimizedb --no-histogram-classes). Their
+ *                  statistics are still updated and their existing histograms are kept as they are. NULL if none
+ *   n_skip(in): number of entries in skip_mops
+ *   run_start_msec(in): stats_progress_clock_msec () when the run started
+ *
+ * NOTE: each class is done once, the way UPDATE STATISTICS ON <class> does it: the histogram scan also updates
+ *       the class statistics, from the same scan and in the caller's mode. A statistics pass ahead of it would
+ *       only be overwritten. The progress of each class goes to the server event log as one statistics event
+ *       pair.
+ */
 int
-update_histogram_for_all_classes (int random_seed)
+update_histogram_for_all_classes (int with_fullscan, int random_seed, MOP * skip_mops, int n_skip, INT64 run_start_msec)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
@@ -6227,33 +6520,79 @@ update_histogram_for_all_classes (int random_seed)
       return ER_FAILED;
     }
 
-  int n_tables = 0, n_cols = 0, n_hist_skipped = 0;
+  int n_tables = 0, n_cols = 0, n_hist_skipped = 0, n_excluded = 0;
 
   for (int i = 0; i < lmops->num; i++)
     {
+      bool excluded = false;
+
       class_mop = lmops->mops[i];
+
+      /* compare by OID rather than MOP pointer: the caller resolved its list through db_find_class (),
+       * which yields the same MOP for a cached class but the OID is what identifies it */
+      for (int k = 0; k < n_skip && skip_mops != NULL; k++)
+	{
+	  if (skip_mops[k] != NULL && OID_EQ (WS_OID (class_mop), WS_OID (skip_mops[k])))
+	    {
+	      excluded = true;
+	      break;
+	    }
+	}
+      INT64 class_start_msec = stats_progress_clock_msec ();
+
+      stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_STARTED, i + 1, lmops->num,
+				 class_start_msec, run_start_msec, NO_ERROR);
 
       obj = db_find_class (sm_get_ch_name (class_mop));
       if (obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1,
+				     lmops->num, class_start_msec, run_start_msec, error);
 	  AU_RESTORE (save);
-	  return er_errid ();
+	  locator_free_list_mops (lmops);
+	  return error;
 	}
 
-      histogram_info.target_columns = NULL;
-      histogram_info.bucket_count = -1;
-      histogram_info.with_fullscan = false;
-      histogram_info.random_seed = random_seed;
-      int hist_skipped = 0;
+      if (excluded)
+	{
+	  /* no histogram scan updates the statistics of this class */
+	  error = sm_update_statistics (obj, with_fullscan);
+	}
+      else
+	{
+	  histogram_info.target_columns = NULL;
+	  histogram_info.bucket_count = -1;
+	  /* the histogram scan rewrites the class statistics as well, so it runs in the caller's mode: fixed to
+	   * sampling, it replaced the full-scan B-tree statistics of WITH FULLSCAN with sampled ones (CBRD-27836) */
+	  histogram_info.with_fullscan = with_fullscan;
+	  histogram_info.random_seed = random_seed;
+	  int hist_skipped = 0;
 
-      error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE,
-					       &hist_skipped);
-      n_hist_skipped += hist_skipped;
-      if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
+	  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE,
+						   &hist_skipped);
+	  n_hist_skipped += hist_skipped;
+	  if (error == ER_OBJ_INVALID_ARGUMENTS)
+	    {
+	      /* kept for parity with UPDATE STATISTICS ON <class>; the all-columns build does not return this today
+	       * (a class with no histogrammable column is handled inside the helper, which updates its statistics) */
+	      error = sm_update_statistics (obj, with_fullscan);
+	    }
+	}
+      stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
+				 class_start_msec, run_start_msec, error);
+      if (error != NO_ERROR)
 	{
 	  AU_RESTORE (save);
+	  locator_free_list_mops (lmops);
 	  return error;
+	}
+
+      if (excluded)
+	{
+	  n_excluded++;
+	  continue;
 	}
 
       n_tables++;
@@ -6263,20 +6602,34 @@ update_histogram_for_all_classes (int random_seed)
 	}
     }
   AU_RESTORE (save);
+  locator_free_list_mops (lmops);
 
-  if (error == NO_ERROR && n_tables > 0)
+  if (n_excluded < n_skip)
     {
+      /* an entry that is a class but not a top-level one (a partition of a partitioned class) never
+       * matches the list above; say so instead of dropping it silently */
+      int n_missed = n_skip - n_excluded;
+
+      fprintf (stderr, "Warning: %d of the %d classes to exclude %s and %s ignored.\n", n_missed, n_skip,
+	       (n_missed == 1) ? "is not a top-level class" : "are not top-level classes",
+	       (n_missed == 1) ? "was" : "were");
+      fflush (stderr);
+    }
+
+  if (error == NO_ERROR && (n_tables > 0 || n_excluded > 0))
+    {
+      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s", n_tables,
+	       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
       if (n_hist_skipped > 0)
 	{
-	  fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s"
-		   " (%d skipped: histogram type not supported).\n", n_tables,
-		   (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s", n_hist_skipped);
+	  fprintf (stdout, " (%d skipped: histogram type not supported)", n_hist_skipped);
 	}
-      else
+      if (n_excluded > 0)
 	{
-	  fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
-		   (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
+	  /* classes named by --no-histogram-classes: counted neither in the tables above nor as skipped */
+	  fprintf (stdout, " (%d excluded)", n_excluded);
 	}
+      fprintf (stdout, ".\n");
       fflush (stdout);
     }
 
@@ -6298,8 +6651,7 @@ update_histogram_for_all_classes (int random_seed)
  * NOTE:
  */
 int
-btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk,
-		 int deduplicate_key_pos)
+btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
@@ -6313,7 +6665,6 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   domain_size = or_packed_domain_size (key_type, 0);
   request_size = OR_BTID_ALIGNED_SIZE + domain_size + OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE;
-  request_size += OR_INT_SIZE;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -6327,7 +6678,6 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, attr_id);
   ptr = or_pack_int (ptr, unique_pk);
-  ptr = or_pack_int (ptr, deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
   req_error =
     net_client_request (NET_SERVER_BTREE_ADDINDEX, request, request_size, reply,
@@ -6354,7 +6704,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
+  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0);
   if (btid == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -7066,7 +7416,8 @@ btree_class_test_unique (char *buf, int buf_size)
  * fill_factor (in)	: Target fill ratio in percent.
  * keys_compacted (out) : Number of keys whose chain lost at least one page.
  * pages_freed (out)	: Number of overflow pages deallocated.
- * pairs_skipped (out)	: Number of page pairs that could not be compacted (no OID boundary; vacuum pending).
+ * pairs_skipped (out)	: Number of page pairs and keys that could not be compacted until vacuum catches up (no OID
+ *			  boundary in a page pair, or no stable object in a key's leaf record).
  */
 int
 btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, INT64 * pages_freed,
@@ -7344,6 +7695,78 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 #endif /* !CS_MODE */
 }
 
+#if !defined (CS_MODE)
+/* free the values qmgr_server_db_values made */
+static void
+qmgr_free_server_db_values (THREAD_ENTRY * thread_p, int dbval_cnt, DB_VALUE * server_db_values)
+{
+  if (server_db_values != NULL)
+    {
+      for (int i = 0; i < dbval_cnt; i++)
+	{
+	  db_value_clear (&server_db_values[i]);
+	}
+      db_private_free (thread_p, server_db_values);
+    }
+}
+
+/*
+ * qmgr_server_db_values () - the bound values as the server takes them, in the server's allocation: an object as its
+ *   OID, as the client's packing sends it in CS mode (CBRD-27583: the plans the server makes before the rows take an
+ *   object's values as OIDs)
+ *   return: the values, NULL without values or on error (when *error is set)
+ */
+static DB_VALUE *
+qmgr_server_db_values (THREAD_ENTRY * thread_p, int dbval_cnt, const DB_VALUE * dbvals, bool * error)
+{
+  DB_VALUE *server_db_values;
+  OID *oid;
+  int i;
+
+  *error = false;
+  if (dbval_cnt <= 0)
+    {
+      return NULL;
+    }
+
+  server_db_values = (DB_VALUE *) db_private_alloc (thread_p, dbval_cnt * sizeof (DB_VALUE));
+  if (server_db_values == NULL)
+    {
+      *error = true;
+      return NULL;
+    }
+  for (i = 0; i < dbval_cnt; i++)
+    {
+      db_make_null (&server_db_values[i]);
+    }
+  for (i = 0; i < dbval_cnt; i++)
+    {
+      switch (DB_VALUE_TYPE (&dbvals[i]))
+	{
+	case DB_TYPE_OBJECT:
+	  /* server cannot handle objects, convert to OID instead */
+	  oid = ws_identifier (db_get_object (&dbvals[i]));
+	  if (oid != NULL)
+	    {
+	      db_make_oid (&server_db_values[i], oid);
+	    }
+	  break;
+
+	default:
+	  /* Clone value */
+	  if (db_value_clone ((DB_VALUE *) (&dbvals[i]), &server_db_values[i]) != NO_ERROR)
+	    {
+	      qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
+	      *error = true;
+	      return NULL;
+	    }
+	  break;
+	}
+    }
+  return server_db_values;
+}
+#endif /* !CS_MODE */
+
 /*
  * qmgr_execute_query - Send a SERVER_QM_EXECUTE request to the server
  *
@@ -7415,6 +7838,13 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	{
 	  flag |= EXECUTE_QUERY_WITHOUT_DATA_BUFFERS;
 	}
+    }
+
+  /* nothing commits inside a stream (tran_commit), the server's own auto-commit included: EXECUTE_QUERY_WITH_COMMIT
+   * is the bit the server commits on */
+  if (stream_from_is_open ())
+    {
+      flag &= ~(TRAN_AUTO_COMMIT | EXECUTE_QUERY_WITH_COMMIT);
     }
 
   /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a
@@ -7551,69 +7981,20 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   return list_id;
 #else /* CS_MODE */
   QFILE_LIST_ID *list_id = NULL;
-  DB_VALUE *server_db_values = NULL;
-  OID *oid;
-  int i;
+  bool error;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
   /* reallocate dbvals to use server allocation */
-  if (dbval_cnt > 0)
+  DB_VALUE *server_db_values = qmgr_server_db_values (thread_p, dbval_cnt, dbvals, &error);
+  if (!error)
     {
-      size_t s = dbval_cnt * sizeof (DB_VALUE);
-
-      server_db_values = (DB_VALUE *) db_private_alloc (thread_p, s);
-      if (server_db_values == NULL)
-	{
-	  goto cleanup;
-	}
-      for (i = 0; i < dbval_cnt; i++)
-	{
-	  db_make_null (&server_db_values[i]);
-	}
-      for (i = 0; i < dbval_cnt; i++)
-	{
-	  switch (DB_VALUE_TYPE (&dbvals[i]))
-	    {
-	    case DB_TYPE_OBJECT:
-	      /* server cannot handle objects, convert to OID instead */
-	      oid = ws_identifier (db_get_object (&dbvals[i]));
-	      if (oid != NULL)
-		{
-		  db_make_oid (&server_db_values[i], oid);
-		}
-	      break;
-
-	    default:
-	      /* Clone value */
-	      if (db_value_clone ((DB_VALUE *) (&dbvals[i]), &server_db_values[i]) != NO_ERROR)
-		{
-		  goto cleanup;
-		}
-	      break;
-	    }
-	}
+      /* call the server routine of query execute */
+      list_id =
+	xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
+			     srv_cache_time, query_timeout, NULL);
     }
-  else
-    {
-      /* No dbvals */
-      server_db_values = NULL;
-    }
-
-  /* call the server routine of query execute */
-  list_id =
-    xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
-			 srv_cache_time, query_timeout, NULL);
-
-cleanup:
-  if (server_db_values != NULL)
-    {
-      for (i = 0; i < dbval_cnt; i++)
-	{
-	  db_value_clear (&server_db_values[i]);
-	}
-      db_private_free (thread_p, server_db_values);
-    }
+  qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
 
   exit_server (*thread_p);
 
@@ -7721,13 +8102,20 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
 
   return regu_result;
 #else /* CS_MODE */
-  QFILE_LIST_ID *regu_result;
+  QFILE_LIST_ID *regu_result = NULL;
+  bool error;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  regu_result =
-    xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, dbval_ptr, &flag,
-				     query_timeout);
+  /* CBRD-27583: an object as its OID, as qmgr_execute_query sends it */
+  DB_VALUE *server_db_values = qmgr_server_db_values (thread_p, dbval_cnt, dbval_ptr, &error);
+  if (!error)
+    {
+      regu_result =
+	xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt,
+					 server_db_values, &flag, query_timeout);
+    }
+  qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
 
   exit_server (*thread_p);
 
@@ -7861,11 +8249,97 @@ qmgr_drop_all_query_plans (void)
 }
 
 /*
+ * qmgr_bind_variant - Send a NET_SERVER_QM_BIND_VARIANT request: find or reserve the plan
+ *   variant of a cached query that suits a fingerprint, or register the plan a reserved variant
+ *   compiled to
+ *   (bind_variant.h). This function is a counter part to sqmgr_bind_variant().
+ *
+ * return     : error code
+ * req (in)   : the request
+ * reply (out): the outcome and the query's variant directory
+ */
+int
+qmgr_bind_variant (const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply)
+{
+#if defined(CS_MODE)
+  int status = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, i, j;
+  OR_ALIGNED_BUF (OR_BIND_VARIANT_REQUEST_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BIND_VARIANT_REPLY_SIZE) a_reply;
+  char *request, *reply_buf, *ptr;
+  INT64 sig;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply_buf = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_sha1 (request, &req->sha1);
+  OR_PACK_CACHE_TIME (ptr, &req->time_stored);
+  ptr = or_pack_int (ptr, req->op);
+  ptr = or_pack_int (ptr, req->limit);
+  ptr = or_pack_int (ptr, req->variant);
+  ptr = or_pack_int (ptr, req->fp.terms);
+  sig = (INT64) req->plan_sig;
+  ptr = or_pack_int64 (ptr, sig);
+  ptr = or_pack_double (ptr, req->band);
+  ptr = or_pack_double (ptr, req->floor);
+  for (i = 0; i < BIND_WATCH_MAX_TERMS; i++)
+    {
+      ptr = or_pack_double (ptr, (i < req->fp.terms) ? req->fp.rows[i] : 0.0);
+    }
+
+  req_error =
+    net_client_request (NET_SERVER_QM_BIND_VARIANT, request, OR_ALIGNED_BUF_SIZE (a_request), reply_buf,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (req_error)
+    {
+      return req_error;
+    }
+
+  ptr = or_unpack_int (reply_buf, &status);
+  ptr = or_unpack_int (ptr, &reply->result);
+  ptr = or_unpack_int (ptr, &reply->variant);
+  ptr = or_unpack_int (ptr, &reply->state);
+  ptr = or_unpack_int (ptr, &reply->compiles);
+  ptr = or_unpack_int (ptr, &reply->plans);
+  ptr = or_unpack_int (ptr, &reply->pending);
+  ptr = or_unpack_int (ptr, &reply->n_records);
+  if (reply->n_records < 0 || reply->n_records > BIND_VARIANT_MAX_COMPILES)
+    {
+      reply->n_records = 0;
+    }
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      ptr = or_unpack_int (ptr, &reply->records[i].variant);
+      ptr = or_unpack_int (ptr, &reply->records[i].fp.terms);
+    }
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      for (j = 0; j < BIND_WATCH_MAX_TERMS; j++)
+	{
+	  ptr = or_unpack_double (ptr, &reply->records[i].fp.rows[j]);
+	}
+    }
+
+  return status;
+#else /* CS_MODE */
+  int status;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  status = xcache_bind_variant (thread_p, req, reply);
+
+  exit_server (*thread_p);
+
+  return status;
+#endif /* !CS_MODE */
+}
+
+/*
  * qmgr_drop_query_plans_by_sha1 - Send a SERVER_QM_DROP_BY_SHA1 request to the server
  *
- * Request the server to clear sha1 XASL cache entires out. When the client
+ * Request the server to clear sha1 XASL cache entries out. When the client
  * want to delete cached query plans for sha1, this function will be used.
- * This function is a counter part to sqmgr_drop_all_query_plans().
+ * This function is a counter part to sqmgr_drop_query_plans_by_sha1().
  */
 /*
  * qmgr_drop_query_plans_by_sha1 -
@@ -7875,7 +8349,7 @@ qmgr_drop_all_query_plans (void)
  * NOTE:
  */
 int
-qmgr_drop_query_plans_by_sha1 (char *sha1)
+qmgr_drop_query_plans_by_sha1 (const char *sha1)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
@@ -7915,6 +8389,60 @@ qmgr_drop_query_plans_by_sha1 (char *sha1)
 
   /* call the server routine of query drop plan */
   status = xqmgr_drop_query_plans_by_sha1 (thread_p, sha1);
+
+  exit_server (*thread_p);
+
+  return status;
+#endif /* !CS_MODE */
+}
+
+/*
+ * qmgr_drop_query_clones - Send a NET_SERVER_QM_QUERY_DROP_CLONES request to the server
+ *
+ * return: NO_ERROR or error code
+ *
+ *   sha1(in): sha1 of the plans whose clones are dropped; NULL for all plans
+ */
+int
+qmgr_drop_query_clones (const char *sha1)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED;
+  int request_size, strlen1 = 0;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  int req_error;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (sha1, &strlen1);
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_FAILED;
+    }
+
+  pack_const_string_with_length (request, sha1, strlen1);
+
+  req_error = net_client_request (NET_SERVER_QM_QUERY_DROP_CLONES, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &success);
+    }
+
+  free_and_init (request);
+
+  return success;
+#else /* CS_MODE */
+  int status;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  status = xqmgr_drop_query_clones (thread_p, sha1);
 
   exit_server (*thread_p);
 
@@ -8343,7 +8871,7 @@ perfmon_server_copy_stats (UINT64 * to_stats)
     }
   else
     {
-      perfmon_Iscollecting_stats = false;
+      disable_perfmon_start_stats ();
     }
 
   free_and_init (reply);
@@ -8394,7 +8922,7 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
     }
   else
     {
-      perfmon_Iscollecting_stats = false;
+      disable_perfmon_start_stats ();
     }
 
   free_and_init (reply);
@@ -9614,8 +10142,8 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   /* Do it as async mode at the first request to the server. And, if several pages are left to get, keep it as async
    * mode */
 
-  assert (logwr_Gl.last_recv_pageid <= logwr_Gl.hdr.eof_lsa.pageid);
-  if (logwr_Gl.last_recv_pageid == logwr_Gl.hdr.eof_lsa.pageid)
+  assert (logwr_Gl.last_recv_pageid <= logwr_Gl.hdr.eof_lsa.load ().pageid);
+  if (logwr_Gl.last_recv_pageid == logwr_Gl.hdr.eof_lsa.load ().pageid)
     {
       /* In case of synchronous request */
       first_pageid_torecv = logwr_Gl.last_recv_pageid;
@@ -9712,7 +10240,8 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 	}
     }
 
-  if (logwr_Gl.start_pageid >= NULL_PAGEID && logwr_Gl.hdr.eof_lsa.pageid == logwr_Gl.hdr.append_lsa.load ().pageid
+  if (logwr_Gl.start_pageid >= NULL_PAGEID
+      && logwr_Gl.hdr.eof_lsa.load ().pageid == logwr_Gl.hdr.append_lsa.load ().pageid
       && logwr_Gl.hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
     {
       ctx_ptr->shutdown = true;
@@ -10389,15 +10918,16 @@ log_get_mvcc_snapshot (void)
  * return : NO_ERROR if all OK, error status otherwise
  * class_oid(in) : class whose instances must be upgraded
  * attribute_id(in) : id attribute which must be upgraded
+ * check_only(in) : only check that every instance fits the latest representation
  *
  * Note: Used on ALTER CHANGE (with type change syntax) context
  */
 int
-locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
+locator_upgrade_instances_domain (OID * class_oid, int attribute_id, bool check_only)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED, req_error;
-  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE * 2) a_request;
   char *request, *reply, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
@@ -10412,6 +10942,7 @@ locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
   ptr = request;
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, attribute_id);
+  ptr = or_pack_int (ptr, check_only ? 1 : 0);
 
   req_error =
     net_client_request (NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN, request,
@@ -10427,7 +10958,7 @@ locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error = xlocator_upgrade_instances_domain (thread_p, class_oid, attribute_id);
+  error = xlocator_upgrade_instances_domain (thread_p, class_oid, attribute_id, check_only);
 
   exit_server (*thread_p);
   return error;
@@ -12006,6 +12537,282 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
 #endif /* !CS_MODE */
 }
 
+#if defined(CS_MODE)
+/* Whether this client holds an open stream session. The caller of a statement
+ * that opened one needs to know that bytes are still to come, without knowing
+ * which consumer opened it. */
+static CUB_THREAD_LOCAL bool stream_Is_open = false;
+
+/* where giving the upload up goes back to (stream_from_set_savepoint), or NULL */
+static CUB_THREAD_LOCAL const char *stream_Savepoint = NULL;
+
+/* The download handles this client holds, as the READ_OPEN replies named them. Each ties the transaction as an
+ * open result set does, and the server releases them all when the transaction ends (stream_from_reset). */
+static CUB_THREAD_LOCAL INT64 *stream_Downloads = NULL;
+static CUB_THREAD_LOCAL int stream_Download_count = 0;
+static CUB_THREAD_LOCAL int stream_Download_capacity = 0;
+
+static int
+stream_download_add (INT64 handle)
+{
+  if (stream_Download_count == stream_Download_capacity)
+    {
+      int capacity = stream_Download_capacity == 0 ? 16 : 2 * stream_Download_capacity;
+      INT64 *grown = (INT64 *) realloc (stream_Downloads, capacity * sizeof (INT64));
+
+      if (grown == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, capacity * sizeof (INT64));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      stream_Downloads = grown;
+      stream_Download_capacity = capacity;
+    }
+
+  stream_Downloads[stream_Download_count++] = handle;
+  return NO_ERROR;
+}
+
+static int
+stream_download_find (INT64 handle)
+{
+  for (int i = 0; i < stream_Download_count; i++)
+    {
+      if (stream_Downloads[i] == handle)
+	{
+	  return i;
+	}
+    }
+  return -1;
+}
+
+/*
+ * stream_roll_back_given_up () - Undo what an upload given up without its END flushed, as for a failed statement
+ *   reaches_transaction(in): false when the request failed on the wire, or the server already rolled back
+ */
+static void
+stream_roll_back_given_up (bool reaches_transaction)
+{
+  const char *savepoint = stream_Savepoint;
+
+  stream_Savepoint = NULL;
+  if (savepoint == NULL || !reaches_transaction)
+    {
+      return;
+    }
+
+  /* the error that ended the upload is the one to report */
+  er_stack_push ();
+  (void) tran_abort_upto_system_savepoint (savepoint);
+  er_stack_pop ();
+}
+
+static void
+stream_download_remove (INT64 handle)
+{
+  int i = stream_download_find (handle);
+
+  if (i >= 0)
+    {
+      stream_Downloads[i] = stream_Downloads[--stream_Download_count];
+    }
+}
+#endif /* CS_MODE */
+
+/*
+ * stream_from_is_open () - Is a stream session open for this client?
+ *   return: true between a successful stream_from_init () and stream_from_end ()
+ */
+bool
+stream_from_is_open (void)
+{
+#if defined(CS_MODE)
+  return stream_Is_open;
+#else /* CS_MODE */
+  return false;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_reset () - Forget the stream session this connection was holding
+ *
+ * Called where the server-side session or transaction is known to be gone: ending the
+ * client session, shutting the database connection down, committing or rolling back.
+ * A client that goes away mid-stream never sends END, and this flag would otherwise
+ * survive into the next client the CAS process serves -- where do_commit_after_execute ()
+ * would read it and defer every auto-commit forever. The server releases every download
+ * handle with the transaction, so they go too.
+ */
+void
+stream_from_reset (void)
+{
+#if defined(CS_MODE)
+  stream_Is_open = false;
+  stream_Savepoint = NULL;
+  stream_Download_count = 0;
+#endif /* CS_MODE */
+}
+
+/*
+ * stream_from_final () - Free this thread's download list, as a MULTI_CONN_TO_A_SERVER sub-client finishes
+ */
+void
+stream_from_final (void)
+{
+#if defined(CS_MODE)
+  free_and_init (stream_Downloads);
+  stream_Download_count = 0;
+  stream_Download_capacity = 0;
+  stream_Is_open = false;
+  stream_Savepoint = NULL;
+#endif /* CS_MODE */
+}
+
+/*
+ * stream_from_holds_download () - Does a download handle still tie this client's transaction?
+ */
+bool
+stream_from_holds_download (void)
+{
+#if defined(CS_MODE)
+  return stream_Download_count > 0;
+#else /* CS_MODE */
+  return false;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_holds_handle () - Is handle one of the downloads this client holds?
+ */
+bool
+stream_from_holds_handle (INT64 handle)
+{
+#if defined(CS_MODE)
+  return stream_download_find (handle) >= 0;
+#else /* CS_MODE */
+  return false;
+#endif /* !CS_MODE */
+}
+
+#if defined(CS_MODE)
+/*
+ * stream_request_error () - The error of a stream request that reached the server
+ *   return: the code its reply carried, or the one its error reply staged
+ *
+ * A request that became a deadlock victim was rolled back by the server inside it, with every stream and
+ * download of the transaction; the client side ends the transaction too, as after any other request.
+ */
+static int
+stream_request_error (int req_error, int reply_code)
+{
+  int error_code = reply_code;
+
+  if (req_error)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_FAILED;
+	}
+    }
+
+  if (error_code == ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_only_client (false);
+    }
+
+  return error_code;
+}
+#endif /* CS_MODE */
+
+/*
+ * stream_from_init () - Open a client->server byte-stream session on the server
+ *   return: error code
+ *   stream_kind(in): the consumer's own STREAM_KIND_* tag
+ *   config(in): consumer-specific config blob (already or_pack_*'d by the caller)
+ *   config_len(in): length of config in bytes
+ *   flags(in): STREAM_FLAG_FINAL to end the stream with data in the same request
+ *   data(in), data_len(in): the first chunk, or none
+ *   count(out): with STREAM_FLAG_FINAL, what END would have returned
+ *   ends_unit_of_work(out): does END of this kind finish the statement? Answered
+ *                           on a refusal too, since the open may already have put
+ *                           work into the transaction
+ *
+ * The server factory dispatches on stream_kind to build the matching session.
+ * This entry is consumer-agnostic; the config blob is opaque here.
+ */
+int
+stream_from_init (int stream_kind, const char *config, int config_len, int flags, const char *data, int data_len,
+		  INT64 * count, bool * ends_unit_of_work)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  int request_size;
+  char *request = NULL;
+  char *ptr;
+  int ends = 0;
+  INT64 final_count = 0;
+
+  request_size = 3 * OR_INT_SIZE + config_len + data_len;
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_int (request, stream_kind);
+  ptr = or_pack_int (ptr, flags);
+  ptr = or_pack_int (ptr, config_len);
+  if (config_len > 0)
+    {
+      memcpy (ptr, config, config_len);
+    }
+  if (data_len > 0)
+    {
+      memcpy (ptr + config_len, data, data_len);
+    }
+
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_INIT, request, request_size, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &rc);
+      ptr = or_unpack_int (ptr, &ends);
+      ptr = or_unpack_int64 (ptr, &final_count);
+    }
+  rc = stream_request_error (req_error, rc);
+
+  /* a refused open leaves whatever was open before it, and a FINAL one leaves nothing open */
+  if (rc == NO_ERROR && !(flags & STREAM_FLAG_FINAL))
+    {
+      stream_Is_open = true;
+      stream_Savepoint = NULL;
+    }
+  if (count != NULL)
+    {
+      *count = (rc == NO_ERROR) ? final_count : 0;
+    }
+  if (ends_unit_of_work != NULL)
+    {
+      *ends_unit_of_work = (ends != 0);
+    }
+
+  free_and_init (request);
+
+  return rc;
+#else /* CS_MODE */
+  /* there is no client->server hop in standalone mode, and reporting success
+   * would let a consumer stream into nothing and call it a zero-row load */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
 /*
  * file_clean_invalid_file -
  *
@@ -12103,3 +12910,349 @@ file_delete_target_file (const char *target_vfid_str)
 #endif /* !CS_MODE */
 }
 #endif
+
+/*
+ * stream_from_send_data () - Send one chunk of the byte stream to the server
+ *   return: error code
+ *   data(in): binary data buffer
+ *   data_len(in): length of data in bytes
+ */
+int
+stream_from_send_data (const char *data, int data_len)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_SEND_DATA, (char *) data, data_len, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+  rc = stream_request_error (req_error, rc);
+
+  if (rc != NO_ERROR)
+    {
+      /* the server drops the session on a failed chunk, so nothing is open here either */
+      stream_Is_open = false;
+      stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_end () - End the stream and retrieve the session's result
+ *   return: error code
+ *   count(out): the binding's count -- rows for COPY and LOB DML
+ *   data(in), data_len(in): a last chunk to consume before ending, or none
+ */
+int
+stream_from_end (INT64 * count, const char *data, int data_len)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  *count = 0;
+
+  int req_error = net_client_request (NET_SERVER_STREAM_END, data_len > 0 ? (char *) data : NULL, data_len, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  /* the server drops the session on END whether or not it reported an error */
+  stream_Is_open = false;
+
+  if (!req_error)
+    {
+      char *ptr;
+      ptr = or_unpack_int (reply, &rc);
+      ptr = or_unpack_int64 (ptr, count);
+    }
+  rc = stream_request_error (req_error, rc);
+  if (rc != NO_ERROR)
+    {
+      stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
+    }
+  stream_Savepoint = NULL;
+
+  return rc;
+#else /* CS_MODE */
+  *count = 0;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_abort () - Drop the open stream session without ending it
+ *   return: error code
+ *
+ * For the failure the server cannot see: the consumer's client half gave up
+ * before it had a chunk to send -- its encoder failed, the statement it belongs
+ * to unwound, the user cancelled. Sending a chunk just to make the server refuse
+ * it would report the wrong error; this says so directly. What the session
+ * flushed is undone back to the savepoint the statement named
+ * (stream_from_set_savepoint ()), or else by the caller's rollback.
+ */
+int
+stream_from_abort (void)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_ABORT, NULL, 0, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  /* the session is gone either way: the server dropped it, or it was never there */
+  stream_Is_open = false;
+
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+  rc = stream_request_error (req_error, rc);
+  stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
+
+  return rc;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_set_savepoint () - Name where giving the open upload up goes back to, as for a failed statement
+ *   savepoint_name(in): a system savepoint the opening statement took before the open; it outlives the upload
+ */
+void
+stream_from_set_savepoint (const char *savepoint_name)
+{
+#if defined(CS_MODE)
+  stream_Savepoint = stream_Is_open ? savepoint_name : NULL;
+#endif /* CS_MODE */
+}
+
+#if defined(CS_MODE)
+/* the bytes a READ_OPEN or READ reply carried, into the caller's buffer of max bytes */
+static int
+stream_take_read_data (int rc, char *data_reply, int data_size, int nread, char *buf, int max, int *nread_out)
+{
+  *nread_out = 0;
+
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (nread < 0 || nread > max || data_size != nread || (nread > 0 && data_reply == NULL))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "malformed stream read reply");
+      return ER_STREAM_SESSION_ERROR;
+    }
+
+  if (nread > 0)
+    {
+      memcpy (buf, data_reply, (size_t) nread);
+    }
+  *nread_out = nread;
+
+  return NO_ERROR;
+}
+#endif /* CS_MODE */
+
+/*
+ * stream_from_read_open () - Open a server->client byte stream
+ *   return: error code
+ *   stream_kind(in): the consumer's own STREAM_KIND_* tag
+ *   config(in), config_len(in): the kind's config blob, opaque here
+ *   first_max(in): 0 to open only, or the bytes buf can take from a first read in the same request
+ *   flags(in): STREAM_FLAG_RELEASE_AT_EOF
+ *   handle(out): what READ and RELEASE name; 0 when the core released the source at eof
+ *   buf(out), nread(out), reply_flags(out): the first piece, STREAM_FLAG_EOF / STREAM_FLAG_RELEASED
+ *
+ * The kind's authorize runs first, here, so that every client of this library
+ * -- the CAS for a driver, csql, the utilities -- is checked the same way.
+ */
+int
+stream_from_read_open (int stream_kind, const char *config, int config_len, int first_max, int flags,
+		       INT64 * handle, char *buf, int *nread, int *reply_flags)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  int request_size;
+  char *request = NULL;
+  char *ptr;
+  char *data_reply = NULL;
+  int data_size = 0;
+  int reply_nread = 0;
+
+  *handle = 0;
+  *nread = 0;
+  *reply_flags = 0;
+
+  rc = stream_kind_client_authorize (stream_kind, config, config_len);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  request_size = 3 * OR_INT_SIZE + config_len;
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_int (request, stream_kind);
+  ptr = or_pack_int (ptr, first_max);
+  ptr = or_pack_int (ptr, flags);
+  if (config_len > 0)
+    {
+      memcpy (ptr, config, config_len);
+    }
+
+  OR_ALIGNED_BUF (4 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request2 (NET_SERVER_STREAM_READ_OPEN, request, request_size, reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_size);
+  rc = ER_FAILED;
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &reply_nread);
+      ptr = or_unpack_int (ptr, &rc);
+      ptr = or_unpack_int (ptr, reply_flags);
+      ptr = or_unpack_int64 (ptr, handle);
+    }
+  rc = stream_request_error (req_error, rc);
+  rc = stream_take_read_data (rc, data_reply, data_size, reply_nread, buf, first_max, nread);
+  if (*handle != 0)
+    {
+      if (rc == NO_ERROR)
+	{
+	  rc = stream_download_add (*handle);
+	}
+      /* a handle the caller is not told about would tie the transaction with nothing to release it */
+      if (rc != NO_ERROR)
+	{
+	  (void) stream_from_release (*handle);
+	  *handle = 0;
+	}
+    }
+
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+  free_and_init (request);
+
+  return rc;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_read () - Read the next piece of an open download
+ *   return: error code
+ *   handle(in): what stream_from_read_open () returned
+ *   buf(out), max(in): where the bytes go and how many it takes
+ *   flags(in): STREAM_FLAG_RELEASE_AT_EOF
+ *   nread(out), reply_flags(out): STREAM_FLAG_EOF / STREAM_FLAG_RELEASED -- on a failed read too, which
+ *                                 releases the handle unless it never resolved
+ */
+int
+stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  char *ptr;
+  char *data_reply = NULL;
+  int data_size = 0;
+  int reply_nread = 0;
+
+  OR_ALIGNED_BUF (OR_BIGINT_SIZE + 2 * OR_INT_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  *nread = 0;
+  *reply_flags = 0;
+
+  ptr = or_pack_int64 (request, handle);
+  ptr = or_pack_int (ptr, max);
+  ptr = or_pack_int (ptr, flags);
+
+  int req_error = net_client_request2 (NET_SERVER_STREAM_READ, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_size);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &reply_nread);
+      ptr = or_unpack_int (ptr, &rc);
+      ptr = or_unpack_int (ptr, reply_flags);
+    }
+  rc = stream_request_error (req_error, rc);
+  if (*reply_flags & STREAM_FLAG_RELEASED)
+    {
+      stream_download_remove (handle);
+    }
+  rc = stream_take_read_data (rc, data_reply, data_size, reply_nread, buf, max, nread);
+
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_release () - Release a download handle this client holds
+ *   return: error code; a handle the server no longer has is not an error
+ *   handle(in): a download handle
+ */
+int
+stream_from_release (INT64 handle)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+
+  OR_ALIGNED_BUF (OR_BIGINT_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  stream_download_remove (handle);
+  (void) or_pack_int64 (request, handle);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_RELEASE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return stream_request_error (req_error, rc);
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}

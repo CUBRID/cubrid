@@ -33,6 +33,7 @@ struct lc_copy_area;
 struct heap_cache_attrinfo;
 struct recdes;
 struct scan_id_struct;
+struct update_assignment;
 struct val_descr;
 
 namespace cubxasl
@@ -56,6 +57,7 @@ namespace cubquery
     int att_id;			/* index in the class attributes array */
     db_value *constant;		/* constant to be assigned to an attribute or NULL */
     regu_variable_node *regu_right;	/* regu variable for right side of an assignment */
+    const update_assignment *assignment;	/* CBRD-27583: the XASL's - its domain and converter */
     update_mvcc_reev_assignment *next;	/* link to the next assignment */
   };
 
@@ -64,6 +66,7 @@ namespace cubquery
   {
     int class_index;		/* index of class in select list */
     OID cls_oid;			/* OID of class */
+    HFID cls_hfid;		/* heap of cls_oid; resolved with the OID so reevaluation need not ask per row */
     OID *inst_oid;		/* OID of instance involved in condition */
     filter_info data_filter;	/* data filter */
     filter_info key_filter;	/* key_filter */
@@ -78,6 +81,8 @@ namespace cubquery
   };
 
   /* data for MVCC condition reevaluation */
+  /* the constructor leaves the empty, condition-only state; the UPDATE path fills the assignment-side
+   * fields (prepare_mvcc_reev_data ()). vd must always be bound. */
   struct mvcc_update_reev_data
   {
     upddel_mvcc_cond_reeval *mvcc_cond_reev_list;	/* list of classes that are referenced in condition */
@@ -95,6 +100,12 @@ namespace cubquery
     lc_copy_area *copyarea;	/* used to build the tuple to be stored to disk after reevaluation */
     val_descr *vd;		/* values descriptor */
     recdes *new_recdes;		/* record descriptor after assignment reevaluation */
+    bool caller_builds_record;	/* redo the assignments into curr_attrinfo with no new_recdes: the caller builds it */
+    bool must_recompute;	/* the select phase did not compute this row's assignments: redo them even when the
+				 * last version is the one the snapshot sees */
+    bool recomputed;		/* locator_mvcc_reev_cond_assigns () redid the assignments of this row */
+
+    mvcc_update_reev_data ();
   };
 
   /* Structure used in condition reevaluation at SELECT */
@@ -119,6 +130,7 @@ namespace cubquery
       mvcc_scan_reev_data *select_reev_data;	/* data for reevaluation at SELECT */
     };
     DB_LOGICAL filter_result;	/* the result of reevaluation if successful */
+    bool last_version_is_ours;	/* if successful: see locator_version_is_ours () */
 
     void set_update_reevaluation (mvcc_update_reev_data &urd);
     void set_scan_reevaluation (mvcc_scan_reev_data &scan);

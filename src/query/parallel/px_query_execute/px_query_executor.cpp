@@ -43,6 +43,7 @@ namespace parallel_query_execute
     :m_root_thread_p (root_thread_p),
      m_worker_manager_p (worker_manager_p),
      m_job_execution_queue (new queue (estimated_jobs)),
+     m_wake_event_p (new wake_event ()),
      m_is_task_running_p (new bool (false)),
      m_parallelism (parallelism),
      m_xasl_state (qexec_deep_copy_xasl_state (root_thread_p, xasl_state)),
@@ -53,16 +54,19 @@ namespace parallel_query_execute
      m_is_root_executor (true),
      m_job (),
      m_has_job (false),
-     m_on_trace (on_trace)
+     m_on_trace (on_trace),
+     m_ran_after_workers (false)
   {
     assert (m_xasl_state != nullptr);
     m_stats = {{0, 0}, 0, 0, 0};
+    m_join_context.set_wake_event (m_wake_event_p);
   }
 
   query_executor::query_executor (query_executor *parent_executor_p)
     :m_root_thread_p (parent_executor_p->m_root_thread_p),
      m_worker_manager_p (parent_executor_p->m_worker_manager_p),
      m_job_execution_queue (parent_executor_p->m_job_execution_queue),
+     m_wake_event_p (parent_executor_p->m_wake_event_p),
      m_is_task_running_p (parent_executor_p->m_is_task_running_p),
      m_parallelism (parent_executor_p->m_parallelism),
      m_xasl_state (parent_executor_p->m_xasl_state),
@@ -73,50 +77,63 @@ namespace parallel_query_execute
      m_is_root_executor (false),
      m_job (),
      m_has_job (false),
-     m_on_trace (parent_executor_p->m_on_trace)
+     m_on_trace (parent_executor_p->m_on_trace),
+     m_ran_after_workers (false)
   {
     assert (m_xasl_state != nullptr);
     m_stats = {{0, 0}, 0, 0, 0};
+    m_join_context.set_wake_event (m_wake_event_p);
   }
   query_executor::~query_executor()
   {
     if (m_is_root_executor)
       {
 	m_interrupt.set_code (interrupt::interrupt_code::USER_INTERRUPTED_FROM_MAIN_THREAD);
-	m_job_execution_queue->push_last();
-	delete m_job_execution_queue;
-	delete m_is_task_running_p;
+	/* the workers end before the queue and the wake event they wait on go away */
+	m_wake_event_p->stop_workers();
 	if (m_worker_manager_p != nullptr)
 	  {
 	    m_worker_manager_p->release_workers ();
 	    m_worker_manager_p = nullptr;
 	  }
+	m_job_execution_queue->push_last();
+	delete m_job_execution_queue;
+	delete m_wake_event_p;
+	delete m_is_task_running_p;
+	if (m_root_thread_p->m_uses_px_stats)
+	  {
+	    /* an error ended the query before run_jobs () drained the root's array; drain it here so later
+	     * statements of this thread count to the transaction again */
+	    m_root_thread_p->m_uses_px_stats = false;
+	    perfmon_add_values_to_local (m_root_thread_p, m_root_thread_p->m_px_stats);
+	    perfmon_destroy_parallel_stats (m_root_thread_p);
+	    m_root_thread_p->m_px_orig_thread_entry = nullptr;
+	  }
 	qexec_free_xasl_state (m_root_thread_p, m_xasl_state);
-      }
-    if (m_on_trace)
-      {
-	std::lock_guard<std::mutex> lock (m_trace_context.m_mutex);
-	m_trace_context.m_stats.clear();
       }
   }
   bool query_executor::add_job (THREAD_ENTRY *thread_p, xasl_node *xasl, xasl_state *xasl_state)
   {
     if (!m_has_job)
       {
-	m_job = job (xasl, m_xasl_state, &m_join_context, m_on_trace?&m_trace_context:nullptr);
+	m_job = job (xasl, m_xasl_state, &m_join_context, &m_trace_context);
 	m_join_context.add_running_jobs();
 	m_has_job = true;
 	return true;
       }
-    m_job_execution_queue->push (job (xasl, m_xasl_state, &m_join_context, m_on_trace?&m_trace_context:nullptr),
-				 m_interrupt);
-    m_join_context.add_running_jobs();
+    /* push_slow () refuses a job once the interrupt is set: count only what the queue took, or run_jobs ()
+     * would wait for a job nobody runs */
+    if (m_job_execution_queue->push (job (xasl, m_xasl_state, &m_join_context, &m_trace_context),
+				     m_interrupt))
+      {
+	m_join_context.add_running_jobs();
+	m_wake_event_p->wake_all();
+      }
     return true;
   }
   int query_executor::run_jobs (THREAD_ENTRY *thread_p)
   {
     job j;
-    bool is_pop_success = true;
     int err_code = NO_ERROR;
     TSC_TICKS start_tick, end_tick;
     TSCTIMEVAL tv_diff;
@@ -125,10 +142,13 @@ namespace parallel_query_execute
 	tsc_getticks (&start_tick);
       }
 
+    m_ran_after_workers = m_wake_event_p->is_workers_stopped();
+
     /* 2. if no task is running, create a new task */
     if (!*m_is_task_running_p)
       {
-	task *new_task = new task (m_root_thread_p, m_job_execution_queue, &m_error_messages, &m_interrupt, m_worker_manager_p);
+	task *new_task = new task (m_root_thread_p, m_job_execution_queue, m_wake_event_p, &m_error_messages, &m_interrupt,
+				   m_worker_manager_p);
 	*m_is_task_running_p = true;
 	m_worker_manager_p->push_task (new_task);
       }
@@ -138,39 +158,36 @@ namespace parallel_query_execute
 	j = m_job;
 	err_code = execute_job_internal (thread_p, m_root_thread_p, j.m_xasl, j.m_xasl_state, &m_error_messages, &m_interrupt,
 					 j.m_join_context, j.m_trace_context);
-	/* 4. execute the job if queue is not empty */
-	while (is_pop_success)
-	  {
-	    if (m_join_context.get_running_jobs() == 0)
-	      {
-		break;
-	      }
-	    is_pop_success = m_job_execution_queue->try_pop (j);
-	    if (is_pop_success)
-	      {
-		err_code = execute_job_internal (thread_p, m_root_thread_p, j.m_xasl, j.m_xasl_state, &m_error_messages, &m_interrupt,
-						 j.m_join_context, j.m_trace_context);
-		if (err_code != NO_ERROR)
-		  {
-		    ;
-		  }
-	      }
-	    if (m_join_context.get_running_jobs() == 0)
-	      {
-		break;
-	      }
-	    else
-	      {
-		is_pop_success = true;
-	      }
-	  }
       }
 
-    /* 5. join the jobs */
-    m_join_context.join_jobs();
+    /* 4. until every job of this executor ended, run any queued job of the statement; when the queue is
+     *    empty, sleep on the statement's wake event. The epoch is read before the last look at the count
+     *    and the queue, so a push or a job end after that look wakes this thread. */
+    while (m_join_context.get_running_jobs() > 0)
+      {
+	if (m_job_execution_queue->try_pop (j))
+	  {
+	    err_code = execute_job_internal (thread_p, m_root_thread_p, j.m_xasl, j.m_xasl_state, &m_error_messages, &m_interrupt,
+					     j.m_join_context, j.m_trace_context);
+	    continue;
+	  }
+	std::uint64_t seen_epoch = m_wake_event_p->get_epoch();
+	if (m_join_context.get_running_jobs() == 0)
+	  {
+	    break;
+	  }
+	if (!m_job_execution_queue->is_empty())
+	  {
+	    continue;
+	  }
+	m_wake_event_p->wait (seen_epoch);
+      }
+
+    /* 5. the root's jobs ended: the workers stop. The queue stays open: an executor that runs after this one
+     *    (a WHERE subquery evaluated during the scan) pushes its jobs and runs them itself. */
     if (m_is_root_executor)
       {
-	m_job_execution_queue->push_last();
+	m_wake_event_p->stop_workers();
 	m_worker_manager_p->release_workers ();
 	m_worker_manager_p = nullptr;
       }
@@ -232,64 +249,46 @@ namespace parallel_query_execute
 	  }
       }
     /* 8. merge stats */
+    UINT64 old_fetches = 0, old_ioreads = 0, old_fetch_time = 0;
     if (m_on_trace)
       {
-	UINT64 old_fetches, old_ioreads, old_fetch_time;
 	old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
 	old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
 	old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC)/1000;
+      }
 
-	pthread_mutex_lock (&thread_p->m_px_stats_mutex);
+    pthread_mutex_lock (&thread_p->m_px_stats_mutex);
+    {
+      /* everything the jobs counted goes to this thread: the root's own array (drained below), or the job array
+       * of the worker that runs this nested executor */
+      std::lock_guard<std::mutex> lock (m_trace_context.m_mutex);
+      if (m_trace_context.m_px_stats != nullptr)
 	{
-
-	  std::lock_guard<std::mutex> lock (m_trace_context.m_mutex);
-	  for (auto stats : m_trace_context.m_stats)
-	    {
-#if !defined(NDEBUG)
-	      er_log_debug (ARG_FILE_LINE, "thread %8ld : stat %d, %d, %d", syscall (SYS_gettid), stats.fetches, stats.ioreads,
-			    stats.fetch_time);
-#endif
-	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset, stats.fetches);
-	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset, stats.ioreads);
-	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
-					      stats.fetch_time);
-	    }
-	  /* Hand the job workers' SP evaluation back to the leader, so its closing read in
-	   * qexec_execute_query () sees the whole statement's SP work and not just its own share.
-	   * m_uses_px_stats is still true here, so this lands in the root's own px_stats array and
-	   * is carried the last hop to the transaction's counters by the root's drain loop below -
-	   * which is why that loop has to cover these offsets too. Zeroed after folding: this runs
-	   * once per executor. */
-	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_CALL_EVALS].start_offset,
-					  m_trace_context.m_sp_calls);
-	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_EVAL_TIME_10USEC].start_offset,
-					  m_trace_context.m_sp_time);
-	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_FETCHES].start_offset,
-					  m_trace_context.m_sp_fetches);
-	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_IOREADS].start_offset,
-					  m_trace_context.m_sp_ioreads);
-	  m_trace_context.m_sp_calls = m_trace_context.m_sp_time = 0;
-	  m_trace_context.m_sp_fetches = m_trace_context.m_sp_ioreads = 0;
-
-	  pthread_mutex_unlock (&thread_p->m_px_stats_mutex);
-	  m_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
-	  m_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
-	  m_stats.fetch_time += perfmon_get_from_statistic (thread_p,
-				PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC)/1000 - old_fetch_time;
-	  if (m_is_root_executor)
-	    {
-	      int merged_cnt = 0;
-	      const int *merged_offsets = perfmon_get_parallel_merged_offsets (&merged_cnt);
-
-	      thread_p->m_uses_px_stats = false;
-	      for (int i = 0; i < merged_cnt; i++)
-		{
-		  perfmon_add_at_offset_to_local (thread_p, merged_offsets[i], thread_p->m_px_stats[merged_offsets[i]]);
-		}
-	      perfmon_destroy_parallel_stats (thread_p);
-	    }
+	  perfmon_add_values_to_local (thread_p, m_trace_context.m_px_stats);
+	  memset (m_trace_context.m_px_stats, 0, perfmon_get_number_of_statistic_values () * sizeof (UINT64));
 	}
+    }
+    pthread_mutex_unlock (&thread_p->m_px_stats_mutex);
 
+    if (m_on_trace)
+      {
+	m_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+	m_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+	m_stats.fetch_time += perfmon_get_from_statistic (thread_p,
+			      PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC)/1000 - old_fetch_time;
+      }
+
+    if (m_is_root_executor && thread_p->m_uses_px_stats)
+      {
+	/* the root counted into its own array since make_parallel_query_executor_recursively (); all of it goes to
+	 * the transaction's statistics */
+	thread_p->m_uses_px_stats = false;
+	perfmon_add_values_to_local (thread_p, thread_p->m_px_stats);
+	perfmon_destroy_parallel_stats (thread_p);
+      }
+
+    if (m_on_trace)
+      {
 	tsc_getticks (&end_tick);
 	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	TSC_ADD_TIMEVAL (m_stats.elapsed_time, tv_diff);
@@ -321,7 +320,7 @@ extern "C" {
     xasl_dump_with_id (xasl);
 #endif
     thread_p->m_px_orig_thread_entry = thread_p;
-    if (on_trace)
+    if (perfmon_parallel_stats_needed (thread_p))
       {
 	perfmon_initialize_parallel_stats (thread_p);
       }
@@ -335,8 +334,8 @@ extern "C" {
 	    {
 	      for (xasl_node *aptr = xptr->aptr_list; aptr != NULL; aptr = aptr->next)
 		{
-		  /* SP/method-containing subqueries run inline, not as px jobs */
-		  if (!XASL_IS_FLAGED (aptr, XASL_NO_PARALLEL_SUBQUERY))
+		  /* SP/method-containing subqueries and CTEs run inline, not as px jobs */
+		  if (!XASL_IS_FLAGED (aptr, XASL_NO_PARALLEL_SUBQUERY) && aptr->type != CTE_PROC)
 		    {
 		      estimated_jobs_local++;
 		    }
@@ -363,7 +362,7 @@ extern "C" {
 	      for (xasl_node *aptr = xptr->aptr_list; aptr != NULL; aptr = aptr->next)
 		{
 		  if (!XASL_IS_FLAGED (aptr, XASL_LINK_TO_REGU_VARIABLE)
-		      && !XASL_IS_FLAGED (aptr, XASL_NO_PARALLEL_SUBQUERY))
+		      && !XASL_IS_FLAGED (aptr, XASL_NO_PARALLEL_SUBQUERY) && aptr->type != CTE_PROC)
 		    {
 		      aptr_cnts++;
 		      if (aptr_cnts > 1)

@@ -388,6 +388,7 @@ typedef enum
 typedef enum
 {
   PLANDUMP_MSG_BAD_OUTPUT = 15,
+  PLANDUMP_MSG_BAD_OPTION = 16,
   PLANDUMP_MSG_NOT_IN_STANDALONE = 59,
   PLANDUMP_MSG_USAGE = 60
 } MSGCAT_PLANDUMP_MSG;
@@ -453,7 +454,8 @@ typedef enum
   UNLOADDB_MSG_PASSWORD_PROMPT = 49,
   UNLOADDB_MSG_EXCEED_MAX_LEN = 50,
   UNLOADDB_MSG_EXCEED_MAX_USER_LEN = 51,
-  UNLOADDB_MSG_CLASS_NOT_FOUND = 52
+  UNLOADDB_MSG_CLASS_NOT_FOUND = 52,
+  UNLOADDB_MSG_BINARY_ROW_TOO_LARGE = 53
 } MSGCAT_UNLOADDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_LOADDB */
@@ -518,7 +520,13 @@ typedef enum
   LOADDB_MSG_COMPAT_UNDER_11_2 = 124,
   LOADDB_MSG_COMPAT_UNDER_11_4 = 125,
   LOADDB_MSG_COMPAT_OFF = 126,
-  LOADDB_MSG_USAGE = 127
+  LOADDB_MSG_USAGE = 127,
+  LOADDB_MSG_INCOMPATIBLE_BINARY_FORMAT = 128,
+  LOADDB_MSG_TRUNCATED_BINARY_SECTION = 129,
+  LOADDB_MSG_INVALID_FORMAT_COMMAND = 130,
+  LOADDB_MSG_UNSUPPORTED_DATA_FORMAT = 131,
+  LOADDB_MSG_BINARY_ROW_TOO_LARGE = 132,
+  LOADDB_MSG_CORRUPTED_BINARY_BLOCK = 133
 } MSGCAT_LOADDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_MIGDB */
@@ -1240,6 +1248,10 @@ typedef struct _ha_config
 /* optimizedb option list */
 #define OPTIMIZE_CLASS_NAME_S                   'n'
 #define OPTIMIZE_CLASS_NAME_L                   "class-name"
+#define OPTIMIZE_NO_HISTOGRAM_S                 11000
+#define OPTIMIZE_NO_HISTOGRAM_L                 "no-histogram"
+#define OPTIMIZE_NO_HISTOGRAM_CLASSES_S         11001
+#define OPTIMIZE_NO_HISTOGRAM_CLASSES_L         "no-histogram-classes"
 
 /* installdb option list */
 #define INSTALL_SERVER_NAME_S                   11100
@@ -1322,6 +1334,8 @@ typedef struct _ha_config
 #define PLANDUMP_OUTPUT_FILE_L                  "output-file"
 #define PLANDUMP_SHA1_S		        	's'
 #define PLANDUMP_SHA1_L                  	"sha1"
+#define PLANDUMP_DROP_CLONE_S			'c'
+#define PLANDUMP_DROP_CLONE_L			"drop-clone"
 
 /* tranlist option list */
 #if defined(NEED_PRIVILEGE_PASSWORD)
@@ -1455,8 +1469,6 @@ typedef struct _ha_config
 #define UNLOAD_SPLIT_SCHEMA_FILES_L             "split-schema-files"
 #define UNLOAD_AS_DBA_S                         11921
 #define UNLOAD_AS_DBA_L                         "as-dba"
-#define UNLOAD_SKIP_INDEX_DETAIL_S              11922	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-#define UNLOAD_SKIP_INDEX_DETAIL_L              "skip-index-detail"	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 #define UNLOAD_THREAD_COUNT_S                   't'
 #define UNLOAD_THREAD_COUNT_L                   "thread-count"
 #define UNLOAD_STRING_BUFFER_SIZE_S             11923
@@ -1469,6 +1481,8 @@ typedef struct _ha_config
 #define UNLOAD_SAMPLING_TEST_L                  "sampling-test"
 #define UNLOAD_ENHANCED_ESTIMATES_S             11927
 #define UNLOAD_ENHANCED_ESTIMATES_L             "enhanced-estimates"
+#define UNLOAD_DATA_FORMAT_S                    11928
+#define UNLOAD_DATA_FORMAT_L                    "data-format"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'

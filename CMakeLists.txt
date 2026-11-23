@@ -75,6 +75,7 @@ option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 option(WITH_CCI "Build with CCI driver" ON)
+option(MULTI_CONN_TO_A_SERVER "Allow multiple connections to a server in a client process (experimental)" OFF)
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -177,7 +178,6 @@ set(MAJOR_RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRI
 set(PACKAGE_STRING "${PROJECT_NAME} ${MAJOR_RELEASE_STRING}")
 set(PRODUCT_STRING "${MAJOR_RELEASE_STRING}")
 # TODO: change to string type for RELEASE_STRING, BUILD_NUMBER, BUILD_OS
-# TODO: remove #if defined (VERSION_STRING) in src/base/release_string.c
 set(RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION})
 # BUILD_NUMBER (digital only version string) for legacy codes
 set(BUILD_NUMBER ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION})
@@ -417,6 +417,7 @@ set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
 set(PARALLEL_HASH_JOIN_DIR   ${CMAKE_SOURCE_DIR}/src/query/parallel/px_hash_join)
+set(PARALLEL_MERGE_JOIN_DIR  ${CMAKE_SOURCE_DIR}/src/query/parallel/px_merge_join)
 set(PARALLEL_SCAN_DIR        ${CMAKE_SOURCE_DIR}/src/query/parallel/px_scan)
 set(PARALLEL_QUERY_EXECUTE_DIR ${CMAKE_SOURCE_DIR}/src/query/parallel/px_query_execute)
 set(OPTIMIZER_HISTOGRAM_DIR    ${CMAKE_SOURCE_DIR}/src/optimizer/histogram)
@@ -449,6 +450,7 @@ include_directories(
   src/transaction
   src/xasl
   src/query/parallel/px_hash_join
+  src/query/parallel/px_merge_join
   src/query/parallel/px_scan
   src/query/parallel/px_scan/index
   src/query/parallel
@@ -601,6 +603,12 @@ endif(UNIX)
 configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
 configure_file(cmake/version.h.cmake version.h)
+# build_version.h has the per-commit version: never include it from config.h or version.h (see CBRD-27124).
+configure_file(cmake/build_version.h.cmake build_version.h)
+
+if(MULTI_CONN_TO_A_SERVER)
+  add_definitions(-DMULTI_CONN_TO_A_SERVER)
+endif(MULTI_CONN_TO_A_SERVER)
 
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
@@ -610,11 +618,32 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
     add_definitions(-DCCI_XA)
   endif(SUPPORT_XA)
   if(CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -pthread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings  -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings  -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
   else()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -pthread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
+  endif()
+  # CUBRID compiles its .c sources as C++ on purpose, so the C variable length
+  # arrays in them are a deliberate use of a compiler extension, not a defect.
+  # Clang is the only compiler here that reports them.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-vla-cxx-extension")
+  endif()
+
+  # libstdc++ implements std::atomic<T> for a class type T through the generic
+  # __atomic_* builtins, which take a size argument (bestspace.hpp does this with
+  # its 8 byte L1/L2/L3 types). GCC lowers those inline; Clang emits a call to
+  # __atomic_compare_exchange, which lives in libatomic, and it does so in an
+  # optimised build as well as a debug one - cubridsa fails to link without it at
+  # -O2. Several targets are affected, so the library is added for all of them.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    find_library(LIBATOMIC_LIBRARY NAMES atomic libatomic.so.1)
+    if(LIBATOMIC_LIBRARY)
+      link_libraries(${LIBATOMIC_LIBRARY})
+    else()
+      message(WARNING "libatomic was not found; a Clang build will fail to link.")
+    endif()
   endif()
  
   if(SIZEOF_OFF64_T)
@@ -785,6 +814,11 @@ if(WIN32)
     list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
 endif(WIN32)
 
+if(AT_LEAST_ONE_UNIT_TEST)
+  enable_testing()
+  add_compile_definitions(CUBRID_UNIT_TEST_ENABLED)
+endif()
+
 # include subdirectories
 add_subdirectory(upgrade)
 add_subdirectory(sa)
@@ -793,6 +827,23 @@ add_subdirectory(cubrid)
 add_subdirectory(util)
 if(WITH_CCI)
   add_subdirectory(cubrid-cci)
+  # CCI sources got the version macros from config.h (cci_network.c sends BUILD_NUMBER to the broker as the
+  # driver version). They are in build_version.h now, so force-include it into the CCI library without changing
+  # the cubrid-cci submodule. Otherwise MAKE_STR (BUILD_NUMBER) silently becomes "BUILD_NUMBER".
+  set(cci_target_found FALSE)
+  foreach(cci_target cascci cascci_static)
+    if(TARGET ${cci_target})
+      set(cci_target_found TRUE)
+      if(MSVC)
+        target_compile_options(${cci_target} PRIVATE "/FI${CMAKE_BINARY_DIR}/build_version.h")
+      else(MSVC)
+        target_compile_options(${cci_target} PRIVATE "SHELL:-include \"${CMAKE_BINARY_DIR}/build_version.h\"")
+      endif(MSVC)
+    endif(TARGET ${cci_target})
+  endforeach(cci_target)
+  if(NOT cci_target_found)
+    message(FATAL_ERROR "No CCI library target (cascci or cascci_static) to force-include build_version.h into")
+  endif(NOT cci_target_found)
 endif(WITH_CCI)
 add_subdirectory(broker)
 add_subdirectory(cm_common)

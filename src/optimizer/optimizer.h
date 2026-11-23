@@ -189,9 +189,9 @@ extern QO_SEGMENT *lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env);
 
 extern void qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result);
 
-extern void qo_get_optimization_param (void *, QO_PARAM, ...);
+extern void qo_get_optimization_param (void *, int, ...);
 extern bool qo_need_skip_execution (void);
-extern void qo_set_optimization_param (void *, QO_PARAM, ...);
+extern void qo_set_optimization_param (void *, int, ...);
 extern QO_PLAN *qo_optimize_query (PARSER_CONTEXT *, PT_NODE *);
 extern xasl_node *qo_to_xasl (QO_PLAN *, xasl_node *);
 extern void qo_plan_discard (QO_PLAN *);
@@ -201,6 +201,7 @@ extern int qo_plan_get_cost_fn (const char *);
 extern PT_NODE *qo_plan_iscan_sort_list (QO_PLAN *);
 extern bool qo_plan_skip_orderby (QO_PLAN * plan);
 extern bool qo_plan_skip_groupby (QO_PLAN * plan);
+extern double qo_groupby_skip_rows_per_group (QO_PLAN * plan, PT_NODE * select);
 extern bool qo_is_index_covering_scan (QO_PLAN * plan);
 extern bool qo_is_index_iss_scan (QO_PLAN * plan);
 extern bool qo_is_index_loose_scan (QO_PLAN * plan);
@@ -213,6 +214,7 @@ extern bool qo_plan_multi_range_opt (QO_PLAN * plan);
 extern int qo_xasl_get_num_terms (QO_XASL_INDEX_INFO * info);
 extern PT_NODE **qo_xasl_get_terms (QO_XASL_INDEX_INFO *);
 extern PT_NODE *qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+extern bool qo_check_nullable_op (PT_NODE * node);
 extern PT_NODE *mq_rewrite (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #if 0

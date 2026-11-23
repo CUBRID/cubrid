@@ -170,8 +170,7 @@ qfile_type_list_copy (QFILE_TUPLE_VALUE_TYPE_LIST * dest, const QFILE_TUPLE_VALU
 
 /*
  * qfile_set_layout () - (re)compute the layout descriptor from domp; must run after the last domp mutation
- *   of a list (qfile_open_list, qfile_modify_type_list, qfile_update_domains_on_type_list, and other domain-fixing
- *   callers).
+ *   of a list (qfile_open_list, qfile_modify_type_list, and other domain-fixing callers).
  */
 void
 qfile_set_layout (QFILE_TUPLE_VALUE_TYPE_LIST * type_list)

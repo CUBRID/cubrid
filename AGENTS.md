@@ -65,7 +65,7 @@ Apache 2.0 license. Version 11.5.x.
 |------|----------|-------|
 | Add SQL syntax | `src/parser/csql_grammar.y` | Bison grammar, ~646KB |
 | Add built-in function | parser → type_checking → xasl_generation → query/ | Full pipeline across 4 modules |
-| Add info schema view | `src/object/schema_system_catalog_install.cpp` + `*_install_query_spec.cpp` | Strict formatting rules |
+| Add info schema view | `src/object/schema_information_schema_install.cpp` + `schema_information_schema_install_query_spec.cpp` | Strict formatting rules |
 | Fix query execution | `src/query/query_executor.c` | Entry: `qexec_execute_mainblock()` |
 | Fix index scan | `src/storage/btree.c` | Entry: `btree_find()`, `btree_range_search()` |
 | Fix locking/deadlock | `src/transaction/lock_manager.c` | Wait-for graph in `wait_for_graph.c` |

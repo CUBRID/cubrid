@@ -24,6 +24,7 @@
 
 #include "btree.h"
 #include "dbtype.h"
+#include "heap_oos.hpp"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
 #include "load_driver.hpp"
@@ -32,7 +33,7 @@
 #include "locator_sr.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
-#include "record_descriptor.hpp"
+#include "partition_sr.h"
 #include "set_object.h"
 #include "string_opfunc.h"
 #include "schema_system_catalog.hpp"
@@ -41,6 +42,7 @@
 #include "schema_system_catalog_constants.h"
 
 #include <cstring>
+#include <new>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -77,8 +79,14 @@ namespace cubload
     to_lowercase_identifier (class_name, eb);
 
     const char *lower_case_class_name = eb.get_read_ptr ();
+    LC_FIND_CLASSNAME found = locate_class (lower_case_class_name, class_oid);
 
-    if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
+    if (found == LC_CLASSNAME_ERROR)
+      {
+	// e.g. the BU lock could not be granted
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+      }
+    else if (found != LC_CLASSNAME_EXIST)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
       }
@@ -157,7 +165,7 @@ namespace cubload
 	intl_identifier_lower (user_specified_name, realname);
 
 	found = xlocator_find_class_oid (&thread_ref, realname, &class_oid, BU_LOCK);
-	if (found == LC_CLASSNAME_EXIST)
+	if (found == LC_CLASSNAME_EXIST || found == LC_CLASSNAME_ERROR)
 	  {
 	    return found;
 	  }
@@ -184,7 +192,7 @@ namespace cubload
   LC_FIND_CLASSNAME
   server_class_installer::locate_class_for_all_users (const char *class_name, OID &class_oid)
   {
-#define CATCLS_USER_ATTR_IDX_NAME 11
+#define CATCLS_USER_ATTR_IDX_NAME 10
     cubthread::entry &thread_ref = cubthread::get_entry ();
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     HEAP_CACHE_ATTRINFO attr_info;
@@ -238,10 +246,13 @@ namespace cubload
 
     while (true)
       {
-	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
+	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK,
+			       HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	if (scan_code == S_SUCCESS)
 	  {
-	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache, PEEK, NULL_CHN);
+	    // record is consumed only through the attribute layer (CBRD-26847)
+	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache,
+						  PEEK, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	    if (scan_code == S_SNAPSHOT_NOT_SATISFIED || scan_code == S_DOESNT_EXIST)
 	      {
 		continue;
@@ -360,7 +371,15 @@ namespace cubload
 	return;
       }
 
-    if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
+    LC_FIND_CLASSNAME found = locate_class (lower_case_class_name, class_oid);
+    if (found == LC_CLASSNAME_ERROR)
+      {
+	// e.g. the BU lock could not be granted
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	return;
+      }
+
+    if (found != LC_CLASSNAME_EXIST)
       {
 	if (is_syntax_check_only)
 	  {
@@ -381,6 +400,34 @@ namespace cubload
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
+      }
+
+    // Load workers borrow the session transaction's locks. Acquire destination
+    // BU locks here, before any worker routes a row to a child heap.
+    if (attrinfo.last_classrepr->has_partition_info)
+      {
+	OR_PARTITION *parts = nullptr;
+	int count = 0;
+	error_code = heap_get_class_partitions (&thread_ref, &class_oid, &parts, &count);
+	if (error_code == NO_ERROR)
+	  {
+	    for (int i = 0; i < count; ++i)
+	      {
+		if (lock_object (&thread_ref, &parts[i].class_oid, oid_Root_class_oid, BU_LOCK,
+				 LK_UNCOND_LOCK) != LK_GRANTED)
+		  {
+		    error_code = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+		    break;
+		  }
+	      }
+	  }
+	heap_clear_partition_info (&thread_ref, parts, count);
+	if (error_code != NO_ERROR)
+	  {
+	    heap_attrinfo_end (&thread_ref, &attrinfo);
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    return;
+	  }
       }
 
     heap_scancache_quick_start_root_hfid (&thread_ref, &scancache);
@@ -580,11 +627,17 @@ namespace cubload
     , m_attrinfo ()
     , m_db_values ()
     , m_recdes_collected ()
+    , m_retained_bytes (0)
+    , m_pruning_type (DB_NOT_PARTITIONED_CLASS)
     , m_scancache_started (false)
     , m_scancache ()
+    , m_pcontext ()
+    , m_pcontext_loaded (false)
+    , m_is_partitioned_class (false)
     , m_rows (0)
+    , m_row_reported (false)
   {
-    //
+    partition_init_pruning_context (&m_pcontext);
   }
 
   void
@@ -595,12 +648,33 @@ namespace cubload
 
     assert (m_class_entry == NULL);
     m_class_entry = m_session.get_class_registry ().get_class_entry (clsid);
-    if (m_class_entry == NULL)
+    if (m_class_entry == NULL || m_class_entry->is_ignored ())
       {
 	return;
       }
 
     const OID &class_oid = m_class_entry->get_class_oid ();
+
+    if (!m_session.get_args ().syntax_check)
+      {
+	// The session holds BU on the class but no lock on its partitioned class, so the definition of the partitioned
+	// class is read again for every batch, into a private copy. While BU is held, the definition of the class itself
+	// cannot change.
+	int pruning_type = DB_NOT_PARTITIONED_CLASS;
+
+	int error_code = partition_load_uncached_pruning_context (m_thread_ref, &class_oid, &pruning_type, &m_pcontext);
+	if (error_code != NO_ERROR)
+	  {
+	    // Fail the session even if the error code is in the error control file: the batch is not started, so it
+	    // would be skipped silently.
+	    m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
+	    m_session.fail ();
+	    return;
+	  }
+
+	m_pcontext_loaded = (pruning_type == DB_PARTITION_CLASS);
+	m_is_partitioned_class = (pruning_type == DB_PARTITIONED_CLASS);
+      }
 
     start_scancache (class_oid);
     start_attrinfo (class_oid);
@@ -616,6 +690,15 @@ namespace cubload
     stop_scancache ();
 
     m_recdes_collected.clear ();
+    m_retained_bytes = 0;
+
+    if (m_pcontext_loaded)
+      {
+	partition_clear_pruning_context (&m_pcontext);
+	partition_init_pruning_context (&m_pcontext);
+	m_pcontext_loaded = false;
+      }
+    m_is_partitioned_class = false;
 
     m_clsid = NULL_CLASS_ID;
     m_class_entry = NULL;
@@ -626,6 +709,9 @@ namespace cubload
   server_object_loader::start_line (int object_id)
   {
     (void) object_id;
+
+    /* A new row, nothing reported for it yet. report_value_error () keeps this. */
+    m_row_reported = false;
   }
 
   void
@@ -662,17 +748,13 @@ namespace cubload
 
 	const attribute &attr = m_class_entry->get_attribute (attr_index);
 	int error_code = process_constant (c, attr);
-	if (error_code != NO_ERROR)
+	if (error_code == NO_ERROR)
 	  {
-	    m_error_handler.on_syntax_failure ();
-	    return;
+	    error_code = sink_heap (attr, get_attribute_db_value (attr_index));
 	  }
 
-	db_value &db_val = get_attribute_db_value (attr_index);
-	error_code = heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.get_repr ().id, &db_val, &m_attrinfo);
-	if (error_code != NO_ERROR)
+	if (error_code != NO_ERROR && !report_value_error ())
 	  {
-	    m_error_handler.on_syntax_failure ();
 	    return;
 	  }
       }
@@ -685,6 +767,119 @@ namespace cubload
       }
   }
 
+  /*
+   * process_binary_line - load one row of a binary section
+   *    row(in): the row, as the scanner took it out of the object file
+   * Note:
+   *    The counterpart of process_line () for a row unloaddb --data-format wrote. The columns of
+   *    the row are taken in the order of the attributes, the way the constants of a text line are,
+   *    and the errors are reported the same way.
+   *
+   *    A row that does not follow the layout of a binary section stops where the layout was lost:
+   *    the columns behind that point cannot be told apart, so the row fails with that one error.
+   */
+  void
+  server_object_loader::process_binary_line (const string_type *row)
+  {
+    if (m_session.is_failed ())
+      {
+	return;
+      }
+
+    if (m_session.get_args ().syntax_check)
+      {
+	++m_rows;
+      }
+
+    std::size_t attr_index = 0;
+    std::size_t attr_size = m_class_entry->get_attributes_size ();
+    binary_row_reader reader (row->val, row->size,
+			      m_thread_ref->m_loaddb_driver->get_scanner ().get_format_version ());
+
+    if (reader.has_more () && attr_size == 0)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+	m_error_handler.on_syntax_failure ();
+	return;
+      }
+
+    for (; reader.has_more (); attr_index++)
+      {
+	binary_column col;
+
+	if (attr_index == attr_size)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, attr_index);
+	    m_error_handler.on_syntax_failure ();
+	    return;
+	  }
+
+	int error_code = reader.next (col);
+	if (error_code == NO_ERROR)
+	  {
+	    const attribute &attr = m_class_entry->get_attribute (attr_index);
+
+	    error_code = process_binary_value (reader, col, attr);
+	    if (error_code == NO_ERROR)
+	      {
+		error_code = sink_heap (attr, get_attribute_db_value (attr_index));
+	      }
+	  }
+
+	if (error_code != NO_ERROR && !report_value_error ())
+	  {
+	    return;
+	  }
+
+	if (reader.is_corrupted ())
+	  {
+	    /* reported above, nothing behind it can be read */
+	    return;
+	  }
+      }
+
+    if (attr_index < attr_size)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MISSING_ATTRIBUTES, 2, attr_size, attr_index);
+	m_error_handler.on_syntax_failure ();
+	return;
+      }
+  }
+
+  /*
+   * process_binary_value - build the value of an attribute from a column of a binary section row
+   *    return: NO_ERROR or an error code
+   *    reader(in/out): the row, a collection reads its elements from it
+   *    col(in): the column
+   *    attr(in): attribute being set
+   * Note:
+   *    The counterpart of process_generic_constant () and process_collection_constant ().
+   */
+  int
+  server_object_loader::process_binary_value (binary_row_reader &reader, const binary_column &col,
+      const attribute &attr)
+  {
+    db_value &db_val = get_attribute_db_value (attr.get_index ());
+
+    int error_code = binary_to_db_value (reader, col, &attr, NULL, &db_val);
+    if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
+      {
+	/* name the class as well, as process_generic_constant () does */
+	char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
+
+	snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
+      }
+    else if (error_code != NO_ERROR && er_errid () == NO_ERROR)
+      {
+	/* see process_generic_constant () */
+	assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      }
+
+    return error_code;
+  }
+
   void
   server_object_loader::finish_line ()
   {
@@ -692,33 +887,76 @@ namespace cubload
       {
 	return;
       }
-
-    bool is_syntax_check_only = m_session.get_args ().syntax_check;
-    if (!is_syntax_check_only)
+    if (!m_session.get_args ().syntax_check)
       {
-	// Create the record and add it to the array of collected records.
-	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
-	RECDES *old_recdes = NULL;
+	bool is_record_valid = true;
+	heap_pending_record record;
 
-	if (heap_attrinfo_transform_to_disk_except_lob (m_thread_ref, &m_attrinfo, old_recdes, &new_recdes)
-	    != S_SUCCESS)
+	if (m_error_handler.current_line_has_error ())
+	  {
+	    is_record_valid = false;
+	  }
+	else if (heap_attrinfo_prepare_record (m_thread_ref, &m_attrinfo, nullptr, &record, false) != S_SUCCESS)
 	  {
 	    m_error_handler.on_failure ();
+	    is_record_valid = false;
+	  }
+	else if (m_is_partitioned_class)
+	  {
+	    // The record would be inserted into the heap of the partitioned class itself, where no query finds it.
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_PARTITIONED_CLASS_NOT_SUPPORTED, 0);
+	    m_error_handler.on_failure ();
+	    is_record_valid = false;
+	  }
+	else if (m_pcontext_loaded)
+	  {
+	    // A row loaded into a partition must belong to that partition. The partition key may be one of the
+	    // record's out-of-row values, so the check reads them from the pending record.
+	    RECDES recdes = record.get_recdes ();
+	    const OID &class_oid = m_class_entry->get_class_oid ();
+	    if (partition_check_record_for_partition (&m_pcontext, &class_oid, &recdes, &record) != NO_ERROR)
+	      {
+		m_error_handler.on_failure ();
+		is_record_valid = false;
+	      }
+	  }
+
+	if (m_session.is_failed ())
+	  {
 	    return;
 	  }
 
-	// Add the recdes to the collected array.
-	if (!m_error_handler.current_line_has_error ())
+	// A failure that is filtered by the error control file is not fatal; it marks the current line, and the mark
+	// must be cleared so that the next line is not dropped as well.
+	if (!is_record_valid)
 	  {
-	    m_recdes_collected.push_back (std::move (new_recdes));
+	    m_error_handler.set_error_on_current_line (false);
 	  }
 	else
 	  {
-	    // Don't insert the record since we had an error.
-	    m_error_handler.set_error_on_current_line (false);
+	    const std::size_t record_bytes = record.retained_bytes ();
+	    try
+	      {
+		m_recdes_collected.push_back (std::move (record));
+	      }
+	    catch (const std::bad_alloc &)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, record_bytes);
+		m_error_handler.on_failure ();
+		m_error_handler.set_error_on_current_line (false);
+		clear_db_values ();
+		return;
+	      }
+	    m_retained_bytes += record_bytes;
+	    // Bound the queue by both compact records and out-of-row payloads.
+	    // A single large input may exceed the limit and is flushed immediately.
+	    constexpr std::size_t retained_limit = 8 * 1024 * 1024;
+	    if (m_retained_bytes + m_recdes_collected.capacity () * sizeof (heap_pending_record) >= retained_limit)
+	      {
+		flush_records ();
+	      }
 	  }
       }
-
     int64_t lineno = m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1;
     m_session.stats_update_current_line (lineno);
     clear_db_values ();
@@ -728,12 +966,13 @@ namespace cubload
   server_object_loader::flush_records ()
   {
     int force_count = 0;
-    int pruning_type = 0;
+    int pruning_type = m_pruning_type;
     int op_type = MULTI_ROW_INSERT;
-    int records_inserted = 0;
     bool insert_errors_filtered = false;
     OID dummy_oid;
     bool has_BU_lock = lock_has_lock_on_object (&m_scancache.node.class_oid, oid_Root_class_oid, BU_LOCK);
+    // loaddb has already verified the foreign keys; skip re-checking them at force time.
+    int force_flags = LC_FORCE_FLAG_DONT_CHECK_FK | (has_BU_lock ? LC_FORCE_FLAG_HAS_BU_LOCK : LC_FORCE_FLAG_NONE);
 
     // First check if we have any errors set.
     if (m_session.is_failed ())
@@ -763,30 +1002,44 @@ namespace cubload
     insert_errors_filtered = has_errors_filtered_for_insert (m_session.get_args().m_ignored_errors);
 
     /* The locator_multi_insert_force() sometimes creates the data page-based log record instead of the record-based log record. In HA, it means that the replication log cannot have an accurate LSA for each insert by loaddb. */
-    if (insert_errors_filtered || !HA_DISABLED ())
+    if (insert_errors_filtered || !HA_DISABLED () || pruning_type != DB_NOT_PARTITIONED_CLASS)
       {
 	// In case of possible errors filtered for insert we disable the unique optimization
+	// A routed row uses a partition scan cache whose multi-row unique stats are discarded with the pruning
+	// context, so partitioned classes report unique stats per row instead.
+	const int row_op_type = pruning_type == DB_NOT_PARTITIONED_CLASS ? op_type : SINGLE_ROW_INSERT;
 	for (size_t i = 0; i < m_recdes_collected.size (); i++)
 	  {
 	    log_sysop_start (m_thread_ref);
 	    RECDES local_record = m_recdes_collected[i].get_recdes ();
-	    int error_code = locator_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
-						   &dummy_oid, &local_record, true, op_type, &m_scancache, &force_count,
-						   pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, NULL, has_BU_lock,
-						   true, false);
+	    OID destination = m_class_entry->get_class_oid ();
+	    HFID destination_heap = m_scancache.node.hfid;
+	    PRUNING_CONTEXT pruning;
+	    partition_init_pruning_context (&pruning);
+	    int error_code = locator_insert_force (m_thread_ref, &destination_heap, &destination,
+						   &dummy_oid, &local_record, true, row_op_type,
+						   &m_scancache,
+						   &force_count,
+						   pruning_type,
+						   pruning_type == DB_NOT_PARTITIONED_CLASS ? nullptr : &pruning,
+						   NULL, UPDATE_INPLACE_NONE, NULL, force_flags,
+						   false, &m_recdes_collected[i]);
+	    partition_clear_pruning_context (&pruning);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
+		(void) heap_oos_begin_insert_publication (m_thread_ref);
 		m_error_handler.on_failure ();
 		log_sysop_abort (m_thread_ref);
 
-		if (er_has_error ())
+		if (m_session.is_failed ())
 		  {
 		    // Error was not filtered, we abort everything.
 		    return;
 		  }
 
 		// Error was filtered so we can continue.
+		m_error_handler.set_error_on_current_line (false);
 		continue;
 	      }
 
@@ -794,6 +1047,8 @@ namespace cubload
 	    log_sysop_attach_to_outer (m_thread_ref);
 	    ++m_rows;
 	  }
+	m_recdes_collected.clear ();
+	m_retained_bytes = 0;
       }
     else
       {
@@ -804,6 +1059,7 @@ namespace cubload
 	if (error_code != NO_ERROR)
 	  {
 	    ASSERT_ERROR ();
+	    (void) heap_oos_begin_insert_publication (m_thread_ref);
 	    m_error_handler.on_failure ();
 	    log_sysop_abort (m_thread_ref);
 	    return;
@@ -812,6 +1068,8 @@ namespace cubload
 	  {
 	    log_sysop_attach_to_outer (m_thread_ref);
 	    m_rows += m_recdes_collected.size ();
+	    m_recdes_collected.clear ();
+	    m_retained_bytes = 0;
 	  }
       }
   }
@@ -820,6 +1078,59 @@ namespace cubload
   server_object_loader::get_rows_number ()
   {
     return m_rows;
+  }
+
+  int
+  server_object_loader::sink_heap (const attribute &attr, db_value &val)
+  {
+    return heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.get_repr_id (), &val, &m_attrinfo);
+  }
+
+  /*
+   * report_value_error - report the error a value or a collection element has just failed with
+   *    return: true when the rest of the line is still to be checked, false when the load has failed
+   * Note:
+   *    An error the session has already failed on was reported where it happened - an object
+   *    reference, or an element process_collection_constant () reported before returning to
+   *    process_line (); reporting it again prints the message twice.
+   *
+   *    Reading on is for one case only: an error --error-control-file ignores. Nothing is
+   *    said about it and the line is dropped in finish_line () either way, but an error the
+   *    file does not ignore may still come later in the line, and that one has to fail the
+   *    load whichever of the two came first. SA does the same.
+   *
+   *    An error that was reported ends the line, as it always has. --syntax-check reports
+   *    without failing the session, so it is asked about separately; it also means the row
+   *    is counted as failed, which the summary counts per row rather than per value.
+   */
+  bool
+  server_object_loader::report_value_error ()
+  {
+    if (m_session.is_failed () || m_row_reported)
+      {
+	return false;
+      }
+
+    m_error_handler.on_syntax_failure ();
+
+    if (m_session.is_failed ())
+      {
+	return false;
+      }
+
+    if (m_session.get_args ().syntax_check)
+      {
+	/*
+	 * It was reported without failing the load. Remember it: an element
+	 * process_collection_constant () reported comes back here through
+	 * process_line (), and reporting it again would say it twice and count the
+	 * row twice.
+	 */
+	m_row_reported = true;
+	return false;
+      }
+
+    return true;
   }
 
   int
@@ -848,11 +1159,8 @@ namespace cubload
       case LDR_XSTR:
       case LDR_ELO_INT:
       case LDR_ELO_EXT:
-	error_code = process_generic_constant (cons, attr);
-	break;
-
       case LDR_MONETARY:
-	error_code = process_monetary_constant (cons, attr);
+	error_code = process_generic_constant (cons, attr, false);
 	break;
 
       case LDR_COLLECTION:
@@ -894,20 +1202,58 @@ namespace cubload
     return error_code;
   }
 
-  int
-  server_object_loader::process_generic_constant (constant_type *cons, const attribute &attr)
+  /*
+   * conv_func_for - pick the conversion for this token
+   *    return: conversion function
+   *    cons(in): the token
+   *    attr(in): attribute being set. For an element this is the collection attribute
+   *    is_element(in): true when the token is a collection element
+   * Note:
+   *    is_element says whether the token is a collection element rather than the attribute itself.
+   *    An element is converted to the literal's natural type and cast by the collection,
+   *    so it must not be looked up by attribute domain.
+   */
+  static conv_func &
+  conv_func_for (const constant_type *cons, const attribute &attr, bool is_element)
   {
-    string_type *str = reinterpret_cast<string_type *> (cons->val);
-    char *token = str != NULL ? str->val : NULL;
-    size_t str_size = str != NULL ? str->size : 0;
+    if (is_element)
+      {
+	return get_elem_conv_func (cons->type);
+      }
+
+    return get_conv_func (cons->type, attr.get_domain ().type->get_id ());
+  }
+
+  int
+  server_object_loader::process_generic_constant (constant_type *cons, const attribute &attr, bool is_element)
+  {
+    text_token tok (cons);
 
     db_value &db_val = get_attribute_db_value (attr.get_index ());
-    conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
+    conv_func &func = conv_func_for (cons, attr, is_element);
 
-    int error_code = func (token, str_size, &attr, &db_val);
+    int error_code = func (tok.text (), tok.size (), &attr, &db_val);
+    if (error_code == NO_ERROR && !is_element)
+      {
+	/*
+	 * A conversion that succeeded can still have built a null - the empty string is
+	 * one under oracle_style_empty_string - and a NOT NULL column cannot take it.
+	 * Not for an element: the constraint belongs to the column, not to what the
+	 * collection holds.
+	 */
+	error_code = check_not_null (&attr, &db_val);
+      }
+
     if (error_code == ER_DATE_CONVERSION)
       {
-	m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain ().type->get_id ()));
+	/*
+	 * Name the token, not the column. The file said "this is a date" and the date
+	 * is the thing that would not parse, so the attribute domain names the wrong
+	 * end of it: a collection attribute would call the element a set, and a
+	 * DATETIME column would call a date literal a datetime. The standalone loader
+	 * names the token here and this is the same answer.
+	 */
+	m_error_handler.log_date_time_conversion_error (tok.text (), pr_type_name (get_token_db_type (cons->type)));
       }
     else if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
       {
@@ -916,51 +1262,18 @@ namespace cubload
 	snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
       }
-
-    return error_code;
-  }
-
-  int
-  server_object_loader::process_monetary_constant (constant_type *cons, const attribute &attr)
-  {
-    int error_code = NO_ERROR;
-    monetary_type *mon = reinterpret_cast<monetary_type *> (cons->val);
-    string_type *str = mon->amount;
-
-    /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
-    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
-    char *full_mon_str_p = full_mon_str;
-
-    /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
-    char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
-    size_t full_mon_str_len = (str->size + strlen (curr_str));
-
-    if (full_mon_str_len >= sizeof (full_mon_str))
+    else if (error_code != NO_ERROR && er_errid () == NO_ERROR)
       {
-	full_mon_str_p = new char[full_mon_str_len + 1];
+	/*
+	 * A converter that returns a code without saying it leaves er_errid () empty,
+	 * and that is what the reporting reads: is_last_error_filtered () asks
+	 * er_errid (), and log_error_message () builds the text from er_msg (). The row
+	 * fails with nothing written against it and the load still ends a success. Say
+	 * something, so a converter that forgets fails loudly rather than silently.
+	 */
+	assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       }
-
-    std::strcpy (full_mon_str_p, curr_str);
-    std::strcat (full_mon_str_p, str->val);
-
-    db_value &db_val = get_attribute_db_value (attr.get_index ());
-    conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
-
-    error_code = func (full_mon_str_p, full_mon_str_len, &attr, &db_val);
-    if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
-      {
-	char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
-
-	snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
-      }
-
-    if (full_mon_str_p != full_mon_str)
-      {
-	delete [] full_mon_str_p;
-      }
-
-    delete mon;
 
     return error_code;
   }
@@ -999,18 +1312,6 @@ namespace cubload
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
 	    break;
 
-	  case LDR_NULL:
-	    /* An element being NULL does not make the attribute NULL, so the NOT NULL constraint of the
-	     * attribute must not be checked here.
-	     * Do not use to_db_null() for elements because it checks the NOT NULL constraint.
-	     * Refer to ldr_null_elem() of the SA loader. */
-	    error_code = db_make_null (&db_val);
-	    break;
-
-	  case LDR_MONETARY:
-	    error_code = process_monetary_constant (c, attr);
-	    break;
-
 	  case LDR_OID:
 	  case LDR_CLASS_OID:
 	    // Object References and Class Object Reference are not supported by server loaddb implementation
@@ -1019,19 +1320,17 @@ namespace cubload
 	    break;
 
 	  default:
-	    error_code = process_generic_constant (c, attr);
+	    error_code = process_generic_constant (c, attr, true);
 	    break;
 	  }
 
-	if (error_code != NO_ERROR)
+	if (error_code == NO_ERROR)
 	  {
-	    db_value_clear (&db_val);
-	    set_free (set);
-	    return error_code;
-	  }
+	    cast_elem_to_set_domain (domain.setdomain, &db_val);
 
-	// add element to the set (db_val will be cloned, so it is safe to reuse same variable)
-	error_code = set_add_element (set, &db_val);
+	    // add element to the set (db_val will be cloned, so it is safe to reuse same variable)
+	    error_code = set_add_element (set, &db_val);
+	  }
 
 	/* The element was cloned into the collection, so release whatever the conversion allocated before
 	 * the next element overwrites the slot. */
@@ -1039,11 +1338,18 @@ namespace cubload
 
 	if (error_code != NO_ERROR)
 	  {
-	    set_free (set);
-	    return error_code;
+	    /* Report the element's error here, while the collection still has elements to check. */
+	    if (!report_value_error ())
+	      {
+		set_free (set);
+		return error_code;
+	      }
+
+	    error_code = NO_ERROR;
 	  }
       }
 
+    /* An element left out above was reported, and finish_line () drops the line it is on. */
     db_make_collection (&db_val, set);
 
     return error_code;
@@ -1066,14 +1372,24 @@ namespace cubload
     heap_attrinfo_clear_dbvalues (&m_attrinfo);
   }
 
+  /*
+   * get_attribute_db_value - the slot this attribute's value is built in
+   *    return: the slot, created if this is the first value for it
+   *    attr_index(in): index of the attribute on the line
+   * Note:
+   *    The slots are not claimed in order. A value that fails before it reaches its
+   *    slot - a collection on a column that is not a collection, refused by
+   *    process_collection_constant () before it builds anything - leaves that slot
+   *    unclaimed, and process_line () goes on checking the rest of the line, so the
+   *    next value asks for a slot past the end. Grow to the index asked for rather
+   *    than by one.
+   */
   db_value &
   server_object_loader::get_attribute_db_value (size_t attr_index)
   {
-    assert (attr_index <= m_db_values.size ());
-
-    if (attr_index == m_db_values.size ())
+    if (attr_index >= m_db_values.size ())
       {
-	m_db_values.emplace_back ();
+	m_db_values.resize (attr_index + 1);
       }
 
     return m_db_values[attr_index];
@@ -1146,6 +1462,18 @@ namespace cubload
       }
 
     m_attrinfo_started = true;
+    m_pruning_type = DB_NOT_PARTITIONED_CLASS;
+    if (m_attrinfo.last_classrepr->has_partition_info)
+      {
+	OID root_oid;
+	error_code = partition_find_root_class_oid (m_thread_ref, &class_oid, &root_oid);
+	if (error_code != NO_ERROR)
+	  {
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    return;
+	  }
+	m_pruning_type = OID_EQ (&root_oid, &class_oid) ? DB_PARTITIONED_CLASS : DB_PARTITION_CLASS;
+      }
   }
 
   void

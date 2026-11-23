@@ -26,16 +26,19 @@
 #include <algorithm>
 
 #include "memory_monitor_sr.hpp"
+#include "scope_exit.hpp"
 
 bool mmon_disabled = true;
+THREAD_LOCAL_TRIVIAL bool mmon_untracked = false;
 
 namespace cubmem
 {
-  std::atomic<uint64_t> m_stat_map[MMON_MAP_RESERVE_SIZE] = {};
+  THREAD_LOCAL_TRIVIAL stat_id_cache_entry mmon_stat_id_cache[MMON_STAT_ID_CACHE_SIZE];
 
   memory_monitor::memory_monitor (const char *server_name)
     : m_server_name {server_name},
       m_stat_name_map {MMON_MAP_RESERVE_SIZE},
+      m_next_stat_id {0},
 #if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
       m_stat_alloc_count {},
       m_stat_free_count {},
@@ -44,8 +47,7 @@ namespace cubmem
       m_stat_memory_peak {},
       m_total_memory_peak {0},
 #endif
-      m_total_mem_usage {0},
-      m_meta_alloc_count {0},
+      m_shards {},
       m_magic_number {*reinterpret_cast <const int *> ("MMON")}
   {
     std::string filecopy (__FILE__);
@@ -62,6 +64,75 @@ namespace cubmem
       {
 	m_target_pos = 0;
       }
+  }
+
+  int memory_monitor::find_stat_id (const char *file, const int line)
+  {
+    char stat_name[MMON_MAX_NAME_LENGTH];
+    int stat_id;
+
+    make_stat_name (stat_name, file, line);
+
+retry:
+    const auto search = m_stat_name_map.find (stat_name);
+    if (search != m_stat_name_map.end ())
+      {
+	return search->second;
+      }
+
+    std::pair<tbb::concurrent_unordered_map<std::string, int>::iterator, bool> insert_success;
+    // not m_stat_name_map.size (): two call sites inserted at the same time would get one id
+    stat_id = m_next_stat_id++;
+    assert (stat_id < MMON_MAP_RESERVE_SIZE);
+    // stat_id starts with 0
+    insert_success = m_stat_name_map.insert (std::pair <std::string, int> (stat_name, stat_id));
+    if (!insert_success.second)
+      {
+	// another thread inserted this call site first; stat_id stays unused
+	goto retry;
+      }
+    return stat_id;
+  }
+
+  // shards are read one after another while other threads count, so a sum can include a free but not its allocation
+  // and dip below zero for a moment
+  static uint64_t
+  clamp_shard_sum (uint64_t sum)
+  {
+    return (int64_t) sum < 0 ? 0 : sum;
+  }
+
+  uint64_t memory_monitor::get_total_mem_usage ()
+  {
+    uint64_t sum = 0;
+
+    for (const shard &s : m_shards)
+      {
+	sum += s.total_mem_usage.load ();
+      }
+    return clamp_shard_sum (sum);
+  }
+
+  uint64_t memory_monitor::get_meta_alloc_count ()
+  {
+    uint64_t sum = 0;
+
+    for (const shard &s : m_shards)
+      {
+	sum += s.meta_alloc_count.load ();
+      }
+    return clamp_shard_sum (sum);
+  }
+
+  uint64_t memory_monitor::get_stat_mem_usage (int stat_id)
+  {
+    uint64_t sum = 0;
+
+    for (const shard &s : m_shards)
+      {
+	sum += s.stat_mem_usage[stat_id].load ();
+      }
+    return clamp_shard_sum (sum);
   }
 
   size_t memory_monitor::get_allocated_size (char *ptr)
@@ -210,16 +281,19 @@ namespace cubmem
 
   void memory_monitor::aggregate_server_info (MMON_SERVER_INFO &server_info)
   {
+    // stat_info is not counted: it grows after the total is read, so only the entries would include it
+    mmon_untracked = true;
+    auto track_again = make_scope_exit ([] { mmon_untracked = false; });
+
     strncpy (server_info.server_name, m_server_name.c_str (), m_server_name.size () + 1);
-    server_info.total_mem_usage = m_total_mem_usage.load ();
-    server_info.total_metainfo_mem_usage = m_meta_alloc_count * MMON_METAINFO_SIZE;
+    server_info.total_mem_usage = get_total_mem_usage ();
+    server_info.total_metainfo_mem_usage = get_meta_alloc_count () * MMON_METAINFO_SIZE;
 
     server_info.num_stat = m_stat_name_map.size ();
 
     for (const auto &[stat_name, stat_id] : m_stat_name_map)
       {
-	// m_stat_map[stat_id] means memory usage
-	server_info.stat_info.emplace_back (stat_name, m_stat_map[stat_id].load ());
+	server_info.stat_info.emplace_back (stat_name, get_stat_mem_usage (stat_id));
       }
 
     // This funciton is for sorting the vector in descending order by memory usage
@@ -289,15 +363,14 @@ namespace cubmem
 
     // get stat information of memory_monitor like aggregate_server_info ()
     strncpy (server_info.server_name, m_server_name.c_str (), m_server_name.size () + 1);
-    server_info.total_mem_usage = m_total_mem_usage.load ();
-    server_info.total_metainfo_mem_usage = m_meta_alloc_count * MMON_METAINFO_SIZE;
+    server_info.total_mem_usage = get_total_mem_usage ();
+    server_info.total_metainfo_mem_usage = get_meta_alloc_count () * MMON_METAINFO_SIZE;
 
     server_info.num_stat = m_stat_name_map.size ();
 
     for (const auto &[stat_name, stat_id] : m_stat_name_map)
       {
-	// m_stat_map[stat_id] means memory usage
-	server_info.stat_info.emplace_back (stat_name, m_stat_map[stat_id].load ());
+	server_info.stat_info.emplace_back (stat_name, get_stat_mem_usage (stat_id));
 	// save debug result with the same order of server_info.stat_info
 	stat_alloc_count_vector.emplace_back (m_stat_alloc_count[stat_id].load ());
 	stat_free_count_vector.emplace_back (m_stat_free_count[stat_id].load ());

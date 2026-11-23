@@ -73,7 +73,11 @@
  * checking is enabled.
  * This state can be modifed using obt_enable_unique_checking()
  */
-bool obt_Check_uniques = true;
+#if defined (SA_MODE)
+static bool obt_Check_uniques = true;
+#else
+static const bool obt_Check_uniques = true;
+#endif
 
 /*
  * State variable used when creating object template, to indicate whether enable
@@ -86,7 +90,7 @@ bool obt_Enable_autoincrement = true;
  * to set the first generated AUTO_INCREMENT value as LAST_INSERT_ID.
  * It is only for client-side insertion.
  */
-bool obt_Last_insert_id_generated = false;
+CUB_THREAD_LOCAL bool obt_Last_insert_id_generated = false;
 
 /*
  *                            OBJECT MANAGER AREAS
@@ -104,8 +108,8 @@ bool obt_Last_insert_id_generated = false;
  *
  */
 
-static AREA *Template_area = NULL;
-static AREA *Assignment_area = NULL;
+static CUB_THREAD_LOCAL AREA *Template_area = NULL;
+static CUB_THREAD_LOCAL AREA *Assignment_area = NULL;
 
 /*
  * obj_Template_traversal
@@ -113,12 +117,12 @@ static AREA *Assignment_area = NULL;
  *
  */
 
-static unsigned int obj_Template_traversal = 0;
+static CUB_THREAD_LOCAL unsigned int obj_Template_traversal = 0;
 /*
  * Must make sure template savepoints have unique names to allow for concurrent
  * or nested updates.  Could be resetting this at db_restart() time.
  */
-static unsigned int template_savepoint_count = 0;
+static CUB_THREAD_LOCAL unsigned int template_savepoint_count = 0;
 
 
 static DB_VALUE *check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value);
@@ -836,9 +840,17 @@ make_template (MOP object, MOP classobj, bool is_read_only)
    */
   if (object != NULL && object != classobj)
     {
+      bool was_dirty = WS_ISDIRTY (object);
+
       if (au_fetch_instance (object, &obj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE))
 	{
 	  return NULL;
+	}
+
+      /* applying the template marks the row dirty; until then, a flush need not write the row again */
+      if (!was_dirty && base_object == NULL && !object->is_vid)
+	{
+	  ws_clean (object);
 	}
 
       /*
@@ -2495,9 +2507,19 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	    }
 	  else
 	    {
+	      bool was_dirty = WS_ISDIRTY (OBT_BASE_OBJECT (template_ptr));
+	      bool cleaned = false;
+
 	      /* lock the object first, then evaluate the triggers */
 	      if (!(error = access_object (template_ptr, &object, &mobj)))
 		{
+		  /* the row is not changed yet: a flush in a BEFORE trigger need not write it */
+		  if (!was_dirty && template_ptr->base_object == NULL && !object->is_vid
+		      && !template_ptr->is_class_update)
+		    {
+		      ws_clean (object);
+		      cleaned = true;
+		    }
 		  if ((error = tr_before_object (trstate, object, temp)))
 		    {
 		      trstate = NULL;
@@ -2505,9 +2527,11 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		}
 
 	      /* in some cases, the object has been decached in before trigger. we need fetch it again. */
-	      if (error == NO_ERROR && object->decached)
+	      /* a cleaned row is fetched again too, to mark it dirty before it changes */
+	      if (error == NO_ERROR && (object->decached || (cleaned && !WS_IS_DELETED (object))))
 		{
 		  error = au_fetch_instance_force (object, &mobj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION);
+		  object->pruning_type = template_ptr->pruning_type;
 		  if (error != NO_ERROR)
 		    {
 		      if (trstate != NULL)
@@ -2795,6 +2819,7 @@ obt_disable_serializable_conflict_checking (OBJ_TEMPLATE * template_ptr)
     }
 }
 
+#if defined (SA_MODE)
 /*
  * obt_enable_unique_checking - This is used by the loader to disable unique
  *                              constraint checking for all templates created.
@@ -2814,6 +2839,7 @@ obt_enable_unique_checking (bool new_state)
   obt_Check_uniques = new_state;
   return (old_state);
 }
+#endif
 
 /*
  * obj_set_force_flush - set force_flush flag of the template

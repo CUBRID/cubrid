@@ -23,6 +23,7 @@
 #include <unordered_set>
 
 #include "dbtype.h"
+#include "chartype.h"
 
 #if !defined(SERVER_MODE)
 #include "dbi.h"
@@ -519,10 +520,11 @@ namespace cubmethod
       {
 	if (sql[i] == '?')
 	  {
-	    if (i + 1 < sql_len && sql[++i] == ':')
+	    // look at the next character without consuming it: a comment or a string may start right after "?"
+	    if (i + 1 < sql_len && sql[i + 1] == ':')
 	      {
 		// read ?:<number> form
-		int begin_idx = i + 1;
+		int begin_idx = i + 2;
 		int idx = begin_idx;
 
 		while (idx < sql_len && sql[idx] >= '0' && sql[idx] <= '9')
@@ -536,7 +538,9 @@ namespace cubmethod
 		    numbered_markers.insert (stoi (number));
 		  }
 
-		i = idx;
+		// stop at the last character of the marker as consume_tokens () does: the loop moves to the next one, which
+		// can start a comment or a string (e.g. "?:0/* ? */" of a PL/CSQL static SQL text)
+		i = idx - 1;
 	      }
 	    else
 	      {
@@ -569,9 +573,10 @@ namespace cubmethod
 
     return num_markers;
   }
+#endif /* !SERVER_MODE */
 
   int
-  consume_tokens (std::string sql, int index, STATEMENT_STATUS stmt_status)
+  consume_tokens (const std::string &sql, int index, STATEMENT_STATUS stmt_status)
   {
     int sql_len = sql.size ();
     if (stmt_status == SQL_STYLE_COMMENT || stmt_status == CPP_STYLE_COMMENT)
@@ -635,6 +640,50 @@ namespace cubmethod
     return index;
   }
 
+  /*
+   * skip_leading_whitespace_and_comment () - non-destructively skip leading
+   *   whitespace and comments starting at index and return the position of the
+   *   first meaningful character. The input string is not modified.
+   */
+  std::size_t
+  skip_leading_whitespace_and_comment (const std::string &sql, std::size_t index)
+  {
+    std::size_t len = sql.size ();
+
+    while (index < len)
+      {
+	char c = sql[index];
+	if (char_isspace ((int) c))
+	  {
+	    index++;
+	  }
+	else if (c == '-' && index + 1 < len && sql[index + 1] == '-')
+	  {
+	    index = (std::size_t) consume_tokens (sql, (int) (index + 2), SQL_STYLE_COMMENT);
+	  }
+	else if (c == '/' && index + 1 < len && sql[index + 1] == '/')
+	  {
+	    index = (std::size_t) consume_tokens (sql, (int) (index + 2), CPP_STYLE_COMMENT);
+	  }
+	else if (c == '/' && index + 1 < len && sql[index + 1] == '*')
+	  {
+	    /* consume_tokens stops at the closing slash of the block comment (or at the end when unterminated) */
+	    index = (std::size_t) consume_tokens (sql, (int) (index + 2), C_STYLE_COMMENT);
+	    if (index < len && sql[index] == '/')
+	      {
+		index++;
+	      }
+	  }
+	else
+	  {
+	    break;
+	  }
+      }
+
+    return index;
+  }
+
+#if !defined(SERVER_MODE)
   std::string
   get_column_default_as_string (DB_ATTRIBUTE *attr)
   {

@@ -229,8 +229,8 @@ namespace
    * section with population frequencies; the remaining values form the equi-depth buckets. */
   template <typename T>
   char *
-  build_blob (THREAD_ENTRY *thread_p, std::vector<T> &samples, DB_TYPE attr_type, int max_buckets,
-	      std::int64_t n_total, std::int64_t n_nn, int *blob_length, INT64 *out_ndv = NULL,
+  build_blob (THREAD_ENTRY *thread_p, std::vector<T> &samples, DB_TYPE attr_type, int attr_precision,
+	      int max_buckets, std::int64_t n_total, std::int64_t n_nn, int *blob_length, INT64 *out_ndv = NULL,
 	      INT64 ndv_hint = -1)
   {
     std::vector<std::pair<T, std::int64_t>> vc = group_counts (samples);
@@ -384,7 +384,7 @@ namespace
       }
 
     const double null_frequency = (n_total > 0) ? (double) (n_total - n_nn) / (double) n_total : 0.0;
-    return builder.build (thread_p, attr_type, n_total, null_frequency, blob_length);
+    return builder.build (thread_p, attr_type, n_total, null_frequency, attr_precision, blob_length);
   }
 
   /* Exact, equality-preserving HLL hash of a NUMERIC value: raw coefficient bytes plus scale.
@@ -526,17 +526,9 @@ namespace
     else
       {
 	s = db_get_string (v);
-	len = db_get_string_size (v);
-	if (t == DB_TYPE_CHAR && s != NULL)
-	  {
-	    /* fixed CHAR heap values are padded to the column precision; the probe key on the
-	     * client side is the (unpadded) constant. SQL CHAR comparison ignores trailing
-	     * spaces, so strip them here to keep MCV equality and range order consistent. */
-	    while (len > 0 && s[len - 1] == ' ')
-	      {
-		len--;
-	      }
-	  }
+	/* a heap value's type is the column type; the client probe normalizes its constant by the
+	 * same column-type rule, so MCV equality and range order agree (see the helper) */
+	len = hist::string_key_size_for_column (t, s, db_get_string_size (v));
       }
     if (s == NULL || len < 0)
       {
@@ -790,9 +782,7 @@ namespace
     int error = NO_ERROR;
     bool scancache_inited = false;
     bool attrinfo_inited = false;
-    PGBUF_WATCHER old_pw;
 
-    PGBUF_INIT_WATCHER (&old_pw, PGBUF_ORDERED_HEAP_NORMAL, hfid);
     *total_rows = 0;
     *null_rows = 0;
 
@@ -836,9 +826,15 @@ namespace
 
 	/* fix the page safely + confirm it is a heap data page before scanning (see the multi-column
 	 * variant): a bitmap page may have been deallocated since the snapshot or not be a heap page */
+	/* release the current page first, as input_handler_heap::get_next_vpid_with_fix () does: holding it while
+	 * waiting for the next bitmap page deadlocks with vacuum deallocating an empty page */
 	if (scan_cache.page_watcher.pgptr != NULL)
 	  {
-	    pgbuf_replace_watcher (thread_p, &scan_cache.page_watcher, &old_pw);
+	    if (part.should_demote ())
+	      {
+		pgbuf_mark_page_for_lru_bottom (thread_p, scan_cache.page_watcher.pgptr);
+	      }
+	    pgbuf_ordered_unfix (thread_p, &scan_cache.page_watcher);
 	  }
 	fix_err = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
 				     &scan_cache.page_watcher);
@@ -851,14 +847,6 @@ namespace
 	  }
 	if (scan_cache.page_watcher.pgptr == NULL)
 	  {
-	    if (old_pw.pgptr != NULL)
-	      {
-		if (part.should_demote ())
-		  {
-		    pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
-		  }
-		pgbuf_ordered_unfix (thread_p, &old_pw);
-	      }
 	    if (fix_err != NO_ERROR && fix_err != ER_PB_BAD_PAGEID)
 	      {
 		error = fix_err;
@@ -866,14 +854,6 @@ namespace
 	      }
 	    er_clear ();
 	    continue;
-	  }
-	if (old_pw.pgptr != NULL)
-	  {
-	    if (part.should_demote ())
-	      {
-		pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
-	      }
-	    pgbuf_ordered_unfix (thread_p, &old_pw);
 	  }
 	if (pgbuf_get_page_ptype (thread_p, scan_cache.page_watcher.pgptr) != PAGE_HEAP)
 	  {
@@ -931,11 +911,6 @@ namespace
     error = NO_ERROR;
 
 cleanup:
-    if (old_pw.pgptr != NULL)
-      {
-	pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
-	pgbuf_ordered_unfix (thread_p, &old_pw);
-      }
     if (attrinfo_inited)
       {
 	heap_attrinfo_end (thread_p, &attr_info);
@@ -1047,11 +1022,7 @@ cleanup:
       }
     degree = wm->get_reserved_workers ();
 
-    /* on failure file_get_all_data_sectors () owns the cleanup: its earliest exit returns before
-     * touching the collector at all, and every later one frees and NULLs the ftab it allocated.
-     * Freeing here on failure therefore either double-handled a NULL or -- for the earliest exit,
-     * reached through an interrupt or a latch timeout -- freed this UNINITIALIZED stack value and
-     * aborted the server in mspace_free () (CBRD-27285) */
+    /* on failure file_get_all_data_sectors () frees what it allocated and leaves the collector empty */
     FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
     if (file_get_all_data_sectors (thread_p, &hfid->vfid, &collector) != NO_ERROR)
       {
@@ -1100,8 +1071,14 @@ cleanup:
       bool sampled;		/* true when the scan visited only a page sample: counts are expanded
 				   estimates and the HLL saw the sample only */
 
+      /* the column's declared width in characters, picked up from the first non-null heap value
+       * (its domain carries the column precision); 0 until seen, and for columns that have no
+       * padding. Stored in the blob so the planner can re-pad CHAR values (CBRD-27251). */
+      int attr_precision;
+
       col_collector (ATTR_ID id, DB_TYPE t, value_category c)
 	: attr_id (id), attr_type (t), cat (c), null_rows (0), ndv (-1), unique (false), sampled (false)
+	, attr_precision (0)
       {
       }
 
@@ -1197,6 +1174,13 @@ cleanup:
 	    null_rows++;
 	    return;
 	  }
+	if (attr_precision == 0 && attr_type == DB_TYPE_CHAR)
+	  {
+	    /* a heap CHAR value is read through its domain (mr_readval_char_internal () inits the
+	     * DB_VALUE with domain->precision), so any non-null row carries the column width. Read it
+	     * once: every row of this column reports the same number. */
+	    attr_precision = db_value_precision (v);
+	  }
 	if (!extract<T> (v, rs, (unique || sampled) ? NULL : &m_hll))
 	  {
 	    null_rows++;
@@ -1219,6 +1203,19 @@ cleanup:
 	m_merged = cubsampling::merge_partition_samples<T> (parts, seens, capacity,
 		   cubsampling::RESERVOIR_DEFAULT_SEED ^ m_sample_seed);
 	m_has_merged = true;
+	if (attr_precision == 0)
+	  {
+	    /* the merged collector never feeds a row of its own (parallel_scan_merge_multi () builds it
+	     * fresh and only merges), so take the width the workers saw -- same column, same number */
+	    for (const col_collector *p : peers)
+	      {
+		if (p->attr_precision > 0)
+		  {
+		    attr_precision = p->attr_precision;
+		    break;
+		  }
+	      }
+	  }
       }
 
       INT64 estimate_ndv_sampled (std::int64_t n_nn) override
@@ -1230,8 +1227,9 @@ cleanup:
       char *build (THREAD_ENTRY *thread_p, int max_buckets, std::int64_t total_rows, int *blob_length) override
       {
 	std::vector<T> &s = m_has_merged ? m_merged : rs.samples ();
-	return build_blob<T> (thread_p, s, attr_type, max_buckets, total_rows, total_rows - null_rows, blob_length,
-			      &ndv, (sampled && !unique) ? -1 : estimate_ndv (total_rows));
+	return build_blob<T> (thread_p, s, attr_type, attr_precision, max_buckets, total_rows,
+			      total_rows - null_rows, blob_length, &ndv,
+			      (sampled && !unique) ? -1 : estimate_ndv (total_rows));
       }
   };
 
@@ -1284,9 +1282,7 @@ cleanup:
     bool scancache_inited = false;
     bool attrinfo_inited = false;
     VPID vpid;
-    PGBUF_WATCHER old_pw;
 
-    PGBUF_INIT_WATCHER (&old_pw, PGBUF_ORDERED_HEAP_NORMAL, hfid);
     *total_rows = 0;
 
     error = heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true /* cache_last_fix_page */, snapshot);
@@ -1329,9 +1325,15 @@ cleanup:
 	/* Fix the page safely and confirm it is a heap data page before scanning it: a page in the
 	 * ftab bitmap may have been deallocated since the snapshot, or not be a heap page. Feeding
 	 * such a page to heap_next_1page trips an spage assertion. Mirrors input_handler_heap. */
+	/* release the current page first, as input_handler_heap::get_next_vpid_with_fix () does: holding it while
+	 * waiting for the next bitmap page deadlocks with vacuum deallocating an empty page */
 	if (scan_cache.page_watcher.pgptr != NULL)
 	  {
-	    pgbuf_replace_watcher (thread_p, &scan_cache.page_watcher, &old_pw);
+	    if (part.should_demote ())
+	      {
+		pgbuf_mark_page_for_lru_bottom (thread_p, scan_cache.page_watcher.pgptr);
+	      }
+	    pgbuf_ordered_unfix (thread_p, &scan_cache.page_watcher);
 	  }
 	fix_err = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
 				     &scan_cache.page_watcher);
@@ -1344,14 +1346,6 @@ cleanup:
 	  }
 	if (scan_cache.page_watcher.pgptr == NULL)
 	  {
-	    if (old_pw.pgptr != NULL)
-	      {
-		if (part.should_demote ())
-		  {
-		    pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
-		  }
-		pgbuf_ordered_unfix (thread_p, &old_pw);
-	      }
 	    if (fix_err != NO_ERROR && fix_err != ER_PB_BAD_PAGEID)
 	      {
 		error = fix_err;
@@ -1359,14 +1353,6 @@ cleanup:
 	      }
 	    er_clear ();
 	    continue;		/* deallocated since the ftab snapshot; skip */
-	  }
-	if (old_pw.pgptr != NULL)
-	  {
-	    if (part.should_demote ())
-	      {
-		pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
-	      }
-	    pgbuf_ordered_unfix (thread_p, &old_pw);
 	  }
 	if (pgbuf_get_page_ptype (thread_p, scan_cache.page_watcher.pgptr) != PAGE_HEAP)
 	  {
@@ -1429,11 +1415,6 @@ cleanup:
     error = NO_ERROR;
 
 cleanup:
-    if (old_pw.pgptr != NULL)
-      {
-	pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
-	pgbuf_ordered_unfix (thread_p, &old_pw);
-      }
     if (attrinfo_inited)
       {
 	heap_attrinfo_end (thread_p, &attr_info);
@@ -2325,11 +2306,7 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
       const HFID *tgt_hfid = &tgt.second;
       std::int64_t tgt_rows = 0;
 
-      /* on failure file_get_all_data_sectors () owns the cleanup: its earliest exit returns
-       * before touching the collector at all, and every later one frees and NULLs the ftab it
-       * allocated. Freeing here on failure therefore either double-handled a NULL or -- for the
-       * earliest exit, reached through an interrupt or a latch timeout -- freed this
-       * UNINITIALIZED stack value and aborted the server in mspace_free () (CBRD-27285) */
+      /* on failure file_get_all_data_sectors () frees what it allocated and leaves the collector empty */
       FILE_FTAB_COLLECTOR ftab_collector = FILE_FTAB_COLLECTOR_INITIALIZER;
       if (file_get_all_data_sectors (thread_p, &tgt_hfid->vfid, &ftab_collector) != NO_ERROR)
 	{
@@ -2529,15 +2506,8 @@ namespace
 	else
 	  {
 	    s = db_get_string (v);
-	    len = db_get_string_size (v);
-	    if (t == DB_TYPE_CHAR && s != NULL)
-	      {
-		/* strip CHAR padding; must hash exactly like extract<std::string> () */
-		while (len > 0 && s[len - 1] == ' ')
-		  {
-		    len--;
-		  }
-	      }
+	    /* must hash exactly the bytes extract<std::string> () keys on: same helper */
+	    len = hist::string_key_size_for_column (t, s, db_get_string_size (v));
 	  }
 	if (s == NULL || len < 0)
 	  {
@@ -2689,7 +2659,9 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
        * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
        * updated row's visible version must be read from the undo log */
       recdes.data = NULL;
-      sc = heap_next (thread_p, hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK);
+      sc =
+	      heap_next (thread_p, hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK,
+			 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (sc != S_SUCCESS)
 	{
 	  break;

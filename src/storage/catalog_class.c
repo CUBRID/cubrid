@@ -31,7 +31,6 @@
 #include "system_catalog.h"
 
 #include "btree.h"		// for single/multi ops
-#include "deduplicate_key.h"
 #include "error_manager.h"
 #include "heap_file.h"
 #include "transform.h"
@@ -584,6 +583,13 @@ catcls_guess_record_length (OR_VALUE * value_p)
       length += map_p->get_disk_size_of_value (&attrs_p[i].value);
     }
 
+  /* catcls_put_or_value_into_buffer () calls or_put_align32 () once per
+   * variable column and once before the last offset; each can add up to
+   * INT_ALIGNMENT - 1 zero pad bytes to keep VOT offsets 4-byte aligned.
+   * Reserve INT_ALIGNMENT per attribute as a conservative upper bound so the
+   * caller's malloc is large enough to hold the padded record. */
+  length += INT_ALIGNMENT * (n_attrs + 1);
+
   return (length);
 }
 
@@ -876,28 +882,13 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 	    }
 
 	  id = db_get_int (&key_atts[1].value);
-	  if (IS_DEDUPLICATE_KEY_ATTR_ID (id))
+	  for (ids = id_val_p->sub.value, k = 0; k < id_val_p->sub.count; k++)
 	    {
-	      DB_VALUE tmp_val;
-
-	      db_make_string (&tmp_val, dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (id)));
-	      pr_clear_value (&key_atts[1].value);
-	      pr_clone_value (&tmp_val, &key_atts[1].value);
-	      if (tmp_val.need_clear)
+	      id_atts = ids[k].sub.value;
+	      if (!DB_IS_NULL (&id_atts[0].value) && id == db_get_int (&id_atts[0].value))
 		{
-		  pr_clear_value (&tmp_val);
-		}
-	    }
-	  else
-	    {
-	      for (ids = id_val_p->sub.value, k = 0; k < id_val_p->sub.count; k++)
-		{
-		  id_atts = ids[k].sub.value;
-		  if (!DB_IS_NULL (&id_atts[0].value) && id == db_get_int (&id_atts[0].value))
-		    {
-		      pr_clear_value (&key_atts[1].value);
-		      pr_clone_value (&id_atts[1].value, &key_atts[1].value);
-		    }
+		  pr_clear_value (&key_atts[1].value);
+		  pr_clone_value (&id_atts[1].value, &key_atts[1].value);
 		}
 	    }
 	}
@@ -3258,7 +3249,7 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
 
   OR_SET_VAR_OFFSET_SIZE (repr_id_bits, BIG_VAR_OFFSET_SIZE);	/* 4byte */
 
-  repr_id_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
+  repr_id_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_RECORD_FLAG_SHIFT_BITS);
   or_put_int (buf_p, repr_id_bits);
   or_put_int (buf_p, chn);	/* CHN */
   or_put_bigint (buf_p, MVCCID_NULL);	/* MVCC insert id */
@@ -3304,10 +3295,13 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
       or_put_data (buf_p, bound_bits, bound_size);
     }
 
-  /* variable */
+  /* variable — VOT offsets must be 4-byte aligned because OR_GET_VAR_OFFSET ()
+   * masks the low 2 bits (flag bits OR_VAR_BIT_OOS, OR_VAR_BIT_LAST_ELEMENT). */
   var_attrs = &attrs[n_fixed];
   for (i = 0; i < n_variable; i++)
     {
+      or_put_align32 (buf_p);
+
       /* the variable offsets are relative to end of the class record header */
       offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
 
@@ -3319,8 +3313,9 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
     }
 
   /* put last offset */
+  or_put_align32 (buf_p);
   offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
-  OR_PUT_OFFSET (offset_p, offset);
+  OR_PUT_LAST_VAR_OFFSET (offset_p, offset);
 
   if (bound_bits)
     {
@@ -3377,10 +3372,10 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   /* header */
   assert (offset_size == BIG_VAR_OFFSET_SIZE || offset_size == SHORT_VAR_OFFSET_SIZE);
 
-  repr_id_bits = or_mvcc_get_repid_and_flags (buf_p, &rc);
+  repr_id_bits = or_get_record_repid_and_flags (buf_p, &rc);
   /* get bound_bits_flag and skip other MVCC header fields */
   bound_bits_flag = repr_id_bits & OR_BOUND_BIT_FLAG;
-  mvcc_flags = (char) ((repr_id_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  mvcc_flags = (char) ((repr_id_bits >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_MVCC_FLAG_MASK);
   repr_id_bits = repr_id_bits & OR_MVCC_REPID_MASK;
 
   or_advance (buf_p, OR_INT_SIZE);	/* skip  CHN */
@@ -3948,7 +3943,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p, true, SINGLE_ROW_INSERT, scan_p, false, false,
-				   hfid_p, NULL, false, false) != NO_ERROR)
+				   hfid_p, NULL, false) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4011,7 +4006,8 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
   is_lock_inited = true;
 #endif /* SERVER_MODE */
 
-  if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &record, scan_p, COPY, NULL_CHN,
+				HEAP_RECDES_CONSUME_RAW_BYTES) != S_SUCCESS)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4040,7 +4036,7 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p, false, SINGLE_ROW_DELETE, scan_p, false,
-				   false, hfid_p, NULL, false, false) != NO_ERROR)
+				   false, hfid_p, NULL, false) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4176,7 +4172,8 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   int i, j, k;
   int error = NO_ERROR;
 
-  if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN,
+				HEAP_RECDES_CONSUME_RAW_BYTES) != S_SUCCESS)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4502,7 +4499,8 @@ catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsi
 
   is_scan_inited = true;
 
-  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &old_record, &scan, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &old_record, &scan, COPY, NULL_CHN,
+				HEAP_RECDES_CONSUME_RAW_BYTES) != S_SUCCESS)
     {
       ASSERT_ERROR_AND_SET (error);
       goto error;
@@ -4971,7 +4969,8 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
     }
   scan_cache_inited = true;
 
-  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
+  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK, HEAP_RECDES_DONT_CONSUME_RAW_BYTES) ==
+	 S_SUCCESS)
     {
       HEAP_ATTRVALUE *heap_value = NULL;
 
@@ -5018,9 +5017,9 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 		  /* Copying length 0 from NULL pointer fails when DUMA is enabled. */
 		  assert (lang_str != NULL);
 		  assert (lang_buf_size > 0);
-		  memcpy (lang_buf, lang_str, MIN (lang_str_len, lang_buf_size));
+		  memcpy (lang_buf, lang_str, MIN (lang_str_len, (size_t) lang_buf_size));
 		}
-	      lang_buf[MIN (lang_str_len, lang_buf_size)] = '\0';
+	      lang_buf[MIN (lang_str_len, (size_t) lang_buf_size)] = '\0';
 	    }
 	  else if (heap_value->attrid == timezone_id)
 	    {
@@ -5399,7 +5398,8 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
     }
 
   *coll_cnt = 0;
-  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
+  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK, HEAP_RECDES_DONT_CONSUME_RAW_BYTES) ==
+	 S_SUCCESS)
     {
       HEAP_ATTRVALUE *heap_value = NULL;
       LANG_COLL_COMPAT *curr_coll;
@@ -5579,7 +5579,8 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
     }
   scan_cache_inited = true;
 
-  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
+  while (heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK, HEAP_RECDES_DONT_CONSUME_RAW_BYTES) ==
+	 S_SUCCESS)
     {
       HEAP_ATTRVALUE *heap_value = NULL;
 

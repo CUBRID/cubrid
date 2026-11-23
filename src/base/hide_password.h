@@ -66,9 +66,11 @@ extern "C"
 			    EN_ADD_PWD_STRING en_add_pwd_string);
   bool password_remake_offset_for_one_query (HIDE_PWD_INFO_PTR new_hide_pwd_info_ptr,
 					     HIDE_PWD_INFO_PTR orig_hide_pwd_info_ptr, int start_pos, int end_pos);
-  void password_fprintf (FILE * fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
-			 int (*cas_fprintf) (FILE *, const char *, ...));
+  void password_fprintf (void *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
+			 int (*cas_fprintf) (void *, const char *, ...));
   int password_snprint (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
+  void password_write_sql_log_in_signal_handler (void *log_fd, char *query,
+						 void (*write_func) (void *log_fd, const char *ptr, int len));
 
 #ifdef __cplusplus
 }

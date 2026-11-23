@@ -29,6 +29,7 @@
 
 #include "error_context.hpp"
 #include "lockfree_transaction_def.hpp"
+#include "log_lsa.hpp"      // for LOG_LSA (oos_published_ref)
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
@@ -38,6 +39,8 @@
 
 #include <cassert>
 
+#include <vector>
+#include "oid.h"
 // forward definitions
 
 // from concurrency_slot.hpp
@@ -124,6 +127,17 @@ struct event_stat
 
   /* log flush thread wait time */
   int trace_log_flush_time;
+};
+
+/* What OOS value reads (oos_read, oos_read_many) cost: their page fixes, the reads those fixes made and the time
+ * spent in them.  A thread counts its own while it traces; a scan's trace takes the difference across its own
+ * window, so a scan's figures are a part of its fetch, ioread and time. */
+typedef struct oos_read_stats OOS_READ_STATS;
+struct oos_read_stats
+{
+  struct timeval elapsed;
+  UINT64 fetches;
+  UINT64 ioreads;
 };
 
 typedef std::thread::id thread_id_t;
@@ -263,9 +277,11 @@ namespace cubthread
       bool interrupted;		/* is this request/transaction interrupted ? */
       std::atomic_bool shutdown;		/* is server going down? */
       bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
-      bool force_latch_wait;	/* while true, page latches ignore the transaction's no-wait setting. set only
-				 * around the disk manager's volume header and sector table fixes; see
-				 * pgbuf_set_force_latch_wait () for why this lives here and not in LOG_TDES. */
+      int wait_msecs_override;	/* lock and page latch waiting time of this thread alone, or LK_WAIT_NOT_OVERRIDDEN
+				 * to wait as its transaction does. a task changes it through
+				 * logtb_set_thread_wait_msecs () and restores it before it ends; the constructor and
+				 * entry_manager (recycle_context, retire_context) reset it. see
+				 * logtb_set_thread_wait_msecs () for why this lives here and not in LOG_TDES. */
       bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
       entry *next_wait_thrd;
 
@@ -297,6 +313,8 @@ namespace cubthread
       int trace_format;
       bool on_trace;
       bool clear_trace;
+      OOS_READ_STATS oos_read_stats;	/* only while on_trace; never reset, read as differences */
+      bool trace_plan_detail;	/* XASL_TRACE_PLAN_DETAIL: the trace shows the compiled expression programs */
 
       /* for lock free structures */
       lf_tran_entry *tran_entries[THREAD_TS_COUNT];
@@ -304,6 +322,7 @@ namespace cubthread
       /* for supplemental log */
       bool no_supplemental_log;
       bool trigger_involved;
+      bool serial_restart;	/* the object being forced restarts a serial; see LC_FLAG_SERIAL_RESTART */
       bool is_cdc_daemon;
 
       /* support multi-process unloaddb
@@ -329,6 +348,25 @@ namespace cubthread
       UINT64 *m_px_stats;
       entry *m_px_orig_thread_entry;
       bool m_uses_px_stats;
+
+      bool m_skip_end_resource_tracks_in_recycle;
+
+      /* OOS value chains published by the current logical heap-record insert, in insert order: head
+       * OOS OID plus the identity stamp the chain was created with (CBRD-26950). The HA applier's
+       * stub fixup rewrites both fields of each OOS inline stub from these pairs, so the slave's
+       * stubs carry the stamps the slave itself issued and never depend on reading OOS storage. A
+       * NULL OID with a NULL stamp is the multi-chunk replication boundary marker. A reused entry names
+       * no chain: an UPDATE reused that column's stub, and the replica takes the stub of its own previous
+       * version (CBRD-27230). The layout mirrors oos_chain_ref (oos_file.hpp) but is kept separate so
+       * this header does not depend on storage headers. */
+      struct oos_published_ref
+      {
+	OID oid;
+	LOG_LSA identity_stamp;
+	bool reused = false;
+      };
+      std::vector<oos_published_ref> oos_oids;
+
 
       bool m_is_private_lru_enabled;
       struct pgbuf_holder_anchor *m_holder_anchor;

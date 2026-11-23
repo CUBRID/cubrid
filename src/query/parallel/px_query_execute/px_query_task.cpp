@@ -36,9 +36,9 @@
 
 namespace parallel_query_execute
 {
-  task::task (THREAD_ENTRY *parent_thread_p, queue *job_execution_queue_p, err_messages_with_lock *error_messages_p,
-	      interrupt *interrupt_p, worker_manager *worker_manager_p)
-    :m_args (parent_thread_p, job_execution_queue_p, error_messages_p, interrupt_p, worker_manager_p)
+  task::task (THREAD_ENTRY *parent_thread_p, queue *job_execution_queue_p, wake_event *wake_event_p,
+	      err_messages_with_lock *error_messages_p, interrupt *interrupt_p, worker_manager *worker_manager_p)
+    :m_args (parent_thread_p, job_execution_queue_p, wake_event_p, error_messages_p, interrupt_p, worker_manager_p)
   {
   }
   task::~task()
@@ -47,16 +47,27 @@ namespace parallel_query_execute
   }
   void task::execute (cubthread::entry &thread_ref)
   {
-    int err_code;
     init (thread_ref);
-    while (true)
+    /* run queued jobs; with none queued, sleep on the statement's wake event (the same wait as run_jobs ()) until
+     * a push, or until the root's run_jobs () ended or a job raised the interrupt */
+    while (!is_ended())
       {
-	job job = get_job();
-	if (m_local.m_pop_job_ended)
+	job j;
+	if (m_args.m_job_execution_queue_p->try_pop (j))
+	  {
+	    (void) execute_job (thread_ref, j);
+	    continue;
+	  }
+	std::uint64_t seen_epoch = m_args.m_wake_event_p->get_epoch();
+	if (is_ended())
 	  {
 	    break;
 	  }
-	err_code = execute_job (thread_ref, job);
+	if (!m_args.m_job_execution_queue_p->is_empty())
+	  {
+	    continue;
+	  }
+	m_args.m_wake_event_p->wait (seen_epoch);
       }
     end (thread_ref);
   }
@@ -68,11 +79,10 @@ namespace parallel_query_execute
   void task::init (cubthread::entry &thread_ref)
   {
   }
-  job task::get_job()
+  bool task::is_ended() const
   {
-    job j;
-    m_local.m_pop_job_ended = !m_args.m_job_execution_queue_p->pop (j, *m_args.m_interrupt_p);
-    return j;
+    return m_args.m_wake_event_p->is_workers_stopped()
+	   || m_args.m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT;
   }
 
   int task::execute_job (cubthread::entry &thread_ref, job &job)
@@ -110,7 +120,9 @@ namespace parallel_query_execute
     /* backup original values */
     css_conn_entry *conn_entry = cur_thread_p->conn_entry;
     int tran_index = cur_thread_p->tran_index;
-    bool on_trace = !! (trace_context_p);
+    bool on_trace = cur_thread_p->on_trace;
+    bool trace_plan_detail = cur_thread_p->trace_plan_detail;
+    bool collect_stats = false;
     THREAD_ENTRY *px_orig_thread_entry = cur_thread_p->m_px_orig_thread_entry;
     UINT64 *px_stats = nullptr;
     uses_px_stats = cur_thread_p->m_uses_px_stats;
@@ -118,11 +130,17 @@ namespace parallel_query_execute
     cur_thread_p->conn_entry = parent_thread_p->conn_entry;
     cur_thread_p->tran_index = parent_thread_p->tran_index;
     cur_thread_p->on_trace = parent_thread_p->on_trace;
+    cur_thread_p->trace_plan_detail = parent_thread_p->trace_plan_detail;
     cur_thread_p->m_px_orig_thread_entry = parent_thread_p;
     is_on_root_thread = cur_thread_p == parent_thread_p;
     new_xasl_state = qexec_deep_copy_xasl_state (cur_thread_p, xasl_state);
-    assert (new_xasl_state != nullptr);
-    if (on_trace)
+    if (new_xasl_state == nullptr && er_errid () == NO_ERROR)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_STATE));
+      }
+    /* the job keeps its own statistics whenever anyone reads them, trace or not; they are handed over at its end */
+    collect_stats = trace_context_p != nullptr && perfmon_parallel_stats_needed (cur_thread_p);
+    if (collect_stats)
       {
 	px_stats = cur_thread_p->m_px_stats;
 	cur_thread_p->m_px_stats = nullptr;
@@ -133,7 +151,19 @@ namespace parallel_query_execute
 		  syscall (SYS_gettid), xasl->header.id);
 #endif
     /* job execution */
-    err_code = qexec_execute_mainblock (cur_thread_p, xasl, new_xasl_state, NULL);
+    /* a state copy that failed (no memory) fails the job as an execution error does */
+    err_code = new_xasl_state == nullptr ? ER_OUT_OF_VIRTUAL_MEMORY
+	       : qexec_execute_mainblock (cur_thread_p, xasl, new_xasl_state, NULL);
+
+    if (err_code == NO_ERROR && xasl->list_id && xasl->list_id->type_list.type_cnt > 0)
+      {
+	err_code = qfile_copy_list_id (&list_id, xasl->list_id, true, QFILE_MOVE_DEPENDENT);
+	if (err_code == NO_ERROR)
+	  {
+	    is_list_id_exists = true;
+	    qfile_clear_list_id (xasl->list_id);
+	  }
+      }
 
     /* check error */
     if (err_code != NO_ERROR)
@@ -187,12 +217,6 @@ namespace parallel_query_execute
 	logtb_set_tran_index_interrupt (cur_thread_p, cur_thread_p->tran_index, true);
       }
     /* clear contextual data */
-    if (xasl->list_id && xasl->list_id->type_list.type_cnt > 0)
-      {
-	qfile_copy_list_id (&list_id, xasl->list_id, true, QFILE_MOVE_DEPENDENT);
-	is_list_id_exists = true;
-	qfile_clear_list_id (xasl->list_id);
-      }
 #if !defined(NDEBUG)
     er_log_debug (ARG_FILE_LINE, "thread %8ld clears xasl : %p",
 		  syscall (SYS_gettid), xasl);
@@ -200,29 +224,26 @@ namespace parallel_query_execute
     (void) qexec_clear_xasl_for_parallel_aptr (cur_thread_p, xasl, true);
     if (is_list_id_exists)
       {
-	qfile_copy_list_id (xasl->list_id,&list_id, true, QFILE_MOVE_DEPENDENT);
-	qfile_clear_list_id (&list_id);
+	/* Transfer the saved descriptor back without allocating after error handling. */
+	*xasl->list_id = list_id;
       }
     /* restore original values */
-    if (on_trace)
+    if (collect_stats)
       {
 	std::lock_guard<std::mutex> lock (trace_context_p->m_mutex);
 	pthread_mutex_lock (&cur_thread_p->m_px_stats_mutex);
-	UINT64 fetches = cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
-	UINT64 ioreads = cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
-	UINT64 fetch_time = cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset];
-	trace_context_p->m_stats.push_back ((trace_context::stat)
-	{ {0, 0}, fetches, ioreads, fetch_time
-	});
-	/* a job worker runs a whole subquery block, so it evaluates that block's SPs itself */
-	trace_context_p->m_sp_calls +=
-		cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_REGU_NUM_CALL_EVALS].start_offset];
-	trace_context_p->m_sp_time +=
-		cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_REGU_EVAL_TIME_10USEC].start_offset];
-	trace_context_p->m_sp_fetches +=
-		cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_REGU_NUM_FETCHES].start_offset];
-	trace_context_p->m_sp_ioreads +=
-		cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_REGU_NUM_IOREADS].start_offset];
+	/* everything this job counted (page fixes, SP calls, sorts, ...) */
+	if (cur_thread_p->m_px_stats != nullptr)
+	  {
+	    if (trace_context_p->m_px_stats == nullptr)
+	      {
+		trace_context_p->m_px_stats = (UINT64 *) calloc (perfmon_get_number_of_statistic_values (), sizeof (UINT64));
+	      }
+	    if (trace_context_p->m_px_stats != nullptr)
+	      {
+		perfmon_merge_values (trace_context_p->m_px_stats, cur_thread_p->m_px_stats);
+	      }
+	  }
 	perfmon_destroy_parallel_stats (cur_thread_p);
 	cur_thread_p->m_px_stats = px_stats;
 	pthread_mutex_unlock (&cur_thread_p->m_px_stats_mutex);
@@ -230,6 +251,7 @@ namespace parallel_query_execute
     cur_thread_p->conn_entry = conn_entry;
     cur_thread_p->tran_index = tran_index;
     cur_thread_p->on_trace = on_trace;
+    cur_thread_p->trace_plan_detail = trace_plan_detail;
     cur_thread_p->m_px_orig_thread_entry = px_orig_thread_entry;
     cur_thread_p->m_uses_px_stats = uses_px_stats;
     qexec_free_xasl_state (cur_thread_p, new_xasl_state);

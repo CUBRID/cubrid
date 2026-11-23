@@ -81,6 +81,7 @@
 #include "connection_context.hpp"
 #include "connection_worker.hpp"
 #include "connection_sr.h"
+#include "intl_support.h"
 #include "server_support.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -259,7 +260,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->fd = fd;
   conn->request_id = 0;
   conn->status = CONN_OPEN;
-  conn->set_tran_index (NULL_TRAN_INDEX);
+  conn->release_tran_index ();
   conn->init_pending_request ();
   conn->init_working_task ();
   conn->init_method_callback ();
@@ -273,7 +274,10 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->client_id = err;
   conn->db_error = 0;
   conn->in_transaction = false;
-  conn->in_flashback = false;
+  conn->cdc_auth_done = false;
+  conn->cdc_auth_busy = 0;
+  conn->auth_user[0] = '\0';
+  conn->auth_verified = false;
   conn->reset_on_commit = false;
   conn->stop_talk = false;
   conn->ignore_repl_delay = false;
@@ -339,7 +343,6 @@ css_prepare_shutdown_conn (CSS_CONN_ENTRY * conn)
   int r;
 
   conn->stop_talk = false;
-  conn->in_flashback = false;
 
   START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
@@ -2838,6 +2841,60 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 }
 
 /*
+ * css_set_auth_proof () - record that this connection has just proven
+ *   user_name's password, or forget any proof when user_name is NULL.
+ */
+void
+css_set_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name)
+{
+  int r;
+
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  if (user_name != NULL)
+    {
+      strncpy (conn->auth_user, user_name, DB_MAX_USER_LENGTH);
+      conn->auth_user[DB_MAX_USER_LENGTH] = '\0';
+      conn->auth_verified = true;
+    }
+  else
+    {
+      conn->auth_verified = false;
+    }
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+}
+
+/*
+ * css_consume_auth_proof () - has this connection just proven user_name's
+ *   password? The proof is spent either way.
+ */
+bool
+css_consume_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name)
+{
+  bool proven;
+  int r;
+
+  if (conn == NULL)
+    {
+      return false;
+    }
+
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  proven = (conn->auth_verified && user_name != NULL && intl_identifier_casecmp (conn->auth_user, user_name) == 0);
+  conn->auth_verified = false;
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  return proven;
+}
+
+/*
  * css_set_user_access_status() - set user access status information
  *   return: void
  *   db_user(in):
@@ -3079,36 +3136,4 @@ css_request_release_packet (css_conn_entry * conn, void *buffer)
     {
       assert_release (false);
     }
-}
-
-void
-css_wakeup_handler (css_conn_entry * conn)
-{
-  int r;
-
-  assert (conn);
-
-  /* lock to access worker and context */
-  r = rmutex_lock (NULL, &conn->cmutex);
-  assert (r == NO_ERROR);
-
-  if (conn->worker == nullptr || conn->context == nullptr)
-    {
-      /* unlock */
-      r = rmutex_unlock (NULL, &conn->cmutex);
-      assert (r == NO_ERROR);
-
-      _er_log_debug (__FILE__, __LINE__, "css_wakeup_handler: worker already cleared for conn = %p, fd = %d\n",
-		     (void *) conn, conn->fd);
-      return;
-    }
-
-  if (!conn->worker->notify ())
-    {
-      assert_release (false);
-    }
-
-  /* unlock */
-  r = rmutex_unlock (NULL, &conn->cmutex);
-  assert (r == NO_ERROR);
 }

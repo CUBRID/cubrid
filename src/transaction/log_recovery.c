@@ -108,6 +108,9 @@ static int log_recovery_get_redo_parallel_count ();
 
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
 static void log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p);
+static void log_recovery_2pc_restore_prev_versions (THREAD_ENTRY * thread_p);
+static void log_recovery_2pc_restore_tran_prev_versions (THREAD_ENTRY * thread_p, const LOG_TDES * tdes,
+							 LOG_PAGE * log_page);
 static void log_recovery_refuse_no_logging_index_replay (THREAD_ENTRY * thread_p, const LOG_LSA * lsa);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
@@ -277,9 +280,9 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	{
 	  /* nothing to do during recovery */
 	}
-      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM)
+      else if (RCV_IS_NOTHING_TO_UNDO (rcvindex))
 	{
-	  /* nothing to do */
+	  /* no undo and no compensation */
 	}
       else if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
 	{
@@ -841,7 +844,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "ANALYSIS");
 
-  LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
+  log_Gl.chkpt_redo_lsa.store (start_redolsa);
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
   if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
@@ -2509,6 +2512,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
     case LOG_REPLICATION_STATEMENT:
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_OOS_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_SUPPLEMENTAL_INFO:
       break;
@@ -2557,8 +2561,9 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
   if (!LSA_ISNULL (&fwd_log_lsa))
     {
       /* log_Gl.hdr.eof_lsa can have a NULL_LSA value if recovery is started without an active log volume. Its value will be recovered during the log_recovery_analysis process. */
-      if (LSA_GE (log_lsa, &fwd_log_lsa)
-	  || (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && LSA_GT (&fwd_log_lsa, &log_Gl.hdr.eof_lsa)))
+      const LOG_LSA eof_lsa = log_Gl.hdr.eof_lsa;
+
+      if (LSA_GE (log_lsa, &fwd_log_lsa) || (!LSA_ISNULL (&eof_lsa) && LSA_GT (&fwd_log_lsa, &eof_lsa)))
 	{
 	  // check fwd_log_lsa value if it is corrupted or not
 	  is_log_page_broken = true;
@@ -3326,6 +3331,121 @@ log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * log_recovery_2pc_restore_prev_versions - set back the prev version lsa of the rows in-doubt transactions updated
+ *
+ * Note: An update stores that lsa without logging it, so redo leaves it null. Only a reader of an active
+ *       transaction's row follows it, and after restart the in-doubt transactions are the active ones.
+ */
+static void
+log_recovery_2pc_restore_prev_versions (THREAD_ENTRY * thread_p)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_page = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  int i;
+
+  log_page->hdr.logical_pageid = NULL_PAGEID;
+  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      LOG_TDES *tdes = LOG_FIND_TDES (i);
+
+      if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->state == TRAN_UNACTIVE_2PC_PREPARE
+	  && MVCCID_IS_NORMAL (tdes->mvccinfo.id))
+	{
+	  log_recovery_2pc_restore_tran_prev_versions (thread_p, tdes, log_page);
+	}
+    }
+}
+
+/*
+ * log_recovery_2pc_restore_tran_prev_versions - pass the heap records of one in-doubt transaction, newest first
+ */
+static void
+log_recovery_2pc_restore_tran_prev_versions (THREAD_ENTRY * thread_p, const LOG_TDES * tdes, LOG_PAGE * log_page)
+{
+  HEAP_RV_PREV_VERSION_STATE state = { OID_INITIALIZER, LSA_INITIALIZER };
+  OID fwd_oid;
+  LOG_LSA lsa;
+
+  for (lsa = tdes->tail_lsa; !LSA_ISNULL (&lsa);)
+    {
+      LOG_RECORD_HEADER rec_header;
+      LOG_LSA read_lsa = lsa;
+      LOG_LSA next_lsa;
+      LOG_REC_SYSOP_END *sysop_end;
+      LOG_REC_UNDOREDO *undoredo = NULL;
+      LOG_DATA data;
+      VPID vpid;
+      RECDES old_home = RECDES_INITIALIZER;
+
+      if (log_page->hdr.logical_pageid != lsa.pageid
+	  && logpb_fetch_page (thread_p, &lsa, LOG_CS_FORCE_USE, log_page) != NO_ERROR)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_2pc_restore_tran_prev_versions");
+	  return;
+	}
+      rec_header = *LOG_GET_LOG_RECORD_HEADER (log_page, &lsa);
+      next_lsa = rec_header.prev_tranlsa;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (rec_header), &read_lsa, log_page);
+
+      switch (rec_header.type)
+	{
+	case LOG_COMPENSATE:
+	  /* skip what a partial rollback undid: its slots may hold other rows since */
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_COMPENSATE), &read_lsa, log_page);
+	  next_lsa = ((LOG_REC_COMPENSATE *) (log_page->area + read_lsa.offset))->undo_nxlsa;
+	  break;
+
+	case LOG_SYSOP_END:
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &read_lsa, log_page);
+	  sysop_end = (LOG_REC_SYSOP_END *) (log_page->area + read_lsa.offset);
+	  if (sysop_end->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
+	    {
+	      next_lsa = sysop_end->compensate_lsa;
+	    }
+	  break;
+
+	case LOG_MVCC_UNDOREDO_DATA:
+	case LOG_MVCC_DIFF_UNDOREDO_DATA:
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDOREDO), &read_lsa, log_page);
+	  undoredo = &((LOG_REC_MVCC_UNDOREDO *) (log_page->area + read_lsa.offset))->undoredo;
+	  break;
+
+	case LOG_UNDOREDO_DATA:
+	case LOG_DIFF_UNDOREDO_DATA:
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_UNDOREDO), &read_lsa, log_page);
+	  undoredo = (LOG_REC_UNDOREDO *) (log_page->area + read_lsa.offset);
+	  break;
+
+	default:
+	  break;
+	}
+
+      if (undoredo != NULL)
+	{
+	  data = undoredo->data;
+	  VPID_SET (&vpid, data.volid, data.pageid);
+	  if (data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+	    {
+	      old_home.data = (char *) &fwd_oid;
+	      old_home.area_size = sizeof (fwd_oid);
+	      /* the data header may end on the next log page; a larger image does not fit, but its type is read */
+	      if ((log_page->hdr.logical_pageid != lsa.pageid
+		   && logpb_fetch_page (thread_p, &lsa, LOG_CS_FORCE_USE, log_page) != NO_ERROR)
+		  || log_get_undo_record (thread_p, log_page, lsa, &old_home) == S_ERROR)
+		{
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_2pc_restore_tran_prev_versions");
+		  return;
+		}
+	    }
+	  heap_rv_restore_prev_version (thread_p, data.rcvindex, &vpid, data.offset, &lsa,
+					data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM ? &old_home : NULL,
+					tdes->mvccinfo.id, &state);
+	}
+      lsa = next_lsa;
+    }
+}
+
+/*
  * log_recovery_refuse_no_logging_index_replay () - fail-stop a media recovery replay that reaches a record left
  *   by a no-logging index build (loaddb).  Its index pages were never WAL-logged, so replaying past it
  *   cannot reconstruct them.  A replay in which the index would survive always dispatches either the
@@ -3984,6 +4104,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
+	    case LOG_DUMMY_OOS_RECORD:
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_SUPPLEMENTAL_INFO:
 	    case LOG_END_OF_LOG:
@@ -4070,6 +4191,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   /* Must run after the last reset_start_mvccid: otherwise an in-doubt transaction's rows read as visible and checkers
    * skip the self-lock wait. */
   log_recovery_2pc_reactivate_mvccids (thread_p);
+  log_recovery_2pc_restore_prev_versions (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "REDO");
 
@@ -4078,6 +4200,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
   /* Now finish all postpone operations */
   log_recovery_finish_all_postpone (thread_p);
+
+  /* drop the pages that redo re-created for files destroyed later in the log, before they are flushed */
+  pgbuf_rv_discard_unreserved_pages (thread_p);
 
   /* Flush all dirty pages */
   logpb_flush_pages_direct (thread_p);
@@ -4926,6 +5051,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_REPLICATION_STATEMENT:
 		case LOG_DUMMY_HA_SERVER_STATE:
 		case LOG_DUMMY_OVF_RECORD:
+		case LOG_DUMMY_OOS_RECORD:
 		case LOG_DUMMY_GENERIC:
 		case LOG_SUPPLEMENTAL_INFO:
 		case LOG_SYSOP_ATOMIC_START:
@@ -5921,6 +6047,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_OOS_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_SYSOP_ATOMIC_START:
       break;

@@ -36,7 +36,7 @@
 #include "px_scan_input_handler_heap.hpp"
 #include "px_parallel.hpp"			/* parallel_query::compute_parallel_degree */
 #include "list_file.h"				/* qfile_close_list, qfile_destroy_list */
-#include "heap_file.h"				/* heap_attrinfo_end, heap_get_num_data_pages */
+#include "heap_file.h"				/* heap_attrinfo_end */
 #include "file_manager.h"			/* file_get_num_user_pages */
 #include "system_parameter.h"			/* prm_get_integer_value */
 #include "thread_manager.hpp"			/* cubthread::system_core_count */
@@ -261,9 +261,12 @@ extern "C"
 
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
+	/* scan_end_scan () skips manager::end () when apply_pre_execution_info () already marked the scan ended */
+	manager_p->wait_for_workers();
+	manager_p->merge_stats();
+
 	if (thread_p->on_trace)
 	  {
-	    manager_p->wait_for_workers();
 	    if (scan_id->s.phsid.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -293,9 +296,12 @@ extern "C"
 
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
+	/* scan_end_scan () skips manager::end () when apply_pre_execution_info () already marked the scan ended */
+	manager_p->wait_for_workers();
+	manager_p->merge_stats();
+
 	if (thread_p->on_trace)
 	  {
-	    manager_p->wait_for_workers();
 	    if (scan_id->s.phsid.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -325,9 +331,12 @@ extern "C"
 
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
+	/* scan_end_scan () skips manager::end () when apply_pre_execution_info () already marked the scan ended */
+	manager_p->wait_for_workers();
+	manager_p->merge_stats();
+
 	if (thread_p->on_trace)
 	  {
-	    manager_p->wait_for_workers();
 	    if (scan_id->s.phsid.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -361,9 +370,8 @@ extern "C"
   scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, bool mvcc_select_lock_needed,
 				SCAN_OPERATION_TYPE scan_op_type, int fixed_scan, int grouped_scan, VAL_DESCR *vd,
 				ACCESS_SPEC_TYPE *spec, OID *class_oid, HFID *class_hfid, XASL_NODE *xasl,
-				QUERY_ID query_id)
+				QUERY_ID query_id, const FILE_FTAB_COLLECTOR *page_list, int num_data_pages)
   {
-    int num_data_pages = -1;
     parallel_query::worker_manager *worker_manager_p = nullptr;
     int num_parallel_threads;
     int error = NO_ERROR;
@@ -378,6 +386,15 @@ extern "C"
     assert (vd != nullptr);
 
     scan_id->type = S_HEAP_SCAN;
+    /* no page bitmap on the serial layout until scan_heap_scan_set_page_list () */
+    scan_id->s.hsid.sector_order = false;
+    scan_id->s.hsid.page_list = NULL;
+
+    /* Workers do not acquire row locks, including when reopening a partition. */
+    if (mvcc_select_lock_needed)
+      {
+	return NO_ERROR;
+      }
 
     if (spec->curent == nullptr)
       {
@@ -389,8 +406,7 @@ extern "C"
 	  }
 
 	assert (thread_p->private_heap_id != 0);
-	if (oid_is_system_class (class_oid)
-	    || mvcc_is_mvcc_disabled_class (class_oid) || mvcc_select_lock_needed)
+	if (oid_is_system_class (class_oid) || mvcc_is_mvcc_disabled_class (class_oid))
 	  {
 	    /* parallel-thread heap scan not supported */
 	    ACCESS_SPEC_SET_FLAG (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
@@ -405,14 +421,13 @@ extern "C"
 
     /* try parallel-thread heap scan */
 
-    /* check if pages are enough for parallel-thread heap scan */
-    error = heap_get_num_data_pages (thread_p, class_hfid, &num_data_pages);
-    if (error != NO_ERROR)
+    if (page_list == NULL)
       {
-	assert_release_error (er_errid () != NO_ERROR);
-	return er_errid ();
+	/* no page bitmap (scan_heap_scan_page_list ()): try single-thread heap scan */
+	return NO_ERROR;
       }
 
+    /* check if pages are enough for parallel-thread heap scan: the page bitmap's count */
     assert (spec->num_parallel_threads == -1 /* auto-compute */
 	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
 
@@ -478,6 +493,7 @@ extern "C"
 				   worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
+	((manager_type *) scan_id->s.phsid.manager)->set_page_list (page_list);
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
 	if (error != NO_ERROR)
 	  {
@@ -511,6 +527,7 @@ extern "C"
 				   worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
+	((manager_type *) scan_id->s.phsid.manager)->set_page_list (page_list);
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
 	if (error != NO_ERROR)
 	  {
@@ -544,6 +561,7 @@ extern "C"
 				   worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
+	((manager_type *) scan_id->s.phsid.manager)->set_page_list (page_list);
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
 	if (error != NO_ERROR)
 	  {
@@ -766,9 +784,12 @@ extern "C"
 
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 
+	/* scan_end_scan () skips manager::end () when apply_pre_execution_info () already marked the scan ended */
+	manager_p->wait_for_workers();
+	manager_p->merge_stats();
+
 	if (thread_p->on_trace)
 	  {
-	    manager_p->wait_for_workers();
 	    if (scan_id->s.pllsid_parallel.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -799,9 +820,12 @@ extern "C"
 
 	manager_type *manager_p = (manager_type *) scan_id->s.pllsid_parallel.manager;
 
+	/* scan_end_scan () skips manager::end () when apply_pre_execution_info () already marked the scan ended */
+	manager_p->wait_for_workers();
+	manager_p->merge_stats();
+
 	if (thread_p->on_trace)
 	  {
-	    manager_p->wait_for_workers();
 	    if (scan_id->s.pllsid_parallel.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -1199,9 +1223,12 @@ extern "C"
 
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 
+	/* scan_end_scan () skips manager::end () when apply_pre_execution_info () already marked the scan ended */
+	manager_p->wait_for_workers();
+	manager_p->merge_stats();
+
 	if (thread_p->on_trace)
 	  {
-	    manager_p->wait_for_workers();
 	    if (scan_id->s.pisid.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -1231,9 +1258,12 @@ extern "C"
 
 	manager_type *manager_p = (manager_type *) scan_id->s.pisid.manager;
 
+	/* scan_end_scan () skips manager::end () when apply_pre_execution_info () already marked the scan ended */
+	manager_p->wait_for_workers();
+	manager_p->merge_stats();
+
 	if (thread_p->on_trace)
 	  {
-	    manager_p->wait_for_workers();
 	    if (scan_id->s.pisid.trace_storage == nullptr)
 	      {
 		size_t alloc_size = sizeof (accumulative_trace_storage);
@@ -1310,6 +1340,12 @@ extern "C"
 	return NO_ERROR;
       }
 
+    /* Workers do not acquire the row locks required by FOR UPDATE. */
+    if (scan_id->mvcc_select_lock_needed)
+      {
+	return NO_ERROR;
+      }
+
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN))
       {
 	return NO_ERROR;
@@ -1379,6 +1415,13 @@ extern "C"
     /* index scan degree set client-side by optimizer; re-gated below by actual index size and core/page limits. */
     num_parallel_threads = spec->num_parallel_threads;
     if (num_parallel_threads < 2)
+      {
+	assert (scan_id->type == S_INDX_SCAN);
+	return NO_ERROR;
+      }
+
+    /* this degree does not go through compute_parallel_degree (); apply its system operation check (CBRD-27492) */
+    if (parallel_query::is_under_system_operation ())
       {
 	assert (scan_id->type == S_INDX_SCAN);
 	return NO_ERROR;
@@ -1616,15 +1659,7 @@ namespace parallel_scan
       }
     if (m_vd != nullptr)
       {
-	if (m_vd->dbval_cnt > 0)
-	  {
-	    for (int i = 0; i < m_vd->dbval_cnt; i++)
-	      {
-		pr_clear_value (&m_vd->dbval_ptr[i]);
-	      }
-	    db_private_free (m_thread_p, m_vd->dbval_ptr);
-	  }
-	db_private_free (m_thread_p, m_vd);
+	qexec_free_xasl_state (m_thread_p, m_vd->xasl_state);
 	m_vd = nullptr;
       }
   }
@@ -1659,28 +1694,19 @@ namespace parallel_scan
       {
 	m_uses_xasl_clone = true;
       }
-    new_vd = (VAL_DESCR *) db_private_alloc (m_thread_p, sizeof (VAL_DESCR));
-    if (new_vd == nullptr)
+    /* m_vd is the vd of this thread's copy, so m_vd->xasl_state is what close frees. */
+    assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
+    xasl_state *new_xasl_state = qexec_deep_copy_xasl_state (m_thread_p, m_orig_vd->xasl_state);
+    if (new_xasl_state == nullptr)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (VAL_DESCR));
+	/* the copy sets its own error (a value's clone) */
+	if (er_errid () == NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (xasl_state));
+	  }
 	return ER_FAILED;
       }
-    memcpy (new_vd, m_orig_vd, sizeof (VAL_DESCR));
-    if (m_orig_vd->dbval_cnt > 0)
-      {
-	new_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
-	if (new_vd->dbval_ptr == nullptr)
-	  {
-	    db_private_free (m_thread_p, new_vd);
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		    sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
-	    return ER_FAILED;
-	  }
-	for (int i = 0; i < m_orig_vd->dbval_cnt; i++)
-	  {
-	    pr_clone_value (&m_orig_vd->dbval_ptr[i], &new_vd->dbval_ptr[i]);
-	  }
-      }
+    new_vd = &new_xasl_state->vd;
     m_vd = new_vd;
     m_input_handler = (input_handler_t *) db_private_alloc (m_thread_p, sizeof (input_handler_t));
     if (m_input_handler == nullptr)
@@ -1689,6 +1715,12 @@ namespace parallel_scan
 	return ER_FAILED;
       }
     m_input_handler = placement_new ((input_handler_t *) m_input_handler, &m_interrupt, &m_err_messages);
+
+    /* before init_on_main: its snapshot build must take m_px_lock_mutex like the workers' */
+    if (m_thread_p->m_px_orig_thread_entry == NULL)
+      {
+	m_thread_p->m_px_orig_thread_entry = m_thread_p;
+      }
 
     {
       int init_err;
@@ -1702,7 +1734,7 @@ namespace parallel_scan
 	}
       else
 	{
-	  init_err = m_input_handler->init_on_main (m_thread_p, m_hfid, m_parallelism);
+	  init_err = m_input_handler->init_on_main (m_thread_p, m_hfid, m_parallelism, m_page_list);
 	}
       if (init_err != NO_ERROR)
 	{
@@ -1722,14 +1754,10 @@ namespace parallel_scan
 		    sizeof (result_handler<RESULT_TYPE::MERGEABLE_LIST>));
 	    return ER_FAILED;
 	  }
-	if (m_xasl->type == BUILDLIST_PROC && m_xasl->proc.buildlist.g_agg_list != NULL &&
-	    !m_xasl->proc.buildlist.g_agg_domains_resolved)
-	  {
-	    m_g_agg_domain_resolve_need = true;
-	  }
 	m_result_handler = placement_new ((result_handler<RESULT_TYPE::MERGEABLE_LIST> *) m_result_handler, m_query_id,
-					  &m_interrupt, &m_err_messages, m_parallelism, m_g_agg_domain_resolve_need, m_xasl);
+					  &m_interrupt, &m_err_messages, m_parallelism, m_xasl);
 	m_result_handler->set_trace_handler (&m_trace_handler);
+	m_result_handler->set_orig_vd (m_orig_vd);
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -1742,7 +1770,7 @@ namespace parallel_scan
 	    return ER_FAILED;
 	  }
 	m_result_handler = placement_new ((result_handler<RESULT_TYPE::XASL_SNAPSHOT> *) m_result_handler, m_query_id,
-					  &m_interrupt, &m_err_messages, m_parallelism, m_g_agg_domain_resolve_need, m_xasl);
+					  &m_interrupt, &m_err_messages, m_parallelism, m_xasl);
       }
     else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
       {
@@ -1763,44 +1791,8 @@ namespace parallel_scan
 	return ER_FAILED;
       }
     m_on_trace = m_thread_p->on_trace;
-    if (m_thread_p->m_px_orig_thread_entry == NULL)
-      {
-	m_thread_p->m_px_orig_thread_entry = m_thread_p;
-      }
     if (m_on_trace)
       {
-	if (m_thread_p->m_px_orig_thread_entry != m_thread_p)
-	  {
-	    /* this is child thread, so we need to use px_stats */
-	    if (m_thread_p->m_uses_px_stats)
-	      {
-		/* already initialized */
-		m_px_stats_initialized_by_me = false;
-	      }
-	    else
-	      {
-		/* not initialized - cannot be happened */
-		assert (false);
-		perfmon_initialize_parallel_stats (m_thread_p);
-		m_px_stats_initialized_by_me = true;
-	      }
-	  }
-	else
-	  {
-	    /* this is main thread */
-	    if (m_thread_p->m_uses_px_stats)
-	      {
-		/* already initialized */
-		m_px_stats_initialized_by_me = false;
-	      }
-	    else
-	      {
-		/* not initialized */
-		perfmon_initialize_parallel_stats (m_thread_p);
-		m_thread_p->m_uses_px_stats = false;
-		m_px_stats_initialized_by_me = true;
-	      }
-	  }
 	m_trace_handler.m_trace_storage_for_sibling_xasl.set_main_xasl_tree (m_xasl);
       }
     m_result_handler_read_initialized = false;
@@ -1821,9 +1813,8 @@ namespace parallel_scan
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (task<result_type, ST>));
 	    return ER_FAILED;
 	  }
-	trace_handler *trace_handler_p = m_on_trace ? &m_trace_handler : nullptr;
 	task_p = placement_new ((task<result_type, ST> *) task_p, m_thread_p, m_query_entry, m_result_handler,
-				m_input_handler, &m_interrupt, &m_err_messages, m_vd, trace_handler_p, m_worker_manager, m_xasl->header.id, m_hfid,
+				m_input_handler, &m_interrupt, &m_err_messages, m_vd, &m_trace_handler, m_worker_manager, m_xasl->header.id, m_hfid,
 				m_cls_oid, m_is_fixed,
 				m_is_grouped, m_is_cached_scan, m_uses_xasl_clone, m_xasl, &m_pre_execution_info);
 	m_worker_manager->push_task (task_p);
@@ -1858,10 +1849,14 @@ namespace parallel_scan
 
     if (unlikely (!m_task_started))
       {
+	/* snapshot precomputed scalar values for worker injection; unconditional so a single-table scan injects too
+	 * instead of re-executing per worker. Every gather mode needs it, the row-by-row XASL_SNAPSHOT included: its
+	 * workers evaluate the scan predicate too, and a worker that finds no value re-executes the subquery
+	 * (CBRD-27588: NEXT_VALUE ran once per worker). */
+	m_pre_execution_info.capture_precomp_vals (m_xasl);
+
 	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	  {
-	    /* snapshot precomputed scalar values for worker injection; unconditional so a single-table scan injects too instead of re-executing per worker. */
-	    m_pre_execution_info.capture_precomp_vals (m_xasl);
 	    if (m_xasl->scan_ptr)
 	      {
 		m_pre_execution_info.capture_pre_execution_info (m_xasl);
@@ -1887,6 +1882,9 @@ namespace parallel_scan
 	      {
 		return S_ERROR;
 	      }
+	    /* close the lists before a worker can connect its own to them (finalize_node) */
+	    m_result_handler->read_initialize (m_thread_p);
+	    m_result_handler_read_initialized = true;
 	  }
 
 	err_code = start_tasks();
@@ -1936,55 +1934,6 @@ namespace parallel_scan
 	if (m_xasl->scan_ptr)
 	  {
 	    m_pre_execution_info.apply_pre_execution_info (m_xasl);
-	  }
-
-	XASL_NODE *xptr = m_xasl;
-
-	for (xptr = m_xasl; xptr != nullptr; xptr = xptr->scan_ptr)
-	  {
-	    if (xptr->val_list == nullptr)
-	      {
-		continue;
-	      }
-	    std::vector<DB_VALUE> dbval_container (xptr->val_list->val_cnt);
-	    QPROC_DB_VALUE_LIST valp = xptr->val_list->valp;
-	    for (int i = 0; i < xptr->val_list->val_cnt; i++)
-	      {
-		pr_clone_value (valp->val, &dbval_container[i]);
-		valp = valp->next;
-	      }
-
-	    HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
-	    valp = xptr->val_list->valp;
-	    for (int i = 0; i < xptr->val_list->val_cnt; i++)
-	      {
-		pr_clear_value (valp->val);
-		valp = valp->next;
-	      }
-	    db_change_private_heap (m_thread_p, heap_id);
-	    valp = xptr->val_list->valp;
-	    for (int i=0; i<xptr->val_list->val_cnt; i++)
-	      {
-		pr_clone_value (&dbval_container[i], valp->val);
-		pr_clear_value (&dbval_container[i]);
-		valp = valp->next;
-	      }
-	  }
-
-	fetch_val_list (m_thread_p, m_xasl->outptr_list->valptrp, m_vd, nullptr, nullptr, NULL, true);
-	if (m_g_agg_domain_resolve_need)
-	  {
-	    qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (m_thread_p, m_xasl, m_vd,
-		&m_xasl->proc.buildlist.g_agg_domains_resolved);
-
-	    if (m_xasl->proc.buildlist.g_agg_domains_resolved)
-	      {
-		/* Sharing needs the resolved accumulator domains, so it is linked here,
-		 * at the parallel BUILDLIST's resolve point. The sort-based group-by
-		 * after the gather reads the links. */
-		qdata_link_shared_accumulators (m_xasl->proc.buildlist.g_agg_list);
-		m_g_agg_domain_resolve_need = false;
-	      }
 	  }
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
@@ -2105,19 +2054,30 @@ namespace parallel_scan
     /* Clean up previous value descriptor */
     if (m_vd != nullptr)
       {
-	if (m_vd->dbval_cnt > 0)
-	  {
-	    for (int i = 0; i < m_vd->dbval_cnt; i++)
-	      {
-		pr_clear_value (&m_vd->dbval_ptr[i]);
-	      }
-	    db_private_free (m_thread_p, m_vd->dbval_ptr);
-	  }
-	db_private_free (m_thread_p, m_vd);
+	qexec_free_xasl_state (m_thread_p, m_vd->xasl_state);
 	m_vd = nullptr;
       }
 
     m_trace_handler.clear();
+
+    if (ST == SCAN_TYPE::HEAP && m_page_list != nullptr && m_xasl->curr_spec != nullptr)
+      {
+	/* the bitmap of the open, or a new one when a nested statement rebuilt the snapshot since (READ COMMITTED) */
+	int num_data_pages;
+
+	err_code = scan_heap_scan_page_list (m_thread_p, m_xasl->curr_spec, &m_cls_oid, &m_hfid, false, &m_page_list,
+					     &num_data_pages);
+	if (err_code != NO_ERROR)
+	  {
+	    if (m_worker_manager != nullptr)
+	      {
+		m_worker_manager->release_workers ();
+		m_worker_manager = nullptr;
+	      }
+	    return err_code;
+	  }
+	assert (m_page_list != nullptr);
+      }
 
     /* Open and initialize */
     err_code = open ();
@@ -2150,33 +2110,9 @@ namespace parallel_scan
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
   int manager<result_type, ST>::merge_stats()
   {
-    int error = NO_ERROR;
-
-    if (m_on_trace)
-      {
-	if (m_thread_p->m_px_orig_thread_entry != m_thread_p)
-	  {
-	    /* child thread */
-	    if (m_px_stats_initialized_by_me)
-	      {
-		perfmon_destroy_parallel_stats (m_thread_p);
-		assert (false);
-		error = ER_FAILED;
-	      }
-	  }
-	else
-	  {
-	    /* main thread */
-	    if (m_px_stats_initialized_by_me)
-	      {
-		perfmon_destroy_parallel_stats (m_thread_p);
-	      }
-	  }
-
-	m_trace_handler.merge_stats (m_thread_p, &m_scan_id->scan_stats);
-      }
-
-    return error;
+    /* the workers' statistics count whether or not the query is traced */
+    m_trace_handler.merge_stats (m_thread_p, &m_scan_id->scan_stats);
+    return NO_ERROR;
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>

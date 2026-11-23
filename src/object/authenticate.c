@@ -64,6 +64,8 @@
 #include "object_print.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
+#include "connection_defs.h"
+#include "authenticate_password.hpp"
 #include "printer.hpp"
 #include "authenticate_access_auth.hpp"
 #include "authenticate_cache.hpp"
@@ -84,12 +86,100 @@
  *
  * 
  */
-static authenticate_context *au_ctx_obj = nullptr;
+static CUB_THREAD_LOCAL authenticate_context *au_ctx_obj = nullptr;
 
 int
 au_login (const char *name, const char *password, bool ignore_dba_privilege)
 {
   return au_ctx ()->login (name, password, ignore_dba_privilege);
+}
+
+/*
+ * au_prove_password () - prove a password to the server by answering a one-time
+ *   challenge. The password never leaves the client.
+ *   return: NO_ERROR, ER_AU_LOGIN_DISABLED for an account that may not log in,
+ *           ER_AU_REJECT_LOGIN for an unknown account or a wrong password (as
+ *           perform_login () reports them, in its order), or another error
+ *   user_name (in)      : account to prove
+ *   des/sha1/sha2 (in)  : the password in each form it may be stored in
+ */
+int
+au_prove_password (const char *user_name, const char *des, const char *sha1, const char *sha2)
+{
+#if defined (CS_MODE)
+  char nonce[CSS_CDC_AUTH_NONCE_SIZE];
+  char tag[CSS_CDC_AUTH_RESPONSE_SIZE];
+  char salt[CSS_AU_SALT_SIZE] = { '\0' };
+  char salted[AU_MAX_PASSWORD_BUF + 4];
+  char stored_name[CSS_AU_NAME_SIZE] = { '\0' };
+  char buffer[CSS_CDC_AUTH_NONCE_SIZE + AU_MAX_PASSWORD_BUF + 4];
+  const char *form;
+  char *digest = NULL;
+  INT64 issued_at = 0;
+  int scheme, digest_len, error;
+
+  use_console_password = false;	/* as perform_login () starts */
+  error = cau_challenge (user_name, &scheme, nonce, sizeof (nonce), &issued_at, tag, sizeof (tag), salt, sizeof (salt),
+			 stored_name, sizeof (stored_name));
+  if (error == ER_AU_INVALID_USER)
+    {
+      /* an unknown account looks the same as a wrong password, as in perform_login () */
+      error = ER_AU_REJECT_LOGIN;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  switch (scheme)
+    {
+    case ENCODE_PREFIX_DES:
+      form = des;
+      break;
+    case ENCODE_PREFIX_SHA1:
+      form = sha1;
+      break;
+    case ENCODE_PREFIX_SHA2_512:
+      form = sha2;
+      break;
+    case ENCODE_PREFIX_SHA2_512_SALT:
+      /* stored as salt + SHA2-512 (salt + SHA2-512 form + name as stored), so build
+       * the same from the salt and name the server sent */
+      form = "";
+      if (sha2[0] != '\0' && strlen (salt) == CSS_AU_SALT_SIZE - 1 && stored_name[0] != '\0')
+	{
+	  encrypt_password_sha2_512_salt (stored_name, salt, sha2, salted);
+	  form = salted;
+	}
+      break;
+    default:
+      form = "";		/* the account has no password */
+      break;
+    }
+
+  snprintf (buffer, sizeof (buffer), "%s%s", nonce, form);
+  if (crypt_sha_two (NULL, buffer, (int) strlen (buffer), 256, &digest, &digest_len, false) != NO_ERROR
+      || digest == NULL)
+    {
+      return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+    }
+
+  error = cau_response (user_name, nonce, issued_at, tag, digest);
+  db_private_free_and_init (NULL, digest);
+  if (error == ER_AU_INVALID_PASSWORD)
+    {
+      /* report it as perform_login () does, so csql and the utilities can still ask
+       * for the password when none was given */
+      use_console_password = (sha2[0] == '\0');
+      error = ER_AU_REJECT_LOGIN;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+    }
+
+  return error;
+#else
+  return NO_ERROR;
+#endif
 }
 
 authenticate_context *
@@ -101,6 +191,18 @@ au_ctx (void)
     }
   return au_ctx_obj;
 }
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+void
+au_ctx_destructor (void)
+{
+  if (au_ctx_obj != nullptr)
+    {
+      delete au_ctx_obj;
+      au_ctx_obj = nullptr;
+    }
+}
+#endif
 
 /*
  * DB_ EXTENSION FUNCTIONS
@@ -237,14 +339,14 @@ au_set_get_obj (DB_SET * set, int index, MOP * obj)
 }
 
 /*
- * au_dump_auth() - Prints authorization info for all users.
+ * au_dump_auth() - Prints authorization info for the users visible in db_user.
  *   return: none
  *   fp(in): output file
  *
  * Note: The db_root class used to have a user attribute which was a set
  *       containing the object-id for all users.  The users attribute has been
  *       eliminated for performance reasons.  A query on the _db_user class is
- *       new used to find all users.
+ *       now used to find the users visible in db_user.
  */
 void
 au_dump_auth (FILE * fp)
@@ -255,13 +357,13 @@ au_dump_auth (FILE * fp)
   DB_QUERY_ERROR query_error;
   int error;
   DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s];";
+  const char *qp1 = "select [%s] from [%s] where [name] in (select [name] from [%s]);";
 
-  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2);
+  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2 + strlen (CTV_USER_NAME));
 
   if (query)
     {
-      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
+      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME, CTV_USER_NAME);
 
       error = db_compile_and_execute_local (query, &query_result, &query_error);
       /* error is row count if not negative. */
@@ -371,7 +473,7 @@ au_dump_user (MOP user, FILE * fp)
  * Note: The db_root class used to have a user attribute which was a set
  *       containing the object-id for all users.  The users attribute has been
  *       eliminated for performance reasons.  A query on the _db_user class is
- *       new used to find all users.
+ *       now used to find the users visible in db_user.
  */
 void
 au_dump_to_file (FILE * fp)
@@ -383,18 +485,21 @@ au_dump_to_file (FILE * fp)
   DB_QUERY_ERROR query_error;
   int error = NO_ERROR;
   DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s];";
+  const char *qp1 = "select [%s] from [%s] where [name] in (select [name] from [%s]);";
+  int save;
 
   /* NOTE: We should be getting the real user name here ! */
 
   fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_CURRENT_USER),
 	   Au_user_name);
 
-  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2);
+  AU_SAVE_AND_DISABLE (save);
+
+  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2 + strlen (CTV_USER_NAME));
 
   if (query)
     {
-      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
+      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME, CTV_USER_NAME);
 
       error = db_compile_and_execute_local (query, &query_result, &query_error);
       /* error is row count if not negative. */
@@ -441,6 +546,8 @@ au_dump_to_file (FILE * fp)
 
   fprintf (fp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_AUTH_TITLE));
   au_dump_auth (fp);
+
+  AU_RESTORE (save);
 }
 
 /*
@@ -464,16 +571,21 @@ au_check_serial_authorization (MOP serial_object)
 {
   DB_VALUE creator_val;
   int ret_val;
+  int save;
+
+  AU_SAVE_AND_DISABLE (save);
 
   ret_val = db_get (serial_object, "owner", &creator_val);
   if (ret_val != NO_ERROR)
     {
+      AU_RESTORE (save);
       return ret_val;
     }
 
   assert (!DB_IS_NULL (&creator_val));
 
   ret_val = au_check_owner (&creator_val);
+  AU_RESTORE (save);
   if (ret_val != NO_ERROR)
     {
       ret_val = ER_QPROC_CANNOT_UPDATE_SERIAL;

@@ -184,6 +184,9 @@ namespace cubconn::connection
       /* shared by every sender blocked on this transmitter (bad case) all of them are woken */
       /* together (notify_all) when the pending transmission drains or is discarded */
       std::shared_ptr<message_blocker> m_blocker;
+
+      /* woken on a freed slot or teardown; m_blocker waits for a full drain, which a congested queue rarely gets */
+      std::shared_ptr<message_blocker> m_room;
     } m_send;
 
     /* --------------------------------------------------------------------------- */

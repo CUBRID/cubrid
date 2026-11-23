@@ -92,7 +92,7 @@ extern T_PROXY_CONTEXT proxy_Context;
 typedef T_CAS_IO *(*T_FUNC_FIND_CAS) (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid);
 
 extern void proxy_term (void);
-extern bool proxy_Keep_running;
+extern volatile sig_atomic_t proxy_Keep_running;
 
 extern const char *rel_build_number (void);
 
@@ -223,7 +223,7 @@ init_msg_header (MSG_HEADER * header)
   header->info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
   header->info_ptr[CAS_INFO_RESERVED_1] = CAS_INFO_RESERVED_DEFAULT;
   header->info_ptr[CAS_INFO_RESERVED_2] = CAS_INFO_RESERVED_DEFAULT;
-  header->info_ptr[CAS_INFO_ADDITIONAL_FLAG] = CAS_INFO_RESERVED_DEFAULT;
+  header->info_ptr[CAS_INFO_ADDITIONAL_FLAG] = CAS_INFO_ADDITIONAL_FLAG_DEFAULT;
 }
 
 void

@@ -1284,10 +1284,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 Non ci sono più dati da leggere dal flusso %1$s in posizione %2$lld, quantità %3$zu.
 1216 ID oggetto non valido %1$d quando si tenta di decomprimere.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 Stream session error: %1$s.
+1218 The stream is not open: %1$s.
+1219 The stream is not supported: %1$s.
+1220 Invalid use of a stream: %1$s.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
@@ -1613,7 +1613,6 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 Nessuna opzione specificata per ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
-138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memoria esaurita.

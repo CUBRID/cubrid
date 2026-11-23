@@ -4877,6 +4877,10 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 		      coll_sh_entry->ldml_context.ldml_file, coll_sh_entry->ldml_context.line_no);
 	    }
 
+	  /* a name that differs only in case is saved as the first definition, whose data symbols exist */
+	  strncpy (lc->opt_coll.coll_name, coll_sh_entry->lsd_key, COLL_NAME_SIZE - 1);
+	  lc->opt_coll.coll_name[COLL_NAME_SIZE - 1] = '\0';
+
 	  continue;
 	}
 
@@ -6555,7 +6559,9 @@ locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type, const cha
 
   for (i = 0; i < count_shared_data; i++)
     {
-      if (lsd_type == shared_data[i].lsd_type && strcmp (lsd_key, shared_data[i].lsd_key) == 0)
+      if (lsd_type == shared_data[i].lsd_type
+	  && (lsd_type == LOC_SHARED_COLLATION ? strcasecmp (lsd_key, shared_data[i].lsd_key)
+	      : strcmp (lsd_key, shared_data[i].lsd_key)) == 0)
 	{
 	  *found_entry = &(shared_data[i]);
 	  goto exit;

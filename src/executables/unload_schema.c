@@ -72,6 +72,7 @@
 #define GRANT_SUFFIX          "_grant"
 #define PK_SUFFIX             "_pk"
 #define PROCEDURE_SUFFIX      "_procedure"
+#define PROCEDURE_BODY_SUFFIX "_procedure_body"
 #define SERIAL_SUFFIX         "_serial"
 #define SERVER_SUFFIX         "_server"
 #define SYNONYM_SUFFIX        "_synonym"
@@ -255,6 +256,7 @@ static int extract_user (extract_context & ctxt);
 static int extract_serial (extract_context & ctxt);
 static int extract_synonym (extract_context & ctxt);
 static int extract_procedure (extract_context & ctxt);
+static int extract_procedure_body (extract_context & ctxt);
 static int extract_server (extract_context & ctxt);
 static int extract_class (extract_context & ctxt);
 static int extract_vclass (extract_context & ctxt);
@@ -1467,7 +1469,9 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
     }
 
 
-  if (ctxt.classes != NULL && (emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_CLASS), er_errid () != NO_ERROR))
+  if (ctxt.classes != NULL
+      && (emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_CLASS), er_errid () != NO_ERROR
+	  || ctxt.emit_err_count > 0))
     {
       err_count++;
     }
@@ -1502,6 +1506,11 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	}
     }
 
+  if (emit_grant (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR)
+    {
+      err_count++;
+    }
+
   if (ctxt.classes != NULL
       && (emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_VCLASS), er_errid () != NO_ERROR))
     {
@@ -1514,11 +1523,6 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
     }
 
   if (ctxt.classes != NULL && (emit_foreign_key (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR))
-    {
-      err_count++;
-    }
-
-  if (emit_grant (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR)
     {
       err_count++;
     }
@@ -3081,9 +3085,25 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
       output_ctx (" INVISIBLE");
     }
 
+  /* emit storage prefer_inline */
+  if (db_attribute_is_oos_prefer_inline (attribute))
+    {
+      output_ctx (" STORAGE PREFER_INLINE");
+    }
+  else if (db_attribute_is_oos_force_outline (attribute))
+    {
+      output_ctx (" STORAGE FORCE_OUTLINE");
+    }
+  else if (db_attribute_is_oos_force_inline (attribute))
+    {
+      output_ctx (" STORAGE FORCE_INLINE");
+    }
+
   if (emit_autoincrement_def (output_ctx, attribute) != NO_ERROR)
     {
-      ;				/* just continue */
+      fprintf (stderr, "%s", db_error_string (3));
+      fprintf (stderr, " The AUTO_INCREMENT clause is missing from the schema file.\n");
+      ctxt.emit_err_count++;
     }
 
   if (qualifier == SHARED_ATTRIBUTE)
@@ -3646,7 +3666,6 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
   const int *prefix_length;
   int k, n_attrs = 0;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
-  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 
   PARSER_CONTEXT *parser = NULL;
   PARSER_VARCHAR *res_vstr = NULL;
@@ -3754,26 +3773,6 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	    }
 	}
 
-      reserved_col_buf[0] = '\0';
-      if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
-	{
-	  k = dk_sm_deduplicate_key_position (n_attrs, atts, constraint->func_index_info);
-	  if (k != -1)
-	    {
-	      if (constraint->func_index_info && constraint->func_index_info->attr_index_start > 0)
-		{
-		  k--;
-		}
-
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (atts[k]->id))
-		{
-		  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf),
-						 GET_DEDUPLICATE_KEY_ATTR_LEVEL (atts[k]->id));
-		  n_attrs--;	/* Hidden column should not be displayed. */
-		}
-	    }
-	}
-
       is_fail = false;
       k = 0;
       for (att = atts; k < n_attrs; att++)
@@ -3865,22 +3864,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
       assert ((constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	      || (ctype != DB_CONSTRAINT_UNIQUE && ctype != DB_CONSTRAINT_REVERSE_UNIQUE));
 
-      if ((reserved_col_buf[0] == '\0') && !DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
-	{
-	  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
-	}
-      if (reserved_col_buf[0])
-	{
-	  if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	    {
-	      output_ctx (" WITH %s, ONLINE", reserved_col_buf);
-	    }
-	  else
-	    {
-	      output_ctx (" WITH %s", reserved_col_buf);
-	    }
-	}
-      else if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
 	  output_ctx (" WITH ONLINE");
 	}
@@ -4056,19 +4040,23 @@ emit_autoincrement_def (print_output & output_ctx, DB_ATTRIBUTE * attribute)
   int error = NO_ERROR;
   DB_VALUE min_val, inc_val;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
+  int save;
 
   if (attribute->auto_increment != NULL)
     {
       db_make_null (&min_val);
       db_make_null (&inc_val);
 
+      AU_SAVE_AND_DISABLE (save);
       error = db_get (attribute->auto_increment, "min_val", &min_val);
       if (error < 0)
 	{
+	  AU_RESTORE (save);
 	  return error;
 	}
 
       error = db_get (attribute->auto_increment, "increment_val", &inc_val);
+      AU_RESTORE (save);
       if (error < 0)
 	{
 	  pr_clear_value (&min_val);
@@ -4826,7 +4814,6 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   char class_name[DB_MAX_CLASS_LENGTH] = { '\0' };
   MOP ref_clsop;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
-  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
@@ -4846,12 +4833,6 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    {
 	      if (db_attribute_class (*att) != cl->op)
 		{
-		  if (IS_DEDUPLICATE_KEY_ATTR_ID ((*att)->id))
-		    {
-		      assert (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint->type));
-		      assert (att[1] == NULL);
-		      break;
-		    }
 		  has_inherited_atts = true;
 		  break;
 		}
@@ -4870,17 +4851,8 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  output_ctx ("\nALTER CLASS %s%s%s%s ADD", output_owner, PRINT_IDENTIFIER (class_name));
 	  output_ctx (" CONSTRAINT [%s] FOREIGN KEY(", constraint->name);
 
-	  reserved_col_buf[0] = '\0';
 	  for (att = atts; *att != NULL; att++)
 	    {
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (att[0]->id))
-		{
-		  assert (att[1] == NULL);
-		  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf),
-						 GET_DEDUPLICATE_KEY_ATTR_LEVEL (att[0]->id));
-		  break;
-		}
-
 	      att_name = db_attribute_name (*att);
 	      if (att != atts)
 		{
@@ -4892,15 +4864,6 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 		}
 	    }
 	  output_ctx (")");
-
-	  if (reserved_col_buf[0] == '\0')
-	    {
-	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
-	    }
-	  if (reserved_col_buf[0])
-	    {
-	      output_ctx (" WITH %s", reserved_col_buf);
-	    }
 
 	  ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
 	  SPLIT_USER_SPECIFIED_NAME (db_get_class_name (ref_clsop), owner_name, class_name);
@@ -4920,6 +4883,11 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 
 	  (void) output_ctx (";\n");
 	}
+    }
+
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
     }
 
   return NO_ERROR;
@@ -5418,6 +5386,62 @@ extract_procedure (extract_context & ctxt)
       err = emit_stored_procedure_pre (ctxt, output_ctx);
     }
 
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
+    {
+      /* file is empty (database has no procedure to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static int
+extract_procedure_body (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, PROCEDURE_BODY_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME,
+       PROCEDURE_BODY_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
   if (required_class_only == false)
     {
       err = emit_stored_procedure_post (ctxt, output_ctx);
@@ -5427,7 +5451,7 @@ extract_procedure (extract_context & ctxt)
 
   if (ftell (output_file) == 0)
     {
-      /* file is empty (database has no procedure to be emitted) */
+      /* file is empty (database has no procedure body to be emitted) */
       fclose (output_file);
       output_file = NULL;
       remove (output_filename);
@@ -5559,7 +5583,7 @@ extract_class (extract_context & ctxt)
     }
 
   emit_class_query_spec (ctxt, output_ctx, EXTRACT_CLASS);
-  if (er_errid () == ER_FAILED)
+  if (er_errid () == ER_FAILED || ctxt.emit_err_count > 0)
     {
       err = ER_FAILED;
       goto end_class;
@@ -6081,6 +6105,11 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
 	}
     }
 
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
+    }
+
   return err;
 }
 
@@ -6211,6 +6240,11 @@ extract_split_schema_files (extract_context & ctxt)
       err_count++;
     }
 
+  if (extract_procedure_body (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
   if (extract_pk (ctxt) != NO_ERROR)
     {
       err_count++;
@@ -6313,7 +6347,7 @@ filter_user_classes (DB_OBJLIST ** class_list, const char *user)
       name = db_get_class_name (cl->op);
       sm_qualifier_name (name, owner_name, DB_MAX_IDENTIFIER_LENGTH);
 
-      if (owner_name != NULL && strcmp (owner_name, user) == 0)
+      if (strcmp (owner_name, user) == 0)
 	{
 	  prev = cl;
 	}
@@ -6348,7 +6382,7 @@ create_schema_info (extract_context & ctxt)
   const char *loading_order[] =
     { "_schema_user", "_schema_class", "_schema_vclass", "_schema_server", "_schema_synonym",
     "_schema_serial", "_schema_procedure",
-    "_schema_pk", "_schema_fk", "_schema_uk", "_schema_grant", "_schema_vclass_query_spec"
+    "_schema_pk", "_schema_fk", "_schema_uk", "_schema_grant", "_schema_vclass_query_spec", "_schema_procedure_body"
   };
 
   const size_t len = sizeof (loading_order) / sizeof (loading_order[0]);
@@ -6445,7 +6479,7 @@ do_recreate_where_clause_or_function_attr (PARSER_CONTEXT ** parser, const char 
 {
   PT_NODE **stmt;
   PT_NODE *expr;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   PARSER_VARCHAR *res = NULL;
   char qry_buf[4096];
   char *query_str = qry_buf;

@@ -526,6 +526,8 @@ struct log_tdes
   struct log_repl *repl_records;	/* replication records */
   LOG_LSA repl_insert_lsa;	/* insert or mvcc update target lsa */
   LOG_LSA repl_update_lsa;	/* in-place update target lsa */
+  LOG_LSA_QUEUE oos_insert_lsa_queue;	/* for oos replication log */
+  bool oos_suppress_insert_lsa_queueing;	/* skip auto queueing of chunk LSAs during multi-chunk OOS logging */
   void *first_save_entry;	/* first save entry for the transaction */
 
   int suppress_replication;	/* suppress writing replication logs when flag is set */
@@ -686,7 +688,7 @@ struct log_global
   LOG_LSA flushed_lsa_lower_bound;	/* lsa */
   pthread_mutex_t chkpt_lsa_lock;
 #endif				/* SERVER_MODE */
-  LOG_LSA chkpt_redo_lsa;
+  LOG_LSA_ATOMIC chkpt_redo_lsa;
   DKNPAGES chkpt_every_npages;	/* How frequent a checkpoint should be taken ? */
   LOG_RECVPHASE rcv_phase;	/* Phase of the recovery */
   LOG_LSA rcv_phase_lsa;	/* LSA of phase (e.g. Restart) */
@@ -878,8 +880,6 @@ typedef struct cdc_consumer
 
 typedef struct cdc_global
 {
-  css_conn_entry conn;
-
   CDC_PRODUCER producer;
   CDC_CONSUMER consumer;
 
@@ -1048,6 +1048,7 @@ extern void logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info
 extern int logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count);
 extern void logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * log_lsa,
 				 LOG_PAGE * log_pgptr);
+extern bool logpb_copy_from_log_if_buffered (char *area, int length, LOG_LSA * log_lsa);
 extern int logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				       const char *prefix_logname);
 extern bool logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -1151,6 +1152,8 @@ extern const char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);
+extern int logtb_set_thread_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs);
+extern int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p);
 
 extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);
@@ -1198,8 +1201,12 @@ extern int logtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p);
 extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
+extern bool logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
+extern bool logtb_has_active_savepoint (THREAD_ENTRY * thread_p);
+extern int logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
+extern MVCC_SNAPSHOT *logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local);
 extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
@@ -1252,8 +1259,7 @@ extern void logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PA
 extern void logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index);
 extern int xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
 				   int kill_pid);
-extern int xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, bool is_dba_group_member,
-					  bool interrupt_only);
+extern int xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, bool interrupt_only);
 extern THREAD_ENTRY *logtb_find_thread_by_tran_index (int tran_index);
 extern THREAD_ENTRY *logtb_find_thread_by_tran_index_except_me (int tran_index);
 extern int logtb_get_current_tran_index (void);

@@ -45,6 +45,7 @@
 #include <cstdint>
 
 #include "log_manager.h"
+#include "schema_system_catalog_constants.h"
 
 #include "btree.h"
 #include "elo.h"
@@ -52,6 +53,7 @@
 #include "replication.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
+#include "disk_manager.h"
 #include "porting_inline.hpp"
 #include "query_manager.h"
 #include "message_catalog.h"
@@ -76,6 +78,7 @@
 #include "slotted_page.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "set_object.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "fault_injection.h"
@@ -158,15 +161,32 @@ static int rv;
 #define LOG_ISUNSAFE_TO_SKIP_RCVINDEX(RCVI) \
    ((RCVI) == RVDK_LINK_PERM_VOLEXT)
 
-#define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
-   (((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
-    && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
-    && ((RCVI) != RVBT_NO_LOGGING_INDEX_DURABLE) \
-    && ((RCVI) != RVBT_NO_LOGGING_INDEX_COMMITTED) \
-    && ((RCVI) != RVBT_REMOVE_UNIQUE_STATS) \
-    && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
-    && ((RCVI) != RVLOG_SYSMETA_VERSION_UPDATE) \
-    && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
+/*
+ * Log records that are written without a data page (the page pointer of the address is NULL).
+ * There is no page LSA to set for them. Add an rcvindex here when it is logged without a page.
+ */
+#define LOG_IS_PAGELESS_RCVINDEX(RCVI) \
+   (((RCVI) == RVBT_MVCC_INCREMENTS_UPD) \
+    || ((RCVI) == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
+    || ((RCVI) == RVBT_NO_LOGGING_INDEX_DURABLE) \
+    || ((RCVI) == RVBT_NO_LOGGING_INDEX_COMMITTED) \
+    || ((RCVI) == RVBT_REMOVE_UNIQUE_STATS) \
+    || ((RCVI) == RVLOC_CLASSNAME_DUMMY) \
+    || ((RCVI) == RVLOG_SYSMETA_VERSION_UPDATE))
+
+/*
+ * The volume link is logged even on the header page of a permanent volume with temporary purpose
+ * (see LOG_ISUNSAFE_TO_SKIP_RCVINDEX), but that page keeps a temporary LSA, so its page LSA must not be set.
+ */
+#define LOG_IS_VOLUME_LINK_ON_TEMP_LSA_PAGE(RCVI, PGPTR) \
+   ((RCVI) == RVDK_LINK_PERM_VOLEXT && pgbuf_is_lsa_temporary (PGPTR))
+
+/*
+ * Whether the page LSA is set to the LSA of the log record.
+ * Use the same condition when the record is logged and when it is compensated.
+ */
+#define LOG_NEED_TO_SET_PAGE_LSA(RCVI, PGPTR) \
+   (!LOG_IS_PAGELESS_RCVINDEX (RCVI) && !LOG_IS_VOLUME_LINK_ON_TEMP_LSA_PAGE (RCVI, PGPTR))
 
 #define CDC_IS_IGNORE_LOGINFO_ERROR(ERROR) \
    (((ERROR) == ER_CDC_IGNORE_LOG_INFO) \
@@ -188,6 +208,7 @@ struct archive_log_header_scan_context
 };
 
 CDC_GLOBAL cdc_Gl;
+LOG_EXTRACT_OWNER cdc_Session_owner = LOG_EXTRACT_OWNER_INITIALIZER;
 bool cdc_Logging = false;
 /* CDC end */
 
@@ -222,6 +243,8 @@ static int log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 #endif /* SERVER_MODE */
 static LOG_LSA *log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDES * tdes,
 				       LOG_LSA * savept_lsa);
+static int log_append_undo_crumbs_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+					    int num_crumbs, const LOG_CRUMB * crumbs, MVCCID explicit_mvccid);
 static bool log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const LOG_TDES * tdes,
 				       LOG_DATA_ADDR * addr);
 static bool log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, LOG_DATA_ADDR * addr);
@@ -234,6 +257,8 @@ static void log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES *
 static void log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
 				  int data_size, const char *data);
 static void log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit, int with_lock);
+static void log_append_supplemental_info_internal (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length,
+						   const void *data, TDE_ALGORITHM tde_algo);
 static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
@@ -305,6 +330,12 @@ static int log_undo_rec_restartable (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvin
 static void log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa_ptr);
 static int log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_pgptr);
 static void log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa);
+
+static bool log_get_prev_version_header_layout (LOG_RECTYPE type, int *size, int *ulength_offset);
+static void log_lsa_add_align (LOG_LSA_UNPACKED * lsa, int add);
+static void log_lsa_advance_when_doesnt_fit (LOG_LSA_UNPACKED * lsa, int length);
+static bool log_get_undo_image_from_buffer (THREAD_ENTRY * thread_p, LOG_LSA * lsa, int udata_length,
+					    RECDES * recdes, SCAN_CODE * scan_out) __attribute__ ((noinline));
 
 static void log_cleanup_modified_class (const tx_transient_class_entry & t, bool & stop);
 static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa,
@@ -496,6 +527,8 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_DUMMY_HA_SERVER_STATE";
     case LOG_DUMMY_OVF_RECORD:
       return "LOG_DUMMY_OVF_RECORD";
+    case LOG_DUMMY_OOS_RECORD:
+      return "LOG_DUMMY_OOS_RECORD";
     case LOG_DUMMY_GENERIC:
       return "LOG_DUMMY_GENERIC";
     case LOG_SUPPLEMENTAL_INFO:
@@ -614,10 +647,10 @@ log_get_append_lsa (void)
  *
  * NOTE:
  */
-LOG_LSA *
+LOG_LSA
 log_get_eof_lsa (void)
 {
-  return (&log_Gl.hdr.eof_lsa);
+  return log_Gl.hdr.eof_lsa.load ();
 }
 
 /*
@@ -1186,7 +1219,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  log_Gl.hdr.append_lsa.store (LOG_LSA (LOGPAGEID_MAX, 0));
 
 	  /* sync append_lsa to prior_lsa */
-	  log_Gl.prior_info.prior_lsa = log_Gl.hdr.append_lsa;
+	  log_Gl.prior_info.prior_lsa.store (log_Gl.hdr.append_lsa.load ());
 
 	  LSA_SET_NULL (&log_Gl.hdr.chkpt_lsa);
 	  log_Gl.hdr.nxarv_pageid = LOGPAGEID_MAX;
@@ -1230,7 +1263,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       r_args->restart_committed_lsa = log_Gl.hdr.append_lsa;
     }
 
-  LSA_COPY (&log_Gl.chkpt_redo_lsa, &log_Gl.hdr.chkpt_lsa);
+  log_Gl.chkpt_redo_lsa.store (log_Gl.hdr.chkpt_lsa);
 
   /* Make sure that this is the desired log */
   if (strcmp (log_Gl.hdr.prefix_name, prefix_logname) != 0)
@@ -1425,11 +1458,13 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       if (init_emergency == true && log_Gl.hdr.is_shutdown == false)
 	{
-	  if (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && log_Gl.hdr.append_lsa.load () > log_Gl.hdr.eof_lsa)
+	  const LOG_LSA eof_lsa = log_Gl.hdr.eof_lsa;
+
+	  if (!LSA_ISNULL (&eof_lsa) && log_Gl.hdr.append_lsa.load () > eof_lsa)
 	    {
 	      /* We cannot believe in append_lsa for this case. It points to an unflushed log page. Since we are
 	       * going to skip recovery for emergency startup, just replace it with eof_lsa. */
-	      LOG_RESET_APPEND_LSA (&log_Gl.hdr.eof_lsa);
+	      LOG_RESET_APPEND_LSA (&eof_lsa);
 	    }
 	}
 
@@ -1469,17 +1504,17 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
   log_Gl.chkpt_every_npages = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
 
-  if (log_Gl.append.prev_lsa.load () != log_Gl.prior_info.prev_lsa)
+  if (log_Gl.append.prev_lsa.load () != log_Gl.prior_info.prev_lsa.load ())
     {
       assert (0);
       /* defense code */
-      log_Gl.prior_info.prev_lsa = log_Gl.append.prev_lsa;
+      log_Gl.prior_info.prev_lsa.store (log_Gl.append.prev_lsa.load ());
     }
-  if (log_Gl.hdr.append_lsa.load () != log_Gl.prior_info.prior_lsa)
+  if (log_Gl.hdr.append_lsa.load () != log_Gl.prior_info.prior_lsa.load ())
     {
       assert (0);
       /* defense code */
-      log_Gl.prior_info.prior_lsa = log_Gl.hdr.append_lsa;
+      log_Gl.prior_info.prior_lsa.store (log_Gl.hdr.append_lsa.load ());
     }
 
   /*
@@ -2250,7 +2285,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+  if (LOG_NEED_TO_SET_PAGE_LSA (rcvindex, addr->pgptr))
     {
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
@@ -2276,6 +2311,11 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
 	  assert (tdes->is_active_worker_transaction ());
 	}
+      else if (rcvindex == RVOOS_INSERT && !tdes->oos_suppress_insert_lsa_queueing)
+	{
+	  tdes->oos_insert_lsa_queue.push (tdes->tail_lsa);
+	  assert (tdes->is_active_worker_transaction ());
+	}
     }
 }
 
@@ -2294,6 +2334,49 @@ void
 log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int num_crumbs,
 			const LOG_CRUMB * crumbs)
 {
+  (void) log_append_undo_crumbs_internal (thread_p, rcvindex, addr, num_crumbs, crumbs, MVCCID_NULL);
+}
+
+/*
+ * log_append_mvcc_undo_data_with_mvccid - log an MVCC undo record under a given MVCCID
+ *
+ * return: NO_ERROR, or an error code when the record could not be appended
+ *
+ *   rcvindex(in): Index to recovery function; an MVCC operation
+ *   addr(in): Address of data; vfid names the file vacuum checks for a drop
+ *   length(in): Length of undo data
+ *   data(in): Undo data
+ *   mvccid(in): MVCCID the record carries
+ *
+ * NOTE: For a record appended after its transaction completed its MVCC info, e.g. by a commit postpone.
+ *       Vacuum reads the record once mvccid precedes every active snapshot (RVOOS_NOTIFY_VACUUM).
+ */
+int
+log_append_mvcc_undo_data_with_mvccid (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+				       int length, const void *data, MVCCID mvccid)
+{
+  LOG_CRUMB undo_crumb;
+
+  assert (LOG_IS_MVCC_OPERATION (rcvindex));
+  assert (MVCCID_IS_VALID (mvccid));
+  assert (0 <= length);
+  assert (0 == length || data != NULL);
+
+  undo_crumb.data = data;
+  undo_crumb.length = length;
+
+  return log_append_undo_crumbs_internal (thread_p, rcvindex, addr, 1, &undo_crumb, mvccid);
+}
+
+/*
+ * log_append_undo_crumbs_internal - append an undo record; see log_append_undo_crumbs
+ *
+ * return: NO_ERROR, also when no record is needed, or an error code when the record could not be appended
+ */
+static int
+log_append_undo_crumbs_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+				 int num_crumbs, const LOG_CRUMB * crumbs, MVCCID explicit_mvccid)
+{
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
   int error_code = NO_ERROR;
@@ -2305,7 +2388,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
   if (RV_fun[rcvindex].undofun == NULL)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
 #endif /* CUBRID_DEBUG */
 
@@ -2317,7 +2400,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	{
 	  log_skip_logging (thread_p, addr);
 	}
-      return;
+      return NO_ERROR;
     }
 
   /* Find transaction descriptor for current logging transaction */
@@ -2327,7 +2410,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
-      return;
+      return error_code;
     }
 
   /*
@@ -2340,7 +2423,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
        * We do not log anything when the transaction is unactive and it is not
        * in the process of aborting.
        */
-      return;
+      return NO_ERROR;
     }
 
   /*
@@ -2350,50 +2433,68 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
     {
       /* undo logging is ignored at this point */
       ;				/* NO-OP */
-      return;
+      return NO_ERROR;
     }
 
   /*
    * NOW do the UNDO ...
    */
 
-  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL);
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL,
+					  explicit_mvccid);
   if (node == NULL)
     {
       assert (false);
-      return;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 
-  /* 
-   * if pgptr is NULL, the user data can be spilled as un-encrypted. 
-   * Now it seems that there is no case, but can be in the future.
-   */
-  if (addr->pgptr != NULL && LOG_MAY_CONTAIN_USER_DATA (rcvindex))
+  if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
     {
-      if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
+      TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+      if (addr->pgptr != NULL)
+	{
+	  tde_algo = pgbuf_get_tde_algorithm (addr->pgptr);
+	}
+      else if (addr->vfid != NULL && !VFID_ISNULL (addr->vfid))
+	{
+	  /* a logical undo without a page, such as RVBT_MVCC_NOTIFY_VACUUM: take the algorithm of the file, as the
+	   * logical undo of a system operation does */
+	  if (file_get_tde_algorithm (thread_p, addr->vfid, PGBUF_CONDITIONAL_LATCH, &tde_algo) != NO_ERROR)
+	    {
+	      tde_algo = TDE_ALGORITHM_NONE;
+	    }
+	}
+
+      if (tde_algo != TDE_ALGORITHM_NONE)
 	{
 	  if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	    {
 	      assert (false);
-	      return;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
 	    }
 	}
     }
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+  if (addr->pgptr != NULL && LOG_NEED_TO_SET_PAGE_LSA (rcvindex, addr->pgptr))
     {
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
 	  assert (false);
-	  return;
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
 	}
     }
   if (addr->pgptr != NULL && LOG_IS_MVCC_OPERATION (rcvindex))
     {
       pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -2519,7 +2620,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
    * Make sure that I should log. Page operational logging is not done for
    * temporary data of temporary files and volumes
    */
-  if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+  if (LOG_NEED_TO_SET_PAGE_LSA (rcvindex, addr->pgptr))
     {
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
@@ -2538,6 +2639,11 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
 	{
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
+	  assert (tdes->is_active_worker_transaction ());
+	}
+      else if (rcvindex == RVOOS_INSERT && !tdes->oos_suppress_insert_lsa_queueing)
+	{
+	  tdes->oos_insert_lsa_queue.push (tdes->tail_lsa);
 	  assert (tdes->is_active_worker_transaction ());
 	}
     }
@@ -2771,7 +2877,7 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
 /*
  * log_append_postpone - Log postpone after data, for redo
  *
- * return: nothing
+ * return: NO_ERROR, or an error code when the postpone record could not be appended
  *
  *   rcvindex(in): Index to recovery function
  *   addr(in): Index to recovery function
@@ -2783,7 +2889,7 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
  *              This distinction is needed due to log sequence number in the
  *              log and the data pages which are used to avoid redos.
  */
-void
+int
 log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int length, const void *data)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
@@ -2803,12 +2909,12 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
        */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_POSTPONE_INTERFACE, 0);
       error_code = ER_LOG_POSTPONE_INTERFACE;
-      return;
+      return error_code;
     }
   if (RV_fun[rcvindex].redofun == NULL)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
 #endif /* CUBRID_DEBUG */
 
@@ -2828,7 +2934,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 
       LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED (thread_p);
       log_skip_logging (thread_p, addr);
-      return;
+      return NO_ERROR;
     }
 
   /* Find transaction descriptor for current logging transaction */
@@ -2838,7 +2944,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
-      return;
+      return error_code;
     }
 
   skipredo = log_can_skip_redo_logging (rcvindex, tdes, addr);
@@ -2860,7 +2966,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 	  log_append_redo_data (thread_p, rcvindex, addr, length, data);
 	}
 
-      return;
+      return NO_ERROR;
     }
 
   /*
@@ -2878,7 +2984,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_POSTPONE, rcvindex, addr, 0, NULL, length, (char *) data);
   if (node == NULL)
     {
-      return;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 
   if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
@@ -2888,7 +2995,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 	  if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	    {
 	      assert (false);
-	      return;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
 	    }
 	}
     }
@@ -2917,6 +3025,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
    * Note: The lsa of the page is not set for postpone log records since
    * the change has not been done (has been postpone) to the page.
    */
+
+  return NO_ERROR;
 }
 
 /*
@@ -3016,7 +3126,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
        * Set the LSA on the data page of the corresponding log record for page operation logging.
        * Make sure that I should log. Page operational logging is not done for temporary data of temporary files/volumes
        */
-      if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+      if (addr->pgptr != NULL && LOG_NEED_TO_SET_PAGE_LSA (rcvindex, addr->pgptr))
 	{
 	  if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	    {
@@ -3185,9 +3295,10 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
    * Set the LSA on the data page of the corresponding log record for page
    * operation logging.
    * Make sure that I should log. Page operational logging is not done for
-   * temporary data of temporary files and volumes
+   * temporary data of temporary files and volumes. Use the same condition as when the record was logged.
    */
-  if (pgptr != NULL && pgbuf_set_lsa (thread_p, pgptr, &start_lsa) == NULL)
+  if (pgptr != NULL && LOG_NEED_TO_SET_PAGE_LSA (rcvindex, pgptr)
+      && pgbuf_set_lsa (thread_p, pgptr, &start_lsa) == NULL)
     {
       assert (false);
       return;
@@ -3308,7 +3419,8 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
-  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &log_Gl.prior_info.prior_lsa);
+  const LOG_LSA prior_lsa = log_Gl.prior_info.prior_lsa.load ();
+  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &prior_lsa);
 
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
@@ -4453,7 +4565,6 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
 {
   LOG_REC_START_POSTPONE *start_posp;	/* Start postpone actions */
   LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_COMMIT_WITH_POSTPONE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
@@ -4465,11 +4576,9 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
   LSA_COPY (&start_posp->posp_lsa, start_postpone_lsa);
   start_posp->at_time = time (NULL);
 
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-
-  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -4631,6 +4740,10 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
     {
       tdes->append_repl_recidx = 0;
     }
+#if !defined (NDEBUG)
+  /* no OOS item is written apart from its row */
+  repl_assert_oos_items_follow_row (tdes, tdes->append_repl_recidx, false);
+#endif
 
   /* there is any replication info */
   while (tdes->append_repl_recidx < tdes->cur_repl_record)
@@ -4906,6 +5019,24 @@ log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_
 void
 log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length, const void *data)
 {
+  log_append_supplemental_info_internal (thread_p, rec_type, length, data, TDE_ALGORITHM_NONE);
+}
+
+/*
+ * log_append_supplemental_info_internal - append supplemental log record
+ *
+ * return: nothing
+ *
+ *   rec_type (in): type of supplemental log record .
+ *   length (in) : length of supplemental data length.
+ *   data (in) : supplemental data
+ *   tde_algo (in) : TDE algorithm of the table the data comes from. The log record is encrypted unless it is
+ *                   TDE_ALGORITHM_NONE.
+ */
+static void
+log_append_supplemental_info_internal (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length,
+				       const void *data, TDE_ALGORITHM tde_algo)
+{
   assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
 
   LOG_PRIOR_NODE *node;
@@ -4942,6 +5073,15 @@ log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_t
   if (node == NULL)
     {
       return;
+    }
+
+  if (tde_algo != TDE_ALGORITHM_NONE)
+    {
+      if (prior_set_tde_encrypted (node, RV_NOT_DEFINED) != NO_ERROR)
+	{
+	  assert (false);
+	  return;
+	}
     }
 
   supplement = (LOG_REC_SUPPLEMENT *) node->data_header;
@@ -5013,8 +5153,16 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
   return NO_ERROR;
 }
 
+/*
+ * log_append_supplemental_undo_record - append the image of a record as a supplemental log record
+ *
+ * return: error code
+ *
+ *   undo_recdes (in) : record image
+ *   tde_algo (in) : TDE algorithm of the heap page the record comes from
+ */
 int
-log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recdes)
+log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recdes, TDE_ALGORITHM tde_algo)
 {
   assert (undo_recdes != NULL);
   assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
@@ -5031,7 +5179,7 @@ log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recd
   memcpy (data, &undo_recdes->type, sizeof (undo_recdes->type));
   memcpy (data + sizeof (undo_recdes->type), undo_recdes->data, undo_recdes->length);
 
-  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_UNDO_RECORD, length, data);
+  log_append_supplemental_info_internal (thread_p, LOG_SUPPLEMENT_UNDO_RECORD, length, data, tde_algo);
 
   free_and_init (data);
 
@@ -6696,6 +6844,18 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
       type = "RVREPL_DATA_DELETE";
       dump_function = log_repl_data_dump;
       break;
+    case RVREPL_OOS_INSERT:
+      type = "RVREPL_OOS_INSERT";
+      dump_function = log_repl_data_dump;
+      break;
+    case RVREPL_DUMMY_OOS_RECORD:
+      type = "RVREPL_DUMMY_OOS_RECORD";
+      dump_function = log_repl_data_dump;
+      break;
+    case RVREPL_OOS_REUSE:
+      type = "RVREPL_OOS_REUSE";
+      dump_function = log_repl_data_dump;
+      break;
     default:
       type = "RVREPL_SCHEMA";
       dump_function = log_repl_schema_dump;
@@ -7118,6 +7278,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_OOS_RECORD:
     case LOG_DUMMY_GENERIC:
       fprintf (out_fp, "\n");
       /* That is all for this kind of log record */
@@ -7532,9 +7693,9 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	  rv_err = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
 	  assert (rv_err == NO_ERROR);
 	}
-      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM)
+      else if (RCV_IS_NOTHING_TO_UNDO (rcvindex))
 	{
-	  /* do nothing */
+	  /* no undo and no compensation */
 	}
       else if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
 	{
@@ -7781,7 +7942,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
    * end up with database corruption problems. That is, no timeouts during
    * rollback.
    */
-  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, TRAN_LOCK_INFINITE_WAIT);
+  old_wait_msecs = logtb_set_thread_wait_msecs (thread_p, TRAN_LOCK_INFINITE_WAIT);
 
   LSA_COPY (&prev_tranlsa, &tdes->undo_nxlsa);
   /*
@@ -7818,7 +7979,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
       if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) != NO_ERROR)
 	{
-	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
+	  (void) logtb_set_thread_wait_msecs (thread_p, old_wait_msecs);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rollback");
 	  if (log_unzip_ptr != NULL)
 	    {
@@ -8033,6 +8194,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_SYSOP_ATOMIC_START:
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
+	    case LOG_DUMMY_OOS_RECORD:
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_SUPPLEMENTAL_INFO:
 	      break;
@@ -8074,7 +8236,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
   /* Remember the undo next lsa for partial rollbacks */
   LSA_COPY (&tdes->undo_nxlsa, &prev_tranlsa);
-  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
+  (void) logtb_set_thread_wait_msecs (thread_p, old_wait_msecs);
 
   if (log_unzip_ptr != NULL)
     {
@@ -8356,7 +8518,10 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 	  nxtop_count--;
 	  nxtop_range = &(nxtop_stack[nxtop_count]);
 
-	  if (LSA_LT (&start_seek_lsa, &(nxtop_range->start_lsa)))
+	  /* The range starts at the system operation's last parent, the record just before the operation, which
+	   * belongs to the outer level. A postpone at that LSA, such as one appended right before the system
+	   * operation started, must run here, so equality is not inside the range. */
+	  if (LSA_LE (&start_seek_lsa, &(nxtop_range->start_lsa)))
 	    {
 	      end_seek_lsa = &(nxtop_range->start_lsa);
 	      LSA_COPY (&next_start_seek_lsa, &(nxtop_range->end_lsa));
@@ -8465,6 +8630,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_SYSOP_ATOMIC_START:
 		    case LOG_DUMMY_HA_SERVER_STATE:
 		    case LOG_DUMMY_OVF_RECORD:
+		    case LOG_DUMMY_OOS_RECORD:
 		    case LOG_DUMMY_GENERIC:
 		    case LOG_SUPPLEMENTAL_INFO:
 		      break;
@@ -8657,6 +8823,17 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 	}
     }
 
+  if (RCV_IS_POSTPONE_NOT_UNDOABLE (rcvindex))
+    {
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      /* The log does not cover this postpone's effect, so the commit that postponed it must be on disk first. */
+      if (tdes != NULL && !LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa))
+	{
+	  logpb_flush_log_for_wal (thread_p, &tdes->rcv.tran_start_postpone_lsa);
+	}
+    }
+
   /* Now call the REDO recovery function */
 
   if (RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL (rcvindex))
@@ -8686,6 +8863,12 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 
       error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
       assert (error_code == NO_ERROR);
+
+      if (rcvindex == RVDK_UNRESERVE_SECTORS && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
+	{
+	  /* recovery finishes the postpone of a destroy (see pgbuf_rv_discard_unreserved_pages) */
+	  disk_rv_note_unreserved_sectors (&rcv_vpid, rcv.offset, rcv.data, log_lsa);
+	}
     }
 
   if (rcv.pgptr != NULL)
@@ -9329,7 +9512,7 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
   if (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_NULL)
     {
       LOG_CS_ENTER_READ_MODE (thread_p);
-      memcpy (&ctx->header, &log_Gl.hdr, sizeof (LOG_HEADER));
+      memcpy ((void *) &ctx->header, &log_Gl.hdr, sizeof (LOG_HEADER));
       LOG_CS_EXIT (thread_p);
     }
   else
@@ -9356,7 +9539,7 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 	  goto exit_on_error;
 	}
 
-      memcpy (&ctx->header, page_hdr->area, sizeof (LOG_HEADER));
+      memcpy ((void *) &ctx->header, page_hdr->area, sizeof (LOG_HEADER));
 
       ctx->header.magic[sizeof (ctx->header.magic) - 1] = 0;
       ctx->header.db_release[sizeof (ctx->header.db_release) - 1] = 0;
@@ -9413,6 +9596,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_HEADER *header = &ctx->header;
   LOG_LSA append_lsa = header->append_lsa;
+  LOG_LSA eof_lsa = header->eof_lsa;
 
   if (cursor >= 1)
     {
@@ -9581,7 +9765,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_string (out_values[idx], str);
   idx++;
 
-  lsa_to_string (buf, sizeof (buf), &header->eof_lsa);
+  lsa_to_string (buf, sizeof (buf), &eof_lsa);
   error = db_make_string_copy (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
@@ -9970,6 +10154,204 @@ log_get_undo_record_from_inflight (THREAD_ENTRY * thread_p, const LOG_LSA * lsa,
   log_prior_inflight_unpin (pin);
 
   return true;
+}
+
+/*
+ * log_get_prev_version_header_layout () - layout of the data header of a log record type a version chain points at
+ *   return: false for any other type
+ *
+ * size (out): size of the data header
+ * ulength_offset (out): where in it the undo length, zip flag included, is recorded
+ *
+ * NOTE: Not only the MVCC types: an overflow record's previous version is logged by RVHF_MVCC_UPDATE_OVERFLOW and a
+ *       relocated one's by RVHF_UPDATE or RVHF_DELETE, none of which is an MVCC operation.
+ */
+static bool
+log_get_prev_version_header_layout (LOG_RECTYPE type, int *size, int *ulength_offset)
+{
+  switch (type)
+    {
+    case LOG_MVCC_UNDO_DATA:
+      *size = sizeof (LOG_REC_MVCC_UNDO);
+      *ulength_offset = offsetof (LOG_REC_MVCC_UNDO, undo.length);
+      return true;
+    case LOG_MVCC_UNDOREDO_DATA:
+    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+      *size = sizeof (LOG_REC_MVCC_UNDOREDO);
+      *ulength_offset = offsetof (LOG_REC_MVCC_UNDOREDO, undoredo.ulength);
+      return true;
+    case LOG_UNDO_DATA:
+      *size = sizeof (LOG_REC_UNDO);
+      *ulength_offset = offsetof (LOG_REC_UNDO, length);
+      return true;
+    case LOG_UNDOREDO_DATA:
+    case LOG_DIFF_UNDOREDO_DATA:
+      *size = sizeof (LOG_REC_UNDOREDO);
+      *ulength_offset = offsetof (LOG_REC_UNDOREDO, ulength);
+      return true;
+    default:
+      return false;
+    }
+}
+
+/* One confirmed copy of this many bytes at a record covers both headers and, when it is small, the undo image. */
+#define LOG_PREV_VERSION_HEAD_SIZE 256
+static_assert (DB_ALIGN (sizeof (LOG_RECORD_HEADER), DOUBLE_ALIGNMENT)
+	       + MAX (MAX (sizeof (LOG_REC_MVCC_UNDO), sizeof (LOG_REC_MVCC_UNDOREDO)),
+		      MAX (sizeof (LOG_REC_UNDO), sizeof (LOG_REC_UNDOREDO))) <= LOG_PREV_VERSION_HEAD_SIZE,
+	       "the head window must hold a record header and any data header log_get_prev_version_header_layout () knows");
+
+/* LOG_READ_ADD_ALIGN without the page fetch */
+static void
+log_lsa_add_align (LOG_LSA_UNPACKED * lsa, int add)
+{
+  lsa->offset = DB_ALIGN (lsa->offset + add, DOUBLE_ALIGNMENT);
+  while (lsa->offset >= (int) LOGAREA_SIZE)
+    {
+      lsa->pageid++;
+      lsa->offset = DB_ALIGN (lsa->offset - LOGAREA_SIZE, DOUBLE_ALIGNMENT);
+    }
+}
+
+/* LOG_READ_ADVANCE_WHEN_DOESNT_FIT without the page fetch */
+static void
+log_lsa_advance_when_doesnt_fit (LOG_LSA_UNPACKED * lsa, int length)
+{
+  if (lsa->offset + length >= (int) LOGAREA_SIZE)
+    {
+      lsa->pageid++;
+      lsa->offset = 0;
+    }
+}
+
+/*
+ * log_get_undo_record_from_buffer () - read the undo image a version chain points at in place, out of the log
+ *   page buffer, without a page copy
+ *   return: whether the hop is settled here, scan_out then carrying what log_get_undo_record () would return;
+ *           false leaves it to the copy path, with no error set and recdes untouched
+ *
+ * lsa (in): address of the log record
+ * copied_lsa (in): copied_lsa as the caller loaded it, with acquire; lsa must be below it
+ * recdes (out): destination record
+ * scan_out (out): S_SUCCESS / S_DOESNT_FIT / S_ERROR
+ *
+ * NOTE: Nothing copied out of the buffer is interpreted before its copy is confirmed.
+ */
+bool
+log_get_undo_record_from_buffer (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, const LOG_LSA * copied_lsa,
+				 RECDES * recdes, SCAN_CODE * scan_out)
+{
+  alignas (MAX_ALIGNMENT) char head[LOG_PREV_VERSION_HEAD_SIZE];
+  int head_length;
+  LOG_LSA_UNPACKED process_lsa;
+  LOG_LSA field_lsa, image_lsa;
+  LOG_RECORD_HEADER log_rec_header;
+  int data_header_size, ulength_offset;
+  int udata_length, udata_size;
+
+  if (!LSA_LT (lsa, copied_lsa))
+    {
+      return false;
+    }
+
+  /* Cut at the page end, where this slot ends, and at copied_lsa, past which bytes may still be written. */
+  head_length = MIN ((int) sizeof (head), (int) LOGAREA_SIZE - (int) lsa->offset);
+  if (copied_lsa->pageid == lsa->pageid)
+    {
+      head_length = MIN (head_length, (int) (copied_lsa->offset - lsa->offset));
+    }
+  field_lsa = *lsa;
+  if (!logpb_copy_from_log_if_buffered (head, head_length, &field_lsa))
+    {
+      return false;
+    }
+  assert (head_length >= (int) sizeof (log_rec_header));
+  memcpy (&log_rec_header, head, sizeof (log_rec_header));
+
+  if (!log_get_prev_version_header_layout (log_rec_header.type, &data_header_size, &ulength_offset))
+    {
+      return false;
+    }
+
+  process_lsa = *lsa;
+  log_lsa_add_align (&process_lsa, sizeof (log_rec_header));
+  log_lsa_advance_when_doesnt_fit (&process_lsa, data_header_size);
+  if (process_lsa.pageid == lsa->pageid)
+    {
+      int ulength_at = (int) (process_lsa.offset - lsa->offset) + ulength_offset;
+
+      assert (ulength_at + (int) sizeof (udata_length) <= head_length);
+      memcpy (&udata_length, head + ulength_at, sizeof (udata_length));
+    }
+  else
+    {
+      field_lsa = (LOG_LSA) process_lsa;
+      field_lsa.offset += ulength_offset;
+      if (!logpb_copy_from_log_if_buffered ((char *) &udata_length, sizeof (udata_length), &field_lsa))
+	{
+	  return false;
+	}
+    }
+  log_lsa_add_align (&process_lsa, data_header_size);
+  udata_size = (int) GET_ZIP_LEN (udata_length);
+
+  if (process_lsa.pageid == lsa->pageid && udata_size <= head_length - (int) (process_lsa.offset - lsa->offset))
+    {
+      /* the image came with the headers */
+      *scan_out = log_get_undo_record_from_data (thread_p, head + (process_lsa.offset - lsa->offset), udata_size,
+						 ZIP_CHECK (udata_length), recdes);
+      return true;
+    }
+
+  image_lsa = (LOG_LSA) process_lsa;
+  return log_get_undo_image_from_buffer (thread_p, &image_lsa, udata_length, recdes, scan_out);
+}
+
+/*
+ * log_get_undo_image_from_buffer () - the rest of log_get_undo_record_from_buffer (): copy the undo image out
+ *   of the log page buffer and hand it to log_get_undo_record_from_data ()
+ *
+ * NOTE: Out of line, so that a hop deferring on the headers does not set up the page-sized scratch area.
+ */
+static bool
+log_get_undo_image_from_buffer (THREAD_ENTRY * thread_p, LOG_LSA * lsa, int udata_length, RECDES * recdes,
+				SCAN_CODE * scan_out)
+{
+  char log_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  int udata_size = (int) GET_ZIP_LEN (udata_length);
+  char *area;
+  bool area_was_mallocated = false;
+  bool is_copied;
+
+  if (udata_size <= IO_MAX_PAGE_SIZE)
+    {
+      area = PTR_ALIGN (log_buf, MAX_ALIGNMENT);
+    }
+  else
+    {
+      area = (char *) malloc (udata_size);
+      if (area == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, udata_size);
+	  *scan_out = S_ERROR;
+	  return true;
+	}
+      area_was_mallocated = true;
+    }
+
+  /* confirmed as a whole: a zipped image carries the size log_unzip () allocates for */
+  is_copied = logpb_copy_from_log_if_buffered (area, udata_size, lsa);
+  if (is_copied)
+    {
+      *scan_out = log_get_undo_record_from_data (thread_p, area, udata_size, ZIP_CHECK (udata_length), recdes);
+    }
+
+  if (area_was_mallocated)
+    {
+      free_and_init (area);
+    }
+
+  return is_copied;
 }
 
 /*
@@ -12044,6 +12426,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
 	    LOG_READ_ADD_ALIGN (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
 
+	    //TODO : Additional handling for OOS columns in CDC will be needed later.
 	    if (rcvindex == RVHF_INSERT || rcvindex == RVHF_INSERT_NEWHOME)
 	      {
 		if (ZIP_CHECK (redo_length))
@@ -12576,8 +12959,11 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
 
       LSA_COPY (&prev_lsa, &current_log_record->prev_tranlsa);
 
-      if (current_log_record->trid != trid || current_log_record->type == LOG_DUMMY_OVF_RECORD)
+      if (current_log_record->trid != trid || current_log_record->type == LOG_DUMMY_OVF_RECORD
+	  || current_log_record->type == LOG_DUMMY_OOS_RECORD)
 	{
+	  /* TODO: add CDC support for rebuilding multi-chunk OOS records after a LOG_DUMMY_OOS_RECORD marker. */
+
 	  if (!is_redo && current_log_record->type == LOG_DUMMY_OVF_RECORD)
 	    {
 	      /*get one more */
@@ -14543,6 +14929,846 @@ cdc_wakeup_consumer ()
   cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_TO_RUN;
 }
 
+/*
+ * Server-side account lookup for the CDC log-server channel (CBRD-27436). The
+ * channel has no server-verified identity, so what it decides about the caller
+ * has to come from the catalog rather than from the request.
+ */
+static int cdc_User_attr_password = -1;
+static int cdc_User_attr_groups = -1;
+static int cdc_User_attr_is_loginable = -1;	/* -2 when the catalog has no such attribute */
+
+/*
+ * cdc_load_user_attr_ids () - resolve the db_user attribute ids read below.
+ *   return: NO_ERROR, or ER_FAILED if the class record could not be read.
+ *
+ * Resolved once per server. A race resolves the same ids twice, and each is
+ * published only once known good, so no lock is needed.
+ */
+static int
+cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
+{
+  HEAP_SCANCACHE scan;
+  RECDES class_record;
+  HEAP_CACHE_ATTRINFO attr_info;
+  char *attr_name;
+  int alloced;
+  int i, error = NO_ERROR;
+  int password_id = -1, groups_id = -1, is_loginable_id = -1;
+  bool scan_started = false, attrinfo_started = false;
+
+  if (cdc_User_attr_password != -1 && cdc_User_attr_groups != -1 && cdc_User_attr_is_loginable != -1)
+    {
+      return NO_ERROR;
+    }
+
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, oid_User_class_oid) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  scan_started = true;
+
+  if (heap_get_class_record (thread_p, oid_User_class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  if (heap_attrinfo_start (thread_p, oid_User_class_oid, -1, NULL, &attr_info) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+  attrinfo_started = true;
+
+  for (i = 0; i < attr_info.num_values; i++)
+    {
+      attr_name = NULL;
+      alloced = 0;
+
+      if (or_get_attrname (&class_record, attr_info.values[i].attrid, &attr_name, &alloced) != NO_ERROR
+	  || attr_name == NULL)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      /* names are looked up by attribute id; the ids need not follow the positions */
+      if (strcmp (attr_name, "password") == 0)
+	{
+	  password_id = attr_info.values[i].attrid;
+	}
+      else if (strcmp (attr_name, "groups") == 0)
+	{
+	  groups_id = attr_info.values[i].attrid;
+	}
+      else if (strcmp (attr_name, "is_loginable") == 0)
+	{
+	  is_loginable_id = attr_info.values[i].attrid;
+	}
+
+      if (alloced)
+	{
+	  db_private_free_and_init (thread_p, attr_name);
+	}
+    }
+
+  if (password_id == -1 || groups_id == -1)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  cdc_User_attr_is_loginable = (is_loginable_id != -1) ? is_loginable_id : -2;
+  cdc_User_attr_password = password_id;
+  cdc_User_attr_groups = groups_id;
+
+end:
+  if (attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (scan_started)
+    {
+      (void) heap_scancache_end (thread_p, &scan);
+    }
+
+  return error;
+}
+
+/* the id of the password class's "password" attribute, resolved once per server */
+static ATTR_ID cdc_Password_attr_password = -1;
+
+/*
+ * cdc_load_password_attr_id () - resolve the id of the password class's
+ *   "password" attribute. The class holds other attributes too (on develop a
+ *   created_time), and attribute ids need not follow the definition order.
+ *   return: NO_ERROR, or ER_FAILED if the class record could not be read.
+ *   class_oid (in): the password class
+ */
+static int
+cdc_load_password_attr_id (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  HEAP_SCANCACHE scan;
+  RECDES class_record;
+  HEAP_CACHE_ATTRINFO attr_info;
+  char *attr_name;
+  int alloced;
+  int i, error = NO_ERROR;
+  ATTR_ID password_id = -1;
+  bool scan_started = false, attrinfo_started = false;
+
+  if (cdc_Password_attr_password != -1)
+    {
+      return NO_ERROR;
+    }
+
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, (OID *) class_oid) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  scan_started = true;
+
+  if (heap_get_class_record (thread_p, class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  if (heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+  attrinfo_started = true;
+
+  for (i = 0; i < attr_info.num_values; i++)
+    {
+      attr_name = NULL;
+      alloced = 0;
+      if (or_get_attrname (&class_record, attr_info.values[i].attrid, &attr_name, &alloced) != NO_ERROR
+	  || attr_name == NULL)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+      if (strcmp (attr_name, "password") == 0)
+	{
+	  password_id = attr_info.values[i].attrid;
+	}
+      if (alloced)
+	{
+	  db_private_free_and_init (thread_p, attr_name);
+	}
+    }
+
+  if (password_id == -1)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+  cdc_Password_attr_password = password_id;
+
+end:
+  if (attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (scan_started)
+    {
+      (void) heap_scancache_end (thread_p, &scan);
+    }
+
+  return error;
+}
+
+/*
+ * cdc_find_user_oid () - locate a db_user instance by account name.
+ *   return: NO_ERROR if found, ER_AU_INVALID_USER if there is no such account,
+ *           ER_FAILED if the lookup itself failed.
+ *   thread_p (in):
+ *   user_name (in): account name
+ *   user_oid (out): the instance oid
+ *
+ * db_user has a unique index on "name", so this is a key lookup, not a scan.
+ */
+/* the unique index the catalog makes on the user class's name attribute: "u_"
+ * + class name + "_" + attribute name, so it follows CT_USER_NAME (db_user on
+ * release/11.4, _db_user on develop) */
+#define CDC_USER_NAME_INDEX ("u_" CT_USER_NAME "_name")
+
+static int
+cdc_find_user_oid (THREAD_ENTRY * thread_p, const char *user_name, OID * user_oid)
+{
+  BTID btid;
+  DB_VALUE key;
+  /* upper-casing can grow a name by up to INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER */
+  char upper_name[DB_MAX_USER_LENGTH * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER + 1];
+  BTREE_SEARCH search;
+
+  /* the same limit au_login () applies; longer can be no account */
+  if (user_name == NULL || *user_name == '\0' || strlen (user_name) >= DB_MAX_USER_LENGTH)
+    {
+      return ER_AU_INVALID_USER;
+    }
+
+  /* account names are stored upper-cased */
+  intl_identifier_upper (user_name, upper_name);
+
+  if (heap_get_index_with_name (thread_p, oid_User_class_oid, CDC_USER_NAME_INDEX, &btid) != NO_ERROR
+      || BTID_IS_NULL (&btid))
+    {
+      return ER_FAILED;
+    }
+
+  db_make_string (&key, upper_name);
+  search = xbtree_find_unique (thread_p, &btid, S_SELECT, &key, oid_User_class_oid, user_oid, false);
+  pr_clear_value (&key);
+
+  if (search == BTREE_KEY_FOUND)
+    {
+      return NO_ERROR;
+    }
+  return (search == BTREE_ERROR_OCCURRED) ? ER_FAILED : ER_AU_INVALID_USER;
+}
+
+/*
+ * cdc_read_password_string () - read the stored password out of a db_password
+ *   instance.
+ *   return: true if the password object was read; false on any read failure.
+ *   thread_p (in):
+ *   password_oid (in)  : oid held by db_user.password (a real password object)
+ *   password (out)     : the stored string, which is already encrypted
+ *   password_size (in) : size of the output buffer
+ *
+ * The caller only reaches here when db_user.password holds an object, so a
+ * failure to read that object is a genuine error, not a passwordless account:
+ * it must be reported (false) rather than left as an empty password, or a read
+ * failure would make the account look passwordless and let a caller answer the
+ * challenge with a hash of the public nonce alone.
+ */
+static bool
+cdc_read_password_string (THREAD_ENTRY * thread_p, const OID * password_oid, char *password, int password_size)
+{
+  HEAP_SCANCACHE scan;
+  RECDES recdes;
+  HEAP_CACHE_ATTRINFO attr_info;
+  OID class_oid;
+  DB_VALUE *value;
+  const char *stored;
+  bool ok = false;
+  bool scan_started = false, attrinfo_started = false;
+
+  if (OID_ISNULL (password_oid))
+    {
+      return false;
+    }
+
+  if (heap_get_class_oid (thread_p, password_oid, &class_oid) != S_SUCCESS)
+    {
+      return false;
+    }
+
+  if (cdc_load_password_attr_id (thread_p, &class_oid) != NO_ERROR)
+    {
+      return false;
+    }
+
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, &class_oid) != NO_ERROR)
+    {
+      return false;
+    }
+  scan_started = true;
+  /* read the committed version only: without a snapshot the latest version is
+   * returned, which may be an uncommitted change of another transaction */
+  scan.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+
+  if (heap_get_visible_version (thread_p, password_oid, &class_oid, &recdes, &scan, PEEK, NULL_CHN,
+				HEAP_RECDES_DONT_CONSUME_RAW_BYTES) != S_SUCCESS)
+    {
+      goto end;
+    }
+
+  if (heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info) != NO_ERROR)
+    {
+      goto end;
+    }
+  attrinfo_started = true;
+
+  if (heap_attrinfo_read_dbvalues (thread_p, password_oid, &recdes, &attr_info) != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* The password object was read; that alone is success. An empty or NULL stored
+   * string is a legitimately passwordless account (password left empty), not a
+   * read failure -- only the heap failures above return false. */
+  ok = true;
+
+  value = heap_attrinfo_access (cdc_Password_attr_password, &attr_info);
+  if (value != NULL && !DB_IS_NULL (value) && TP_IS_CHAR_TYPE (DB_VALUE_TYPE (value)))
+    {
+      stored = db_get_string (value);
+      if (stored != NULL)
+	{
+	  strncpy (password, stored, password_size - 1);
+	  password[password_size - 1] = '\0';
+	}
+    }
+
+end:
+  if (attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (scan_started)
+    {
+      (void) heap_scancache_end (thread_p, &scan);
+    }
+
+  return ok;
+}
+
+/*
+ * cdc_set_contains_oid () - does an object set hold this instance?
+ *   return: true if found.
+ *   set_value (in): a set-typed attribute value read from a heap record
+ *   oid (in)      : instance to look for
+ */
+static bool
+cdc_set_contains_oid (DB_VALUE * set_value, const OID * oid)
+{
+  DB_COLLECTION *set;
+  DB_VALUE element;
+  int i, size;
+
+  set = db_get_set (set_value);
+  if (set == NULL)
+    {
+      return false;
+    }
+
+  size = set_size (set);
+  for (i = 0; i < size; i++)
+    {
+      if (set_get_element_nocopy (set, i, &element) != NO_ERROR)
+	{
+	  continue;
+	}
+
+      /* object-typed attributes come back as plain oids on the server side */
+      if (DB_VALUE_TYPE (&element) == DB_TYPE_OID && OID_EQ (db_get_oid (&element), oid))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * cdc_find_user_info () - read an account's stored password and DBA group
+ *   membership straight from the catalog.
+ *   return: NO_ERROR if the account was read, ER_AU_INVALID_USER if there is no
+ *           such account, another error if it exists but could not be read.
+ *   thread_p (in):
+ *   user_name (in)     : account name declared by the client
+ *   password (out)     : the stored (already encrypted) password, empty if none
+ *   password_size (in) : size of the password buffer
+ *   is_dba_group (out) : whether the account is DBA or a member of the DBA group
+ *   is_loginable (out) : whether the account may log in (NOLOGIN clears it); may be
+ *                        NULL. Reported true when the catalog has no such attribute.
+ *                        When false, the password and groups are not read.
+ *
+ * "groups" is the flattened membership set, so nested groups need no extra walk.
+ * The CDC thread has no transaction index of its own; one is borrowed here.
+ */
+int
+cdc_find_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
+		    bool * is_dba_group, bool * is_loginable)
+{
+  HEAP_SCANCACHE scan;
+  RECDES recdes;
+  HEAP_CACHE_ATTRINFO attr_info;
+  DB_VALUE *value;
+  OID user_oid, dba_oid;
+  int saved_tran_index = thread_p->tran_index;
+  bool dba_found, borrowed_tran = false;
+  bool scan_started = false, attrinfo_started = false;
+  int result = ER_FAILED;
+
+  assert (password != NULL && password_size > 0 && is_dba_group != NULL);
+
+  password[0] = '\0';
+  *is_dba_group = false;
+  if (is_loginable != NULL)
+    {
+      *is_loginable = true;
+    }
+
+  if (saved_tran_index == NULL_TRAN_INDEX)
+    {
+      if (logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
+				   TRAN_DEFAULT_ISOLATION_LEVEL ()) == NULL_TRAN_INDEX)
+	{
+	  return ER_FAILED;
+	}
+      borrowed_tran = true;
+    }
+
+  if (cdc_load_user_attr_ids (thread_p) != NO_ERROR)
+    {
+      goto end;
+    }
+
+  result = cdc_find_user_oid (thread_p, user_name, &user_oid);
+  if (result != NO_ERROR)
+    {
+      goto end;
+    }
+  result = ER_FAILED;
+
+  dba_found = (cdc_find_user_oid (thread_p, "DBA", &dba_oid) == NO_ERROR);
+  if (dba_found && OID_EQ (&user_oid, &dba_oid))
+    {
+      *is_dba_group = true;
+    }
+
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, oid_User_class_oid) != NO_ERROR)
+    {
+      goto end;
+    }
+  scan_started = true;
+  /* decide on the committed account only: without a snapshot the latest version
+   * is returned, which may be an uncommitted change of another transaction */
+  scan.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+
+  if (heap_get_visible_version (thread_p, &user_oid, oid_User_class_oid, &recdes, &scan, PEEK, NULL_CHN,
+				HEAP_RECDES_DONT_CONSUME_RAW_BYTES) != S_SUCCESS)
+    {
+      goto end;
+    }
+
+  if (heap_attrinfo_start (thread_p, oid_User_class_oid, -1, NULL, &attr_info) != NO_ERROR)
+    {
+      goto end;
+    }
+  attrinfo_started = true;
+
+  if (heap_attrinfo_read_dbvalues (thread_p, &user_oid, &recdes, &attr_info) != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (is_loginable != NULL && cdc_User_attr_is_loginable >= 0)
+    {
+      /* as is_loginable_user () on the client: only an integer 1 allows the login */
+      value = heap_attrinfo_access (cdc_User_attr_is_loginable, &attr_info);
+      *is_loginable = (value != NULL && !DB_IS_NULL (value) && DB_VALUE_TYPE (value) == DB_TYPE_INTEGER
+		       && db_get_int (value) == 1);
+      if (!*is_loginable)
+	{
+	  /* refused before its password is looked at, as perform_login () does */
+	  *is_dba_group = false;
+	  result = NO_ERROR;
+	  goto end;
+	}
+    }
+
+  /* "password" references a db_password instance, it is not the string itself. A
+   * NULL/absent reference is a genuinely passwordless account (empty password is
+   * fine); an object we cannot read is a failure and must not pass as empty. */
+  value = heap_attrinfo_access (cdc_User_attr_password, &attr_info);
+  if (value != NULL && !DB_IS_NULL (value) && DB_VALUE_TYPE (value) == DB_TYPE_OID)
+    {
+      if (!cdc_read_password_string (thread_p, db_get_oid (value), password, password_size))
+	{
+	  /* the account has a password but it could not be read -- fail closed */
+	  *is_dba_group = false;
+	  goto end;
+	}
+    }
+
+  if (!*is_dba_group && dba_found)
+    {
+      value = heap_attrinfo_access (cdc_User_attr_groups, &attr_info);
+      if (value != NULL && !DB_IS_NULL (value))
+	{
+	  *is_dba_group = cdc_set_contains_oid (value, &dba_oid);
+	}
+    }
+
+  result = NO_ERROR;
+
+end:
+  if (attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (scan_started)
+    {
+      (void) heap_scancache_end (thread_p, &scan);
+    }
+  if (borrowed_tran)
+    {
+      (void) xtran_server_commit (thread_p, false);
+      logtb_free_tran_index (thread_p, thread_p->tran_index);
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, saved_tran_index);
+    }
+
+  return result;
+}
+
+/*
+ * cdc_get_user_info () - cdc_find_user_info () for callers that only need to
+ *   know whether the account could be read.
+ *   return: true if the account exists and was read.
+ */
+bool
+cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
+		   bool * is_dba_group)
+{
+  return cdc_find_user_info (thread_p, user_name, password, password_size, is_dba_group, NULL) == NO_ERROR;
+}
+
+/*
+ * log_extract_check_authorization () - may this connection read the log through
+ *                                      CDC or flashback?
+ *   return: true if the requester is a DBA for that kind of extraction.
+ *   thread_p (in):
+ *   kind (in)    : the extraction the request is for
+ *
+ * Decided on the server only, from what the server itself verified:
+ *   LOG_EXTRACT_CDC       - the CDC channel carries no booted client, so only the
+ *                           result of its own challenge counts (the DBA or a
+ *                           member of the DBA group, as the client-side check used
+ *                           to allow). logtb_am_i_dba_client () is deliberately not
+ *                           a fallback: it could only match a client that sends CDC
+ *                           requests over an SQL connection to skip the challenge.
+ *   LOG_EXTRACT_FLASHBACK - flashback runs on a booted client connection, whose
+ *                           user the server keeps; the DBA account, as before.
+ */
+bool
+log_extract_check_authorization (THREAD_ENTRY * thread_p, LOG_EXTRACT_KIND kind)
+{
+#if defined (SERVER_MODE)
+  if (thread_p->conn_entry == NULL)
+    {
+      return false;
+    }
+
+  switch (kind)
+    {
+    case LOG_EXTRACT_CDC:
+      return thread_p->conn_entry->cdc_auth_done;
+    case LOG_EXTRACT_FLASHBACK:
+      return logtb_am_i_dba_client (thread_p);
+    default:
+      assert (false);
+      return false;
+    }
+#else
+  return false;
+#endif
+}
+
+#if defined (SERVER_MODE)
+/*
+ * log_extract_owner_is_alive () - is the connection recorded as the owner still open?
+ *   owner (in): caller holds owner->lock
+ *
+ * A closed connection gets its fd invalidated before its entry is reused, so it
+ * drops out of css_find_conn_from_fd (); client_id rules out a later connection
+ * that was handed the same fd.
+ */
+static bool
+log_extract_owner_is_alive (const LOG_EXTRACT_OWNER * owner)
+{
+  CSS_CONN_ENTRY *conn;
+  bool alive;
+  int r;
+
+  if (owner->fd == INVALID_SOCKET)
+    {
+      return false;
+    }
+
+  conn = css_find_conn_from_fd (owner->fd);
+  if (conn == NULL)
+    {
+      return false;
+    }
+
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  alive = (conn->status == CONN_OPEN && conn->fd == owner->fd && conn->client_id == owner->client_id);
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  return alive;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * log_extract_owner_claim () - make the calling connection the owner of a session,
+ *                              serving its first request
+ *   return: true if the caller now owns the session; false if takeover is not
+ *           allowed and a live connection still owns it.
+ *   owner (in/out)      :
+ *   thread_p (in)       :
+ *   takeover (in)       : take the session over even from a live owner
+ *   prev_fd (out)       : the previous owner's fd, INVALID_SOCKET if none (may be NULL)
+ *   prev_client_id (out): the previous owner's client id (may be NULL)
+ *
+ * An owner whose connection is gone is replaced either way: that is how a session
+ * left behind by a client that terminated abnormally is recovered. The caller
+ * ends the request it is serving with log_extract_owner_end_request (), or drops
+ * the session with log_extract_owner_release ().
+ */
+bool
+log_extract_owner_claim (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p, bool takeover, SOCKET * prev_fd,
+			 int *prev_client_id)
+{
+#if defined (SERVER_MODE)
+  pthread_mutex_lock (&owner->lock);
+
+  if (!takeover && log_extract_owner_is_alive (owner))
+    {
+      pthread_mutex_unlock (&owner->lock);
+      return false;
+    }
+
+  if (prev_fd != NULL)
+    {
+      *prev_fd = owner->fd;
+    }
+  if (prev_client_id != NULL)
+    {
+      *prev_client_id = owner->client_id;
+    }
+
+  owner->fd = thread_p->conn_entry->fd;
+  owner->client_id = thread_p->conn_entry->client_id;
+  owner->busy = true;
+
+  pthread_mutex_unlock (&owner->lock);
+  return true;
+#else
+  return false;
+#endif
+}
+
+/*
+ * log_extract_owner_is_owner () - is the calling connection the one that opened
+ *                                 the session?
+ */
+bool
+log_extract_owner_is_owner (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+  bool is_owner;
+
+  pthread_mutex_lock (&owner->lock);
+  is_owner = log_extract_owner_is_owner_locked (owner, thread_p);
+  pthread_mutex_unlock (&owner->lock);
+
+  return is_owner;
+}
+
+/*
+ * log_extract_owner_is_active () - does a live connection own the session?
+ */
+bool
+log_extract_owner_is_active (LOG_EXTRACT_OWNER * owner)
+{
+#if defined (SERVER_MODE)
+  bool active;
+
+  pthread_mutex_lock (&owner->lock);
+  active = log_extract_owner_is_alive (owner);
+  pthread_mutex_unlock (&owner->lock);
+
+  return active;
+#else
+  return false;
+#endif
+}
+
+/*
+ * log_extract_owner_begin_request () - start serving a request of the session's owner
+ *   return: false if the caller is not the owner, or another of its requests is
+ *           still being served.
+ *
+ * The client libraries wait for each reply before they send the next request, so
+ * a second request arriving while one is served does not come from a normal
+ * client; refusing it here keeps two requests off the one session state.
+ */
+bool
+log_extract_owner_begin_request (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+  bool begun = false;
+
+  pthread_mutex_lock (&owner->lock);
+  if (log_extract_owner_is_owner_locked (owner, thread_p) && !owner->busy)
+    {
+      owner->busy = true;
+      begun = true;
+    }
+  pthread_mutex_unlock (&owner->lock);
+
+  return begun;
+}
+
+/*
+ * log_extract_owner_end_request () - finish the request started by
+ *   log_extract_owner_begin_request () or log_extract_owner_claim (). Does nothing
+ *   if another connection has taken the session over meanwhile.
+ */
+void
+log_extract_owner_end_request (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+  pthread_mutex_lock (&owner->lock);
+  if (log_extract_owner_is_owner_locked (owner, thread_p))
+    {
+      owner->busy = false;
+    }
+  pthread_mutex_unlock (&owner->lock);
+}
+
+/*
+ * log_extract_owner_release () - drop the session if the caller owns it
+ *   return: true if it did.
+ */
+bool
+log_extract_owner_release (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+  bool released = false;
+
+  pthread_mutex_lock (&owner->lock);
+  if (log_extract_owner_is_owner_locked (owner, thread_p))
+    {
+      log_extract_owner_clear_locked (owner);
+      released = true;
+    }
+  pthread_mutex_unlock (&owner->lock);
+
+  return released;
+}
+
+/*
+ * log_extract_owner_lock () / log_extract_owner_unlock () - for a caller that has to
+ *   change its own session state atomically with an ownership check, together
+ *   with the *_locked functions below.
+ */
+void
+log_extract_owner_lock (LOG_EXTRACT_OWNER * owner)
+{
+  pthread_mutex_lock (&owner->lock);
+}
+
+void
+log_extract_owner_unlock (LOG_EXTRACT_OWNER * owner)
+{
+  pthread_mutex_unlock (&owner->lock);
+}
+
+bool
+log_extract_owner_is_owner_locked (const LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  return (owner->fd != INVALID_SOCKET && thread_p->conn_entry != NULL && thread_p->conn_entry->fd == owner->fd
+	  && thread_p->conn_entry->client_id == owner->client_id);
+#else
+  return false;
+#endif
+}
+
+void
+log_extract_owner_clear_locked (LOG_EXTRACT_OWNER * owner)
+{
+  owner->fd = INVALID_SOCKET;
+  owner->client_id = -1;
+  owner->busy = false;
+}
+
+/*
+ * log_extract_match_lsa () - classify a resume position a client sent back
+ *   return: which server-issued position it is, whether it lies inside the
+ *           session's range, or rejected.
+ *   lsa (in)        : the position from the request
+ *   issued (in)     : the position handed out last (NULL or a NULL LSA if none)
+ *   previous (in)   : the one handed out before it (NULL or a NULL LSA if none)
+ *   range_start (in): the range the session was opened for (NULL if none)
+ *   range_end (in)  :
+ *
+ * The CDC and flashback clients send back the positions the server handed out,
+ * so a request is checked against what the server remembers before any log page
+ * is read for it.
+ */
+LOG_EXTRACT_LSA_MATCH
+log_extract_match_lsa (const LOG_LSA * lsa, const LOG_LSA * issued, const LOG_LSA * previous,
+		       const LOG_LSA * range_start, const LOG_LSA * range_end)
+{
+  if (issued != NULL && !LSA_ISNULL (issued) && LSA_EQ (lsa, issued))
+    {
+      return LOG_EXTRACT_LSA_ISSUED;
+    }
+
+  if (previous != NULL && !LSA_ISNULL (previous) && LSA_EQ (lsa, previous))
+    {
+      return LOG_EXTRACT_LSA_PREVIOUS;
+    }
+
+  if (range_start != NULL && range_end != NULL && !LSA_ISNULL (range_start) && !LSA_ISNULL (range_end)
+      && LSA_GE (lsa, range_start) && LSA_LE (lsa, range_end))
+    {
+      return LOG_EXTRACT_LSA_IN_RANGE;
+    }
+
+  return LOG_EXTRACT_LSA_REJECTED;
+}
+
 int
 cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start_lsa)
 {
@@ -15467,11 +16693,9 @@ end:
 int
 cdc_initialize ()
 {
-  cdc_Gl.conn.fd = -1;
-  cdc_Gl.conn.status = CONN_CLOSED;
-#if defined(SERVER_MODE)
-  cdc_Gl.conn.client_id = -1;
-#endif
+  log_extract_owner_lock (&cdc_Session_owner);
+  log_extract_owner_clear_locked (&cdc_Session_owner);
+  log_extract_owner_unlock (&cdc_Session_owner);
 
   cdc_Gl.producer.extraction_user = NULL;
   cdc_Gl.producer.extraction_classoids = NULL;
@@ -15535,6 +16759,14 @@ cdc_free_extraction_filter ()
     {
       free_and_init (cdc_Gl.producer.extraction_classoids);
     }
+
+  /* The counts pair with the arrays just freed. cdc_is_filtered_user() and
+   * cdc_is_filtered_class() decide by count, not by a NULL array, so leaving a
+   * stale non-zero count here makes the producer dereference the freed (NULL)
+   * array when it next wakes. Reset both so the pair stays consistent. */
+  cdc_Gl.producer.num_extraction_user = 0;
+  cdc_Gl.producer.num_extraction_class = 0;
+
   return NO_ERROR;
 }
 

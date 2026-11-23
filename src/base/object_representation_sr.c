@@ -29,7 +29,6 @@
 #include "btree_load.h"
 #include "config.h"
 #include "dbtype.h"
-#include "deduplicate_key.h"
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -113,8 +112,7 @@ static const char *or_find_diskattr (RECDES * record, int attr_id);
 static int or_get_diskattr_string (char *diskatt, int attr_index, char **string, int *alloced_string);
 static int or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string, int *alloced_string);
 
-static char or_mvcc_get_flag (RECDES * record);
-static void or_mvcc_set_flag (RECDES * record, char flags);
+static char or_get_record_flags (RECDES * record);
 static INLINE MVCCID or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
 static INLINE MVCCID or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
@@ -226,7 +224,6 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
   rep->fixed_length = or_rep->fixed_length;
   /* a representation built here is only ever written, and the writer emits the current layout; set it anyway so a
    * reader handed this struct never sees an uninitialized layout (CBRD-27140) */
-  rep->stats_layout = CATALOG_STATS_LAYOUT_V1;
   rep->fixed = NULL;
   rep->variable = NULL;
 
@@ -292,7 +289,6 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
       att->type = or_att->type;
       att->id = or_att->id;
-      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->location = or_att->location;
       att->position = or_att->position;
       att->val_length = or_att->default_value.val_length;
@@ -336,7 +332,6 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      bt_statsp->key_type = NULL;
 	      bt_statsp->pkeys_size = 0;
 	      bt_statsp->pkeys = NULL;
-	      bt_statsp->dedup_idx = -1;
 
 #if 0				/* reserved for future use */
 	      for (k = 0; k < BTREE_STATS_RESERVED_NUM; k++)
@@ -387,7 +382,6 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      if (TP_DOMAIN_TYPE (bt_statsp->key_type) == DB_TYPE_MIDXKEY)
 		{
 		  bt_statsp->pkeys_size = tp_domain_size (bt_statsp->key_type->setdomain);
-		  bt_statsp->dedup_idx = btid_int.deduplicate_key_idx;
 		}
 	      else
 		{
@@ -1953,21 +1947,13 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	    }
 
 	  att_id = db_get_int (&att_val);
-	  if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
+	  for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
 	    {
-	      index->atts[index->n_atts] = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (att_id);
-	      (index->n_atts)++;
-	    }
-	  else
-	    {
-	      for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
+	      if (att->id == att_id)
 		{
-		  if (att->id == att_id)
-		    {
-		      index->atts[index->n_atts] = att;
-		      (index->n_atts)++;
-		      break;
-		    }
+		  index->atts[index->n_atts] = att;
+		  (index->n_atts)++;
+		  break;
 		}
 	    }
 	}
@@ -2156,11 +2142,9 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   OR_ATTRIBUTE *ptr = NULL;
   int size;
 
-  assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
   /* Find the attribute with the matching attribute ID */
   for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
     {
-      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       if (att->id == att_id)
 	{
 	  ptr = att;
@@ -2271,27 +2255,6 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
     {
       assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
       att_id = db_get_int (&att_val);	/* The first attrID */
-
-      if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
-	{
-          // *INDENT-OFF*
-	  /* To reach this point, the inside of the set must have at least the following structure.
-	   *     0         1                2      [  3        4  ] *x         5 + x               6 + x
-	   * { btid, dedup_key_attrID, asc_desc, [attrID, asc_desc]+, {fk_info} or {prefix length}, ...}
-           * For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
-	   * That is, the size of this constraint_seq set must be 10 or more, and the 3rd position will be attrID.
-	   * The position 1 is deduplicate_key_attrID, which is virtual information,
-	   * the position 3 value must be read to obtain actual column information.
-	   */
-          // *INDENT-ON*
-	  assert (seq_size >= 10);
-	  i = 3;		// index of attrID (for first real column)
-	  if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
-	    {
-	      assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
-	      att_id = db_get_int (&att_val);	/* The first attrID after HIDDEN_INDEX_COL */
-	    }
-	}
 
       (void) or_install_btids_attribute (rep, att_id, &id);
     }
@@ -2519,13 +2482,32 @@ or_get_current_representation (RECDES * record, int do_indexes)
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
 
-      att->is_autoincrement = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_AUTO_INCREMENT) ? 1 : 0;
-      att->is_notnull = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_NON_NULL) ? 1 : 0;
-      att->is_invisible = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_INVISIBLE_COLUMN) ? 1 : 0;
+      int attribute_flags = OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET);
+      att->is_autoincrement = (attribute_flags & SM_ATTFLAG_AUTO_INCREMENT) ? 1 : 0;
+      att->is_notnull = (attribute_flags & SM_ATTFLAG_NON_NULL) ? 1 : 0;
+      att->is_invisible = (attribute_flags & SM_ATTFLAG_INVISIBLE_COLUMN) ? 1 : 0;
+      switch (attribute_flags & SM_ATTFLAG_OOS_STORAGE_MASK)
+	{
+	case SM_ATTFLAG_OOS_FORCE_OUTLINE:
+	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE;
+	  break;
+
+	case SM_ATTFLAG_OOS_PREFER_INLINE:
+	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_PREFER_INLINE;
+	  break;
+
+	case SM_ATTFLAG_OOS_FORCE_INLINE:
+	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_FORCE_INLINE;
+	  break;
+
+	default:
+	  assert ((attribute_flags & SM_ATTFLAG_OOS_STORAGE_MASK) == 0);
+	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_DEFAULT;
+	  break;
+	}
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
-      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2714,7 +2696,6 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
-      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2795,7 +2776,6 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
-      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -3030,7 +3010,6 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       fixed = repatt + OR_VAR_TABLE_SIZE (ORC_REPATT_VAR_ATT_COUNT);
 
       att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
-      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->type = (DB_TYPE) OR_GET_INT (fixed + ORC_REPATT_TYPE_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -3227,7 +3206,6 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  fixed = repatt + OR_VAR_TABLE_SIZE (ORC_REPATT_VAR_ATT_COUNT);
 
 	  att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
-	  assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
 	  att->type = (DB_TYPE) OR_GET_INT (fixed + ORC_REPATT_TYPE_OFFSET);
 	  att->position = j;
 	  att->default_value.val_length = 0;
@@ -4013,10 +3991,6 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 
   *alloced_string = 0;
   *string = NULL;
-  if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id) && (attr_index == ORC_ATT_NAME_INDEX))
-    {
-      *string = dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (attr_id));
-    }
 
   return NO_ERROR;
 }
@@ -4269,7 +4243,7 @@ error:
  * repid (in)	  : new representation
  *
  * NOTE: This function is similar to or_set_rep_id but it determines
- * the type of record based on MVCC flag and sets rep_id accordingly.
+ * the type of record based on record flags and sets rep_id accordingly.
  */
 int
 or_replace_rep_id (RECDES * record, int repid)
@@ -4277,16 +4251,16 @@ or_replace_rep_id (RECDES * record, int repid)
   OR_BUF orep, *buf;
   unsigned int new_bits = 0;
   int offset_size = 0;
-  char mvcc_flag;
+  char record_flags;
   bool is_bound_bit = false;
 
   or_init (&orep, record->data, record->area_size);
   buf = &orep;
 
-  mvcc_flag = or_mvcc_get_flag (record);
-  if (mvcc_flag == 0)
+  record_flags = or_get_record_flags (record);
+  if (record_flags == 0)
     {
-      /* non-MVCC record */
+      /* record without flags */
       /* read REPR_ID flags */
       if (OR_GET_BOUND_BIT_FLAG (record->data))
 	{
@@ -4305,8 +4279,8 @@ or_replace_rep_id (RECDES * record, int repid)
     }
   else
     {
-      /* MVCC record */
-      new_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
+      /* record with flags */
+      new_bits = OR_GET_RECORD_REPID_AND_FLAGS (record->data);
 
       /* Remove old repid */
       new_bits &= ~OR_MVCC_REPID_MASK;
@@ -4342,13 +4316,13 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
 
   or_init (&buf, record->data, record->length);
 
-  repid_and_flag_bits = or_mvcc_get_repid_and_flags (&buf, &rc);
+  repid_and_flag_bits = or_get_record_repid_and_flags (&buf, &rc);
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
     }
   mvcc_header->repid = repid_and_flag_bits & OR_MVCC_REPID_MASK;
-  mvcc_header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  mvcc_header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_FLAG_MASK);
 
   mvcc_header->chn = or_mvcc_get_chn (&buf, &rc);
   if (rc != NO_ERROR)
@@ -4395,18 +4369,18 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
 {
   OR_BUF orep, *buf;
   int error = NO_ERROR;
-  int mvcc_old_flag = 0;
+  int old_record_flags = 0;
   int repid_and_flag_bits = 0;
   int old_mvcc_size = 0, new_mvcc_size = 0;
 
   assert (record != NULL && record->data != NULL && record->length != 0 && record->length >= OR_MVCC_MIN_HEADER_SIZE);
 
-  repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
+  repid_and_flag_bits = OR_GET_RECORD_REPID_AND_FLAGS (record->data);
 
-  mvcc_old_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  old_record_flags = (char) ((repid_and_flag_bits >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_FLAG_MASK);
 
-  old_mvcc_size = mvcc_header_size_lookup[mvcc_old_flag];
-  new_mvcc_size = mvcc_header_size_lookup[mvcc_rec_header->mvcc_flag];
+  old_mvcc_size = mvcc_header_size_lookup[old_record_flags & OR_RECORD_MVCC_FLAG_MASK];
+  new_mvcc_size = mvcc_header_size_lookup[mvcc_rec_header->mvcc_flag & OR_RECORD_MVCC_FLAG_MASK];
   if (old_mvcc_size != new_mvcc_size)
     {
       /* resize MVCC info inside recdes */
@@ -4424,8 +4398,8 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
   buf = &orep;
 
   error =
-    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid,
-				 repid_and_flag_bits & OR_BOUND_BIT_FLAG, OR_GET_OFFSET_SIZE (record->data));
+    or_set_record_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid,
+				   repid_and_flag_bits & OR_BOUND_BIT_FLAG, OR_GET_OFFSET_SIZE (record->data));
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -4487,8 +4461,8 @@ or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int boun
   buf = &orep;
 
   error =
-    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid, bound_bit,
-				 variable_offset_size);
+    or_set_record_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid, bound_bit,
+				   variable_offset_size);
   if (error != NO_ERROR)
     {
       goto exit_on_error;
@@ -4537,7 +4511,7 @@ exit_on_error:
 int
 or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
 {
-  int mvcc_flags = or_mvcc_get_flag (record);
+  int mvcc_flags = OR_GET_MVCC_FLAGS (record->data);
   int lsa_offset = -1;
 
   if (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
@@ -4562,45 +4536,17 @@ or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
 }
 
 /*
- * or_mvcc_get_flag () - Gets MVCC flags.
+ * or_get_record_flags () - Gets all record flags.
  *
- * return	   : MVCC flags.
+ * return	   : Record flags.
  * record (in)	   : Record descriptor.
  */
 static char
-or_mvcc_get_flag (RECDES * record)
+or_get_record_flags (RECDES * record)
 {
   assert (record != NULL && record->data != NULL && record->length >= OR_HEADER_SIZE (record->data));
 
-  return (char) (OR_GET_MVCC_FLAG (record->data));
-}
-
-/*
- * or_mvcc_set_flag () - Set mvcc flags to record header.
- *
- * return      : Void.
- * record (in) : Record descriptor.
- * flags (in)  : MVCC flags to set.
- */
-static void
-or_mvcc_set_flag (RECDES * record, char flags)
-{
-  OR_BUF orep, *buf;
-  int repid_and_flag = 0;
-
-  assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE);
-
-  repid_and_flag = OR_GET_INT (record->data + OR_REP_OFFSET);
-
-  /* Remove old mvcc flags */
-  repid_and_flag &= ~OR_MVCC_FLAG_MASK;
-  /* Set new mvcc flags */
-  repid_and_flag += ((flags & OR_MVCC_FLAG_MASK) << OR_MVCC_FLAG_SHIFT_BITS);
-
-  or_init (&orep, record->data, record->area_size);
-  buf = &orep;
-  buf->ptr = buf->buffer + OR_REP_OFFSET;
-  or_put_int (buf, repid_and_flag);
+  return (char) (OR_GET_RECORD_FLAGS (record->data));
 }
 
 /*
