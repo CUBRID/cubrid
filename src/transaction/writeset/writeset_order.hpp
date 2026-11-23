@@ -41,7 +41,7 @@ struct wset_dependency_candidate
 
 extern void wset_order_probe_keys (LOG_TDES *tdes, size_t begin, wset_dependency_candidate *candidate);
 extern void wset_order_resolve_dependency (LOG_TDES *tdes, const wset_dependency_candidate *candidate,
-                                           LOG_LSA *dependency_lsa);
+    LOG_LSA *dependency_lsa);
 /* Convenience entry for callers without the log mutex; production commits use the two phases above. */
 extern void wset_order_find_dependency (LOG_TDES *tdes, LOG_LSA *dependency_lsa);
 extern void wset_order_record_commit (LOG_TDES *tdes, const LOG_LSA *commit_lsa);

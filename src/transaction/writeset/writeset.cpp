@@ -536,7 +536,7 @@ wset_discard_keys_after_lsa (LOG_TDES *tdes, const LOG_LSA *start_lsa)
   assert (start_lsa != NULL);
 
   tdes->wset_entries.erase (std::remove_if (tdes->wset_entries.begin (), tdes->wset_entries.end (),
-			   [start_lsa] (const LOG_WSET_ENTRY &e)
+			    [start_lsa] (const LOG_WSET_ENTRY &e)
   {
     return LSA_GT (&e.lsa, start_lsa);
   }), tdes->wset_entries.end ());

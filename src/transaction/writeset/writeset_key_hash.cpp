@@ -232,24 +232,24 @@ wset_pack_string_key (const LANG_COLLATION *lc, DB_TYPE type, const unsigned cha
       int char_size;
 
       while (size > 0)
-        {
-          last = intl_prevchar_utf8 (s + size, s, &char_size);
-          unsigned int cp = intl_utf8_to_cp (last, char_size, &next);
+	{
+	  last = intl_prevchar_utf8 (s + size, s, &char_size);
+	  unsigned int cp = intl_utf8_to_cp (last, char_size, &next);
 
-          if (cp >= (unsigned int) lc->coll.w_count || weight[cp] != 0)
-            {
-              break;
-            }
-          size -= char_size;
-        }
+	  if (cp >= (unsigned int) lc->coll.w_count || weight[cp] != 0)
+	    {
+	      break;
+	    }
+	  size -= char_size;
+	}
     }
   else
     {
       /* Other character sets retain their existing trailing-space rule. */
       while (strip_space && size > 0 && s[size - 1] == ' ')
-        {
-          size--;
-        }
+	{
+	  size--;
+	}
     }
 
   pseudo = lc->mht2str (lc, s, size);

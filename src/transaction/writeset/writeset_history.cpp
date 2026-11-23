@@ -46,7 +46,7 @@ static std::atomic<INT64> wset_Publish_reserved { 0 };
 static bool wset_History_initialized = false;
 
 static void wset_history_clear_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_out,
-                                       wset_history_map &retired_map);
+				       wset_history_map &retired_map);
 static bool wset_history_has_capacity (size_t publish_count);
 static bool wset_history_reserve_capacity (size_t publish_count);
 static void wset_history_release_capacity (size_t publish_count);
@@ -246,9 +246,9 @@ wset_history_clear_for_fallback (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
   pthread_rwlock_unlock (&wset_History.history_lock);
 
   WSET_TRACE (1,
-              "CLEAR trid=%d reason=COMMIT_ORDER_FALLBACK old_size=%zu new_size=0 "
-              "commit_lsa=%lld|%d history_start=%lld|%d\n",
-              tdes->trid, old_size, LSA_AS_ARGS (commit_lsa), LSA_AS_ARGS (&history_start));
+	      "CLEAR trid=%d reason=COMMIT_ORDER_FALLBACK old_size=%zu new_size=0 "
+	      "commit_lsa=%lld|%d history_start=%lld|%d\n",
+	      tdes->trid, old_size, LSA_AS_ARGS (commit_lsa), LSA_AS_ARGS (&history_start));
   /* retired_map releases the detached entries after both locks have been dropped. */
 }
 
@@ -264,29 +264,29 @@ wset_history_publish_with_capacity (LOG_TDES *tdes, size_t begin, size_t end, co
 
       pthread_rwlock_rdlock (&wset_History.history_lock);
       if (wset_history_reserve_capacity (publish_count))
-        {
-          published = wset_history_publish_entries (tdes, begin, end, commit_lsa);
-          wset_history_release_capacity (publish_count);
-          pthread_rwlock_unlock (&wset_History.history_lock);
-          if (published)
-            {
-              return;
-            }
-        }
+	{
+	  published = wset_history_publish_entries (tdes, begin, end, commit_lsa);
+	  wset_history_release_capacity (publish_count);
+	  pthread_rwlock_unlock (&wset_History.history_lock);
+	  if (published)
+	    {
+	      return;
+	    }
+	}
       else
-        {
-          pthread_rwlock_unlock (&wset_History.history_lock);
-        }
+	{
+	  pthread_rwlock_unlock (&wset_History.history_lock);
+	}
 
       wset_history_map retired_map;
       pthread_rwlock_wrlock (&wset_History.history_lock);
       if (published && wset_history_has_capacity (publish_count))
-        {
-          /* Another publisher cleared the map while we waited. Retry with a shared reservation; never publish
-           * a large writeset with seq_lock or the exclusive history lock held. */
-          pthread_rwlock_unlock (&wset_History.history_lock);
-          continue;
-        }
+	{
+	  /* Another publisher cleared the map while we waited. Retry with a shared reservation; never publish
+	   * a large writeset with seq_lock or the exclusive history lock held. */
+	  pthread_rwlock_unlock (&wset_History.history_lock);
+	  continue;
+	}
 
       size_t old_size = wset_History.map.size ();
       const char *clear_reason = published ? "HISTORY_CAPACITY" : "OUT_OF_MEMORY";
@@ -296,14 +296,14 @@ wset_history_publish_with_capacity (LOG_TDES *tdes, size_t begin, size_t end, co
       pthread_rwlock_unlock (&wset_History.history_lock);
 
       if (published)
-        {
-          wset_stat_count_clear_capacity ();
-        }
+	{
+	  wset_stat_count_clear_capacity ();
+	}
       WSET_TRACE (1,
-                  "CLEAR trid=%d reason=%s old_size=%zu publish=%zu new_size=0 "
-                  "commit_lsa=%lld|%d history_start=%lld|%d\n",
-                  tdes->trid, clear_reason, old_size, publish_count, LSA_AS_ARGS (commit_lsa),
-                  LSA_AS_ARGS (&history_start));
+		  "CLEAR trid=%d reason=%s old_size=%zu publish=%zu new_size=0 "
+		  "commit_lsa=%lld|%d history_start=%lld|%d\n",
+		  tdes->trid, clear_reason, old_size, publish_count, LSA_AS_ARGS (commit_lsa),
+		  LSA_AS_ARGS (&history_start));
       /* The floor covers this commit and every entry detached with the old map. Re-publishing this writeset
        * would add no ordering information. retired_map is destroyed only after both locks are released. */
       return;

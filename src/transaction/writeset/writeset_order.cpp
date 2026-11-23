@@ -69,23 +69,23 @@ wset_order_probe_keys (LOG_TDES *tdes, size_t begin, wset_dependency_candidate *
       bool candidate_is_ref;
 
       if (!wset_history_probe_key (entry.hash, entry.kind, slots, candidate, candidate_is_ref))
-        {
-          WSET_TRACE (3, "PROBE trid=%d kind=%s hash=%016llx result=MISS\n",
-                      tdes->trid, wset_trace_kind_name (entry.kind), (unsigned long long) entry.hash);
-          continue;
-        }
+	{
+	  WSET_TRACE (3, "PROBE trid=%d kind=%s hash=%016llx result=MISS\n",
+		      tdes->trid, wset_trace_kind_name (entry.kind), (unsigned long long) entry.hash);
+	  continue;
+	}
 
       WSET_TRACE (3,
-                  "PROBE trid=%d kind=%s hash=%016llx write_lsa=%lld|%d ref_lsa=%lld|%d candidate=%lld|%d source=%s\n",
-                  tdes->trid, wset_trace_kind_name (entry.kind), (unsigned long long) entry.hash,
-                  LSA_AS_ARGS (&slots.write_lsa), LSA_AS_ARGS (&slots.ref_lsa), LSA_AS_ARGS (&candidate),
-                  candidate_is_ref ? "REF_SLOT" : "WRITE_SLOT");
+		  "PROBE trid=%d kind=%s hash=%016llx write_lsa=%lld|%d ref_lsa=%lld|%d candidate=%lld|%d source=%s\n",
+		  tdes->trid, wset_trace_kind_name (entry.kind), (unsigned long long) entry.hash,
+		  LSA_AS_ARGS (&slots.write_lsa), LSA_AS_ARGS (&slots.ref_lsa), LSA_AS_ARGS (&candidate),
+		  candidate_is_ref ? "REF_SLOT" : "WRITE_SLOT");
       if (!LSA_ISNULL (&candidate) && LSA_GT (&candidate, &result->lsa))
-        {
-          LSA_COPY (&result->lsa, &candidate);
-          result->from_ref = candidate_is_ref;
-          key_conflict = true;
-        }
+	{
+	  LSA_COPY (&result->lsa, &candidate);
+	  result->from_ref = candidate_is_ref;
+	  key_conflict = true;
+	}
     }
   wset_history_unlock_after_probe ();
   if (key_conflict)
@@ -115,9 +115,9 @@ wset_order_resolve_dependency (LOG_TDES *tdes, const wset_dependency_candidate *
     {
       LSA_COPY (dependency_lsa, &candidate->lsa);
       if (!candidate->from_ref && !LSA_ISNULL (&prev_commit) && LSA_GT (dependency_lsa, &prev_commit))
-        {
-          LSA_COPY (dependency_lsa, &prev_commit);
-        }
+	{
+	  LSA_COPY (dependency_lsa, &prev_commit);
+	}
     }
 
   wset_advance_lsa (dependency_lsa, &history_start);
@@ -125,14 +125,14 @@ wset_order_resolve_dependency (LOG_TDES *tdes, const wset_dependency_candidate *
   if (tdes->wset_fallback)
     {
       WSET_TRACE (1, "DEPENDENCY trid=%d mode=COMMIT_ORDER dependency=%lld|%d\n",
-                  tdes->trid, LSA_AS_ARGS (dependency_lsa));
+		  tdes->trid, LSA_AS_ARGS (dependency_lsa));
     }
   else
     {
       WSET_TRACE (1,
-                  "DEPENDENCY trid=%d source=%s history_start=%lld|%d prev_commit=%lld|%d dependency=%lld|%d\n",
-                  tdes->trid, candidate->from_ref ? "REF_SLOT" : "WRITE_BOUND",
-                  LSA_AS_ARGS (&history_start), LSA_AS_ARGS (&prev_commit), LSA_AS_ARGS (dependency_lsa));
+		  "DEPENDENCY trid=%d source=%s history_start=%lld|%d prev_commit=%lld|%d dependency=%lld|%d\n",
+		  tdes->trid, candidate->from_ref ? "REF_SLOT" : "WRITE_BOUND",
+		  LSA_AS_ARGS (&history_start), LSA_AS_ARGS (&prev_commit), LSA_AS_ARGS (dependency_lsa));
     }
 }
 

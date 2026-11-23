@@ -411,10 +411,16 @@ test_replica_worker_limit ()
   const int saved_mode = prm_get_integer_value (PRM_ID_HA_MODE);
   const int saved_count = prm_get_integer_value (PRM_ID_HA_APPLY_WORKER_COUNT);
 
-  for (int mode : { HA_MODE_OFF, HA_MODE_FAIL_BACK, HA_MODE_ROLE_CHANGE, HA_MODE_REPLICA })
+  for (int mode :
+       {
+	       HA_MODE_OFF, HA_MODE_FAIL_BACK, HA_MODE_ROLE_CHANGE, HA_MODE_REPLICA
+       })
     {
       prm_set_integer_value (PRM_ID_HA_MODE, mode);
-      for (int count : { 1, 2, 4, LA_MAX_WORKER_COUNT })
+      for (int count :
+	   {
+		   1, 2, 4, LA_MAX_WORKER_COUNT
+	   })
 	{
 	  prm_set_integer_value (PRM_ID_HA_APPLY_WORKER_COUNT, count);
 	  la_init ("replica-worker-test", 0);

@@ -613,7 +613,7 @@ static void la_final_apply_slot_index (void);
 static bool la_is_repl_lists_empty ();
 static LA_APPLY *la_find_apply_list (int tranid);
 static int la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
-				 LOG_PAGE * log_pgptr);
+				LOG_PAGE * log_pgptr);
 static LA_ITEM *la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa);
 static void la_add_repl_item (LA_APPLY * apply, LA_ITEM * item);
 
@@ -748,17 +748,17 @@ static bool la_coordinator_shutdown_requested (void *context);
 static void la_request_shutdown (void);
 static void la_stat_note_class (LA_STATS * stats, const char *class_name);
 static void la_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
-					unsigned long long *worker_applied_item_count, LA_RESULT * result);
+				  unsigned long long *worker_applied_item_count, LA_RESULT * result);
 static void la_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
-				      unsigned long long *worker_applied_item_count, LA_RESULT * result);
+				unsigned long long *worker_applied_item_count, LA_RESULT * result);
 static int la_worker_flush_batch (LA_APPLY_WORKER_CONTEXT * context, LA_STATS * stats);
 static void la_worker_finish_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, int trace_level,
-					const LA_STATS * stats, unsigned long long *worker_applied_item_count);
+				   const LA_STATS * stats, unsigned long long *worker_applied_item_count);
 static int la_worker_commit_batch (LA_APPLY_WORKER_CONTEXT * context, int task_count,
 				   unsigned long long worker_applied_item_count, LA_STATS * stats);
 static void la_worker_abort_batch (LA_APPLY_WORKER_CONTEXT * context);
 static void la_worker_test_block_before_commit (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task,
-						      const LA_STATS * stats);
+						const LA_STATS * stats);
 #if !defined (NDEBUG)
 static bool la_worker_test_abort_at_task (LA_APPLY_WORKER_CONTEXT * context);
 #endif /* !NDEBUG */
@@ -977,7 +977,7 @@ la_stat_note_class (LA_STATS * stats, const char *class_name)
  */
 static void
 la_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
-			  unsigned long long *worker_applied_item_count, LA_RESULT * result)
+		    unsigned long long *worker_applied_item_count, LA_RESULT * result)
 {
   struct timeval begin;
 
@@ -1024,7 +1024,7 @@ la_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace
  */
 static void
 la_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
-			    unsigned long long *worker_applied_item_count, LA_RESULT * result)
+		      unsigned long long *worker_applied_item_count, LA_RESULT * result)
 {
   int total_rows = 0;
 
@@ -1110,7 +1110,7 @@ la_worker_flush_batch (LA_APPLY_WORKER_CONTEXT * context, LA_STATS * stats)
  */
 static void
 la_worker_finish_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, int trace_level,
-			     const LA_STATS * stats, unsigned long long *worker_applied_item_count)
+		       const LA_STATS * stats, unsigned long long *worker_applied_item_count)
 {
   *worker_applied_item_count +=
     stats->insert_counter + stats->update_counter + stats->delete_counter + stats->fail_counter;
@@ -1207,8 +1207,7 @@ la_worker_abort_batch (LA_APPLY_WORKER_CONTEXT * context)
  *         environment variables once at startup instead of on every commit.
  */
 static void
-la_worker_test_block_before_commit (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task,
-					  const LA_STATS * stats)
+la_worker_test_block_before_commit (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, const LA_STATS * stats)
 {
   const char *block_class = getenv ("CUBRID_HA_TEST_BLOCK_CLASS");
   const char *block_msec_str;
@@ -3956,8 +3955,7 @@ la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * key
   db_make_int (&values[2], key_lsa->offset);
   if (text != NULL)
     {
-      db_make_varchar (&values[3], DB_MAX_VARCHAR_PRECISION, text, text_length, LANG_SYS_CODESET,
-		       LANG_SYS_COLLATION);
+      db_make_varchar (&values[3], DB_MAX_VARCHAR_PRECISION, text, text_length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
     }
   object.classop = class_mop;
   object.class_ = class_;
@@ -9156,8 +9154,7 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
 	      LA_WSET_TRACE (1, "worker error trid=%d commit_lsa=%lld|%d worker=%zu error=%d item_type=%d "
 			     "class=%s pk=%.255s%s\n",
 			     apply->tranid, LSA_AS_ARGS (commit_lsa), (size_t) context->worker_idx,
-			     errid, item->item_type,
-			     item->class_name, pk_string, pk_ellipsis);
+			     errid, item->item_type, item->class_name, pk_string, pk_ellipsis);
 
 	      if (ER_IS_SERVER_DOWN_ERROR (errid))
 		{
@@ -9520,8 +9517,7 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 	  LA_WSET_TRACE (1, "SYSOP slave fragment assemble trid=%d sysop_lsa=%lld|%d "
 			 "dependency=%lld|%d items=%d long=%d\n",
 			 task.tranid, LSA_AS_ARGS (final),
-			 LSA_AS_ARGS (&task.dependency_lsa),
-			 fragment->num_items, (int) fragment->is_long_trans);
+			 LSA_AS_ARGS (&task.dependency_lsa), fragment->num_items, (int) fragment->is_long_trans);
 
 	  error = la_coordinator_submit_task (&task, !labeled || fragment->is_long_trans);
 	  if (error != NO_ERROR && task.apply != NULL)
@@ -9571,8 +9567,7 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
        * again with the outer commit; the items count in the trace below would show it. */
       LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "coordinator skip_sysop_end_already_committed trid=%d lsa=%lld|%d committed=%lld|%d\n",
-		    lrec->trid, LSA_AS_ARGS (final),
-		    LSA_AS_ARGS (&la_Info.committed_lsa));
+		    lrec->trid, LSA_AS_ARGS (final), LSA_AS_ARGS (&la_Info.committed_lsa));
 
       bool trace_enabled = la_wset_trace_is_enabled (2);
 
@@ -9902,11 +9897,9 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	  }
 	la_wset_label_store (lrec->trid, &dependency_lsa);
 	LA_DEBUG_LOG (ARG_FILE_LINE, "coordinator ws_label trid=%d dependency_lsa=%lld|%d at=%lld|%d\n", lrec->trid,
-		      LSA_AS_ARGS (&dependency_lsa),
-		      LSA_AS_ARGS (final));
+		      LSA_AS_ARGS (&dependency_lsa), LSA_AS_ARGS (final));
 	LA_WSET_TRACE (2, "coordinator label trid=%d label_lsa=%lld|%d dependency=%lld|%d\n",
-		       lrec->trid, LSA_AS_ARGS (final),
-		       LSA_AS_ARGS (&dependency_lsa));
+		       lrec->trid, LSA_AS_ARGS (final), LSA_AS_ARGS (&dependency_lsa));
       }
       break;
 

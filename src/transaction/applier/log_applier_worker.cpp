@@ -195,7 +195,7 @@ la_worker_wait_started (const LA_WORKER *workers, int count, int *live, int *liv
     {
       if (workers[i].started && la_Worker_start_state[i] == LA_WORKER_LIVE)
 	{
-	  live[(*live_count)++] = i;
+	  live[ (*live_count)++] = i;
 	}
     }
   pthread_mutex_unlock (&la_Worker_start_mutex);
@@ -477,7 +477,7 @@ la_worker_commit_and_report (LA_APPLY_WORKER_CONTEXT *context, LA_WORKER_BATCH *
 
   commit_begin_ns = la_monotonic_now_ns ();
   error = la_Worker_config.commit_batch (context, batch->count, worker_applied_item_count,
-				       &batch->results[batch->count - 1].stats);
+					 &batch->results[batch->count - 1].stats);
   if (error != NO_ERROR)
     {
       batch->results[0].error = error;
