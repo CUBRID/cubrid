@@ -4850,7 +4850,7 @@ struct unload_package
 {
   MOP pkg;
   DB_DATETIME created_time;
-  std::string unique_name;
+    std::string unique_name;
 };
 
 /*
@@ -4943,18 +4943,16 @@ get_packages (extract_context & ctxt, DB_OBJLIST ** pkg_list, std::vector < unlo
 
   AU_RESTORE (save);
 
-  std::sort (packages.begin (), packages.end (), [] (const unload_package & a, const unload_package & b)
-  {
-    if (a.created_time.date != b.created_time.date)
-      {
-	return a.created_time.date < b.created_time.date;
-      }
-    if (a.created_time.time != b.created_time.time)
-      {
-	return a.created_time.time < b.created_time.time;
-      }
-    return a.unique_name < b.unique_name;
-  });
+  std::sort (packages.begin (), packages.end (),[](const unload_package & a, const unload_package & b)
+	     {
+	     if (a.created_time.date != b.created_time.date)
+	     {
+	     return a.created_time.date < b.created_time.date;}
+	     if (a.created_time.time != b.created_time.time)
+	     {
+	     return a.created_time.time < b.created_time.time;}
+	     return a.unique_name < b.unique_name;}
+  );
 
   return err_count;
 }
@@ -5102,7 +5100,7 @@ emit_package_specs (extract_context & ctxt, print_output & output_ctx)
 
   err_count = get_packages (ctxt, &pkg_list, packages);
 
-  for (const unload_package & p:packages)
+for (const unload_package & p:packages)
     {
       if (emit_package_code (ctxt, output_ctx, p.pkg, false) != NO_ERROR)
 	{
@@ -5141,7 +5139,7 @@ emit_package_bodies (extract_context & ctxt, print_output & output_ctx)
 
   err_count = get_packages (ctxt, &pkg_list, packages);
 
-  for (const unload_package & p:packages)
+for (const unload_package & p:packages)
     {
       if (emit_package_code (ctxt, output_ctx, p.pkg, true) != NO_ERROR)
 	{

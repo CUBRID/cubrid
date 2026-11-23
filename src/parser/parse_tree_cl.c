@@ -21357,8 +21357,7 @@ pt_print_create_package (PARSER_CONTEXT * parser, PT_NODE * p)
   r1 = pt_print_bytes (parser, p->info.pkg.name);
   q = pt_append_varchar (parser, q, r1);
 
-  if (parser->flag.is_unloading_plcsql_def && p->info.pkg.block != NULL
-      && p->info.pkg.block->info.sp_body.impl != NULL)
+  if (parser->flag.is_unloading_plcsql_def && p->info.pkg.block != NULL && p->info.pkg.block->info.sp_body.impl != NULL)
     {
       /*
        * The block of a package keeps the white spaces after AS/IS and before the end of the statement.
