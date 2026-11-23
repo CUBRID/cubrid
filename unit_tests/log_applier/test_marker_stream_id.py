@@ -114,11 +114,11 @@ def main():
                        "--log-volume-size=32M", "-F", str(work / "db"), "-L", str(work / "log"),
                        "markerids", "en_US.utf8"])
     sql("allocate-two", allocate + insert_info("/copy/a") + allocate + insert_info("/copy/b") +
-        "INSERT INTO _db_ha_applied_tx_marker VALUES (1, 100, 1), (2, 100, 1);\n" +
+        "INSERT INTO _db_ha_applied_tx_marker (stream_id, commit_pageid, commit_offset) VALUES (1, 100, 1), (2, 100, 1);\n" +
         require("(SELECT COUNT(*) FROM _db_ha_apply_info WHERE stream_id IN (1,2)) = 2"))
     sql("restart-identity", require("(SELECT last_stream_id FROM CLASS _db_ha_apply_info) = 2") +
         require("(SELECT COUNT(*) FROM _db_ha_applied_tx_marker) = 2"))
-    duplicate = sql("duplicate-marker", "INSERT INTO _db_ha_applied_tx_marker VALUES (1,100,1);", failure=True)
+    duplicate = sql("duplicate-marker", "INSERT INTO _db_ha_applied_tx_marker (stream_id, commit_pageid, commit_offset) VALUES (1,100,1);", failure=True)
     assert "unique constraint" in duplicate.lower(), duplicate
     sql("own-stream-cleanup", "DELETE FROM _db_ha_applied_tx_marker WHERE stream_id=1;\n" +
         require("(SELECT COUNT(*) FROM _db_ha_applied_tx_marker WHERE stream_id=2)=1"))
@@ -129,35 +129,18 @@ def main():
     assert "overflow" in overflow.lower(), overflow
     sql("overflow-unchanged", require("(SELECT last_stream_id FROM CLASS _db_ha_apply_info) = "
                                      "9223372036854775807"))
-    # Reconstruct the pre-stream-ID development catalog, then run the actual migration file.
-    legacy = """
-DELETE FROM _db_ha_applied_tx_marker;
-DELETE FROM _db_ha_apply_info;
-ALTER TABLE _db_ha_applied_tx_marker ADD COLUMN copied_log_path VARCHAR(4096);
-ALTER TABLE _db_ha_applied_tx_marker DROP COLUMN stream_id;
-ALTER TABLE _db_ha_applied_tx_marker ADD UNIQUE(copied_log_path,commit_pageid,commit_offset);
-ALTER TABLE _db_ha_apply_info DROP COLUMN stream_id;
-ALTER TABLE _db_ha_apply_info DROP ATTRIBUTE CLASS last_stream_id;
-INSERT INTO _db_ha_apply_info (db_name,copied_log_path,committed_lsa_pageid,committed_lsa_offset,
- required_lsa_pageid,required_lsa_offset) VALUES ('testdb','/copy/a',10,0,1,0),('testdb','/copy/b',10,0,1,0);
-INSERT INTO _db_ha_applied_tx_marker VALUES (100,1,'/copy/a'),(200,2,'/copy/b'),(999,9,'/orphan');
-"""
-    migration = (repo / "upgrade/internal/cbrd27508_2.sql").read_text()
-    sql("legacy-marker-migration", legacy + migration +
-        require("(SELECT COUNT(*) FROM _db_ha_applied_tx_marker)=2") +
-        require("(SELECT COUNT(*) FROM _db_ha_applied_tx_marker m, _db_ha_apply_info a "
-                "WHERE m.stream_id=a.stream_id AND ((a.copied_log_path='/copy/a' AND m.commit_pageid=100) "
-                "OR (a.copied_log_path='/copy/b' AND m.commit_pageid=200)))=2") +
-        require("(SELECT last_stream_id FROM CLASS _db_ha_apply_info)=2"))
-    # The main PR script upgrades a database that has no new parallel-apply catalogs yet.
+    # upgrade/v1_to_v2.sql upgrades a database that has no parallel-apply catalogs yet.
     before_pr = """
+DELETE FROM _db_ha_apply_info;
 DROP TABLE _db_ha_applied_tx_marker;
 DROP TABLE _db_ha_apply_stat;
 DROP TABLE _db_ha_apply_worker_stat;
 ALTER TABLE _db_ha_apply_info DROP COLUMN stream_id;
 ALTER TABLE _db_ha_apply_info DROP ATTRIBUTE CLASS last_stream_id;
+INSERT INTO _db_ha_apply_info (db_name,copied_log_path,committed_lsa_pageid,committed_lsa_offset,
+ required_lsa_pageid,required_lsa_offset) VALUES ('testdb','/copy/a',10,0,1,0),('testdb','/copy/b',10,0,1,0);
 """
-    sql("base-db-upgrade", before_pr + (repo / "upgrade/internal/cbrd27508.sql").read_text() +
+    sql("base-db-upgrade", before_pr + (repo / "upgrade/v1_to_v2.sql").read_text() +
         require("(SELECT COUNT(*) FROM _db_ha_apply_info WHERE stream_id>0)=2") +
         allocate + insert_info("/copy/c") + require("(SELECT MAX(stream_id) FROM _db_ha_apply_info)=3"))
     print("All", len(checks), "standalone checks passed. No HA or throughput measurements were run.")
