@@ -45,11 +45,8 @@ option (UNIT_TEST_LOG_RECOVERY "Unit testing: log recovery (no-logging index jud
 option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output")
 option (UNIT_TEST_STREAM_SESSION "Unit testing: byte-stream transport consumer registry")
 option (UNIT_TEST_RADIX_SORT "Unit testing: radix run sorter")
-<<<<<<< HEAD
 option (UNIT_TEST_EVAL_PROP "Unit testing: evaluation properties of operators and functions")
-=======
 option (UNIT_TEST_BTREE_SORT_MERGE "Unit testing: merge run sorter")
->>>>>>> upstream/develop
 
 message("  unit_tests/...")
 
@@ -146,17 +143,14 @@ if (UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
   add_subdirectory(radix_sort)
 endif(UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
 
-<<<<<<< HEAD
 if (UNIT_TESTS OR UNIT_TEST_EVAL_PROP)
   message("    eval_prop")
   add_subdirectory(eval_prop)
 endif(UNIT_TESTS OR UNIT_TEST_EVAL_PROP)
-=======
 if (UNIT_TESTS OR UNIT_TEST_BTREE_SORT_MERGE)
   message("    btree_sort_merge")
   add_subdirectory(btree_sort_merge)
 endif(UNIT_TESTS OR UNIT_TEST_BTREE_SORT_MERGE)
->>>>>>> upstream/develop
 
 #[[
 TODO compilation fails

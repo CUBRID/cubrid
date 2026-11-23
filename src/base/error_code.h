@@ -1798,13 +1798,7 @@
 #define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
 #define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-<<<<<<< HEAD
-#define ER_SM_INVALID_DEFAULT_EXPR_STREAM           -1395
-
-#define ER_LAST_ERROR                               -1396
-=======
 #define ER_LDR_PARTITIONED_CLASS_NOT_SUPPORTED      -1395
->>>>>>> upstream/develop
 
 #define ER_HEAP_OOS_BAD_INLINE_HEADER               -1396
 
@@ -1824,7 +1818,9 @@
 
 #define ER_BT_LOAD_NO_LOGGING_DURING_BACKUP         -1404
 
-#define ER_LAST_ERROR                               -1405
+#define ER_SM_INVALID_DEFAULT_EXPR_STREAM           -1405
+
+#define ER_LAST_ERROR                               -1406
 
 /*
  * CAUTION!

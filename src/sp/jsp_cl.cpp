@@ -338,11 +338,6 @@ jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mod
 }
 
 /*
-<<<<<<< HEAD
- * jsp_is_param_type_supported () - whether a stored procedure takes a value of the type as an input argument
- *   return: true or false
- *   type(in): the type
-=======
  * jsp_check_out_args_of_call - check the arguments for the OUT and IN OUT parameters of a CALL statement
  *   return: error code
  *   parser(in): parser context
@@ -457,10 +452,9 @@ jsp_check_out_args_of_call (PARSER_CONTEXT *parser, PT_NODE *node)
 }
 
 /*
- * jsp_check_param_type_supported
- *
- * Note:
->>>>>>> upstream/develop
+ * jsp_is_param_type_supported () - whether a stored procedure takes a value of the type as an input argument
+ *   return: true or false
+ *   type(in): the type
  */
 bool
 jsp_is_param_type_supported (DB_TYPE type)

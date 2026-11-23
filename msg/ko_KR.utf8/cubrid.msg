@@ -1510,11 +1510,6 @@ $ LOADDB
 
 1394 시스템 생성 stored procedure에는 권한을 부여(grant)하거나 회수(revoke)할 수 없습니다.
 
-<<<<<<< HEAD
-1395 "%1$s"의 저장된 DEFAULT 식을 복원할 수 없습니다.
-
-1396 마지막 에러
-=======
 1395 CS 모드에서는 분할 테이블에 행을 로딩할 수 없습니다. 각 분할에 로딩하십시오.
 
 1396 내부 에러: 오브젝트 "%1$d|%2$d|%3$d"의 out-of-row storage 저장 레코드가 손상되었을 수 있습니다.
@@ -1535,8 +1530,9 @@ $ LOADDB
 
 1404 온라인 백업이 진행 중이어서 인덱스 %1$s 는 --no-logging-index 를 적용하지 않고 로그를 남기며 만듭니다.
 
-1405 마지막 에러
->>>>>>> upstream/develop
+1405 "%1$s"의 저장된 DEFAULT 식을 복원할 수 없습니다.
+
+1406 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -2055,11 +2051,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
 345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
-<<<<<<< HEAD
-346 유효하지 않은 DEFAULT 절: 괄호 없는 식은 레거시 기본값 함수에만 허용됩니다. 식을 괄호로 감싸십시오. 예: DEFAULT (...).
-=======
 346 %2$s의 %1$d번째 인자는 %3$s 매개변수에 넘기므로 바인드 변수(? 또는 :name)여야 합니다.
->>>>>>> upstream/develop
+347 유효하지 않은 DEFAULT 절: 괄호 없는 식은 레거시 기본값 함수에만 허용됩니다. 식을 괄호로 감싸십시오. 예: DEFAULT (...).
 
 
 

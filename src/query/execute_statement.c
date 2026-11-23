@@ -14627,15 +14627,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
     }
 
 cleanup:
-<<<<<<< HEAD
-  do_clear_cdt_eval_set (&cdt_eval);
-=======
   /* the only restore of INSERT ... SELECT, and of a VALUES row that ended in an error */
   if (old_wait_msecs >= -1)
     {
       (void) tran_reset_wait_times (old_wait_msecs);
     }
->>>>>>> upstream/develop
+  do_clear_cdt_eval_set (&cdt_eval);
 
   /* free attribute descriptors */
   if (attr_descs)
