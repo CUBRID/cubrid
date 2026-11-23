@@ -4047,21 +4047,166 @@ error_exit:
 }
 
 /*
- * jsp_alter_package
- *   return: if failed return error code else execute jsp_add_stored_procedure
- *           function
+ * jsp_set_pkg_comment - set the comment of a package
+ *   return: error code
+ *   pkg_mop(in): the _db_package row
+ *   comment(in): the comment. An empty one is stored as NULL, as CREATE PACKAGE does
+ */
+static int
+jsp_set_pkg_comment (MOP pkg_mop, const char *comment)
+{
+  int err, save;
+  DB_VALUE value;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  if (comment && comment[0])
+    {
+      db_make_string (&value, comment);
+    }
+  else
+    {
+      db_make_null (&value);
+    }
+
+  err = obj_set (pkg_mop, PKG_ATTR_COMMENT, &value);
+  if (err == NO_ERROR)
+    {
+      err = db_update_obj_timestamp (pkg_mop);
+    }
+
+  AU_RESTORE (save);
+
+  return err;
+}
+
+/*
+ * jsp_alter_package - ALTER PACKAGE <package> { COMPILE | [OWNER TO <user>] [COMMENT '<comment>'] }
+ *   return: error code
  *   parser(in/out): parser environment
  *   statement(in): a statement node
- *
- * Note:
  */
+
+#define SAVEPOINT_ALTER_PACKAGE "ALTERPACKAGE"
 
 int
 jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  // TODO package: ALTER PACKAGE is not implemented yet; fail instead of reporting success
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-  return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+  int err = NO_ERROR;
+  const char *unique_name;
+  char downcased[DB_MAX_IDENTIFIER_LENGTH + 1];
+  char owner_name[DB_MAX_USER_LENGTH];
+  MOP owner_mop, pkg_mop, new_owner_mop = NULL;
+  bool is_system;
+  bool has_savepoint = false;
+
+  CHECK_MODIFICATION_ERROR ();
+  assert (!prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT));  // unreachable here if it is true
+  assert (statement->info.pkg.recompile || statement->info.pkg.owner || statement->info.pkg.comment);
+
+  unique_name = PT_NODE_PKG_NAME (statement);
+  sm_downcase_name (unique_name, downcased, DB_MAX_IDENTIFIER_LENGTH + 1);
+  unique_name = downcased;
+
+  owner_name[0] = '\0';
+  if (sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      // a system class name is left unqualified (see pt_set_user_specified_name ()),
+      // and no package can have it (see pt_check_create_package ())
+      assert (sm_check_system_class_by_name (unique_name));
+      err = ER_PKG_NOT_EXIST;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
+      goto exit;
+    }
+  assert (owner_name[0]);     // package name has its owner name at this point of execution
+
+  // a package body created without its spec has a _db_package_code row but no _db_package row
+  pkg_mop = jsp_find_pkg (unique_name);
+  if (pkg_mop == NULL)
+    {
+      err = er_errid ();
+      if (err == NO_ERROR)
+	{
+	  err = ER_PKG_NOT_EXIST;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
+	}
+      goto exit;
+    }
+
+  err = jsp_is_system_generated_pkg (pkg_mop, &is_system);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+  if (is_system)
+    {
+      err = ER_PKG_ALTER_NOT_ALLOWED_SYSTEM_GENERATED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto exit;
+    }
+
+  owner_mop = db_find_user (owner_name);
+  if (owner_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto exit;
+    }
+
+  // only a dba group member can change the owner, and only the owner or a dba group member can do the others
+  if (statement->info.pkg.owner != NULL)
+    {
+      if (!au_is_dba_group_member (Au_user))
+	{
+	  err = ER_AU_DBA_ONLY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, "ALTER PACKAGE ... OWNER TO");
+	  goto exit;
+	}
+
+      new_owner_mop = db_find_user (statement->info.pkg.owner->info.name.original);
+      if (new_owner_mop == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto exit;
+	}
+    }
+  else if (!ws_is_same_object (owner_mop, Au_user) && !au_is_dba_group_member (Au_user))
+    {
+      err = ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, "alter");
+      goto exit;
+    }
+
+  err = tran_system_savepoint (SAVEPOINT_ALTER_PACKAGE);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+  has_savepoint = true;
+
+  if (statement->info.pkg.recompile || new_owner_mop != NULL)
+    {
+      // TODO package: ALTER PACKAGE ... COMPILE and ALTER PACKAGE ... OWNER TO are not implemented yet
+      err = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto exit;
+    }
+
+  if (statement->info.pkg.comment != NULL)
+    {
+      err = jsp_set_pkg_comment (pkg_mop, PT_NODE_PKG_COMMENT (statement));
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+exit:
+  if (err != NO_ERROR && has_savepoint)
+    {
+      tran_abort_upto_system_savepoint (SAVEPOINT_ALTER_PACKAGE);
+    }
+
+  return err;
 }
 
 /*
