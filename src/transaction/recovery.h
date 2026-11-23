@@ -287,6 +287,7 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVHF_SERIAL_DDL_UPDATE_UNDO)
 #define RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL(idx) \
   ((idx) == RVFL_DEALLOC \
+   || (idx) == RVBT_NO_LOGGING_INDEX_DURABLE \
    || (idx) == RVHF_MARK_DELETED \
    || (idx) == RVHF_LOB_REMOVE_DIR \
    || (idx) == RVHF_APPEND_PAGES_TO_HEAP \
