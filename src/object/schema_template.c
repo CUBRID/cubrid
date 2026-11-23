@@ -4220,16 +4220,39 @@ smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
  *    re-defined in place.
  *   return: none
  *   template(in/out): schema template
+ *
+ * Note: The template keeps the class MOP, so the OID of the class and the privileges granted on it are kept.
+ *       The builder of the system vclasses and CREATE OR REPLACE VIEW use it.
  */
 
 void
 smt_reset_vclass_definition (SM_TEMPLATE * template_)
 {
+  ml_free (template_->inheritance);
+  template_->inheritance = NULL;
+
   WS_LIST_FREE (template_->attributes, classobj_free_attribute);
   template_->attributes = NULL;
 
+  WS_LIST_FREE (template_->class_attributes, classobj_free_attribute);
+  template_->class_attributes = NULL;
+
+  WS_LIST_FREE (template_->methods, classobj_free_method);
+  template_->methods = NULL;
+
   WS_LIST_FREE (template_->class_methods, classobj_free_method);
   template_->class_methods = NULL;
+
+  WS_LIST_FREE (template_->resolutions, classobj_free_resolution);
+  template_->resolutions = NULL;
+
+  WS_LIST_FREE (template_->class_resolutions, classobj_free_resolution);
+  template_->class_resolutions = NULL;
+
+  WS_LIST_FREE (template_->method_files, classobj_free_method_file);
+  template_->method_files = NULL;
+
+  ws_free_string_and_init (template_->loader_commands);
 
   WS_LIST_FREE (template_->query_spec, classobj_free_query_spec);
   template_->query_spec = NULL;

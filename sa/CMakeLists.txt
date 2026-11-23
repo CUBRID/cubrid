@@ -496,6 +496,7 @@ set(TRANSACTION_SOURCES
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
   ${TRANSACTION_DIR}/flashback.h
+  ${TRANSACTION_DIR}/lock_deferred_wake.hpp
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
   ${TRANSACTION_DIR}/log_archives.hpp

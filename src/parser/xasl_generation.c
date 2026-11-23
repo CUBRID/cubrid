@@ -194,6 +194,7 @@ static PRED_EXPR *pt_make_pred_term_like (const REGU_VARIABLE * arg1, const REGU
 static PRED_EXPR *pt_make_pred_term_rlike (REGU_VARIABLE * arg1, REGU_VARIABLE * arg2, REGU_VARIABLE * case_sensitive);
 static PRED_EXPR *pt_make_pred_term_is (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, const BOOL_OP bop);
 static PRED_EXPR *pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *argp);
+static PRED_EXPR *pt_to_pred_expr_factor_dnf (PARSER_CONTEXT * parser, PT_NODE * factor, int *argp);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int hhhhmmss (const DB_TIME * time, char *buf, int buflen);
@@ -2252,7 +2253,25 @@ pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *arg
 	}
 
 
-      dnf_pred = NULL;
+      dnf_pred = pt_to_pred_expr_factor_dnf (parser, cnf_node, argp);
+      if (dnf_pred != NULL)
+	{
+	  /* set information for inst_num() scan type, as for the OR of the factor below */
+	  *argp |= PT_PRED_ARG_INSTNUM_CONTINUE;
+	  *argp |= PT_PRED_ARG_GRBYNUM_CONTINUE;
+	  *argp |= PT_PRED_ARG_ORDBYNUM_CONTINUE;
+	  parser_walk_tree (parser, cnf_node, NULL, NULL, pt_numbering_set_continue_post, argp);
+	  cnf_pred = (cnf_pred) ? pt_make_pred_expr_pred (dnf_pred, cnf_pred, B_AND) : dnf_pred;
+	  if (cnf_pred == NULL)
+	    {
+	      goto error;
+	    }
+	  continue;
+	}
+      if (pt_has_error (parser))
+	{
+	  goto error;
+	}
 
       num_dnf = 0;
       for (dnf_node = cnf_node; dnf_node; dnf_node = dnf_node->or_next)
@@ -2301,6 +2320,462 @@ pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *arg
 error:
   PT_INTERNAL_ERROR (parser, "predicate");
   return NULL;
+}
+
+/* the disjunctive normal form pt_to_pred_expr_factor_dnf () builds a factor in, as an array of disjuncts */
+#define PT_FACTOR_DNF_MAX_DISJUNCTS PRED_OR_RAW_MAX_DISJUNCTS
+#define PT_FACTOR_DNF_MAX_CONJUNCTS PRED_OR_RAW_MAX_LEAVES
+typedef struct pt_factor_dnf_term PT_FACTOR_DNF_TERM;
+struct pt_factor_dnf_term
+{
+  int n;
+  PT_NODE *leaf[PT_FACTOR_DNF_MAX_CONJUNCTS];
+};
+
+/* bookkeeping for pt_factor_dnf_is_unsafe () */
+typedef struct pt_factor_dnf_check PT_FACTOR_DNF_CHECK;
+struct pt_factor_dnf_check
+{
+  UINTPTR spec_id;		/* the spec the columns of the factor belong to, 0 before the first */
+  bool unsafe;
+};
+
+/*
+ * pt_factor_dnf_is_unsafe () - a predicate that must not be evaluated more often than written, or that reads the
+ *				columns of a second spec
+ */
+static PT_NODE *
+pt_factor_dnf_is_unsafe (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_FACTOR_DNF_CHECK *check = (PT_FACTOR_DNF_CHECK *) arg;
+  bool *unsafe = &check->unsafe;
+
+  if (PT_IS_QUERY (node) || node->node_type == PT_METHOD_CALL)
+    {
+      *unsafe = true;
+    }
+  else if (node->node_type == PT_NAME && node->info.name.meta_class != PT_PARAMETER)
+    {
+      /* the page path the form is for reads the columns of the scanned spec against constants; a factor that
+       * also reads a bound outer spec, as a nested-loop inner or a correlated subquery does, keeps its form */
+      if (check->spec_id == 0)
+	{
+	  check->spec_id = node->info.name.spec_id;
+	}
+      else if (check->spec_id != node->info.name.spec_id)
+	{
+	  *unsafe = true;
+	}
+    }
+  else if (node->node_type == PT_EXPR)
+    {
+      switch (node->info.expr.op)
+	{
+	case PT_RAND:
+	case PT_RANDOM:
+	case PT_DRAND:
+	case PT_DRANDOM:
+	case PT_SYS_GUID:
+	case PT_CURRENT_VALUE:
+	case PT_NEXT_VALUE:
+	case PT_INST_NUM:
+	case PT_ROWNUM:
+	case PT_ORDERBY_NUM:
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	  *unsafe = true;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  if (*unsafe)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_factor_dnf_operand_is_raw () - a constant a column of the type compares with without converting the column
+ */
+static bool
+pt_factor_dnf_operand_is_raw (PT_NODE * operand, PT_TYPE_ENUM col_type)
+{
+  if (operand == NULL || (operand->node_type != PT_VALUE && operand->node_type != PT_HOST_VAR))
+    {
+      return false;
+    }
+  return ((PT_IS_NUMERIC_TYPE (col_type) && PT_IS_NUMERIC_TYPE (operand->type_enum))
+	  || (PT_IS_CHAR_STRING_TYPE (col_type) && PT_IS_CHAR_STRING_TYPE (operand->type_enum)));
+}
+
+/*
+ * pt_factor_dnf_leaf_is_raw () - a leaf the page path filters by (expr_pred_term_raw_info ()): a column compared with
+ *				  a constant of its kind, or a column in a list of such constants
+ *
+ * Note: such a leaf cannot fail for a row, so evaluating it where the written order would have skipped it -- the
+ *	 guard of (b = 0 or 10 / b > 1) and a = 1 is lost once the OR is distributed -- returns no new error.
+ */
+static bool
+pt_factor_dnf_leaf_is_raw (PT_NODE * leaf)
+{
+  PT_NODE *col, *other, *elem;
+
+  if (leaf == NULL || leaf->node_type != PT_EXPR || leaf->or_next != NULL)
+    {
+      return false;
+    }
+
+  col = leaf->info.expr.arg1;
+  other = leaf->info.expr.arg2;
+  switch (leaf->info.expr.op)
+    {
+    case PT_EQ:
+    case PT_NE:
+    case PT_GT:
+    case PT_GE:
+    case PT_LT:
+    case PT_LE:
+      if (other != NULL && other->node_type == PT_NAME)
+	{
+	  col = leaf->info.expr.arg2;
+	  other = leaf->info.expr.arg1;
+	}
+      return (col != NULL && col->node_type == PT_NAME && col->info.name.meta_class != PT_PARAMETER
+	      && pt_factor_dnf_operand_is_raw (other, col->type_enum));
+
+    case PT_IS_IN:
+      if (col == NULL || col->node_type != PT_NAME || col->info.name.meta_class == PT_PARAMETER || other == NULL)
+	{
+	  return false;
+	}
+      if (other->node_type == PT_VALUE && PT_IS_COLLECTION_TYPE (other->type_enum))
+	{
+	  elem = other->info.value.data_value.set;
+	}
+      else if (other->node_type == PT_FUNCTION && other->info.function.function_type == F_SEQUENCE)
+	{
+	  elem = other->info.function.arg_list;
+	}
+      else
+	{
+	  return false;
+	}
+      for (; elem != NULL; elem = elem->next)
+	{
+	  if (!pt_factor_dnf_operand_is_raw (elem, col->type_enum))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+static int pt_factor_dnf_list (PT_NODE * list, PT_FACTOR_DNF_TERM * out, int max);
+
+/*
+ * pt_factor_dnf_and () - the disjuncts of the conjunction of two disjunctive normal forms
+ *   return: n1 * n2, written to out, or -1 when there would be more than max of them or a disjunct would have more than
+ *	     PT_FACTOR_DNF_MAX_CONJUNCTS conjuncts
+ */
+static int
+pt_factor_dnf_and (const PT_FACTOR_DNF_TERM * lhs, int n1, const PT_FACTOR_DNF_TERM * rhs, int n2,
+		   PT_FACTOR_DNF_TERM * out, int max)
+{
+  int i, j, k;
+
+  if (n1 * n2 > max)
+    {
+      return -1;
+    }
+  for (i = 0; i < n1; i++)
+    {
+      for (j = 0; j < n2; j++)
+	{
+	  if (lhs[i].n + rhs[j].n > PT_FACTOR_DNF_MAX_CONJUNCTS)
+	    {
+	      return -1;
+	    }
+	  k = i * n2 + j;
+	  memcpy (out[k].leaf, lhs[i].leaf, lhs[i].n * sizeof (PT_NODE *));
+	  memcpy (out[k].leaf + lhs[i].n, rhs[j].leaf, rhs[j].n * sizeof (PT_NODE *));
+	  out[k].n = lhs[i].n + rhs[j].n;
+	}
+    }
+  return n1 * n2;
+}
+
+/*
+ * pt_factor_dnf_node () - the disjuncts of the disjunctive normal form of one node, its next and or_next aside
+ *   return: the number of disjuncts written to out, or -1 (pt_factor_dnf_and ())
+ *   node(in): an AND/OR tree, whose operands are read as pt_to_pred_expr () reads them: CNF lists, next for AND and
+ *	       or_next for OR; its leaves are not copied
+ *   out(out): max disjuncts
+ *   max(in):
+ */
+static int
+pt_factor_dnf_node (PT_NODE * node, PT_FACTOR_DNF_TERM * out, int max)
+{
+  PT_FACTOR_DNF_TERM *lhs, *rhs;
+  int n1, n2, n = -1;
+
+  if (max <= 0)
+    {
+      return -1;
+    }
+
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_OR))
+    {
+      n1 = pt_factor_dnf_list (node->info.expr.arg1, out, max);
+      if (n1 < 0)
+	{
+	  return -1;
+	}
+      n2 = pt_factor_dnf_list (node->info.expr.arg2, out + n1, max - n1);
+      return (n2 < 0) ? -1 : n1 + n2;
+    }
+
+  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_AND))
+    {
+      out[0].n = 1;
+      out[0].leaf[0] = node;
+      return 1;
+    }
+
+  lhs = (PT_FACTOR_DNF_TERM *) malloc (2 * PT_FACTOR_DNF_MAX_DISJUNCTS * sizeof (PT_FACTOR_DNF_TERM));
+  if (lhs == NULL)
+    {
+      return -1;
+    }
+  rhs = lhs + PT_FACTOR_DNF_MAX_DISJUNCTS;
+
+  n1 = pt_factor_dnf_list (node->info.expr.arg1, lhs, PT_FACTOR_DNF_MAX_DISJUNCTS);
+  n2 = (n1 < 0) ? -1 : pt_factor_dnf_list (node->info.expr.arg2, rhs, PT_FACTOR_DNF_MAX_DISJUNCTS);
+  if (n2 >= 0)
+    {
+      n = pt_factor_dnf_and (lhs, n1, rhs, n2, out, max);
+    }
+
+  free_and_init (lhs);
+  return n;
+}
+
+/*
+ * pt_factor_dnf_list () - the disjuncts of the disjunctive normal form of a CNF list: an AND over next of ORs over
+ *			   or_next of nodes
+ *   return: the number of disjuncts written to out, or -1 (pt_factor_dnf_and ())
+ *   list(in):
+ *   out(out): max disjuncts
+ *   max(in):
+ */
+static int
+pt_factor_dnf_list (PT_NODE * list, PT_FACTOR_DNF_TERM * out, int max)
+{
+  PT_FACTOR_DNF_TERM *acc, *term;
+  PT_NODE *cnf, *dnf;
+  int n_acc = 0, n_term, n, k;
+
+  if (list == NULL || max <= 0)
+    {
+      return -1;
+    }
+
+  acc = (PT_FACTOR_DNF_TERM *) malloc (2 * PT_FACTOR_DNF_MAX_DISJUNCTS * sizeof (PT_FACTOR_DNF_TERM));
+  if (acc == NULL)
+    {
+      return -1;
+    }
+  term = acc + PT_FACTOR_DNF_MAX_DISJUNCTS;
+
+  for (cnf = list; cnf != NULL; cnf = cnf->next)
+    {
+      /* one element of the AND: the OR of its or_next chain */
+      n_term = 0;
+      for (dnf = cnf; dnf != NULL; dnf = dnf->or_next)
+	{
+	  n = pt_factor_dnf_node (dnf, term + n_term, PT_FACTOR_DNF_MAX_DISJUNCTS - n_term);
+	  if (n < 0)
+	    {
+	      n_acc = -1;
+	      goto end;
+	    }
+	  n_term += n;
+	}
+
+      if (cnf == list)
+	{
+	  memcpy (acc, term, n_term * sizeof (PT_FACTOR_DNF_TERM));
+	  n_acc = n_term;
+	}
+      else
+	{
+	  /* out holds the conjunction while acc and term are both read */
+	  n_acc = pt_factor_dnf_and (acc, n_acc, term, n_term, out, max);
+	  if (n_acc < 0)
+	    {
+	      goto end;
+	    }
+	  memcpy (acc, out, n_acc * sizeof (PT_FACTOR_DNF_TERM));
+	}
+      if (n_acc > max)
+	{
+	  n_acc = -1;
+	  goto end;
+	}
+    }
+
+  for (k = 0; k < n_acc; k++)
+    {
+      out[k] = acc[k];
+    }
+
+end:
+  free_and_init (acc);
+  return n_acc;
+}
+
+static int pt_factor_dnf_top_list (PT_NODE * list);
+
+/*
+ * pt_factor_dnf_top () - the number of disjuncts of a node as written: its ORs, not distributed over its ANDs
+ */
+static int
+pt_factor_dnf_top (PT_NODE * node)
+{
+  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_OR))
+    {
+      return 1;
+    }
+  return pt_factor_dnf_top_list (node->info.expr.arg1) + pt_factor_dnf_top_list (node->info.expr.arg2);
+}
+
+/*
+ * pt_factor_dnf_top_list () - pt_factor_dnf_top () of a CNF list: one disjunct when it is an AND
+ */
+static int
+pt_factor_dnf_top_list (PT_NODE * list)
+{
+  PT_NODE *dnf;
+  int n = 0;
+
+  if (list == NULL || list->next != NULL)
+    {
+      return 1;
+    }
+  for (dnf = list; dnf != NULL; dnf = dnf->or_next)
+    {
+      n += pt_factor_dnf_top (dnf);
+    }
+  return n;
+}
+
+/*
+ * pt_to_pred_expr_factor_dnf () - the predicate of a factor pt_cnf () kept whole, in disjunctive normal form
+ *   return: the predicate, or NULL when the factor is evaluated as it is written
+ *   parser(in):
+ *   factor(in): a CNF term, an OR tree
+ *   argp(in/out):
+ *
+ * Note: a factor (A and B) or C is two levels deep, as is every clause pt_cnf () distributes into, and a scan
+ *	 runs such a filter over a page of rows at once (expr_pred_or_raw_leaves ()).  A disjunct holding a further
+ *	 OR, (A and (B or D)) or C, leaves that path, and the filter is evaluated row by row, several times slower than
+ *	 the clauses it used to be distributed into.  Evaluate (A and B) or (A and D) or C instead: AND distributes
+ *	 over OR in the three-valued logic as well, so the result is the same.  An operand is read as
+ *	 pt_to_pred_expr () reads it, a CNF list: the restrictions qo_extract_or_restrictions () derives hold or_next
+ *	 chains under their ORs.  The form is taken only where the page path takes it: the data filter of a heap
+ *	 scan, not an index scan, a join or a list scan, which evaluate it row by row and would only repeat the
+ *	 common conjuncts; a factor over the columns of one spec; within the bounds of the path
+ *	 (PRED_OR_RAW_MAX_DISJUNCTS, PRED_OR_RAW_MAX_LEAVES); and every leaf a column compared with a constant
+ *	 (pt_factor_dnf_leaf_is_raw ()).  Such a leaf cannot fail, so evaluating it where the order as written would
+ *	 have skipped it, as a disjunct guarding the next one does, returns no error the written factor would not.
+ */
+static PRED_EXPR *
+pt_to_pred_expr_factor_dnf (PARSER_CONTEXT * parser, PT_NODE * factor, int *argp)
+{
+  PT_FACTOR_DNF_TERM *dnf;
+  PRED_EXPR *pred = NULL, *conj, *leaf;
+  PT_NODE *save_next;
+  PT_FACTOR_DNF_CHECK check = { 0, false };
+  int n, top, d, i, leaves;
+
+  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (factor, PT_OR) || factor->or_next != NULL || parser->symbols == NULL
+      || !parser->symbols->heap_scan_filter)
+    {
+      return NULL;
+    }
+
+  save_next = factor->next;
+  factor->next = NULL;
+  (void) parser_walk_tree (parser, factor, pt_factor_dnf_is_unsafe, &check, NULL, NULL);
+  factor->next = save_next;
+  if (check.unsafe)
+    {
+      return NULL;
+    }
+
+  dnf = (PT_FACTOR_DNF_TERM *) malloc (PT_FACTOR_DNF_MAX_DISJUNCTS * sizeof (PT_FACTOR_DNF_TERM));
+  if (dnf == NULL)
+    {
+      return NULL;
+    }
+
+  n = pt_factor_dnf_node (factor, dnf, PT_FACTOR_DNF_MAX_DISJUNCTS);
+  top = (n > 0) ? pt_factor_dnf_top (factor) : 0;
+  if (n <= 0 || n == top)
+    {
+      free_and_init (dnf);
+      return NULL;
+    }
+
+  /* the form is for the page path alone: every leaf one it filters by, and no more of them than it takes */
+  leaves = 0;
+  for (d = 0; d < n; d++)
+    {
+      leaves += dnf[d].n;
+      for (i = 0; i < dnf[d].n; i++)
+	{
+	  if (!pt_factor_dnf_leaf_is_raw (dnf[d].leaf[i]))
+	    {
+	      free_and_init (dnf);
+	      return NULL;
+	    }
+	}
+    }
+  if (leaves > PRED_OR_RAW_MAX_LEAVES)
+    {
+      free_and_init (dnf);
+      return NULL;
+    }
+
+  /* right-linear chains, as pt_to_pred_expr_with_arg () builds them */
+  for (d = n - 1; d >= 0; d--)
+    {
+      conj = NULL;
+      for (i = dnf[d].n - 1; i >= 0; i--)
+	{
+	  leaf = pt_to_pred_expr_local_with_arg (parser, dnf[d].leaf[i], argp);
+	  conj = (conj == NULL) ? leaf : pt_make_pred_expr_pred (leaf, conj, B_AND);
+	  if (leaf == NULL || conj == NULL)
+	    {
+	      free_and_init (dnf);
+	      return NULL;
+	    }
+	}
+      pred = (pred == NULL) ? conj : pt_make_pred_expr_pred (conj, pred, B_OR);
+      if (pred == NULL)
+	{
+	  break;
+	}
+    }
+
+  free_and_init (dnf);
+  return pred;
 }
 
 /*
@@ -3773,6 +4248,7 @@ pt_symbol_info_alloc (void)
       symbols->query_node = NULL;
       symbols->func_idx_cover_list = NULL;
       symbols->func_idx_routed_list = NULL;
+      symbols->heap_scan_filter = false;
     }
 
   return symbols;
@@ -11041,6 +11517,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		{
 		case PT_PLUS:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_ADD, domain);
+		  /* only the offset + count a LIMIT rewrite builds gives the maximum on an overflow */
+		  if (regu != NULL && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_LIMIT_SUM))
+		    {
+		      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_LIMIT_SUM);
+		    }
 		  break;
 
 		case PT_MINUS:
@@ -16169,7 +16650,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      symbols->cache_attrinfo = cache_pred;
 	      symbols->reserved_values = db_values_array_p;
 
+	      /* a heap scan filters a page of rows at once (pt_to_pred_expr_factor_dnf ()) */
+	      symbols->heap_scan_filter = (access_method == ACCESS_METHOD_SEQUENTIAL);
 	      where = pt_to_pred_expr (parser, where_part);
+	      symbols->heap_scan_filter = false;
 
 	      if (scan_type == TARGET_CLASS_ATTR)
 		{

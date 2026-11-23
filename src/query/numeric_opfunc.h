@@ -222,6 +222,7 @@ extern char *numeric_db_value_print (const DB_VALUE * val, char *buf);
 
 /* Floating-Point NUMERIC */
 extern int numeric_get_precision_digits (uint8_t * calc_buf);
+extern void numeric_db_value_fixed_to_float_domain (DB_VALUE * value, const DB_DOMAIN * domain);
 extern int float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
@@ -237,6 +238,24 @@ STATIC_INLINE constexpr uint64_t numeric_hash_mul (uint64_t residue1, uint64_t r
 STATIC_INLINE constexpr uint64_t numeric_hash_int64 (int64_t value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE uint64_t numeric_db_value_hash (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 #endif /* __cplusplus */
+
+/*
+ * numeric_db_value_to_float_domain () - numeric_db_value_fixed_to_float_domain () for a fixed NUMERIC value only
+ *   return: void
+ *   value(in/out):
+ *   domain(in): the domain the value is declared in
+ */
+static inline void
+numeric_db_value_to_float_domain (DB_VALUE * value, const DB_DOMAIN * domain)
+{
+  if (value->domain.general_info.is_null || value->domain.general_info.type != DB_TYPE_NUMERIC
+      || value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      return;
+    }
+
+  numeric_db_value_fixed_to_float_domain (value, domain);
+}
 
 /* Testing Routines */
 extern bool numeric_db_value_is_zero (const DB_VALUE * arg);
