@@ -1528,9 +1528,11 @@ $ LOADDB
 
 1403 오브젝트 파일의 바이너리 영역이 손상되었거나 오프셋 %1$lld에서 잘렸습니다.
 
-1404 시스템 생성 stored procedure를 교체(replace)할 수 없습니다.
+1404 온라인 백업이 진행 중이어서 인덱스 %1$s 는 --no-logging-index 를 적용하지 않고 로그를 남기며 만듭니다.
 
-1405 마지막 에러
+1405 시스템 생성 stored procedure를 교체(replace)할 수 없습니다.
+
+1406 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

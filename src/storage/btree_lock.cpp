@@ -102,11 +102,13 @@ btree_key_wait_for_tran_end (THREAD_ENTRY *thread_p, MVCCID writer_mvccid,
 			     PAGE_PTR *overflow_page, bool *restart)
 {
   int error_code = NO_ERROR;
+  /* read while the leaf is still fixed: see lock_get_tran_wake_generation () */
+  LK_STAMP_SEEN seen = { writer_mvccid, lock_get_tran_wake_generation () };
 
   /* Release the locked object and the page latches before blocking on the lock. */
   btree_key_release_locked_object_and_pages (thread_p, find_unique_helper, leaf_page, overflow_page);
 
-  error_code = logtb_wait_for_tran_end (thread_p, writer_mvccid);
+  error_code = logtb_wait_for_tran_end (thread_p, &seen);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -136,6 +138,10 @@ btree_key_release_locked_object_and_pages (THREAD_ENTRY *thread_p, BTREE_FIND_UN
       lock_unlock_object_donot_move_to_non2pl (thread_p, &find_unique_helper->locked_oid,
 	  &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
       OID_SET_NULL (&find_unique_helper->locked_oid);
+    }
+  if (find_unique_helper != NULL)
+    {
+      OID_SET_NULL (&find_unique_helper->passed_oid);
     }
   if (overflow_page != NULL && *overflow_page != NULL)
     {
