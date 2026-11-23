@@ -196,7 +196,20 @@ typedef enum
 
   RVPGBUF_INIT_NEW_PAGE = 136,
 
-  RV_LAST_LOGID = RVPGBUF_INIT_NEW_PAGE,
+  /* OOS indices always come AFTER the last develop index, keeping develop's numeric values
+   * identical on this branch. When a merge from develop appends new indices, the OOS block is
+   * renumbered upward (RV_fun[] in recovery.c is positionally indexed by rcvindex, so its order
+   * must be updated to match). Renumbering invalidates the recovery logs of feat/oos test
+   * databases created before the merge — recreate them. */
+  RVOOS_INSERT = 137,
+  RVOOS_DELETE = 138,		/* redo-only chunk delete of the OOS reclaimer (ADR-0008); never undone */
+  RVREPL_OOS_INSERT = 139,
+  RVOOS_NOTIFY_VACUUM = 140,	/* MVCC undo record naming the chains a committed UPDATE dropped */
+  RVREPL_DUMMY_OOS_RECORD = 141,	/* multi-chunk OOS replication marker */
+  RVOOS_RECLAIM_POSTPONE = 142,	/* logical postpone: reclaim chains once the deciding unit commits */
+  RVOOS_UPDATE_DROP_POSTPONE = 143,	/* logical postpone: append RVOOS_NOTIFY_VACUUM once an UPDATE commits */
+  RVREPL_OOS_REUSE = 144,	/* OOS replication marker: the UPDATE reused this column's chain */
+  RV_LAST_LOGID = RVREPL_OOS_REUSE,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -276,6 +289,8 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVHF_APPEND_PAGES_TO_HEAP \
    || (idx) == RVHF_MARK_PAGES_IN_HEAP \
    || (idx) == RVBT_DELETE_OBJECT_POSTPONE)
+#define RCV_IS_POSTPONE_NOT_UNDOABLE(idx) \
+  ((idx) == RVHF_LOB_REMOVE_DIR)
 
 /* records with nothing to undo: what they changed needs no restoring, or other records restore it. so rollback skips
  * them altogether: it neither fixes their page (which may be deallocated by then) nor logs a compensation (an empty
@@ -283,6 +298,7 @@ extern void rv_check_rvfuns (void);
 #define RCV_IS_NOTHING_TO_UNDO(idx) \
   ((idx) == RVBT_MVCC_NOTIFY_VACUUM \
    || (idx) == RVES_NOTIFY_VACUUM \
+   || (idx) == RVOOS_NOTIFY_VACUUM \
    || (idx) == RVPGBUF_INIT_NEW_PAGE)
 
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
@@ -297,6 +313,8 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVVAC_NOTIFY_DROPPED_FILE \
    || (idx) == RVPGBUF_DEALLOC \
    || RCV_IS_NOTHING_TO_UNDO (idx) \
+   || (idx) == RVOOS_RECLAIM_POSTPONE \
+   || (idx) == RVOOS_UPDATE_DROP_POSTPONE \
    || (idx) == RVHF_MARK_DELETED \
    || (idx) == RVFL_TRACKER_HEAP_REUSE \
    || (idx) == RVFL_TRACKER_UNREGISTER)

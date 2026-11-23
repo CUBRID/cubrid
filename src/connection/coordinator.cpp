@@ -953,6 +953,7 @@ namespace cubconn::connection
     if (!ctx)
       {
 	/* failed to allocate the resources */
+	css_prepare_shutdown_conn (item.conn);
 	css_free_conn (item.conn);
 
 	/* just ignore */
@@ -1317,10 +1318,11 @@ not_transferred:
 	      {
 		if (events[i].data.fd == m_eventfd)
 		  {
+		    /* a failed read costs at most a spurious wake-up; stopping leaves new connections unassigned */
 		    if (!this->eventfd_clear (m_eventfd))
 		      {
-			er_log_conn (__FILE__, __LINE__, "connection::coordinator->run: eventfd_clear failed\n");
-			return false;
+			_er_log_debug (ARG_FILE_LINE, "connection coordinator: failed to read the eventfd: %s\n",
+				       strerror (errno));
 		      }
 		    this->handle_message_queue ();
 		  }
@@ -1346,8 +1348,8 @@ not_transferred:
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {
-			er_log_conn (__FILE__, __LINE__, "connection::coordinator->eventfd_handler: eventfd_clear failed\n");
-			return false;
+			_er_log_debug (ARG_FILE_LINE, "connection coordinator: failed to read the timerfd: %s\n",
+				       strerror (errno));
 		      }
 		  }
 #if defined (ENABLE_CONTROLLER)

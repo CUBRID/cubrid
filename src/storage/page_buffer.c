@@ -2608,6 +2608,10 @@ fast_path:
 	   * it is not deallocated. However, if it is deallocated, no error is required. */
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
 		  fileio_get_volume_label (vpid->volid, PEEK));
+	  /* a deallocated page, read from disk only to learn that or still in the buffer: nobody reads it again, so
+	   * it does not take a place in the caller's LRU list (as pgbuf_dealloc_page () leaves the page it
+	   * deallocates) */
+	  pgbuf_mark_page_for_lru_bottom (thread_p, pgptr);
 	  /* fall through to unfix */
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  pgbuf_unfix (thread_p, pgptr);
@@ -6043,7 +6047,8 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
  * Note: Keep the scope to a fix whose caller cannot act on a refusal - the disk manager's volume header and
  *       sector allocation table. Those two pass PGBUF_UNCONDITIONAL_LATCH and offer no conditional variant,
  *       and disk_reserve_sectors treats anything but an interrupt or an IO error as a disk cache
- *       inconsistency.
+ *       inconsistency. The OOS reclaim of a committed intent (oos_rv_reclaim_on_postpone) is the third: it runs
+ *       in a commit and stops the server on any error.
  *       Both no-wait values are lifted although they have different owners - LK_ZERO_WAIT carries the user's
  *       lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. A finite or an already infinite
  *       waiting time is kept, because pgbuf_timed_sleep () classifies a watchdog expiry by this very value and
@@ -13134,6 +13139,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   int er_status_get_hfid = NO_ERROR;
   VPID req_page_groupid;
   bool has_dealloc_prevent_flag = false;
+  bool req_page_gone = false;
   PGBUF_LATCH_CONDITION latch_condition;
   PGBUF_BCB *bufptr = NULL;
 #if defined(PGBUF_ORDERED_DEBUG)
@@ -13729,6 +13735,10 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 		  er_log_debug (ARG_FILE_LINE,
 				"pgbuf_ordered_fix: page %d|%d was deallocated (OLD_PAGE_MAYBE_DEALLOCATED mode).\n",
 				VPID_AS_ARGS (&ordered_holders_info[i].vpid));
+		  /* the pages unfixed for it are fixed again all the same: their watchers' owners still read them */
+		  req_page_gone = true;
+		  er_status = NO_ERROR;
+		  continue;
 		}
 	      else
 		{
@@ -13751,8 +13761,9 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
       if (VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid))
 	  && pgbuf_ordered_unfix_reused_page (thread_p, req_vpid, fetch_mode, &pgptr))
 	{
-	  er_status = ER_PB_BAD_PAGEID;
-	  goto exit;
+	  /* gone as well (the warning is set); the pages unfixed for it are fixed again all the same */
+	  req_page_gone = true;
+	  continue;
 	}
 
       /* get holder of last fix: last fixed pages is in top of holder list, we use parse code just for safety */
@@ -13870,6 +13881,11 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
     }
 
 exit:
+  if (req_page_gone && er_status == NO_ERROR)
+    {
+      /* the warning the fix set is still the last error */
+      er_status = ER_PB_BAD_PAGEID;
+    }
   if (er_status_get_hfid != NO_ERROR && er_status == NO_ERROR)
     {
       er_status = er_status_get_hfid;
@@ -15973,6 +15989,17 @@ pgbuf_get_hold_count (THREAD_ENTRY * thread_p)
   int me = thread_get_entry_index (thread_p);
   return pgbuf_Pool.thrd_holder_info[me].num_hold_cnt;
 }
+
+/* pgbuf_get_page_type_for_stat () casts a stored PAGE_TYPE to PERF_PAGE_TYPE */
+static_assert ((int) PERF_PAGE_UNKNOWN == (int) PAGE_UNKNOWN && (int) PERF_PAGE_FTAB == (int) PAGE_FTAB
+	       && (int) PERF_PAGE_HEAP == (int) PAGE_HEAP && (int) PERF_PAGE_VOLHEADER == (int) PAGE_VOLHEADER
+	       && (int) PERF_PAGE_VOLBITMAP == (int) PAGE_VOLBITMAP && (int) PERF_PAGE_QRESULT == (int) PAGE_QRESULT
+	       && (int) PERF_PAGE_EHASH == (int) PAGE_EHASH && (int) PERF_PAGE_OVERFLOW == (int) PAGE_OVERFLOW
+	       && (int) PERF_PAGE_AREA == (int) PAGE_AREA && (int) PERF_PAGE_CATALOG == (int) PAGE_CATALOG
+	       && (int) PERF_PAGE_BTREE_GENERIC == (int) PAGE_BTREE && (int) PERF_PAGE_LOG == (int) PAGE_LOG
+	       && (int) PERF_PAGE_DROPPED_FILES == (int) PAGE_DROPPED_FILES
+	       && (int) PERF_PAGE_VACUUM_DATA == (int) PAGE_VACUUM_DATA && (int) PERF_PAGE_OOS == (int) PAGE_OOS
+	       && (int) PERF_PAGE_BTREE_ROOT == (int) PAGE_LAST + 1, "PERF_PAGE_TYPE must mirror PAGE_TYPE");
 
 /*
  * pgbuf_get_page_type_for_stat () - Return the page type for current page
@@ -18415,6 +18442,7 @@ pgbuf_scan_bcb_table ()
 	      break;
 	    case PAGE_OVERFLOW:
 	    case PAGE_HEAP:
+	    case PAGE_OOS:
 	      show_status_snapshot->num_data_pages++;
 	      break;
 	    case PAGE_CATALOG:
