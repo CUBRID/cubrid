@@ -430,6 +430,14 @@ static bool open_object_file (extract_context & ctxt, const char *output_dirname
 static bool init_thread_param (const char *output_dirname, int nthreads);
 static void quit_thread_param ();
 static void print_monitoring_info (const char *class_name, int nthreads);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+static int unload_fetchers_start (int nfetchers);
+static void unload_fetchers_stop (void);
+static void unload_fetchers_run (LC_FETCH_VERSION_TYPE fetch_type);
+#endif
+
+/* the fetchers of --fetcher-count that run; 0 when the main client fetches */
+static int unload_Nfetchers = 0;
 
 /*
  * get_estimated_objs - get the estimated number of object reside in file heap
@@ -1210,6 +1218,25 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
       assert (g_thr_param[0].text_output.head_ptr == NULL || g_thr_param[0].text_output.head_ptr->count <= 0);
     }
 
+  /* the fetchers of --fetcher-count hand the rows to the extractor threads, so they need some */
+  if (g_fetcher_count > 1)
+    {
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      if (nthreads > 0)
+	{
+	  unload_Nfetchers = unload_fetchers_start (g_fetcher_count);
+	}
+      else
+	{
+	  fprintf (stderr, "\n'--%s' needs '--%s' of 1 or more; one fetcher is used.\n", UNLOAD_FETCHER_COUNT_L,
+		   UNLOAD_THREAD_COUNT_L);
+	}
+#else
+      fprintf (stderr, "\n'--%s' is not supported in this mode or build; one fetcher is used.\n",
+	       UNLOAD_FETCHER_COUNT_L);
+#endif
+    }
+
   do
     {
       for (i = 0; i < class_table->num; i++)
@@ -1322,6 +1349,10 @@ end:
   /*
    * Cleanup
    */
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  unload_fetchers_stop ();
+  unload_Nfetchers = 0;
+#endif
   free_and_init (unload_class_table);
   quit_thread_param ();
   extractobjects_cleanup ();
@@ -1538,10 +1569,22 @@ unload_extractor_thread (void *param)
 }
 
 
-int
-unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
+/*
+ * unload_fetch_part () - fetch the rows of one part of the class g_uci names and hand them over
+ *    return: NO_ERROR, or an error code
+ *    fetch_type(in): the version fetched
+ *    nparts(in), part(in): the server reads the heap sectors whose id modulo nparts is part
+ *    read_ahead_sectors(in): the upper bound of the server's read-ahead distance
+ *    wi_fetch(in/out): the time spent in the fetch requests
+ *
+ * Note: without extractor threads (g_multi_thread_mode false) the rows are printed here; otherwise the copy areas go
+ *	 to the list the extractor threads read.  Several fetchers may run it at once, one part each.
+ */
+static int
+unload_fetch_part (LC_FETCH_VERSION_TYPE fetch_type, int nparts, int part, int read_ahead_sectors,
+		   S_WAITING_INFO * wi_fetch)
 {
-  int i, error = NO_ERROR;
+  int error = NO_ERROR;
   int nobjects = 0;
   int nfetched = -1;
   OID last_oid;
@@ -1562,14 +1605,12 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
 
   while ((nobjects != nfetched) && (error_occurred == false))
     {
-      TIMER_BEGIN ((g_sampling_records >= 0), &(g_uci->wi_fetch));
-      /* a split of 1 for a single process too: the split count tells the server that unloaddb fetches, and it then
+      TIMER_BEGIN ((g_sampling_records >= 0), wi_fetch);
+      /* a split of 1 for a single fetcher too: the split count tells the server that unloaddb fetches, and it then
        * reads the heap in file order (xlocator_fetch_all ()) */
       error = locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area,
-				 g_request_pages, (g_parallel_process_cnt > 1) ? g_parallel_process_cnt : 1,
-				 (g_parallel_process_cnt > 1) ? (g_parallel_process_idx - 1) /* to zero base */ : 0,
-				 g_read_ahead_sectors);
-      TIMER_END ((g_sampling_records >= 0), &(g_uci->wi_fetch));
+				 g_request_pages, nparts, part, read_ahead_sectors);
+      TIMER_END ((g_sampling_records >= 0), wi_fetch);
       if (error == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
@@ -1629,6 +1670,242 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
 
   return error;
 }
+
+/* the parts of the --process split this process reads, as (count, index); (1, 0) without the split */
+#define UNLOAD_PROCESS_PARTS() ((g_parallel_process_cnt > 1) ? g_parallel_process_cnt : 1)
+#define UNLOAD_PROCESS_PART() ((g_parallel_process_cnt > 1) ? (g_parallel_process_idx - 1) /* to zero base */ : 0)
+
+/*
+ * unload_fetcher () - fetch the rows of the class g_uci names with the main client: the part of this process
+ */
+static int
+unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
+{
+#if defined(WINDOWS)
+  S_WAITING_INFO *wi_fetch = NULL;
+#else
+  S_WAITING_INFO *wi_fetch = &(g_uci->wi_fetch);
+#endif
+
+  return unload_fetch_part (fetch_type, UNLOAD_PROCESS_PARTS (), UNLOAD_PROCESS_PART (), g_read_ahead_sectors,
+			    wi_fetch);
+}
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+/*
+ * The fetchers of --fetcher-count: each thread holds a sub-client (db_restart_sub ()), so each has its own connection,
+ * server worker and transaction, and reads its own part of every class: the part of this process (--process) is split
+ * again by the fetchers.  The threads live through the whole unload; the main thread hands them one class at a time.
+ * Each sub-client takes its own snapshot, as each process of --process does.
+ */
+typedef struct unload_fetcher_slot UNLOAD_FETCHER_SLOT;
+struct unload_fetcher_slot
+{
+  int idx;
+  pthread_t tid;
+  int error;			/* the error of db_restart_sub () */
+  S_WAITING_INFO wi_fetch;
+};
+
+static struct
+{
+  pthread_mutex_t mtx;
+  pthread_cond_t cond;
+  int nfetchers;		/* 0 when the pool is not running */
+  int nstarted;			/* the fetchers that are done with db_restart_sub () */
+  unsigned int job;		/* counts the classes handed over */
+  int nbusy;			/* the fetchers still reading the class of job */
+  bool quit;
+  LC_FETCH_VERSION_TYPE fetch_type;
+  int read_ahead_sectors;	/* the upper bound for each fetcher */
+  UNLOAD_FETCHER_SLOT *slots;
+} unload_Fetchers;
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+unload_fetcher_thread (void *param)
+{
+  UNLOAD_FETCHER_SLOT *slot = (UNLOAD_FETCHER_SLOT *) param;
+  unsigned int job = 0;
+  int error;
+
+  error = db_restart_sub (slot->idx);
+
+  pthread_mutex_lock (&unload_Fetchers.mtx);
+  slot->error = error;
+  unload_Fetchers.nstarted++;
+  pthread_cond_broadcast (&unload_Fetchers.cond);
+  while (error == NO_ERROR)
+    {
+      while (!unload_Fetchers.quit && unload_Fetchers.job == job)
+	{
+	  pthread_cond_wait (&unload_Fetchers.cond, &unload_Fetchers.mtx);
+	}
+      if (unload_Fetchers.quit)
+	{
+	  break;
+	}
+      job = unload_Fetchers.job;
+      pthread_mutex_unlock (&unload_Fetchers.mtx);
+
+      (void) unload_fetch_part (unload_Fetchers.fetch_type, UNLOAD_PROCESS_PARTS () * unload_Fetchers.nfetchers,
+				UNLOAD_PROCESS_PART () * unload_Fetchers.nfetchers + slot->idx,
+				unload_Fetchers.read_ahead_sectors, &slot->wi_fetch);
+
+      pthread_mutex_lock (&unload_Fetchers.mtx);
+      if (--unload_Fetchers.nbusy == 0)
+	{
+	  pthread_cond_broadcast (&unload_Fetchers.cond);
+	}
+    }
+  pthread_mutex_unlock (&unload_Fetchers.mtx);
+
+  /* also after a failed db_restart_sub (): it releases what is left */
+  (void) db_shutdown_sub ();
+
+  pthread_exit ((THREAD_RET_T) 0);
+}
+
+/*
+ * unload_fetchers_stop () - let the fetcher threads end their sub-clients and exit
+ */
+static void
+unload_fetchers_stop (void)
+{
+  int i;
+
+  if (unload_Fetchers.slots == NULL)
+    {
+      return;
+    }
+
+  pthread_mutex_lock (&unload_Fetchers.mtx);
+  unload_Fetchers.quit = true;
+  pthread_cond_broadcast (&unload_Fetchers.cond);
+  pthread_mutex_unlock (&unload_Fetchers.mtx);
+
+  for (i = 0; i < unload_Fetchers.nfetchers; i++)
+    {
+      if (unload_Fetchers.slots[i].tid != INVALID_THREAD_ID)
+	{
+	  pthread_join (unload_Fetchers.slots[i].tid, NULL);
+	}
+    }
+
+  pthread_cond_destroy (&unload_Fetchers.cond);
+  pthread_mutex_destroy (&unload_Fetchers.mtx);
+  free_and_init (unload_Fetchers.slots);
+  unload_Fetchers.nfetchers = 0;
+}
+
+/*
+ * unload_fetchers_start () - start the fetcher threads of --fetcher-count and wait for their sub-clients
+ *    return: the fetchers running; 0 when the rows are fetched by the main client (one fetcher)
+ *    nfetchers(in): --fetcher-count
+ *
+ * Note: when a sub-client cannot start, the others are stopped and the main client fetches alone.
+ */
+static int
+unload_fetchers_start (int nfetchers)
+{
+  int i, error = NO_ERROR;
+
+  memset (&unload_Fetchers, 0, sizeof (unload_Fetchers));
+  if (nfetchers <= 1)
+    {
+      return 0;
+    }
+
+  unload_Fetchers.slots = (UNLOAD_FETCHER_SLOT *) calloc (nfetchers, sizeof (UNLOAD_FETCHER_SLOT));
+  if (unload_Fetchers.slots == NULL)
+    {
+      return 0;
+    }
+  pthread_mutex_init (&unload_Fetchers.mtx, NULL);
+  pthread_cond_init (&unload_Fetchers.cond, NULL);
+  unload_Fetchers.nfetchers = nfetchers;
+
+  /* --read-ahead-sectors bounds the read-ahead of the whole unload: the fetchers share it */
+  unload_Fetchers.read_ahead_sectors =
+    (g_read_ahead_sectors == 0) ? 0 : MAX (MIN (g_read_ahead_sectors, 2), g_read_ahead_sectors / nfetchers);
+
+  for (i = 0; i < nfetchers; i++)
+    {
+      unload_Fetchers.slots[i].idx = i;
+      unload_Fetchers.slots[i].tid = INVALID_THREAD_ID;
+    }
+  for (i = 0; i < nfetchers; i++)
+    {
+      if (pthread_create (&unload_Fetchers.slots[i].tid, NULL, unload_fetcher_thread, &unload_Fetchers.slots[i]) != 0)
+	{
+	  unload_Fetchers.slots[i].tid = INVALID_THREAD_ID;
+	  error = ER_FAILED;
+	  break;
+	}
+    }
+
+  pthread_mutex_lock (&unload_Fetchers.mtx);
+  while (unload_Fetchers.nstarted < i)
+    {
+      pthread_cond_wait (&unload_Fetchers.cond, &unload_Fetchers.mtx);
+    }
+  for (i = 0; i < nfetchers && error == NO_ERROR; i++)
+    {
+      error = unload_Fetchers.slots[i].error;
+    }
+  pthread_mutex_unlock (&unload_Fetchers.mtx);
+
+  if (error != NO_ERROR)
+    {
+      fprintf (stderr, "\nThe fetchers of '--%s' could not connect to the server (error %d); one fetcher is used.\n",
+	       UNLOAD_FETCHER_COUNT_L, error);
+      unload_fetchers_stop ();
+      return 0;
+    }
+  return nfetchers;
+}
+
+/*
+ * unload_fetchers_run () - let the fetcher threads read the class g_uci names, and wait until they are done
+ *    fetch_type(in): the version fetched
+ *
+ * Note: the fetch time reported is that of the slowest fetcher; the count is that of all.
+ */
+static void
+unload_fetchers_run (LC_FETCH_VERSION_TYPE fetch_type)
+{
+  int i;
+
+  pthread_mutex_lock (&unload_Fetchers.mtx);
+  for (i = 0; i < unload_Fetchers.nfetchers; i++)
+    {
+      TIMER_CLEAR (&unload_Fetchers.slots[i].wi_fetch);
+    }
+  unload_Fetchers.fetch_type = fetch_type;
+  unload_Fetchers.nbusy = unload_Fetchers.nfetchers;
+  unload_Fetchers.job++;
+  pthread_cond_broadcast (&unload_Fetchers.cond);
+  while (unload_Fetchers.nbusy > 0)
+    {
+      pthread_cond_wait (&unload_Fetchers.cond, &unload_Fetchers.mtx);
+    }
+  pthread_mutex_unlock (&unload_Fetchers.mtx);
+
+#if !defined(WINDOWS)
+  for (i = 0; i < unload_Fetchers.nfetchers; i++)
+    {
+      const S_WAITING_INFO *wi = &unload_Fetchers.slots[i].wi_fetch;
+      S_WAITING_INFO *sum = &g_uci->wi_fetch;
+
+      if (wi->ts_wait_sum.tv_sec > sum->ts_wait_sum.tv_sec
+	  || (wi->ts_wait_sum.tv_sec == sum->ts_wait_sum.tv_sec && wi->ts_wait_sum.tv_nsec > sum->ts_wait_sum.tv_nsec))
+	{
+	  sum->ts_wait_sum = wi->ts_wait_sum;
+	}
+      sum->cnt += wi->cnt;
+    }
+#endif
+}
+#endif /* CS_MODE && MULTI_CONN_TO_A_SERVER */
 
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 unload_writer_thread (void *param)
@@ -2112,7 +2389,16 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
     }
 
   YIELD_THREAD ();
-  unload_fetcher (fetch_type);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  if (unload_Nfetchers > 1 && g_multi_thread_mode)
+    {
+      unload_fetchers_run (fetch_type);
+    }
+  else
+#endif
+    {
+      unload_fetcher (fetch_type);
+    }
 
   if (!g_multi_thread_mode)
     {

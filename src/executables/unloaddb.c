@@ -67,10 +67,12 @@ FILE *output_file = NULL;
 #define DFLT_REQ_DATASIZE           (100)	// 100 page size
 #define MAX_REQ_DATA_PAGES          (1024)	//
 #define MAX_THREAD_COUNT            (127)
+#define MAX_FETCHER_COUNT           (16)
 
 int g_pre_alloc_varchar_size = DFLT_PRE_ALLOC_VARCHAR_SIZE;
 int g_request_pages = DFLT_REQ_DATASIZE;
 int g_read_ahead_sectors = LC_FETCH_READ_AHEAD_MAX_SECTORS;
+int g_fetcher_count = 1;
 int g_parallel_process_cnt = -1;
 int g_parallel_process_idx = -1;
 
@@ -222,6 +224,14 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	{
 	  fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_THREAD_COUNT_L,
 		   MAX_THREAD_COUNT);
+	  goto end;
+	}
+
+      g_fetcher_count = utility_get_option_int_value (arg_map, UNLOAD_FETCHER_COUNT_S);
+      if (g_fetcher_count < 1 || g_fetcher_count > MAX_FETCHER_COUNT)
+	{
+	  fprintf (stderr, "\nThe number of '--%s' option ranges from 1 to %d.\n", UNLOAD_FETCHER_COUNT_L,
+		   MAX_FETCHER_COUNT);
 	  goto end;
 	}
 

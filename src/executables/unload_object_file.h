@@ -51,6 +51,12 @@ class print_output;
 
 
 #if defined(WINDOWS)
+/* no timers: only so that a timer can be passed around */
+typedef struct _waiting_info
+{
+  int unused;
+} S_WAITING_INFO;
+
 #define TIMER_CLEAR(pwi)
 #define TIMER_BEGIN(flag, pwi)
 #define TIMER_END(flag, pwi)
