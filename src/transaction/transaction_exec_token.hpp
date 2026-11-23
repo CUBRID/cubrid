@@ -53,7 +53,7 @@ class tx_exec_token
     bool give_back (THREAD_ENTRY *thread_p);
 
   private:
-    std::atomic<THREAD_ENTRY *> m_owner;	/* taken by a CAS from NULL, given back with no mutex */
+    std::atomic<THREAD_ENTRY *> m_holder;	/* taken by a CAS from NULL, given back with no mutex */
     std::atomic<int> m_waiters;	/* requests waiting on m_cond: a giver reads it with no mutex */
     std::mutex m_mutex;
     std::condition_variable m_cond;

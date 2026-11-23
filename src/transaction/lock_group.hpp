@@ -58,7 +58,7 @@ typedef enum
 {
   LK_GROUP_ACQUIRE,		/* may sleep for another transaction */
   LK_GROUP_ACQUIRE_COND,	/* sleeps for no one */
-  LK_GROUP_RELEASE		/* gives up or changes locks, however the transaction is to end */
+  LK_GROUP_NEVER_REFUSED	/* releases and other changes, which pass however the transaction is to end */
 } LK_GROUP_REQUEST;
 
 static inline LK_GROUP_REQUEST
@@ -88,6 +88,12 @@ class lock_group
     {
       return m_sections.load (std::memory_order_acquire) > 0;
     }
+    /* the threads take turns only in a section. Group 0, the system transaction's, never opens one, and a change
+     * here must keep it ungated */
+    bool is_gated () const
+    {
+      return in_section ();
+    }
     bool is_owner (const THREAD_ENTRY *thread_p) const
     {
       return m_owner.load (std::memory_order_acquire) == thread_p;
@@ -95,6 +101,10 @@ class lock_group
     bool is_guest (const THREAD_ENTRY *thread_p) const
     {
       return m_guest.load (std::memory_order_acquire) == thread_p;
+    }
+    bool is_inside (const THREAD_ENTRY *thread_p) const
+    {
+      return is_owner (thread_p) || is_guest (thread_p);
     }
 
     /* the parallel sections and the transaction's end (lock_group_section_begin () and the rest of lock_manager.h) */
@@ -114,10 +124,10 @@ class lock_group
     bool holds_interrupt () const;
 
     /* a lock wait of one of its threads (lock_suspend ()) */
-    void start_wait (bool in_group, INT64 stime);
-    void end_wait (bool in_group, const THREAD_ENTRY *thread_p);
+    void start_wait (const THREAD_ENTRY *thread_p, INT64 stime);
+    void end_wait (const THREAD_ENTRY *thread_p);
     void owner_sleeps (const LK_RES_KEY *wait_key, UINT64 held_row);
-    void wakes (bool is_owner, bool interrupted);
+    void wakes (const THREAD_ENTRY *thread_p, bool interrupted);
     void wait_for_guest ();
     void keep_interrupt ();
     int step_out (THREAD_ENTRY *thread_p);
@@ -132,12 +142,6 @@ class lock_group
   private:
     friend class lock_group_guard;
 
-    /* the threads take turns only in a section. Group 0, the system transaction's, never opens one, and a change
-     * here must keep it ungated */
-    bool is_gated () const
-    {
-      return in_section ();
-    }
     /* a lock call of the transaction while it is gated (lock_group_guard) */
     int enter (THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const LK_RES_KEY *guest_key,
 	       const LK_PENDING_RELEASE *release);
@@ -162,10 +166,10 @@ class lock_group
     std::atomic<int> m_sections;	/* open parallel sections */
     /* written under the mutex, but the owner, the depths and the transaction end's m_abort_deferred; m_owner_wait_key
      * and m_owner_held_row are also read only under it, m_guest and m_owner_sleeping outside it only to see the
-     * reader's own role and in debug checks. No lock is taken in it. A pthread cond, as its timed waits must read
-     * CLOCK_MONOTONIC on any glibc (timed_wait ()). */
+     * reader's own role and in debug checks. No lock is taken in it. */
     pthread_mutex_t m_mutex;
-    pthread_cond_t m_cond;	/* the entrance freed, the owner asleep, or an abort for the waiters to see */
+    pthread_cond_t m_cond;	/* the entrance freed, the owner asleep, or an abort for the waiters to see; a pthread
+				 * cond for its clock (LK_GROUP_COND_CLOCK) */
     std::atomic<THREAD_ENTRY *> m_owner;	/* the thread inside: taken by a CAS from NULL, given back with no mutex */
     int m_depth;		/* the owner's re-entries; only the owner touches it */
     std::atomic<THREAD_ENTRY *> m_guest;	/* a second thread let in while the owner sleeps */
@@ -177,8 +181,8 @@ class lock_group
     std::atomic<bool> m_owner_blocked;
     LK_RES_KEY m_owner_wait_key;	/* the resource it waits for, while m_owner_sleeping */
     UINT64 m_owner_held_row;	/* the row it holds while it waits on a self-lock (deferred_wake.held_row), or 0 */
-    std::atomic<bool> m_interrupted;	/* an interrupt came while sections were open; cleared when they close */
-    /* an abort waits for the section owner or a PL callback's caller; cleared when the transaction ends */
+    std::atomic<bool> m_interrupted;	/* see keep_interrupt () */
+    /* an abort waits for the section opener or a PL callback's caller; cleared when the transaction ends */
     std::atomic<bool> m_abort_deferred;
     std::atomic<LK_PENDING_RELEASE *> m_pending_release;	/* run by the owner before it leaves */
 #if !defined (NDEBUG)
@@ -302,7 +306,7 @@ extern void lock_group_set_abort_error (int tran_index, int error);
 
 /* from lock_manager.c */
 extern lock_group *lock_get_tran_group (int tran_index);
-extern bool lock_has_tran_lock (int tran_index);
+extern bool lock_tran_lock_is_initialized (int tran_index);
 extern bool lock_is_tran_deadlock_victim (int tran_index);
 extern INT64 *lock_get_wait_stime (int tran_index);
 extern void lock_interrupt_lockwait (THREAD_ENTRY * guest, int tran_index);

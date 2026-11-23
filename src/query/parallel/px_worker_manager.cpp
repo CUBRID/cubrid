@@ -39,7 +39,7 @@ namespace parallel_query
   worker_manager::worker_manager()
     : m_active_tasks (0),
       m_reserved_workers (0),
-      m_owner (nullptr),
+      m_reserver (nullptr),
       m_tran_index (NULL_TRAN_INDEX)
   {
   }
@@ -76,7 +76,7 @@ namespace parallel_query
     assert (manager->m_active_tasks.load () == 0);
 
     /* before any task: no worker of it can have entered the lock manager unchecked */
-    manager->m_owner = thread_p;
+    manager->m_reserver = thread_p;
     manager->m_tran_index = thread_p->tran_index;
     lock_group_section_begin (manager->m_tran_index);
 
@@ -124,8 +124,8 @@ namespace parallel_query
   /* every task's retire () calls this */
   void worker_manager::pop_task ()
   {
-    /* before the count drops: then the owner may end its request, and the deferred wake goes out with it */
-    lock_deferred_wake_hand_over (thread_get_thread_entry_info (), m_owner);
+    /* before the count drops: then the reserver may end its request, and the deferred wake goes out with it */
+    lock_deferred_wake_hand_over (thread_get_thread_entry_info (), m_reserver);
     m_active_tasks.fetch_sub (1, std::memory_order_release);
   }
 }

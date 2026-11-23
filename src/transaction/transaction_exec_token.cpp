@@ -37,7 +37,7 @@
  */
 #if defined (SERVER_MODE)
 tx_exec_token::tx_exec_token ()
-  : m_owner (NULL)
+  : m_holder (NULL)
   , m_waiters (0)
   , m_mutex ()
   , m_cond ()
@@ -49,10 +49,10 @@ tx_exec_token::try_own (THREAD_ENTRY *thread_p)
 {
   THREAD_ENTRY *expected = NULL;
 
-  return m_owner.compare_exchange_strong (expected, thread_p, std::memory_order_acq_rel, std::memory_order_acquire);
+  return m_holder.compare_exchange_strong (expected, thread_p, std::memory_order_acq_rel, std::memory_order_acquire);
 }
 
-/* the waiter counts itself and then reads m_owner, the giver the other way round: no wakeup is lost */
+/* the waiter counts itself and then reads m_holder, the giver the other way round: no wakeup is lost */
 void
 tx_exec_token::own (THREAD_ENTRY *thread_p)
 {
@@ -64,7 +64,7 @@ tx_exec_token::own (THREAD_ENTRY *thread_p)
       return;
     }
 
-  /* the slot is left for the whole wait and taken back only once the token is free, as its owner may wait for one */
+  /* the slot is left for the whole wait and taken back only once the token is free, as its holder may wait for one */
   thread_slot_wait_begin (thread_p, status, holder);
   while (true)
     {
@@ -72,7 +72,7 @@ tx_exec_token::own (THREAD_ENTRY *thread_p)
 	std::unique_lock<std::mutex> lock (m_mutex);
 
 	m_waiters.fetch_add (1, std::memory_order_seq_cst);
-	m_cond.wait (lock, [this] { return m_owner.load (std::memory_order_seq_cst) == NULL; });
+	m_cond.wait (lock, [this] { return m_holder.load (std::memory_order_seq_cst) == NULL; });
 	m_waiters.fetch_sub (1, std::memory_order_seq_cst);
       }
 
@@ -90,7 +90,7 @@ tx_exec_token::give_back (THREAD_ENTRY *thread_p)
 {
   THREAD_ENTRY *expected = thread_p;
 
-  if (!m_owner.compare_exchange_strong (expected, NULL, std::memory_order_seq_cst, std::memory_order_relaxed))
+  if (!m_holder.compare_exchange_strong (expected, NULL, std::memory_order_seq_cst, std::memory_order_relaxed))
     {
       return false;
     }

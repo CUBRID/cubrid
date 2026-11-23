@@ -689,7 +689,8 @@ static int lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran
 static void lock_move_to_head_of_tran_hold_list (LK_ENTRY * entry_ptr);
 static void lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
 static int lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index);
-static LK_ENTRY *lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, bool is_class);
+static LK_ENTRY *lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, bool is_class,
+					    LOCK * granted_mode = NULL);
 static LOCK lock_find_tran_hold_mode (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, bool is_class);
 static bool lock_force_timeout_expired_wait_transactions (void *thrd_entry);
 static bool lock_is_local_deadlock_detection_interval_up (void);
@@ -770,8 +771,7 @@ static void lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * 
 static void lock_increment_class_granules (LK_ENTRY * class_entry);
 
 static void lock_decrement_class_granules (LK_ENTRY * class_entry);
-static LK_ENTRY *lock_find_class_entry (int tran_index, const OID * class_oid);
-static LOCK lock_find_class_mode (int tran_index, const OID * class_oid);
+static LK_ENTRY *lock_find_class_entry (int tran_index, const OID * class_oid, LOCK * granted_mode = NULL);
 
 static void lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index);
 static void lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, bool log_trunc,
@@ -2032,7 +2032,7 @@ lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
  *     is the given class_oid, in the transaction lock hold list.
  */
 static LK_ENTRY *
-lock_find_class_entry (int tran_index, const OID * class_oid)
+lock_find_class_entry (int tran_index, const OID * class_oid, LOCK * granted_mode)
 {
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr;
@@ -2062,48 +2062,15 @@ lock_find_class_entry (int tran_index, const OID * class_oid)
 	}
     }
 
+  if (granted_mode != NULL)
+    {
+      /* read before hold_mutex is released, for a reader that does not enter the lock_group: another thread of the
+       * transaction may then give the entry back to the pool */
+      *granted_mode = (entry_ptr != NULL) ? entry_ptr->granted_mode : NULL_LOCK;
+    }
   pthread_mutex_unlock (&tran_lock->hold_mutex);
 
   return entry_ptr;		/* it might be NULL */
-}
-
-/*
- * lock_find_class_mode - the mode lock_find_class_entry () finds, read under hold_mutex
- *
- * return: the granted mode, or NULL_LOCK
- *
- * Note: for a reader that does not enter the lock_group: once hold_mutex is released, another thread of the
- *	 transaction may give the entry back to the pool.
- */
-static LOCK
-lock_find_class_mode (int tran_index, const OID * class_oid)
-{
-  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
-  LK_ENTRY *entry_ptr;
-  LOCK granted_mode = NULL_LOCK;
-
-  pthread_mutex_lock (&tran_lock->hold_mutex);
-  if (OID_IS_ROOTOID (class_oid))
-    {
-      entry_ptr = tran_lock->root_class_hold;
-    }
-  else
-    {
-      for (entry_ptr = tran_lock->class_hold_list; entry_ptr != NULL; entry_ptr = entry_ptr->tran_next)
-	{
-	  if (OID_EQ (&entry_ptr->res_head->key.oid, class_oid))
-	    {
-	      break;
-	    }
-	}
-    }
-  if (entry_ptr != NULL)
-    {
-      granted_mode = entry_ptr->granted_mode;
-    }
-  pthread_mutex_unlock (&tran_lock->hold_mutex);
-
-  return granted_mode;
 }
 #endif /* SERVER_MODE */
 
@@ -2813,7 +2780,7 @@ lock_guard_group (int tran_index)
 
 /* whether the transaction lock table is initialized up to tran_index */
 bool
-lock_has_tran_lock (int tran_index)
+lock_tran_lock_is_initialized (int tran_index)
 {
   return (lk_Gl.init_state.tran_lock_table_initialized
 	  && tran_index < lk_Gl.init_state.tran_lock_table_initialized_count);
@@ -2866,7 +2833,6 @@ lock_suspend_internal (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_m
   LOG_TDES *tdes;
   lock_group *group = &lk_Gl.tran_lock_table[entry_ptr->tran_index].group;
   bool is_group_owner = group->is_owner (thread_p);
-  bool is_group_guest = group->is_guest (thread_p);
   int abort_error, group_depth;
   bool exec_yielded;
 #if !defined (NDEBUG)
@@ -2881,7 +2847,7 @@ lock_suspend_internal (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_m
   /* a thread asleep with its entry flagged as queued would be granted without a resume */
   assert (entry_ptr->thrd_entry->deferred_wake.prequeued == NULL);
 
-  if ((is_group_owner || is_group_guest) && group->in_section ())
+  if (group->is_inside (thread_p) && group->in_section ())
     {
       /* a sibling may have been made a victim, or interrupted, since this thread passed the entrance */
       abort_error = group->abort_reason ();
@@ -2925,7 +2891,7 @@ lock_suspend_internal (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_m
   entry_ptr->thrd_entry->lockwait_msecs = wait_msecs;
   entry_ptr->thrd_entry->lockwait_state = (int) LOCK_SUSPENDED;
 
-  group->start_wait (is_group_owner || is_group_guest, entry_ptr->thrd_entry->lockwait_stime);
+  group->start_wait (thread_p, entry_ptr->thrd_entry->lockwait_stime);
   lk_Gl.deadlock_and_timeout_detector++;
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
@@ -2949,14 +2915,11 @@ lock_suspend_internal (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_m
   /* suspend the worker thread (transaction) */
   thread_suspend_wakeup_and_unlock_entry (entry_ptr->thrd_entry, THREAD_LOCK_SUSPENDED);
 
-  if (is_group_owner || is_group_guest)
-    {
-      group->wakes (is_group_owner, entry_ptr->thrd_entry->resume_status != THREAD_LOCK_RESUMED
-		    || entry_ptr->thrd_entry->lockwait_state == (int) LOCK_RESUMED_INTERRUPT);
-    }
+  group->wakes (thread_p, entry_ptr->thrd_entry->resume_status != THREAD_LOCK_RESUMED
+		|| entry_ptr->thrd_entry->lockwait_state == (int) LOCK_RESUMED_INTERRUPT);
 
   lk_Gl.deadlock_and_timeout_detector--;
-  group->end_wait (is_group_owner || is_group_guest, thread_p);
+  group->end_wait (thread_p);
 
   if (tdes)
     {
@@ -3028,7 +2991,7 @@ lock_suspend_internal (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_m
 
 	  /* wait until other threads finish their works A css_server_thread is always running for this transaction.
 	   * so, wait until css_count_transaction_worker_threads () becomes 1 (except me).
-	   * Not a parallel pool thread, whose leader joins it before aborting, nor a PL callback, whose caller waits
+	   * Not a parallel pool thread, whose opener joins it before aborting, nor a PL callback, whose caller waits
 	   * for its reply and so is left the abort (tran_server_unilaterally_abort_tran ()): woken by the interrupt,
 	   * the caller would abort under this thread's open statement. */
 	  if (!thread_is_px_worker (thread_p) && !session_is_pl_callback (thread_p)
@@ -5354,7 +5317,7 @@ lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock, LOC
   int tran_index;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_NEVER_REFUSED);
 
   entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, true);
   if (entry_ptr == NULL)
@@ -5663,7 +5626,7 @@ lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index, const OID *
 {
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *curr, *next;
-  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_NEVER_REFUSED);
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   tran_lock->reclaimed_only_transient = true;
@@ -7548,7 +7511,7 @@ lock_transient_scope_start (THREAD_ENTRY * thread_p)
   return true;
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
-  lock_group_guard guard (&tran_lock->group, thread_p, LK_GROUP_RELEASE);
+  lock_group_guard guard (&tran_lock->group, thread_p, LK_GROUP_NEVER_REFUSED);
   int scope;
   int *grown;
   int size;
@@ -7616,7 +7579,7 @@ lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release)
   return;
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
-  lock_group_guard guard (&tran_lock->group, thread_p, LK_GROUP_RELEASE);
+  lock_group_guard guard (&tran_lock->group, thread_p, LK_GROUP_NEVER_REFUSED);
   int scope = tran_lock->transient.scope;
 
   assert (scope > 0);
@@ -8033,7 +7996,7 @@ lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK loc
 
   /* Build the TRANSACTION-typed search key directly from the MVCCID (full 64-bit, no OID packing). */
   search_key = lock_create_mvccid_search_key (mvccid);
-  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE, &search_key);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_NEVER_REFUSED, &search_key);
 
   res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
   if (res_ptr == NULL)
@@ -8432,7 +8395,7 @@ lock_deferred_wake_mark (THREAD_ENTRY * thread_p, int tran_index)
 {
 #if defined (SERVER_MODE)
   LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_NEVER_REFUSED);
 
   if (tdes == NULL || !MVCCID_IS_NORMAL (tdes->mvccinfo.id))
     {
@@ -8600,9 +8563,9 @@ lock_wake_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 packed_
 	  && (packed_row == 0
 	      || __atomic_load_n (&waiter->thrd_entry->deferred_wake.held_row, __ATOMIC_RELAXED) == packed_row))
 	{
-	  /* edges the deadlock detector collected before the wake must not meet one collected after it; with a section
-	   * open a sibling may still wait, and the woken thread sets the slot (lock_group::end_wait ()) */
-	  if (!lk_Gl.tran_lock_table[waiter->tran_index].group.in_section ())
+	  /* edges the deadlock detector collected before the wake must not meet one collected after it; while the
+	   * group is gated a sibling may still wait, and the woken thread sets the slot (lock_group::end_wait ()) */
+	  if (!lk_Gl.tran_lock_table[waiter->tran_index].group.is_gated ())
 	    {
 	      lk_Gl.TWFG_node[waiter->tran_index].thrd_wait_stime = 0;
 	    }
@@ -9571,7 +9534,7 @@ lock_unlock_objects_lock_set (THREAD_ENTRY * thread_p, LC_LOCKSET * lockset)
       return;			/* Don't release the lock */
     }
 
-  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_NEVER_REFUSED);
   for (i = 0; i < lockset->num_reqobjs_processed; i++)
     {
       oid = &lockset->objects[i].oid;
@@ -9640,7 +9603,7 @@ lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
       return;
     }
 
-  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_NEVER_REFUSED);
   for (i = 0; i < lockhint->num_classes; i++)
     {
       if (OID_ISNULL (&lockhint->classes[i].oid) || lockhint->classes[i].lock == NULL_LOCK)
@@ -9804,8 +9767,9 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
 #endif /* !SERVER_MODE */
 }
 
+/* granted_mode(out): if not NULL, the entry's mode read before the mutex is released (lock_find_class_entry ()) */
 static LK_ENTRY *
-lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, bool is_class)
+lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, bool is_class, LOCK * granted_mode)
 {
 #if !defined (SERVER_MODE)
   return NULL;
@@ -9816,7 +9780,7 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
 
   if (is_class)
     {
-      return lock_find_class_entry (tran_index, oid);
+      return lock_find_class_entry (tran_index, oid, granted_mode);
     }
 
   /* search hash */
@@ -9830,6 +9794,10 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
   if (res_ptr == NULL)
     {
       /* not found */
+      if (granted_mode != NULL)
+	{
+	  *granted_mode = NULL_LOCK;
+	}
       return NULL;
     }
 
@@ -9842,51 +9810,23 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
 	}
     }
 
+  if (granted_mode != NULL)
+    {
+      *granted_mode = (entry_ptr != NULL) ? entry_ptr->granted_mode : NULL_LOCK;
+    }
   pthread_mutex_unlock (&res_ptr->res_mutex);
   return entry_ptr;
 #endif
 }
 
 #if defined (SERVER_MODE)
-/*
- * lock_find_tran_hold_mode () - the mode lock_find_tran_hold_entry () finds, read before the mutex is released
- *   return: the granted mode, or NULL_LOCK
- *
- * Note: for a reader that does not enter the lock_group; see lock_find_class_mode ().
- */
+/* lock_find_tran_hold_mode () - the mode lock_find_tran_hold_entry () finds, or NULL_LOCK */
 static LOCK
 lock_find_tran_hold_mode (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, bool is_class)
 {
-  LK_RES_KEY search_key;
-  LK_RES *res_ptr;
-  LK_ENTRY *entry_ptr;
   LOCK granted_mode = NULL_LOCK;
 
-  if (is_class)
-    {
-      return lock_find_class_mode (tran_index, oid);
-    }
-
-  search_key = lock_create_search_key ((OID *) oid, NULL);
-  if (search_key.type != LOCK_RESOURCE_ROOT_CLASS)
-    {
-      search_key.type = LOCK_RESOURCE_INSTANCE;
-    }
-  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
-  if (res_ptr == NULL)
-    {
-      return NULL_LOCK;
-    }
-  for (entry_ptr = res_ptr->holder; entry_ptr != NULL; entry_ptr = entry_ptr->next)
-    {
-      if (entry_ptr->tran_index == tran_index)
-	{
-	  granted_mode = entry_ptr->granted_mode;
-	  break;
-	}
-    }
-  pthread_mutex_unlock (&res_ptr->res_mutex);
-
+  (void) lock_find_tran_hold_entry (thread_p, tran_index, oid, is_class, &granted_mode);
   return granted_mode;
 }
 #endif /* SERVER_MODE */
@@ -10534,7 +10474,7 @@ lock_notify_isolation_incons (THREAD_ENTRY * thread_p, bool (*fun) (const OID * 
       return;			/* Nothing went to the non-2PL list */
     }
 
-  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_GROUP_NEVER_REFUSED);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   rv = pthread_mutex_lock (&tran_lock->non2pl_mutex);
 
@@ -11918,7 +11858,7 @@ lock_clear_deadlock_victim (int tran_index)
   return;
 #else /* !SERVER_MODE */
   int rv;
-  lock_group_guard guard (lock_guard_group (tran_index), NULL, LK_GROUP_RELEASE);
+  lock_group_guard guard (lock_guard_group (tran_index), NULL, LK_GROUP_NEVER_REFUSED);
 
   /* a sibling in the section may be returning on the victim state this clears */
   assert (!lk_Gl.tran_lock_table[tran_index].group.in_section ());
