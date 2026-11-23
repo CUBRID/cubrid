@@ -574,6 +574,7 @@ valid options:\n\
       --latest-image          when dumping objects, it dumps the latest image of objects in data volumes, not referring to log volumes (ignoring MVCC)\n\
                               It could include uncommitted data and deleted data which is not vacuummed; default: disabled\n\
       --data-format=NUMBER    0: text, 1: binary, 2: binary compressed with LZ4; default: 0\n\
+      --read-ahead-sectors=NUMBER upper bound of the sectors (64 pages each) the server reads ahead while it reads a table; the server tunes the distance below it; 0: no read-ahead; default: 32 maximum: 32\n\
   -t, --thread-count=COUNT    Number of threads; default: 1 maximum: 127\n\
       --enhanced-estimates    Obtaining the exact number of records in the table to unload; default: disabled\n\
   -v, --verbose               enable verbose status messages; default: disabled\n\

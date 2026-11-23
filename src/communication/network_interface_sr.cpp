@@ -930,7 +930,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   char *content_ptr;
   int content_size;
   int num_objs = 0;
-  int nparallel_process, nparallel_process_idx, request_pages;
+  int nparallel_process, nparallel_process_idx, request_pages, read_ahead_sectors;
   NET_ENDIAN server_endian = get_endian_type ();
   int client_endian;
   int encode_endian = 1;
@@ -945,6 +945,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   ptr = or_unpack_int (ptr, &request_pages);
   ptr = or_unpack_int (ptr, &nparallel_process);
   ptr = or_unpack_int (ptr, &nparallel_process_idx);
+  ptr = or_unpack_int (ptr, &read_ahead_sectors);
   ptr = or_unpack_int (ptr, &client_endian);
 
   if ((NET_ENDIAN) client_endian == server_endian && server_endian != NET_ENDIAN_UNKNOWN)
@@ -968,7 +969,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   copy_area = NULL;
   success =
 	  xlocator_fetch_all (thread_p, &hfid, &lock, (LC_FETCH_VERSION_TYPE) fetch_version_type, &class_oid, &nobjects,
-			      &nfetched, &last_oid, &copy_area, request_pages, nparallel_process >= 1);
+			      &nfetched, &last_oid, &copy_area, request_pages, nparallel_process >= 1, read_ahead_sectors);
 
   if (nparallel_process > 1)
     {

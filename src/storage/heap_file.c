@@ -3020,6 +3020,19 @@ heap_page_list_fix_next (THREAD_ENTRY * thread_p, const HFID * hfid, const FILE_
 }
 
 /*
+ * heap_file_order_read_ahead_init () - the read-ahead of a new file-order cache: off until a walk gives its upper
+ *					 bound (heap_file_order_scan_start ())
+ */
+static void
+heap_file_order_read_ahead_init (HEAP_FILE_ORDER_READ_AHEAD * ra)
+{
+  memset (ra, 0, sizeof (*ra));
+  ra->distance = 1;
+  ra->cur_idx = -1;
+  ra->avg_stall_us = -1;
+}
+
+/*
  * heap_file_order_cache_get () - a heap's data sectors in file order for a walk under a snapshot: the cached ones
  *				   when they were taken for the same transaction, snapshot build and class, taken
  *				   again otherwise
@@ -3070,6 +3083,7 @@ heap_file_order_cache_get (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_CACHE ** cac
   HFID_COPY (&cache->hfid, hfid);
   cache->nsects = collector.nsects;
   cache->sectors = NULL;
+  heap_file_order_read_ahead_init (&cache->ra);
 
   if (collector.nsects > 0)
     {
@@ -3125,6 +3139,7 @@ heap_file_order_cache_free (HEAP_FILE_ORDER_CACHE ** cache_p)
  *   nparts(in), part(in): read only the sectors whose id modulo nparts is part; nparts 1 reads every sector
  *   resume_oid(in): the last row a previous walk of the same heap returned; NULL or a null OID starts at the first
  *		     sector
+ *   read_ahead_max(in): the upper bound of the read-ahead distance in sectors; 0 gives no hints
  *   scan(out): the walk
  *
  * Note: the position comes from the OID alone (the sector by binary search, the page offset by arithmetic), so no
@@ -3135,8 +3150,8 @@ heap_file_order_cache_free (HEAP_FILE_ORDER_CACHE ** cache_p)
  *	 far apart in the file, and following the links there defeats the read-ahead of the volume reads.
  */
 void
-heap_file_order_scan_start (const HFID * hfid, const HEAP_FILE_ORDER_CACHE * cache, int nparts, int part,
-			    const OID * resume_oid, HEAP_FILE_ORDER_SCAN * scan)
+heap_file_order_scan_start (const HFID * hfid, HEAP_FILE_ORDER_CACHE * cache, int nparts, int part,
+			    const OID * resume_oid, int read_ahead_max, HEAP_FILE_ORDER_SCAN * scan)
 {
   VSID target;
   int lo, hi;
@@ -3153,6 +3168,9 @@ heap_file_order_scan_start (const HFID * hfid, const HEAP_FILE_ORDER_CACHE * cac
   VPID_SET_NULL (&scan->vpid);
   VPID_SET_NULL (&scan->resume_vpid);
   OID_SET_NULL (&scan->last_oid);
+  scan->ra = &cache->ra;
+  scan->ra->max = MAX (read_ahead_max, 0);
+  scan->ra->distance = MAX (MIN (scan->ra->distance, scan->ra->max), 1);
 
   if (resume_oid == NULL || OID_ISNULL (resume_oid))
     {
@@ -3189,6 +3207,190 @@ heap_file_order_scan_start (const HFID * hfid, const HEAP_FILE_ORDER_CACHE * cac
     }
 }
 
+/* a page fix longer than this waited for the device: a page in the buffer or in the OS page cache takes a few
+ * microseconds, a read from the device a hundred or more */
+#define HEAP_FILE_ORDER_RA_STALL_US (50)
+/* the sectors read at a raised distance that judge the raise */
+#define HEAP_FILE_ORDER_RA_WINDOW (16)
+/* the sectors a raise that did not help keeps the distance from going higher */
+#define HEAP_FILE_ORDER_RA_HOLD (256)
+/* the sectors in a row whose hints find every page in the buffer before the distance goes down by one */
+#define HEAP_FILE_ORDER_RA_QUIET (8)
+
+/*
+ * heap_file_order_scan_hint () - hint the pages of the next sectors of the walk up to the read-ahead distance, so
+ *				   that the device reads them while the walk reads the current sector
+ *   scan(in/out): the walk
+ *
+ * Note: a sector is hinted once over all the fetch requests of the walk.  pgbuf_read_ahead () leaves out the pages
+ *	 in the buffer; when that leaves nothing several sectors in a row, the walk does not need the hints, and the
+ *	 distance goes down.
+ */
+static void
+heap_file_order_scan_hint (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_SCAN * scan)
+{
+  HEAP_FILE_ORDER_READ_AHEAD *ra = scan->ra;
+  int k, seen, hinted = 0, told = 0;
+
+  for (k = scan->sect_idx + 1, seen = 0; k < scan->nsects && seen < ra->distance; k++)
+    {
+      const FILE_PARTIAL_SECTOR *sector = &scan->sectors[k];
+      VPID vpids[DISK_SECTOR_NPAGES];
+      int n = 0;
+      int off;
+
+      if (scan->nparts > 1 && (sector->vsid.sectid % scan->nparts) != scan->part)
+	{
+	  continue;
+	}
+      seen++;
+      if (k < ra->next_idx)
+	{
+	  /* hinted before */
+	  continue;
+	}
+      for (off = 0; off < DISK_SECTOR_NPAGES; off++)
+	{
+	  if (bit64_is_set (sector->page_bitmap, off))
+	    {
+	      vpids[n].volid = sector->vsid.volid;
+	      vpids[n].pageid = SECTOR_FIRST_PAGEID (sector->vsid.sectid) + off;
+	      n++;
+	    }
+	}
+      if (n > 0)
+	{
+	  hinted += pgbuf_read_ahead (thread_p, vpids, n);
+	  told++;
+	}
+    }
+  ra->next_idx = MAX (ra->next_idx, k);
+
+  if (told == 0)
+    {
+      return;
+    }
+  if (hinted > 0)
+    {
+      ra->quiet = 0;
+    }
+  else if (++ra->quiet >= HEAP_FILE_ORDER_RA_QUIET && ra->distance > 1)
+    {
+      ra->distance--;
+      ra->quiet = 0;
+    }
+}
+
+/*
+ * heap_file_order_scan_tune () - judge the sector just read and tune the read-ahead distance
+ *   ra(in/out): the read-ahead
+ *
+ * Note: a sector in which more than one page in twenty waited for the device doubles the distance.  The raise is
+ *	 judged on the HEAP_FILE_ORDER_RA_WINDOW sectors read after the ones hinted at the old distance:
+ *	 - the wait grew by more than a fifth: back to the old distance;
+ *	 - the wait went down by less than a fifth: the device is the limit, so the distance stays and is not raised
+ *	   for a while, as a longer one only holds more pages in the caches;
+ *	 - otherwise the distance may be raised again.
+ *	 The window is long enough that the reads of other work on the device do not decide alone.
+ */
+static void
+heap_file_order_scan_tune (HEAP_FILE_ORDER_READ_AHEAD * ra)
+{
+  bool stalled = (ra->cur_stalled * 20 > ra->cur_pages);
+  int limit;
+
+  if (ra->avg_stall_us < 0)
+    {
+      ra->avg_stall_us = (double) ra->cur_stall_us;
+    }
+  else
+    {
+      ra->avg_stall_us = (15 * ra->avg_stall_us + (double) ra->cur_stall_us) / 16;
+    }
+
+  if (ra->ceiling_hold > 0 && --ra->ceiling_hold == 0)
+    {
+      ra->ceiling = 0;
+    }
+
+  if (ra->probing > 0)
+    {
+      ra->probing--;
+      return;
+    }
+  if (ra->window_left > 0)
+    {
+      ra->window_stall_us += ra->cur_stall_us;
+      if (--ra->window_left == 0)
+	{
+	  double after = (double) ra->window_stall_us / HEAP_FILE_ORDER_RA_WINDOW;
+
+	  if (after > 1.2 * ra->stall_before)
+	    {
+	      ra->ceiling = ra->prev_distance;
+	      ra->ceiling_hold = HEAP_FILE_ORDER_RA_HOLD;
+	      ra->distance = ra->prev_distance;
+	    }
+	  else if (after > 0.8 * ra->stall_before)
+	    {
+	      ra->ceiling = ra->distance;
+	      ra->ceiling_hold = HEAP_FILE_ORDER_RA_HOLD;
+	    }
+	}
+      return;
+    }
+
+  limit = (ra->ceiling > 0) ? MIN (ra->ceiling, ra->max) : ra->max;
+  if (stalled && ra->distance < limit)
+    {
+      ra->prev_distance = ra->distance;
+      ra->stall_before = ra->avg_stall_us;
+      ra->distance = MIN (ra->distance * 2, limit);
+      ra->probing = ra->distance;
+      ra->window_left = HEAP_FILE_ORDER_RA_WINDOW;
+      ra->window_stall_us = 0;
+    }
+}
+
+/*
+ * heap_file_order_scan_read_ahead () - count a page the walk fixed, and at a new sector tune the distance and hint
+ *   scan(in/out): the walk, at the page fixed
+ *   fix_us(in): how long the fix took
+ */
+static void
+heap_file_order_scan_read_ahead (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_SCAN * scan, INT64 fix_us)
+{
+  HEAP_FILE_ORDER_READ_AHEAD *ra = scan->ra;
+
+  if (ra->cur_idx != scan->sect_idx)
+    {
+      if (ra->cur_idx >= 0)
+	{
+	  heap_file_order_scan_tune (ra);
+	}
+      ra->cur_idx = scan->sect_idx;
+      ra->cur_pages = 0;
+      ra->cur_stalled = 0;
+      ra->cur_stall_us = 0;
+      heap_file_order_scan_hint (thread_p, scan);
+    }
+  ra->cur_pages++;
+  if (fix_us > HEAP_FILE_ORDER_RA_STALL_US)
+    {
+      ra->cur_stalled++;
+      ra->cur_stall_us += fix_us;
+    }
+}
+
+static INT64
+heap_file_order_now_us (void)
+{
+  struct timespec ts;
+
+  clock_gettime (CLOCK_MONOTONIC, &ts);
+  return (INT64) ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
 /*
  * heap_file_order_scan_next () - the next visible row of a file-order walk
  *   return: S_SUCCESS, S_END past the last sector, S_DOESNT_FIT (recdes->length is the row's negated length; the
@@ -3210,6 +3412,7 @@ heap_file_order_scan_next (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_SCAN * scan,
       if (VPID_ISNULL (&scan->vpid))
 	{
 	  VPID vpid = VPID_INITIALIZER;
+	  INT64 fix_start = 0;
 
 	  /* the next listed page of this part */
 	  code = S_END;
@@ -3224,6 +3427,10 @@ heap_file_order_scan_next (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_SCAN * scan,
 		  continue;
 		}
 
+	      if (scan->ra->max > 0)
+		{
+		  fix_start = heap_file_order_now_us ();
+		}
 	      code = heap_page_list_fix_next (thread_p, &scan->hfid, sector, &scan->pgoffset,
 					      &scan_cache->page_watcher, &vpid);
 	      if (code != S_END)
@@ -3245,6 +3452,11 @@ heap_file_order_scan_next (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_SCAN * scan,
 		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 		}
 	      return S_END;
+	    }
+
+	  if (scan->ra->max > 0)
+	    {
+	      heap_file_order_scan_read_ahead (thread_p, scan, heap_file_order_now_us () - fix_start);
 	    }
 
 	  /* resuming: go on after the last row only on its own page; when that page is gone the next one starts at

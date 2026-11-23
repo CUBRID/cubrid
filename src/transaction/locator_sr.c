@@ -2913,6 +2913,7 @@ locator_fetch_all_next (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_FILE_OR
  *   fetch_area(in/out): Pointer to area where the objects are placed
  *   request_pages(in): the pages' worth of objects to fetch at once
  *   in_file_order(in): unloaddb asks for the rows in file order (heap_file_order_scan_start ())
+ *   read_ahead_sectors(in): in file order, the upper bound of the read-ahead distance in sectors; 0 gives no hints
  *
  * Note: in file order, the heap's sectors are taken once per class and kept in the transaction descriptor until
  *	 the class is done (heap_file_order_cache_get ()); each call goes on from last_oid, so the walk's position
@@ -2924,7 +2925,7 @@ locator_fetch_all_next (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_FILE_OR
 int
 xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type,
 		    OID * class_oid, int *nobjects, int *nfetched, OID * last_oid, LC_COPYAREA ** fetch_area,
-		    int request_pages, bool in_file_order)
+		    int request_pages, bool in_file_order, int read_ahead_sectors)
 {
   HEAP_FILE_ORDER_SCAN file_order_scan;
   LOG_TDES *tdes = NULL;	/* keeps the sectors of a file-order walk between calls */
@@ -3055,7 +3056,9 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
 				   class_oid, hfid);
       if (error_code == NO_ERROR)
 	{
-	  heap_file_order_scan_start (hfid, tdes->file_order_cache, nparts, part, last_oid, &file_order_scan);
+	  read_ahead_sectors = MAX (MIN (read_ahead_sectors, LC_FETCH_READ_AHEAD_MAX_SECTORS), 0);
+	  heap_file_order_scan_start (hfid, tdes->file_order_cache, nparts, part, last_oid, read_ahead_sectors,
+				      &file_order_scan);
 	}
       else
 	{

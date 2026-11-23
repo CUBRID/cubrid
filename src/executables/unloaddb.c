@@ -70,6 +70,7 @@ FILE *output_file = NULL;
 
 int g_pre_alloc_varchar_size = DFLT_PRE_ALLOC_VARCHAR_SIZE;
 int g_request_pages = DFLT_REQ_DATASIZE;
+int g_read_ahead_sectors = LC_FETCH_READ_AHEAD_MAX_SECTORS;
 int g_parallel_process_cnt = -1;
 int g_parallel_process_idx = -1;
 
@@ -185,6 +186,20 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     {
       fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_REQUEST_PAGES_L,
 	       MAX_REQ_DATA_PAGES);
+      goto end;
+    }
+
+  /* the upper bound of the read-ahead distance the server tunes while it reads a class in file order; not given,
+   * the largest */
+  g_read_ahead_sectors = utility_get_option_int_value (arg_map, UNLOAD_READ_AHEAD_SECTORS_S);
+  if (g_read_ahead_sectors == -1)
+    {
+      g_read_ahead_sectors = LC_FETCH_READ_AHEAD_MAX_SECTORS;
+    }
+  else if (g_read_ahead_sectors < 0 || g_read_ahead_sectors > LC_FETCH_READ_AHEAD_MAX_SECTORS)
+    {
+      fprintf (stderr, "\nThe number of '--%s' option ranges from 0 to %d.\n", UNLOAD_READ_AHEAD_SECTORS_L,
+	       LC_FETCH_READ_AHEAD_MAX_SECTORS);
       goto end;
     }
 

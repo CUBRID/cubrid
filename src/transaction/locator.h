@@ -33,6 +33,10 @@
 #include "lock_table.h"		// lock_conv
 #include "thread_compat.hpp"
 
+/* the upper bound of the read-ahead distance in sectors a fetch of all the rows of a class takes (unloaddb
+ * --read-ahead-sectors); a sector is 64 pages */
+#define LC_FETCH_READ_AHEAD_MAX_SECTORS (32)
+
 #define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 4 + \
                                     OR_HFID_SIZE + \
                                     OR_OID_SIZE * 2)

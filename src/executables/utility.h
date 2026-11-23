@@ -1483,6 +1483,8 @@ typedef struct _ha_config
 #define UNLOAD_ENHANCED_ESTIMATES_L             "enhanced-estimates"
 #define UNLOAD_DATA_FORMAT_S                    11928
 #define UNLOAD_DATA_FORMAT_L                    "data-format"
+#define UNLOAD_READ_AHEAD_SECTORS_S             11929
+#define UNLOAD_READ_AHEAD_SECTORS_L             "read-ahead-sectors"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'

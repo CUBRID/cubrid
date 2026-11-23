@@ -487,6 +487,29 @@ extern bool heap_page_belongs_to_class (THREAD_ENTRY * thread_p, PAGE_PTR page_h
 
 /* a heap's data sectors in file order, taken after a snapshot and kept for the calls that walk the heap with it
  * (heap_file_order_cache_get ()); unloaddb keeps one in its transaction descriptor between fetch calls */
+/* the read-ahead of a file-order walk: the pages of the next sectors of the walk are hinted to the OS while it reads
+ * the current one; the distance in sectors is tuned while the walk goes (heap_file_order_scan_tune ()) */
+typedef struct heap_file_order_read_ahead HEAP_FILE_ORDER_READ_AHEAD;
+struct heap_file_order_read_ahead
+{
+  int max;			/* the upper bound of the distance; 0 turns the hints off */
+  int distance;			/* the sectors of the walk hinted ahead of the one being read */
+  int next_idx;			/* the first sector not hinted yet */
+  int cur_idx;			/* the sector the counters below are for; -1 before the first */
+  int cur_pages;		/* the pages fixed in that sector */
+  int cur_stalled;		/* ... of them, the ones that waited for the device */
+  INT64 cur_stall_us;		/* ... and how long they waited */
+  double avg_stall_us;		/* the wait per sector, smoothed; negative before the first sector */
+  int probing;			/* after a raise: the sectors hinted at the old distance still to be read */
+  int window_left;		/* after those: the sectors left in the window that judges the raise */
+  INT64 window_stall_us;	/* the wait in that window */
+  double stall_before;		/* avg_stall_us at the raise */
+  int prev_distance;		/* the distance before the raise */
+  int ceiling;			/* while ceiling_hold is positive, the distance is not raised over ceiling */
+  int ceiling_hold;
+  int quiet;			/* the sectors in a row whose hints found every page in the buffer */
+};
+
 typedef struct heap_file_order_cache HEAP_FILE_ORDER_CACHE;
 struct heap_file_order_cache
 {
@@ -496,6 +519,7 @@ struct heap_file_order_cache
   HFID hfid;
   int nsects;
   FILE_PARTIAL_SECTOR *sectors;	/* sorted by VSID; malloc'ed, so any thread may let them go */
+  HEAP_FILE_ORDER_READ_AHEAD ra;	/* kept over the fetch requests of the walk */
 };
 
 extern int heap_file_order_cache_get (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_CACHE ** cache_p, TRANID trid,
@@ -517,10 +541,11 @@ struct heap_file_order_scan
   VPID vpid;			/* the page being read; null between pages */
   VPID resume_vpid;		/* the page of the row to resume after, until the scan fixes it again */
   OID last_oid;			/* the last row returned from vpid; null at the page's start */
+  HEAP_FILE_ORDER_READ_AHEAD *ra;	/* the cache's read-ahead */
 };
 
-extern void heap_file_order_scan_start (const HFID * hfid, const HEAP_FILE_ORDER_CACHE * cache, int nparts, int part,
-					const OID * resume_oid, HEAP_FILE_ORDER_SCAN * scan);
+extern void heap_file_order_scan_start (const HFID * hfid, HEAP_FILE_ORDER_CACHE * cache, int nparts, int part,
+					const OID * resume_oid, int read_ahead_max, HEAP_FILE_ORDER_SCAN * scan);
 extern SCAN_CODE heap_file_order_scan_next (THREAD_ENTRY * thread_p, HEAP_FILE_ORDER_SCAN * scan, OID * class_oid,
 					    OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					    HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
