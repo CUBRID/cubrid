@@ -2765,6 +2765,9 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 	      return oos_err;
 	    }
 
+	  /* as for REC_RELOCATION above */
+	  heap_bestspace_feedback (thread_p, &helper->hfid, helper->home_page);
+
 	  vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, oos_emptied_pages_out);
 	}
       else
@@ -2873,8 +2876,9 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
  * unlatch_page (in) : Release the page latch.
  *
  * Note: the slots logged here are reported to the bestspace map when the visit ends or the latch is released. A call
- *	 that keeps the latch comes right before a REC_RELOCATION or REC_BIGONE removal, which reports the page before
- *	 its system operation commits. The other changes of the home page are reported when they are logged.
+ *	 that keeps the latch comes right before a removal in a system operation (REC_RELOCATION, REC_BIGONE, or a
+ *	 REC_HOME with OOS values), which reports the page before its system operation commits. The other changes of
+ *	 the home page are reported when they are logged.
  */
 static void
 vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool update_best_space_stat,
