@@ -19,6 +19,7 @@
 #ifndef _LOC_RECOVERY_REDO_HPP_
 #define _LOC_RECOVERY_REDO_HPP_
 
+#include "disk_manager.h"
 #include "heap_file.h"
 #include "log_compress.h"
 #include "log_lsa.hpp"
@@ -605,9 +606,10 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
     {
       /* nothing else needs to be done, see explanation in function */
       assert (rcv.pgptr == nullptr);
-      if (log_data.rcvindex == RVHF_CHAIN && !LOG_ISRESTARTED ())
+      if ((log_data.rcvindex == RVHF_CHAIN && !LOG_ISRESTARTED ()) || log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
 	{
-	  // the page (deallocated, or newer than this record) may not show this chain change: use the record image
+	  // the page (deallocated, or newer than this record) may not show this change, but recovery must still learn it
+	  // from the record image: a heap chain change for the bestspace map, or the sectors that were freed
 	  rcv.length = log_rv_get_log_rec_redo_length<T> (record_info.m_logrec);
 	  rcv.offset = log_rv_get_log_rec_offset<T> (record_info.m_logrec);
 	  if (log_rv_get_log_rec_redo_data<T> (thread_p, redo_context, record_info, rcv) != NO_ERROR)
@@ -615,7 +617,14 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_log_rec_redo_data");
 	      return;
 	    }
-	  heap_bestspace_rv_record_chain (thread_p, &rcv_vpid, rcv.data, rcv.length, &record_info.m_start_lsa);
+	  if (log_data.rcvindex == RVHF_CHAIN)
+	    {
+	      heap_bestspace_rv_record_chain (thread_p, &rcv_vpid, rcv.data, rcv.length, &record_info.m_start_lsa);
+	    }
+	  else
+	    {
+	      disk_rv_note_unreserved_sectors (&rcv_vpid, rcv.offset, rcv.data, &record_info.m_start_lsa);
+	    }
 	}
       return;
     }
@@ -643,6 +652,11 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_get_log_rec_redo_data");
       // rcv pgptr will be automatically unfixed
       return;
+    }
+
+  if (log_data.rcvindex == RVDK_UNRESERVE_SECTORS)
+    {
+      disk_rv_note_unreserved_sectors (&rcv_vpid, rcv.offset, rcv.data, &record_info.m_start_lsa);
     }
 
   rvfun::fun_t redofunc = log_rv_get_fun<T> (record_info.m_logrec, log_data.rcvindex);

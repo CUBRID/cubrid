@@ -24,40 +24,10 @@
 #include "dbtype_def.h"
 #include "schema_system_catalog_install.hpp"
 
-#include "authenticate.h"
 #include "schema_system_catalog_constants.h"
+#include "schema_system_metadata_query_spec.hpp"
 #include "sp_catalog.hpp"
 #include "trigger_manager.h"
-
-// TODO: Add checking the following rules in compile time (@hgryoo)
-/*
- * Please follow the rules below when writing query specifications for system virtual classes.
- *
- *  1. First indent 1 tab, then 2 spaces.
- *     - The CASE statement indents 2 spaces until the END.
- *  2. All lines do not start with a space.
- *  3. All lines end with a space. However, the following case does not end with a space.
- *     - If the current line ends with "(", it ends without a space.
- *     - If the next line starts with ")", the current line ends without a space.
- *  4. Add a space before "(" and after ")". Remove spaces after "(" and before ")".
- *  5. Add a space before "{" and after "}". Remove spaces after "{" and before "}".
- *  6. Add a space before and after "+" and "=" operators.
- *  7. Change the line.
- *     - In the SELECT, FROM, WHERE, and ORDER BY clauses, change the line.
- *     - After the SELECT, FROM, WHERE, and ORDER BY keywords, change the line.
- *     - In the AND and OR clauses, change the line.
- *     - In more than one TABLE expression, change the line.
- *  8. Do not change the line.
- *     - If the expression length is less than 120 characters, write it on one line.
- *     - In the CASE statement, write the WHEN and THEN clauses on one line.
- *     - In the FROM clause, write a TABLE expression and related tables on one line.
- *  9. In the SELECT and FROM clauses, use the AS keyword before alias.
- * 10. If the CAST function is used, write a comment about the data type being changed.
- * 11. If column are compared without changing in the CASE statement, write the column name after the CASE keyword.
- * 12. If %s (Format Specifier) is used in the FROM clause, write a comment about the value to be used.
- * 13. Because path expression cannot be used in ANSI style, write a join condition in the WHERE clause.
- *
- */
 
 std::string
 sm_define_view_class_spec (void)
@@ -96,52 +66,11 @@ sm_define_view_class_spec (void)
 	  "[%s] AS [coll] "
 	"WHERE "
 	  "[c].[collation_id] = [coll].[coll_id] "
-	  "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[c].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[c].[class_of]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
-	    ")",
+	  "AND " AUTH_CHECK_PRIVILEGE ("[c].[owner].[name]", "[c].[class_of]", "SELECT"),
 	CT_PARTITION_NAME,
         SM_CLASSFLAG_REUSE_OID,
 	CT_CLASS_NAME,
-	CT_COLLATION_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	CT_COLLATION_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -164,47 +93,8 @@ sm_define_view_direct_super_class_spec (void)
 	  /* CT_CLASS_NAME */
 	  "[%s] AS [c], TABLE ([c].[super_classes]) AS [t] ([s]) "
 	"WHERE "
-	  "{'DBA'} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[c].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[c].[class_of]} SUBSETEQ ("
-	      "SELECT "
-		"SUM (SET {[au].[object_of]}) "
-	      "FROM "
-		/* CT_CLASSAUTH_NAME */
-		"[%s] AS [au] "
-	      "WHERE "
-		"{[au].[grantee].[name]} SUBSETEQ ("
-		    "SELECT "
-		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		    "FROM "
-		      /* AU_USER_CLASS_NAME */
-		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		    "WHERE "
-		      "[u].[name] = CURRENT_USER"
-		  ") "
-		"AND [au].[auth_type] = 'SELECT'"
-	    ")",
-	CT_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	  AUTH_CHECK_PRIVILEGE ("[c].[owner].[name]", "[c].[class_of]", "SELECT"),
+	CT_CLASS_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -234,50 +124,9 @@ sm_define_view_vclass_spec (void)
 	  "[%s] AS [c] "
 	"WHERE "
 	  "[q].[class_of] = [c] "
-	  "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[q].[class_of].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[q].[class_of].[class_of]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
-	    ")",
+	  "AND " AUTH_CHECK_PRIVILEGE ("[q].[class_of].[owner].[name]", "[q].[class_of].[class_of]", "SELECT"),
 	CT_QUERYSPEC_NAME,
-	CT_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	CT_CLASS_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -336,44 +185,7 @@ sm_define_view_attribute_spec (void)
 	  "[a].[class_of] = [c] "
 	  "AND [d].[object_of] = [a] "
 	  "AND [d].[data_type] = [t].[type_id] "
-	  "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[c].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[c].[class_of]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
-	    ")",
+	  "AND " AUTH_CHECK_PRIVILEGE ("[c].[owner].[name]", "[c].[class_of]", "SELECT"),
 	DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
 	DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
 	CT_CHARSET_NAME,
@@ -387,11 +199,7 @@ sm_define_view_attribute_spec (void)
 	CT_CLASS_NAME,
 	CT_ATTRIBUTE_NAME,
 	CT_DOMAIN_NAME,
-	CT_DATATYPE_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	CT_DATATYPE_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -429,52 +237,11 @@ sm_define_view_attr_setdomain_elm_spec (void)
 	  "[a].[class_of] = [c] "
 	  "AND [d].[object_of] = [a] "
 	  "AND [e].[data_type] = [et].[type_id] "
-	  "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[c].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[c].[class_of]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
-	    ")",
+	  "AND " AUTH_CHECK_PRIVILEGE ("[c].[owner].[name]", "[c].[class_of]", "SELECT"),
 	CT_CLASS_NAME,
 	CT_ATTRIBUTE_NAME,
 	CT_DOMAIN_NAME,
-	CT_DATATYPE_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	CT_DATATYPE_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -504,50 +271,9 @@ sm_define_view_method_spec (void)
 	  "[%s] AS [s] "
 	"WHERE "
 	  "[s].[meth_of] = [m] "
-	  "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[m].[class_of].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[m].[class_of].[class_of]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
-	    ")",
+	  "AND " AUTH_CHECK_PRIVILEGE ("[m].[class_of].[owner].[name]", "[m].[class_of].[class_of]", "SELECT"),
 	CT_METHOD_NAME,
-	CT_METHSIG_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	CT_METHSIG_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -586,52 +312,11 @@ sm_define_view_method_arg_spec (void)
 	  "[a].[meth_sig_of] = [s] "
 	  "AND [d].[object_of] = [a] "
 	  "AND [d].[data_type] = [t].[type_id] "
-	  "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[s].[meth_of].[class_of].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[s].[meth_of].[class_of].[class_of]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
-	    ")",
+	  "AND " AUTH_CHECK_PRIVILEGE ("[s].[meth_of].[class_of].[owner].[name]", "[s].[meth_of].[class_of].[class_of]", "SELECT"),
 	CT_METHSIG_NAME,
 	CT_METHARG_NAME,
 	CT_DOMAIN_NAME,
-	CT_DATATYPE_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	CT_DATATYPE_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -670,52 +355,11 @@ sm_define_view_meth_arg_setdomain_elm_spec (void)
 	  "[a].[meth_sig_of] = [s] "
 	  "AND [d].[object_of] = [a] "
 	  "AND [e].[data_type] = [et].[type_id] "
-	  "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[s].[meth_of].[class_of].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[s].[meth_of].[class_of].[class_of]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
-	    ")",
+	  "AND " AUTH_CHECK_PRIVILEGE ("[s].[meth_of].[class_of].[owner].[name]", "[s].[meth_of].[class_of].[class_of]", "SELECT"),
 	CT_METHSIG_NAME,
 	CT_METHARG_NAME,
 	CT_DOMAIN_NAME,
-	CT_DATATYPE_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	CT_DATATYPE_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -739,47 +383,8 @@ sm_define_view_meth_file_spec (void)
 	  /* CT_METHFILE_NAME */
 	  "[%s] AS [f] "
 	"WHERE "
-	  "{'DBA'} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[f].[class_of].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[f].[class_of].[class_of]} SUBSETEQ ("
-	      "SELECT "
-		"SUM (SET {[au].[object_of]}) "
-	      "FROM "
-		/* CT_CLASSAUTH_NAME */
-		"[%s] AS [au] "
-	      "WHERE "
-		"{[au].[grantee].[name]} SUBSETEQ ("
-		    "SELECT "
-		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		    "FROM "
-		      /* AU_USER_CLASS_NAME */
-		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		    "WHERE "
-		      "[u].[name] = CURRENT_USER"
-		  ") "
-		"AND [au].[auth_type] = 'SELECT'"
-	    ")",
-	CT_METHFILE_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	  AUTH_CHECK_PRIVILEGE ("[f].[class_of].[owner].[name]", "[f].[class_of].[class_of]", "SELECT"),
+	CT_METHFILE_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -850,49 +455,10 @@ sm_define_view_index_spec (void)
 	  "LEFT OUTER JOIN [%s] AS [ref_pk] "
 	    "ON [ref_pk].[class_of] = [ref_class] AND [ref_pk].[is_primary_key] = 1 "
 	"WHERE "
-	  "{'DBA'} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[i].[class_of].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[i].[class_of].[class_of]} SUBSETEQ ("
-	      "SELECT "
-		"SUM (SET {[au].[object_of]}) "
-	      "FROM "
-		/* CT_CLASSAUTH_NAME */
-		"[%s] AS [au] "
-	      "WHERE "
-		"{[au].[grantee].[name]} SUBSETEQ ("
-		    "SELECT "
-		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		    "FROM "
-		      /* AU_USER_CLASS_NAME */
-		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		    "WHERE "
-		      "[u].[name] = CURRENT_USER"
-		  ") "
-		"AND [au].[auth_type] = 'SELECT'"
-	    ")",
+	  AUTH_CHECK_PRIVILEGE ("[i].[class_of].[owner].[name]", "[i].[class_of].[class_of]", "SELECT"),
 	CT_INDEX_NAME,
 	CT_CLASS_NAME,
-	CT_INDEX_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	CT_INDEX_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -919,47 +485,8 @@ sm_define_view_index_key_spec (void)
 	  /* CT_INDEXKEY_NAME */
 	  "[%s] AS [k] "
 	"WHERE "
-	  "{'DBA'} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[k].[index_of].[class_of].[class_of]} SUBSETEQ ("
-	      "SELECT "
-		"SUM (SET {[au].[object_of]}) "
-	      "FROM "
-		/* CT_CLASSAUTH_NAME */
-		"[%s] AS [au] "
-	      "WHERE "
-		"{[au].[grantee].[name]} SUBSETEQ ("
-		    "SELECT "
-		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		    "FROM "
-		      /* AU_USER_CLASS_NAME */
-		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		    "WHERE "
-		      "[u].[name] = CURRENT_USER"
-		  ") "
-	    "AND [au].[auth_type] = 'SELECT'"
-	    ")",
-	CT_INDEXKEY_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	  AUTH_CHECK_PRIVILEGE ("[k].[index_of].[class_of].[owner].[name]", "[k].[index_of].[class_of].[class_of]", "SELECT"),
+	CT_INDEXKEY_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -989,17 +516,7 @@ sm_define_view_auth_spec (void)
 	"WHERE "
           "[a].[object_of] = [c].[class_of] "
           "AND [a].[object_type] = 0 "
-          "AND ( "
-	  "{'DBA', [c].[owner].[name], [a].[grantee].[name], [a].[grantor].[name]} * ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") SETNEQ {}"
-	  ") "
+          "AND " AUTH_CHECK_USER ("[c].[owner].[name], [a].[grantee].[name], [a].[grantor].[name]") " "
    "UNION ALL "
         "SELECT "
 	  "[a].[grantor].[name] AS [grantor_name], "
@@ -1017,24 +534,12 @@ sm_define_view_auth_spec (void)
 	"WHERE "
           "[a].[object_of] = [s] "
           "AND [a].[object_type] = 5 "
-          "AND ( "
-	  "{'DBA', [s].[owner].[name], [a].[grantee].[name], [a].[grantor].[name]} * ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") SETNEQ {}"
-	  ") ",
+          "AND " AUTH_CHECK_USER ("[s].[owner].[name], [a].[grantee].[name], [a].[grantor].[name]") " ",
 	CT_CLASSAUTH_NAME,
         CT_CLASS_NAME,
-	AU_USER_CLASS_NAME,
 
         CT_CLASSAUTH_NAME,
-        CT_STORED_PROC_NAME,
-	AU_USER_CLASS_NAME
+        CT_STORED_PROC_NAME
         );
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
@@ -1067,48 +572,9 @@ sm_define_view_trigger_spec (void)
 	  /* CT_CLASS_NAME */
 	  "LEFT OUTER JOIN [%s] AS [c] ON [t].[target_class] = [c].[class_of] "
 	"WHERE "
-	  "{'DBA'} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[t].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[c].[class_of]} SUBSETEQ (" /* Why [c] and not [t].[target_class]? */
-	      "SELECT "
-		"SUM (SET {[au].[object_of]}) "
-	      "FROM "
-		/* CT_CLASSAUTH_NAME */
-		"[%s] AS [au] "
-	      "WHERE "
-		"{[au].[grantee].[name]} SUBSETEQ ("
-		    "SELECT "
-		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		    "FROM "
-		      /* AU_USER_CLASS_NAME */
-		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		    "WHERE "
-		      "[u].[name] = CURRENT_USER"
-		  ") "
-		"AND [au].[auth_type] = 'SELECT'"
-	    ")",
+	  AUTH_CHECK_PRIVILEGE ("[t].[owner].[name]", "[c].[class_of]", "SELECT"), /* Why [c] and not [t].[target_class]? */
 	TR_CLASS_NAME,
-	CT_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	CT_CLASS_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -1144,51 +610,10 @@ sm_define_view_partition_spec (void)
 	"WHERE "
 	  "[p].[class_of] = [c] "
 	  "AND [s] = [cc] "
-	  "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[p].[class_of].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[p].[class_of].[class_of]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
-	    ")",
+	  "AND " AUTH_CHECK_PRIVILEGE ("[p].[class_of].[owner].[name]", "[p].[class_of].[class_of]", "SELECT"),
 	CT_PARTITION_NAME,
 	CT_CLASS_NAME,
-	CT_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	CT_CLASS_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -1224,24 +649,7 @@ sm_define_view_stored_procedure_spec (void)
 	    "END AS [target], "
 	  "[sp].[owner].[name] AS [owner], "
           "CASE "
-	    "WHEN {'DBA'} SUBSETEQ ("
-	      "SELECT "
-	        "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-	        /* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-	        "[u].[name] = CURRENT_USER"
-	    ") THEN [sp_code].[scode] "
-	    "WHEN {[sp].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-	        "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-	        /* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-	        "[u].[name] = CURRENT_USER"
-	    ") THEN [sp_code].[scode] "
+	    "WHEN " AUTH_CHECK_USER ("[sp].[owner].[name]") " THEN [sp_code].[scode] "
 	    "ELSE NULL "
 	    "END AS [code], "
         "CASE [sp].[sql_data_access] "
@@ -1260,55 +668,12 @@ sm_define_view_stored_procedure_spec (void)
 	  /* CT_STORED_PROC_CODE_NAME */
           "LEFT OUTER JOIN [%s] AS [sp_code] ON [sp].[target_class] = [sp_code].[name] "
         "WHERE "
-          "[sp].[is_system_generated] = 0"
-          "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[sp].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[sp]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'EXECUTE'"
-		")"
-	    ")",
+          "[sp].[is_system_generated] = 0 "
+          "AND " AUTH_CHECK_PRIVILEGE ("[sp].[owner].[name]", "[sp]", "EXECUTE"),
 	CT_DATATYPE_NAME,
 	SP_DIRECTIVE_PARALLEL_ENABLE,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
 	CT_STORED_PROC_NAME,
-        CT_STORED_PROC_CODE_NAME,
-        AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+        CT_STORED_PROC_CODE_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -1342,53 +707,12 @@ sm_define_view_stored_procedure_args_spec (void)
 	  "[%s] AS [sp] "
         "WHERE "
           "[sp].[is_system_generated] = 0 "
-          "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[sp].[sp_of].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[sp].[sp_of]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'EXECUTE'"
-		")"
-	    ")"
+          "AND " AUTH_CHECK_PRIVILEGE ("[sp].[sp_of].[owner].[name]", "[sp].[sp_of]", "EXECUTE") " "
 	"ORDER BY " /* Is it possible to remove ORDER BY? */
 	  "[sp].[sp_of].[sp_name], "
 	  "[sp].[index_of]",
 	CT_DATATYPE_NAME,
-	CT_STORED_PROC_ARGS_NAME,
-        AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	CT_STORED_PROC_ARGS_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -1538,16 +862,7 @@ sm_define_view_user_spec (void)
 	  /* CT_USER_NAME */
 	  "[%s] AS [u] "
 	"WHERE "
-	  "{ 'DBA', [u].[name] } * ("
-	    "SELECT "
-	      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	    "FROM "
-	      /* CT_USER_NAME */
-	      "[%s] AS [uu], TABLE ([uu].[groups]) AS [t] ([g]) "
-	    "WHERE "
-	      "[uu].[name] = CURRENT_USER"
-	  ") SETNEQ {}",
-	CT_USER_NAME,
+	  AUTH_CHECK_USER ("[u].[name]"),
 	CT_USER_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
@@ -1569,17 +884,8 @@ sm_define_view_authorization_spec (void)
 	  /* CT_AUTHORIZATION_NAME */
 	  "[%s] AS [a] "
 	"WHERE "
-	  "{'DBA', [a].[owner].[name]} * ("
-	    "SELECT "
-	      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	    "FROM "
-	      /* AU_USER_CLASS_NAME */
-	      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	    "WHERE "
-	      "[u].[name] = CURRENT_USER"
-	  ") SETNEQ {}",
-	CT_AUTHORIZATION_NAME,
-	AU_USER_CLASS_NAME);
+	  AUTH_CHECK_USER ("[a].[owner].[name]"),
+	CT_AUTHORIZATION_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -1635,31 +941,9 @@ sm_define_view_synonym_spec (void)
 	  /* CT_SYNONYM_NAME */
 	  "[%s] AS [s] "
 	"WHERE "
-	  "{'DBA'} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR [s].[is_public] = 1 "
-	  "OR ("
-	      "[s].[is_public] = 0 "
-	      "AND {[s].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		")"
-	    ")",
-	CT_SYNONYM_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME);
+	  "[s].[is_public] = 1 "
+	  "OR " AUTH_CHECK_USER ("[s].[owner].[name]"),
+	CT_SYNONYM_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -1690,27 +974,8 @@ sm_define_view_server_spec (void)
 	  /* CT_SERVER_NAME */
 	  "[%s] AS [ds] "
 	"WHERE "
-	  "{'DBA'} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[ds].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ")",
-	CT_SERVER_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME);
+	  AUTH_CHECK_USER ("[ds].[owner].[name]"),
+	CT_SERVER_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
@@ -1744,50 +1009,9 @@ sm_define_view_histogram_spec (void)
 	  "[%s] AS [c] "
 	"WHERE "
 	  "[h].[class_of] = [c].[class_of] "
-	  "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[c].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[h].[class_of]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
-	    ")",
+	  "AND " AUTH_CHECK_PRIVILEGE ("[c].[owner].[name]", "[h].[class_of]", "SELECT"),
 	CT_HISTOGRAM_NAME,
-	CT_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
+	CT_CLASS_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 

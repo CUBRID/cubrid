@@ -170,6 +170,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/fixed_size_allocator.hpp
+  ${BASE_DIR}/byte_span_writer.hpp
   ${BASE_DIR}/ifsys.hpp
   ${BASE_DIR}/filesys_parser.hpp
   ${BASE_DIR}/cgroup.hpp
@@ -200,6 +201,9 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_callback_sr.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
+  ${COMMUNICATION_DIR}/stream_session.cpp
+  ${COMMUNICATION_DIR}/stream_handle.cpp
+  ${COMMUNICATION_DIR}/stream_client.c
   )
 
 set(DEBUGGING_HEADERS
@@ -296,6 +300,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
+  ${QUERY_DIR}/expr_batch.c
   ${QUERY_DIR}/expr_compile.c
   ${QUERY_DIR}/query_opfunc.c
   ${QUERY_DIR}/query_reevaluation.cpp
@@ -308,14 +313,13 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
-  ${QUERY_DIR}/domain_plan.c
-  ${QUERY_DIR}/domain_resolve.c
   ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c
+  ${QUERY_DIR}/vacuum_oos.cpp
   ${QUERY_DIR}/xasl_cache.c
   ${QUERY_DIR}/xasl_to_stream.c
   )
@@ -361,10 +365,10 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/schema_class_truncator.cpp
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_system_catalog.cpp
-  ${OBJECT_DIR}/schema_system_catalog_builder.cpp
-  ${OBJECT_DIR}/schema_system_catalog_definition.cpp
   ${OBJECT_DIR}/schema_system_catalog_install.cpp
   ${OBJECT_DIR}/schema_system_catalog_install_query_spec.cpp
+  ${OBJECT_DIR}/schema_system_metadata_builder.cpp
+  ${OBJECT_DIR}/schema_system_metadata_definition.cpp
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c
@@ -374,8 +378,6 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
   ${OBJECT_DIR}/schema_information_schema.cpp
-  ${OBJECT_DIR}/schema_information_schema_builder.cpp
-  ${OBJECT_DIR}/schema_information_schema_definition.cpp
   ${OBJECT_DIR}/schema_information_schema_install.cpp
   ${OBJECT_DIR}/schema_information_schema_install_query_spec.cpp
   )
@@ -494,6 +496,7 @@ set(TRANSACTION_SOURCES
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
   ${TRANSACTION_DIR}/flashback.h
+  ${TRANSACTION_DIR}/lock_deferred_wake.hpp
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
   ${TRANSACTION_DIR}/log_archives.hpp
@@ -523,7 +526,10 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/bestspace_map.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
+  ${STORAGE_DIR}/btree_lock.cpp
   ${STORAGE_DIR}/btree_sort.c
+  ${STORAGE_DIR}/btree_sort_merge.cpp
+  ${STORAGE_DIR}/btree_sort_radix.cpp
   ${STORAGE_DIR}/btree_unique.cpp
   ${STORAGE_DIR}/byte_order.c
   ${STORAGE_DIR}/catalog_class.c
@@ -540,7 +546,12 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/file_manager.c
   ${STORAGE_DIR}/ftab_set.cpp
   ${STORAGE_DIR}/heap_file.c
+  ${STORAGE_DIR}/heap_oos.cpp
+  ${STORAGE_DIR}/heap_oos_value_ref.cpp
+  ${STORAGE_DIR}/heap_pending_record.cpp
   ${STORAGE_DIR}/oid.c
+  ${STORAGE_DIR}/oos_file.cpp
+  ${STORAGE_DIR}/oos_util.cpp
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
   ${STORAGE_DIR}/record_descriptor.cpp
@@ -555,6 +566,7 @@ set(STORAGE_SOURCES
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/bestspace.hpp
   ${STORAGE_DIR}/bestspace_map.hpp
+  ${STORAGE_DIR}/btree_lock.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/ftab_set.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
@@ -588,11 +600,13 @@ set(XASL_HEADERS
 set(HISTOGRAM_SOURCES
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/row_snapshot_cl.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_sampler_sr.cpp
 )
 set(HISTOGRAM_HEADERS
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/row_snapshot_cl.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_bucketizer.hpp
@@ -604,8 +618,10 @@ set(HISTOGRAM_HEADERS
 set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
+  ${LOADDB_DIR}/load_class_registry.cpp
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
+  ${LOADDB_DIR}/load_db_value_converter.cpp
   ${LOADDB_DIR}/load_driver.cpp
   ${LOADDB_DIR}/load_error_handler.cpp
   ${LOADDB_DIR}/load_object.c
@@ -616,7 +632,9 @@ set(LOADDB_SOURCES
 
 set(LOADDB_HEADERS
   ${BISON_loader_grammar_OUTPUT_HEADER}
+  ${LOADDB_DIR}/load_class_registry.hpp
   ${LOADDB_DIR}/load_common.hpp
+  ${LOADDB_DIR}/load_db_value_converter.hpp
   ${LOADDB_DIR}/load_driver.hpp
   ${LOADDB_DIR}/load_error_handler.hpp
   ${LOADDB_DIR}/load_object.h

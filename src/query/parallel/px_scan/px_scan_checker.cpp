@@ -49,6 +49,10 @@ namespace parallel_scan
   /* the checked part calls an SP not declared PARALLEL_ENABLE or a method: a px worker cannot
    * run it, since its callbacks to the client are never answered (CBRD-27596) */
   const possible_flags CANNOT_RUN_IN_WORKER = 0x1 << 3;
+  /* survives a subquery boundary: a subquery that reads or writes the session state keeps the
+   * scan serial as the same access in the block itself does */
+  const possible_flags SESSION_STATE_ACCESS = 0x1 << 4;
+  const possible_flags SUBQUERY_BLOCKERS = CANNOT_RUN_IN_WORKER | SESSION_STATE_ACCESS;
 
   static bool
   is_buildvalue_opt_supported_function (FUNC_CODE function)
@@ -159,6 +163,77 @@ namespace parallel_scan
   void process_xasl_node_recursive (XASL_NODE *arg);
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg, bool serialize_nested_parallel = false);
 
+  /* the aggregates qdata_aggregate_accumulator_to_accumulator () combines */
+  static bool
+  is_combinable_function (FUNC_CODE function)
+  {
+    switch (function)
+      {
+      case PT_COUNT_STAR:
+      case PT_COUNT:
+      case PT_MIN:
+      case PT_MAX:
+      case PT_SUM:
+      case PT_AVG:
+      case PT_AGG_BIT_AND:
+      case PT_AGG_BIT_OR:
+      case PT_AGG_BIT_XOR:
+      case PT_JSON_ARRAYAGG:
+      case PT_JSON_OBJECTAGG:
+      case PT_STDDEV:
+      case PT_STDDEV_POP:
+      case PT_STDDEV_SAMP:
+      case PT_VARIANCE:
+      case PT_VAR_POP:
+      case PT_VAR_SAMP:
+	return true;
+      default:
+	return false;
+      }
+  }
+
+  /* a GROUP BY skip runs in parallel (CBRD-27664) when its workers' partial aggregates combine in the leader's key
+   * order merge: every aggregate combines, its inputs are computable in a worker, and no group count stops the scan
+   * (groupby_num, which runs serially and stops early). The scan direction does not matter: a worker's run ends when
+   * its key goes back, and the merge compares keys in the GROUP BY order. */
+  static bool
+  is_groupby_skip_parallel (XASL_NODE *arg)
+  {
+    if (arg->type != BUILDLIST_PROC || arg->spec_list == nullptr || arg->spec_list->indexptr == nullptr
+	|| !arg->spec_list->indexptr->groupby_skip)
+      {
+	return false;
+      }
+    const BUILDLIST_PROC_NODE &buildlist = arg->proc.buildlist;
+    if (buildlist.groupby_list == nullptr || buildlist.g_grbynum_pred != nullptr)
+      {
+	return false;
+      }
+    possible_flags flags = check<false> (buildlist.g_scan_regu_list);
+    for (AGGREGATE_TYPE *agg = buildlist.g_agg_list; agg != nullptr; agg = agg->next)
+      {
+	if (agg->option == Q_DISTINCT || !is_combinable_function (agg->function))
+	  {
+	    return false;
+	  }
+	flags |= check<false> (agg);
+      }
+    return !is_flag_set (flags, CANNOT_PARALLEL_SCAN) && !is_flag_set (flags, CANNOT_RUN_IN_WORKER);
+  }
+
+  /* the list keeps the scan order as its result order: the planner dropped ORDER BY, or the executor skips its sort
+   * because after_iscan_list covers it. GROUP BY and DISTINCT sort anyway. */
+  static bool
+  is_scan_order_result (XASL_NODE *arg)
+  {
+    if (arg->type != BUILDLIST_PROC || arg->after_iscan_list == nullptr || arg->proc.buildlist.groupby_list != nullptr
+	|| arg->option == Q_DISTINCT)
+      {
+	return false;
+      }
+    return arg->orderby_list == nullptr || qfile_is_sort_list_covered (arg->after_iscan_list, arg->orderby_list);
+  }
+
   template <bool is_outptr_list>
   possible_flags check (REGU_VARIABLE *arg)
   {
@@ -171,6 +246,7 @@ namespace parallel_scan
     if (arg->xasl)
       {
 	temp = sibling_check<is_outptr_list> (arg->xasl);
+	result |= temp & SESSION_STATE_ACCESS;
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
@@ -215,7 +291,8 @@ namespace parallel_scan
 	result |= check<is_outptr_list> (arg->value.sp_ptr->args);
 	if (!px_sp_is_parallel_eligible (arg->value.sp_ptr->sig))
 	  {
-	    /* SP not executable in child threads. */
+	    /* SP not executable in child threads. It serializes the scan only outside the
+	     * output list; qo_check_serial_select_list_expr () (query_planner.c) mirrors that. */
 	    set_flag (result, CANNOT_RUN_IN_WORKER);
 	    set_flag (result, is_outptr_list ? CANNOT_LIST_MERGE : CANNOT_PARALLEL_SCAN);
 	  }
@@ -230,7 +307,7 @@ namespace parallel_scan
 	break;
       case TYPE_REGU_VAR_LIST:
 	temp = check<is_outptr_list> (arg->value.regu_var_list);
-	result |= temp & CANNOT_RUN_IN_WORKER;
+	result |= temp & SUBQUERY_BLOCKERS;
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
@@ -309,10 +386,15 @@ namespace parallel_scan
     result |= check<is_outptr_list> (arg->rightptr);
     result |= check<is_outptr_list> (arg->thirdptr);
     result |= check<is_outptr_list> (arg->pred);
+    /* also listed in qo_check_serial_block_expr () (query_planner.c) */
     if (arg->opcode == T_TRACE_STATS || arg->opcode == T_EVALUATE_VARIABLE || arg->opcode == T_DEFINE_VARIABLE
 	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_NEXT_VALUE)
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
+      }
+    if (arg->opcode == T_TRACE_STATS || arg->opcode == T_EVALUATE_VARIABLE || arg->opcode == T_DEFINE_VARIABLE)
+      {
+	set_flag (result, SESSION_STATE_ACCESS);
       }
     return result;
   }
@@ -429,16 +511,20 @@ namespace parallel_scan
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* keylimit: global cap incompatible with per-worker page split. */
-		if (arg->indexptr->key_info.is_user_given_keylimit)
+		/* the workers walk the leaf pages without the key limit, so a KEYLIMIT hint or any key limit keeps the
+		 * scan serial. This includes the one made from a ROWNUM predicate or LIMIT, which drops that predicate. */
+		if (arg->indexptr->key_info.is_user_given_keylimit || arg->indexptr->key_info.key_limit_l != NULL
+		    || arg->indexptr->key_info.key_limit_u != NULL)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* orderby/groupby skip (ascending or descending) needs globally ordered traversal.
-		 * orderby_desc/groupby_desc only tell the first sort column is DESC and are used only with skip
-		 * (see scan_get_index_oidset ()), so they alone do not prevent a parallel scan. */
-		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip)
+		/* orderby skip needs globally ordered traversal; a groupby skip, ascending or descending, merges
+		 * its workers' partial aggregates in key order, which its XASL check decides
+		 * (is_groupby_skip_parallel ()). orderby_desc/groupby_desc only tell the first sort column is DESC
+		 * and are used only with skip (see scan_get_index_oidset ()), so they alone do not prevent a
+		 * parallel scan. */
+		if (arg->indexptr->orderby_skip)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
@@ -485,6 +571,18 @@ namespace parallel_scan
     return result;
   }
 
+  /* the inner scans task::initialize () can open in a worker */
+  static bool
+  worker_opens (const ACCESS_SPEC_TYPE *spec)
+  {
+    if (spec->type == TARGET_LIST)
+      {
+	return true;
+      }
+    return spec->type == TARGET_CLASS
+	   && (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_INDEX);
+  }
+
   template <bool is_outptr_list>
   possible_flags sibling_check (ACCESS_SPEC_TYPE *arg)
   {
@@ -508,11 +606,15 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
 	return result;
       }
-    if (arg->type != TARGET_CLASS && arg->type != TARGET_LIST)
+    /* a worker that builds the list or the value itself opens this inner scan (task::initialize ()), and it
+     * opens a heap, a B-tree or a list only; any other inner -- JSON_TABLE, a set, a method -- stays with
+     * the leader, or the worker fails the query on it (CBRD-27674) */
+    if (!worker_opens (arg))
       {
 	set_flag (result, CANNOT_LIST_MERGE);
+	set_flag (result, CANNOT_BUILDVALUE_OPT);
       }
-    else
+    if (arg->type == TARGET_CLASS || arg->type == TARGET_LIST)
       {
 	result |= check<false> (arg->s.cls_node.cls_regu_list_pred);
 	result |= check<false> (arg->s.cls_node.cls_regu_list_rest);
@@ -520,7 +622,7 @@ namespace parallel_scan
       }
 
     /* the key filter and key ranges are evaluated by the thread that runs this scan too, for an NL
-     * inner at every outer row. Only an SP or method there counts, so a plan without one stays. */
+     * inner at every outer row. Only an SP, a method or a session state access there counts. */
     possible_flags temp = check<false> (arg->where_key) | check<false> (arg->where_range);
     if (arg->type == TARGET_CLASS && arg->indexptr != NULL)
       {
@@ -548,6 +650,7 @@ namespace parallel_scan
 	set_flag (result, CANNOT_RUN_IN_WORKER);
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
+    result |= temp & SESSION_STATE_ACCESS;
     return result;
   }
 
@@ -580,7 +683,7 @@ namespace parallel_scan
     for (XASL_NODE *xaslp = sibling->aptr_list; xaslp; xaslp = xaslp->next)
       {
 	result |= check<is_outptr_list> (xaslp);
-	result |= sibling_check<false> (xaslp) & CANNOT_RUN_IN_WORKER;
+	result |= sibling_check<false> (xaslp) & SUBQUERY_BLOCKERS;
       }
 
     if (sibling->bptr_list || sibling->fptr_list)
@@ -595,7 +698,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
-	result |= temp & CANNOT_RUN_IN_WORKER;
+	result |= temp & SUBQUERY_BLOCKERS;
       }
 
     if (sibling->connect_by_ptr)
@@ -610,7 +713,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
-	result |= temp & CANNOT_RUN_IN_WORKER;
+	result |= temp & SUBQUERY_BLOCKERS;
       }
 
     if (sibling->if_pred)
@@ -620,7 +723,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
-	result |= temp & CANNOT_RUN_IN_WORKER;
+	result |= temp & SUBQUERY_BLOCKERS;
       }
 
     if ((sibling->instnum_pred || sibling->instnum_val) && !is_renumberable_instnum (sibling)
@@ -636,7 +739,7 @@ namespace parallel_scan
 
     /* the thread that runs this block evaluates the rest of it as well: its select list, aggregates,
      * GROUP BY / analytic lists, later join tables, merged method scans, hierarchical query and nested
-     * blocks. Of these only an SP or method counts, so a subquery without one keeps its plan (CBRD-27596). */
+     * blocks. Of these only an SP, a method or a session state access counts. */
     temp = sibling_check<false> (sibling->scan_ptr);
     for (ACCESS_SPEC_TYPE *specp = sibling->merge_spec; specp; specp = specp->next)
       {
@@ -713,7 +816,11 @@ namespace parallel_scan
       default:
 	break;
       }
-    result |= temp & CANNOT_RUN_IN_WORKER;
+    result |= temp & SUBQUERY_BLOCKERS;
+    if (is_flag_set (result, SESSION_STATE_ACCESS))
+      {
+	set_flag (result, CANNOT_PARALLEL_SCAN);
+      }
 
     cache[sibling] = result;
     return result;
@@ -861,6 +968,11 @@ namespace parallel_scan
     switch (arg->type)
       {
       case BUILDLIST_PROC:
+	if (arg->spec_list != nullptr && arg->spec_list->indexptr != nullptr && arg->spec_list->indexptr->groupby_skip
+	    && !is_groupby_skip_parallel (arg))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
 	break;
       case BUILDVALUE_PROC:
 	/* agg-less buildvalue too: MERGEABLE_LIST would misread proc.buildlist in result_handler init. */
@@ -1052,7 +1164,7 @@ namespace parallel_scan
       case CTE_PROC:
 	if (arg->proc.cte.recursive_part)
 	  {
-	    /* nested sort/hash join serial too: qexec_execute_cte copies each iteration's result without dependents */
+	    /* the nested sorts and hash joins run serially too (parallelism 1), not only the scans */
 	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part, true);
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
@@ -1148,7 +1260,10 @@ namespace parallel_scan
      * top-N idiom, so keep list specs serial. Renumbering (instnum_pred == NULL) is unaffected. */
     const bool block_list_spec = (arg->instnum_pred != nullptr);
 
-    const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST);
+    /* a groupby skip that runs in parallel keeps the group order its ORDER BY skipped: the leader merges in key order;
+     * otherwise the list keeps the scan order when ORDER BY was skipped or its sort is skipped at run time */
+    const bool block_all_specs = (XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST) && !is_groupby_skip_parallel (arg))
+				 || is_scan_order_result (arg);
 
     if (is_flag_set (result, CANNOT_PARALLEL_SCAN) || block_all_specs)
       {
@@ -1297,6 +1412,11 @@ namespace parallel_scan
   }
 }
 
+/* The optimizer costs scans and nested-loop blocks as parallel only where this check lets them run in
+ * parallel, and it cannot call this check (it runs on the XASL, after the plan is chosen): the
+ * conditions that serialize a whole block -- the XASL types, the regu and operator kinds rejected in
+ * check () -- are repeated on the parse tree in qo_query_serial_level () (query_planner.c). Change
+ * both together. */
 extern int
 scan_check_parallel_scan_possible (XASL_NODE *xasl)
 {

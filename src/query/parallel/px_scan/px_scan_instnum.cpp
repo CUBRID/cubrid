@@ -239,7 +239,7 @@ namespace parallel_scan
       }
 
     /* the limit itself is resolved later, once a VAL_DESCR is available. */
-    draw.limit_rhs = get_instnum_upper_limit_rhs (x, &draw.is_less_than, &draw.limit_compare);
+    draw.limit_rhs = get_instnum_upper_limit_rhs (x, &draw.is_less_than, &draw.limit_term);
     if (draw.limit_rhs != nullptr)
       {
 	mode = instnum_mode::ATOMIC_DRAW;
@@ -257,6 +257,7 @@ namespace parallel_scan
   {
     DB_VALUE *limit_val = nullptr;
     INT64 raw_limit = 0;
+    DB_BIGINT saturated_limit = 0;
 
     if (fetch_peek_dbval (thread_p, draw.limit_rhs, vd, NULL, NULL, NULL, &limit_val) != NO_ERROR)
       {
@@ -268,7 +269,12 @@ namespace parallel_scan
 	TP_DOMAIN_STATUS dom_status;
 
 	db_make_null (&coerced);
-	dom_status = tp_value_coerce (limit_val, &coerced, &tp_Bigint_domain);
+	/* CBRD-27583: by the conversion the unpack found for the limit's term */
+	const DOMAIN_BOUND_CONVERSION *conversion = draw.limit_term->bound_conversion;
+	assert (conversion != NULL && conversion->source == DB_VALUE_DOMAIN_TYPE (limit_val));
+	dom_status = tp_value_coerce_with_converter (limit_val, &coerced, &tp_Bigint_domain,
+		     conversion != NULL ? conversion->source : DB_TYPE_NULL,
+		     conversion != NULL ? conversion->conv : NULL);
 	if (dom_status == DOMAIN_COMPATIBLE)
 	  {
 	    raw_limit = db_get_bigint (&coerced);
@@ -277,9 +283,9 @@ namespace parallel_scan
 		/* The coercion rounds, so ask the comparison itself - the question serial asks every
 		 * row - whether the rounded candidate qualifies, and step down once if it does not.
 		 * Rounding lands within 1, so that candidate and its predecessor are the only two.
-		 * It is the term's own comparison, as the load or resolve_domains resolved it. */
+		 * It is the term's own comparison, as unpack decided it (none: the values decide). */
 		DB_VALUE_COMPARE_RESULT cmp =
-			eval_compare_values_resolved (thread_p, draw.limit_compare, vd, &coerced, limit_val, 0, NULL);
+			eval_compare_values_resolved (thread_p, draw.limit_term->compare, vd, &coerced, limit_val, 0, NULL);
 		const bool qualifies = draw.is_less_than ? (cmp == DB_LT) : (cmp != DB_GT);
 		if (!qualifies)
 		  {
@@ -287,11 +293,15 @@ namespace parallel_scan
 		  }
 	      }
 	  }
-	else if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (limit_val) == DB_TYPE_NUMERIC)
+	else if (dom_status == DOMAIN_OVERFLOW
+		 && tp_value_to_row_bound (limit_val, draw.is_less_than,
+					   conversion != NULL ? conversion->source : DB_TYPE_NULL,
+					   conversion != NULL ? conversion->conv : NULL,
+					   &saturated_limit) == DOMAIN_COMPATIBLE)
 	  {
 	    /* serial widens inst_num() rather than coercing the bound, so out of BIGINT range a
 	     * positive bound admits every row and a negative one none (cf. key-limit handling). */
-	    raw_limit = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (limit_val) ? 0 : DB_BIGINT_MAX;
+	    raw_limit = (saturated_limit < 0) ? 0 : saturated_limit;
 	    er_clear ();
 	  }
 	else

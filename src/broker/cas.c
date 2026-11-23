@@ -65,6 +65,10 @@
 #include "connection_support.hpp"
 #include "broker_process_size.h"
 #include "cas_ssl.h"
+#include "release_string.h"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static char cas_db_name[MAX_HA_DBINFO_LENGTH];
 static char cas_db_user[SRV_CON_DBUSER_SIZE];
@@ -117,7 +121,14 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_prepare_and_execute,	/* CAS_FC_PREPARE_AND_EXECUTE */
   fn_cursor_close,		/* CAS_FC_CURSOR_CLOSE */
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
-  fn_set_cas_change_mode	/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_set_cas_change_mode,	/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_stream_send_data,		/* CAS_FC_STREAM_SEND_DATA */
+  fn_stream_end,		/* CAS_FC_STREAM_END */
+  fn_stream_init,		/* CAS_FC_STREAM_INIT */
+  fn_stream_abort,		/* CAS_FC_STREAM_ABORT */
+  fn_stream_read_open,		/* CAS_FC_STREAM_READ_OPEN */
+  fn_stream_read,		/* CAS_FC_STREAM_READ */
+  fn_stream_release		/* CAS_FC_STREAM_RELEASE */
 };
 
 static const char *server_func_name[] = {
@@ -164,8 +175,20 @@ static const char *server_func_name[] = {
   "fn_prepare_and_execute",
   "fn_cursor_close",
   "fn_get_shard_info",
-  "fn_set_cas_change_mode"
+  "fn_set_cas_change_mode",
+  "fn_stream_send_data",
+  "fn_stream_end",
+  "fn_stream_init",
+  "fn_stream_abort",
+  "fn_stream_read_open",
+  "fn_stream_read",
+  "fn_stream_release"
 };
+
+static_assert (sizeof (server_fn_table) / sizeof (server_fn_table[0]) == CAS_FC_MAX - 1,
+	       "server_fn_table must have one entry per CAS function code");
+static_assert (sizeof (server_func_name) / sizeof (server_func_name[0]) == CAS_FC_MAX - 1,
+	       "server_func_name must have one entry per CAS function code");
 
 
 static void set_db_connection_info (void);
@@ -227,7 +250,7 @@ main (int argc, char *argv[])
   program_name = argv[0];
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
-      printf ("%s\n", makestring (BUILD_NUMBER));
+      printf ("%s\n", rel_build_number ());
       return 0;
     }
 #else /* !WINDOWS */
@@ -282,6 +305,9 @@ cas_main (void)
   return cas_main_loop (&ops);
 }
 
+static_assert (SERVER_SESSION_KEY_SIZE + sizeof (SESSION_ID) + SESSION_SECRET_SIZE == DRIVER_SESSION_SIZE,
+	       "server session key + session id + session secret must be exactly the driver session id size");
+
 static void
 cas_make_session_for_driver (char *out)
 {
@@ -295,7 +321,7 @@ cas_make_session_for_driver (char *out)
   session = htonl (session);
   memcpy (out + size, &session, sizeof (SESSION_ID));
   size += sizeof (SESSION_ID);
-  memset (out + size, 0, DRIVER_SESSION_SIZE - size);
+  memcpy (out + size, db_get_session_secret (), SESSION_SECRET_SIZE);
 }
 
 static void
@@ -305,9 +331,10 @@ cas_set_session_id (T_BROKER_VERSION protocol, char *session)
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
     {
-      id = *(SESSION_ID *) (session + 8);
+      id = *(SESSION_ID *) (session + SERVER_SESSION_KEY_SIZE);
       id = ntohl (id);
       db_set_server_session_key (session);
+      db_set_session_secret (session + SERVER_SESSION_KEY_SIZE + sizeof (SESSION_ID));
       db_set_session_id (id);
       cas_log_write_and_end (0, false, "session id for connection %u", id);
     }
@@ -316,9 +343,11 @@ cas_set_session_id (T_BROKER_VERSION protocol, char *session)
       /* always create new session for old drivers */
       char key[] =
 	{ (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF };
+      char secret[SESSION_SECRET_SIZE] = { 0 };
 
       cas_log_write_and_end (0, false, "session id (old protocol) for connection 0");
       db_set_server_session_key (key);
+      db_set_session_secret (secret);
       db_set_session_id (DB_EMPTY_SESSION);
     }
 }
@@ -469,6 +498,8 @@ cas_cleanup_session (void)
   if (cas_main_fn_ret != FN_KEEP_SESS)
     {
       ux_end_session ();
+      /* the server session, and with it any stream session it held, is gone */
+      ux_stream_reset ();
     }
 
   if (is_xa_prepared ())
@@ -888,6 +919,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
   int con_status_to_restore, old_con_status;
   T_SERVER_FUNC server_fn;
   FN_RETURN fn_ret = FN_KEEP_CONN;
+  bool func_code_unknown;
 
   error_info_clear ();
   init_msg_header (&client_msg_header);
@@ -1033,8 +1065,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
 #if !defined(WINDOWS)
   /* Before start to execute a new request, try to reset a previous interrupt request we might have. The interrupt
-   * request arrived too late to interrupt the previous request and still remains. */
-  db_set_interrupt (0);
+   * request arrived too late to interrupt the previous request and still remains. Not while an upload is open: the
+   * statement is still running, and the stream's next request carries the interrupt to the server, which ends it. */
+  if (!ux_stream_is_open ())
+    {
+      db_set_interrupt (0);
+    }
 #endif /* !WINDOWS */
 
   if (cas_shard_flag == ON)
@@ -1078,7 +1114,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       return FN_CLOSE_CONN;
     }
 
-  if (func_code <= 0 || func_code >= CAS_FC_MAX)
+  if (func_code <= 0 || func_code >= CAS_FC_PROBE_MAX)
     {
       FREE_MEM (argv);
       FREE_MEM (read_msg);
@@ -1086,6 +1122,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       return FN_CLOSE_CONN;
     }
+  /* a code a later release adds: answered as not implemented, and it does no work in the transaction */
+  func_code_unknown = (func_code >= CAS_FC_MAX);
 
   /* PROTOCOL_V2 is used only 9.0.0 */
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
@@ -1103,9 +1141,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 	}
     }
 
+  ux_stream_note_status_before (is_first_request ? CON_STATUS_OUT_TRAN
+				: (con_status_before_check_cas != -1 ? con_status_before_check_cas : old_con_status));
+
   con_status_to_restore = -1;
 
-  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code))
+  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code) || ux_stream_finds_no_upload (func_code) || func_code_unknown)
     {
       if (is_first_request == true)
 	{
@@ -1133,9 +1174,20 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       con_status_before_check_cas = -1;
     }
 
-  strcpy (as_info->log_msg, server_func_name[func_code - 1]);
-
-  server_fn = server_fn_table[func_code - 1];
+  if (func_code_unknown)
+    {
+      strcpy (as_info->log_msg, "fn_not_supported");
+      server_fn = fn_not_supported;
+    }
+  else
+    {
+      strcpy (as_info->log_msg, server_func_name[func_code - 1]);
+      server_fn = server_fn_table[func_code - 1];
+    }
+  if (!func_code_unknown && !ux_stream_admits_request (func_code))
+    {
+      server_fn = fn_stream_refused;
+    }
 
   req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
 
@@ -1190,6 +1242,15 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       ux_set_utype_for_json (CCI_U_TYPE_JSON);
     }
 
+  if (con_status_to_restore != -1)
+    {
+      CON_STATUS_LOCK (as_info, CON_STATUS_LOCK_CAS);
+      as_info->con_status = con_status_to_restore;
+      CON_STATUS_UNLOCK (as_info, CON_STATUS_LOCK_CAS);
+    }
+
+  /* an upload given up leaves nothing in the transaction */
+  con_status_to_restore = ux_stream_status_to_restore ();
   if (con_status_to_restore != -1)
     {
       CON_STATUS_LOCK (as_info, CON_STATUS_LOCK_CAS);
@@ -1295,6 +1356,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_AUTOCOMMIT;
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=
 	(as_info->cci_default_autocommit & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
+
+      /* init_msg_header () leaves it at 0 */
+      if (ux_stream_is_open ())
+	{
+	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |= CAS_INFO_FLAG_MASK_STREAM_OPEN;
+	}
 
       if (cas_shard_flag == ON)
 	{

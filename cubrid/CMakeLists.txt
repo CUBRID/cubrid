@@ -186,6 +186,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/fixed_size_allocator.hpp
   ${BASE_DIR}/span.hpp
+  ${BASE_DIR}/byte_span_writer.hpp
   ${BASE_DIR}/ifsys.hpp
   ${BASE_DIR}/packet_buffer.hpp
   ${BASE_DIR}/DMRB.hpp
@@ -242,6 +243,9 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_callback_sr.cpp
   ${COMMUNICATION_DIR}/network_interface_sr.cpp
   ${COMMUNICATION_DIR}/network_sr.c
+  ${COMMUNICATION_DIR}/stream_session.cpp
+  ${COMMUNICATION_DIR}/stream_handle.cpp
+  ${COMMUNICATION_DIR}/stream_debug_echo.cpp
   )
 
 set(DEBUGGING_HEADERS
@@ -287,6 +291,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
+  ${QUERY_DIR}/expr_batch.c
   ${QUERY_DIR}/expr_compile.c
   ${QUERY_DIR}/query_opfunc.c
   ${QUERY_DIR}/query_reevaluation.cpp
@@ -299,14 +304,13 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
-  ${QUERY_DIR}/domain_plan.c
-  ${QUERY_DIR}/domain_resolve.c
   ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c  
+  ${QUERY_DIR}/vacuum_oos.cpp
   ${QUERY_DIR}/xasl_cache.c
   )
 set(QUERY_HEADERS
@@ -372,6 +376,18 @@ set(PARALLEL_HASH_JOIN_HEADERS
   ${PARALLEL_HASH_JOIN_DIR}/px_hash_join.hpp
 )
 
+set(PARALLEL_MERGE_JOIN_SOURCES
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_partition.cpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_task.cpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join.cpp
+)
+
+set(PARALLEL_MERGE_JOIN_HEADERS
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_partition.hpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_task.hpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join.hpp
+)
+
 set(PARALLEL_SCAN_SOURCES
   ${PARALLEL_SCAN_DIR}/px_scan_instnum.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.cpp
@@ -421,6 +437,7 @@ set(PARALLEL_QUERY_SOURCES
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
   ${PARALLEL_QUERY_DIR}/px_sort.c
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.cpp
+  ${PARALLEL_QUERY_DIR}/px_task_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_parallel.cpp
   )
 
@@ -430,6 +447,7 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
   ${PARALLEL_QUERY_DIR}/px_sort.h
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
+  ${PARALLEL_QUERY_DIR}/px_task_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   ${PARALLEL_QUERY_DIR}/px_parallel.hpp
   )
@@ -492,6 +510,7 @@ set(TRANSACTION_SOURCES
   )
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
+  ${TRANSACTION_DIR}/lock_deferred_wake.hpp
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
   ${TRANSACTION_DIR}/log_archives.hpp
@@ -522,7 +541,10 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/bestspace_map.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
+  ${STORAGE_DIR}/btree_lock.cpp
   ${STORAGE_DIR}/btree_sort.c
+  ${STORAGE_DIR}/btree_sort_merge.cpp
+  ${STORAGE_DIR}/btree_sort_radix.cpp
   ${STORAGE_DIR}/btree_unique.cpp
   ${STORAGE_DIR}/byte_order.c
   ${STORAGE_DIR}/catalog_class.c
@@ -538,7 +560,12 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/file_manager.c
   ${STORAGE_DIR}/ftab_set.cpp
   ${STORAGE_DIR}/heap_file.c
+  ${STORAGE_DIR}/heap_oos.cpp
+  ${STORAGE_DIR}/heap_oos_value_ref.cpp
+  ${STORAGE_DIR}/heap_pending_record.cpp
   ${STORAGE_DIR}/oid.c
+  ${STORAGE_DIR}/oos_file.cpp
+  ${STORAGE_DIR}/oos_util.cpp
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
   ${STORAGE_DIR}/record_descriptor.cpp
@@ -552,6 +579,7 @@ set(STORAGE_SOURCES
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/bestspace.hpp
   ${STORAGE_DIR}/bestspace_map.hpp
+  ${STORAGE_DIR}/btree_lock.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/double_write_buffer.hpp
   ${STORAGE_DIR}/ftab_set.hpp
@@ -685,6 +713,7 @@ set (CUBRID_LIB_SOURCES
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
   ${PARALLEL_HASH_JOIN_SOURCES}
+  ${PARALLEL_MERGE_JOIN_SOURCES}
   ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
@@ -711,6 +740,7 @@ set (CUBRID_LIB_HEADERS
   ${XASL_HEADERS}
   ${LOADDB_HEADERS}
   ${PARALLEL_HASH_JOIN_HEADERS}
+  ${PARALLEL_MERGE_JOIN_HEADERS}
   ${PARALLEL_SCAN_HEADERS}
   ${PARALLEL_QUERY_HEADERS}
   ${PARALLEL_QUERY_EXECUTE_HEADERS}

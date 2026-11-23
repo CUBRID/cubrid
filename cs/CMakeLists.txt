@@ -171,6 +171,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/ddl_log.h
+  ${BASE_DIR}/byte_span_writer.hpp
   ${BASE_DIR}/ifsys.hpp
   ${BASE_DIR}/filesys_parser.hpp
   ${BASE_DIR}/cgroup.hpp
@@ -200,6 +201,8 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_common.cpp
   ${COMMUNICATION_DIR}/network_callback_cl.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
+  ${COMMUNICATION_DIR}/stream_client.c
+  ${COMMUNICATION_DIR}/stream_debug_echo.cpp
   ${COMMUNICATION_DIR}/network_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
   )
@@ -264,7 +267,9 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/cursor.c
   ${QUERY_DIR}/qfile_tuple_layout.c
   ${QUERY_DIR}/execute_schema.c
+  ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/execute_statement.c
+  ${QUERY_DIR}/expr_compile.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_dump.c
@@ -310,10 +315,10 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/schema_class_truncator.cpp
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_system_catalog.cpp
-  ${OBJECT_DIR}/schema_system_catalog_builder.cpp
-  ${OBJECT_DIR}/schema_system_catalog_definition.cpp
   ${OBJECT_DIR}/schema_system_catalog_install.cpp
   ${OBJECT_DIR}/schema_system_catalog_install_query_spec.cpp
+  ${OBJECT_DIR}/schema_system_metadata_builder.cpp
+  ${OBJECT_DIR}/schema_system_metadata_definition.cpp
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c
@@ -323,8 +328,6 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
   ${OBJECT_DIR}/schema_information_schema.cpp
-  ${OBJECT_DIR}/schema_information_schema_builder.cpp
-  ${OBJECT_DIR}/schema_information_schema_definition.cpp
   ${OBJECT_DIR}/schema_information_schema_install.cpp
   ${OBJECT_DIR}/schema_information_schema_install_query_spec.cpp
   )
@@ -454,10 +457,12 @@ set (HISTOGRAM_SOURCES
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/row_snapshot_cl.cpp
   )
 
 set (HISTOGRAM_HEADERS
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/row_snapshot_cl.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_bucketizer.hpp

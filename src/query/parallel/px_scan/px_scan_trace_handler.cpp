@@ -21,6 +21,8 @@
  */
 
 #include "px_scan_trace_handler.hpp"
+#include "expr_batch.h"
+#include "scan_manager.h"
 #include "perf_monitor.h"
 #include "query_dump.h"
 #include "system_parameter.h"
@@ -32,13 +34,25 @@
 
 namespace parallel_scan
 {
-  void trace_handler::add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, SCAN_ID *scan_id,
-				 struct timeval elapsed_time)
+  /* the workers' OOS reads: their page counts added, the longest worker's time, as the scan's time is the leader's */
+  static void add_workers_oos_reads (OOS_READ_STATS &total, const OOS_READ_STATS &worker, struct timeval &longest)
+  {
+    total.fetches += worker.fetches;
+    total.ioreads += worker.ioreads;
+    if (timercmp (&worker.elapsed, &longest, >))
+      {
+	longest = worker.elapsed;
+      }
+  }
+
+  void trace_handler::add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, const OOS_READ_STATS &oos_reads,
+				 SCAN_ID *scan_id, struct timeval elapsed_time)
   {
     child_stats cs = {};
     cs.fetches = fetches;
     cs.ioreads = ioreads;
     cs.fetch_time = fetch_time;
+    cs.oos_reads = oos_reads;
     cs.read_rows = scan_id->scan_stats.read_rows;
     cs.qualified_rows = scan_id->scan_stats.qualified_rows;
     cs.elapsed_time = elapsed_time;
@@ -99,8 +113,10 @@ namespace parallel_scan
 	perfmon_add_values_to_local (thread_p, m_px_stats);
 	memset (m_px_stats, 0, perfmon_get_number_of_statistic_values () * sizeof (UINT64));
       }
+    struct timeval oos_longest = {};
     for (auto &stat : m_stats)
       {
+	add_workers_oos_reads (scan_stats->oos_reads, stat.oos_reads, oos_longest);
 	scan_stats->read_rows += stat.read_rows;
 	scan_stats->qualified_rows += stat.qualified_rows;
 	scan_stats->num_ioreads += stat.ioreads;
@@ -115,9 +131,10 @@ namespace parallel_scan
 	scan_stats->index_skip_scan = scan_stats->index_skip_scan || stat.index_skip_scan;
 	scan_stats->loose_index_scan = scan_stats->loose_index_scan || stat.loose_index_scan;
       }
+    TSC_ADD_TIMEVAL (scan_stats->oos_reads.elapsed, oos_longest);
   }
 
-  void trace_handler::add_expr_compile_dump (xasl_node *xasl)
+  void trace_handler::add_expr_compile_dump (xasl_node *xasl, SCAN_ID *scan_id)
   {
     char *buf = nullptr;
     size_t len = 0;
@@ -149,6 +166,14 @@ namespace parallel_scan
 	return;
       }
     qdump_print_expr_compile_text (fp, xasl, 0, " [px worker]");
+    if (scan_id != NULL && scan_id->type == S_HEAP_SCAN
+	&& (scan_id->s.hsid.batch_plan != NULL || scan_id->s.hsid.batch_why_not != NULL))
+      {
+	/* the page batch of this worker's scan (expr_batch.h), beside the compiler's sections: the dump is the first
+	 * worker's to finish (see above), so its page counts are that worker's share, not the scan's, and say so */
+	fprintf (fp, "EXPR_BATCH [px worker]: the counts below are one worker's pages, not the whole scan's\n");
+	expr_batch_dump (fp, scan_id->s.hsid.batch_plan, scan_id->s.hsid.batch_why_not, 0);
+      }
     fclose (fp);
     if (buf != nullptr)
       {
@@ -188,6 +213,8 @@ namespace parallel_scan
 	for (size_t i = 0; i < m_stats.size(); i++)
 	  {
 	    m_stats[i] = trace_handler.m_stats[i];
+	    add_workers_oos_reads (m_stats_last.oos_reads, trace_handler.m_stats[i].oos_reads,
+				   m_stats_last.oos_reads.elapsed);
 	    m_stats_last.fetches+=trace_handler.m_stats[i].fetches;
 	    m_stats_last.ioreads+=trace_handler.m_stats[i].ioreads;
 	    m_stats_last.read_rows+=trace_handler.m_stats[i].read_rows;
@@ -222,6 +249,8 @@ namespace parallel_scan
 	    m_stats[i].fetches += trace_handler.m_stats[i].fetches;
 	    m_stats[i].ioreads += trace_handler.m_stats[i].ioreads;
 	    m_stats[i].fetch_time += trace_handler.m_stats[i].fetch_time;
+	    add_workers_oos_reads (m_stats_last.oos_reads, trace_handler.m_stats[i].oos_reads,
+				   m_stats_last.oos_reads.elapsed);
 	    m_stats[i].read_rows += trace_handler.m_stats[i].read_rows;
 	    m_stats[i].qualified_rows += trace_handler.m_stats[i].qualified_rows;
 	    TSC_ADD_TIMEVAL (m_stats[i].elapsed_time, trace_handler.m_stats[i].elapsed_time);
@@ -256,6 +285,7 @@ namespace parallel_scan
   {
     partition_stats->num_fetches = m_stats_last.fetches;
     partition_stats->num_ioreads = m_stats_last.ioreads;
+    partition_stats->oos_reads = m_stats_last.oos_reads;
     partition_stats->read_rows = m_stats_last.read_rows;
     partition_stats->qualified_rows = m_stats_last.qualified_rows;
     if (m_scan_type == SCAN_TYPE::INDEX)

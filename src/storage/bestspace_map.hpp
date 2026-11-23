@@ -140,6 +140,8 @@ namespace cubstorage
       // up to max_count non-resident pages with min_code <= code <= CODE_MAX_TIER; they become resident
       std::size_t claim (std::uint8_t min_code, bestspace_map_page *out, std::size_t max_count);
       bool peek (short volid, std::int32_t pageid, std::uint8_t &code, bool &resident);
+      // a claim (min_code) may find a page: the root hint bits, or a scan of the inline records. Read only
+      bool may_claim (std::uint8_t min_code);
       // bit i: pages[i] is resident and was fed back since, with a code above pages[i].code (count <= 64)
       std::uint64_t resident_dirty_above (const bestspace_map_page *pages, std::size_t count);
 

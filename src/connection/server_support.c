@@ -564,6 +564,8 @@ css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_r
       /* 3. Call server_request() function */
       status = css_Server_request_handler (&thread_ref, eid, request, size, buffer);
 
+      lock_deferred_wake_on_request_end (&thread_ref);
+
       /* 4. reset thread transaction id(may be NULL_TRAN_INDEX) */
       css_set_thread_info (&thread_ref, -1, 0, local_tran_index, -1);
     }
@@ -2094,8 +2096,10 @@ css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_i
   thread_p->wait_for_latch_promote = false;
   thread_p->lockwait = NULL;
   thread_p->lockwait_state = -1;
+  lock_reset_request_state (thread_p);
   thread_p->query_entry = NULL;
   thread_p->tran_next_wait = NULL;
+  thread_p->oos_oids.clear ();
 
   thread_p->end_resource_tracks ();
   thread_clear_recursion_depth (thread_p);
@@ -2201,10 +2205,6 @@ css_server_task::execute (context_type &thread_ref)
   if (m_conn.end_working_task () == 0 && m_conn.status == CONN_CLOSING)
     {
       css_request_shutdown_conn (&m_conn, static_cast <uint8_t> (cubconn::connection::ignore_level::DONT_IGNORE), false, 0 /* no wait */);
-    }
-  else
-    {
-      css_wakeup_handler (&m_conn);
     }
 }
 

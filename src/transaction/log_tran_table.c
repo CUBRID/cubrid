@@ -66,6 +66,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
+#include "authenticate_password.hpp"
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif // SERVER_MODE
@@ -82,6 +83,10 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+#if defined(CS_MODE)
+#error Does not belong to CS_MODE
+#endif
 
 #define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
 
@@ -782,6 +787,30 @@ logtb_am_i_dba_client (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logtb_am_i_dba_group_client () - is the caller DBA, or a member of the DBA
+ *   group, according to the catalog?
+ *
+ * Replaces the flag kill_or_interrupt took from the client.
+ */
+static bool
+logtb_am_i_dba_group_client (THREAD_ENTRY * thread_p)
+{
+  char password[AU_MAX_PASSWORD_BUF + 4];
+  bool is_dba_group = false, found;
+
+  if (logtb_am_i_dba_client (thread_p))
+    {
+      return true;
+    }
+
+  found = cdc_get_user_info (thread_p, logtb_find_current_client_name (thread_p), password, sizeof (password),
+			     &is_dba_group);
+  memset (password, 0, sizeof (password));	/* only the group answer is needed */
+
+  return found && is_dba_group;
+}
+
+/*
  * logtb_assign_tran_index - assign a transaction index for a sequence of
  *                        transactions (thread of execution.. a client)
  *
@@ -1144,6 +1173,21 @@ logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p, MVCCID mvccid
 }
 
 /*
+ * logtb_release_conn_tran_index - if the calling connection owns tran_index,
+ *   it no longer does.
+ */
+static void
+logtb_release_conn_tran_index (THREAD_ENTRY * thread_p, int tran_index)
+{
+#if defined (SERVER_MODE)
+  if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->get_tran_index () == tran_index)
+    {
+      thread_p->conn_entry->release_tran_index ();
+    }
+#endif /* SERVER_MODE */
+}
+
+/*
  * logtb_release_tran_index - return an assigned transaction index
  *
  * return: nothing
@@ -1160,6 +1204,8 @@ void
 logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
+
+  logtb_release_conn_tran_index (thread_p, tran_index);
 
   qmgr_clear_trans_wakeup (thread_p, tran_index, true, false);
   heap_chnguess_clear (thread_p, tran_index);
@@ -1239,6 +1285,8 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 #endif /* SERVER_MODE */
 
   log_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  logtb_release_conn_tran_index (thread_p, tran_index);
 
   tdes = LOG_FIND_TDES (tran_index);
   if (tran_index > NUM_TOTAL_TRAN_INDICES || tdes == NULL || tdes->trid == NULL_TRANID)
@@ -1590,6 +1638,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->fl_mark_repl_recidx = -1;
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
+  tdes->oos_insert_lsa_queue.clear ();
+  tdes->oos_suppress_insert_lsa_queueing = false;
   tdes->first_save_entry = NULL;
   tdes->query_timeout = 0;
   tdes->last_query_deadline = 0;
@@ -1679,6 +1729,8 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->repl_records = NULL;
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
+  tdes->oos_insert_lsa_queue.clear ();
+  tdes->oos_suppress_insert_lsa_queueing = false;
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
   tdes->lob_locator_root.init ();
@@ -2838,13 +2890,18 @@ logtb_interrupt_session_sleeper_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_
     }
 
   bool match = false;
+  CSS_CONN_ENTRY *conn;
+
   (void) pthread_mutex_lock (&thread_ref.tran_index_lock);
 
+  /* tran_index_lock does not guard conn_entry: the worker sets it when it takes a request and clears it when it ends
+   * one (css_server_task::execute (), the parallel query tasks) without this lock. Read it once, so the NULL check and
+   * the session_id read see the same entry. */
+  conn = thread_ref.conn_entry;
   if (!thread_ref.is_on_current_thread ()
       && thread_ref.m_status != cubthread::entry::status::TS_DEAD
       && thread_ref.m_status != cubthread::entry::status::TS_FREE
-      && thread_ref.m_status != cubthread::entry::status::TS_CHECK
-      && thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_id == session_id)
+      && thread_ref.m_status != cubthread::entry::status::TS_CHECK && conn != NULL && conn->session_id == session_id)
     {
       match = true;
       if (thread_ref.tran_index != NULL_TRAN_INDEX && log_Gl.trantable.area != NULL)
@@ -2980,14 +3037,34 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 		THREAD_ENTRY *tran_worker = logtb_find_thread_by_tran_index_except_me (tran_index);
 		if (tran_worker != NULL)
 		  {
+		    /* that worker clears its conn_entry when it ends its request, with no lock this thread holds, and the
+		     * entry then goes back to the pool for another client: read it once, with its session, before waking
+		     * the worker, which may then end its request */
+		    CSS_CONN_ENTRY *tran_conn = tran_worker->conn_entry;
+		    SESSION_ID tran_session = DB_EMPTY_SESSION;
+
+		    if (tran_conn != NULL)
+		      {
+			tran_session = tran_conn->session_id;
+			/* the client may close the connection at any time, its worker then ends the request by itself, and
+			 * the entry may already serve another client. A new client takes its client_id
+			 * (css_initialize_conn ()) before it opens its session: read the client_id after the session, and
+			 * take the session only while the entry still serves the client of this transaction */
+			std::atomic_thread_fence (std::memory_order_acquire);
+			if (tran_conn->client_id != tdes->client_id)
+			  {
+			    tran_session = DB_EMPTY_SESSION;
+			  }
+		      }
+
 		    /* single regular SQL: wake this transaction's own suspended worker */
 		    thread_check_suspend_reason_and_wakeup (tran_worker, THREAD_RESUME_DUE_TO_INTERRUPT,
 							    THREAD_SLEEP_FUNC_SUSPENDED);
-		    if (tran_worker->conn_entry != NULL)
+		    if (tran_session != DB_EMPTY_SESSION)
 		      {
 			/* parallel sibling workers, or nested SLEEP() in a PL/CSQL procedure:
 			 * wake all suspended workers of the same session */
-			logtb_interrupt_session_sleepers (thread_p, tran_worker->conn_entry->session_id);
+			logtb_interrupt_session_sleepers (thread_p, tran_session);
 		      }
 		  }
 	      }
@@ -4129,8 +4206,8 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
  * Note: shared by the acquire-at-assignment choke points and logtb_ensure_mvccid_self_lock; takes the MVCCID
  *	 explicitly so the choke points do not recurse through logtb_get_current_mvccid. Idempotent via the
  *	 self_locked_mvccid hint. A fresh MVCCID is unknown to any other transaction, so the X never waits.
- *	 A no-op during boot/recovery and for non-worker (system/vacuum) transactions -- the guard is here so
- *	 both entry points inherit it.
+ *	 A no-op during boot/recovery, for non-worker (system/vacuum) transactions and for load workers -- the
+ *	 guard is here so both entry points inherit it.
  */
 static int
 logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
@@ -4143,6 +4220,18 @@ logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_i
   if (curr_mvcc_info->self_locked_mvccid == mvccid)
     {
       /* already self-locked in this (sub-)transaction */
+      return NO_ERROR;
+    }
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p->type == TT_LOADDB)
+    {
+      /* Load workers rely on the session transaction's BU_LOCK, and bulk records do not expose an INSID. No waiter
+       * can address the worker's MVCCID, so a transaction self-lock is not needed. */
       return NO_ERROR;
     }
 
@@ -4292,6 +4381,86 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 }
 
 /*
+ * logtb_is_active_other_mvccid () - Is mvccid an in-progress write by another transaction?
+ *
+ * return: true if some other transaction under mvccid is active, or has completed its MVCC but still holds its
+ *	   self-lock: while it commits or aborts, or after COMMIT WORK RETAIN LOCK
+ *
+ *   thread_p(in): thread entry
+ *   mvccid(in): MVCC id
+ *
+ * Note: a committer clears its active mark before it appends its commit record, and releases its self-lock only
+ *	 after it. A writer that went ahead in between could commit first; restart recovery or the HA applier then
+ *	 reverses the two.
+ */
+bool
+logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  return MVCCID_IS_NORMAL (mvccid) && !logtb_is_current_mvccid (thread_p, mvccid)
+    && (log_Gl.mvcc_table.is_active (mvccid) || lock_is_transaction_mvccid_held (thread_p, mvccid));
+}
+
+/*
+ * logtb_wait_for_tran_end () - Block until the transaction a stamp named ends, or until what the caller saw may be
+ *				gone
+ *
+ * return	 : NO_ERROR once that transaction has ended, or when the caller is to read the stamp again
+ *		   (lock_wait_transaction_mvccid ()). An error if the lock failed, or if it was granted while that
+ *		   transaction is still active -- waiting again cannot help.
+ * thread_p (in) : Thread entry.
+ * seen (in)	 : the in-progress transaction to wait out (seen->owner), and the wake generation read with its stamp.
+ *
+ * Note: call with no page latch held.
+ */
+int
+logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen)
+{
+  return logtb_wait_for_tran_end_on_row (thread_p, seen, NULL);
+}
+
+/*
+ * logtb_wait_for_tran_end_on_row () - logtb_wait_for_tran_end () for a caller that holds a row X while it waits; the
+ *				       owner may be handed the row (held->lost when it is not had back)
+ */
+int
+logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen, LK_HELD_ROW * held)
+{
+  int error_code;
+  int granted;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  granted = lock_wait_transaction_mvccid (thread_p, seen, held);
+  if (granted == LK_NOTGRANTED_DUE_RECHECK)
+    {
+      return NO_ERROR;
+    }
+  if (granted != LK_GRANTED)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_CANNOT_GET_LOCK;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+      return error_code;
+    }
+  lock_unlock_transaction_mvccid (thread_p, seen->owner, S_LOCK);
+
+  if (log_Gl.mvcc_table.is_active (seen->owner))
+    {
+      /* Invariant breach: no-op grant while that transaction is still active. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+      assert (false);
+      return ER_CANNOT_GET_LOCK;
+    }
+  return NO_ERROR;
+}
+
+/*
  * logtb_get_mvcc_snapshot  - get MVCC snapshot
  *
  * return: MVCC snapshot
@@ -4330,6 +4499,35 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 
   return &tdes->mvccinfo.snapshot;
 
+}
+
+/*
+ * logtb_get_catalog_read_snapshot () - build into local a snapshot for one catalog read request
+ *
+ * Whatever the isolation level, the transaction snapshot is neither built nor changed, so reading the catalog does
+ * not fix the point in time a transaction's queries see. Like that snapshot, it holds vacuum back from the versions
+ * it may read until the transaction ends.
+ *
+ * return: local, or NULL for a system transaction
+ *
+ *   thread_p(in): thread entry
+ *   local(out): snapshot owned by the caller for the duration of the request
+ */
+MVCC_SNAPSHOT *
+logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  if (!tdes->is_active_worker_transaction ())
+    {
+      return NULL;
+    }
+
+  /* no parallel worker reads the catalog this way, so the main thread's snapshot mutex is not needed */
+  assert (thread_p->m_px_orig_thread_entry == NULL);
+
+  log_Gl.mvcc_table.build_snapshot (tdes->tran_index, *local, false);
+  return local;
 }
 
 /*
@@ -6035,7 +6233,7 @@ logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_aut
 
   *has_authorization = false;
 
-  if (logtb_am_i_dba_client (thread_p) == true)
+  if (logtb_am_i_dba_group_client (thread_p) == true)
     {
       *has_authorization = true;
       return NO_ERROR;
@@ -6152,11 +6350,10 @@ xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill
  *   return:
  *   thread_p(in):
  *   tran_index(in):
- *   is_dba_group_member(in):
  *   kill_query_only(in):
  */
 int
-xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_dba_group_member, bool interrupt_only)
+xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool interrupt_only)
 {
 #if defined (SERVER_MODE)
   LOG_TDES *tdes;
@@ -6174,19 +6371,17 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
       return ER_KILL_TR_NOT_ALLOWED;
     }
 
-  if (!is_dba_group_member)
+  /* always checked on the server, never skipped on the client's word */
+  error = logtb_check_kill_tran_auth (thread_p, tran_index, &has_authorization);
+  if (error != NO_ERROR)
     {
-      error = logtb_check_kill_tran_auth (thread_p, tran_index, &has_authorization);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+      return error;
+    }
 
-      if (has_authorization == false)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, tran_index);
-	  return ER_KILL_TR_NOT_ALLOWED;
-	}
+  if (has_authorization == false)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
     }
 
   kill_type = interrupt_only ? KILLSTMT_QUERY : KILLSTMT_TRAN;

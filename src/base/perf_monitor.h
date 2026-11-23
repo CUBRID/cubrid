@@ -224,6 +224,7 @@ typedef enum
   PERF_PAGE_LOG,		/* NONE - log page (unused) */
   PERF_PAGE_DROPPED_FILES,	/* Dropped files page.  */
   PERF_PAGE_VACUUM_DATA,	/* Vacuum data */
+  PERF_PAGE_OOS,		/* oos page */
   PERF_PAGE_BTREE_ROOT,		/* b+tree root index page */
   PERF_PAGE_BTREE_OVF,		/* b+tree overflow index page */
   PERF_PAGE_BTREE_LEAF,		/* b+tree leaf index page */
@@ -288,6 +289,7 @@ typedef enum
   PSTAT_PB_NUM_IOREADS,
   PSTAT_PB_NUM_IOWRITES,
   PSTAT_PB_NUM_FLUSHED,
+  PSTAT_PB_NUM_READ_AHEAD,
   /* peeked stats */
   PSTAT_PB_PRIVATE_QUOTA,
   PSTAT_PB_PRIVATE_COUNT,
@@ -1542,8 +1544,7 @@ struct perfmon_client_stat_info
   UINT64 *current_global_stats;
 };
 
-extern bool perfmon_Iscollecting_stats;
-
+extern void disable_perfmon_start_stats ();
 extern int perfmon_start_stats (bool for_all_trans);
 extern int perfmon_stop_stats (void);
 extern void perfmon_reset_stats (void);

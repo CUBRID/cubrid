@@ -381,6 +381,29 @@ typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
 #define CSS_RID_FROM_EID(eid)           ((unsigned short) LOW16BITS(eid))
 #define CSS_ENTRYID_FROM_EID(eid)       ((unsigned short) HIGH16BITS(eid))
 
+/* CDC channel authentication (CBRD-27436): challenge is 16 random bytes in hex,
+ * response is a SHA-256 digest in hex. */
+#define CSS_CDC_AUTH_NONCE_SIZE         33
+#define CSS_CDC_AUTH_RESPONSE_SIZE      65
+/* salt of a salted password, as hex (ENCRYPT_SALT_SIZE_HEX), plus NUL */
+#define CSS_AU_SALT_SIZE                (64 + 1)
+/* an account name as stored, upper-cased (INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER is 2), plus NUL */
+#define CSS_AU_NAME_SIZE                (DB_MAX_USER_LENGTH * 2 + 1)
+/* fixed size of the reply to a login password challenge (sau_challenge ()); client and
+ * server must agree on it. Its items, in the order they are packed:
+ *   error, scheme   : an int each                                 2 * 4
+ *   nonce           : string = length int, bytes with NUL, pad    4 + CSS_CDC_AUTH_NONCE_SIZE + 3
+ *   issue time      : INT64, after up to 8 bytes of alignment     8 + 8
+ *   tag             : string                                      4 + CSS_CDC_AUTH_RESPONSE_SIZE + 3
+ *   salt            : string                                      4 + CSS_AU_SALT_SIZE + 3
+ *   name as stored  : string                                      4 + CSS_AU_NAME_SIZE + 3 */
+#define CSS_AU_CHALLENGE_REPLY_SIZE     (2 * 4 \
+                                         + (4 + CSS_CDC_AUTH_NONCE_SIZE + 3) \
+                                         + (8 + 8) \
+                                         + (4 + CSS_CDC_AUTH_RESPONSE_SIZE + 3) \
+                                         + (4 + CSS_AU_SALT_SIZE + 3) \
+                                         + (4 + CSS_AU_NAME_SIZE + 3))
+
 #define NET_HEADER_FLAG_METHOD_MODE         0x4000
 #define NET_HEADER_FLAG_INVALIDATE_SNAPSHOT 0x8000
 
@@ -452,12 +475,21 @@ struct css_conn_entry
   int invalidate_snapshot;
   int db_error;
   bool in_method;		/* this connection is for method callback */
-  bool in_flashback;		/* this client is in progress of flashback */
 #if defined(SERVER_MODE)
   int client_id;
   bool in_transaction;		/* this client is in-transaction or out-of- */
   bool reset_on_commit;		/* set reset_on_commit when commit/abort */
 
+  /* CDC channel authentication (CBRD-27436). The CDC log-server channel is not a
+   * booted client, so it has no server-verified identity; it proves one with a
+   * challenge-response of its own and the outcome is kept here. */
+  bool cdc_auth_done;		/* a DBA answered a challenge on this connection */
+  volatile int cdc_auth_busy;	/* an account lookup for the handshake is running */
+  /* the account whose password this connection proved; spent by the next login or
+   * user switch. A client may send requests that overlap, so these are read and
+   * written only under rmutex (css_set_auth_proof (), css_consume_auth_proof ()). */
+  char auth_user[DB_MAX_USER_LENGTH + 1];
+  bool auth_verified;
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;
   SYNC_RMUTEX rmutex;		/* connection mutex */
@@ -505,6 +537,12 @@ struct css_conn_entry
   void set_tran_index (int tran_index);
   int get_tran_index (void);
 
+  // the index the server assigned, as opposed to one a packet claims
+  void assign_tran_index (int tran_index);
+  bool claim_tran_index (int tran_index);
+  void release_tran_index (void);
+  int get_lost_tran_index (void);
+
   // request count manipulation
   void add_pending_request ();
   size_t start_request ();
@@ -531,6 +569,8 @@ private:
   // note - I want to protect this.
   int transaction_id;
   // *INDENT-OFF*
+  std::atomic<int> owned_tran_index;	/* assigned by the server, or NULL_TRAN_INDEX */
+  std::atomic<bool> reported_foreign_tran_index;	/* a mismatching claim is logged once */
   std::atomic<size_t> pending_request_count;
   std::atomic<size_t> working_task_count;
 #if defined(SERVER_MODE)
@@ -539,6 +579,8 @@ private:
   // *INDENT-ON*
 #else				// not c++ = c
   int transaction_id;
+  int owned_tran_index;
+  bool reported_foreign_tran_index;
 #endif				// not c++ = c
 };
 

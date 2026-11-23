@@ -806,9 +806,9 @@ spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp, VPID
 /*
  * spage_boot () - Initialize the slotted page module. The save_space hash table
  *              is initialized
- *   return:
+ *   return: NO_ERROR or error code
  */
-void
+int
 spage_boot (THREAD_ENTRY * thread_p)
 {
   assert (sizeof (SPAGE_HEADER) % DOUBLE_ALIGNMENT == 0);
@@ -816,7 +816,8 @@ spage_boot (THREAD_ENTRY * thread_p)
 
   spage_User_page_size = DB_PAGESIZE;
 
-  spage_Saving_hashmap.init (spage_saving_Ts, THREAD_TS_SPAGE_SAVING, 4547, 100, 100, spage_Saving_entry_descriptor);
+  return spage_Saving_hashmap.init (spage_saving_Ts, THREAD_TS_SPAGE_SAVING, 4547, 100, 100,
+				    spage_Saving_entry_descriptor);
 }
 
 /*
@@ -1155,6 +1156,7 @@ spage_is_slotted_page_type (PAGE_TYPE ptype)
   switch (ptype)
     {
     case PAGE_HEAP:
+    case PAGE_OOS:
     case PAGE_BTREE:
     case PAGE_EHASH:
     case PAGE_CATALOG:

@@ -40,7 +40,7 @@ namespace parallel_scan
 	  m_err_messages_p (err_messages_p)
       {
       }
-      int init_on_main (THREAD_ENTRY *thread_p, HFID m_hfid, int parallelism);
+      int init_on_main (THREAD_ENTRY *thread_p, HFID m_hfid, int parallelism, const FILE_FTAB_COLLECTOR *page_list);
       SCAN_CODE get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid);
       int initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id);
       int finalize (THREAD_ENTRY *thread_p);
@@ -48,7 +48,6 @@ namespace parallel_scan
     private:
       thread_local static VPID m_tl_vpid;
       thread_local static HEAP_SCANCACHE *m_tl_scan_cache;
-      thread_local static PGBUF_WATCHER m_tl_old_page_watcher;
       thread_local static ftab_set *m_tl_ftab_set;
       thread_local static size_t m_tl_pgoffset;
       thread_local static FILE_PARTIAL_SECTOR m_tl_ftab;

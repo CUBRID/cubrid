@@ -1271,10 +1271,12 @@ end:
        * clone's next execution -- the compiled expression programs -- before the tree goes.
        * This is the same two-pass contract xcache_clone_decache () applies to a clone (the
        * final clear at the end of the execution, then a full clear with XASL_DECACHE_CLONE
-       * set when the clone is retired), so qexec_clear_xasl () already has to be safe to
-       * re-enter on a cleared tree.  A one-shot tree was unpacked with use_xasl_clone off, so
-       * it carries no CLEAR_AT_CLONE_DECACHE marks: the flagged pass touches only the programs,
-       * the status of the sub-XASLs and the disposable signatures, nothing the first pass freed. */
+       * set when the clone is retired), so qexec_clear_xasl () has to be safe to re-enter on a
+       * cleared tree.  A one-shot tree was unpacked with use_xasl_clone off, so it carries no
+       * CLEAR_AT_CLONE_DECACHE marks and its first clear was already final: the flagged pass
+       * releases the programs, but it still runs every scan's clear again with is_final, and
+       * each of those has to skip what the first pass released (a JSON_TABLE scan did not --
+       * CBRD-27947). */
       if (xasl_p != NULL)
 	{
 	  XASL_SET_FLAG (xasl_p, XASL_DECACHE_CLONE);
@@ -3062,27 +3064,52 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   static int temp_mem_buffer_pages = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES);
   static int index_scan_key_buffer_pages = prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES);
 
-  assert (QMGR_IS_VALID_MEMBUF_TYPE (membuf_type));
-
-  if (!QMGR_IS_VALID_MEMBUF_TYPE (membuf_type))
+  if (membuf_type == TEMP_FILE_MEMBUF_NONE)
     {
-      return NULL;
-    }
-
-  num_buffer_pages = ((membuf_type == TEMP_FILE_MEMBUF_NORMAL) ? temp_mem_buffer_pages : index_scan_key_buffer_pages);
-
-  tfile_vfid_p = qmgr_get_temp_file_from_list (&qmgr_Query_table.temp_file_list[membuf_type]);
-  if (tfile_vfid_p == NULL)
-    {
+      /* not cached: created when needed and freed by qmgr_put_temp_file_into_list () when released */
+      num_buffer_pages = 0;
       tfile_vfid_p = qmgr_allocate_tempfile_with_buffer (num_buffer_pages);
-    }
+      if (tfile_vfid_p == NULL)
+	{
+	  return NULL;
+	}
 
-  if (tfile_vfid_p == NULL)
+      tfile_vfid_p->membuf = NULL;
+      tfile_vfid_p->membuf_last = temp_mem_buffer_pages - 1;
+    }
+  else if (QMGR_IS_VALID_MEMBUF_TYPE (membuf_type))
     {
+      num_buffer_pages =
+	((membuf_type == TEMP_FILE_MEMBUF_NORMAL) ? temp_mem_buffer_pages : index_scan_key_buffer_pages);
+
+      tfile_vfid_p = qmgr_get_temp_file_from_list (&qmgr_Query_table.temp_file_list[membuf_type]);
+      if (tfile_vfid_p == NULL)
+	{
+	  tfile_vfid_p = qmgr_allocate_tempfile_with_buffer (num_buffer_pages);
+	  if (tfile_vfid_p == NULL)
+	    {
+	      return NULL;
+	    }
+	}
+
+      tfile_vfid_p->membuf = (PAGE_PTR *) ((PAGE_PTR) tfile_vfid_p + DB_ALIGN (sizeof (QMGR_TEMP_FILE), MAX_ALIGNMENT));
+      tfile_vfid_p->membuf_last = -1;
+
+      page_p =
+	(PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf + DB_ALIGN (sizeof (PAGE_PTR) * num_buffer_pages, MAX_ALIGNMENT));
+
+      for (i = 0; i < num_buffer_pages; i++)
+	{
+	  tfile_vfid_p->membuf[i] = page_p;
+	  qmgr_put_page_header (page_p, &pgheader);
+	  page_p += DB_PAGESIZE;
+	}
+    }
+  else
+    {
+      assert (false);		/* impossible case: an invalid membuf type */
       return NULL;
     }
-
-  tfile_vfid_p->membuf = (PAGE_PTR *) ((PAGE_PTR) tfile_vfid_p + DB_ALIGN (sizeof (QMGR_TEMP_FILE), MAX_ALIGNMENT));
 
   /* initialize tfile_vfid */
   VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
@@ -3091,17 +3118,6 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   tfile_vfid_p->membuf_type = membuf_type;
   tfile_vfid_p->preserved = false;
   tfile_vfid_p->tde_encrypted = false;
-  tfile_vfid_p->membuf_last = -1;
-
-  page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf
-		       + DB_ALIGN (sizeof (PAGE_PTR) * tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
-
-  for (i = 0; i < tfile_vfid_p->membuf_npages; i++)
-    {
-      tfile_vfid_p->membuf[i] = page_p;
-      qmgr_put_page_header (page_p, &pgheader);
-      page_p += DB_PAGESIZE;
-    }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];

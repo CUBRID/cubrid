@@ -27,6 +27,7 @@
 #include "error_manager.h"
 #include "system_parameter.h"
 
+#include <algorithm>
 #include <mutex>
 #include <utility>
 #include <cstddef>
@@ -313,6 +314,58 @@ namespace cubstorage
     return allocate (class_oid, hfid, needed_size, consume_size, page_watcher);
   }
 
+  bool
+  bestspace::shard::update_freespace (VPID vpid, std::uint16_t freespace, std::size_t &entry_index)
+  {
+    std::size_t i;
+
+    for (i = 0; i < ENTRIES_PER_SHARD; i++)
+      {
+	if (update_freespace_at (i, vpid, freespace))
+	  {
+	    entry_index = i;
+	    return true;
+	  }
+      }
+
+    return false;
+  }
+
+  bool
+  bestspace::shard::update_freespace_at (std::size_t entry_index, VPID vpid, std::uint16_t freespace)
+  {
+    L1 expected, desired;
+    VPID entry_vpid;
+
+    assert (entry_index < ENTRIES_PER_SHARD);
+
+    while (true)
+      {
+	expected = m_L1[entry_index].load ();
+	entry_vpid = expected.get_vpid ();
+
+	if (!VPID_EQ (&entry_vpid, &vpid))
+	  {
+	    return false;
+	  }
+
+	if (expected.get_freespace () == freespace)
+	  {
+	    return true;
+	  }
+
+	desired = expected;
+	desired.set_freespace (freespace);
+
+	// the caller must hold the page's write latch, so the freespace it records is the page's current value
+	if (m_L1[entry_index].compare_exchange_strong (expected, desired))
+	  {
+	    L2_update (entry_index / L2_FANOUT, entry_index % L2_FANOUT);
+	    return true;
+	  }
+      }
+  }
+
   void
   bestspace::shard::add_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen)
   {
@@ -507,7 +560,6 @@ namespace cubstorage
     std::size_t available, freespace;
     VPID vpid, old_vpid;
     L1 expected, desired;
-    OID page_class_oid;
     status error;
 
     STATS_INC (fetch_L1, 1);
@@ -535,11 +587,7 @@ namespace cubstorage
       }
 
     // is this page still belongs to the class (class_oid) ? A map page that reuses a slot's page looks empty at first
-    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
-	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
-	|| heap_page_is_bestspace (thread_p, page_watcher.pgptr)
-	|| heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid) != NO_ERROR
-	|| !OID_EQ (&page_class_oid, class_oid))
+    if (!heap_page_belongs_to_class (thread_p, page_watcher.pgptr, class_oid))
       {
 	L1_remove (l2_index, l1_index, expected);
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
@@ -941,7 +989,6 @@ namespace cubstorage
       bestspace_entry &candidate, bool &valid, bool in_buffer_only, PGBUF_WATCHER &page_watcher)
   {
     cubthread::entry *thread_p = thread_get_thread_entry_info ();
-    OID page_class_oid;
     VPID vpid;
     unsigned int initial_rank;
     int available, freespace;
@@ -990,25 +1037,7 @@ namespace cubstorage
       }
     assert (page_watcher.initial_rank == initial_rank);
 
-    // a map page is never a data page (see L1_find ())
-    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
-	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
-	|| heap_page_is_bestspace (thread_p, page_watcher.pgptr))
-      {
-	valid = false;
-	pgbuf_ordered_unfix (thread_p, &page_watcher);
-	return status::NOT_FOUND;
-      }
-
-    error = heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid);
-    if (error != NO_ERROR)
-      {
-	valid = false;
-	pgbuf_ordered_unfix (thread_p, &page_watcher);
-	return status::FAILURE;
-      }
-
-    if (!OID_EQ (&page_class_oid, class_oid))
+    if (!heap_page_belongs_to_class (thread_p, page_watcher.pgptr, class_oid))
       {
 	valid = false;
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
@@ -1055,12 +1084,17 @@ namespace cubstorage
 
     // the room a slot keeps (see L1_find ()); allocate () checks the fit with this transaction's room
     freespace = spage_max_space_for_new_record_without_saving (thread_p, page_watcher.pgptr);
-    // page_watcher.pgptr fixes the page pointer of the last candidates
-    for (i = ALLOC_BATCH_SIZE - 1; i >= static_cast<int> (num_candidates); i--)
+    // page_watcher.pgptr fixes vpids[0], the page returned to the caller, which takes the last candidate.
+    // the other new pages take the remaining candidates in heap chain order, so the inserts that follow
+    // fill the batch in ascending page order instead of from the last page down.
+    candidates[ALLOC_BATCH_SIZE - 1].freespace = freespace;
+    candidates[ALLOC_BATCH_SIZE - 1].volid = vpids[0].volid;
+    candidates[ALLOC_BATCH_SIZE - 1].pageid = vpids[0].pageid;
+    for (i = 1; i < static_cast<int> (ALLOC_BATCH_SIZE - num_candidates); i++)
       {
-	candidates[i].freespace = freespace;
-	candidates[i].volid = vpids[ALLOC_BATCH_SIZE - 1 - i].volid;
-	candidates[i].pageid = vpids[ALLOC_BATCH_SIZE - 1 - i].pageid;
+	candidates[num_candidates + i - 1].freespace = freespace;
+	candidates[num_candidates + i - 1].volid = vpids[i].volid;
+	candidates[num_candidates + i - 1].pageid = vpids[i].pageid;
       }
     return NO_ERROR;
   }
@@ -1071,33 +1105,61 @@ namespace cubstorage
 				      std::size_t num_candidates)
   {
     bestspace_map *map = m_parent.m_map;
-    std::size_t i, slot;
-    VPID old_vpid;
-    L1 old, l1;
+    std::array<std::uint16_t, ALLOC_BATCH_SIZE> slots;
+    std::size_t num_slots, first, last, i;
+    bool install_returned;
 
-    for (i = 0; i < num_candidates; i++)
+    auto install = [this, map] (std::uint16_t slot, const bestspace_entry &candidate)
+    {
+      VPID old_vpid;
+      L1 old, l1;
+
+      l1.set_freespace (candidate.freespace);
+      l1.set_vpid ({ candidate.pageid, candidate.volid });
+      // one exchange, not a load and a store: an L1_remove () or drop_page () of the evicted page then either empties
+      // the slot first or fails its CAS, so the page is never both forgotten and released
+      old = m_L1[slot].exchange (l1);
+
+      L2_update (slot / L2_FANOUT, slot % L2_FANOUT);
+
+      old_vpid = old.get_vpid ();
+      if (!VPID_ISNULL (&old_vpid))
+	{
+	  map->release (old_vpid.volid, old_vpid.pageid, code_of_room (old.get_freespace ()), false);
+	}
+    };
+
+    if (num_candidates == 0)
       {
-	slot = victims[i].first;
-	if (i == num_candidates - 1 && candidates[i].freespace <= victims[i].second)
-	  {
-	    // the returned page has less room than the victim: keep the victim, the page stays in the map
-	    map->release (candidates[i].volid, candidates[i].pageid, code_of_room (candidates[i].freespace), true);
-	    continue;
-	  }
+	return;
+      }
 
-	l1.set_freespace (candidates[i].freespace);
-	l1.set_vpid ({ candidates[i].pageid, candidates[i].volid });
-	// one exchange, not a load and a store: an L1_remove () or drop_page () of the evicted page then either empties
-	// the slot first or fails its CAS, so the page is never both forgotten and released
-	old = m_L1[slot].exchange (l1);
+    // the returned page (the last candidate) replaces its victim only if it has more room
+    last = num_candidates - 1;
+    install_returned = candidates[last].freespace > victims[last].second;
+    num_slots = install_returned ? num_candidates : last;
+    for (i = 0; i < num_slots; i++)
+      {
+	slots[i] = victims[i].first;
+      }
 
-	L2_update (slot / L2_FANOUT, slot % L2_FANOUT);
+    // later inserts take pages of the same tier in slot order. Give the returned page the first slot and the other
+    // candidates the next ones in their order, so new pages fill in heap chain order.
+    std::sort (slots.begin (), slots.begin () + num_slots);
+    first = install_returned ? 1 : 0;
+    if (install_returned)
+      {
+	install (slots[0], candidates[last]);
+      }
+    for (i = 0; i < last; i++)
+      {
+	install (slots[first + i], candidates[i]);
+      }
 
-	old_vpid = old.get_vpid ();
-	if (!VPID_ISNULL (&old_vpid))
-	  {
-	    map->release (old_vpid.volid, old_vpid.pageid, code_of_room (old.get_freespace ()), false);
-	  }
+    if (!install_returned)
+      {
+	// the returned page has less room than the victim: keep the victim, the page stays in the map
+	map->release (candidates[last].volid, candidates[last].pageid, code_of_room (candidates[last].freespace), true);
       }
   }
 
@@ -1349,6 +1411,7 @@ namespace cubstorage
     , m_map_pages_alloc (map_pages != nullptr ? map_num_pages : 0)
     , m_distributed_insert (prm_get_bool_value (PRM_ID_BESTSPACE_DISTRIBUTED_INSERT))
     , m_unfill_space (unfill_space)
+    , m_nonheader_page_capacity (heap_nonheader_page_capacity ())
     , m_num_pages (num_pages)
     , m_recs_num (recs_num)
     , m_recs_sumlen (recs_sumlen)
@@ -1559,11 +1622,7 @@ namespace cubstorage
 
     // strategy
     consume_size = static_cast<int> (size) + SPAGE_SLOT_SIZE;
-    needed_size = consume_size + m_unfill_space;
-    if (needed_size > heap_nonheader_page_capacity ())
-      {
-	needed_size = consume_size;
-      }
+    needed_size = get_needed_size (consume_size);
     if (m_distributed_insert)
       {
 	shard = static_cast<std::size_t> (thread_ref.index) % m_shards.size ();
@@ -1579,33 +1638,56 @@ namespace cubstorage
     return find_from_shards (thread_ref, class_oid, hfid, shard, needed_size, consume_size, bias, is_newrec, page_watcher);
   }
 
-  bestspace::tier
-  bestspace::size_to_tier (std::uint16_t size)
+  bool
+  bestspace::has_candidate (std::uint16_t needed_size) const
   {
-    assert (size <= DB_PAGESIZE);
+    std::uint8_t min_code = code_of (needed_size);
 
-    // FS0: 1-7%
-    // FS1: 8-15%
-    // FS2: 16-24%
-    // FS3: 25-34%
-    // FS4: 35-45%
-    // FS5: 46-57%
-    // FS6: 58-70%
-    // FS7: 71-84%
-    // FS8: 85-100%
-    static constexpr std::int16_t threshold[] = { 7, 15, 24, 34, 45, 57, 70, 84 };
-    std::int16_t percentage;
-    std::int8_t i;
+    // the tiers a refill claims (see shard::allocate)
+    return m_map->may_claim (min_code < bestspace_map::CODE_MAX_TIER ? min_code + 1 : bestspace_map::CODE_MAX_TIER);
+  }
 
-    percentage = size * 100 / DB_PAGESIZE;
-    for (i = 0; i < static_cast<std::int8_t> (tier::FS8) + 1; i++)
+  void
+  bestspace::update_freespace (VPID vpid, std::uint16_t freespace, int &l1_pos)
+  {
+    std::size_t i, entry_index;
+
+    // the same page may also be in another shard's L1;
+    // only one entry is updated, the cached one or else the first match,
+    // as L1_find updates only the entry it hands out.
+    // A page outside the slots keeps its map code: a claim re-measures it under the page latch
+    if (l1_pos >= 0)
       {
-	if (percentage <= threshold[i])
+	i = static_cast<std::size_t> (l1_pos) / ENTRIES_PER_SHARD;
+	entry_index = static_cast<std::size_t> (l1_pos) % ENTRIES_PER_SHARD;
+	if (i < m_shards.size () && m_shards[i].update_freespace_at (entry_index, vpid, freespace))
 	  {
-	    return static_cast<tier> (i - 1);
+	    return;
+	  }
+	l1_pos = -1;		// unknown; the sweep over all shards sets it again
+      }
+
+    for (i = 0; i < m_shards.size (); i++)
+      {
+	entry_index = 0;
+	if (m_shards[i].update_freespace (vpid, freespace, entry_index))
+	  {
+	    l1_pos = static_cast<int> (i * ENTRIES_PER_SHARD + entry_index);
+	    return;
 	  }
       }
-    return tier::FS8;
+  }
+
+  void
+  bestspace::add_estimates (cubthread::entry &thread_ref, int num_pages, std::uint64_t recs_num,
+			    std::uint64_t recs_sumlen)
+  {
+    std::size_t shard;
+
+    // get_estimates () sums every shard, so any shard can take the count;
+    // the shard is the one find () picks for this thread
+    shard = m_distributed_insert ? static_cast<std::size_t> (thread_ref.index) % m_shards.size () : 0;
+    m_shards[shard].add_estimates (num_pages, recs_num, recs_sumlen);
   }
 
   std::uint8_t

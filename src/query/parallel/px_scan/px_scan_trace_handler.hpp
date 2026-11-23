@@ -40,6 +40,7 @@ namespace parallel_scan
     UINT64 fetches;
     UINT64 ioreads;
     UINT64 fetch_time;
+    OOS_READ_STATS oos_reads;
     UINT64 read_rows;
     UINT64 qualified_rows;
     struct timeval elapsed_time;
@@ -76,13 +77,13 @@ namespace parallel_scan
       trace_handler() = default;
       ~trace_handler();
 
-      void add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, SCAN_ID *scan_id,
-		      struct timeval elapsed_time);
+      void add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, const OOS_READ_STATS &oos_reads,
+		      SCAN_ID *scan_id, struct timeval elapsed_time);
       /* the EXPR_COMPILE listing of a worker's XASL clone (expr_compile.h).  The compiled
        * programs live and die with the worker clones, so the coordinator's XASL -- the one
        * the SQL trace dumps -- never has any; the first worker to report keeps its listing
        * here and the scan's trace prints it (every worker compiles the same clone the same way). */
-      void add_expr_compile_dump (xasl_node *xasl);
+      void add_expr_compile_dump (xasl_node *xasl, SCAN_ID *scan_id);
       /* a worker hands over everything it counted when it ends; merge_stats () merges the sum into the leader */
       void add_px_stats (const UINT64 *worker_stats);
       /* once per scan (re)open, however the scan ends: the end path and the close path may both call it */

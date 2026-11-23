@@ -1205,6 +1205,41 @@ namespace cubstorage
     return found;
   }
 
+  bool
+  bestspace_map::may_claim (std::uint8_t min_code)
+  {
+    std::size_t n, s, off;
+
+    if (min_code < 1)
+      {
+	min_code = 1;
+      }
+    n = m_num_sectors.load (std::memory_order_acquire);
+    if (min_code > CODE_MAX_TIER || n == 0)
+      {
+	return false;
+      }
+
+    rootdir *root = m_root.load ();
+    if (root != nullptr)
+      {
+	return mask_of (root->h, min_code) != 0;
+      }
+    for (s = 0; s < n && s < INLINE_SECTORS; s++)
+      {
+	std::uint64_t resident = m_inline[s].resident.load ();
+	for (off = 0; off < PAGES_PER_SECTOR; off++)
+	  {
+	    std::uint8_t c = get_code (&m_inline[s], off);
+	    if (c >= min_code && c <= CODE_MAX_TIER && (resident & (1ULL << off)) == 0)
+	      {
+		return true;
+	      }
+	  }
+      }
+    return false;
+  }
+
   // claim pages of one sector; true if every page of the sector was looked at
   bool
   bestspace_map::claim_sector (record *rec, std::uint64_t key, std::uint8_t min_code, bestspace_map_page *out,
