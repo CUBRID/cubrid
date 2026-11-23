@@ -28759,6 +28759,8 @@ qexec_gby_init_group_dim (GROUPBY_STATE * gbstate)
     {
       return ER_FAILED;
     }
+  /* a dimension not built yet must read as empty to qexec_gby_clear_group_dim () */
+  memset (gbstate->g_dim, 0, gbstate->g_dim_levels * sizeof (GROUPBY_DIMENSION));
 
 
   /* set aggregation colunms */
@@ -28778,73 +28780,63 @@ qexec_gby_init_group_dim (GROUPBY_STATE * gbstate)
 #endif
       gbstate->g_dim[i].d_flag = (GROUPBY_DIMENSION_FLAG) (gbstate->g_dim[i].d_flag | GROUPBY_DIM_FLAG_CUBE);
 
-      if (gbstate->g_output_agg_list)
+      /* The copies are shallow, so they also carry the head list's server-side
+       * runtime state: the compiled operand program (head node), the per-node kernel
+       * bindings and a pending deferred NUMERIC sum.  That state belongs to whichever
+       * list built it -- when hash aggregation ran on the head list during the scan
+       * (qexec_hash_gby_agg_tuple ()) the head is already compiled here -- and a
+       * dimension must neither share it nor release it.  Start every dimension list
+       * from zero, as stream_to_xasl () does for the head: it compiles its own program
+       * on its first evaluated row (qdata_evaluate_aggregate_list ()) and
+       * qexec_gby_clear_group_dim () releases what it built.
+       * With rollup, the copies would also share the list file that collects a DISTINCT or
+       * sorted aggregate's values, and a dimension starting its next group would empty the
+       * values the other dimensions collected: every dimension collects in its own.
+       * A copy is linked only when it holds nothing of the head list, so that
+       * qexec_gby_clear_group_dim () can release a dimension built part way. */
+      aggp = NULL;
+      for (agg = gbstate->g_output_agg_list; agg != NULL; agg = agg->next)
 	{
-	  agg = gbstate->g_output_agg_list;
-	  gbstate->g_dim[i].d_agg_list = aggp = (AGGREGATE_TYPE *) db_private_alloc (NULL, sizeof (AGGREGATE_TYPE));
-	  if (aggp == NULL)
+	  aggr = (AGGREGATE_TYPE *) db_private_alloc (NULL, sizeof (AGGREGATE_TYPE));
+	  if (aggr == NULL)
 	    {
 	      return ER_FAILED;
 	    }
-	  memcpy (gbstate->g_dim[i].d_agg_list, agg, sizeof (AGGREGATE_TYPE));
-	  gbstate->g_dim[i].d_agg_list->accumulator.value = db_value_copy (agg->accumulator.value);
-	  gbstate->g_dim[i].d_agg_list->accumulator.value2 = db_value_copy (agg->accumulator.value2);
-
-	  while ((agg = agg->next))
+	  memcpy (aggr, agg, sizeof (AGGREGATE_TYPE));
+	  aggr->next = NULL;
+	  aggr->accumulator.value = db_value_copy (agg->accumulator.value);
+	  aggr->accumulator.value2 = db_value_copy (agg->accumulator.value2);
+	  aggr->operand_prog = NULL;
+	  aggr->operand_prog_idx = NULL;
+	  aggr->operand_prog_state = 0;
+	  aggr->operand_prog_base = -1;
+	  aggr->operand_prog_share_spec = NULL;
+	  aggr->operand_prog_link_stamp = 0;
+	  if (gbstate->with_rollup)
 	    {
-	      aggr = (AGGREGATE_TYPE *) db_private_alloc (NULL, sizeof (AGGREGATE_TYPE));
-	      if (aggr == NULL)
+	      aggr->list_id = NULL;
+	    }
+
+	  if (aggp == NULL)
+	    {
+	      gbstate->g_dim[i].d_agg_list = aggr;
+	    }
+	  else
+	    {
+	      aggp->next = aggr;
+	    }
+	  aggp = aggr;
+
+	  if (gbstate->with_rollup && agg->list_id != NULL)
+	    {
+	      aggr->list_id = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
+	      if (aggr->list_id == NULL)
 		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_LIST_ID));
 		  return ER_FAILED;
 		}
-	      memcpy (aggr, agg, sizeof (AGGREGATE_TYPE));
-	      aggr->accumulator.value = db_value_copy (agg->accumulator.value);
-	      aggr->accumulator.value2 = db_value_copy (agg->accumulator.value2);
-	      aggp->next = aggr;
-	      aggp = aggr;
+	      QFILE_CLEAR_LIST_ID (aggr->list_id);
 	    }
-
-	  /* The copies above are shallow, so they also carry the head list's server-side
-	   * runtime state: the compiled operand program (head node), the per-node kernel
-	   * bindings and a pending deferred NUMERIC sum.  That state belongs to whichever
-	   * list built it -- when hash aggregation ran on the head list during the scan
-	   * (qexec_hash_gby_agg_tuple ()) the head is already compiled here -- and a
-	   * dimension must neither share it nor release it.  Start every dimension list
-	   * from zero, as stream_to_xasl () does for the head: it compiles its own program
-	   * on its first evaluated row (qdata_evaluate_aggregate_list ()) and
-	   * qexec_gby_clear_group_dim () releases what it built.
-	   * With rollup, the copies would also share the list file that collects a DISTINCT or
-	   * sorted aggregate's values, and a dimension starting its next group would empty the
-	   * values the other dimensions collected: every dimension collects in its own. */
-	  for (aggr = gbstate->g_dim[i].d_agg_list; aggr != NULL; aggr = aggr->next)
-	    {
-	      aggr->operand_prog = NULL;
-	      aggr->operand_prog_idx = NULL;
-	      aggr->operand_prog_state = 0;
-	      aggr->operand_prog_base = -1;
-	      aggr->operand_prog_share_spec = NULL;
-	      aggr->operand_prog_link_stamp = 0;
-
-	      if (gbstate->with_rollup && aggr->list_id != NULL)
-		{
-		  aggr->list_id = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
-		  if (aggr->list_id == NULL)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_LIST_ID));
-		      /* the rest still point to the head's; qexec_gby_clear_group_dim () must not free them */
-		      for (aggr = aggr->next; aggr != NULL; aggr = aggr->next)
-			{
-			  aggr->list_id = NULL;
-			}
-		      return ER_FAILED;
-		    }
-		  QFILE_CLEAR_LIST_ID (aggr->list_id);
-		}
-	    }
-	}
-      else
-	{
-	  gbstate->g_dim[i].d_agg_list = NULL;
 	}
     }
 
