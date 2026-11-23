@@ -8098,9 +8098,10 @@ scan_next_index_bitmap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, FILTER_INFO 
 	  /* the next recorded page of the part */
 	  if ((bm->entry & (DISK_SECTOR_NPAGES - 1)) == 0)
 	    {
-	      /* the next pages are told to the OS together, wherever they lie */
+	      /* the pages after the ones read next are told to the OS, wherever they lie: a read then does not wait
+	       * for a hint just given. The part's first pages are told with them. */
 	      VPID vpids[DISK_SECTOR_NPAGES];
-	      int count = 0;
+	      const size_t end = MIN (bm->entry + 2 * DISK_SECTOR_NPAGES, bm->worker->order.size ());
 
 	      if (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted (thread_p, true, &is_fixed))
 		{
@@ -8108,11 +8109,16 @@ scan_next_index_bitmap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, FILTER_INFO 
 		  status = S_ERROR;
 		  break;
 		}
-	      for (size_t k = bm->entry; k < bm->worker->order.size () && count < DISK_SECTOR_NPAGES; k++)
+	      for (size_t k = bm->entry == 0 ? 0 : bm->entry + DISK_SECTOR_NPAGES; k < end;)
 		{
-		  bm->marks.page_vpid (bm->worker->heap_tbl.e[bm->worker->order[k]].page, &vpids[count++]);
+		  int count = 0;
+
+		  for (; k < end && count < DISK_SECTOR_NPAGES; k++)
+		    {
+		      bm->marks.page_vpid (bm->worker->heap_tbl.e[bm->worker->order[k]].page, &vpids[count++]);
+		    }
+		  (void) pgbuf_read_ahead (thread_p, vpids, count);
 		}
-	      (void) pgbuf_read_ahead (thread_p, vpids, count);
 	    }
 	  bm->marks.page_vpid (bm->worker->heap_tbl.e[bm->worker->order[bm->entry]].page, &bm->vpid);
 	  scan_id->scan_stats.bitmap_heap_pages++;

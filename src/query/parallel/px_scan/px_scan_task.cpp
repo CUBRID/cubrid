@@ -1497,20 +1497,26 @@ namespace parallel_scan
 
 		    if ((i & (DISK_SECTOR_NPAGES - 1)) == 0)
 		      {
-			/* the next pages are told to the OS together, wherever they lie */
+			/* the pages after the ones read next are told to the OS, wherever they lie: a read then does
+			 * not wait for a hint just given. The part's first pages are told with them. */
 			VPID vpids[DISK_SECTOR_NPAGES];
-			int count = 0;
+			const size_t end = MIN (i + 2 * DISK_SECTOR_NPAGES, order.size ());
 
 			if (interrupted ())
 			  {
 			    stop = true;
 			    break;
 			  }
-			for (size_t k = i; k < order.size () && count < DISK_SECTOR_NPAGES; k++)
+			for (size_t k = i == 0 ? 0 : i + DISK_SECTOR_NPAGES; k < end;)
 			  {
-			    m_input_handler->bitmap ().page_vpid (table.e[order[k]].page, &vpids[count++]);
+			    int count = 0;
+
+			    for (; k < end && count < DISK_SECTOR_NPAGES; k++)
+			      {
+				m_input_handler->bitmap ().page_vpid (table.e[order[k]].page, &vpids[count++]);
+			      }
+			    (void) pgbuf_read_ahead (&thread_ref, vpids, count);
 			  }
-			(void) pgbuf_read_ahead (&thread_ref, vpids, count);
 		      }
 		    m_input_handler->bitmap ().page_vpid (table.e[order[i]].page, &vpid);
 		    heap_pages++;
