@@ -1782,9 +1782,11 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
       limit_infop = qo_get_key_limit_from_ordbynum (parser, plan, xasl, false);
       if (limit_infop)
 	{
+	  /* a data filter drops rows after the keys are counted, so it keeps the limit in the sort
+	   * (where a < 2999 order by id limit 3 would read 3 keys and drop some of them) */
 	  if ((qo_is_iscan (subplan) || qo_is_iscan_from_orderby (subplan))
 	      && (subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE
-		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE))
+		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE) && xasl->spec_list->where_pred == NULL)
 	    {
 	      assert (xasl->instnum_pred == NULL);
 	      assert (xasl->ordbynum_pred != NULL);
@@ -3605,21 +3607,34 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 
     case QO_PLANTYPE_FOLLOW:
 #if 1
-      /*
-       * We have to take care of any sargs that have been passed down
-       * from above.  Go ahead and destructively union them into this
-       * plan's sarg set: no one will ever look at the plan again
-       * anyway.
-       */
-      bitset_union (&(plan->sarged_terms), predset);
-      fetch = make_fetch_proc (env, plan);
-      fetch = add_fetch_proc (env, fetch, fetches);
-      fetch = add_subqueries (env, fetch, &new_subqueries);
-      /*
-       * Now proceed on with inner generation, passing the augmented
-       * list of fetch procs.
-       */
-      scan = gen_inner (env, plan->plan_un.follow.head, &EMPTY_SET, &EMPTY_SET, inner_scans, fetch, parallelism);
+      {
+	BITSET head_terms;
+	BITSET_ITERATOR bi;
+	QO_TERM *term;
+	int i, tail_idx;
+
+	/* the scan under the fetch decides an outer join match; it takes the terms that do not read the fetched object */
+	bitset_init (&head_terms, env);
+	tail_idx = QO_NODE_IDX (QO_TERM_TAIL (plan->plan_un.follow.path));
+	for (i = bitset_iterate (predset, &bi); i != -1; i = bitset_next_member (&bi))
+	  {
+	    term = QO_ENV_TERM (env, i);
+	    if (!BITSET_MEMBER (QO_TERM_NODES (term), tail_idx) && bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	      {
+		bitset_add (&head_terms, i);
+	      }
+	    else
+	      {
+		bitset_add (&(plan->sarged_terms), i);
+	      }
+	  }
+
+	fetch = make_fetch_proc (env, plan);
+	fetch = add_fetch_proc (env, fetch, fetches);
+	fetch = add_subqueries (env, fetch, &new_subqueries);
+	scan = gen_inner (env, plan->plan_un.follow.head, &head_terms, &EMPTY_SET, inner_scans, fetch, parallelism);
+	bitset_delset (&head_terms);
+      }
       break;
 #else
       /* Fall through */
@@ -4775,6 +4790,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
+      /* key_limit_eval () reads this N - 1 from its N, as ceil (N) - 1 (2.4 gives 2), instead of subtracting 1 */
+      REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       *upper = regu_ptr_list_add_regu (rhs, *upper);
@@ -4798,6 +4815,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
+      /* read as ceil (N) - 1 (see R_EQ) */
+      REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *upper = regu_ptr_list_add_regu (regu_low, *upper);
       break;
@@ -4816,6 +4835,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
+      /* read as ceil (N) - 1 (see R_EQ) */
+      REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       break;

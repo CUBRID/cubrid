@@ -49,6 +49,8 @@
 #error Does not belong to Windows client module
 #endif /* WINDOWS */
 
+#include <math.h>
+
 #include "dbtype_def.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "query_evaluator.h"
@@ -301,6 +303,21 @@ expr_prog_value (const EXPR_PROG * prog, int root_idx)
 }
 
 extern void expr_prog_free (EXPR_PROG * prog);
+
+/* DOUBLE in the order of its type's comparison (MR_CMP_FLOATING () in object_primitive.c): a NaN equals a NaN and is
+ * above every other value, where the C operators find a NaN unequal to every value. The compiled and the batch
+ * predicates compare by these, so a row answers as the interpreter answers it. */
+STATIC_INLINE bool
+expr_double_eq (double a, double b)
+{
+  return a == b || (isnan (a) && isnan (b));
+}
+
+STATIC_INLINE bool
+expr_double_lt (double a, double b)
+{
+  return a < b || (isnan (b) && !isnan (a));
+}
 
 /* human-readable program listing (SQL trace, debugging): one line per step with the
  * kernel name, argument/output cells and domains, prologue markers, jump targets */

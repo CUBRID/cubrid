@@ -653,6 +653,8 @@ extern "C"
 
   extern PT_NODE *pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE num_op,
 					      bool is_gby_num);
+  extern void pt_cast_limit_string_operands (PARSER_CONTEXT * parser, PT_NODE * limit);
+  extern bool pt_cast_limit_rewritten_sum (PARSER_CONTEXT * parser, PT_NODE * sum);
   extern PT_NODE *pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value);
   extern PT_NODE *pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement,
 						PT_NODE_WALK_FUNCTION post, void *post_arg);
@@ -803,6 +805,7 @@ extern "C"
 
   extern void pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+  extern void pt_gather_dblink_cols_in_dml (PARSER_CONTEXT * parser, PT_NODE * stmt);
 
   extern int pt_resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec);
 

@@ -331,15 +331,22 @@ static void
 sl_print_update_att_set (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments)
 {
   db_value_printer printer (strbuf);
+  bool is_first = true;
 
   for (int i = 0; i < num_assignments; i++)
     {
-      strbuf ("\"%s\"=", assignments[i]->att->header.name);
-      printer.describe_value (assignments[i]->variable);
-      if (i != num_assignments - 1)
+      /* a column the master's UPDATE reused was not assigned (CBRD-27230) */
+      if (assignments[i] == NULL)
+	{
+	  continue;
+	}
+      if (!is_first)
 	{
 	  strbuf (", ");
 	}
+      is_first = false;
+      strbuf ("\"%s\"=", assignments[i]->att->header.name);
+      printer.describe_value (assignments[i]->variable);
     }
 }
 

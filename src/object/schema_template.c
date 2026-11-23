@@ -1989,10 +1989,10 @@ smt_check_histogram_exist (MOP classop, const char *attr_name)
   /* _db_histogram is an internal catalog; bypass user authorization. (CBRD-26667)
    * Read the row's existence without a lock (CBRD-27369): an S lock here would be held to
    * commit and the store step's X on the same row would have to upgrade past every concurrent
-   * collector's S, deadlocking.  The committed lock-free read still sees this transaction's own
+   * collector's S, deadlocking.  The lock-free read still sees this transaction's own
    * uncommitted insert, so a re-check within one transaction is correct. */
   AU_SAVE_AND_DISABLE (au_save);
-  histogram_obj = db_find_multi_unique_committed (histogram_class, 2, (char **) search_attrs, value_ptrs);
+  histogram_obj = db_find_multi_unique_catalog (histogram_class, 2, (char **) search_attrs, value_ptrs);
   AU_RESTORE (au_save);
   if (histogram_obj != NULL)
     {
@@ -4212,16 +4212,39 @@ smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
  *    re-defined in place.
  *   return: none
  *   template(in/out): schema template
+ *
+ * Note: The template keeps the class MOP, so the OID of the class and the privileges granted on it are kept.
+ *       The builder of the system vclasses and CREATE OR REPLACE VIEW use it.
  */
 
 void
 smt_reset_vclass_definition (SM_TEMPLATE * template_)
 {
+  ml_free (template_->inheritance);
+  template_->inheritance = NULL;
+
   WS_LIST_FREE (template_->attributes, classobj_free_attribute);
   template_->attributes = NULL;
 
+  WS_LIST_FREE (template_->class_attributes, classobj_free_attribute);
+  template_->class_attributes = NULL;
+
+  WS_LIST_FREE (template_->methods, classobj_free_method);
+  template_->methods = NULL;
+
   WS_LIST_FREE (template_->class_methods, classobj_free_method);
   template_->class_methods = NULL;
+
+  WS_LIST_FREE (template_->resolutions, classobj_free_resolution);
+  template_->resolutions = NULL;
+
+  WS_LIST_FREE (template_->class_resolutions, classobj_free_resolution);
+  template_->class_resolutions = NULL;
+
+  WS_LIST_FREE (template_->method_files, classobj_free_method_file);
+  template_->method_files = NULL;
+
+  ws_free_string_and_init (template_->loader_commands);
 
   WS_LIST_FREE (template_->query_spec, classobj_free_query_spec);
   template_->query_spec = NULL;

@@ -75,6 +75,7 @@ extern bool pt_try_set_subquery_distinct (PARSER_CONTEXT * parser, PT_NODE * que
 extern STATEMENT_SET_FOLD pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node);
 
 extern PT_NODE *pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD fold_as);
+extern PT_NODE *pt_fold_union_unwrap (PARSER_CONTEXT * parser, PT_NODE * query);
 
 extern bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2);
 

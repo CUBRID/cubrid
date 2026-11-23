@@ -5697,7 +5697,9 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
       PT_NODE *arg2_list = NULL;
 
       /* only the set of values matters to a range predicate.
-       * DISTINCT is set only where it keeps that set, see pt_try_set_subquery_distinct (). */
+       * DISTINCT is set only where it keeps that set, see pt_try_set_subquery_distinct (); a set operation folded
+       * with DISTINCT gives back its operand (pt_fold_union_unwrap ()). */
+      expr->info.expr.arg2 = arg2 = pt_fold_union_unwrap (parser, arg2);
       (void) pt_try_set_subquery_distinct (parser, arg2);
 
       arg2_list = pt_get_select_list (parser, arg2);
@@ -8010,6 +8012,29 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
   if (sc_info->donot_fold == true)
     {				/* skip folding */
       return node;
+    }
+
+  /* cast before the switch below types the LIMIT values and copies them into the numbering predicates. A PL/CSQL
+   * static SQL keeps the clause as written and casts the copies (pt_limit_to_numbering_expr) */
+  if (!parser->flag.is_parsing_static_sql)
+    {
+      switch (node->node_type)
+	{
+	case PT_SELECT:
+	case PT_UNION:
+	case PT_DIFFERENCE:
+	case PT_INTERSECTION:
+	  pt_cast_limit_string_operands (parser, node->info.query.limit);
+	  break;
+	case PT_UPDATE:
+	  pt_cast_limit_string_operands (parser, node->info.update.limit);
+	  break;
+	case PT_DELETE:
+	  pt_cast_limit_string_operands (parser, node->info.delete_.limit);
+	  break;
+	default:
+	  break;
+	}
     }
 
   switch (node->node_type)
@@ -11074,6 +11099,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->type_enum = PT_TYPE_LOGICAL;
 	  if (pt_is_query (arg1))
 	    {
+	      /* only whether a row exists counts, which the duplicates a folded set operation removes do not change */
+	      node->info.expr.arg1 = arg1 = pt_fold_union_unwrap (parser, arg1);
 	      pt_chop_to_one_select_item (parser, arg1);
 	    }
 	}
@@ -11212,8 +11239,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    /* if other value, the db_str_to_date will return NULL */
 	    node->type_enum = PT_TYPE_NULL;
 	  }
-	else if (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE)
+	else if (type_specifier == PT_TYPE_MAYBE && (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE))
 	  {
+	    /* CBRD-28134: only an unknown format leaves the result open; a known one without a specifier is a DATE, as
+	     * a literal format of no specifier types it, and the row raises the literal's error */
 	    node->type_enum = PT_TYPE_MAYBE;
 	  }
 	break;
@@ -11506,8 +11535,9 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		      if (nextcase->data_type)
 			{
 			  parser_free_tree (parser, nextcase->data_type);
-			  nextcase->data_type = parser_copy_tree_list (parser, next_arg1->data_type);
 			}
+		      /* set it even if nextcase had none; constant folding casts nextcase to it */
+		      nextcase->data_type = parser_copy_tree_list (parser, next_arg1->data_type);
 		    }
 		  /* set nextcase to nextcase->arg2 and continue */
 		  prev = nextcase;
