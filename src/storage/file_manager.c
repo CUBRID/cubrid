@@ -11820,6 +11820,10 @@ file_delete_invalid_file (THREAD_ENTRY * thread_p,
       {
 	ASSERT_ERROR_AND_SET (error_code);
 	log_sysop_abort (thread_p);
+	if (is_heap)
+	  {
+	    heap_bestspace_end_quiesce (&vfid);
+	  }
 	return error_code;
       }
 
