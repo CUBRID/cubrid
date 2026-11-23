@@ -583,8 +583,10 @@ enum param_id
 
   PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL,
 
+  PRM_ID_MVCC_REEVALUATE_AT_FORCE,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL
+  PRM_LAST_ID = PRM_ID_MVCC_REEVALUATE_AT_FORCE
 };
 typedef enum param_id PARAM_ID;
 

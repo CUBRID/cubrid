@@ -1196,9 +1196,9 @@ db_find_multi_unique (MOP classmop, int size, char *attr_names[], DB_VALUE * val
 }
 
 /*
- * db_find_multi_unique_committed() - like db_find_multi_unique (DB_FETCH_READ), but reads the
+ * db_find_multi_unique_catalog() - like db_find_multi_unique (DB_FETCH_READ), but reads the
  *    latest committed version of the found row WITHOUT taking a lock (mirrors
- *    db_get_histogram_committed ()). Used where the caller only needs to know whether a row
+ *    db_get_histogram_for_optimizer ()). Used where the caller only needs to know whether a row
  *    exists and must not leave an S lock that a concurrent writer's X would have to wait on.
  * returns: the object, or NULL when the key does not exist
  * classmop(in): class pointer
@@ -1214,7 +1214,7 @@ db_find_multi_unique (MOP classmop, int size, char *attr_names[], DB_VALUE * val
  *   another transaction's uncommitted ones -- and it leaves no lock for the store's X to fight.
  */
 DB_OBJECT *
-db_find_multi_unique_committed (DB_OBJECT * classmop, int size, char *attr_names[], DB_VALUE * values[])
+db_find_multi_unique_catalog (DB_OBJECT * classmop, int size, char *attr_names[], DB_VALUE * values[])
 {
   DB_OBJECT *retval = NULL;
 
@@ -1227,7 +1227,7 @@ db_find_multi_unique_committed (DB_OBJECT * classmop, int size, char *attr_names
       return NULL;
     }
 
-  retval = obj_find_multi_attr_committed (classmop, size, (const char **) attr_names, (const DB_VALUE **) values);
+  retval = obj_find_multi_attr_catalog (classmop, size, (const char **) attr_names, (const DB_VALUE **) values);
 
   /* clear the benign not-found warning, keep real errors -- as db_find_multi_unique () does */
   if (retval != NULL || er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
