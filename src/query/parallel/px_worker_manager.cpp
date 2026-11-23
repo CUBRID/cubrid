@@ -125,7 +125,7 @@ namespace parallel_query
   void worker_manager::pop_task ()
   {
     /* before the count drops: then the reserver may end its request, and the deferred wake goes out with it */
-    lock_deferred_wake_hand_over (thread_get_thread_entry_info (), m_reserver);
+    lock_end_parallel_task (thread_get_thread_entry_info (), m_reserver);
     m_active_tasks.fetch_sub (1, std::memory_order_release);
   }
 }

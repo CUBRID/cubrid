@@ -8381,7 +8381,7 @@ lock_reset_request_state (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
   thread_p->deferred_wake.request.recheck = lk_thread_deferred_wake::recheck_record ();
-  /* a pool thread may hand its epoch to this one at any time (lock_deferred_wake_hand_over ()) */
+  /* a pool thread may hand its epoch to this one at any time (lock_end_parallel_task ()) */
   __atomic_store_n (&thread_p->deferred_wake.request.epoch_seen, (UINT64) 0, __ATOMIC_RELAXED);
 #endif /* SERVER_MODE */
 }
@@ -8432,7 +8432,7 @@ lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p)
     {
       thread_p = thread_get_thread_entry_info ();
     }
-  /* a pool thread may hand its epoch to this one at any time (lock_deferred_wake_hand_over ()) */
+  /* a pool thread may hand its epoch to this one at any time (lock_end_parallel_task ()) */
   if (__atomic_load_n (&thread_p->deferred_wake.request.epoch_seen, __ATOMIC_RELAXED) != 0)
     {
       return;
@@ -8478,28 +8478,31 @@ lock_deferred_wake_on_request_end (THREAD_ENTRY * thread_p)
 }
 
 /*
- * lock_deferred_wake_hand_over - a parallel task ends: the wake due at a row write of its pool thread goes out at the
- *				   end of the request of the thread that reserved the pool, as a pool thread ends none
+ * lock_end_parallel_task - a parallel task ends. Its pool thread ends no request, so what a request's end does is done
+ *			    here: the wake due at a row write of the task goes out at the end of the request of the
+ *			    thread that reserved the pool, and the task's waits do not count toward the next task's
  *
- *   owner_p(in): the thread that reserved the pool; it waits for this task to retire
+ *   reserver_p(in): the thread that reserved the pool; it waits for this task to retire
  */
 void
-lock_deferred_wake_hand_over (THREAD_ENTRY * thread_p, THREAD_ENTRY * owner_p)
+lock_end_parallel_task (THREAD_ENTRY * thread_p, THREAD_ENTRY * reserver_p)
 {
 #if defined (SERVER_MODE)
   UINT64 epoch, none = 0;
 
-  if (owner_p == thread_p)
+  if (reserver_p == thread_p)
+    {
+      return;
+    }
+  thread_p->deferred_wake.request.recheck = lk_thread_deferred_wake::recheck_record ();
+  /* no one else writes this thread's epoch now: the tasks of a pool it reserved have retired */
+  if (__atomic_load_n (&thread_p->deferred_wake.request.epoch_seen, __ATOMIC_RELAXED) == 0)
     {
       return;
     }
   epoch = __atomic_exchange_n (&thread_p->deferred_wake.request.epoch_seen, (UINT64) 0, __ATOMIC_SEQ_CST);
-  if (epoch == 0)
-    {
-      return;
-    }
-  /* an epoch the owner already saw stays: a request keeps the first it sees */
-  (void) __atomic_compare_exchange_n (&owner_p->deferred_wake.request.epoch_seen, &none, epoch, false,
+  /* an epoch the reserver already saw stays: a request keeps the first it sees */
+  (void) __atomic_compare_exchange_n (&reserver_p->deferred_wake.request.epoch_seen, &none, epoch, false,
 				      __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
 #endif /* SERVER_MODE */
 }
