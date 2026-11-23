@@ -3303,7 +3303,8 @@ lang_cp_to_weight_utf8 (const unsigned int cp, const unsigned int *weights, cons
  *   - Trailing weights 0 are not hashed, so strings that differ only in them hash alike.
  *
  * Steps:
- *   Step 1: leave out the trailing spaces (a CHAR's pad) without decoding them.
+ *   Step 1: leave out the trailing spaces (a CHAR's pad) without decoding them, but the first
+ *           INTL_UTF8_MAX_CHAR_SIZE - 1 of them.
  *   Step 2: read the weight of the next code point.
  *   Step 3: hash the weight, holding a weight 0 back.
  */
@@ -3323,6 +3324,10 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
     {
       str_end--;
     }
+
+  /* keep the first INTL_UTF8_MAX_CHAR_SIZE - 1 of them: a malformed lead byte before them reads them as its next bytes
+   * (intl_utf8_to_cp () does not check them), as the compare function does; a space read alone weighs 0 */
+  str_end = MIN (str_end + (INTL_UTF8_MAX_CHAR_SIZE - 1), str + size);
 
   while (str < str_end)
     {
