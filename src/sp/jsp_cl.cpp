@@ -5183,8 +5183,8 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   /* OWNER TO the current owner alone changes nothing (see au_change_sp_owner_with_transfer_privileges ()) */
   if (sp_comment == NULL && new_owner_mop != NULL && ws_is_same_object (new_owner_mop, owner_mop))
     {
-        // do not update timestamp
-        // nothing has happened in au_change_sp_owner_with_transfer_privileges()
+      // do not update timestamp
+      // nothing has happened in au_change_sp_owner_with_transfer_privileges()
     }
   else
     {
