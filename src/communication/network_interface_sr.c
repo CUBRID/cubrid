@@ -10656,8 +10656,10 @@ spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
 	}
-      packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
       (void) return_error_to_client (thread_p, rid);
+      /* packed after the reply has decided the abort: a transaction it aborted (need_to_abort_tran ()) is reported as
+       * ER_LK_UNILATERALLY_ABORTED, which pl_call () keeps, so the client ends the transaction too */
+      packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
     }
 
   char *reply_data = eb.get_ptr ();
