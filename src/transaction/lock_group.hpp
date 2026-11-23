@@ -111,15 +111,7 @@ class lock_group
     void section_begin ();
     void section_end ();
     void clear ();
-    bool defer_abort (THREAD_ENTRY *thread_p, bool to_pl_caller);
-    bool is_abort_deferred () const
-    {
-      return m_abort_deferred.load (std::memory_order_acquire);
-    }
-    void clear_abort_deferred ()
-    {
-      m_abort_deferred.store (false, std::memory_order_release);
-    }
+    bool defer_abort (THREAD_ENTRY *thread_p);
     int abort_reason () const;
     bool holds_interrupt () const;
 
@@ -164,9 +156,9 @@ class lock_group
 
     const int m_tran_index;	/* the owning unit: locks its threads take belong to this transaction */
     std::atomic<int> m_sections;	/* open parallel sections */
-    /* written under the mutex, but the owner, the depths and the transaction end's m_abort_deferred; m_owner_wait_key
-     * and m_owner_held_row are also read only under it, m_guest and m_owner_sleeping outside it only to see the
-     * reader's own role and in debug checks. No lock is taken in it. */
+    /* written under the mutex, but the owner and the depths; m_owner_wait_key and m_owner_held_row are also read only
+     * under it, m_guest and m_owner_sleeping outside it only to see the reader's own role and in debug checks. No
+     * lock is taken in it. */
     pthread_mutex_t m_mutex;
     pthread_cond_t m_cond;	/* the entrance freed, the owner asleep, or an abort for the waiters to see; a pthread
 				 * cond for its clock (LK_GROUP_COND_CLOCK) */
@@ -182,8 +174,6 @@ class lock_group
     LK_RES_KEY m_owner_wait_key;	/* the resource it waits for, while m_owner_sleeping */
     UINT64 m_owner_held_row;	/* the row it holds while it waits on a self-lock (deferred_wake.held_row), or 0 */
     std::atomic<bool> m_interrupted;	/* see keep_interrupt () */
-    /* an abort waits for the section opener or a PL callback's caller; cleared when the transaction ends */
-    std::atomic<bool> m_abort_deferred;
     std::atomic<LK_PENDING_RELEASE *> m_pending_release;	/* run by the owner before it leaves */
 #if !defined (NDEBUG)
     std::atomic<THREAD_ENTRY *> m_solo_owner;	/* the thread inside with no section open, to catch a second one */
@@ -308,10 +298,8 @@ extern void lock_group_check_sections_closed (void);
 /* from lock_manager.c */
 extern lock_group *lock_get_tran_group (int tran_index);
 extern bool lock_tran_lock_is_initialized (int tran_index);
-extern bool lock_is_tran_deadlock_victim (int tran_index);
 extern INT64 *lock_get_wait_stime (int tran_index);
 extern void lock_interrupt_lockwait (THREAD_ENTRY * guest, int tran_index);
-extern void lock_set_error_for_aborted (int tran_index);
 extern LK_RES_KEY lock_create_search_key (const OID * oid, const OID * class_oid);
 extern UINT64 lock_pack_row_oid (const OID * oid);
 extern int lock_res_key_compare (void *k1, void *k2);

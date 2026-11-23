@@ -377,11 +377,11 @@ need_to_abort_tran (THREAD_ENTRY *thread_p, int *errid)
    *  below block means ER_LK_UNILATERALLY_ABORTED occurs but another error
    *  set after that.
    *  So, re-set that error to rollback in client side.
-   *  An abort left to a section opener or to a PL callback's caller (lock_group_is_abort_deferred ()) is done here too.
+   *  An abort left to a section opener or to a PL callback's caller (logtb_is_abort_deferred ()) is done here too.
    */
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   if (tdes != NULL && flag_abort == false
-      && (tdes->tran_abort_reason != TRAN_NORMAL || lock_group_is_abort_deferred (tdes->tran_index)))
+      && (tdes->tran_abort_reason != TRAN_NORMAL || logtb_is_abort_deferred (tdes->tran_index)))
     {
       flag_abort = true;
 

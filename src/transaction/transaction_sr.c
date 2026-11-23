@@ -47,10 +47,13 @@
 
 static bool xtran_end_is_refused_or_aborted (THREAD_ENTRY * thread_p, int tran_index, const char *stmt_name,
 					     TRAN_STATE * state);
+#if defined (SERVER_MODE)
+static bool tran_defer_abort_to_pl_caller (THREAD_ENTRY * thread_p, int tran_index);
+#endif /* SERVER_MODE */
 
 /*
  * xtran_end_is_refused_or_aborted () - a commit or 2PC prepare refused while the transaction's parallel section is
- *					open, or replaced by the abort deferred to it (lock_group_is_abort_deferred ())
+ *					open, or replaced by the abort deferred to it (logtb_is_abort_deferred ())
  *   return: true with *state the request's result
  *   stmt_name(in): the statement, for the error message
  *
@@ -72,7 +75,7 @@ xtran_end_is_refused_or_aborted (THREAD_ENTRY * thread_p, int tran_index, const 
       *state = logtb_find_state (tran_index);
       return true;
     }
-  if (lock_group_is_abort_deferred (tran_index))
+  if (logtb_is_abort_deferred (tran_index))
     {
       (void) logtb_find_client_name_host_pid (tran_index, &prog_name, &user_name, &host_name, &pid);
       *state = xtran_server_abort (thread_p);
@@ -243,6 +246,35 @@ tran_server_unilaterally_abort (THREAD_ENTRY * thread_p, int tran_index)
 
 #if defined(SERVER_MODE)
 /*
+ * tran_defer_abort_to_pl_caller () - leave the abort of a PL callback's transaction to the caller, which waits inside
+ *				       its statement for the callback's reply
+ *   return: true if deferred: any abort with a parallel section open (lock_group_defer_abort ()), and with none only
+ *	     a deadlock victim's, not one for another error such as ER_DB_NO_MODIFICATIONS
+ *
+ * Note: with no section, no interrupt: the PL calls would report it as ER_INTERRUPTED over the deadlock error. Their
+ *	 statements fail as they return instead (logtb_fail_if_abort_deferred ()). No section opens meanwhile: the
+ *	 caller waits for this reply, and this request holds the execution token.
+ */
+static bool
+tran_defer_abort_to_pl_caller (THREAD_ENTRY * thread_p, int tran_index)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+  if (lock_group_defer_abort (thread_p, tran_index))
+    {
+      return true;
+    }
+  if (tran_index <= LOG_SYSTEM_TRAN_INDEX || tdes == NULL
+      || !(lock_is_tran_deadlock_victim (tran_index) || logtb_is_abort_deferred (tran_index)))
+    {
+      return false;
+    }
+  tdes->abort_deferred.store (true, std::memory_order_release);
+  assert (!lock_group_has_open_section (tran_index));
+  return true;
+}
+
+/*
  * tran_server_unilaterally_abort_tran -
  *
  * return: state of operation
@@ -261,7 +293,7 @@ tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p)
   /* a PL callback leaves the abort to its caller, which waits inside its statement for this reply. Not in
    * xtran_server_abort (): a ROLLBACK the PL issues still undoes at once */
   if (session_is_pl_callback (thread_p)
-      && lock_group_defer_abort_to_pl_caller (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p)))
+      && tran_defer_abort_to_pl_caller (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p)))
     {
       return TRAN_UNACTIVE_ABORTED;
     }

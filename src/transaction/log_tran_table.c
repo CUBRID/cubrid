@@ -1651,6 +1651,9 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   XASL_ID_SET_NULL (&tdes->xasl_id);
   tdes->waiting_for_res = NULL;
   tdes->tran_abort_reason = TRAN_NORMAL;
+#if defined (SERVER_MODE)
+  tdes->abort_deferred.store (false, std::memory_order_release);
+#endif /* SERVER_MODE */
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
   tdes->m_log_postpone_cache.reset ();
@@ -1745,6 +1748,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->waiting_for_res = NULL;
   tdes->disable_modifications = db_Disable_modifications;
   tdes->tran_abort_reason = TRAN_NORMAL;
+#if defined (SERVER_MODE)
+  tdes->abort_deferred.store (false, std::memory_order_release);
+#endif /* SERVER_MODE */
   tdes->num_exec_queries = 0;
   tdes->ddl_sql_user_text = NULL;
 
@@ -3287,6 +3293,39 @@ logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index,
   return false;
 }
 
+
+/*
+ * logtb_is_abort_deferred () - whether the transaction's abort is left to the request that ends it
+ *				 (lock_group_defer_abort (), tran_defer_abort_to_pl_caller ())
+ */
+bool
+logtb_is_abort_deferred (int tran_index)
+{
+#if defined (SERVER_MODE)
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+  return tdes != NULL && tdes->abort_deferred.load (std::memory_order_acquire);
+#else /* SERVER_MODE */
+  return false;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * logtb_fail_if_abort_deferred () - fail a statement whose transaction's abort is left to a request that ends it
+ *   return: ER_LK_UNILATERALLY_ABORTED (set) or NO_ERROR
+ */
+int
+logtb_fail_if_abort_deferred (int tran_index)
+{
+#if defined (SERVER_MODE)
+  if (logtb_is_abort_deferred (tran_index))
+    {
+      lock_set_error_for_aborted (tran_index);
+      return ER_LK_UNILATERALLY_ABORTED;
+    }
+#endif /* SERVER_MODE */
+  return NO_ERROR;
+}
 
 /*
  * logtb_is_active - is transaction active ?

@@ -344,7 +344,7 @@ exit:
     /* a PL that caught the deadlock error of its SQL must not make the statement succeed: its abort is left here */
     if (error == NO_ERROR)
       {
-	error = lock_group_fail_if_abort_deferred (logtb_get_current_tran_index ());
+	error = logtb_fail_if_abort_deferred (logtb_get_current_tran_index ());
       }
     return error;
   }

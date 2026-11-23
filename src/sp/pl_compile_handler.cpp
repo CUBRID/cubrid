@@ -188,7 +188,7 @@ namespace cubpl
     /* as in cubpl::executor::execute (); the client reads the error from the response */
     if (error_code == NO_ERROR)
       {
-	error_code = lock_group_fail_if_abort_deferred (logtb_get_current_tran_index ());
+	error_code = logtb_fail_if_abort_deferred (logtb_get_current_tran_index ());
 	if (error_code != NO_ERROR)
 	  {
 	    create_error_response (out_blk, error_code);

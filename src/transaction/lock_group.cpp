@@ -82,7 +82,6 @@ lock_group::lock_group (int tran_index)
   , m_owner_wait_key ()
   , m_owner_held_row (0)
   , m_interrupted (false)
-  , m_abort_deferred (false)
   , m_pending_release (NULL)
 #if !defined (NDEBUG)
   , m_solo_owner (NULL)
@@ -120,8 +119,9 @@ lock_group::abort_reason () const
 {
   LOG_TDES *tdes = LOG_FIND_TDES (m_tran_index);
 
-  if (lock_is_tran_deadlock_victim (m_tran_index) || m_abort_deferred.load (std::memory_order_acquire)
-      || (tdes != NULL && tdes->tran_abort_reason != TRAN_NORMAL))
+  if (lock_is_tran_deadlock_victim (m_tran_index)
+      || (tdes != NULL
+	  && (tdes->abort_deferred.load (std::memory_order_acquire) || tdes->tran_abort_reason != TRAN_NORMAL)))
     {
       return ER_LK_UNILATERALLY_ABORTED;
     }
@@ -626,7 +626,6 @@ lock_group::clear ()
   m_owner_sleeping.store (false, std::memory_order_relaxed);
   m_owner_blocked.store (false, std::memory_order_release);
   m_interrupted.store (false, std::memory_order_release);
-  m_abort_deferred.store (false, std::memory_order_release);
   release = m_pending_release.exchange (NULL, std::memory_order_acq_rel);
   pthread_mutex_unlock (&m_mutex);
 
@@ -644,32 +643,20 @@ lock_group::clear ()
 }
 
 /*
- * defer_abort () - leave the abort of the transaction to a request that ends it later
- *   to_pl_caller(in): also with no section open, for a deadlock victim's abort (lock_group_defer_abort_to_pl_caller ())
+ * defer_abort () - leave the abort of the transaction to the opener of its open section
  *
- * Note: under the mutex section_end () takes, so a section closing meanwhile keeps no stale interrupt. With no
- *	 section, no interrupt: the PL calls would report it as ER_INTERRUPTED over the deadlock error. Their statements
- *	 fail as they return instead (lock_group_fail_if_abort_deferred ()).
+ * Note: under the mutex section_end () takes, so a section closing meanwhile keeps no stale interrupt.
  */
 bool
-lock_group::defer_abort (THREAD_ENTRY *thread_p, bool to_pl_caller)
+lock_group::defer_abort (THREAD_ENTRY *thread_p)
 {
-  bool section;
-
   pthread_mutex_lock (&m_mutex);
-  section = in_section ();
-  /* with no section, only a deadlock victim's abort, not one for another error such as ER_DB_NO_MODIFICATIONS */
-  if (!section && ! (to_pl_caller && (lock_is_tran_deadlock_victim (m_tran_index) || is_abort_deferred ())))
+  if (!in_section ())
     {
       pthread_mutex_unlock (&m_mutex);
       return false;
     }
-  m_abort_deferred.store (true, std::memory_order_release);
-  if (!section)
-    {
-      pthread_mutex_unlock (&m_mutex);
-      return true;
-    }
+  LOG_FIND_TDES (m_tran_index)->abort_deferred.store (true, std::memory_order_release);
   m_interrupted.store (true, std::memory_order_release);
   pthread_cond_broadcast (&m_cond);
   pthread_mutex_unlock (&m_mutex);
@@ -998,7 +985,7 @@ lock_group_has_open_section (int tran_index)
 /*
  * lock_group_defer_abort () - leave the abort of a transaction with a parallel section open to the section opener
  *   return: true if deferred: the transaction stays active, its lock requests in the section and its next interrupt
- *	     check fail, and its next end is an abort (lock_group_is_abort_deferred ())
+ *	     check fail, and its next end is an abort (logtb_is_abort_deferred ())
  *
  * Note: the caller is not the section opener, which joins its workers before it ends the transaction. That an opener
  *	 is still there is not checked: a section left open by a client gone is cleared by lock_group_clear () when the
@@ -1008,41 +995,10 @@ bool
 lock_group_defer_abort (THREAD_ENTRY * thread_p, int tran_index)
 {
 #if defined (SERVER_MODE)
-  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_get_tran_group (tran_index)->defer_abort (thread_p, false);
+  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_get_tran_group (tran_index)->defer_abort (thread_p);
 #else /* SERVER_MODE */
   return false;
 #endif /* SERVER_MODE */
-}
-
-/*
- * lock_group_defer_abort_to_pl_caller () - leave the abort of a transaction to the request a PL callback returns to
- *   return: true if deferred, as lock_group_defer_abort (); with no section open, only a deadlock victim's abort is
- */
-bool
-lock_group_defer_abort_to_pl_caller (THREAD_ENTRY * thread_p, int tran_index)
-{
-#if defined (SERVER_MODE)
-  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_get_tran_group (tran_index)->defer_abort (thread_p, true);
-#else /* SERVER_MODE */
-  return false;
-#endif /* SERVER_MODE */
-}
-
-/*
- * lock_group_fail_if_abort_deferred () - fail a statement whose transaction's abort is left to a request that ends it
- *   return: ER_LK_UNILATERALLY_ABORTED (set) or NO_ERROR
- */
-int
-lock_group_fail_if_abort_deferred (int tran_index)
-{
-#if defined (SERVER_MODE)
-  if (lock_group_is_abort_deferred (tran_index))
-    {
-      lock_set_error_for_aborted (tran_index);
-      return ER_LK_UNILATERALLY_ABORTED;
-    }
-#endif /* SERVER_MODE */
-  return NO_ERROR;
 }
 
 /*
@@ -1061,18 +1017,4 @@ lock_group_set_error_for_own_wait (THREAD_ENTRY * thread_p, const OID * oid, LOC
   snprintf (resource, sizeof (resource), "OID %d|%d|%d", oid->volid, oid->pageid, oid->slotid);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG, 7, tran_index, user_name, host_name, pid,
 	  lock_to_lockmode_string (lock), resource, "another thread of this transaction");
-}
-
-/*
- * lock_group_is_abort_deferred () - whether an abort of the transaction waits for it to end (lock_group_defer_abort (),
- *   lock_group_defer_abort_to_pl_caller ())
- */
-bool
-lock_group_is_abort_deferred (int tran_index)
-{
-#if defined (SERVER_MODE)
-  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_get_tran_group (tran_index)->is_abort_deferred ();
-#else /* SERVER_MODE */
-  return false;
-#endif /* SERVER_MODE */
 }

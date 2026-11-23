@@ -9768,7 +9768,6 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
     }
 
   lock_clear_deadlock_victim (tran_index);
-  tran_lock->group.clear_abort_deferred ();
 
   pgbuf_unfix_all (thread_p);
 #endif /* !SERVER_MODE */

@@ -325,12 +325,11 @@ extern void lock_group_section_end (int tran_index);
 extern void lock_group_clear (int tran_index);
 extern bool lock_group_has_open_section (int tran_index);
 extern bool lock_group_defer_abort (THREAD_ENTRY * thread_p, int tran_index);
-extern bool lock_group_defer_abort_to_pl_caller (THREAD_ENTRY * thread_p, int tran_index);
-extern int lock_group_fail_if_abort_deferred (int tran_index);
-extern bool lock_group_is_abort_deferred (int tran_index);
 extern void lock_group_set_error_for_own_wait (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock);
 
 #if defined (SERVER_MODE)
 extern void lock_deadlock_detect_daemon_get_stats (UINT64 * statsp);
+extern bool lock_is_tran_deadlock_victim (int tran_index);
+extern void lock_set_error_for_aborted (int tran_index);
 #endif // SERVER_MODE
 #endif /* _LOCK_MANAGER_H_ */

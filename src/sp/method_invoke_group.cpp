@@ -189,7 +189,7 @@ exit:
     /* as in cubpl::executor::execute (): a method that ignored a deadlock error of its SQL */
     if (error == NO_ERROR)
       {
-	error = lock_group_fail_if_abort_deferred (logtb_get_current_tran_index ());
+	error = logtb_fail_if_abort_deferred (logtb_get_current_tran_index ());
       }
     return error;
   }
