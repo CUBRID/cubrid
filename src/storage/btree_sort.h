@@ -93,6 +93,7 @@ struct btsort_run
   char *base;			/* sort buffer start */
   char *top;			/* sort buffer end (= output buffer) */
   BTSORT_CMP_FUNC *cmp_fn;
+  BTSORT_CMP_FUNC *key_cmp_fn;	/* the keys alone, 0 on a tie, set after BTSORT_RUN_INIT () for the merge sorter */
   void *cmp_arg;		/* BTSORT_CMP_ARG */
   long numrecs;			/* records collected */
 
@@ -106,6 +107,8 @@ struct btsort_run
   const char *sorted;		/* sorted slots */
   long readrecs;		/* number of sorted slots */
   long cursor;			/* read position */
+
+  long split_runs;		/* runs sort () split before it sorted them, for the unit test */
 };
 
 /* parameters end in '_' so that they do not replace the field names */

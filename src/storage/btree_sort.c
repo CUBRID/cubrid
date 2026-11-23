@@ -107,6 +107,9 @@
  * their runs; merging keeps the fan-in small on the one thread that builds the leaf level. With an int key and
  * limited I/O, leaving was faster up to 47 runs, merging from 71 on. */
 #define BTSORT_PX_LEADER_FANIN	64
+/* Pages of the sort buffer a worker of a parallel build sorts in, at least. A smaller slice makes more runs and more
+ * merge passes, so a smaller buffer takes fewer workers. The default buffer has a slice for BTSORT_MAX_PARALLEL. */
+#define BTSORT_PX_MIN_WORKER_BUFFERS	128
 #define BTSORT_IS_PARALLEL(t)	((t)->px_parallel_num > 1)
 
 // *INDENT-OFF*
@@ -369,6 +372,8 @@ static INT16 btsort_spage_get_numrecs (PAGE_PTR pgptr);
 static INT16 btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_PAGE_SLOT ** sptr, INT16 length, INT16 * space);
 static INT16 btsort_spage_insert (PAGE_PTR pgptr, RECDES * recdes);
 static SCAN_CODE btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_p);
+STATIC_INLINE int btsort_compare_keys (const void *first, const void *second, void *arg)
+  __attribute__ ((ALWAYS_INLINE));
 static int btsort_compare_records (const void *first, const void *second, void *arg);
 static int btsort_compare_column (const void *first, const void *second, void *arg);
 static bool btsort_get_uncompressed_string (char *key, unsigned char **str, int *size);
@@ -721,23 +726,22 @@ btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool pee
 }
 
 /*
- * btsort_compare_records () - Compares two sort records in index key order
- *   return: DB_LT or DB_GT (a key tie is broken by OID)
+ * btsort_compare_keys () - Compares the keys of two sort records, without the OID
+ *   return: DB_LT, DB_EQ or DB_GT
  *   first(in): sort record (bt_load_put_buf_to_record ())
  *   second(in): sort record
  *   arg(in): BTSORT_CMP_ARG *
  *
  * Note: The key is compared by bt_load_cmp_key_bytes (), in the order the leaf loader expects.
  */
-static int
-btsort_compare_records (const void *first, const void *second, void *arg)
+STATIC_INLINE int
+btsort_compare_keys (const void *first, const void *second, void *arg)
 {
   char *mem1 = (char *) first;
   char *mem2 = (char *) second;
   int has_null;
   SORT_ARGS *sort_args;
   TP_DOMAIN *key_type;
-  char *oidptr1, *oidptr2;
   int c = DB_UNK;
 
   sort_args = ((BTSORT_CMP_ARG *) arg)->sort_args;
@@ -748,9 +752,6 @@ btsort_compare_records (const void *first, const void *second, void *arg)
 
   /* key_off skips the OIDs and the MVCCIDs at once */
   has_null = BTSORT_REC_HDR (mem1)->has_null || BTSORT_REC_HDR (mem2)->has_null;
-
-  oidptr1 = BTSORT_REC_OID (mem1);
-  oidptr2 = BTSORT_REC_OID (mem2);
 
   mem1 = BTSORT_REC_KEY (mem1);
   mem2 = BTSORT_REC_KEY (mem2);
@@ -787,13 +788,28 @@ btsort_compare_records (const void *first, const void *second, void *arg)
   /* the sort engine reads DB_UNK (-2) as "less than", which would silently break the order */
   assert_release (c == DB_LT || c == DB_EQ || c == DB_GT);
 
+  return c;
+}
+
+/*
+ * btsort_compare_records () - Compares two sort records in index key order
+ *   return: DB_LT or DB_GT (a key tie is broken by OID)
+ *   first(in): sort record (bt_load_put_buf_to_record ())
+ *   second(in): sort record
+ *   arg(in): BTSORT_CMP_ARG *
+ */
+static int
+btsort_compare_records (const void *first, const void *second, void *arg)
+{
+  int c = btsort_compare_keys (first, second, arg);
+
   /* compare OID for non-unique index */
   if (c == DB_EQ)
     {
       OID first_oid, second_oid;
 
-      OR_GET_OID (oidptr1, &first_oid);
-      OR_GET_OID (oidptr2, &second_oid);
+      OR_GET_OID (BTSORT_REC_OID (first), &first_oid);
+      OR_GET_OID (BTSORT_REC_OID (second), &second_oid);
 
       assert_release (!OID_EQ (&first_oid, &second_oid));
       return (OID_LT (&first_oid, &second_oid) ? DB_LT : DB_GT);
@@ -1021,6 +1037,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   BTSORT_PARAM ori_sort_param;
   BTSORT_PARAM *sort_param = &ori_sort_param;
   BTSORT_CMP_ARG cmp_arg;
+  int min_buffers;
 
   /* for parallel sort */
   BTSORT_PARAM *px_sort_param = NULL;
@@ -1076,17 +1093,23 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
    * records are encountered. */
   VFID_SET_NULL (&sort_param->multipage_file);
 
-  /* index_build_buffer_size is entered in bytes and kept in IO pages (PRM_SIZE_UNIT |
-   * PRM_DIFFER_UNIT); the loader gives no size estimate of its input. Four pages is the minimum of
-   * the parameter and the floor the code needs: one page goes to the output buffer and the slots
-   * grow down from it. */
-  sort_param->tot_buffers = MAX (4, prm_get_integer_value (PRM_ID_INDEX_BUILD_BUFFER_SIZE));
+  /* index_build_buffer_size is entered in bytes and kept in IO pages (PRM_SIZE_UNIT | PRM_DIFFER_UNIT); the loader
+   * gives no size estimate of its input. A run sort needs four pages at least: one page goes to the output buffer
+   * and the slots grow down from it. The workers of a parallel build sort in slices of this buffer, of
+   * BTSORT_PX_MIN_WORKER_BUFFERS pages at least, while the leader waits for them. */
+#if defined(SERVER_MODE)
+  /* once, as it reserves the workers */
+  sort_param->px_parallel_num = btsort_check_parallelism (thread_p, sort_param);
+  assert (sort_param->px_parallel_num >= 1);
+#endif
+  min_buffers = (sort_param->px_parallel_num > 1) ? sort_param->px_parallel_num * BTSORT_PX_MIN_WORKER_BUFFERS : 4;
+  sort_param->tot_buffers = MAX (min_buffers, prm_get_integer_value (PRM_ID_INDEX_BUILD_BUFFER_SIZE));
   sort_param->tot_buffers = MIN (sort_param->tot_buffers, BTSORT_RUN_MAX_BUFFERS);
 
   sort_param->internal_memory = (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
   if (sort_param->internal_memory == NULL)
     {
-      sort_param->tot_buffers = 4;
+      sort_param->tot_buffers = min_buffers;
 
       sort_param->internal_memory = (char *) malloc (sort_param->tot_buffers * DB_PAGESIZE);
       if (sort_param->internal_memory == NULL)
@@ -1127,15 +1150,9 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   tde_er_log ("btree_sort(): tde_encrypted = %d\n", sort_param->tde_encrypted);
 
 #if defined(SERVER_MODE)
-  /* check the number of parallel process */
-  sort_param->px_parallel_num = btsort_check_parallelism (thread_p, sort_param);
-
-  if (sort_param->px_parallel_num <= 1)
+  if (sort_param->px_parallel_num == 1)
     {
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
-
-      /* single process */
-      sort_param->px_parallel_num = 1;
 
       /* no-redo builds are restricted to genuinely parallel construction. This is the single-process
        * shape (parallelism threshold not met, or no workers could be reserved) -- demote to a fully
@@ -1213,7 +1230,6 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
 
 #else
   /* single process for stand alone mode */
-  sort_param->px_parallel_num = 1;
   error = btsort_listfile_internal (thread_p, sort_param);
 #endif
 
@@ -1323,7 +1339,8 @@ btsort_listfile_internal (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 }
 
 /*
- * btsort_return_used_resources () - Free the sort buffer, temp files and (for a worker) its SORT_ARGS copy
+ * btsort_return_used_resources () - Free the sort buffer (the leader's, which the workers slice), temp files and (for a
+ *                                   worker) its SORT_ARGS copy
  *   return: void
  *   sort_param(in): sort parameters to release
  *   parallel_type(in): BTSORT_PX_SINGLE, BTSORT_PX_MAIN_IN_PARALLEL or BTSORT_PX_THREAD_IN_PARALLEL
@@ -1338,7 +1355,8 @@ btsort_return_used_resources (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param
       return;			/* nop */
     }
 
-  if (sort_param->internal_memory)
+  /* a worker sorts in a slice of the leader's buffer */
+  if (sort_param->internal_memory != NULL && parallel_type != BTSORT_PX_THREAD_IN_PARALLEL)
     {
       free_and_init (sort_param->internal_memory);
     }
@@ -1472,6 +1490,7 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 
   *total_numrecs = 0;
   BTSORT_RUN_INIT (&run, sort_param->internal_memory, output_buffer, sort_param->cmp_fn, sort_param->cmp_arg);
+  run.key_cmp_fn = btsort_compare_keys;
 
   rec_ptr = NULL;
   temp_recdes.area_size = BTSORT_MAXREC_LENGTH;
@@ -1949,7 +1968,8 @@ btsort_compute_parallel_degree (bool no_logging_build, int n_data_pages, int n_s
  *   sort_param(in):
  *
  * Note: See btsort_compute_parallel_degree for the degree policy. The degree is then limited by
- *       the number of data sectors and by the parallel workers actually reserved.
+ *       the sort buffer, a slice of BTSORT_PX_MIN_WORKER_BUFFERS pages a worker, by the number of data sectors
+ *       and by the parallel workers actually reserved.
  */
 static int
 btsort_check_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
@@ -1978,6 +1998,9 @@ btsort_check_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
     }
 
   parallel_num = btsort_compute_parallel_degree (no_logging_build, n_data_pages, n_sects);
+  /* the sort buffer bounds the workers, each sorting in a slice of it, before they are reserved */
+  parallel_num =
+    MIN (parallel_num, prm_get_integer_value (PRM_ID_INDEX_BUILD_BUFFER_SIZE) / BTSORT_PX_MIN_WORKER_BUFFERS);
   if (parallel_num < 2)
     {
       /* single process */
@@ -2098,7 +2121,7 @@ btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, B
 			int parallel_num)
 {
   int error = NO_ERROR;
-  int i;
+  int i, slice;
 
   /* init stats */
   sort_param->ori_sort_param = NULL;
@@ -2129,41 +2152,16 @@ btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, B
       px_sort_param[i].temp_slots = 0;
     }
 
-  /* For parallel sort, tot_buffers must be at least 8 (bump up if currently < 8) */
-  if (sort_param->tot_buffers < 8)
-    {
-      char *new_internal_memory;
-      int saved_tot_buffers = sort_param->tot_buffers;
-
-      sort_param->tot_buffers = 8;
-      new_internal_memory =
-	(char *) realloc (sort_param->internal_memory, (size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
-      if (new_internal_memory == NULL)
-	{
-	  sort_param->tot_buffers = saved_tot_buffers;
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (8 * DB_PAGESIZE));
-	  goto clear;
-	}
-      sort_param->internal_memory = new_internal_memory;
-    }
-
-  /* alloc new memory */
+  /* the workers sort in slices of the leader's buffer, which the leader leaves alone until they are done */
+  slice = sort_param->tot_buffers / parallel_num;
   for (i = 0; i < parallel_num; i++)
     {
-      px_sort_param[i].internal_memory = (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
-      if (px_sort_param[i].internal_memory == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (sort_param->tot_buffers * DB_PAGESIZE));
-	  goto clear;
-	}
-      px_sort_param[i].tot_buffers = sort_param->tot_buffers;	/* match allocated size (may be 8 for parallel) */
+      px_sort_param[i].internal_memory = sort_param->internal_memory + i * slice * (size_t) DB_PAGESIZE;
+      px_sort_param[i].tot_buffers = slice;
       /* a worker reads its share of the data sectors, and makes no more files than that */
-      px_sort_param[i].half_files =
-	btsort_get_num_half_tmpfiles (sort_param->tot_buffers, sort_param->data_sects / parallel_num);
+      px_sort_param[i].half_files = btsort_get_num_half_tmpfiles (slice, sort_param->data_sects / parallel_num);
       px_sort_param[i].tot_tempfiles = px_sort_param[i].half_files * 2;
-      px_sort_param[i].tmp_file_pgs = CEIL_PTVDIV (sort_param->tot_buffers, px_sort_param[i].half_files);
+      px_sort_param[i].tmp_file_pgs = CEIL_PTVDIV (slice, px_sort_param[i].half_files);
       error = btsort_alloc_temp_slots (&px_sort_param[i]);
       if (error != NO_ERROR)
 	{
@@ -2187,10 +2185,6 @@ clear:
       /* free memory */
       for (i = 0; i < parallel_num; i++)
 	{
-	  if (px_sort_param[i].internal_memory != NULL)
-	    {
-	      free_and_init (px_sort_param[i].internal_memory);
-	    }
 	  btsort_free_temp_slots (&px_sort_param[i]);
 	}
     }

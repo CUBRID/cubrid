@@ -74,10 +74,14 @@ typedef enum
   /* FILE MANAGER */
   FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER = 200000,	/* unused */
   FI_TEST_FILE_MANAGER_DESTROY_HOLD = 200001,	/* hold a destroy after its pages are discarded, before its sectors are freed */
+  FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_FAIL = 200002,	/* fail an allocation that reused the first partial table page,
+							 * after the init of the page */
+  FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_HOLD = 200003,	/* hold that allocation after the init, its log flushed */
 
   /* BTREE MANAGER */
   FI_TEST_BTREE_MANAGER_RANDOM_EXIT = 300000,
   FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL = 300001,
+  FI_TEST_BTREE_LOAD_NO_LOGGING_HOLD = 300002,	/* hold a registered no-logging index build before it writes pages */
 
   /* QUERY MANAGER (start number is 400000) */
 
@@ -102,6 +106,9 @@ typedef enum
   /* VACUUM */
   FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT = 800000,	/* vacuum's wait for a busy heap header fails at once as a latch
 							 * timeout; arg is the header VPID */
+
+  /* HEAP MANAGER */
+  FI_TEST_HEAP_PREV_VERSION_WALK_HOLD = 900000,	/* hold a version walk under a non-transaction snapshot */
 
   /* etc .... */
 
