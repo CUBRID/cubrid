@@ -7265,6 +7265,19 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " invisible ");
     }
 
+  if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage prefer_inline ");
+    }
+  else if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage force_outline ");
+    }
+  else if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_INLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage force_inline ");
+    }
+
   if (p->info.attr_def.data_default)
     {
       r1 = pt_print_bytes (parser, p->info.attr_def.data_default);
@@ -9276,9 +9289,9 @@ pt_init_delete (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r1, *r2;
+  PARSER_VARCHAR *q = 0, *r1, *r2, *target;
 
-  r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
+  target = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
 
   if (p->info.delete_.with != NULL)
@@ -9468,7 +9481,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 
       q = pt_append_nulstring (parser, q, " */");
     }
-  if (r1)
+  if (target)
     {
       /* DELETE without target FROM ... for dblink's other DBMS */
       if (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK)
@@ -9476,13 +9489,13 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.delete_.spec->next)
 	    {
 	      q = pt_append_nulstring (parser, q, " ");
-	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_varchar (parser, q, target);
 	    }
 	}
       else
 	{
 	  q = pt_append_nulstring (parser, q, " ");
-	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_varchar (parser, q, target);
 	}
     }
   q = pt_append_nulstring (parser, q, " from ");
@@ -12244,7 +12257,11 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	      r2 = r1 = pt_print_bytes (parser, arg3);
 	    }
 	  r3 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r4 = (p->info.expr.arg2->type_enum == PT_TYPE_NULL) ? NULL : pt_print_bytes (parser, p->info.expr.arg2);
+	  /* the ELSE is NULL when name resolution failed for it (a dotted name or a function that does not exist, a
+	   * subquery that failed to bind), and the error is reported with the statement printed (CBRD-28028). The
+	   * searched CASE and DECODE check it the same way */
+	  r4 = ((p->info.expr.arg2 == NULL || p->info.expr.arg2->type_enum == PT_TYPE_NULL)
+		? NULL : pt_print_bytes (parser, p->info.expr.arg2));
 
 	  if (!p->info.expr.continued_case)
 	    {
@@ -13237,6 +13254,11 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
       q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
       q = pt_append_nulstring (parser, q, "(");
+      /* the printed text is the XASL cache key and the stored view definition */
+      if (code == PT_MEDIAN && p->info.function.all_or_distinct == PT_DISTINCT)
+	{
+	  q = pt_append_nulstring (parser, q, "distinct ");
+	}
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
     }

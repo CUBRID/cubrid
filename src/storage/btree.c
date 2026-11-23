@@ -609,12 +609,15 @@ struct btree_find_fk_object
 #if defined (SERVER_MODE)
   OID locked_object;
   LOCK lock_mode;
+  const BTREE_FK_SEEN *seen;	/* the entries the caller saw being written after it marked the key */
+  int n_seen;
+  MVCCID deferred_writer;	/* the writer to wait for when no committed child turned up */
 #endif				/* SERVER_MODE */
 };
 /* BTREE_FIND_FK_OBJECT static initializer */
 #if defined (SERVER_MODE)
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
-  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK }
+  { OID_INITIALIZER, OID_INITIALIZER, NULL_LOCK, NULL, 0, MVCCID_NULL }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define BTREE_FIND_FK_OBJECT_INITIALIZER \
   { OID_INITIALIZER }
@@ -1239,6 +1242,8 @@ static int btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STAT
 static int btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level,
 						   bool * exhausted, int *count);
 static UINT64 btree_get_stats_hash_bytes (UINT64 hash, const void *bytes, size_t size);
+static UINT64 btree_get_stats_hash_finalize (UINT64 hash);
+static UINT64 btree_get_stats_value_hash (const DB_VALUE * value);
 static UINT64 btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value);
 static UINT64 btree_get_stats_prefix_value_hash (const DB_VALUE * value);
 static int btree_get_stats_compare_prefix_hash (const void *hash1, const void *hash2);
@@ -1547,6 +1552,9 @@ static int btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p, BTID_INT 
 static int btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 					   PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
 					   void *other_args);
+static BTREE_SEARCH btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
+						DB_VALUE * key, OID * class_oid, OID * oid, bool is_all_class_srch,
+						bool lock_found_object);
 static int btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 						     PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key,
 						     bool * restart, void *other_args);
@@ -1557,7 +1565,7 @@ static int btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p
 static int btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * leaf_page,
 				  PAGE_PTR * overflow_page, OID * oid, OID * class_oid, LOCK lock_mode,
 				  BTREE_SEARCH_KEY_HELPER * search_key, bool try_cond_lock, bool * restart,
-				  bool * was_page_refixed);
+				  bool * was_page_refixed, bool owner_bypass_ok, bool * passed);
 #endif /* SERVER_MODE */
 
 static int btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
@@ -6595,8 +6603,8 @@ error_return:
 
 
 /*
- * btree_find_foreign_key () - Find and lock any existing object in foreign key. Used to check that delete/update on
- *			       primary key is allowed.
+ * btree_find_foreign_key () - Find, and lock unless it is ours, any existing object in foreign key. Used to check
+ *			       that delete/update on primary key is allowed.
  *
  * return	   : Error code.
  * thread_p (in)   : Thread entry.
@@ -6604,14 +6612,25 @@ error_return:
  * key (in)	   : Key value.
  * class_oid (in)  : Class OID.
  * found_oid (out) : Outputs OID of found object. If no object is found outputs NULL.
+ * seen (in)	   : the entries the caller saw being written after it marked the parent key, sorted by OID.
+ *		     Any other entry still being inserted was written later, by a writer that waits on that mark,
+ *		     and is not a child; so is an insert at a seen OID by another inserter, which took the slot of
+ *		     an insert undone since.
+ * n_seen (in)	   : the number of seen
+ *
+ * Note: a committed child is looked for before any writer is waited for.
  */
 int
-btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * found_oid)
+btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * found_oid,
+			const BTREE_FK_SEEN * seen, int n_seen)
 {
   BTREE_SCAN btree_scan;
   int error_code = NO_ERROR;
   key_val_range kv_range;
   BTREE_FIND_FK_OBJECT find_fk_object = BTREE_FIND_FK_OBJECT_INITIALIZER;
+#if defined (SERVER_MODE)
+  MVCCID writer;
+#endif /* SERVER_MODE */
 
   assert (btid != NULL);
   assert (key != NULL);
@@ -6638,19 +6657,45 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
 #if defined (SERVER_MODE)
   /* Use S_LOCK to block found object. */
   find_fk_object.lock_mode = S_LOCK;
+  find_fk_object.seen = seen;
+  find_fk_object.n_seen = n_seen;
 #endif /* SERVER_MODE */
-  /* Prepare scan. */
-  BTREE_INIT_SCAN (&btree_scan);
-  error_code =
-    btree_prepare_bts (thread_p, &btree_scan, btid, NULL, &kv_range, NULL, NULL, NULL, NULL, false, &find_fk_object);
-  if (error_code != NO_ERROR)
+  while (true)
     {
-      ASSERT_ERROR ();
-      return error_code;
+      /* Prepare scan. */
+      BTREE_INIT_SCAN (&btree_scan);
+      error_code =
+	btree_prepare_bts (thread_p, &btree_scan, btid, NULL, &kv_range, NULL, NULL, NULL, NULL, false,
+			   &find_fk_object);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      /* Execute scan. */
+      error_code = btree_range_scan (thread_p, &btree_scan, btree_range_scan_find_fk_any_object);
+      assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
+#if defined (SERVER_MODE)
+      writer = find_fk_object.deferred_writer;
+      if (error_code != NO_ERROR || !OID_ISNULL (&find_fk_object.found_oid) || writer == MVCCID_NULL)
+	{
+	  break;
+	}
+      /* no committed child: wait for the writer passed over, then read the key again */
+      find_fk_object.deferred_writer = MVCCID_NULL;
+      btree_scan_clear_key (&btree_scan);
+      if (logtb_is_active_other_mvccid (thread_p, writer))
+	{
+	  error_code = logtb_wait_for_tran_end (thread_p, writer);
+	  if (error_code != NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+#else /* !SERVER_MODE */
+      break;
+#endif /* !SERVER_MODE */
     }
-  /* Execute scan. */
-  error_code = btree_range_scan (thread_p, &btree_scan, btree_range_scan_find_fk_any_object);
-  assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
 
   /* Output found object. */
   COPY_OID (found_oid, &find_fk_object.found_oid);
@@ -7120,7 +7165,7 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
 		  goto exit_on_error;
 		}
 	      val_hash = DB_IS_NULL (&elem) ? ~0ULL : btree_get_stats_prefix_value_hash (&elem);
-	      hash = hash * 1099511628211ULL + val_hash;
+	      hash = btree_get_stats_hash_finalize (hash + val_hash);
 	      env->prefix_sample[(size_t) k * BTREE_STATS_DUJ1_SAMPLE + slot] = hash;
 	      if (elem.need_clear == true)
 		{
@@ -7646,6 +7691,29 @@ btree_get_stats_hash_bytes (UINT64 hash, const void *bytes, size_t size)
 }
 
 /*
+ * btree_get_stats_hash_finalize () - spread every input bit over the whole 64-bit hash (fmix64 of MurmurHash3)
+ *   return: 64-bit hash
+ *   hash(in): hash to finalize
+ *
+ * Note: (CBRD-28213) FNV-1a ends with a multiplication by its prime, so two values that differ only in the low
+ * bytes keep hashes whose difference is linear in those bytes. The prefix hash used to add the element hash to
+ * the previous level multiplied by the same prime, and the two linear terms cancelled: the pairs of small
+ * integers (a, b) collided by the tens of thousands, and the Duj1 estimate of pkeys[1] fell more than ten times.
+ * The element hash and every level of the prefix hash are finalized so that no linear relation survives.
+ */
+static UINT64
+btree_get_stats_hash_finalize (UINT64 hash)
+{
+  hash ^= hash >> 33;
+  hash *= 0xff51afd7ed558ccdULL;
+  hash ^= hash >> 33;
+  hash *= 0xc4ceb9fe1a85ec53ULL;
+  hash ^= hash >> 33;
+
+  return hash;
+}
+
+/*
  * btree_get_stats_hash_string () - mix a CHAR or VARCHAR key element into a prefix hash so that
  *     the strings its collation compares equal hash alike
  *   return: 64-bit hash
@@ -7749,10 +7817,21 @@ btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
  * distinct values together: every fixed NUMERIC and most BIT strings hash to 0 because it stops at
  * the first zero byte, FLOAT, DOUBLE and MONETARY are truncated to integers, and ENUM hashes the
  * address of the DB_VALUE. The whole value is mixed here instead; strings follow the comparison of
- * their collation (btree_get_stats_hash_string ()).
+ * their collation (btree_get_stats_hash_string ()). The result is finalized (CBRD-28213).
  */
 static UINT64
 btree_get_stats_prefix_value_hash (const DB_VALUE * value)
+{
+  return btree_get_stats_hash_finalize (btree_get_stats_value_hash (value));
+}
+
+/*
+ * btree_get_stats_value_hash () - FNV-1a hash of one non-NULL key element, before the finalization
+ *   return: 64-bit hash
+ *   value(in): key element
+ */
+static UINT64
+btree_get_stats_value_hash (const DB_VALUE * value)
 {
   UINT64 hash = 14695981039346656037ULL;
 
@@ -11562,7 +11641,15 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
    * Logging physical delete, because it has logical undo, cannot work well under system operation. For this reason,
    * the operation will be split into two sub-operations: 1. Swap first object in leaf record with last object in first
    * overflow page. This is done under a system operation that is committed at the end. 2. Remove relocated object from
-   * overflow record. */
+   * overflow record.
+   *
+   * The object moved to the leaf must stay the last object of the first overflow page: a range scan interrupted
+   * inside the key resumes from the chain after the last OID it processed without reading the leaf record again,
+   * and relies on that object being one it has already processed (btree_range_scan_select_visible_oids ()). The
+   * relocated object therefore lands in the first page whatever its OID, out of order when the OID is above the
+   * second page's separator, until the second step removes it. Should the server stop in between, the retried
+   * delete finds it there: btree_ovf_dir_find_oid () walks the pages before the routed one on a directory miss
+   * (CBRD-27973). Neither step allocates a page, which keeps the undo of an insert free of allocation failures. */
 
   /* Get overflow record. */
   ovfl_copy_rec.area_size = DB_PAGESIZE;
@@ -13775,7 +13862,11 @@ btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, co
 }
 
 /*
- * btree_ovf_dir_find_oid () - Find an object in a directory-format overflow chain using the directory.
+ * btree_ovf_dir_find_oid () - Find an object in a directory-format overflow chain using the directory. When the
+ *			       directory search misses, the pages before the routed one are walked as well: the leaf
+ *			       swap of a delete leaves the deleted object in the first page out of order until its
+ *			       second step, and a restart in between leaves it there for the retried delete to find
+ *			       (CBRD-27973).
  *
  * return		  : Error code.
  * thread_p (in)	  : Thread entry.
@@ -13799,10 +13890,14 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 {
   BTREE_OVF_DIR_HEADER *dir_hdr;
   VPID dir_head_vpid, target_vpid, prev_vpid;
+  VPID routed_vpid = VPID_INITIALIZER;	/* The page the directory routes the OID to. */
+  VPID walk_vpid;
   PAGE_PTR first_ovf_page = NULL;
   PAGE_PTR dir_page = NULL;
   PAGE_PTR target_page = NULL;
   PAGE_PTR prev_data_page = NULL;
+  PAGE_PTR walk_page = NULL;
+  PAGE_PTR walk_prev_page = NULL;
   RECDES dir_record, data_record;
   BTREE_OVF_DIR_ENTRY *entries;
   int num_entries, idx;
@@ -13890,6 +13985,10 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
       assert (idx >= 0 && idx < num_entries);
 
       VPID_COPY (&target_vpid, &entries[idx].vpid);
+      if (VPID_ISNULL (&routed_vpid))
+	{
+	  VPID_COPY (&routed_vpid, &target_vpid);
+	}
 
       /* Fix the previous data page first (chain latch order) when the caller needs it. */
       if (prev_page != NULL)
@@ -14033,9 +14132,107 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 	}
     }
 
-  /* Not found. */
+  /* Not found through the directory. */
   pgbuf_unfix_and_init (thread_p, dir_page);
+
+  switch (purpose)
+    {
+    case BTREE_OP_DELETE_VACUUM_OBJECT:
+    case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL:
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
+      /* Removing an object that a leaf swap may have left behind: walk below. */
+      break;
+    default:
+      /* A miss is a regular outcome here (e.g. vacuuming the insert MVCCID of an object whose removal, later in the
+       * same log block, was vacuumed first; an insert looking for an existing version): do not walk. */
+      return NO_ERROR;
+    }
+
+  /* CBRD-27973: the leaf swap of a delete (btree_replace_first_oid_with_ovfl_oid ()) writes the deleted object into
+   * the first data page, in the place of the object it moves to the leaf, whatever the OID, and removes it again in
+   * a second step. In between the object sits before the page the directory routes it to, so a delete retried after
+   * a restart in between (vacuum, an undone insert) cannot find it through the directory and would leave it behind
+   * for good. Walk the chain from its first page up to the routed page (exclusive: that page and the ones stepped
+   * back to were searched above). Only the removals of an object reach here (see the switch above); for them a miss
+   * is exceptional (such a retry, or the replay of a vacuum interrupted by a restart), so the walk costs nothing on
+   * the regular paths. */
+  VPID_COPY (&walk_vpid, first_ovf_vpid);
+  while (!VPID_EQ (&walk_vpid, &routed_vpid))
+    {
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+      walk_page = pgbuf_fix (thread_p, &walk_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+      if (walk_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto walk_error;
+	}
+      thread_p->read_ovfl_pages_count++;
+
+      error_code =
+	btree_find_oid_from_ovfl (thread_p, btid_int, walk_page, oid, purpose, match_mvccinfo, offset_to_object,
+				  object_mvcc_info, deleted_mvcc_info);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto walk_error;
+	}
+      if (*offset_to_object != NOT_FOUND)
+	{
+	  *found_page = walk_page;
+	  if (prev_page != NULL)
+	    {
+	      /* walk_prev_page is kept only when the caller asks for the predecessor. */
+	      *prev_page = (walk_prev_page != NULL) ? walk_prev_page : leaf_page;
+	    }
+	  return NO_ERROR;
+	}
+
+      error_code = btree_get_next_overflow_vpid (thread_p, walk_page, &walk_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto walk_error;
+	}
+      if (walk_prev_page != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, walk_prev_page);
+	}
+      if (prev_page != NULL)
+	{
+	  /* Keep the page as the predecessor of the next one (chain latch order). */
+	  walk_prev_page = walk_page;
+	  walk_page = NULL;
+	}
+      else
+	{
+	  pgbuf_unfix_and_init (thread_p, walk_page);
+	}
+      if (VPID_ISNULL (&walk_vpid))
+	{
+	  /* Broken chain: the routed page was not reached. */
+	  assert_release (false);
+	  break;
+	}
+    }
+  if (walk_prev_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, walk_prev_page);
+    }
   return NO_ERROR;
+
+walk_error:
+  assert_release (error_code != NO_ERROR);
+  if (walk_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, walk_page);
+    }
+  if (walk_prev_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, walk_prev_page);
+    }
+  return error_code;
 
 error:
   assert_release (error_code != NO_ERROR);
@@ -15549,7 +15746,8 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
   int target_size = (int) (((INT64) BTREE_MAX_OVERFLOW_RECORD_SIZE (btid_int) * fill_factor) / 100);
   int cur_len, next_len, next_count, room, num_move;
   int merges = 0;
-  OID boundary_oid, prev_oid;
+  OID boundary_oid, prev_oid, cur_last_oid, next_first_oid;
+  RECDES cur_record;
   bool dummy_continue_checking;
   int error_code = NO_ERROR;
 
@@ -15703,11 +15901,31 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
 	      num_move--;
 	    }
 	}
+      /* CBRD-27973: a leaf swap interrupted by a restart leaves the deleted object at the end of the first page, above
+       * the objects of the next page, until the retried delete removes it. Appending the next page's objects behind it
+       * would put smaller OIDs after a larger one, where neither the page's binary search nor the directory finds
+       * them: leave the pair as it is (the retried delete is found by btree_ovf_dir_find_oid ()'s walk). */
+      if (num_move > 0)
+	{
+	  if (spage_get_record (thread_p, cur_page, 1, &cur_record, PEEK) != S_SUCCESS)
+	    {
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      goto exit;
+	    }
+	  BTREE_GET_OID (cur_record.data + cur_record.length - obj_size, &cur_last_oid);
+	  BTREE_GET_OID (next_record.data, &next_first_oid);
+	  if (OID_GT (&cur_last_oid, &next_first_oid))
+	    {
+	      num_move = 0;
+	    }
+	}
       if (num_move <= 0)
 	{
 	  /* The neighbor starts with one reusable OID's un-vacuumed run that fills the whole prefix we could take: no
-	   * separator boundary exists, so this pair stays as it is until vacuum removes the run. Counted so the caller
-	   * can tell "nothing to do" from "could not do". */
+	   * separator boundary exists, or the current page ends with a leftover of an interrupted leaf swap (above).
+	   * This pair stays as it is until vacuum removes the run or the leftover. Counted so the caller can tell
+	   * "nothing to do" from "could not do". */
 	  (*pairs_skipped)++;
 	  pgbuf_unfix_and_init (thread_p, cur_page);
 	  cur_page = next_page;
@@ -27909,6 +28127,10 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
 	}
     }
 
+  /* The parent learns of this foreign key only after this check (update_foreign_key_ref ()), so a parent DELETE in
+   * between would scan no children for it.  xlocator_check_fk_validity () keeps the parent's writers out with SIX on
+   * its class to commit, which covers this row lock; the lock still counts for a partitioned parent, whose rows are
+   * locked on the partition and not on the class holding the SIX. */
   /* a NULL btid: no partition can hold the key */
   ret_search = BTID_IS_NULL (&local_btid) ? BTREE_KEY_NOTFOUND
     : xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK, keyval, &part_oid, &unique_oid, true);
@@ -27932,7 +28154,6 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
     }
 
   assert (ret_search == BTREE_KEY_FOUND);
-  /* TODO: For read committed... Do we need to keep the lock? */
 
   if (clear_pcontext == true)
     {
@@ -28871,6 +29092,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
   /* Next variables are not required for stand-alone mode. */
   bool try_cond_lock = false;	/* Try conditional lock. */
   bool was_page_refixed = false;	/* Set to true if conditional lock failed and page had to be re-fixed. */
+  bool passed = false;		/* Set to true if the object was passed as ours instead of locked. */
 #endif /* SERVER_MODE */
 
   /* Assert expected arguments. */
@@ -28949,6 +29171,10 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 						   find_unique_helper->lock_mode);
 	  OID_SET_NULL (&find_unique_helper->locked_oid);
 	}
+      if (!OID_ISNULL (&find_unique_helper->passed_oid) && !OID_EQ (&find_unique_helper->passed_oid, &unique_oid))
+	{
+	  OID_SET_NULL (&find_unique_helper->passed_oid);
+	}
 #endif /* SERVER_MODE */
 
       /* Check whether object can be locked. */
@@ -28976,24 +29202,27 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	    }
 
 	  /* No writer left to wait out (our own insert, or one that just ended): lock the object as usual. */
-	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
+	  assert ((!find_unique_helper->lock_found_object && find_unique_helper->lock_mode == S_LOCK)
+		  || !lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
 	  [[fallthrough]];
 	case DELETE_RECORD_CAN_DELETE:
 #if defined (SERVER_MODE)
 	  if (!find_unique_helper->lock_found_object)
 	    {
-	      /* the caller settles on the heap's last version, where the row's owner shows; do not lock from the key */
+	      /* the caller settles on the heap's last version, where the row's owner shows, or needs no lock (the
+	       * foreign-key probe); do not lock from the key */
 	      COPY_OID (&find_unique_helper->oid, &unique_oid);
 	      find_unique_helper->found_object = true;
 	      return NO_ERROR;
 	    }
 	  /* Must lock object. */
-	  if (!OID_ISNULL (&find_unique_helper->locked_oid))
+	  if (!OID_ISNULL (&find_unique_helper->locked_oid) || !OID_ISNULL (&find_unique_helper->passed_oid))
 	    {
-	      /* Object already locked. */
+	      /* Object already locked, or passed as ours. */
 	      /* Safe guard. */
-	      assert (OID_EQ (&find_unique_helper->locked_oid, &unique_oid));
+	      assert (OID_EQ (&find_unique_helper->locked_oid, &unique_oid)
+		      || OID_EQ (&find_unique_helper->passed_oid, &unique_oid));
 	      assert (satisfies_delete == DELETE_RECORD_CAN_DELETE);
 
 	      /* Return result. */
@@ -29005,19 +29234,26 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	   * fail. */
 	  try_cond_lock = (satisfies_delete == DELETE_RECORD_CAN_DELETE);
 	  /* Lock object. */
+	  passed = false;
 	  error_code =
 	    btree_key_lock_object (thread_p, btid_int, key, leaf_page, NULL, &unique_oid, &unique_class_oid,
 				   find_unique_helper->lock_mode, search_key, try_cond_lock, restart,
-				   &was_page_refixed);
+				   &was_page_refixed, find_unique_helper->owner_bypass_ok, &passed);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto error_or_not_found;
 	    }
-	  /* Object locked. */
-	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode) > 0);
-	  COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
-	  COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
+	  if (passed)
+	    {
+	      COPY_OID (&find_unique_helper->passed_oid, &unique_oid);
+	    }
+	  else
+	    {
+	      assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode) > 0);
+	      COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
+	      COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
+	    }
 	  if (*restart)
 	    {
 	      /* Need to restart from top. */
@@ -29075,6 +29311,7 @@ error_or_not_found:
 					       &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
       OID_SET_NULL (&find_unique_helper->locked_oid);
     }
+  OID_SET_NULL (&find_unique_helper->passed_oid);
 #endif
 
   PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_LEAF);
@@ -29347,7 +29584,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  error_code =
 	    btree_key_lock_object (thread_p, btid_int, key, leaf_page, &overflow_page, &unique_oid, &unique_class_oid,
 				   find_unique_helper->lock_mode, search_key, try_cond_lock, restart,
-				   &was_page_refixed);
+				   &was_page_refixed, false, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -29459,6 +29696,8 @@ error_or_not_found:
  * try_cond_lock (in)	  : True to try conditional lock first. If false, page is unfixed directly.
  * restart (out)	  : Outputs true when page had to be unfixed and was not considered valid to be reused.
  * was_page_refixed (out) : Outputs true if page had to be unfixed.
+ * owner_bypass_ok (in)	  : Pass an object we stamped instead of waiting for it; see locator_lock_object_unless_ours ().
+ * passed (out)		  : Set to true when the object was passed that way, without a lock.
  *
  * TODO: Extend this function to handle overflow OID's page too.
  */
@@ -29466,7 +29705,7 @@ static int
 btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * leaf_page,
 		       PAGE_PTR * overflow_page, OID * oid, OID * class_oid, LOCK lock_mode,
 		       BTREE_SEARCH_KEY_HELPER * search_key, bool try_cond_lock, bool * restart,
-		       bool * was_page_refixed)
+		       bool * was_page_refixed, bool owner_bypass_ok, bool * passed)
 {
   VPID leaf_vpid;		/* VPID of leaf page. */
   int lock_result;		/* Result of tried locks. */
@@ -29521,14 +29760,26 @@ btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * 
 
   /* Lock object. */
   PERF_UTIME_TRACKER_START (thread_p, &lock_time_track);
-  lock_result = lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK);
+  if (owner_bypass_ok)
+    {
+      HEAP_GET_CONTEXT context;
+
+      heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN,
+			     HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+      lock_result = locator_lock_object_unless_ours (thread_p, &context, lock_mode, false, true);
+      *passed = (lock_result == LK_NOTGRANTED_HELD_BY_WRITERS);
+    }
+  else
+    {
+      lock_result = lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK);
+    }
   btree_perf_unique_lock_time (thread_p, &lock_time_track, lock_mode);
-  if (lock_result != LK_GRANTED)
+  if (lock_result != LK_GRANTED && lock_result != LK_NOTGRANTED_HELD_BY_WRITERS)
     {
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
-  /* Lock granted. */
+  /* Lock granted, or passed as the object's owner. */
 
   /* Try to re-fix page. */
   error_code = pgbuf_fix_if_not_deallocated (thread_p, &leaf_vpid, latch_mode, PGBUF_UNCONDITIONAL_LATCH, leaf_page);
@@ -29606,7 +29857,10 @@ error:
   assert (error_code != NO_ERROR);
   ASSERT_ERROR ();
 
-  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
+  if (passed == NULL || !*passed)
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
+    }
   return error_code;
 }
 #endif /* SERVER_MODE */
@@ -29875,6 +30129,21 @@ btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
 }
 
 /*
+ * xbtree_find_unique_fk_existence () - Foreign-key existence probe: no lock on the committed parent it finds.
+ *
+ * Note: the child publishes its foreign-key entries before this probe, and a parent DELETE or key change delete-marks
+ *	 the key before it scans for children, so at least one meets the other: this probe meets the mark and waits the
+ *	 deleter out, or the parent's scan meets the child's entry and waits that child out, under every referential
+ *	 action. When both meet, each waits for the other and the deadlock detector ends one.
+ */
+BTREE_SEARCH
+xbtree_find_unique_fk_existence (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
+				 bool is_all_class_srch)
+{
+  return btree_find_unique_internal (thread_p, btid, S_SELECT_WITH_LOCK, key, class_oid, oid, is_all_class_srch, false);
+}
+
+/*
  * btree_find_unique_internal () - Find (and sometimes lock) object in key of unique index.
  *
  * return		  : BTREE_SEARCH result.
@@ -29885,8 +30154,9 @@ btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
  * class_oid (in)	  : Class OID.
  * oid (out)		  : Found (and sometimes locked) object OID.
  * is_all_class_srch (in) : True if search is based on all classes contained in the class hierarchy.
- * lock_found_object (in) : False to return the first object of an S_DELETE / S_UPDATE lookup without locking it; the
- *			    caller then settles on the heap's last version, where the row's owner is visible.
+ * lock_found_object (in) : False to return the first object without locking it: an S_DELETE / S_UPDATE caller then
+ *			    settles on the heap's last version, where the row's owner is visible, and the foreign-key
+ *			    probe needs no lock (see xbtree_find_unique_fk_existence ()).
  */
 static BTREE_SEARCH
 btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type, DB_VALUE * key,
@@ -29910,7 +30180,7 @@ btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION
 	  || scan_op_type == S_UPDATE);
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
   assert (oid != NULL);
-  assert (lock_found_object || scan_op_type == S_DELETE || scan_op_type == S_UPDATE);
+  assert (lock_found_object || scan_op_type != S_SELECT);
 
   PERF_UTIME_TRACKER_START (thread_p, &find_unique_helper.time_track);
 
@@ -30214,6 +30484,12 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
    * give up again (btree_range_scan_advance_over_filtered_keys), restarting forever. A restart this start needs is
    * raised again below and returned with, for the caller to start over. */
   bts->force_restart_from_root = false;
+
+  /* A start reads its first key from the leaf record on, so a key left partially processed by an earlier iteration
+   * of this scan has nothing to resume here. The rewinds of an inner scan (BTREE_RESET_SCAN) and of an index MIN/MAX
+   * scan turning around (bts_reset_scan) keep the mark; left set, the first key found here would skip its leaf record
+   * objects and resume in its overflow chain from a position saved for another scan of it, or for another key. */
+  bts->is_key_partially_processed = false;
 
   /* Find starting key. */
   /* Starting key must be checked and pass filters first. */
@@ -31989,26 +32265,28 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
     case DELETE_RECORD_INSERT_IN_PROGRESS:
     case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SERVER_MODE)
-      /* the writer may hold no row lock (an inserter takes none, a deleter may have given it back), so an object
-       * lock could be granted at once and the re-check would spin: wait for its transaction to end instead */
-      {
-	MVCCID fk_writer_mvccid = (satisfy_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
-	  ? BTREE_MVCC_INFO_INSID (mvcc_info) : BTREE_MVCC_INFO_DELID (mvcc_info);
+      if (satisfy_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
+	{
+	  const BTREE_FK_SEEN *seen = NULL;
 
-	/* the writer may have ended since mvcc_satisfies_delete (), so re-read the key either way */
-	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	if (logtb_is_active_other_mvccid (thread_p, fk_writer_mvccid))
-	  {
-	    int fk_wait_error = logtb_wait_for_tran_end (thread_p, fk_writer_mvccid);
-
-	    if (fk_wait_error != NO_ERROR)
-	      {
-		return fk_wait_error;
-	      }
-	  }
-	*stop = true;
-	return NO_ERROR;
-      }
+	  if (find_fk_obj->n_seen > 0)
+	    {
+	      seen = (const BTREE_FK_SEEN *) bsearch (oid, find_fk_obj->seen, find_fk_obj->n_seen,
+						      sizeof (BTREE_FK_SEEN), oid_compare);
+	    }
+	  if (seen == NULL || (seen->inserter != MVCCID_NULL && seen->inserter != BTREE_MVCC_INFO_INSID (mvcc_info)))
+	    {
+	      return NO_ERROR;
+	    }
+	}
+      /* the writer may hold no row lock (an inserter takes none, a deleter may have given it back), so a lock could
+       * be granted at once: btree_find_foreign_key () waits for its transaction once no committed child turned up */
+      if (find_fk_obj->deferred_writer == MVCCID_NULL)
+	{
+	  find_fk_obj->deferred_writer = (satisfy_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
+	    ? BTREE_MVCC_INFO_INSID (mvcc_info) : BTREE_MVCC_INFO_DELID (mvcc_info);
+	}
+      return NO_ERROR;
 #else	/* !SERVER_MODE */		   /* SA_MODE */
       /* Impossible: no other active transactions. */
       assert_release (false);
@@ -32068,7 +32346,21 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   /* Must release fixed pages first. */
   btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
 
-  lock_result = lock_object (thread_p, oid, class_oid, find_fk_obj->lock_mode, LK_UNCOND_LOCK);
+  {
+    HEAP_GET_CONTEXT context;
+
+    heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN,
+			   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+    lock_result = locator_lock_object_unless_ours (thread_p, &context, find_fk_obj->lock_mode, false, true);
+  }
+  if (lock_result == LK_NOTGRANTED_HELD_BY_WRITERS)
+    {
+      /* the child we last wrote still refers to the key: found, without the lock */
+      COPY_OID (&find_fk_obj->found_oid, oid);
+      bts->end_scan = true;
+      *stop = true;
+      return NO_ERROR;
+    }
   if (lock_result != LK_GRANTED)
     {
       int error_code = NO_ERROR;
@@ -33890,6 +34182,10 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 #endif /* SERVER_MODE */
 
   find_unique_helper.lock_mode = X_LOCK;
+#if defined (SERVER_MODE)
+  /* a writer parked on our stamp holds the row's X: pass a row we stamped instead of queuing behind it */
+  find_unique_helper.owner_bypass_ok = true;
+#endif /* SERVER_MODE */
   error_code =
     btree_key_find_and_lock_unique_of_unique (thread_p, btid_int, key, leaf, search_key, restart, &find_unique_helper);
 #if defined (SERVER_MODE)
@@ -41827,6 +42123,7 @@ page_key_boundary::set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTI
     }
 
   pr_clone_value (&boundary_value, &dest_value);
+  btree_clear_key_value (&clear_boundary_value, &boundary_value);
 
   return NO_ERROR;
 }

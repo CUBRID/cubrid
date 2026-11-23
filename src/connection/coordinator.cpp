@@ -279,8 +279,7 @@ namespace cubconn::connection
     request.worker_ptr = workers[to].get ();
     request.worker_index = to;
 
-    workers[from]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-    if (!workers[from]->notify ())
+    if (!workers[from]->enqueue_and_notify (cubconn::connection::worker::queue_type::LAZY, std::move (request)))
       {
 	assert_release (false);
       }
@@ -310,8 +309,8 @@ namespace cubconn::connection
     m_statistics[m_current_worker].m_score = 0;
 
     request.type = connection::worker::message_type::AWAKEN;
-    workers[m_current_worker]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-    if (!workers[m_current_worker]->notify ())
+    if (!workers[m_current_worker]->enqueue_and_notify (cubconn::connection::worker::queue_type::LAZY,
+	std::move (request)))
       {
 	assert_release (false);
       }
@@ -330,8 +329,8 @@ namespace cubconn::connection
     connection::worker::message request;
 
     request.type = connection::worker::message_type::HIBERNATE;
-    workers[m_scaling.draining_worker]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-    if (!workers[m_scaling.draining_worker]->notify ())
+    if (!workers[m_scaling.draining_worker]->enqueue_and_notify (cubconn::connection::worker::queue_type::LAZY,
+	std::move (request)))
       {
 	assert_release (false);
       }
@@ -954,6 +953,7 @@ namespace cubconn::connection
     if (!ctx)
       {
 	/* failed to allocate the resources */
+	css_prepare_shutdown_conn (item.conn);
 	css_free_conn (item.conn);
 
 	/* just ignore */
@@ -976,8 +976,7 @@ namespace cubconn::connection
     request.ctx->m_id = id++;
     request.conn = item.conn;
 
-    workers[worker]->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
-    if (!workers[worker]->notify ())
+    if (!workers[worker]->enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request)))
       {
 	assert_release (false);
       }
@@ -1319,10 +1318,11 @@ not_transferred:
 	      {
 		if (events[i].data.fd == m_eventfd)
 		  {
+		    /* a failed read costs at most a spurious wake-up; stopping leaves new connections unassigned */
 		    if (!this->eventfd_clear (m_eventfd))
 		      {
-			er_log_conn (__FILE__, __LINE__, "connection::coordinator->run: eventfd_clear failed\n");
-			return false;
+			_er_log_debug (ARG_FILE_LINE, "connection coordinator: failed to read the eventfd: %s\n",
+				       strerror (errno));
 		      }
 		    this->handle_message_queue ();
 		  }
@@ -1348,8 +1348,8 @@ not_transferred:
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {
-			er_log_conn (__FILE__, __LINE__, "connection::coordinator->eventfd_handler: eventfd_clear failed\n");
-			return false;
+			_er_log_debug (ARG_FILE_LINE, "connection coordinator: failed to read the timerfd: %s\n",
+				       strerror (errno));
 		      }
 		  }
 #if defined (ENABLE_CONTROLLER)

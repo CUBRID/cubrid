@@ -230,6 +230,7 @@ static int drop_block_procedure (TR_TRIGGER * trigger);
 
 static bool value_as_boolean (DB_VALUE * value);
 static int signal_evaluation_error (TR_TRIGGER * trigger, int error);
+static PT_NODE *find_routine (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool * status);
 static int eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool * reject);
 static int execute_activity (TR_TRIGGER * trigger, DB_TRIGGER_TIME tr_time, DB_OBJECT * current, DB_OBJECT * temp,
@@ -3220,7 +3221,8 @@ tr_map_trigger_if_exists (DB_OBJECT * object, TR_TRIGGER ** trigger)
  *
  * Note:
  *    If the trigger is associated with a class, the current user must have appropriate class authorization.
- *    If the trigger is associated with a user, the current user must be the owner of the trigger.
+ *    If the trigger is associated with a user, the current user must be the owner of the trigger or a member
+ *    of the DBA group.
  *    If the alter flag is set, it means that the trigger is about to be modified in some way.
  */
 static bool
@@ -3267,8 +3269,8 @@ check_authorization (TR_TRIGGER * trigger, bool alter_flag)
     }
   else
     {
-      /* its a user trigger, must be the active user */
-      if (ws_is_same_object (trigger->owner, Au_user))
+      /* its a user trigger, must be the owner or a member of the DBA group */
+      if (ws_is_same_object (trigger->owner, Au_user) || au_is_dba_group_member (Au_user))
 	{
 	  status = true;
 	}
@@ -3729,6 +3731,11 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       return NULL;
     }
   owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+  if (owner == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_AU_INVALID_USER, owner_name);
+      goto error;
+    }
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
@@ -4480,6 +4487,38 @@ signal_evaluation_error (TR_TRIGGER * trigger, int error)
 }
 
 /*
+ * find_routine () - parser_walk_tree function: sets *arg when the tree may call a stored procedure, function or method,
+ *		     also through a view, whose query the tree does not hold
+ */
+static PT_NODE *
+find_routine (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *entity;
+
+  if (node->node_type == PT_METHOD_CALL)
+    {
+      *(bool *) arg = true;
+    }
+  else if (node->node_type == PT_SPEC)
+    {
+      for (entity = node->info.spec.flat_entity_list; entity != NULL; entity = entity->next)
+	{
+	  if (entity->info.name.db_object != NULL && db_is_vclass (entity->info.name.db_object) > 0)
+	    {
+	      *(bool *) arg = true;
+	    }
+	}
+    }
+
+  if (*(bool *) arg)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
  * eval_condition() - The function evaluates the input trigger condition.
  *    return: TR_RETURN_ERROR/TR_RETURN_TRUE/TR_RETURN_FALSE
  *    trigger(in):
@@ -4538,6 +4577,20 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
 	    }
 	  else
 	    {
+	      bool calls_routine = false;
+
+	      /* a query in the condition flushes the classes it reads; a routine runs statements that may not */
+	      (void) parser_walk_tree ((PARSER_CONTEXT *) act->parser, (PT_NODE *) act->statement, find_routine,
+				       &calls_routine, NULL, NULL);
+	      if (calls_routine)
+		{
+		  error = do_flush_before_trigger ();
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		}
+
 	      if (current == NULL)
 		{
 		  current = temp;
@@ -4716,6 +4769,11 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	  break;
 
 	case TR_ACT_EXPRESSION:
+	  error = do_flush_before_trigger ();
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
 	compile_stmt_again:
 	  if (tr_Current_depth <= 1 && ++act->exec_cnt > prm_get_integer_value (PRM_ID_RESET_TR_PARSER)
 	      && prm_get_integer_value (PRM_ID_RESET_TR_PARSER) > 0)
@@ -5742,6 +5800,19 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
     {
       tr_User_triggers_valid = 0;
       tr_User_triggers_modified = 0;
+    }
+}
+
+/*
+ * tr_check_partial_rollback_triggers() - This is called when the transaction is rolled back to a savepoint.
+ *    return: none
+ */
+void
+tr_check_partial_rollback_triggers (void)
+{
+  if (tr_User_triggers_modified)
+    {
+      tr_invalidate_user_cache ();
     }
 }
 

@@ -137,6 +137,10 @@ btree_key_release_locked_object_and_pages (THREAD_ENTRY *thread_p, BTREE_FIND_UN
 	  &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
       OID_SET_NULL (&find_unique_helper->locked_oid);
     }
+  if (find_unique_helper != NULL)
+    {
+      OID_SET_NULL (&find_unique_helper->passed_oid);
+    }
   if (overflow_page != NULL && *overflow_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, *overflow_page);

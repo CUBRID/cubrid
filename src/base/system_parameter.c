@@ -829,12 +829,15 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_CPU_TUPLES_PER_PAGE "cost_cpu_tuples_per_page"
 #define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
+#define PRM_NAME_MVCC_REEVALUATE_AT_FORCE "mvcc_reevaluate_at_force"
 #define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
 #define PRM_NAME_ROW_SNAPSHOT_MAX_ROWS "row_snapshot_max_rows"
 
 #define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
 
 // #endregion
+
+#define PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL "numeric_empty_string_as_null"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -5770,6 +5773,30 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL,
+   PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_QRY_STRING | PRM_FORCE_SERVER | PRM_FOR_PL_CONTEXT | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_MVCC_REEVALUATE_AT_FORCE,
+   PRM_NAME_MVCC_REEVALUATE_AT_FORCE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 /* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the
@@ -5787,6 +5814,7 @@ static_assert (PRM_ID_INTL_COLLATION == 206, "update SysParam.java");
 static_assert (PRM_ID_TIMEZONE == 249, "update SysParam.java");
 static_assert (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR == 334, "update SysParam.java");
 static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 353, "update SysParam.java");
+static_assert (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL == 403, "update SysParam.java");
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
 
@@ -6106,6 +6134,9 @@ static const int call_stack_dump_error_codes[] = {
   ER_SP_UNKNOWN_SLOTID,
   ER_HEAP_UNKNOWN_OBJECT,
   ER_HEAP_BAD_RELOCATION_RECORD,
+  ER_HEAP_OOS_BAD_INLINE_HEADER,
+  ER_HEAP_OOS_CORRUPTED_RECORD,
+  ER_HEAP_OOS_INVALID_ARGUMENT,
   ER_HEAP_BAD_OBJECT_TYPE,
   ER_HEAP_OVFADDRESS_CORRUPTED,
   ER_LK_PAGE_TIMEOUT,

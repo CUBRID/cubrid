@@ -137,10 +137,15 @@ static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
 static int jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement,
     bool is_system_generated);
 static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type, bool allow_system_generated);
-static int drop_stored_procedure_code (const char *name, bool allow_system_generated);
+static int replace_stored_procedure (SP_INFO &sp_info);
+static int check_stored_procedure_modifiable (const char *name, SP_TYPE_ENUM expected_type, MOP *sp_mop_p,
+    MOP *owner_p, bool allow_system_generated);
+static int drop_stored_procedure_args (MOP sp_mop);
+static int drop_stored_procedure_code (MOP sp_mop, bool allow_system_generated);
 
 static int jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &out);
 static int check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
+static const char *jsp_pl_call_name (PARSER_CONTEXT *parser, PT_NODE *node);
 
 extern bool ssl_client;
 
@@ -327,6 +332,120 @@ jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mod
 	}
     }
 
+  return error;
+}
+
+/*
+ * jsp_check_out_args_of_call - check the arguments for the OUT and IN OUT parameters of a CALL statement
+ *   return: error code
+ *   parser(in): parser context
+ *   node(in): a PT_METHOD_CALL node of a CALL statement that calls a stored procedure or function
+ *
+ * Note: An argument for an OUT or IN OUT parameter must be a bind variable, a ? or a csql :name.
+ *       This runs in the semantic check so that CREATE TRIGGER and PREPARE fail early,
+ *       and before hostvar_late_binding turns a ? into a value.
+ *       A statement already prepared or a trigger action already compiled is not checked again
+ *       when the procedure is redefined.
+ */
+
+int
+jsp_check_out_args_of_call (PARSER_CONTEXT *parser, PT_NODE *node)
+{
+  assert (node != NULL && node->node_type == PT_METHOD_CALL);
+
+  PT_NODE *method_name_node = node->info.method_call.method_name;
+  const char *name;
+  if (PT_NAME_RESOLVED (method_name_node))
+    {
+      int custom_print_saved = parser->custom_print;
+      parser->custom_print |= PT_SUPPRESS_QUOTES;
+      parser->custom_print &= ~PT_PRINT_QUOTES;
+      name = parser_print_tree (parser, method_name_node);
+      parser->custom_print = custom_print_saved;
+    }
+  else
+    {
+      name = PT_NAME_ORIGINAL (method_name_node);
+    }
+
+  MOP mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
+  if (mop_p == NULL)
+    {
+      /* A missing procedure or EXECUTE privilege is reported when the statement runs. */
+      er_clear ();
+      return NO_ERROR;
+    }
+
+  int save;
+  AU_SAVE_AND_DISABLE (save);
+
+  /* If the catalog cannot be read, the check is skipped and the statement fails when it runs. */
+  int error = NO_ERROR;
+  bool unreadable = false;
+  DB_VALUE args_val;
+  db_make_null (&args_val);
+  if (db_get (mop_p, SP_ATTR_ARGS, &args_val) != NO_ERROR)
+    {
+      unreadable = true;
+    }
+  else if (!DB_IS_NULL (&args_val))
+    {
+      DB_SET *param_set = db_get_set (&args_val);
+      int num_params = set_size (param_set);
+
+      /* Too many arguments are reported as a count error when the statement runs. */
+      PT_NODE *arg = node->info.method_call.arg_list;
+      if (pt_length_of_list (arg) > num_params)
+	{
+	  arg = NULL;
+	}
+
+      for (int i = 0; i < num_params && arg != NULL; i++, arg = arg->next)
+	{
+	  DB_VALUE param_val, mode_val;
+	  if (set_get_element (param_set, i, &param_val) != NO_ERROR)
+	    {
+	      unreadable = true;
+	      break;
+	    }
+
+	  MOP param_mop = db_get_object (&param_val);
+	  bool read_ok = (param_mop != NULL && db_get (param_mop, SP_ARG_ATTR_MODE, &mode_val) == NO_ERROR);
+	  db_value_clear (&param_val);
+	  if (!read_ok)
+	    {
+	      unreadable = true;
+	      break;
+	    }
+
+	  int mode = db_get_int (&mode_val);
+	  if (mode == SP_MODE_IN || PT_IS_HOSTVAR (arg) || PT_IS_PARAMETER (arg))
+	    {
+	      continue;
+	    }
+
+	  /* Show the unique name from the catalog, as jsp_check_out_param_in_query does. */
+	  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { '\0' };
+	  const char *shown_name = jsp_get_unique_name (mop_p, unique_name, DB_MAX_IDENTIFIER_LENGTH);
+	  if (shown_name == NULL)
+	    {
+	      er_clear ();
+	      shown_name = name;
+	    }
+
+	  PT_ERRORmf3 (parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_OUT_ARG_NOT_BIND_VARIABLE, i + 1,
+		       shown_name, (mode == SP_MODE_OUT) ? "OUT" : "IN OUT");
+	  error = ER_PT_SEMANTIC;
+	  break;
+	}
+    }
+  db_value_clear (&args_val);
+  if (unreadable)
+    {
+      er_clear ();
+    }
+
+  AU_RESTORE (save);
   return error;
 }
 
@@ -548,6 +667,69 @@ jsp_is_sp_parallel_eligible (const char *name)
   (void) name;
   return false;
 #endif
+}
+
+/*
+ * jsp_is_sp_deterministic - whether the stored function a call node names is declared DETERMINISTIC
+ *   return: true only with the DETERMINISTIC declaration; a lookup failure is false and raises no error
+ *   node(in): PT_METHOD_CALL of a stored procedure or function
+ *
+ * Note: the result reuse check (memoize, correlated subquery cache) reads it from the parse tree, in CS and SA
+ *       alike (CBRD-27993).
+ */
+bool
+jsp_is_sp_deterministic (PARSER_CONTEXT *parser, PT_NODE *node)
+{
+  DB_OBJECT *mop_p;
+  DB_VALUE directive_val;
+  int save;
+  bool deterministic = false;
+  const char *name = jsp_pl_call_name (parser, node);
+
+  if (name == NULL)
+    {
+      return false;
+    }
+
+  AU_SAVE_AND_DISABLE (save);
+  er_stack_push ();
+
+  mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  if (mop_p != NULL && db_get (mop_p, SP_ATTR_DIRECTIVE, &directive_val) == NO_ERROR)
+    {
+      deterministic = (db_get_int (&directive_val) & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_DETERMINISTIC) != 0;
+    }
+
+  er_stack_pop ();
+  AU_RESTORE (save);
+
+  return deterministic;
+}
+
+/* the catalog name of the routine a PT_METHOD_CALL calls */
+static const char *
+jsp_pl_call_name (PARSER_CONTEXT *parser, PT_NODE *node)
+{
+  PT_NODE *method_name_node = node->info.method_call.method_name;
+  const char *name;
+
+  if (method_name_node == NULL)
+    {
+      return NULL;
+    }
+  if (PT_NAME_RESOLVED (method_name_node))
+    {
+      int custom_print_saved = parser->custom_print;
+      parser->custom_print |= PT_SUPPRESS_QUOTES;
+      parser->custom_print &= ~PT_PRINT_QUOTES;
+      name = parser_print_tree (parser, method_name_node);
+      parser->custom_print = custom_print_saved;
+    }
+  else
+    {
+      name = PT_NAME_ORIGINAL (method_name_node);
+    }
+  return name;
 }
 
 MOP
@@ -1299,7 +1481,6 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
     {
       goto error_exit;
     }
-  sp_info.created_time = *db_get_datetime (&current_datetime);
   sp_info.updated_time = *db_get_datetime (&current_datetime);
 
   /* check already exists */
@@ -1307,7 +1488,6 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
     {
       if (statement->info.sp.or_replace)
 	{
-	  /* drop existing stored procedure */
 	  err = tran_system_savepoint (SAVEPOINT_CREATE_STORED_PROC);
 	  if (err != NO_ERROR)
 	    {
@@ -1315,11 +1495,7 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
 	    }
 	  has_savepoint = true;
 
-	  err = drop_stored_procedure (sp_info.unique_name.data (), sp_info.sp_type, false);
-	  if (err != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
+	  err = replace_stored_procedure (sp_info);
 	}
       else
 	{
@@ -1327,8 +1503,12 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
 	  goto error_exit;
 	}
     }
+  else
+    {
+      sp_info.created_time = *db_get_datetime (&current_datetime);
+      err = sp_add_stored_procedure (sp_info);
+    }
 
-  err = sp_add_stored_procedure (sp_info);
   if (err != NO_ERROR)
     {
       goto error_exit;
@@ -1536,6 +1716,12 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	      goto error;
 	    }
 	  target_cls = db_get_string (&target_cls_val);
+	  if (target_cls == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      err = er_errid ();
+	      goto error;
+	    }
 
 	  owner_str = sm_qualifier_name (name_str, downcase_owner_name, DB_MAX_USER_LENGTH);
 
@@ -1688,20 +1874,126 @@ jsp_check_stored_procedure_name (const char *str)
 static int
 drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type, bool allow_system_generated)
 {
-  MOP sp_mop, arg_mop, owner, save_user;
-  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_cls_val, lang_val, temp;
-  SP_TYPE_ENUM real_type;
-  std::string class_name;
-  const char *target_cls;
-  DB_SET *arg_set_p;
-  int save, i, arg_cnt, lang;
+  MOP sp_mop, owner, save_user;
+  int save;
   int err;
   char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   unique_name[0] = '\0';
 
   AU_SAVE_AND_DISABLE (save);
 
-  db_make_null (&args_val);
+  err = check_stored_procedure_modifiable (name, expected_type, &sp_mop, &owner, allow_system_generated);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  err = drop_stored_procedure_code (sp_mop, allow_system_generated);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  err = drop_stored_procedure_args (sp_mop);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  /* before deleting an object, all permissions are revoked. */
+  if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+    }
+
+  save_user = Au_user;
+  if (AU_SET_USER (owner) == NO_ERROR)
+    {
+      err = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner, unique_name);
+      if (err != NO_ERROR)
+	{
+	  AU_SET_USER (save_user);
+	  goto error;
+	}
+    }
+
+  AU_SET_USER (save_user);
+
+  err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PROCEDURE, name);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  err = obj_delete (sp_mop);
+
+error:
+  AU_RESTORE (save);
+
+  return err;
+}
+
+/*
+ * replace_stored_procedure - replace an existing stored procedure with sp_info
+ *   return: Error code
+ *   sp_info(in): the new definition of the stored procedure
+ *
+ * Note: The _db_stored_procedure row is overwritten in place instead of being dropped and created again.
+ *       The privileges granted on the stored procedure refer to the OID of the row, so they are kept.
+ */
+
+static int
+replace_stored_procedure (SP_INFO &sp_info)
+{
+  MOP sp_mop;
+  int err;
+
+  err = check_stored_procedure_modifiable (sp_info.unique_name.data (), sp_info.sp_type, &sp_mop, NULL, false);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  err = drop_stored_procedure_code (sp_mop, false);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  err = drop_stored_procedure_args (sp_mop);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  return sp_replace_stored_procedure (sp_mop, sp_info);
+}
+
+/*
+ * check_stored_procedure_modifiable - check that the current user can drop or replace the stored procedure
+ *   return: Error code
+ *   name(in): jsp name
+ *   expected_type(in):
+ *   sp_mop_p(out): the stored procedure
+ *   owner_p(out): the owner of the stored procedure (can be NULL)
+ *   allow_system_generated(in): accept it even if the engine created it
+ *
+ * Note: It checks the existence, the owner or DBA privilege, the system generated flag and the type.
+ *       ALTER does not use it.
+ */
+
+static int
+check_stored_procedure_modifiable (const char *name, SP_TYPE_ENUM expected_type, MOP *sp_mop_p, MOP *owner_p,
+				   bool allow_system_generated)
+{
+  MOP sp_mop, owner;
+  DB_VALUE sp_type_val, owner_val, generated_val;
+  SP_TYPE_ENUM real_type;
+  int save;
+  int err;
+
+  AU_SAVE_AND_DISABLE (save);
+
   db_make_null (&owner_val);
 
   sp_mop = jsp_find_stored_procedure (name, DB_AUTH_SELECT);
@@ -1755,30 +2047,40 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type, bool allow_
       goto error;
     }
 
-  // delete _db_stored_procedure_code
-
-  err = db_get (sp_mop, SP_ATTR_LANG, &lang_val);
-  if (err != NO_ERROR)
+  *sp_mop_p = sp_mop;
+  if (owner_p != NULL)
     {
-      goto error;
+      *owner_p = owner;
     }
 
-  lang = db_get_int (&lang_val);
-  if (lang == SP_LANG_PLCSQL)
-    {
-      err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
-      if (err != NO_ERROR)
-	{
-	  goto error;
-	}
+error:
+  AU_RESTORE (save);
 
-      target_cls = db_get_string (&target_cls_val);
-      err = drop_stored_procedure_code (target_cls, allow_system_generated);
-      if (err != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
+  pr_clear_value (&owner_val);
+
+  return err;
+}
+
+/*
+ * drop_stored_procedure_args - delete the argument rows of a stored procedure
+ *   return: Error code
+ *   sp_mop(in): the stored procedure
+ *
+ * Note:
+ */
+
+static int
+drop_stored_procedure_args (MOP sp_mop)
+{
+  MOP arg_mop;
+  DB_VALUE arg_cnt_val, args_val, temp;
+  DB_SET *arg_set_p;
+  int save, i, arg_cnt;
+  int err;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  db_make_null (&args_val);
 
   err = db_get (sp_mop, SP_ATTR_ARG_COUNT, &arg_cnt_val);
   if (err != NO_ERROR)
@@ -1808,105 +2110,104 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type, bool allow_
 	}
     }
 
-  /* before deleting an object, all permissions are revoked. */
-  if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-    }
-
-  save_user = Au_user;
-  if (AU_SET_USER (owner) == NO_ERROR)
-    {
-      err = au_object_revoke_all_privileges (DB_OBJECT_PROCEDURE, owner, unique_name);
-      if (err != NO_ERROR)
-	{
-	  AU_SET_USER (save_user);
-	  goto error;
-	}
-    }
-
-  AU_SET_USER (save_user);
-
-  err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PROCEDURE, name);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  err = obj_delete (sp_mop);
-
 error:
   AU_RESTORE (save);
 
   pr_clear_value (&args_val);
-  pr_clear_value (&owner_val);
 
   return err;
 }
 
 /*
- * drop_stored_procedure_code -
+ * drop_stored_procedure_code - delete the code row of a stored procedure
  *   return: Error code
- *   name(in): jsp name
+ *   sp_mop(in): the stored procedure
  *   allow_system_generated(in): drop it even if the engine created it
  *
- * Note:
+ * Note: Only a PL/CSQL stored procedure has a code row.
  */
 
 static int
-drop_stored_procedure_code (const char *name, bool allow_system_generated)
+drop_stored_procedure_code (MOP sp_mop, bool allow_system_generated)
 {
   MOP code_mop, owner;
-  DB_VALUE owner_val, generated_val;
-  int save;
+  DB_VALUE owner_val, generated_val, lang_val, target_cls_val;
+  const char *target_cls;
+  int save, lang;
   int err;
 
   AU_SAVE_AND_DISABLE (save);
 
   db_make_null (&owner_val);
+  db_make_null (&target_cls_val);
 
-  code_mop = jsp_find_stored_procedure_code (name);
-  if (code_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
-      goto error;
-    }
-
-  err = db_get (code_mop, SP_ATTR_OWNER, &owner_val);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-  owner = db_get_object (&owner_val);
-
-  if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DDL_NOT_ALLOWED_PRIVILEGES, 1, "drop");
-      err = er_errid ();
-      goto error;
-    }
-
-  err = db_get (code_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+  err = db_get (sp_mop, SP_ATTR_LANG, &lang_val);
   if (err != NO_ERROR)
     {
       goto error;
     }
 
-  if (!allow_system_generated && !DB_IS_NULL (&generated_val) && 1 == db_get_int (&generated_val))
+  lang = db_get_int (&lang_val);
+  if (lang == SP_LANG_PLCSQL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
-      err = er_errid ();
-      goto error;
-    }
+      err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
 
-  // TODO: If a unreloadable SP is deleted, mark a flag in PL server to block calling the deleted SP
-  err = obj_delete (code_mop);
+      target_cls = db_get_string (&target_cls_val);
+      if (target_cls == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  err = er_errid ();
+	  goto error;
+	}
+
+      code_mop = jsp_find_stored_procedure_code (target_cls);
+      if (code_mop == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  err = er_errid ();
+	  goto error;
+	}
+
+      err = db_get (code_mop, SP_ATTR_OWNER, &owner_val);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+      owner = db_get_object (&owner_val);
+
+      if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DDL_NOT_ALLOWED_PRIVILEGES, 1, "drop");
+	  err = er_errid ();
+	  goto error;
+	}
+
+      err = db_get (code_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      if (!allow_system_generated && !DB_IS_NULL (&generated_val) && 1 == db_get_int (&generated_val))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
+	  err = er_errid ();
+	  goto error;
+	}
+
+      // TODO: If a unreloadable SP is deleted, mark a flag in PL server to block calling the deleted SP
+      err = obj_delete (code_mop);
+    }
 
 error:
   AU_RESTORE (save);
 
   pr_clear_value (&owner_val);
+  pr_clear_value (&target_cls_val);
 
   return err;
 }
@@ -2212,21 +2513,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
   sp_entry entry (NUM_SP_ATTR);
 
   {
-    PT_NODE *method_name_node = node->info.method_call.method_name;
-
-    const char *name;
-    if (PT_NAME_RESOLVED (method_name_node))
-      {
-	int custom_print_saved = parser->custom_print;
-	parser->custom_print |= PT_SUPPRESS_QUOTES;
-	parser->custom_print &= ~PT_PRINT_QUOTES;
-	name = parser_print_tree (parser, method_name_node);
-	parser->custom_print = custom_print_saved;
-      }
-    else
-      {
-	name = PT_NAME_ORIGINAL (method_name_node);
-      }
+    const char *name = jsp_pl_call_name (parser, node);
 
     sig.name = db_private_strdup (NULL, name);
     if (PT_IS_METHOD (node))
@@ -2281,15 +2568,6 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
 #if defined (CS_MODE)
 	sig.auth = db_private_strdup (NULL, auth_name);
-	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_DETERMINISTIC)
-	  {
-	    sig.is_deterministic = true;
-	  }
-	else
-	  {
-	    sig.is_deterministic = false;
-	  }
-
 	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_PARALLEL_ENABLE)
 	  {
 	    sig.is_parallel_enabled = true;
