@@ -10714,8 +10714,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    /* if other value, the db_str_to_date will return NULL */
 	    node->type_enum = PT_TYPE_NULL;
 	  }
-	else if (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE)
+	else if (type_specifier == PT_TYPE_MAYBE && (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE))
 	  {
+	    /* CBRD-28134: only an unknown format leaves the result open; a known one without a specifier is a DATE, as
+	     * a literal format of no specifier types it, and the row raises the literal's error */
 	    node->type_enum = PT_TYPE_MAYBE;
 	  }
 	break;

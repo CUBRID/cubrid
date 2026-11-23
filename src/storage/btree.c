@@ -1242,6 +1242,8 @@ static int btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STAT
 static int btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level,
 						   bool * exhausted, int *count);
 static UINT64 btree_get_stats_hash_bytes (UINT64 hash, const void *bytes, size_t size);
+static UINT64 btree_get_stats_hash_finalize (UINT64 hash);
+static UINT64 btree_get_stats_value_hash (const DB_VALUE * value);
 static UINT64 btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value);
 static UINT64 btree_get_stats_prefix_value_hash (const DB_VALUE * value);
 static int btree_get_stats_compare_prefix_hash (const void *hash1, const void *hash2);
@@ -1563,7 +1565,7 @@ static int btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p
 static int btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * leaf_page,
 				  PAGE_PTR * overflow_page, OID * oid, OID * class_oid, LOCK lock_mode,
 				  BTREE_SEARCH_KEY_HELPER * search_key, bool try_cond_lock, bool * restart,
-				  bool * was_page_refixed);
+				  bool * was_page_refixed, bool owner_bypass_ok, bool * passed);
 #endif /* SERVER_MODE */
 
 static int btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
@@ -7161,7 +7163,7 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
 		  goto exit_on_error;
 		}
 	      val_hash = DB_IS_NULL (&elem) ? ~0ULL : btree_get_stats_prefix_value_hash (&elem);
-	      hash = hash * 1099511628211ULL + val_hash;
+	      hash = btree_get_stats_hash_finalize (hash + val_hash);
 	      env->prefix_sample[(size_t) k * BTREE_STATS_DUJ1_SAMPLE + slot] = hash;
 	      if (elem.need_clear == true)
 		{
@@ -7687,6 +7689,29 @@ btree_get_stats_hash_bytes (UINT64 hash, const void *bytes, size_t size)
 }
 
 /*
+ * btree_get_stats_hash_finalize () - spread every input bit over the whole 64-bit hash (fmix64 of MurmurHash3)
+ *   return: 64-bit hash
+ *   hash(in): hash to finalize
+ *
+ * Note: (CBRD-28213) FNV-1a ends with a multiplication by its prime, so two values that differ only in the low
+ * bytes keep hashes whose difference is linear in those bytes. The prefix hash used to add the element hash to
+ * the previous level multiplied by the same prime, and the two linear terms cancelled: the pairs of small
+ * integers (a, b) collided by the tens of thousands, and the Duj1 estimate of pkeys[1] fell more than ten times.
+ * The element hash and every level of the prefix hash are finalized so that no linear relation survives.
+ */
+static UINT64
+btree_get_stats_hash_finalize (UINT64 hash)
+{
+  hash ^= hash >> 33;
+  hash *= 0xff51afd7ed558ccdULL;
+  hash ^= hash >> 33;
+  hash *= 0xc4ceb9fe1a85ec53ULL;
+  hash ^= hash >> 33;
+
+  return hash;
+}
+
+/*
  * btree_get_stats_hash_string () - mix a CHAR or VARCHAR key element into a prefix hash so that
  *     the strings its collation compares equal hash alike
  *   return: 64-bit hash
@@ -7790,10 +7815,21 @@ btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
  * distinct values together: every fixed NUMERIC and most BIT strings hash to 0 because it stops at
  * the first zero byte, FLOAT, DOUBLE and MONETARY are truncated to integers, and ENUM hashes the
  * address of the DB_VALUE. The whole value is mixed here instead; strings follow the comparison of
- * their collation (btree_get_stats_hash_string ()).
+ * their collation (btree_get_stats_hash_string ()). The result is finalized (CBRD-28213).
  */
 static UINT64
 btree_get_stats_prefix_value_hash (const DB_VALUE * value)
+{
+  return btree_get_stats_hash_finalize (btree_get_stats_value_hash (value));
+}
+
+/*
+ * btree_get_stats_value_hash () - FNV-1a hash of one non-NULL key element, before the finalization
+ *   return: 64-bit hash
+ *   value(in): key element
+ */
+static UINT64
+btree_get_stats_value_hash (const DB_VALUE * value)
 {
   UINT64 hash = 14695981039346656037ULL;
 
@@ -28989,6 +29025,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
   /* Next variables are not required for stand-alone mode. */
   bool try_cond_lock = false;	/* Try conditional lock. */
   bool was_page_refixed = false;	/* Set to true if conditional lock failed and page had to be re-fixed. */
+  bool passed = false;		/* Set to true if the object was passed as ours instead of locked. */
 #endif /* SERVER_MODE */
 
   /* Assert expected arguments. */
@@ -29067,6 +29104,10 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 						   find_unique_helper->lock_mode);
 	  OID_SET_NULL (&find_unique_helper->locked_oid);
 	}
+      if (!OID_ISNULL (&find_unique_helper->passed_oid) && !OID_EQ (&find_unique_helper->passed_oid, &unique_oid))
+	{
+	  OID_SET_NULL (&find_unique_helper->passed_oid);
+	}
 #endif /* SERVER_MODE */
 
       /* Check whether object can be locked. */
@@ -29109,11 +29150,12 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	      return NO_ERROR;
 	    }
 	  /* Must lock object. */
-	  if (!OID_ISNULL (&find_unique_helper->locked_oid))
+	  if (!OID_ISNULL (&find_unique_helper->locked_oid) || !OID_ISNULL (&find_unique_helper->passed_oid))
 	    {
-	      /* Object already locked. */
+	      /* Object already locked, or passed as ours. */
 	      /* Safe guard. */
-	      assert (OID_EQ (&find_unique_helper->locked_oid, &unique_oid));
+	      assert (OID_EQ (&find_unique_helper->locked_oid, &unique_oid)
+		      || OID_EQ (&find_unique_helper->passed_oid, &unique_oid));
 	      assert (satisfies_delete == DELETE_RECORD_CAN_DELETE);
 
 	      /* Return result. */
@@ -29125,19 +29167,26 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	   * fail. */
 	  try_cond_lock = (satisfies_delete == DELETE_RECORD_CAN_DELETE);
 	  /* Lock object. */
+	  passed = false;
 	  error_code =
 	    btree_key_lock_object (thread_p, btid_int, key, leaf_page, NULL, &unique_oid, &unique_class_oid,
 				   find_unique_helper->lock_mode, search_key, try_cond_lock, restart,
-				   &was_page_refixed);
+				   &was_page_refixed, find_unique_helper->owner_bypass_ok, &passed);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto error_or_not_found;
 	    }
-	  /* Object locked. */
-	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode) > 0);
-	  COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
-	  COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
+	  if (passed)
+	    {
+	      COPY_OID (&find_unique_helper->passed_oid, &unique_oid);
+	    }
+	  else
+	    {
+	      assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode) > 0);
+	      COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
+	      COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
+	    }
 	  if (*restart)
 	    {
 	      /* Need to restart from top. */
@@ -29195,6 +29244,7 @@ error_or_not_found:
 					       &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
       OID_SET_NULL (&find_unique_helper->locked_oid);
     }
+  OID_SET_NULL (&find_unique_helper->passed_oid);
 #endif
 
   PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_LEAF);
@@ -29467,7 +29517,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  error_code =
 	    btree_key_lock_object (thread_p, btid_int, key, leaf_page, &overflow_page, &unique_oid, &unique_class_oid,
 				   find_unique_helper->lock_mode, search_key, try_cond_lock, restart,
-				   &was_page_refixed);
+				   &was_page_refixed, false, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -29579,6 +29629,8 @@ error_or_not_found:
  * try_cond_lock (in)	  : True to try conditional lock first. If false, page is unfixed directly.
  * restart (out)	  : Outputs true when page had to be unfixed and was not considered valid to be reused.
  * was_page_refixed (out) : Outputs true if page had to be unfixed.
+ * owner_bypass_ok (in)	  : Pass an object we stamped instead of waiting for it; see locator_lock_object_unless_ours ().
+ * passed (out)		  : Set to true when the object was passed that way, without a lock.
  *
  * TODO: Extend this function to handle overflow OID's page too.
  */
@@ -29586,7 +29638,7 @@ static int
 btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * leaf_page,
 		       PAGE_PTR * overflow_page, OID * oid, OID * class_oid, LOCK lock_mode,
 		       BTREE_SEARCH_KEY_HELPER * search_key, bool try_cond_lock, bool * restart,
-		       bool * was_page_refixed)
+		       bool * was_page_refixed, bool owner_bypass_ok, bool * passed)
 {
   VPID leaf_vpid;		/* VPID of leaf page. */
   int lock_result;		/* Result of tried locks. */
@@ -29641,14 +29693,26 @@ btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * 
 
   /* Lock object. */
   PERF_UTIME_TRACKER_START (thread_p, &lock_time_track);
-  lock_result = lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK);
+  if (owner_bypass_ok)
+    {
+      HEAP_GET_CONTEXT context;
+
+      heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN,
+			     HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+      lock_result = locator_lock_object_unless_ours (thread_p, &context, lock_mode, false, true);
+      *passed = (lock_result == LK_NOTGRANTED_HELD_BY_WRITERS);
+    }
+  else
+    {
+      lock_result = lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK);
+    }
   btree_perf_unique_lock_time (thread_p, &lock_time_track, lock_mode);
-  if (lock_result != LK_GRANTED)
+  if (lock_result != LK_GRANTED && lock_result != LK_NOTGRANTED_HELD_BY_WRITERS)
     {
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
-  /* Lock granted. */
+  /* Lock granted, or passed as the object's owner. */
 
   /* Try to re-fix page. */
   error_code = pgbuf_fix_if_not_deallocated (thread_p, &leaf_vpid, latch_mode, PGBUF_UNCONDITIONAL_LATCH, leaf_page);
@@ -29726,7 +29790,10 @@ error:
   assert (error_code != NO_ERROR);
   ASSERT_ERROR ();
 
-  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
+  if (passed == NULL || !*passed)
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
+    }
   return error_code;
 }
 #endif /* SERVER_MODE */
@@ -34048,6 +34115,10 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 #endif /* SERVER_MODE */
 
   find_unique_helper.lock_mode = X_LOCK;
+#if defined (SERVER_MODE)
+  /* a writer parked on our stamp holds the row's X: pass a row we stamped instead of queuing behind it */
+  find_unique_helper.owner_bypass_ok = true;
+#endif /* SERVER_MODE */
   error_code =
     btree_key_find_and_lock_unique_of_unique (thread_p, btid_int, key, leaf, search_key, restart, &find_unique_helper);
 #if defined (SERVER_MODE)
