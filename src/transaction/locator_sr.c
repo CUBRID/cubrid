@@ -17393,17 +17393,6 @@ for (int attrid:thread_p->oos_attrids)
 	  goto end;
 	}
 
-      if (thread_p->oos_oids[oos_oid_count].reused)
-	{
-	  error = locator_copy_reused_oos_stub (thread_p, class_oid, old_recdes, attrepr, stub_ptr);
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
-	  oos_oid_count++;
-	  continue;
-	}
-
       or_init (&buf, stub_ptr, OR_OOS_INLINE_SIZE);
       or_put_oid (&buf, &oos_oid);
 
