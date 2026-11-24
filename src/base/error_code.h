@@ -1818,9 +1818,14 @@
 
 #define ER_BT_LOAD_NO_LOGGING_DURING_BACKUP         -1404
 
-#define ER_LOG_RESTORE_INCOMPLETE                   -1405
+#define ER_SP_TCL_DDL_IN_QUERY                      -1405
+#define ER_SP_TCL_DDL_IN_TRIGGER                    -1406
+#define ER_SP_DML_IN_QUERY                          -1407
+#define ER_SP_TABLE_REFERENCED                      -1408
 
-#define ER_LAST_ERROR                               -1406
+#define ER_LOG_RESTORE_INCOMPLETE                   -1409
+
+#define ER_LAST_ERROR                               -1410
 
 /*
  * CAUTION!
