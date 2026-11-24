@@ -7349,6 +7349,7 @@ scan_bitmap_marks::write (THREAD_ENTRY *thread_p, scan_bitmap_writer &wr)
       memcpy (page + SCAN_BITMAP_PAGE_HEADER + sizeof (bitmap_page_header) + (size_t) c.tail_n * sizeof (scan_bitmap_record), &r,
 	      sizeof (scan_bitmap_record));
       c.tail_n++;
+      c.n += (c.n < UINT32_MAX);
       ((bitmap_page_header *) (page + SCAN_BITMAP_PAGE_HEADER))->n = c.tail_n;
     }
   if (page != nullptr)
@@ -7621,7 +7622,7 @@ scan_bitmap_marks::load (THREAD_ENTRY *thread_p, scan_bitmap_worker *w, std::uin
 	{
 	  /* shortcut: the pages the previous partition's parts took stay in the temp file until the scan ends,
 	   * reuse them when heaps of this size become common */
-	  w->sub.chain.assign (m_bm_nsub, scan_bitmap_chain { VPID_INITIALIZER, VPID_INITIALIZER, 0 });
+	  w->sub.chain.assign (m_bm_nsub, scan_bitmap_chain { VPID_INITIALIZER, VPID_INITIALIZER, 0, 0 });
 	}
       for (int i = 0; i < m_bm_nworkers && error_code == NO_ERROR; i++)
 	{
@@ -7690,9 +7691,10 @@ scan_bitmap_marks::count_marks ()
 	      /* the same page counts once a worker that marked it */
 	      pages += from.tbl_start[part + 1] - from.tbl_start[part];
 	    }
-	  if (part < from.rec.chain.size () && !VPID_ISNULL (&from.rec.chain[part].first))
+	  if (part < from.rec.chain.size ())
 	    {
-	      pages = m_bm_cap;
+	      /* a record marks one page: the records bound the pages of the chain */
+	      pages += from.rec.chain[part].n;
 	    }
 	}
       /* a partition wider than a table is divided by the worker that takes it, alone */
@@ -7910,7 +7912,7 @@ scan_bitmap_marks::init (THREAD_ENTRY *thread_p, const VFID *heap_vfid, int nwor
       for (int i = 0; i < m_bm_nworkers && error_code == NO_ERROR; i++)
 	{
 	  error_code = m_bm_workers[i].tbl.init (m_bm_cap, m_bm_buckets);
-	  m_bm_workers[i].rec.chain.assign (m_bm_nparts, scan_bitmap_chain { VPID_INITIALIZER, VPID_INITIALIZER, 0 });
+	  m_bm_workers[i].rec.chain.assign (m_bm_nparts, scan_bitmap_chain { VPID_INITIALIZER, VPID_INITIALIZER, 0, 0 });
 	  m_bm_workers[i].rec.batch.reserve (SCAN_BITMAP_BATCH);
 	  m_bm_workers[i].rec.where.reserve (SCAN_BITMAP_BATCH);
 	}

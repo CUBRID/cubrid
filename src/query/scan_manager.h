@@ -986,6 +986,7 @@ struct scan_bitmap_chain
   VPID first;
   VPID tail;
   int tail_n;             /* records on the tail page */
+  std::uint32_t n;        /* records of the chain, saturating: no fewer than the pages it marks */
 };
 /* a temp file of record chains and the batch not yet written to it */
 struct scan_bitmap_writer
