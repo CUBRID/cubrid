@@ -1035,3 +1035,61 @@ sm_define_view_histogram_spec (void)
 
   return stmt;
 }
+
+std::string
+sm_define_view_package_spec (void)
+{
+  char stmt [4096];
+
+  // *INDENT-OFF*
+  int n = snprintf (stmt, sizeof(stmt),
+	"SELECT "
+	  "[p].[pkg_name] AS [pkg_name], "
+	  "[p].[owner].[name] AS [owner], "
+	  "[p].[procedure_count] AS [procedure_count], "
+	  "[p].[variable_count] AS [variable_count], "
+	  "[p].[exception_count] AS [exception_count], "
+	  "[p].[cursor_count] AS [cursor_count], "
+	  "[p].[record_type_count] AS [record_type_count], "
+	  "[p].[comment] AS [comment], "
+	  "[p].[created_time] AS [created_time], "
+	  "[p].[updated_time] AS [updated_time] "
+	"FROM "
+	  /* CT_PACKAGE_NAME */
+	  "[%s] AS [p] "
+	"WHERE "
+	  /* PKG_FLAGS_SYSTEM_GENERATED */
+	  "([p].[flags] & %d) = 0 "
+	  "AND " AUTH_CHECK_PRIVILEGE ("[p].[owner].[name]", "[p]", "EXECUTE"),
+	CT_PACKAGE_NAME,
+	PKG_FLAGS_SYSTEM_GENERATED);
+  // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
+
+  return stmt;
+}
+
+std::string
+sm_define_view_package_code_spec (void)
+{
+  char stmt [2048];
+
+  // *INDENT-OFF*
+  int n = snprintf (stmt, sizeof(stmt),
+	"SELECT "
+	  /* [c].[pkg_of] is NULL for a body created before its spec */
+	  "SUBSTRING_INDEX ([c].[pkg_unique_name], '.', -1) AS [pkg_name], "
+	  "[c].[owner].[name] AS [owner], "
+	  "[c].[scode_spec] AS [spec_code], "
+	  "[c].[scode_body] AS [body_code] "
+	"FROM "
+	  /* CT_PACKAGE_CODE_NAME */
+	  "[%s] AS [c] "
+	"WHERE "
+	  AUTH_CHECK_USER ("[c].[owner].[name]"),
+	CT_PACKAGE_CODE_NAME);
+  // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
+
+  return stmt;
+}
