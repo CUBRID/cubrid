@@ -168,6 +168,10 @@ static ROP_TYPE compare_val_op (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1
 static int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges);
 static int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges);
 static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES * ranges);
+static void scan_sort_keys_in_analytic_order (KEY_VAL_RANGE * key_vals, int key_cnt, const INDX_INFO * indx_info);
+static int scan_key_compare_column (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, DB_VALUE * val2,
+				    const DOMAIN_KEY_BOUND * bound2, int num_index_term,
+				    const DOMAIN_KEY_RANGES * ranges, int *diff_column);
 static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn,
 			   const DOMAIN_KEY_RANGES * ranges);
 static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexal,
@@ -1130,7 +1134,26 @@ static int
 scan_key_compare (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, DB_VALUE * val2, const DOMAIN_KEY_BOUND * bound2,
 		  int num_index_term, const DOMAIN_KEY_RANGES * ranges)
 {
+  int diff_column;
+
+  return scan_key_compare_column (val1, bound1, val2, bound2, num_index_term, ranges, &diff_column);
+}
+
+/*
+ * scan_key_compare_column () - compare two search keys, as scan_key_compare (), and tell the first column they differ at
+ *   return: DB_LT, DB_EQ, DB_GT or DB_UNK
+ *   num_index_term(in):
+ *   ranges(in):
+ *   diff_column(out): the first column the keys differ at (0 for a single-column key)
+ */
+static int
+scan_key_compare_column (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, DB_VALUE * val2,
+			 const DOMAIN_KEY_BOUND * bound2, int num_index_term, const DOMAIN_KEY_RANGES * ranges,
+			 int *diff_column)
+{
   int rc = DB_UNK;
+
+  *diff_column = 0;
 
   if (val1 == NULL || val2 == NULL)
     {
@@ -1160,10 +1183,9 @@ scan_key_compare (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, DB_VALUE * v
       const DOMAIN_KEY_RANGES_PAIR pair = { ranges, {bound1->classes, bound2->classes} };
       if (DB_VALUE_DOMAIN_TYPE (val1) == DB_TYPE_MIDXKEY)
 	{
-	  int dummy_diff_column;
 	  rc =
 	    pr_midxkey_compare_resolved (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL,
-					 &dummy_diff_column, NULL, NULL, domain_key_ranges_element_compare, &pair);
+					 diff_column, NULL, NULL, domain_key_ranges_element_compare, &pair);
 	}
       else
 	{
@@ -2153,11 +2175,16 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
        * desc. */
       if ((indx_infop->range_type == R_KEYLIST || indx_infop->range_type == R_RANGELIST)
 	  && ((indx_infop->orderby_desc && indx_infop->orderby_skip)
-	      || (indx_infop->groupby_desc && indx_infop->groupby_skip) || indx_infop->analytic_desc))
+	      || (indx_infop->groupby_desc && indx_infop->groupby_skip)))
 	{
-	  /* in these cases we should reverse the key lists if we have a reverse order by, group by or analytic sort
-	   * which is skipped */
+	  /* in both cases we should reverse the key lists if we have a reverse order by or group by which is skipped */
 	  check_key_vals (key_vals, key_cnt, reverse_key_list, indx_infop->key_ranges_compares);
+	}
+      else if ((indx_infop->range_type == R_KEYLIST || indx_infop->range_type == R_RANGELIST)
+	       && indx_infop->analytic_desc_cols != 0 && key_cnt > 1)
+	{
+	  /* an analytic sort skipped by this scan is descending on some columns: read the keys in its order */
+	  scan_sort_keys_in_analytic_order (key_vals, key_cnt, indx_infop);
 	}
 
       if (key_cnt < 0)
@@ -9466,6 +9493,47 @@ reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
     }
 
   return key_cnt;
+}
+
+/*
+ * scan_sort_keys_in_analytic_order () - put the keys of a key list in the order of the analytic sort the scan skips
+ *   return:
+ *   key_vals(in/out): the keys, sorted ascending (check_key_vals)
+ *   key_cnt(in): number of the keys
+ *   indx_info(in): analytic_sort_cols and analytic_desc_cols tell the order
+ *
+ * NOTE: Two keys are ordered by the first column they differ at, in the direction the sort has on it. A column all
+ * the keys have the same value at, as one an equality or a single range gives, does not order them, whatever its
+ * direction; so the order follows the values the keys have, which only execution knows (a multi-column IN). The
+ * keys of a key list do not overlap, so their lower bounds order them.
+ */
+static void
+scan_sort_keys_in_analytic_order (KEY_VAL_RANGE * key_vals, int key_cnt, const INDX_INFO * indx_info)
+{
+  const DOMAIN_KEY_RANGES *ranges = indx_info->key_ranges_compares;
+  const int sort_cols = indx_info->analytic_sort_cols;
+  const int desc_cols = indx_info->analytic_desc_cols;
+
+  /* *INDENT-OFF* */
+  std::stable_sort (key_vals, key_vals + key_cnt,
+		    [ranges, sort_cols, desc_cols] (const KEY_VAL_RANGE & a, const KEY_VAL_RANGE & b)
+  {
+    int column;
+    int rc = scan_key_compare_column (const_cast < DB_VALUE * >(&a.key1), a.key1_bound,
+				      const_cast < DB_VALUE * >(&b.key1), b.key1_bound, a.num_index_term, ranges,
+				      &column);
+
+    if (rc != DB_LT && rc != DB_GT)
+      {
+	return false;
+      }
+    if (column < sort_cols && (desc_cols & (1 << column)) != 0)
+      {
+	return rc == DB_GT;
+      }
+    return rc == DB_LT;
+  });
+  /* *INDENT-ON* */
 }
 
 /*

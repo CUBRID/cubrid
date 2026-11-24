@@ -102,6 +102,10 @@ struct key_info
   TP_VALUE_CONVERTER key_limit_u_conv;
 };				/* key information structure */
 
+/* the most leading index columns an analytic sort skipped by an index scan can cover: one bit each in
+ * indx_info.analytic_desc_cols */
+#define INDX_INFO_ANALYTIC_MAX_SORT_COLS 31
+
 typedef struct indx_info INDX_INFO;
 struct indx_info
 {
@@ -116,7 +120,9 @@ struct indx_info
   int use_desc_index;		/* using descending index */
   int orderby_skip;		/* order by skip information */
   int groupby_skip;		/* group by skip information */
-  int analytic_desc;		/* first sort column of the analytic evaluation that skips its sort is desc */
+  int analytic_sort_cols;	/* number of the leading columns an analytic sort skipped by this scan covers, 0 if none */
+  int analytic_desc_cols;	/* bit i: that sort is descending on the i-th of them; the keys of a key list are
+				 * read in that order (scan_get_index_oidset) */
   int use_iss;			/* flag set if using index skip scan */
   int func_idx_col_id;		/* function expression column position, if the index is a function index */
   KEY_RANGE iss_range;		/* placeholder range used for ISS; must be created on the broker */

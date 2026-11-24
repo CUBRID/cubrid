@@ -227,7 +227,8 @@ regu_init (indx_info &ii)
   ii.key_info.key_limit_u = NULL;
   ii.orderby_desc = 0;
   ii.groupby_desc = 0;
-  ii.analytic_desc = 0;
+  ii.analytic_sort_cols = 0;
+  ii.analytic_desc_cols = 0;
   ii.use_desc_index = 0;
   ii.orderby_skip = 0;
   ii.groupby_skip = 0;
