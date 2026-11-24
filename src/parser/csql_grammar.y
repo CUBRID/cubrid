@@ -3023,7 +3023,18 @@ create_stmt
                                 plcsql_block->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(
                                         g_query_string + g_plcsql_text_pos, $8);
                             } else {
-                                plcsql_block->info.sp_body.impl = NULL; // set later
+                                // loaddb -s <file> or csql -i <file> --no-single-line: no original buffer.
+                                // Get the SQL user text and the block from the file, as for stored procedures.
+                                assert(this_parser->original_buffer == NULL);
+                                assert(this_parser->file);
+
+                                int start = @1.buffer_pos - 6;  // 6 : length of "create"
+                                int spec_start = @7.buffer_pos; // right after is_or_as
+                                int spec_end = @8.buffer_pos;
+                                int end = @$.buffer_pos;
+                                if (pt_set_plcsql_body_impl(node, plcsql_block, start, spec_start, spec_end, end) < 0) {
+                                    PT_ERROR (this_parser, node, "failed to get the user SQL from the input file");
+                                }
                             }
 			  }
                         node->info.pkg.block = plcsql_block;
