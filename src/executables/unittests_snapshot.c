@@ -655,6 +655,7 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
   int idx_thread_entry;
   int error = NO_ERROR;
   char msg[256];
+  MVCCID first_mvccid, oldest_visible;
 
   numthreads = num_snapshot_threads + num_complete_threads + num_oldest_mvccid_threads + TEST_ORDER_WRITERS;
   sprintf (msg, "test_mvcc_operations (%d snapshot threads, %d complete threads, %d oldest threads)",
@@ -695,6 +696,7 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
       order_commit_started[i].store (MVCCID_NULL);
     }
   snapshot_threads_running.store (num_snapshot_threads);
+  first_mvccid = log_Gl.hdr.mvcc_next_id;	/* before the threads start */
   idx_thread_entry = 0;
   /* order writers first, so they are already committing when the snapshot threads start */
   order_writer_first_entry = idx_thread_entry;
@@ -799,6 +801,23 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
 	      (unsigned long long) count_stale, (unsigned long long) count_order_violations,
 	      (unsigned long long) count_early, (unsigned long long) count_vacuum_violations);
       return ER_FAILED;
+    }
+
+  /* After the joins every id of the run is complete and no snapshot is held, so the oldest visible id must have
+   * moved past the first id of the run. The bound checks above only see it lag behind or go back. */
+  if (log_Gl.hdr.mvcc_next_id != first_mvccid)
+    {
+      // *INDENT-OFF*
+      cubthread::set_thread_local_entry (thread_array[0]);
+      oldest_visible = log_Gl.mvcc_table.update_global_oldest_visible ();
+      cubthread::clear_thread_local_entry ();
+      // *INDENT-ON*
+      if (!MVCC_ID_PRECEDES (first_mvccid, oldest_visible))
+	{
+	  printf (" %s: oldest visible %llu did not pass %llu\n", "FAILED", (unsigned long long) oldest_visible,
+		  (unsigned long long) first_mvccid);
+	  return ER_FAILED;
+	}
     }
 
   success ();
