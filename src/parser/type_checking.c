@@ -225,6 +225,8 @@ static int pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALU
 static PT_NODE *pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * gl_expr);
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void pt_mark_filter_terms (PT_NODE * cond);
+static void pt_mark_filter_spine (PT_NODE * node);
 static int pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr);
 static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -7534,6 +7536,45 @@ pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * recursive_expr)
 }
 
 /*
+ * pt_mark_filter_spine () - mark the AND and OR nodes reached from a term of a search condition through AND and OR
+ *   return:
+ *   node(in/out): a term, or an operand of an AND or an OR of it
+ *
+ * Note: a search condition keeps a row only when it is TRUE, and AND and OR are monotone, so an operand on this spine
+ *	 that is UNKNOWN can be taken as FALSE; pt_eval_type () folds a NULL operand of such an AND or OR.  The spine
+ *	 stops at any other node: under IS, NOT, XOR, CAST, CASE or a function the truth value is a value again.
+ */
+static void
+pt_mark_filter_spine (PT_NODE * node)
+{
+  while (node != NULL && node->node_type == PT_EXPR && (node->info.expr.op == PT_AND || node->info.expr.op == PT_OR))
+    {
+      PT_EXPR_INFO_SET_FLAG (node, PT_EXPR_INFO_FILTER_TERM);
+      pt_mark_filter_spine (node->info.expr.arg1);
+      node = node->info.expr.arg2;
+    }
+}
+
+/*
+ * pt_mark_filter_terms () - mark the AND/OR spine of each term of a search condition
+ *   return:
+ *   cond(in/out): a search condition, a tree or a CNF list with or_next chains
+ */
+static void
+pt_mark_filter_terms (PT_NODE * cond)
+{
+  PT_NODE *term, *disj;
+
+  for (term = cond; term != NULL; term = term->next)
+    {
+      for (disj = term; disj != NULL; disj = disj->or_next)
+	{
+	  pt_mark_filter_spine (disj);
+	}
+    }
+}
+
+/*
  * pt_eval_type_pre () -
  *   return:
  *   parser(in):
@@ -7553,6 +7594,44 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
   if (sc_info->donot_fold == true)
     {				/* skip folding */
       return node;
+    }
+
+  /* the search conditions, where pt_eval_type () folds a NULL operand of an AND or OR as a filter does */
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      pt_mark_filter_terms (node->info.query.q.select.where);
+      pt_mark_filter_terms (node->info.query.q.select.having);
+      pt_mark_filter_terms (node->info.query.q.select.start_with);
+      pt_mark_filter_terms (node->info.query.q.select.connect_by);
+      pt_mark_filter_terms (node->info.query.q.select.after_cb_filter);
+      break;
+
+    case PT_SPEC:
+      pt_mark_filter_terms (node->info.spec.on_cond);
+      break;
+
+    case PT_UPDATE:
+      pt_mark_filter_terms (node->info.update.search_cond);
+      break;
+
+    case PT_DELETE:
+      pt_mark_filter_terms (node->info.delete_.search_cond);
+      break;
+
+    case PT_MERGE:
+      pt_mark_filter_terms (node->info.merge.search_cond);
+      pt_mark_filter_terms (node->info.merge.update.search_cond);
+      pt_mark_filter_terms (node->info.merge.update.del_search_cond);
+      pt_mark_filter_terms (node->info.merge.insert.search_cond);
+      break;
+
+    case PT_CREATE_INDEX:
+      pt_mark_filter_terms (node->info.index.where);
+      break;
+
+    default:
+      break;
     }
 
   switch (node->node_type)
@@ -19271,11 +19350,13 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
 
       db_value = pt_value_to_db (parser, val);
-      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL && !PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CNF_DONE))
+      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL
+	  && !PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CNF_DONE | PT_EXPR_INFO_FILTER_TERM))
 	{
-	  /* NULL AND x is FALSE when x is, and NULL OR x is UNKNOWN when x is FALSE: only a term of a filter (pt_cnf ()
-	   * marks those CNF_DONE), where UNKNOWN rejects the row as FALSE does, takes NULL for the AND and the other
-	   * operand for the OR.  Under IS, NOT, XOR, CAST or CASE the node stays */
+	  /* NULL AND x is FALSE when x is, and NULL OR x is UNKNOWN when x is FALSE: only on the AND/OR spine of a
+	   * search condition (pt_mark_filter_terms (), and pt_cnf () marks its terms CNF_DONE), where UNKNOWN rejects
+	   * the row as FALSE does, takes NULL for the AND and the other operand for the OR.  Under IS, NOT, XOR, CAST or
+	   * CASE the node stays, and the grammar reads its NULL operand back from a stored definition */
 	  goto end;
 	}
 

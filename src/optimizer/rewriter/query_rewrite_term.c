@@ -1088,20 +1088,41 @@ qo_null_eval_expr (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET * tar
 
     case PT_BETWEEN:
     case PT_NOT_BETWEEN:
-      /* x BETWEEN lo AND hi is (x >= lo) AND (x <= hi), and NOT BETWEEN is its negation */
-      if (arg2 == NULL || arg2->node_type != PT_EXPR || arg2->info.expr.op != PT_BETWEEN_AND)
+      /* x BETWEEN lo AND hi is (x >= lo) AND (x <= hi), and NOT BETWEEN is its negation; a rewrite leaves other
+       * bounds, as LIKE '1%' does x BETWEEN '1' GE_LT '2', and each bound compares x as a comparison does */
+      if (arg2 == NULL || arg2->node_type != PT_EXPR)
 	{
 	  return QO_NULL_EVAL_ANY;
 	}
 
       left = qo_null_eval_list (parser, arg1, target, true);
-      values = qo_null_eval_combine (PT_AND,
-				     QO_NULL_EVAL_STRICT (left,
-							  qo_null_eval_list (parser, arg2->info.expr.arg1, target,
-									     true)),
-				     QO_NULL_EVAL_STRICT (left,
-							  qo_null_eval_list (parser, arg2->info.expr.arg2, target,
-									     true)));
+      switch (arg2->info.expr.op)
+	{
+	case PT_BETWEEN_AND:
+	case PT_BETWEEN_GE_LE:
+	case PT_BETWEEN_GE_LT:
+	case PT_BETWEEN_GT_LE:
+	case PT_BETWEEN_GT_LT:
+	  values = qo_null_eval_combine (PT_AND,
+					 QO_NULL_EVAL_STRICT (left,
+							      qo_null_eval_list (parser, arg2->info.expr.arg1, target,
+										 true)),
+					 QO_NULL_EVAL_STRICT (left,
+							      qo_null_eval_list (parser, arg2->info.expr.arg2, target,
+										 true)));
+	  break;
+
+	case PT_BETWEEN_EQ_NA:
+	case PT_BETWEEN_GE_INF:
+	case PT_BETWEEN_GT_INF:
+	case PT_BETWEEN_INF_LE:
+	case PT_BETWEEN_INF_LT:
+	  values = QO_NULL_EVAL_STRICT (left, qo_null_eval_list (parser, arg2->info.expr.arg1, target, true));
+	  break;
+
+	default:
+	  return QO_NULL_EVAL_ANY;
+	}
       return ((op == PT_BETWEEN) ? values
 	      : qo_null_eval_map (values, QO_NULL_EVAL_FALSE, QO_NULL_EVAL_TRUE, QO_NULL_EVAL_UNKNOWN));
 
@@ -1398,6 +1419,365 @@ qo_null_eval (PARSER_CONTEXT * parser, PT_NODE * node, QO_NULL_TARGET * target)
     }
 }
 
+/* what qo_null_fold_rejects () looks for in a term */
+typedef struct qo_null_fold_info QO_NULL_FOLD_INFO;
+struct qo_null_fold_info
+{
+  QO_NULL_TARGET *target;	/* the columns taken as NULL */
+  int subqueries;		/* scalar subqueries replaced by the value of no input row */
+  bool ok;			/* every leaf is a constant once they and the target columns are replaced */
+};
+
+/*
+ * qo_null_empty_agg_value () - the value of an aggregate of no input row
+ *   return: 0 for COUNT (0), 1 for the aggregates of NULL, -1 for one not known here
+ *   node(in): a function
+ */
+static int
+qo_null_empty_agg_value (PT_NODE * node)
+{
+  if (node->node_type != PT_FUNCTION || PT_IS_ANALYTIC_NODE (node))
+    {
+      return -1;
+    }
+
+  switch (node->info.function.function_type)
+    {
+    case PT_COUNT:
+    case PT_COUNT_STAR:
+      return 0;
+
+    case PT_MIN:
+    case PT_MAX:
+    case PT_SUM:
+    case PT_AVG:
+    case PT_STDDEV:
+    case PT_VARIANCE:
+    case PT_STDDEV_POP:
+    case PT_VAR_POP:
+    case PT_STDDEV_SAMP:
+    case PT_VAR_SAMP:
+    case PT_AGG_BIT_AND:
+    case PT_AGG_BIT_OR:
+    case PT_AGG_BIT_XOR:
+    case PT_GROUP_CONCAT:
+    case PT_JSON_ARRAYAGG:
+    case PT_JSON_OBJECTAGG:
+    case PT_MEDIAN:
+    case PT_PERCENTILE_CONT:
+    case PT_PERCENTILE_DISC:
+      return 1;
+
+    default:
+      return -1;
+    }
+}
+
+/*
+ * qo_null_fold_item_pre () - is a leaf of the select item a constant, an aggregate or a target column?
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): QO_NULL_FOLD_INFO
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_null_fold_item_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_NULL_FOLD_INFO *info = (QO_NULL_FOLD_INFO *) arg;
+
+  if (node->node_type == PT_FUNCTION && pt_is_aggregate_function (parser, node))
+    {
+      if (qo_null_empty_agg_value (node) < 0)
+	{
+	  info->ok = false;
+	}
+      info->subqueries++;	/* counts the aggregates here */
+      *continue_walk = PT_LIST_WALK;
+    }
+  else if (node->node_type == PT_NAME)
+    {
+      info->ok = info->ok && qo_null_target_matches (parser, node, info->target);
+    }
+  else if (node->node_type != PT_VALUE && node->node_type != PT_EXPR && node->node_type != PT_DATA_TYPE)
+    {
+      /* a host variable, a subquery, a function other than an aggregate, ... */
+      info->ok = false;
+    }
+
+  if (!info->ok)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * qo_null_subquery_has_empty_value () - is the value of a scalar subquery the value of no input row while the target
+ *				     columns are NULL, and can it be computed?
+ *   return: bool
+ *   parser(in):
+ *   query(in): subquery
+ *   target(in): the columns taken as NULL
+ *
+ * Note: an aggregate with no GROUP BY makes one row of no row: COUNT is 0 and the others are NULL, and the select
+ *	 item over them is computed from those (COUNT (*) > 0 and MAX (x) + 0 > 0 are FALSE then).
+ */
+static bool
+qo_null_subquery_has_empty_value (PARSER_CONTEXT * parser, PT_NODE * query, QO_NULL_TARGET * target)
+{
+  QO_NULL_FOLD_INFO item_info;
+  PT_NODE *item;
+
+  if (query->node_type != PT_SELECT || query->info.query.q.select.group_by != NULL
+      || query->info.query.q.select.having != NULL || query->info.query.q.select.connect_by != NULL
+      || query->info.query.q.select.start_with != NULL || query->info.query.limit != NULL
+      || query->info.query.orderby_for != NULL)
+    {
+      return false;
+    }
+
+  item = query->info.query.q.select.list;
+  if (item == NULL || item->next != NULL)
+    {
+      return false;
+    }
+
+  item_info.target = target;
+  item_info.subqueries = 0;
+  item_info.ok = true;
+  (void) parser_walk_tree (parser, item, qo_null_fold_item_pre, &item_info, NULL, NULL);
+  if (!item_info.ok || item_info.subqueries == 0)
+    {
+      return false;
+    }
+
+  return qo_null_where_rejects (parser, query->info.query.q.select.where, target);
+}
+
+/*
+ * qo_null_fold_check_pre () - can the term be folded with the subqueries and target columns replaced?
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): QO_NULL_FOLD_INFO
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_null_fold_check_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_NULL_FOLD_INFO *info = (QO_NULL_FOLD_INFO *) arg;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      if (qo_null_subquery_has_empty_value (parser, node, info->target))
+	{
+	  info->subqueries++;
+	  *continue_walk = PT_LIST_WALK;
+	}
+      else
+	{
+	  info->ok = false;
+	}
+      break;
+
+    case PT_NAME:
+      info->ok = qo_null_target_matches (parser, node, info->target);
+      break;
+
+    case PT_VALUE:
+    case PT_DATA_TYPE:
+      break;
+
+    case PT_EXPR:
+      switch (node->info.expr.op)
+	{
+	case PT_IS_IN:
+	case PT_IS_NOT_IN:
+	case PT_EQ_SOME:
+	case PT_NE_SOME:
+	case PT_GE_SOME:
+	case PT_GT_SOME:
+	case PT_LT_SOME:
+	case PT_LE_SOME:
+	case PT_EQ_ALL:
+	case PT_NE_ALL:
+	case PT_GE_ALL:
+	case PT_GT_ALL:
+	case PT_LT_ALL:
+	case PT_LE_ALL:
+	case PT_EXISTS:
+	  /* the subquery there is a set of rows, not a value */
+	  info->ok = false;
+	  break;
+
+	default:
+	  break;
+	}
+      break;
+
+    default:
+      /* a host variable, a function, a method call, ... */
+      info->ok = false;
+      break;
+    }
+
+  if (!info->ok)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * qo_null_fold_empty_agg_pre () - replace an aggregate by its value of no input row and a target column by NULL
+ *   return: node or its replacement
+ *   parser(in):
+ *   node(in):
+ *   arg(in): QO_NULL_TARGET
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_null_fold_empty_agg_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_NULL_TARGET *target = (QO_NULL_TARGET *) arg;
+  PT_NODE *value;
+  int agg_value = -1;
+
+  if (node->node_type == PT_FUNCTION && (agg_value = qo_null_empty_agg_value (node)) >= 0)
+    {
+      value = (agg_value == 0) ? pt_make_integer_value (parser, 0) : parser_new_node (parser, PT_VALUE);
+      *continue_walk = PT_LIST_WALK;
+    }
+  else if (node->node_type == PT_NAME && qo_null_target_matches (parser, node, target))
+    {
+      value = parser_new_node (parser, PT_VALUE);
+    }
+  else
+    {
+      return node;
+    }
+
+  if (value == NULL)
+    {
+      return node;
+    }
+  if (agg_value != 0)
+    {
+      value->type_enum = PT_TYPE_NULL;
+    }
+  value->next = node->next;
+  node->next = NULL;
+  parser_free_tree (parser, node);
+
+  return value;
+}
+
+/*
+ * qo_null_fold_replace_pre () - replace a scalar subquery by its select item of no input row and a target column by
+ *				 NULL
+ *   return: node or its replacement
+ *   parser(in):
+ *   node(in):
+ *   arg(in): QO_NULL_TARGET
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_null_fold_replace_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_NULL_TARGET *target = (QO_NULL_TARGET *) arg;
+  PT_NODE *item;
+
+  if (node->node_type != PT_SELECT)
+    {
+      return qo_null_fold_empty_agg_pre (parser, node, arg, continue_walk);
+    }
+
+  item = parser_copy_tree (parser, node->info.query.q.select.list);
+  if (item == NULL)
+    {
+      return node;
+    }
+  item->alias_print = NULL;
+  item = parser_walk_tree (parser, item, qo_null_fold_empty_agg_pre, target, NULL, NULL);
+  item->next = node->next;
+  node->next = NULL;
+  parser_free_tree (parser, node);
+  *continue_walk = PT_LIST_WALK;
+
+  return item;
+}
+
+/*
+ * qo_null_fold_rejects () - is the term FALSE or UNKNOWN once its scalar subqueries take their value of no input row?
+ *   return: bool
+ *   parser(in):
+ *   expr(in): the term, without the terms it links with next
+ *   target(in): the columns taken as NULL
+ *
+ * Note: qo_null_eval () knows a subquery only as NULL or not; COUNT (*) of no row is 0 and (SELECT COUNT (*) ...) > 0
+ *	 is FALSE.  A copy of the term with the subqueries whose WHERE rejects every row replaced by their value of no
+ *	 row and the target columns by NULL is folded; every leaf must be a constant then, since folding takes an
+ *	 operation as NULL when one operand is NULL whatever the others are.  With oracle_style_empty_string, folding
+ *	 takes NULL as '' in NULL + 0 and the executor does not, so the copy is not folded.
+ */
+static bool
+qo_null_fold_rejects (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET * target)
+{
+  QO_NULL_FOLD_INFO info;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  PT_NODE *copy;
+  bool result;
+
+  if (expr == NULL || expr->or_next != NULL || pt_has_error (parser)
+      || prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+    {
+      return false;
+    }
+
+  info.target = target;
+  info.subqueries = 0;
+  info.ok = true;
+  (void) parser_walk_tree (parser, expr, qo_null_fold_check_pre, &info, NULL, NULL);
+  if (!info.ok || info.subqueries == 0)
+    {
+      return false;
+    }
+
+  copy = parser_copy_tree (parser, expr);
+  if (copy == NULL)
+    {
+      return false;
+    }
+  copy = parser_walk_tree (parser, copy, qo_null_fold_replace_pre, target, NULL, NULL);
+  if (copy == NULL || !pt_is_const_expr_node (copy))
+    {
+      parser_free_tree (parser, copy);
+      return false;
+    }
+
+  sc_info.top_node = copy;
+  copy = pt_semantic_type (parser, copy, &sc_info);
+  result = (copy != NULL && copy->node_type == PT_VALUE && !pt_has_error (parser)
+	    && pt_false_search_condition (parser, copy));
+  parser_free_tree (parser, copy);
+
+  if (pt_has_error (parser))
+    {
+      /* only wanted the value of the copy */
+      parser_free_tree (parser, parser->error_msgs);
+      parser->error_msgs = NULL;
+    }
+
+  return result;
+}
+
 /*
  * qo_expr_rejects_null () - can the term not be TRUE when the column, or all the columns of the spec, are NULL?
  *   return: true if the term is FALSE or UNKNOWN whatever the other columns are
@@ -1417,7 +1797,12 @@ qo_expr_rejects_null (PARSER_CONTEXT * parser, PT_NODE * expr, UINTPTR spec_id, 
   target.spec_id = spec_id;
   target.name = name;
 
-  return !(qo_null_eval_list (parser, expr, &target, false) & QO_NULL_EVAL_TRUE);
+  if (!(qo_null_eval_list (parser, expr, &target, false) & QO_NULL_EVAL_TRUE))
+    {
+      return true;
+    }
+
+  return qo_null_fold_rejects (parser, expr, &target);
 }
 
 
