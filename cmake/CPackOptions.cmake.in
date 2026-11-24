@@ -20,6 +20,9 @@
 # To pass variables to cpack from cmake, they must be configured
 # in this file.
 
+# Linux: name the package after the version resolved at build time (CBRD-28253)
+include("${PROJECT_BINARY_DIR}/CPackBuildVersion.cmake" OPTIONAL)
+
 if(CPACK_COMPONENTS_ALL STREQUAL "CCI")
   set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
   set(CPACK_PACKAGE_FILE_NAME "${CCI_PACKAGE_FILE_NAME}")
