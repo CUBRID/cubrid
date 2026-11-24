@@ -3136,8 +3136,10 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #ifdef CCI_XA
   dblink_2pc_daemon_stop ();
 #endif /* CCI_XA */
-  pgbuf_daemons_destroy ();
+  /* stop the CDC producer before the page buffer daemons it may wake while it fixes pages, as the restart failure
+   * path does */
   cdc_daemons_destroy ();
+  pgbuf_daemons_destroy ();
   pl_server_destroy ();
   parallel_query::worker_manager_global::get_manager ().destroy ();
 #endif
