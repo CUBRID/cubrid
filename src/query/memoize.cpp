@@ -697,6 +697,10 @@ namespace memoize
       }
 
     HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
+    scope_exit restore_heap_id ([heap_id]()
+    {
+      db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+    });
     key *k = get_key();
     bool found = false;
 
@@ -706,7 +710,6 @@ namespace memoize
 	k->~key();
 	m_key_fixed_allocator.deallocate (k);
       }
-    db_change_private_heap (thread_get_thread_entry_info(), heap_id);
 
     return found;
   }
@@ -714,6 +717,10 @@ namespace memoize
   size_t storage::key_hash ()
   {
     HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
+    scope_exit restore_heap_id ([heap_id]()
+    {
+      db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+    });
     key *k = get_key();
     size_t h = 0;
 
@@ -723,7 +730,6 @@ namespace memoize
 	k->~key();
 	m_key_fixed_allocator.deallocate (k);
       }
-    db_change_private_heap (thread_get_thread_entry_info(), heap_id);
 
     return h;
   }
@@ -731,6 +737,10 @@ namespace memoize
   bool storage::begin_key ()
   {
     HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
+    scope_exit restore_heap_id ([heap_id]()
+    {
+      db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+    });
     bool found = false;
 
     if (m_last_key != nullptr)
@@ -747,7 +757,6 @@ namespace memoize
       {
 	found = m_key_value_map.find (m_last_key) != m_key_value_map.end ();
       }
-    db_change_private_heap (thread_get_thread_entry_info(), heap_id);
 
     return found;
   }

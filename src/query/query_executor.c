@@ -12978,6 +12978,7 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
 {
   SCAN_ID *s_id = (xasl->curr_spec != NULL) ? &xasl->curr_spec->s_id : NULL;
   XASL_NODE *outer = batch->outer;
+  XASL_NODE *up;
   QEXEC_NL_BATCH_ROW *row;
   DB_VALUE *val;
   bool scan_ok;
@@ -12989,6 +12990,13 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
 	     && (batch->worker_outer || outer->curr_spec->s_id.type == S_HEAP_SCAN
 		 || outer->curr_spec->s_id.type == S_INDX_SCAN || outer->curr_spec->s_id.type == S_LIST_SCAN)
 	     && !outer->curr_spec->s_id.mvcc_select_lock_needed);
+  /* a scan above the outer that locks its rows gives the lock of a row back when the scans below it return no row
+   * for it: a row held here would be joined after its lock was given back */
+  for (up = (outer->nl_batch != NULL) ? outer->nl_batch->outer : NULL; scan_ok && up != NULL;
+       up = (up->nl_batch != NULL) ? up->nl_batch->outer : NULL)
+    {
+      scan_ok = (up->curr_spec != NULL && !up->curr_spec->s_id.mvcc_select_lock_needed);
+    }
   if ((!scan_ok || batch->skip > 0) && batch->n_rows == 0)
     {
       if (batch->skip > 0)
@@ -13963,6 +13971,17 @@ qexec_sq_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       || sq_xasl->scan_ptr != NULL || sq_xasl->aptr_list != NULL || sq_xasl->dptr_list != NULL
       || sq_xasl->bptr_list != NULL || sq_xasl->fptr_list != NULL || sq_xasl->merge_spec != NULL
       || sq_xasl->scan_op_type != S_SELECT)
+    {
+      return NULL;
+    }
+  /* a COUNT-star alone over an index without a data filter counts the OIDs of the index and reads no heap page
+   * (need_count_only, set when the subquery first runs): OIDs read ahead for it would be counted and the index
+   * then counted again */
+  if (sq_xasl->type == BUILDVALUE_PROC && sq_xasl->proc.buildvalue.agg_list != NULL
+      && sq_xasl->proc.buildvalue.agg_list->next == NULL
+      && sq_xasl->proc.buildvalue.agg_list->function == PT_COUNT_STAR
+      && spec->where_pred == NULL && spec->s.cls_node.cls_regu_list_pred == NULL
+      && sq_xasl->if_pred == NULL && sq_xasl->after_join_pred == NULL)
     {
       return NULL;
     }

@@ -96,6 +96,19 @@ extern "C" {
     dst.ioreads += src.ioreads;
   }
 
+  /* the heap step of a bitmap heap scan a clone ran, into the main thread's scan */
+  static void xasl_merge_bitmap_heap_stats (SCAN_STATS *dst, const SCAN_STATS *src)
+  {
+    dst->bitmap_heap |= src->bitmap_heap;
+    if (timercmp (&src->bitmap_heap_time, &dst->bitmap_heap_time, >))
+      {
+	dst->bitmap_heap_time = src->bitmap_heap_time;
+      }
+    dst->bitmap_heap_fetches += src->bitmap_heap_fetches;
+    dst->bitmap_heap_ioreads += src->bitmap_heap_ioreads;
+    dst->bitmap_heap_pages += src->bitmap_heap_pages;
+  }
+
   /* the statistics of one partition of a clone's scan into the main thread's (xasl_merge_stats ()) */
   static void xasl_merge_partition_stats (SCAN_STATS *dst, const SCAN_STATS *src)
   {
@@ -116,6 +129,7 @@ extern "C" {
       {
 	dst->elapsed_lookup = src->elapsed_lookup;
       }
+    xasl_merge_bitmap_heap_stats (dst, src);
     dst->covered_index = dst->covered_index ? true : src->covered_index;
     dst->multi_range_opt = dst->multi_range_opt ? true : src->multi_range_opt;
     dst->index_skip_scan = dst->index_skip_scan ? true : src->index_skip_scan;
@@ -182,6 +196,7 @@ extern "C" {
 	  dst_node->spec_list->s_id.scan_stats.key_qualified_rows += src_node->spec_list->s_id.scan_stats.key_qualified_rows;
 	  dst_node->spec_list->s_id.scan_stats.data_qualified_rows += src_node->spec_list->s_id.scan_stats.data_qualified_rows;
 	  dst_node->spec_list->s_id.scan_stats.nl_batch_rows += src_node->spec_list->s_id.scan_stats.nl_batch_rows;
+	  xasl_merge_bitmap_heap_stats (&dst_node->spec_list->s_id.scan_stats, &src_node->spec_list->s_id.scan_stats);
 	  dst_node->spec_list->s_id.scan_stats.index_skip_scan = dst_node->spec_list->s_id.scan_stats.index_skip_scan ? true :
 	      src_node->spec_list->s_id.scan_stats.index_skip_scan;
 	  dst_node->spec_list->s_id.scan_stats.loose_index_scan = dst_node->spec_list->s_id.scan_stats.loose_index_scan ? true :
