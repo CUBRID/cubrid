@@ -279,8 +279,10 @@ static bool mq_is_attr_referenced (PARSER_CONTEXT * parser, PT_NODE * node, ATTR
 static bool mq_is_sort_dependent_column (PARSER_CONTEXT * parser, PT_NODE * column);
 static bool mq_is_sort_dependent_column_used_in_expr (PARSER_CONTEXT * parser, PT_NODE * subquery,
 						      PT_NODE * mainquery, PT_NODE * class_spec, PT_NODE * class_);
-static bool mq_is_numbering_column_referenced (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
-					       PT_NODE * class_spec, PT_NODE * class_);
+static bool mq_is_numbering_column_referenced (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * node,
+					       PT_NODE * class_spec, PT_NODE * class_, bool numbering);
+static bool mq_is_numbering_column_read_by_query (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
+						  PT_NODE * class_spec, PT_NODE * class_, bool numbering);
 static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
 					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by,
 					      PT_NODE * class_);
@@ -2120,24 +2122,30 @@ mq_is_sort_dependent_column_used_in_expr (PARSER_CONTEXT * parser, PT_NODE * sub
 }
 
 /*
- * mq_is_numbering_column_referenced () - check whether the main query reads a column of the subquery which holds
- *                                        INST_NUM()/ORDERBY_NUM()/GROUPBY_NUM()
+ * mq_is_numbering_column_referenced () - check whether a tree reads a column of the subquery which holds
+ *                                        INST_NUM()/ORDERBY_NUM()/GROUPBY_NUM(), or a column which does not
  *   return: true if such a column is read
  *   parser(in): parser context
  *   subquery(in): subquery(or view query spec) to be merged
- *   mainquery(in): query the subquery is to be merged into
+ *   node(in): tree of the main query to search. its 'next' list is searched, too
  *   class_spec(in): spec of the subquery in the main query
  *   class_(in): view name node, NULL for an inline view
+ *   numbering(in): true to look for a numbering column, false for any other column of the subquery
  */
 static bool
-mq_is_numbering_column_referenced (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
-				   PT_NODE * class_spec, PT_NODE * class_)
+mq_is_numbering_column_referenced (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * node,
+				   PT_NODE * class_spec, PT_NODE * class_, bool numbering)
 {
   PT_NODE *attributes, *attr, *col, *save_next;
   ATTR_REF_INFO info;
   bool has_numbering;
 
-  assert (PT_IS_SELECT (subquery) && PT_IS_SELECT (mainquery));
+  assert (PT_IS_SELECT (subquery));
+
+  if (node == NULL)
+    {
+      return false;
+    }
 
   /* get the attributes of the spec, which are matched with the select list of the subquery by position */
   if (class_ != NULL)
@@ -2167,19 +2175,48 @@ mq_is_numbering_column_referenced (PARSER_CONTEXT * parser, PT_NODE * subquery, 
 			       pt_is_inst_or_orderby_num_node_post, &has_numbering);
       col->next = save_next;
 
-      if (!has_numbering)
+      if (has_numbering != numbering)
 	{
 	  continue;
 	}
 
       info.name = attr->info.name.original;
-      if (mq_is_attr_referenced (parser, mainquery, &info))
+      if (mq_is_attr_referenced (parser, node, &info))
 	{
 	  return true;
 	}
     }
 
   return false;
+}
+
+/*
+ * mq_is_numbering_column_read_by_query () - check whether the clauses of the main query read a column of the
+ *                                           subquery which holds a numbering, or a column which does not
+ *   return: true if such a column is read
+ *   parser(in): parser context
+ *   subquery(in): subquery(or view query spec) to be merged
+ *   mainquery(in): query the subquery is to be merged into
+ *   class_spec(in): spec of the subquery in the main query
+ *   class_(in): view name node, NULL for an inline view
+ *   numbering(in): true to look for a numbering column, false for any other column of the subquery
+ *
+ * NOTE: the FROM clause is not searched: the spec itself holds the names of its attributes.
+ */
+static bool
+mq_is_numbering_column_read_by_query (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
+				      PT_NODE * class_spec, PT_NODE * class_, bool numbering)
+{
+  assert (PT_IS_SELECT (mainquery));
+
+  return (mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.list, class_spec,
+					     class_, numbering)
+	  || mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.where, class_spec,
+						class_, numbering)
+	  || mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.group_by, class_spec,
+						class_, numbering)
+	  || mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.having, class_spec,
+						class_, numbering));
 }
 
 /*
@@ -2513,17 +2550,35 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 	  return NON_PUSHABLE;
 	}
 
-      /* A numbering column of the subquery becomes the numbering of the main query. It is not the same value when
-       * the main query numbers or limits its own rows, groups by it, or loses the ORDER BY of the subquery
-       * (DISTINCT, aggregate). */
+      /* A numbering column of the subquery becomes the numbering of the merged query, which is not the same value
+       *  - when the main query numbers or limits its own rows after its WHERE has filtered them by that column: the
+       *    two numberings become one, counted before the filter,
+       *  - when the ORDER BY of the subquery is removed (main query with DISTINCT or an aggregate) and the main query
+       *    reads another column of the subquery with it: the rows are numbered in another order. The numbers alone
+       *    are the same set of values,
+       *  - when the main query groups by it. */
       if (PT_IS_SELECT (mainquery)
-	  && (mainquery->info.query.q.select.group_by != NULL || mainquery->info.query.limit != NULL
-	      || mainquery->info.query.orderby_for != NULL || pt_has_inst_in_where_and_select_list (parser, mainquery)
-	      || (subquery->info.query.order_by != NULL
-		  && (pt_is_distinct (mainquery) || pt_has_aggregate (parser, mainquery))))
-	  && mq_is_numbering_column_referenced (parser, subquery, mainquery, class_spec, class_))
+	  && mq_is_numbering_column_read_by_query (parser, subquery, mainquery, class_spec, class_, true))
 	{
-	  return NON_PUSHABLE;
+	  if (mainquery->info.query.q.select.group_by != NULL)
+	    {
+	      return NON_PUSHABLE;
+	    }
+
+	  if ((mainquery->info.query.limit != NULL || mainquery->info.query.orderby_for != NULL
+	       || pt_has_inst_in_where_and_select_list (parser, mainquery))
+	      && mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.where, class_spec,
+						    class_, true))
+	    {
+	      return NON_PUSHABLE;
+	    }
+
+	  if (subquery->info.query.order_by != NULL
+	      && (pt_is_distinct (mainquery) || pt_has_aggregate (parser, mainquery))
+	      && mq_is_numbering_column_read_by_query (parser, subquery, mainquery, class_spec, class_, false))
+	    {
+	      return NON_PUSHABLE;
+	    }
 	}
     }
 
