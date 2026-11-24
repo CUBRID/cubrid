@@ -9182,6 +9182,10 @@ pt_coerce_auto_param_as_literal (PARSER_CONTEXT * parser, PT_NODE * hv_node, PT_
   literal = pt_dbval_to_value (parser, hv_value);
   if (literal == NULL)
     {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "coerce auto parameter");
+	}
       return ER_FAILED;
     }
   literal->line_number = hv_node->line_number;
@@ -9197,12 +9201,22 @@ pt_coerce_auto_param_as_literal (PARSER_CONTEXT * parser, PT_NODE * hv_node, PT_
 	}
       else
 	{
-	  pr_clear_value (hv_value);
-	  error = pr_clone_value (coerced, hv_value);
+	  DB_VALUE tmp;
+
+	  error = pr_clone_value (coerced, &tmp);
+	  if (error == NO_ERROR)
+	    {
+	      pr_clear_value (hv_value);
+	      *hv_value = tmp;
+	    }
 	}
     }
 
   parser_free_tree (parser, literal);
+  if (error != NO_ERROR && !pt_has_error (parser))
+    {
+      PT_INTERNAL_ERROR (parser, "coerce auto parameter");
+    }
   return error;
 }
 

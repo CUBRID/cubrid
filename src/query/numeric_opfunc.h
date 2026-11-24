@@ -125,12 +125,15 @@ typedef enum
 
 #define FIXED_TO_FLOAT_NUMERIC(value) \
   do { \
-    int fixed_digits = 0; \
-    (void) db_get_numeric_precision ((value), &fixed_digits, NULL); \
-    (value)->data.num.header.precision = fixed_digits; \
-    (value)->data.num.header.scale = (value)->domain.numeric_info.scale; \
-    (value)->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION; \
-    (value)->domain.numeric_info.scale = 0; \
+    if ((value)->domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION) \
+      { \
+        int fixed_digits = 0; \
+        (void) db_get_numeric_precision ((value), &fixed_digits, NULL); \
+        (value)->data.num.header.precision = fixed_digits; \
+        (value)->data.num.header.scale = (value)->domain.numeric_info.scale; \
+        (value)->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION; \
+        (value)->domain.numeric_info.scale = 0; \
+      } \
   } while(0)
 
 #define FLOAT_TO_FIXED_NUMERIC(value) \

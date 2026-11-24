@@ -1039,12 +1039,13 @@ void
 db_get_numeric_precision_and_scale (const DB_VALUE * value, int *precision_ptr, int *scale_ptr,
 				    int *digits, bool * is_float_numeric_ptr)
 {
-  int value_digits = value->data.num.header.precision;
   bool is_float_numeric = true;
 
   assert (value && value->domain.general_info.type == DB_TYPE_NUMERIC);
   assert (precision_ptr);
   assert (scale_ptr);
+
+  int value_digits = value->domain.general_info.is_null ? 0 : value->data.num.header.precision;
 
   if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
@@ -1683,10 +1684,10 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
 	  error = ER_FAILED;
 	}
 #if !defined (NDEBUG) && defined (__cplusplus)
-      else if (!is_float_numeric)
+      else
 	{
-	  /* the digits given for a fixed value are the digits of its coefficient, zero has one. The C build of
-	   * this file cannot call the counter, which is C++ */
+	  /* the digits given for a value, fixed or float, are the digits of its coefficient, zero has one. The C
+	   * build of this file cannot call the counter, which is C++ */
 	  const int coefficient_digits = numeric_get_precision_digits ((uint8_t *) value->data.num.d.buf);
 	  assert (digits == (coefficient_digits > 0 ? coefficient_digits : 1));
 	}
