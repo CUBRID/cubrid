@@ -55,6 +55,10 @@ static bool qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where,
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_rewrite_oid_equality (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * pred, int *seqno);
 static bool qo_is_semi_join_on_after (PT_NODE * spec, int location);
+static PT_NODE *qo_get_right_join_on_after (PT_NODE * spec, int location);
+static bool qo_is_spec_operand (PT_NODE * node, UINTPTR spec_id);
+static bool qo_rejects_null_by_comparison (PT_NODE * expr, UINTPTR spec_id);
+static bool qo_rewrite_null_suppliers_before (PT_NODE * spec, PT_NODE * on_spec);
 static PT_NODE *qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_get_next_oid_pred (PT_NODE * pred);
 
@@ -4030,6 +4034,132 @@ qo_is_semi_join_on_after (PT_NODE * spec, int location)
 }
 
 /*
+ * qo_get_right_join_on_after () - get the RIGHT OUTER JOIN behind the spec in its join chain whose ON has the location
+ *   return: the RIGHT OUTER JOIN spec, or NULL
+ *   spec(in): the outer joined spec
+ *   location(in): location of a WHERE term
+ *
+ * Note: the chain ends at a comma or a CROSS JOIN, as in mq_is_outer_join_spec ()
+ */
+static PT_NODE *
+qo_get_right_join_on_after (PT_NODE * spec, int location)
+{
+  PT_NODE *ns;
+
+  if (location <= 0)
+    {
+      return NULL;
+    }
+
+  for (ns = spec->next; ns && ns->info.spec.join_type != PT_JOIN_NONE && ns->info.spec.join_type != PT_JOIN_CROSS;
+       ns = ns->next)
+    {
+      if (ns->info.spec.location == location)
+	{
+	  return (ns->info.spec.join_type == PT_JOIN_RIGHT_OUTER) ? ns : NULL;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * qo_is_spec_operand () - is the node a column of the spec, under CASTs only?
+ *   return: bool
+ *   node(in): operand of a comparison
+ *   spec_id(in): id of the spec
+ */
+static bool
+qo_is_spec_operand (PT_NODE * node, UINTPTR spec_id)
+{
+  while (node != NULL && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
+    {
+      node = node->info.expr.arg1;
+    }
+
+  return node != NULL && node->node_type == PT_NAME && node->info.name.spec_id == spec_id;
+}
+
+/*
+ * qo_rejects_null_by_comparison () - is the term a comparison that has a column of the spec as a direct operand, so
+ *      that it can never be TRUE when the spec is NULL-filled?
+ *   return: bool
+ *   expr(in): a term with no OR
+ *   spec_id(in): id of the spec
+ *
+ * Note: a narrower test than qo_check_nullable_expr_with_spec (), which misses functions that are TRUE on NULL
+ */
+static bool
+qo_rejects_null_by_comparison (PT_NODE * expr, UINTPTR spec_id)
+{
+  PT_NODE *arg1 = expr->info.expr.arg1;
+  PT_NODE *arg2 = expr->info.expr.arg2;
+
+  switch (expr->info.expr.op)
+    {
+    case PT_EQ:
+    case PT_NE:
+    case PT_LT:
+    case PT_LE:
+    case PT_GT:
+    case PT_GE:
+    case PT_LIKE:
+      return qo_is_spec_operand (arg1, spec_id) || qo_is_spec_operand (arg2, spec_id);
+
+    case PT_BETWEEN:
+      if (qo_is_spec_operand (arg1, spec_id))
+	{
+	  return true;
+	}
+      return (arg2 != NULL && arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_BETWEEN_AND
+	      && (qo_is_spec_operand (arg2->info.expr.arg1, spec_id)
+		  || qo_is_spec_operand (arg2->info.expr.arg2, spec_id)));
+
+    case PT_RANGE:
+    case PT_IS_IN:
+    case PT_IS_NOT_NULL:
+      return qo_is_spec_operand (arg1, spec_id);
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * qo_rewrite_null_suppliers_before () - rewrite the outer joins that NULL-fill the spec before the RIGHT OUTER JOIN to
+ *      inner joins
+ *   return: whether a join was rewritten
+ *   spec(in): the outer joined spec
+ *   on_spec(in): the RIGHT OUTER JOIN behind the spec whose ON rejects the NULL of the spec
+ *
+ * Note: the rows the spec NULL-fills before on_spec never pass its ON, and on_spec itself stays outer.  The ON terms
+ *      of the rewritten joins keep their location: as WHERE terms they would drop the rows on_spec preserves
+ */
+static bool
+qo_rewrite_null_suppliers_before (PT_NODE * spec, PT_NODE * on_spec)
+{
+  PT_NODE *ns;
+  bool rewritten = false;
+
+  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
+    {
+      spec->info.spec.join_type = PT_JOIN_INNER;
+      rewritten = true;
+    }
+
+  for (ns = spec->next; ns != on_spec; ns = ns->next)
+    {
+      if (ns->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	{
+	  ns->info.spec.join_type = PT_JOIN_INNER;
+	  rewritten = true;
+	}
+    }
+
+  return rewritten;
+}
+
+/*
  * qo_rewrite_outerjoin () - Rewrite outer join to inner join
  *   return: PT_NODE *
  *   parser(in):
@@ -4042,7 +4172,7 @@ qo_is_semi_join_on_after (PT_NODE * spec, int location)
 static PT_NODE *
 qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *spec, *expr, *ns, *save_next;
+  PT_NODE *spec, *expr, *ns, *save_next, *on_spec;
   SPEC_ID_INFO info, info_spec;
   RESET_LOCATION_INFO locate_info;
   bool rewrite_again, is_outer_joined;
@@ -4077,8 +4207,11 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	      /* search where list */
 	      for (expr = node->info.query.q.select.where; expr; expr = expr->next)
 		{
+		  on_spec =
+		    (expr->node_type == PT_EXPR) ? qo_get_right_join_on_after (spec, expr->info.expr.location) : NULL;
 		  if (expr->node_type == PT_EXPR
-		      && (expr->info.expr.location == 0 || qo_is_semi_join_on_after (spec, expr->info.expr.location))
+		      && (expr->info.expr.location == 0 || on_spec != NULL
+			  || qo_is_semi_join_on_after (spec, expr->info.expr.location))
 		      && expr->info.expr.op != PT_IS_NULL && expr->or_next == NULL && expr->info.expr.op != PT_AND
 		      && expr->info.expr.op != PT_OR)
 		    {
@@ -4095,6 +4228,17 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 		      /* there are predicate referenced by spec and all preds are not nullable */
 		      if (info_spec.appears && !info.nullable)
 			{
+			  if (on_spec != NULL)
+			    {
+			      if (qo_rejects_null_by_comparison (expr, spec->info.spec.id)
+				  && qo_rewrite_null_suppliers_before (spec, on_spec))
+				{
+				  rewrite_again = true;
+				  break;
+				}
+			      continue;
+			    }
+
 			  rewrite_again = true;
 			  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
 			    {
