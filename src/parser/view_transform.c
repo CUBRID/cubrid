@@ -250,6 +250,7 @@ static int mq_translatable_class (PARSER_CONTEXT * parser, PT_NODE * class_);
 static int mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec);
 static int mq_check_authorization_path_entities (PARSER_CONTEXT * parser, PT_NODE * class_spec, int what_for);
 static int mq_check_subqueries_for_prepare (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subquery);
+static void mq_mark_sp_call (PARSER_CONTEXT * parser, PT_NODE * subquery);
 static PT_NODE *mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list, PT_NODE * order_by,
 				   int what_for);
 static PT_NODE *mq_class_meth_corr_subq_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
@@ -3544,6 +3545,30 @@ mq_check_authorization_path_entities (PARSER_CONTEXT * parser, PT_NODE * class_s
 }
 
 /*
+ * mq_mark_sp_call () - note that a view being expanded calls a stored procedure
+ *   return: none
+ *   parser(in):
+ *   subquery(in): the view's query, one node per query spec
+ *
+ * Note: the semantic check set has_sp_call on the view's own tree when the view cache was compiled, before the
+ *       view was expanded into this statement. The view may sit in a subquery of the statement, so the note is
+ *       kept on the parser until mq_translate () returns the statement and marks it not to be plan-cached; a
+ *       view cache being built does the same for the view's own root, so a view over it sees it.
+ */
+static void
+mq_mark_sp_call (PARSER_CONTEXT * parser, PT_NODE * subquery)
+{
+  for (; subquery != NULL; subquery = subquery->next)
+    {
+      if (subquery->flag.has_sp_call)
+	{
+	  parser->flag.view_has_sp_call = 1;
+	  return;
+	}
+    }
+}
+
+/*
  * mq_check_subqueries_for_prepare () -
  *   return:
  *   parser(in):
@@ -3729,6 +3754,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 			}
 
 		      tree->flag.cannot_prepare = mq_check_subqueries_for_prepare (parser, tree, subquery);
+		      mq_mark_sp_call (parser, subquery);
 #if defined(CUBRID_DEBUG)
 		      fprintf (stdout, "\n<subqueries of %s are>\n  %s\n", entity->info.name.original,
 			       parser_print_tree_list (parser, subquery));
@@ -6079,6 +6105,24 @@ mq_dblink_mark_pushed_corr_eq (PT_NODE * statement, PT_NODE * spec)
 }
 
 /*
+ * mq_clear_or_derived_marks () - make a term pushed into a derived table an ordinary one
+ *   return:
+ *   term(in/out): the copy pushed into the derived table
+ *
+ * Note: a restriction qo_extract_or_restrictions () derived from an OR factor is marked as an
+ *	 implied duplicate of that factor, paired with it by qo_derived_term_compensate () and kept
+ *	 only when an index takes it.  Pushed into a derived table it is the filter there, with no
+ *	 factor to pair with in that query: left marked it would count for nothing and lose its key
+ *	 range.  The distributed factor's clauses used to be pushed as ordinary terms the same way.
+ */
+static void
+mq_clear_or_derived_marks (PT_NODE * term)
+{
+  PT_EXPR_INFO_CLEAR_FLAG (term, PT_EXPR_INFO_OR_DERIVED | PT_EXPR_INFO_OR_DERIVED_EXPENSIVE
+			   | PT_EXPR_INFO_OR_DERIVED_COLUMN);
+}
+
+/*
  * mq_copypush_sargable_terms_helper() -
  *   return:
  *   parser(in):
@@ -6235,6 +6279,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
 		}
 	      PT_EXPR_INFO_CLEAR_FLAG (new_term, PT_EXPR_INFO_COPYPUSH);
+	      mq_clear_or_derived_marks (new_term);
 	    }
 	  push_term_list = parser_append_node (new_term, push_term_list);
 
@@ -7873,7 +7918,7 @@ mq_check_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 static PT_NODE *
 mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 {
-  PT_NODE *from, *flat;
+  PT_NODE *from, *flat, *using_spec, *entity;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   DB_AUTH auth = DB_AUTH_NONE;
 
@@ -7890,6 +7935,18 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
   if (merge_statement->info.merge.insert.value_clauses)
     {
       auth = (DB_AUTH) (auth | DB_AUTH_INSERT);
+    }
+
+  using_spec = merge_statement->info.merge.using_clause;
+  if (using_spec != NULL && !PT_SPEC_IS_DERIVED (using_spec))
+    {
+      for (entity = using_spec->info.spec.flat_entity_list; entity != NULL; entity = entity->next)
+	{
+	  if (mq_translatable_class (parser, entity))
+	    {
+	      mq_mark_sp_call (parser, mq_fetch_subqueries (parser, entity));
+	    }
+	}
     }
 
   merge_statement = mq_translate_tree (parser, merge_statement, from, NULL, auth);
@@ -8025,7 +8082,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
   assert (!PT_SELECT_INFO_IS_FLAGED (select_statement, PT_SELECT_INFO_COLS_SCHEMA | PT_SELECT_FULL_INFO_COLS_SCHEMA));
 
   /* Convert to cnf and tag taggable terms */
-  select_statement->info.query.q.select.where = pt_cnf (parser, select_statement->info.query.q.select.where);
+  select_statement->info.query.q.select.where = pt_cnf_where (parser, select_statement->info.query.q.select.where);
   if (select_statement->info.query.q.select.having)
     {
       select_statement->info.query.q.select.having = pt_cnf (parser, select_statement->info.query.q.select.having);
@@ -8196,7 +8253,7 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		{
 		  const char *corr_col = mq_dblink_extract_col_name (parser, remote_expr);
 
-		  /* Cross-codeset guard: a character key whose remote physical codeset differs
+		  /* Cross-codeset guard: a character key whose remote-side codeset differs
 		   * from the local outer codeset must not be pushed.  The outer value is bound as
 		   * a host variable in the local codeset, so a remote comparison against a
 		   * different-codeset column does a wrong raw-byte comparison and silently drops
@@ -8206,18 +8263,27 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		  bool cross_codeset = false;
 		  if (PT_IS_CHAR_STRING_TYPE (outer_expr->type_enum))
 		    {
-		      /* Remote column's physical codeset, from the CCI column metadata.  This is
-		       * authoritative and unaffected by how the attr_def later declares the
-		       * column's codeset (e.g. redeclared with the local codeset for union/compat).
-		       * Fall back to the declared codeset, then to -1 (non-character / no type). */
+		      /* How this remote column's characters are encoded at the far end: on a
+		       * CUBRID remote the column's own codeset, on a gateway always UTF-8 - the
+		       * gateway CAS reads character data from the ODBC driver as UTF-16 and
+		       * re-encodes it to UTF-8 before it reaches the client (cgw_unicode_to_utf8 ()),
+		       * and decodes a bound value the same way.  The key value goes out as raw
+		       * local bytes, so the push is meaningful only when that encoding is the local
+		       * one; otherwise the remote compares differently encoded bytes.
+		       *
+		       * The declared codeset cannot stand in for it: remote character columns are
+		       * uniformly declared with LANG_SYS_CODESET, so it always equals outer_cs and
+		       * relying on it would disable the guard exactly when metadata is missing.
+		       *
+		       * The two "< 0" terms are defensive only.  A character column never carries a
+		       * negative codeset (a CUBRID remote reports one for every collation-bearing
+		       * type; a gateway maps every codeset-less ODBC type to CCI_U_TYPE_UNKNOWN and
+		       * refuses it in cgw_is_support_datatype ()), and outer_expr is a resolved
+		       * column reference whose collation the semantic check already matched against
+		       * the remote column. */
 		      int remote_cs = pt_dblink_get_remote_col_charset (dinfo->remote_col_list, corr_col);
-		      if (remote_cs < 0)
-			{
-			  remote_cs =
-			    (remote_expr->data_type != NULL) ? remote_expr->data_type->info.data_type.units : -1;
-			}
 		      int outer_cs = (outer_expr->data_type != NULL) ? outer_expr->data_type->info.data_type.units : -1;
-		      cross_codeset = (remote_cs >= 0 && outer_cs >= 0 && remote_cs != outer_cs);
+		      cross_codeset = (remote_cs < 0 || outer_cs < 0 || remote_cs != outer_cs);
 		    }
 
 		  if (corr_col != NULL && !cross_codeset)
@@ -9008,6 +9074,7 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
   const char *query_spec_string;
   int cascaded_check;
   int local_check;
+  bool spec_has_sp_call;
 
   if (db_is_class (class_object))
     {
@@ -9108,7 +9175,14 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
        * as CNF. if subquery is in the expression, it may be copied several times. To avoid repeatedly convert the
        * expressions in subqueries and improve performance, we put mq_push_paths as post function. */
       local_query = parser_walk_tree (parser, query_spec, NULL, NULL, mq_push_paths, NULL);
+      parser->flag.view_has_sp_call = 0;
+      spec_has_sp_call = query_spec->flag.has_sp_call;
       local_query = parser_walk_tree (parser, query_spec, NULL, NULL, mq_translate_local, NULL);
+      if (local_query != NULL && (spec_has_sp_call || parser->flag.view_has_sp_call))
+	{
+	  /* this view, or a view it reads, calls a stored procedure: the root tells the statements that expand it */
+	  local_query->flag.has_sp_call = 1;
+	}
 
       local_query = pt_add_row_oid_name (parser, local_query);
 
@@ -9128,7 +9202,13 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
 	}
       else if (local_query)
 	{
+	  PT_NODE *left = statements;
+
 	  statements = pt_union (parser, statements, local_query);
+	  if (statements != NULL)
+	    {
+	      statements->flag.has_sp_call = (left->flag.has_sp_call || local_query->flag.has_sp_call);
+	    }
 	}
 
       db_query_spec = db_query_spec_next (db_query_spec);
@@ -10199,6 +10279,7 @@ PT_NODE *
 mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 {
   volatile PT_NODE *return_node = NULL;
+  volatile unsigned save_view_has_sp_call;
 
   if (!node)
     {
@@ -10208,6 +10289,9 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
   /* set up an environment for longjump to return to if there is an out of memory error in pt_memory.c. DO NOT RETURN
    * unless PT_CLEAR_JMP_ENV is called to clear the environment. */
   PT_SET_JMP_ENV (parser);
+
+  save_view_has_sp_call = parser->flag.view_has_sp_call;
+  parser->flag.view_has_sp_call = 0;
 
   /* CBRD-27583: the session variables' types are the session's at each execution: a plan statement over them is
    * compiled every time, not cached (SET and DROP VARIABLE keep their own execution). It shares no plan, so it takes
@@ -10224,6 +10308,13 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
   return_node = mq_translate_helper (parser, node);
 
   parser->flag.is_skip_auto_parameterize = save_skip_auto_parameterize;
+
+  if (return_node != NULL && parser->flag.view_has_sp_call)
+    {
+      return_node->flag.has_sp_call = 1;
+      return_node->flag.cannot_prepare = 1;
+    }
+  parser->flag.view_has_sp_call |= save_view_has_sp_call;
 
   /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions. The
    * compiled statement's are assigned by the walk its class prefetch makes next (pt_class_pre_fetch) */

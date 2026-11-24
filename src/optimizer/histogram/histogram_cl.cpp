@@ -225,7 +225,7 @@ get_histogram_for_write (MOP classop, const char *attr_name, DB_OBJECT **histogr
 /*
  * store_one_histogram () - write one column's blob + exact null frequency into its
  *   _db_histogram catalog entry, creating the entry again if it went missing
- *   with_fullscan(in): the collection mode to record if the entry has to be recreated
+ *   with_fullscan(in): the collection mode of this blob, recorded in the entry
  */
 static int
 store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq,
@@ -234,7 +234,7 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
   int error = NO_ERROR;
   DB_OBJECT *histogram_obj = NULL, *fin = NULL;
   DB_OTMPL *obj_tmpl = NULL;
-  DB_VALUE nfv, hv;
+  DB_VALUE nfv, fsv, hv;
 
   db_make_null (&hv);
 
@@ -280,6 +280,13 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
 
   db_make_double (&nfv, null_freq);
   error = dbt_put (obj_tmpl, "null_frequency", &nfv);
+  if (error == NO_ERROR)
+    {
+      /* smt_add_histogram () records the mode only when it creates the entry; a later collection in the other
+       * mode would leave db_histogram.scan_type telling the first one */
+      db_make_int (&fsv, with_fullscan);
+      error = dbt_put (obj_tmpl, "with_fullscan", &fsv);
+    }
   if (error == NO_ERROR && blob != NULL && blob_length > 0)
     {
       /*  SM_MAX_STRING_LENGTH = 1073741823 */
@@ -2618,7 +2625,7 @@ db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
 }
 
 /*
- * db_get_histogram_committed () - locate a column's _db_histogram entry and read its latest committed version
+ * db_get_histogram_for_optimizer () - locate a column's _db_histogram entry and read its latest committed version
  *   return: NO_ERROR, or an error code
  *   classop(in): class
  *   attr_name(in): column name
@@ -2628,12 +2635,12 @@ db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
  *   and fetches its dirty version -- so while an UPDATE STATISTICS holds the class's _db_histogram rows X-locked (until
  *   its transaction commits) every query compile on that class blocks behind it in stats_get_histogram (). The
  *   optimizer only needs the last committed histogram: this reads that version without taking a lock and without
- *   materializing the transaction's MVCC snapshot (obj_find_multi_attr_committed ()). Writers take the row X right at
+ *   materializing the transaction's MVCC snapshot (obj_find_multi_attr_catalog ()). Writers take the row X right at
  *   the lookup instead (db_find_multi_unique_for_update ()), and the existence check reads committed, unlocked
- *   (db_find_multi_unique_committed ()); db_get_histogram () is left to ;info histogram and the DDL paths.
+ *   (db_find_multi_unique_catalog ()); db_get_histogram () is left to ;info histogram and the DDL paths.
  */
 int
-db_get_histogram_committed (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
+db_get_histogram_for_optimizer (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
 {
   int error = NO_ERROR;
   int au_save;
@@ -2655,7 +2662,7 @@ db_get_histogram_committed (MOP classop, const char *attr_name, DB_OBJECT **hist
 
   /* internal catalog read; bypass user authorization as db_get_histogram () does (CBRD-26667) */
   AU_SAVE_AND_DISABLE (au_save);
-  *histogram_obj = obj_find_multi_attr_committed (histogram_class, 2, search_attrs, value_ptrs);
+  *histogram_obj = obj_find_multi_attr_catalog (histogram_class, 2, search_attrs, value_ptrs);
   AU_RESTORE (au_save);
 
   db_value_clear (&value[0]);
@@ -2757,7 +2764,7 @@ stats_get_histogram (MOP classop, HIST_STATS **histogram)
       DB_VALUE *histogram_value = NULL;
       DB_VALUE null_frequency_value;
       /* last committed entry, unlocked: must not wait on a concurrent UPDATE STATISTICS (CBRD-27369) */
-      error = db_get_histogram_committed (classop, attname, &histogram_obj);
+      error = db_get_histogram_for_optimizer (classop, attname, &histogram_obj);
 
       if (*histogram == NULL || (*histogram)->histogram == NULL || (*histogram)->null_frequency == NULL)
 	{

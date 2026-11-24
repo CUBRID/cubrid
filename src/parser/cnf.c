@@ -33,8 +33,13 @@ enum cnf_mode
 {
   TRANSFORM_CNF_OR_COMPACT = 0,
   TRANSFORM_CNF_OR_PRUNE = 1,	/* -- not used */
-  TRANSFORM_CNF_AND_OR = 2
+  TRANSFORM_CNF_AND_OR = 2,
+  TRANSFORM_CNF_AND_OR_KEEP = 3	/* AND-OR, but a disjunction of conjunctions stays whole (pt_cnf_where ()) */
 };
+
+/* a factor kept whole as a PT_OR tree by pt_transform_cnf_post () */
+#define PT_IS_OR_TREE(n) ((n) != NULL && (n)->node_type == PT_EXPR && (n)->info.expr.op == PT_OR)
+
 typedef enum cnf_mode CNF_MODE;
 
 typedef struct find_id_info FIND_ID_INFO;
@@ -66,6 +71,13 @@ static PT_NODE *pt_flatten_and_or (PARSER_CONTEXT * parser, PT_NODE * node);
 static int count_and_or (PARSER_CONTEXT * parser, const PT_NODE * node);
 static PT_NODE *pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_cnf_or_list_to_tree (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_cnf_distribute_kept (PARSER_CONTEXT * parser, PT_NODE * list);
+static PT_NODE *pt_cnf_column_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static bool pt_cnf_over_one_column (PARSER_CONTEXT * parser, PT_NODE * node, bool * outer_mark);
+static int pt_cnf_count_operands (const PT_NODE * node, PT_OP_TYPE op);
+static bool pt_cnf_exceeds_extract_limits (const PT_NODE * node);
+static PT_NODE *pt_cnf_internal (PARSER_CONTEXT * parser, PT_NODE * node, bool keep_or_factors);
 static PT_NODE *pt_find_name_id_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_name_id_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static void pt_tag_term_with_id (PARSER_CONTEXT * parser, PT_NODE * term, UINTPTR id, UINTPTR join_spec,
@@ -511,14 +523,23 @@ pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	  /* meet subquery in search condition. prune and go ahead */
 	  *continue_walk = PT_STOP_WALK;
 	}
+      else if (node)
+	{
+	  /* an atom of the condition, as in the default case below */
+	  *continue_walk = PT_LIST_WALK;
+	}
       return node;
     }
 
   switch (node->info.expr.op)
     {
     case PT_AND:
+      /* walk into the operands: an atom before this node among its parent's operands left PT_LIST_WALK,
+       * which the walk carries over to here */
+      *continue_walk = PT_CONTINUE_WALK;
       break;
     case PT_OR:
+      *continue_walk = PT_CONTINUE_WALK;
       /* OR-tree prune mode */
       if (*mode == TRANSFORM_CNF_OR_PRUNE)
 	{
@@ -526,6 +547,11 @@ pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	}
       break;
     default:
+      /* an atom of the condition -- a comparison, IS [NOT] TRUE/FALSE, CASE, IF, a function: its operands are
+       * values, not conjuncts of this condition, so the walk does not go under it.  An AND under it turned into
+       * a CNF list leaves an operand that prints as its first conjunct only, and the common factor search of an
+       * OR compares printed forms: ((a > 0 and a = 1) is true) or ((a > 0 and a = 2) is true) lost a branch */
+      *continue_walk = PT_LIST_WALK;
       break;
     }
 
@@ -572,6 +598,185 @@ pt_calculate_similarity (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   return node;
 }
 
+/* the column a factor reads, for pt_cnf_over_one_column () */
+typedef struct cnf_column_info CNF_COLUMN_INFO;
+struct cnf_column_info
+{
+  PT_NODE *column;		/* the first column met */
+  bool several;			/* another column, or a subquery, was met */
+  bool outer_mark;		/* a (+) predicate: pt_bind_names () moves it to ON only as a CNF term of its own */
+};
+
+/*
+ * pt_cnf_column_pre () - note the columns a factor reads
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): CNF_COLUMN_INFO
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_cnf_column_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  CNF_COLUMN_INFO *info = (CNF_COLUMN_INFO *) arg;
+
+  if (info->outer_mark)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      /* a subquery reads columns of its own; keep walking for a (+) predicate */
+      info->several = true;
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_EXPR && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_LEFT_OUTER | PT_EXPR_INFO_RIGHT_OUTER))
+    {
+      info->outer_mark = true;
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_NAME && node->info.name.meta_class != PT_PARAMETER)
+    {
+      if (info->column == NULL)
+	{
+	  info->column = node;
+	}
+      else if (!pt_name_equal (parser, info->column, node))
+	{
+	  info->several = true;	/* keep walking for a (+) predicate */
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_cnf_over_one_column () - is an OR factor still to be distributed?
+ *   return: true when every name in the factor is the same column, or the factor holds a (+)
+ *	     predicate
+ *   parser(in):
+ *   node(in): a PT_OR node whose operands are CNF lists
+ *   outer_mark(out): when not NULL, whether the factor holds a (+) predicate
+ *
+ * Note: an Oracle style outer join predicate is moved to the ON condition by pt_bind_names ()
+ *	 only as a CNF term of its own, by the (+) mark on its top node.  Kept whole, the factor would
+ *	 be a fresh PT_OR without the mark, left in WHERE to reject the NULL padded rows.
+ */
+static bool
+pt_cnf_over_one_column (PARSER_CONTEXT * parser, PT_NODE * node, bool * outer_mark)
+{
+  CNF_COLUMN_INFO info;
+
+  info.column = NULL;
+  info.several = false;
+  info.outer_mark = false;
+  (void) parser_walk_tree (parser, node->info.expr.arg1, pt_cnf_column_pre, &info, NULL, NULL);
+  (void) parser_walk_tree (parser, node->info.expr.arg2, pt_cnf_column_pre, &info, NULL, NULL);
+
+  if (outer_mark != NULL)
+    {
+      *outer_mark = info.outer_mark;
+    }
+  return info.outer_mark || (info.column != NULL && !info.several);
+}
+
+/*
+ * pt_cnf_list_has_or_tree () - does a CNF list hold a factor already kept whole?
+ *   return: true when an element, or a disjunct on the or_next chain of one, is a PT_OR tree
+ *   list(in): a CNF list
+ */
+static bool
+pt_cnf_list_has_or_tree (PT_NODE * list)
+{
+  PT_NODE *cnf, *dnf;
+
+  for (cnf = list; cnf != NULL; cnf = cnf->next)
+    {
+      for (dnf = cnf; dnf != NULL; dnf = dnf->or_next)
+	{
+	  if (PT_IS_OR_TREE (dnf))
+	    {
+	      return true;
+	    }
+	}
+    }
+  return false;
+}
+
+/*
+ * pt_cnf_or_list_to_tree () - turn a CNF disjunction chained through or_next into a PT_OR tree
+ *   return: the tree, or node itself when it has no or_next
+ *   parser(in):
+ *   node(in): a CNF element about to become an operand of an AND/OR tree
+ *
+ * Note: or_next is how a top-level CNF element lists its disjuncts.  Inside a factor kept whole,
+ *	 a disjunction has to be an operand of its own: qo_extract_or_restrictions () collects
+ *	 disjuncts through arg1/arg2 and links the pieces it derives through or_next.
+ */
+static PT_NODE *
+pt_cnf_or_list_to_tree (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *rest, *or_node;
+
+  if (node == NULL || node->or_next == NULL)
+    {
+      return node;
+    }
+
+  rest = pt_cnf_or_list_to_tree (parser, node->or_next);
+  node->or_next = NULL;
+
+  or_node = pt_and (parser, node, rest);
+  if (or_node == NULL)
+    {
+      return node;
+    }
+  or_node->info.expr.op = PT_OR;
+  or_node->info.expr.location = node->info.expr.location;
+  or_node->info.expr.paren_type = 1;
+  or_node->type_enum = PT_TYPE_LOGICAL;
+
+  return or_node;
+}
+
+/*
+ * pt_cnf_distribute_kept () - distribute the factors a CNF list keeps whole
+ *   return: the CNF list, with every factor kept whole distributed into clauses
+ *   parser(in):
+ *   list(in): a CNF list, the operand of a factor to be distributed
+ *
+ * Note: a factor with a (+) predicate is distributed, and an operand of it may hold a factor the walk kept whole
+ *	 before it met the (+) above.  Distributing the outer factor over that operand would chain the rest of its
+ *	 disjuncts on the or_next of a PT_OR tree, which the constant folding drops with the tree node it replaces;
+ *	 so the operand is distributed too, as all of it was before factors were kept whole.
+ */
+static PT_NODE *
+pt_cnf_distribute_kept (PARSER_CONTEXT * parser, PT_NODE * list)
+{
+  PT_NODE *cnf, *next, *result = NULL;
+  CNF_MODE mode = TRANSFORM_CNF_AND_OR;
+
+  for (cnf = list; cnf != NULL; cnf = next)
+    {
+      next = cnf->next;
+      cnf->next = NULL;
+      if (pt_cnf_list_has_or_tree (cnf))
+	{
+	  cnf = pt_cnf_or_list_to_tree (parser, cnf);
+	  cnf = parser_walk_tree (parser, cnf, pt_transform_cnf_pre, &mode, pt_transform_cnf_post, &mode);
+	}
+      result = parser_append_node (cnf, result);
+    }
+
+  return result;
+}
+
 /*
  * pt_transform_cnf_post () -
  *   return: CNF/DNF list
@@ -589,9 +794,10 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
   char *lhs_str, *rhs_str;
   SIMILARITY_CONTEXT lhs_ctx, rhs_ctx;
   PT_NODE *common_list, *lhs_prev, *rhs_prev, *arg1, *arg2;
-  bool common_found;
+  bool common_found, outer_mark = false;
   int num_markers;
   int lhs_count, rhs_count;
+  PT_NODE *rest = NULL;
 
   if (!node || node->node_type != PT_EXPR)
     {
@@ -601,6 +807,14 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  *continue_walk = PT_CONTINUE_WALK;
 	}
       return node;
+    }
+
+  if (node->info.expr.op == PT_AND || node->info.expr.op == PT_OR)
+    {
+      /* the cases below build a new list in place of node; a node already in a CNF list keeps the rest of
+       * that list after it */
+      rest = node->next;
+      node->next = NULL;
     }
 
   switch (node->info.expr.op)
@@ -769,8 +983,25 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  break;
 	}
 
-      /* OR-tree compact mode */
-      if (*mode == TRANSFORM_CNF_OR_COMPACT)
+      /* OR-tree compact mode, and a disjunction of conjunctions in any mode: distributing
+       * (A and B) or (C and D) into (A or C) and (A or D) and (B or C) and (B or D) multiplies the
+       * factor out, evaluates every literal once per product it lands in, and leaves the optimizer
+       * multiplying correlated products as if independent.  The factor stays whole instead, and
+       * qo_extract_or_restrictions () derives from it the restrictions a scan or an index can use.
+       * A factor over one column is still distributed: its clauses are ranges of that column, which
+       * qo_convert_to_range () and the range intersection fold back into one exact key range.  So
+       * is a factor with a (+) predicate, and any factor outside a WHERE (pt_cnf_where ()) or beyond
+       * what the extraction takes (pt_cnf_exceeds_extract_limits ()).  An operand holding a factor
+       * already kept whole -- ((A and B) or C) or c0 > 0, whose inner factor reads no column -- keeps the
+       * outer one whole too: distributing would chain c0 > 0 on the or_next of a PT_OR tree, a shape
+       * the passes that read a tree by arg1/arg2 lose the disjunct of (the constant folding replaces
+       * the tree node and drops its or_next).  A factor with a (+) predicate is distributed with the
+       * factors its operands keep whole (below) */
+      if (*mode == TRANSFORM_CNF_OR_COMPACT
+	  || (*mode == TRANSFORM_CNF_AND_OR_KEEP
+	      && (lhs->next != NULL || rhs->next != NULL || PT_IS_OR_TREE (lhs) || PT_IS_OR_TREE (rhs))
+	      && (!pt_cnf_over_one_column (parser, node, &outer_mark)
+		  || (!outer_mark && (pt_cnf_list_has_or_tree (lhs) || pt_cnf_list_has_or_tree (rhs))))))
 	{
 	  arg1 = arg2 = NULL;	/* init */
 
@@ -780,14 +1011,14 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	      lhs_next = lhs->next;
 	      lhs->next = NULL;
 
-	      arg1 = lhs;
+	      arg1 = pt_cnf_or_list_to_tree (parser, lhs);
 
 	      for (lhs = lhs_next; lhs; lhs = lhs_next)
 		{
 		  lhs_next = lhs->next;
 		  lhs->next = NULL;
 
-		  arg1 = pt_and (parser, arg1, lhs);
+		  arg1 = pt_and (parser, arg1, pt_cnf_or_list_to_tree (parser, lhs));
 		}
 	      if (arg1 && arg1->info.expr.op == PT_AND)
 		{
@@ -800,14 +1031,14 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	      rhs_next = rhs->next;
 	      rhs->next = NULL;
 
-	      arg2 = rhs;
+	      arg2 = pt_cnf_or_list_to_tree (parser, rhs);
 
 	      for (rhs = rhs_next; rhs; rhs = rhs_next)
 		{
 		  rhs_next = rhs->next;
 		  rhs->next = NULL;
 
-		  arg2 = pt_and (parser, arg2, rhs);
+		  arg2 = pt_and (parser, arg2, pt_cnf_or_list_to_tree (parser, rhs));
 		}
 	      if (arg2 && arg2->info.expr.op == PT_AND)
 		{
@@ -841,7 +1072,14 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  break;
 	}
 
-      /* redo cnf transformation */
+      /* redo cnf transformation; an operand of a factor distributed for its (+) predicate may hold a factor kept
+       * whole, distributed with it (pt_cnf_distribute_kept ()) */
+      if (*mode == TRANSFORM_CNF_AND_OR_KEEP
+	  && (pt_cnf_list_has_or_tree (node->info.expr.arg1) || pt_cnf_list_has_or_tree (node->info.expr.arg2)))
+	{
+	  node->info.expr.arg1 = pt_cnf_distribute_kept (parser, node->info.expr.arg1);
+	  node->info.expr.arg2 = pt_cnf_distribute_kept (parser, node->info.expr.arg2);
+	}
       lhs = node->info.expr.arg1;
       rhs = node->info.expr.arg2;
 
@@ -932,18 +1170,103 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
       break;
     }				/* switch (node->info.expr.op) */
 
+  if (rest != NULL)
+    {
+      list = parser_append_node (rest, list);
+    }
+
   /* return CNF/DNF list */
   return list;
 }
 
 /*
- * pt_cnf () -
+ * pt_cnf_count_operands () - the operands of a chain of one AND or OR operator
+ *   return: the count, an operand under a different operator counting one
+ *   node(in):
+ *   op(in): PT_AND or PT_OR
+ */
+static int
+pt_cnf_count_operands (const PT_NODE * node, PT_OP_TYPE op)
+{
+  if (node != NULL && node->node_type == PT_EXPR && node->info.expr.op == op)
+    {
+      return pt_cnf_count_operands (node->info.expr.arg1, op) + pt_cnf_count_operands (node->info.expr.arg2, op);
+    }
+  return 1;
+}
+
+/*
+ * pt_cnf_exceeds_extract_limits () - does an AND-OR tree hold a disjunction too large for
+ *				      qo_extract_or_restrictions ()?
+ *   return: true when some disjunction has more than PT_CNF_KEEP_MAX_DISJUNCTS disjuncts, or a
+ *	     disjunct with more than PT_CNF_KEEP_MAX_CONJUNCTS conjuncts
+ *   node(in): an AND-OR tree (pt_and_or_form ())
+ *
+ * Note: the extraction derives nothing from such a factor, so keeping it whole would lose the
+ *	 key ranges the distribution gives.  A long chain of disjuncts would also nest one PT_OR per
+ *	 disjunct, deeper than eval_pred () follows on its left operands.
+ */
+static bool
+pt_cnf_exceeds_extract_limits (const PT_NODE * node)
+{
+  if (node == NULL || node->node_type != PT_EXPR || (node->info.expr.op != PT_AND && node->info.expr.op != PT_OR))
+    {
+      return false;
+    }
+
+  if (node->info.expr.op == PT_OR)
+    {
+      if (pt_cnf_count_operands (node, PT_OR) > PT_CNF_KEEP_MAX_DISJUNCTS
+	  || (node->info.expr.arg1->node_type == PT_EXPR && node->info.expr.arg1->info.expr.op == PT_AND
+	      && pt_cnf_count_operands (node->info.expr.arg1, PT_AND) > PT_CNF_KEEP_MAX_CONJUNCTS)
+	  || (node->info.expr.arg2->node_type == PT_EXPR && node->info.expr.arg2->info.expr.op == PT_AND
+	      && pt_cnf_count_operands (node->info.expr.arg2, PT_AND) > PT_CNF_KEEP_MAX_CONJUNCTS))
+	{
+	  return true;
+	}
+    }
+
+  return pt_cnf_exceeds_extract_limits (node->info.expr.arg1) || pt_cnf_exceeds_extract_limits (node->info.expr.arg2);
+}
+
+/*
+ * pt_cnf () - convert a predicate to a CNF list, distributing every disjunction
  *   return:
  *   parser(in):
  *   node(in/out):
  */
 PT_NODE *
 pt_cnf (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  return pt_cnf_internal (parser, node, false);
+}
+
+/*
+ * pt_cnf_where () - convert a WHERE to a CNF list, keeping a disjunction of conjunctions whole
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *
+ * Note: qo_extract_or_restrictions () derives the scan and key range restrictions from a factor
+ *	 kept whole, and it runs on the WHERE alone (ON conditions included, moved into it by then).
+ *	 Other clauses -- HAVING, START WITH, CONNECT BY, MERGE -- are distributed as before: what
+ *	 their consumers get from the distribution has no other source.
+ */
+PT_NODE *
+pt_cnf_where (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  return pt_cnf_internal (parser, node, true);
+}
+
+/*
+ * pt_cnf_internal () -
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *   keep_or_factors(in): keep a disjunction of conjunctions whole (pt_cnf_where ())
+ */
+static PT_NODE *
+pt_cnf_internal (PARSER_CONTEXT * parser, PT_NODE * node, bool keep_or_factors)
 {
   PT_NODE *list, *cnf, *next, *last;
   CNF_MODE mode;
@@ -990,7 +1313,18 @@ pt_cnf (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  /* if the number of result nodes of CNF list to be made is too big, do CNF transformation in OR-tree prune
 	   * mode */
-	  mode = (count_and_or (parser, node) > 100) ? TRANSFORM_CNF_OR_COMPACT : TRANSFORM_CNF_AND_OR;
+	  if (count_and_or (parser, node) > 100)
+	    {
+	      mode = TRANSFORM_CNF_OR_COMPACT;
+	    }
+	  else if (keep_or_factors && !pt_cnf_exceeds_extract_limits (node))
+	    {
+	      mode = TRANSFORM_CNF_AND_OR_KEEP;
+	    }
+	  else
+	    {
+	      mode = TRANSFORM_CNF_AND_OR;
+	    }
 
 	  /* transform the tree to CNF list */
 	  cnf = parser_walk_tree (parser, node, pt_transform_cnf_pre, &mode, pt_transform_cnf_post, &mode);
@@ -1222,7 +1556,7 @@ pt_do_cnf (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_wal
 	}
 
       /* do CNF transformation */
-      node->info.query.q.select.where = pt_cnf (parser, node->info.query.q.select.where);
+      node->info.query.q.select.where = pt_cnf_where (parser, node->info.query.q.select.where);
 
       /* test each term in the CNF predicate for membership of the spec id */
       for (spec = node->info.query.q.select.from; spec; spec = spec->next)

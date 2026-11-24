@@ -50,6 +50,8 @@ static const int REPL_LOG_INFO_ALLOC_SIZE = 100;
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 static int repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc);
+static bool repl_is_oos_item (LOG_RCVINDEX rcvindex);
+static void repl_oos_items_follow_row (LOG_TDES * tdes, int row_idx);
 #endif /* SERVER_MODE || SA_MODE */
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
@@ -287,13 +289,14 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  *   rcvindex(in): recovery index (INSERT or DELETE or UPDATE)
  *   key_dbvalue(in): Primary Key value
  *   prior_dbvalue(in): NULL, or the value packed after the key (see LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC)
+ *   serial_issue(in): mark a _db_serial write that issues values (see LOG_REPL_SERIAL_ISSUE_MAGIC)
  *
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
 static int
 repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
 			  LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info,
-			  DB_VALUE * prior_dbvalue)
+			  DB_VALUE * prior_dbvalue, bool serial_issue)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -400,6 +403,10 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 	  /* int-alignment slack, marker, packed_prior_value_size, value */
 	  repl_rec->length += INT_ALIGNMENT + OR_INT_SIZE + OR_INT_SIZE + OR_VALUE_ALIGNED_SIZE (prior_dbvalue);
 	}
+      else if (serial_issue)
+	{
+	  repl_rec->length += INT_ALIGNMENT + OR_INT_SIZE + OR_INT_SIZE;
+	}
 
       ptr = (char *) malloc (repl_rec->length);
       if (ptr == NULL)
@@ -434,6 +441,12 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 	  ptr = or_pack_mem_value (ptr, prior_dbvalue, &packed_prior_len);
 	  or_pack_int (ptr_to_packed_prior_value_size, packed_prior_len);
 	}
+      else if (serial_issue)
+	{
+	  ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
+	  ptr = or_pack_int (ptr, LOG_REPL_SERIAL_ISSUE_MAGIC);
+	  ptr = or_pack_int (ptr, 0);
+	}
     }
   else
     {
@@ -466,12 +479,28 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
        */
       if (LSA_ISNULL (&tdes->tail_lsa))
 	{
-	  LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
+	  repl_rec->lsa = log_Gl.prior_info.prior_lsa;
 	}
       else
 	{
 	  LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);
 	}
+      break;
+    case RVREPL_OOS_INSERT:
+    case RVREPL_DUMMY_OOS_RECORD:
+      if (!tdes->oos_insert_lsa_queue.is_empty ())
+	{
+	  LOG_LSA oos_lsa = tdes->oos_insert_lsa_queue.pop ();
+	  LSA_COPY (&repl_rec->lsa, &oos_lsa);
+	}
+      else
+	{
+	  assert (false);
+	}
+      break;
+    case RVREPL_OOS_REUSE:
+      /* a reused chain has no OOS insert to point at */
+      LSA_SET_NULL (&repl_rec->lsa);
       break;
     default:
       break;
@@ -479,8 +508,8 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
   tdes->cur_repl_record++;
 
   /* if flush marking is started, mark "must_flush" at current log except the log conflicts with previous logs due to
-   * same instance update */
-  if (tdes->fl_mark_repl_recidx != -1)
+   * same instance update. An OOS item takes the decision of its row instead (see repl_oos_items_follow_row ()). */
+  if (tdes->fl_mark_repl_recidx != -1 && !repl_is_oos_item (rcvindex))
     {
       LOG_REPL_RECORD *recsp = tdes->repl_records;
       int i;
@@ -506,6 +535,14 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 	}
     }
 
+  if (!repl_is_oos_item (rcvindex))
+    {
+      repl_oos_items_follow_row (tdes, tdes->cur_repl_record - 1);
+    }
+#if !defined (NDEBUG)
+  repl_assert_oos_items_follow_row (tdes, tdes->cur_repl_record - 1, true);
+#endif
+
   if (class_name != NULL)
     {
       free_and_init (class_name);
@@ -529,7 +566,8 @@ int
 repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
 		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info)
 {
-  return repl_log_insert_internal (thread_p, class_oid, inst_oid, log_type, rcvindex, key_dbvalue, repl_info, NULL);
+  return repl_log_insert_internal (thread_p, class_oid, inst_oid, log_type, rcvindex, key_dbvalue, repl_info, NULL,
+				   false);
 }
 
 /*
@@ -560,7 +598,7 @@ repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_o
   tdes->suppress_replication = 0;
 
   error = repl_log_insert_internal (thread_p, oid_Serial_class_oid, serial_oidp, LOG_REPLICATION_DATA,
-				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, prior_dbvalue);
+				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, prior_dbvalue, false);
   if (error == NO_ERROR)
     {
       error = repl_add_update_lsa (thread_p, serial_oidp);
@@ -568,6 +606,32 @@ repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_o
 
   tdes->suppress_replication = save_suppress;
 
+  return error;
+}
+
+/*
+ * repl_log_insert_serial_issue - insert the replication info of a _db_serial write that issues values
+ *
+ * return: NO_ERROR or error code
+ *
+ *   serial_class_oidp(in): OID of _db_serial
+ *   serial_oidp(in): OID of the serial
+ *   key_dbvalue(in): name of the serial
+ *
+ * NOTE: the mark tells the peer to take only current_val and started from the row (see LOG_REPL_SERIAL_ISSUE_MAGIC)
+ */
+int
+repl_log_insert_serial_issue (THREAD_ENTRY * thread_p, const OID * serial_class_oidp, const OID * serial_oidp,
+			      DB_VALUE * key_dbvalue)
+{
+  int error;
+
+  error = repl_log_insert_internal (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA,
+				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, NULL, true);
+  if (error == NO_ERROR)
+    {
+      error = repl_add_update_lsa (thread_p, serial_oidp);
+    }
   return error;
 }
 
@@ -728,6 +792,9 @@ repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo)
 	  free_and_init (recsp[i].repl_data);
 	}
       tdes->cur_repl_record = tdes->fl_mark_repl_recidx;
+#if !defined (NDEBUG)
+      repl_assert_oos_items_follow_row (tdes, tdes->cur_repl_record - 1, true);
+#endif
     }
   tdes->fl_mark_repl_recidx = -1;
 
@@ -758,8 +825,107 @@ repl_log_abort_after_lsa (LOG_TDES * tdes, LOG_LSA * start_lsa)
 	}
     }
 
+  /* An OOS item follows its row, whatever its own LSA: a reuse marker has none. OOS items left without a row, by a
+   * statement that failed before logging the row, are never written. */
+  for (i = tdes->cur_repl_record - 1; i >= 0 && repl_is_oos_item (repl_rec_arr[i].rcvindex); i--)
+    {
+      repl_rec_arr[i].must_flush = LOG_REPL_DONT_NEED_FLUSH;
+    }
+  for (; i >= 0; i--)
+    {
+      if (!repl_is_oos_item (repl_rec_arr[i].rcvindex))
+	{
+	  repl_oos_items_follow_row (tdes, i);
+	}
+    }
+#if !defined (NDEBUG)
+  repl_assert_oos_items_follow_row (tdes, 0, false);
+#endif
+
   return NO_ERROR;
 }
+
+/*
+ * repl_is_oos_item - whether the replication record is an OOS item of a heap row
+ *
+ * return: true for RVREPL_OOS_INSERT, RVREPL_DUMMY_OOS_RECORD and RVREPL_OOS_REUSE
+ *
+ *   rcvindex(in):
+ */
+static bool
+repl_is_oos_item (LOG_RCVINDEX rcvindex)
+{
+  return rcvindex == RVREPL_OOS_INSERT || rcvindex == RVREPL_DUMMY_OOS_RECORD || rcvindex == RVREPL_OOS_REUSE;
+}
+
+/*
+ * repl_oos_items_follow_row - give the OOS items of a row the "must_flush" of the row
+ *
+ * return: nothing
+ *
+ *   tdes(in):
+ *   row_idx(in): index of the row's record, which its OOS items immediately precede
+ *
+ * NOTE: The replica applies a row's OOS items together with the row (xlocator_repl_force), so they must be written
+ *	 when the row is written and dropped when the row is dropped. A record's own LSA and OID cannot decide that for
+ *	 them: a reuse marker (CBRD-27230) carries neither, a multi-chunk boundary item has no OID, and the OID of a
+ *	 new chain is not the row's.
+ */
+static void
+repl_oos_items_follow_row (LOG_TDES * tdes, int row_idx)
+{
+  LOG_REPL_RECORD *repl_rec_arr = tdes->repl_records;
+  int i;
+
+  for (i = row_idx - 1; i >= 0 && repl_is_oos_item (repl_rec_arr[i].rcvindex); i--)
+    {
+      repl_rec_arr[i].must_flush = repl_rec_arr[row_idx].must_flush;
+    }
+}
+
+#if !defined (NDEBUG)
+/*
+ * repl_assert_oos_items_follow_row - assert that every OOS item is written or dropped with its row
+ *
+ * return: nothing
+ *
+ *   tdes(in):
+ *   from(in): index of the first record to check; the OOS items of the row at or after it are checked too
+ *   row_may_follow(in): whether the row of the last OOS items may still be logged
+ *
+ * NOTE: A run of OOS items is immediately followed by its row, an RVREPL_DATA_INSERT or RVREPL_DATA_UPDATE record,
+ *	 and every item has the row's "must_flush" (see repl_oos_items_follow_row ()). Only the last items can lack
+ *	 their row: while it is being logged, they are never written before commit; otherwise they must be dropped.
+ */
+void
+repl_assert_oos_items_follow_row (const LOG_TDES * tdes, int from, bool row_may_follow)
+{
+  const LOG_REPL_RECORD *repl_rec_arr = tdes->repl_records;
+  int row_idx = tdes->cur_repl_record;
+  int i;
+
+  for (i = tdes->cur_repl_record - 1; i >= 0 && (i >= from || repl_is_oos_item (repl_rec_arr[i].rcvindex)); i--)
+    {
+      if (!repl_is_oos_item (repl_rec_arr[i].rcvindex))
+	{
+	  row_idx = i;
+	}
+      else if (row_idx < tdes->cur_repl_record)
+	{
+	  assert (repl_rec_arr[row_idx].rcvindex == RVREPL_DATA_INSERT
+		  || repl_rec_arr[row_idx].rcvindex == RVREPL_DATA_UPDATE
+		  || repl_rec_arr[row_idx].rcvindex == RVREPL_DATA_UPDATE_START
+		  || repl_rec_arr[row_idx].rcvindex == RVREPL_DATA_UPDATE_END);
+	  assert (repl_rec_arr[i].must_flush == repl_rec_arr[row_idx].must_flush);
+	}
+      else
+	{
+	  assert (row_may_follow ? repl_rec_arr[i].must_flush != LOG_REPL_NEED_FLUSH
+		  : repl_rec_arr[i].must_flush == LOG_REPL_DONT_NEED_FLUSH);
+	}
+    }
+}
+#endif /* !NDEBUG */
 
 #if defined(CUBRID_DEBUG)
 /*

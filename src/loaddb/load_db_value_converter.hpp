@@ -34,6 +34,12 @@ namespace cubload
   typedef int (*conv_func) (const char *, const size_t, const attribute *, db_value *);
 
   conv_func &get_conv_func (const data_type ldr_type, const DB_TYPE db_type);
+  conv_func &get_elem_conv_func (const data_type ldr_type);
+  DB_TYPE get_token_db_type (const data_type ldr_type);
+  int check_not_null (const attribute *attr, const db_value *val);
+  void cast_elem_to_set_domain (const tp_domain *setdomain, db_value *val);
+  int binary_to_db_value (binary_row_reader &reader, const binary_column &col, const attribute *attr,
+			  const tp_domain *collection_domain, db_value *val);
 
 } // namespace cubload
 

@@ -74,7 +74,7 @@ typedef struct log_append_info LOG_APPEND_INFO;
 struct log_append_info
 {
   int vdes;			/* Volume descriptor of active log */
-  std::atomic<LOG_LSA> nxio_lsa;  /* Lowest log sequence number which has not been written to disk (for WAL). */
+  LOG_LSA_ATOMIC nxio_lsa;	/* Lowest log sequence number which has not been written to disk (for WAL). */
 
   /* Record-aligned watermark: everything strictly below it has left the prior list, so logpb_fetch_page ()
    * reaches it. Exclusive, because the drain publishes append_lsa after copying a record and that is where
@@ -83,9 +83,8 @@ struct log_append_info
    * Published (release) by the drain and by LOG_RESET_APPEND_LSA (), read (acquire) by readers running
    * ahead of the flush. Invariant copied_lsa <= append_lsa - lagging only sends a caller through the
    * LOG_CS re-check, while running ahead makes one skip a drain it needed, so this is a store, never a
-   * max (). Distinct axis from nxio_lsa (what reached disk); do not maintain either from the other.
-   * todo - fold into LOG_LSA_ATOMIC together with nxio_lsa */
-  std::atomic<LOG_LSA> copied_lsa;
+   * max (). Distinct axis from nxio_lsa (what reached disk); do not maintain either from the other. */
+  LOG_LSA_ATOMIC copied_lsa;
 
   /* todo - not really belonging here. should be part of page buffer. */
   LOG_LSA_ATOMIC prev_lsa;		/* Address of last append log record */
@@ -130,8 +129,9 @@ struct log_prior_node
 typedef struct log_prior_lsa_info LOG_PRIOR_LSA_INFO;
 struct log_prior_lsa_info
 {
-  LOG_LSA prior_lsa;
-  LOG_LSA prev_lsa;
+  /* Advanced under prior_lsa_mutex while readers outside it sample them, so both are published whole. */
+  LOG_LSA_ATOMIC prior_lsa;
+  LOG_LSA_ATOMIC prev_lsa;
 
   /* list */
   LOG_PRIOR_NODE *prior_list_header;
@@ -171,9 +171,11 @@ char *LOG_APPEND_PTR ();
 bool log_prior_has_worker_log_records (THREAD_ENTRY *thread_p);
 LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
     LOG_DATA_ADDR *addr, int ulength, const char *udata, int rlength, const char *rdata);
+/* explicit_mvccid: when valid, an MVCC record carries it instead of the current transaction's MVCCID.
+ * Only a record appended after its transaction's MVCC info is complete needs it (RVOOS_NOTIFY_VACUUM). */
 LOG_PRIOR_NODE *prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
     LOG_DATA_ADDR *addr, const int num_ucrumbs, const LOG_CRUMB *ucrumbs, const int num_rcrumbs,
-    const LOG_CRUMB *rcrumbs);
+    const LOG_CRUMB *rcrumbs, MVCCID explicit_mvccid = MVCCID_NULL);
 LOG_LSA prior_lsa_next_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes);
 LOG_LSA prior_lsa_next_record_with_lock (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes);
 int prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex);

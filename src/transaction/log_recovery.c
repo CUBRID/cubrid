@@ -28,6 +28,7 @@
 #include "dblink_2pc_daemon.h"
 #endif
 #include "boot_sr.h"
+#include "file_io.h"
 #include "locator_sr.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
@@ -53,6 +54,13 @@
 /* True while log_recovery () replays a media crash (restoredb).  Held for the whole function -- redo scan and
  * finish-postpone alike -- so the no-logging index recovery functions below fail-stop in either phase. */
 static bool log_Rcv_is_media_crash = false;
+
+/* Where each restored backup level started copying pages, filled by logpb_restore () through
+ * log_recovery_set_restore_backup_level () before log_recovery () runs and consumed by the no-logging index judgment.
+ * Cleared together with log_Rcv_is_media_crash. */
+static LOG_LSA log_Rcv_backup_start_log_end_lsa[LOG_RCV_MAX_BACKUP_LEVELS];
+static int log_Rcv_backup_num_levels = 0;
+static_assert (LOG_RCV_MAX_BACKUP_LEVELS == FILEIO_BACKUP_UNDEFINED_LEVEL, "one entry per backup level");
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -108,7 +116,11 @@ static int log_recovery_get_redo_parallel_count ();
 
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
 static void log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p);
+static void log_recovery_2pc_restore_prev_versions (THREAD_ENTRY * thread_p);
+static void log_recovery_2pc_restore_tran_prev_versions (THREAD_ENTRY * thread_p, const LOG_TDES * tdes,
+							 LOG_PAGE * log_page);
 static void log_recovery_refuse_no_logging_index_replay (THREAD_ENTRY * thread_p, const LOG_LSA * lsa);
+static void log_rv_no_logging_index_refuse_unless_covered (THREAD_ENTRY * thread_p, const LOG_LSA * barrier_lsa);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
 static void log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -277,9 +289,9 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	{
 	  /* nothing to do during recovery */
 	}
-      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM)
+      else if (RCV_IS_NOTHING_TO_UNDO (rcvindex))
 	{
-	  /* nothing to do */
+	  /* no undo and no compensation */
 	}
       else if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
 	{
@@ -761,7 +773,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   /* Cleared on every path out of this function. */
   log_Rcv_is_media_crash = (ismedia_crash != false);
   // *INDENT-OFF*
-  scope_exit reset_rcv_media_crash_flag {[] { log_Rcv_is_media_crash = false; }};
+  scope_exit reset_rcv_media_crash_flag {[] { log_Rcv_is_media_crash = false; log_Rcv_backup_num_levels = 0; }};
   // *INDENT-ON*
 
   /* Save the transaction index and find the transaction descriptor */
@@ -841,7 +853,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "ANALYSIS");
 
-  LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
+  log_Gl.chkpt_redo_lsa.store (start_redolsa);
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
   if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
@@ -1301,23 +1313,24 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
 	  log_lsa->pageid = NULL_PAGEID;
 	  log_recovery_resetlog (thread_p, &record_header_lsa, prev_lsa);
 	  *did_incom_recovery = true;
+
+	  return NO_ERROR;
 	}
     }
-  else
-    {
-      /*
-       * Need to read the start postpone record to set the postpone address
-       * of the transaction
-       */
-      tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 
-      /* Nothing to undo */
-      LSA_SET_NULL (&tdes->undo_nxlsa);
-      LSA_COPY (&tdes->tail_lsa, log_lsa);
-      tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+  /*
+   * Unless media recovery stops at this record, the transaction is committed and only its postpone remains. Set the
+   * postpone address of the transaction from the start postpone record, both in restart recovery and in media recovery.
+   */
+  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 
-      LSA_COPY (&tdes->posp_nxlsa, &start_posp->posp_lsa);
-    }
+  /* Nothing to undo */
+  LSA_SET_NULL (&tdes->undo_nxlsa);
+  /* log_lsa was advanced to the record body above; the runtime (prior_lsa_start_append) records the record start */
+  LSA_COPY (&tdes->tail_lsa, &record_header_lsa);
+  tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+
+  LSA_COPY (&tdes->posp_nxlsa, &start_posp->posp_lsa);
 
   return NO_ERROR;
 }
@@ -2509,6 +2522,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
     case LOG_REPLICATION_STATEMENT:
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_OOS_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_SUPPLEMENTAL_INFO:
       break;
@@ -2557,8 +2571,9 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
   if (!LSA_ISNULL (&fwd_log_lsa))
     {
       /* log_Gl.hdr.eof_lsa can have a NULL_LSA value if recovery is started without an active log volume. Its value will be recovered during the log_recovery_analysis process. */
-      if (LSA_GE (log_lsa, &fwd_log_lsa)
-	  || (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && LSA_GT (&fwd_log_lsa, &log_Gl.hdr.eof_lsa)))
+      const LOG_LSA eof_lsa = log_Gl.hdr.eof_lsa;
+
+      if (LSA_GE (log_lsa, &fwd_log_lsa) || (!LSA_ISNULL (&eof_lsa) && LSA_GT (&fwd_log_lsa, &eof_lsa)))
 	{
 	  // check fwd_log_lsa value if it is corrupted or not
 	  is_log_page_broken = true;
@@ -3326,6 +3341,173 @@ log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * log_rv_no_logging_index_is_covered_by_backup () - decide whether the restored backup chain holds every page of one
+ *   no-logging index build in its final form, so that media recovery may replay past the build's barrier.
+ *
+ * return: true when the chain holds the pages; false when it does not, or when an input is unknown (refuse)
+ * top_level_start_log_end_lsa(in): log end when the restored level with the highest number started copying pages;
+ *				    NULL_LSA when its header predates the field
+ * barrier_lsa(in): LSA of the build's RVBT_NO_LOGGING_INDEX_DURABLE record; the build's pages were on disk before it
+ *
+ * NOTE: A backup copies no page while a no-logging index build runs (logpb_backup ()), so each backup level either
+ *   finished copying before the build began or started copying after its barrier.  If the top level started after
+ *   the barrier, it copied every page of the build: an incremental level copies the pages logged after the previous
+ *   level's checkpoint, and the previous level finished before the build allocated any page.  Those copies are final.
+ *   If the top level started before the barrier, no restored level holds the pages; the replay starts at or before
+ *   that level's checkpoint, which precedes the build, so it reaches the build's marker and refuses there.
+ */
+bool
+log_rv_no_logging_index_is_covered_by_backup (const LOG_LSA * top_level_start_log_end_lsa, const LOG_LSA * barrier_lsa)
+{
+  if (top_level_start_log_end_lsa == NULL || LSA_ISNULL (top_level_start_log_end_lsa) || barrier_lsa == NULL
+      || LSA_ISNULL (barrier_lsa))
+    {
+      return false;
+    }
+
+  return LSA_LT (barrier_lsa, top_level_start_log_end_lsa);
+}
+
+/*
+ * log_recovery_set_restore_backup_level () - remember where one restored backup level started copying pages, for the
+ *   no-logging index judgment.  Called by logpb_restore () for every level it restores, before log_recovery () runs.
+ *
+ * return: nothing
+ * level(in): FILEIO_BACKUP_LEVEL of the header (0 = full)
+ * start_log_end_lsa(in): FILEIO_BACKUP_HEADER.start_log_end_lsa of that level (NULL_LSA for an older header)
+ */
+void
+log_recovery_set_restore_backup_level (int level, const LOG_LSA * start_log_end_lsa)
+{
+  if (level < 0 || level >= LOG_RCV_MAX_BACKUP_LEVELS)
+    {
+      assert (false);
+      return;
+    }
+
+  LSA_COPY (&log_Rcv_backup_start_log_end_lsa[level], start_log_end_lsa);
+  if (log_Rcv_backup_num_levels < level + 1)
+    {
+      log_Rcv_backup_num_levels = level + 1;
+    }
+}
+
+/*
+ * log_recovery_2pc_restore_prev_versions - set back the prev version lsa of the rows in-doubt transactions updated
+ *
+ * Note: An update stores that lsa without logging it, so redo leaves it null. Only a reader of an active
+ *       transaction's row follows it, and after restart the in-doubt transactions are the active ones.
+ */
+static void
+log_recovery_2pc_restore_prev_versions (THREAD_ENTRY * thread_p)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_page = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  int i;
+
+  log_page->hdr.logical_pageid = NULL_PAGEID;
+  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      LOG_TDES *tdes = LOG_FIND_TDES (i);
+
+      if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->state == TRAN_UNACTIVE_2PC_PREPARE
+	  && MVCCID_IS_NORMAL (tdes->mvccinfo.id))
+	{
+	  log_recovery_2pc_restore_tran_prev_versions (thread_p, tdes, log_page);
+	}
+    }
+}
+
+/*
+ * log_recovery_2pc_restore_tran_prev_versions - pass the heap records of one in-doubt transaction, newest first
+ */
+static void
+log_recovery_2pc_restore_tran_prev_versions (THREAD_ENTRY * thread_p, const LOG_TDES * tdes, LOG_PAGE * log_page)
+{
+  HEAP_RV_PREV_VERSION_STATE state = { OID_INITIALIZER, LSA_INITIALIZER };
+  HEAP_FWD_RECORD_AREA fwd_area;
+  LOG_LSA lsa;
+
+  for (lsa = tdes->tail_lsa; !LSA_ISNULL (&lsa);)
+    {
+      LOG_RECORD_HEADER rec_header;
+      LOG_LSA read_lsa = lsa;
+      LOG_LSA next_lsa;
+      LOG_REC_SYSOP_END *sysop_end;
+      LOG_REC_UNDOREDO *undoredo = NULL;
+      LOG_DATA data;
+      VPID vpid;
+      RECDES old_home = RECDES_INITIALIZER;
+
+      if (log_page->hdr.logical_pageid != lsa.pageid
+	  && logpb_fetch_page (thread_p, &lsa, LOG_CS_FORCE_USE, log_page) != NO_ERROR)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_2pc_restore_tran_prev_versions");
+	  return;
+	}
+      rec_header = *LOG_GET_LOG_RECORD_HEADER (log_page, &lsa);
+      next_lsa = rec_header.prev_tranlsa;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (rec_header), &read_lsa, log_page);
+
+      switch (rec_header.type)
+	{
+	case LOG_COMPENSATE:
+	  /* skip what a partial rollback undid: its slots may hold other rows since */
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_COMPENSATE), &read_lsa, log_page);
+	  next_lsa = ((LOG_REC_COMPENSATE *) (log_page->area + read_lsa.offset))->undo_nxlsa;
+	  break;
+
+	case LOG_SYSOP_END:
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &read_lsa, log_page);
+	  sysop_end = (LOG_REC_SYSOP_END *) (log_page->area + read_lsa.offset);
+	  if (sysop_end->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
+	    {
+	      next_lsa = sysop_end->compensate_lsa;
+	    }
+	  break;
+
+	case LOG_MVCC_UNDOREDO_DATA:
+	case LOG_MVCC_DIFF_UNDOREDO_DATA:
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDOREDO), &read_lsa, log_page);
+	  undoredo = &((LOG_REC_MVCC_UNDOREDO *) (log_page->area + read_lsa.offset))->undoredo;
+	  break;
+
+	case LOG_UNDOREDO_DATA:
+	case LOG_DIFF_UNDOREDO_DATA:
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_UNDOREDO), &read_lsa, log_page);
+	  undoredo = (LOG_REC_UNDOREDO *) (log_page->area + read_lsa.offset);
+	  break;
+
+	default:
+	  break;
+	}
+
+      if (undoredo != NULL)
+	{
+	  data = undoredo->data;
+	  VPID_SET (&vpid, data.volid, data.pageid);
+	  if (data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+	    {
+	      old_home.data = fwd_area.data;
+	      old_home.area_size = sizeof (fwd_area);
+	      /* the data header may end on the next log page; a larger image does not fit, but its type is read */
+	      if ((log_page->hdr.logical_pageid != lsa.pageid
+		   && logpb_fetch_page (thread_p, &lsa, LOG_CS_FORCE_USE, log_page) != NO_ERROR)
+		  || log_get_undo_record (thread_p, log_page, lsa, &old_home) == S_ERROR)
+		{
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_2pc_restore_tran_prev_versions");
+		  return;
+		}
+	    }
+	  heap_rv_restore_prev_version (thread_p, data.rcvindex, &vpid, data.offset, &lsa,
+					data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM ? &old_home : NULL,
+					tdes->mvccinfo.id, &state);
+	}
+      lsa = next_lsa;
+    }
+}
+
+/*
  * log_recovery_refuse_no_logging_index_replay () - fail-stop a media recovery replay that reaches a record left
  *   by a no-logging index build (loaddb).  Its index pages were never WAL-logged, so replaying past it
  *   cannot reconstruct them.  A replay in which the index would survive always dispatches either the
@@ -3333,7 +3515,7 @@ log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p)
  *   first, and both refuse here; a build that never committed leaves no marker and the replay undoes it.
  *
  * thread_p(in): thread entry
- * lsa(in): LSA of the barrier or marker record, or NULL if unavailable on this dispatch path
+ * lsa(in): LSA of the barrier record, or NULL_LSA when the record carries none
  */
 static void
 log_recovery_refuse_no_logging_index_replay (THREAD_ENTRY * thread_p, const LOG_LSA * lsa)
@@ -3358,45 +3540,92 @@ log_recovery_refuse_no_logging_index_replay (THREAD_ENTRY * thread_p, const LOG_
 }
 
 /*
- * log_rv_no_logging_index_durable_redo () - redo for RVBT_NO_LOGGING_INDEX_DURABLE, the barrier postpone action.
- *   Media recovery refuses; otherwise the barrier is really executing (runtime commit, or restart
- *   recovery finishing an interrupted one), so append the redo-only RVBT_NO_LOGGING_INDEX_COMMITTED marker.
+ * log_rv_no_logging_index_refuse_unless_covered () - fail-stop media recovery unless the restored backup chain holds
+ *   every page of the build (log_rv_no_logging_index_is_covered_by_backup).
  *
- * return: NO_ERROR (does not return while media recovery is in progress)
+ * return: nothing (does not return when it refuses)
  * thread_p(in): thread entry
- * rcv(in): recovery structure; rcv->reference_lsa carries the barrier's LSA when available
+ * barrier_lsa(in): the barrier record's LSA, NULL_LSA when unknown
+ */
+static void
+log_rv_no_logging_index_refuse_unless_covered (THREAD_ENTRY * thread_p, const LOG_LSA * barrier_lsa)
+{
+  const LOG_LSA *top_level_start_log_end_lsa = NULL;
+
+  assert (log_Rcv_is_media_crash);
+
+  if (log_Rcv_backup_num_levels > 0)
+    {
+      top_level_start_log_end_lsa = &log_Rcv_backup_start_log_end_lsa[log_Rcv_backup_num_levels - 1];
+    }
+
+  if (log_rv_no_logging_index_is_covered_by_backup (top_level_start_log_end_lsa, barrier_lsa))
+    {
+      return;
+    }
+
+  log_recovery_refuse_no_logging_index_replay (thread_p, barrier_lsa);
+  /* not reached */
+}
+
+/*
+ * log_rv_no_logging_index_durable_redo () - redo for RVBT_NO_LOGGING_INDEX_DURABLE, the barrier postpone action.
+ *   Manual logical run postpone: rcv->reference_lsa is the barrier record's own LSA.  Under media recovery the
+ *   build is judged against the restored backup chain and refused unless the chain holds its pages.  Then (runtime
+ *   commit, or restart recovery finishing an interrupted commit) the barrier executes: append the marker, which
+ *   carries the barrier's LSA, inside a system operation ended by the logical run postpone record.
+ *
+ * return: NO_ERROR (does not return when media recovery refuses)
+ * thread_p(in): thread entry
+ * rcv(in): recovery structure
  */
 int
 log_rv_no_logging_index_durable_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  LOG_LSA barrier_lsa;
+  LOG_DATA_ADDR addr = { NULL, NULL, 0 };
+
+  LSA_COPY (&barrier_lsa, &rcv->reference_lsa);
+
   if (log_Rcv_is_media_crash)
     {
-      log_recovery_refuse_no_logging_index_replay (thread_p, &rcv->reference_lsa);
-      /* not reached: log_recovery_refuse_no_logging_index_replay() never returns */
+      log_rv_no_logging_index_refuse_unless_covered (thread_p, &barrier_lsa);
     }
 
-  LOG_DATA_ADDR addr = { NULL, NULL, 0 };
-  log_append_redo_data (thread_p, RVBT_NO_LOGGING_INDEX_COMMITTED, &addr, 0, NULL);
+  log_sysop_start (thread_p);
+  log_append_redo_data (thread_p, RVBT_NO_LOGGING_INDEX_COMMITTED, &addr, (int) sizeof (barrier_lsa), &barrier_lsa);
+  log_sysop_end_logical_run_postpone (thread_p, &rcv->reference_lsa);
 
   return NO_ERROR;
 }
 
 /*
  * log_rv_no_logging_index_committed_redo () - redo for RVBT_NO_LOGGING_INDEX_COMMITTED, the marker recording that a
- *   no-logging index build's barrier postpone executed.  Replaying it under media recovery means the chain
- *   contains a completed no-logging index build -- refuse.  A no-op everywhere else.
+ *   no-logging index build's barrier postpone executed.  Under media recovery the build is judged against the
+ *   restored backup chain and refused unless the chain holds its pages.  A no-op everywhere else.
  *
- * return: NO_ERROR (does not return while media recovery is in progress)
+ * return: NO_ERROR (does not return when media recovery refuses)
  * thread_p(in): thread entry
- * rcv(in): recovery structure; rcv->reference_lsa carries the marker's LSA when available
+ * rcv(in): recovery structure; rcv->data is the barrier's LSA when the record carries one
  */
 int
 log_rv_no_logging_index_committed_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   if (log_Rcv_is_media_crash)
     {
-      log_recovery_refuse_no_logging_index_replay (thread_p, &rcv->reference_lsa);
-      /* not reached: log_recovery_refuse_no_logging_index_replay() never returns */
+      LOG_LSA barrier_lsa;
+
+      if (rcv->length == (int) sizeof (barrier_lsa) && rcv->data != NULL)
+	{
+	  memcpy (&barrier_lsa, rcv->data, sizeof (barrier_lsa));
+	}
+      else
+	{
+	  /* an older marker without the barrier's LSA: nothing to judge */
+	  LSA_SET_NULL (&barrier_lsa);
+	}
+
+      log_rv_no_logging_index_refuse_unless_covered (thread_p, &barrier_lsa);
     }
 
   return NO_ERROR;
@@ -3984,6 +4213,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
 	    case LOG_DUMMY_OVF_RECORD:
+	    case LOG_DUMMY_OOS_RECORD:
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_SUPPLEMENTAL_INFO:
 	    case LOG_END_OF_LOG:
@@ -4070,6 +4300,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   /* Must run after the last reset_start_mvccid: otherwise an in-doubt transaction's rows read as visible and checkers
    * skip the self-lock wait. */
   log_recovery_2pc_reactivate_mvccids (thread_p);
+  log_recovery_2pc_restore_prev_versions (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "REDO");
 
@@ -4078,6 +4309,9 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
   /* Now finish all postpone operations */
   log_recovery_finish_all_postpone (thread_p);
+
+  /* drop the pages that redo re-created for files destroyed later in the log, before they are flushed */
+  pgbuf_rv_discard_unreserved_pages (thread_p);
 
   /* Flush all dirty pages */
   logpb_flush_pages_direct (thread_p);
@@ -4926,6 +5160,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_REPLICATION_STATEMENT:
 		case LOG_DUMMY_HA_SERVER_STATE:
 		case LOG_DUMMY_OVF_RECORD:
+		case LOG_DUMMY_OOS_RECORD:
 		case LOG_DUMMY_GENERIC:
 		case LOG_SUPPLEMENTAL_INFO:
 		case LOG_SYSOP_ATOMIC_START:
@@ -5921,6 +6156,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_OOS_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_SYSOP_ATOMIC_START:
       break;

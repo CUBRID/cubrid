@@ -370,31 +370,19 @@ expr_hostvar_domain (const REGU_VARIABLE * regu)
  ******************************************************************************/
 
 /* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c): the node's converter (CBRD-27583) for a
- * value of the planned type, which the step compiler copied; a step without one coerces by the value's type */
+ * value of the planned type, which the step compiler copied (a node without one is not compiled into a kernel) */
 int
 expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER conv)
 {
-  TP_DOMAIN_STATUS dom_status;
-
-  if (domain_p == NULL)
-    {
-      return NO_ERROR;
-    }
+  assert (domain_p != NULL && conv != NULL);
   if (DB_IS_NULL (result_p))
     {
       /* tp_value_coerce's: a NULL comes out bare */
       db_make_null (result_p);
       return NO_ERROR;
     }
-  if (conv != NULL && DB_VALUE_DOMAIN_TYPE (result_p) == planned)
-    {
-      dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
-    }
-  else
-    {
-      /* no converter, or a value of another type than planned: coerce by the value's type */
-      dom_status = tp_value_coerce (result_p, result_p, domain_p);
-    }
+  assert (DB_VALUE_DOMAIN_TYPE (result_p) == planned);
+  const TP_DOMAIN_STATUS dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
@@ -929,6 +917,17 @@ name (const EXPR_PRED * pred) \
   return (get (v1) op get (v2)) ? V_TRUE : V_FALSE; \
 }
 
+/* a DOUBLE leaf: cond on a and b, the two values, in the order of the type (expr_double_eq (), expr_double_lt ()) */
+#define EXPR_PRED_DOUBLE_LEAF(name, cond) \
+static DB_LOGICAL \
+name (const EXPR_PRED * pred) \
+{ \
+  EXPR_PRED_CMP_PROLOGUE (v1, v2); \
+  const double a = db_get_double (v1); \
+  const double b = db_get_double (v2); \
+  return (cond) ? V_TRUE : V_FALSE; \
+}
+
 /* *INDENT-OFF* */
 EXPR_PRED_CMP_LEAF (expr_pred_int_eq, db_get_int, ==)
 EXPR_PRED_CMP_LEAF (expr_pred_int_ne, db_get_int, !=)
@@ -942,12 +941,12 @@ EXPR_PRED_CMP_LEAF (expr_pred_bigint_lt, db_get_bigint, <)
 EXPR_PRED_CMP_LEAF (expr_pred_bigint_le, db_get_bigint, <=)
 EXPR_PRED_CMP_LEAF (expr_pred_bigint_gt, db_get_bigint, >)
 EXPR_PRED_CMP_LEAF (expr_pred_bigint_ge, db_get_bigint, >=)
-EXPR_PRED_CMP_LEAF (expr_pred_double_eq, db_get_double, ==)
-EXPR_PRED_CMP_LEAF (expr_pred_double_ne, db_get_double, !=)
-EXPR_PRED_CMP_LEAF (expr_pred_double_lt, db_get_double, <)
-EXPR_PRED_CMP_LEAF (expr_pred_double_le, db_get_double, <=)
-EXPR_PRED_CMP_LEAF (expr_pred_double_gt, db_get_double, >)
-EXPR_PRED_CMP_LEAF (expr_pred_double_ge, db_get_double, >=)
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_eq, expr_double_eq (a, b))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_ne, !expr_double_eq (a, b))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_lt, expr_double_lt (a, b))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_le, !expr_double_lt (b, a))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_gt, expr_double_lt (b, a))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_ge, !expr_double_lt (a, b))
 /* a DATE is one unsigned int (mr_cmpval_date () orders it the same way) */
 #define EXPR_GET_DATE(v) (*db_get_date (v))
 EXPR_PRED_CMP_LEAF (expr_pred_date_eq, EXPR_GET_DATE, ==)
@@ -1127,7 +1126,7 @@ expr_pred_eval (const EXPR_PRED * pred)
 	    result = (db_get_bigint (v1) == db_get_bigint (v2)) ? DB_EQ : DB_NE;
 	    break;
 	  case DB_TYPE_DOUBLE:
-	    result = (db_get_double (v1) == db_get_double (v2)) ? DB_EQ : DB_NE;
+	    result = expr_double_eq (db_get_double (v1), db_get_double (v2)) ? DB_EQ : DB_NE;
 	    break;
 	  default:
 	    result = expr_pred_compare (pred, v1, v2, 1, &comparable);
@@ -1590,6 +1589,9 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     {
       return ER_FAILED;		/* the interpreter's error exit: the body set the error */
     }
+
+  /* an operator such as ABS returns its fixed operand without conversion */
+  numeric_db_value_to_float_domain (a.arithptr->value, a.domain);
   *step->out_cell = a.arithptr->value;
   return NO_ERROR;
 }
@@ -2071,6 +2073,17 @@ expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
 	}
       bctx->step_prologue[j] = false;
       bctx->step_exec_prologue[j] = false;
+    }
+  for (j = mark->n_cells; j < bctx->n_cells; j++)
+    {
+      /* a cell that read a filter slot was counted with it (expr_compile_node_arith ()): the count goes with the
+       * cell, or the image claims more shared cells than it carries and its reader refuses it (CBRD-27994), and the
+       * flag goes too, or the next cell built at this index passes for a computed one */
+      if (bctx->cell_shared[j])
+	{
+	  bctx->cell_shared[j] = false;
+	  bctx->n_shared--;
+	}
     }
   bctx->n_steps = mark->n_steps;
   bctx->n_cells = mark->n_cells;
@@ -4330,8 +4343,8 @@ int
 expr_pred_or_raw_leaves (const void *or_src, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap, int *n_disj,
 			 int disj_cap)
 {
-  const PRED_EXPR *disj[16];
-  const PRED_EXPR *terms[32];
+  const PRED_EXPR *disj[PRED_OR_RAW_MAX_DISJUNCTS];
+  const PRED_EXPR *terms[PRED_OR_RAW_MAX_LEAVES];
   int nd, d, i, nt, n = 0;
 
   if (or_src == NULL || ((const PRED_EXPR *) or_src)->type != T_PRED
@@ -5316,6 +5329,11 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
        * interpreter raises it */
       return -1;
     }
+  if (REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_LIMIT_SUM))
+    {
+      /* the offset + count of a LIMIT rewrite gives the maximum on an overflow, which only the interpreter does */
+      return -1;
+    }
   if (expr_arith_side_effect (regu->value.arithptr->opcode))
     {
       bctx->side_effect = true;
@@ -5961,12 +5979,14 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * the mirror kept for a plan that names a
 	 * narrower type than the node's domain, not a path a statement reaches today.  A domain
 	 * that is not a number is declined: the arithmetic kernels' slots never own heap memory
-	 * (they skip the per-row clear), which a coercion into a string domain would break. */
+	 * (they skip the per-row clear), which a coercion into a string domain would break.  A node
+	 * without a converter (its value needs none) is declined too: the epilogue only converts. */
 	const DB_TYPE ktype = plan->type;
 	const bool coerce_result = (ktype == DB_TYPE_NUMERIC || ktype != rtype);
 	TP_DOMAIN *const result_domain = coerce_result ? exec_domain : NULL;
 
-	if (coerce_result && !TP_IS_NUMERIC_TYPE (rtype))
+	if (coerce_result && (!TP_IS_NUMERIC_TYPE (rtype)
+			      || tp_value_find_converter (ktype, exec_domain, DOMAIN_CONVERT_IMPLICIT) == NULL))
 	  {
 	    return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	  }
@@ -6594,11 +6614,22 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, EXP
 
   expr_prog_materialize (prog, bctx->share_pred);
 #if !defined (NDEBUG)
-  for (i = 0; i < prog->n_cells; i++)
-    {
-      /* bound from the recorded source: the address the compiler wired */
-      assert (prog->cell_src[i] == EXPR_CSRC_STEP || prog->cells[i] == bctx->cells[i]);
-    }
+  {
+    int n_share_cells = 0;
+
+    for (i = 0; i < prog->n_cells; i++)
+      {
+	/* bound from the recorded source: the address the compiler wired */
+	assert (prog->cell_src[i] == EXPR_CSRC_STEP || prog->cells[i] == bctx->cells[i]);
+	if (prog->cell_src[i] == EXPR_CSRC_SHARE)
+	  {
+	    n_share_cells++;
+	  }
+      }
+    /* the image carries n_shared and its reader bounds it by the cells (expr_image_get_prog ()): one per cell that
+     * reads a filter slot, whatever the build rewound on the way (expr_build_rewind ()) */
+    assert (prog->n_shared == n_share_cells);
+  }
 #endif
 
   /* a predicate tree the caller owns (a compiled scan filter) resolves its cells against the same program */
@@ -8864,7 +8895,10 @@ expr_scan_pred_image_unpack (const char *image, int size, const PRED_EXPR * pr)
     {
       root = expr_image_get_pred (&r, prog != NULL ? prog->n_cells : 0, prog != NULL ? prog->n_steps : 0, 0);
     }
-  n_share = expr_image_get_range (&r, 0, prog != NULL ? prog->n_cells : 0);
+  /* the registry has an entry per shareable node (expr_scan_pred_share_build ()), and two nodes of one expression that
+   * the build gave one cell (CSE: the operand and the WHEN of CASE x WHEN x ...) are two entries of that cell, so the
+   * count may exceed the program's cells; the writer bounds it by the nodes it registers (CBRD-28049) */
+  n_share = expr_image_get_range (&r, 0, prog != NULL ? EXPR_MAX_STEPS : 0);
   if (root != NULL && n_share > 0 && !r.failed)
     {
       root->share = (struct expr_share *) malloc (sizeof (struct expr_share) * n_share);

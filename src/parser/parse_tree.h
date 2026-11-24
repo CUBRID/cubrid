@@ -537,10 +537,14 @@ struct trace_json_t;
         } while (0)
 
 #define PT_IS_DBLINK_DML_QUERY(n) \
-	((n->node_type == PT_INSERT && n->info.insert.spec->info.spec.remote_server_name) \
-        || (n->node_type == PT_DELETE && n->info.delete_.spec->info.spec.remote_server_name) \
-        || (n->node_type == PT_UPDATE && n->info.update.spec->info.spec.remote_server_name) \
-        || (n->node_type == PT_MERGE && n->info.merge.into->info.spec.remote_server_name))
+	((n->node_type == PT_INSERT && n->info.insert.spec != NULL \
+	  && n->info.insert.spec->info.spec.remote_server_name) \
+        || (n->node_type == PT_DELETE && n->info.delete_.spec != NULL \
+	    && n->info.delete_.spec->info.spec.remote_server_name) \
+        || (n->node_type == PT_UPDATE && n->info.update.spec != NULL \
+	    && n->info.update.spec->info.spec.remote_server_name) \
+        || (n->node_type == PT_MERGE && n->info.merge.into != NULL \
+	    && n->info.merge.into->info.spec.remote_server_name))
 
 #define PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION(n) \
 	((n->info.dot.arg1->node_type == PT_NAME) \
@@ -784,6 +788,11 @@ struct trace_json_t;
 /* PT_SPEC node contains a CTE pointer */
 #define PT_SPEC_IS_CTE(spec_) \
   ((spec_)->info.spec.cte_pointer != NULL)
+
+/* the spec is scanned with locks, so its rows are read and re-evaluated from the heap */
+#define PT_SPEC_NEEDS_HEAP_REEVAL(spec) \
+  (((spec)->info.spec.flag & (PT_SPEC_FLAG_UPDATE | PT_SPEC_FLAG_DELETE | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE \
+			      | PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV)) != 0)
 
 /* PT_SPEC node contains an entity spec */
 #define PT_SPEC_IS_ENTITY(spec_) \
@@ -1667,7 +1676,15 @@ typedef enum
   PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
   PT_SPEC_FLAG_NO_PARALLEL_SCAN = 0x8000,	/* spec for not for parallel scan */
   PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
-  PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000	/* this spec was originally a subquery but was resolved to a table during dummy SELECT removal; invisible columns should be excluded from this spec */
+  PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000,	/* this spec was originally a subquery but was resolved to a table
+					 * during dummy SELECT removal; invisible columns should be excluded from this spec */
+  PT_SPEC_FLAG_DBLINK_DML_SRC = 0x40000,	/* the remote source spec of a DML statement, and the derived table
+						 * generated around it (pt_check_sub_query_spec ()). That derived table is not a scope the statement
+						 * asked for, so it must not hide the remote invisible columns the statement references - unlike
+						 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
+  PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED = 0x80000	/* a DML target left to the force-phase reevaluation; locked
+							 * at select as FOR UPDATE where the executor does not
+							 * reevaluate */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -1699,6 +1716,7 @@ typedef struct parser_varchar PARSER_VARCHAR;
 typedef struct parser_context PARSER_CONTEXT;
 typedef struct pt_static_sql_edit PT_STATIC_SQL_EDIT;
 typedef struct pt_static_sql_star PT_STATIC_SQL_STAR;
+typedef struct pt_static_sql_host_var PT_STATIC_SQL_HOST_VAR;
 
 typedef struct parser_node PT_NODE;
 
@@ -2016,6 +2034,16 @@ typedef enum
   PT_ATTR_INVISIBLE
 } PT_ATTR_INVISIBLE_SETTING;
 
+typedef enum
+{
+  PT_ATTR_STORAGE_UNSET,	/* clause omitted: preserve existing setting on MODIFY/CHANGE */
+  PT_ATTR_STORAGE_DEFAULT,
+  PT_ATTR_STORAGE_PREFER_OUTLINE,
+  PT_ATTR_STORAGE_PREFER_INLINE,	/* STORAGE PREFER_INLINE: lower OOS demotion priority */
+  PT_ATTR_STORAGE_FORCE_OUTLINE,	/* STORAGE FORCE_OUTLINE: bypass record gate for values larger than OOS stub */
+  PT_ATTR_STORAGE_FORCE_INLINE
+} PT_ATTR_STORAGE_SETTING;
+
 /* Info for ATTR_DEF */
 struct pt_attr_def_info
 {
@@ -2029,6 +2057,7 @@ struct pt_attr_def_info
   int size_constraint;		/* max length of STRING */
   short constrain_not_null;
   PT_ATTR_INVISIBLE_SETTING attr_invisible:2;	/* unchange | VISIBLE | INVISIBLE */
+  PT_ATTR_STORAGE_SETTING attr_storage:3;
 };
 
 /* Info for ALTER TABLE ADD COLUMN [FIRST | AFTER column_name ] */
@@ -2423,7 +2452,9 @@ struct pt_expr_info
 
 #define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the expression resulted from a GROUP BY ... LIMIT
 						 * statement */
-#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_auto_parameterize() */
+#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_auto_parameterize(). set on the
+						 * copy qo_reduce_equality_terms() adds for a derived constant column,
+						 * which is not copied again */
 #define PT_EXPR_INFO_CAST_WRAP 	131072	/* 0x20000, CAST is wrapped by compiling */
 #define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
 #define PT_EXPR_INFO_SP_NUMERIC 524288	/* 0x80000, CAST as NUMERIC for SP */
@@ -2444,7 +2475,17 @@ struct pt_expr_info
 							 * than a column-vs-constant compare; kept only when an index
 							 * adopts it */
 #define PT_EXPR_INFO_ANTI_JOIN_ON 67108864	/* 0x4000000, term in an ANTI JOIN ON condition */
+#define PT_EXPR_INFO_OR_EXTRACTED 134217728	/* 0x8000000, an OR factor qo_extract_or_restrictions () has
+						 * derived restrictions from; not a source again */
+#define PT_EXPR_INFO_OR_DERIVED_COLUMN 268435456	/* 0x10000000, an OR-derived key range on one column;
+							 * paired with its origin on its own node */
+#define PT_EXPR_INFO_LIMIT_SUM 536870912	/* 0x20000000, the offset + count a LIMIT rewrite builds: an overflow gives
+						 * the BIGINT maximum (REGU_VARIABLE_LIMIT_SUM) */
   int flag;			/* flags */
+/* the largest OR factor pt_cnf_where () keeps whole and qo_extract_or_restrictions () derives from */
+#define PT_CNF_KEEP_MAX_DISJUNCTS 8
+#define PT_CNF_KEEP_MAX_CONJUNCTS 16
+
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
 #define PT_EXPR_INFO_CLEAR_FLAG(e, f)   (e)->info.expr.flag &= (int) ~(f)
@@ -2800,11 +2841,16 @@ struct pt_name_info
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 #define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
 #define PT_NAME_INFO_SERVER_SPECIFIED 16384	/* server name is specified for dblink */
+#define PT_NAME_INFO_FUNC_INDEX_RESULT 32768	/* pseudo attribute for a function index result read from the key */
+#define PT_NAME_INFO_IN_GROUP_HAVING 65536	/* name in group by/having/order by. it may be an alias of the select list */
+#define PT_NAME_INFO_DEFERRED_FOR_STATIC_SQL 131072	/* name in group by/having/order by of a static SQL, not resolved
+							 * by name binding. it is resolved as an alias or converted to
+							 * a host variable after the alias resolution */
 
-  short flag;
-#define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
-#define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (short) (f)
-#define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (short) ~(f)
+  int flag;
+#define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (int) (f))
+#define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (int) (f)
+#define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (int) ~(f)
   short location;		/* 0: WHERE; n: join condition of n-th FROM */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
   PT_NODE *indx_key_limit;	/* key limits for index name */
@@ -2969,6 +3015,9 @@ struct pt_select_info
 #define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
 #define PT_SELECT_INFO_MINMAX_NULL_FILTERED 0x020000	/* a "col IS NOT NULL" term was added so the index-based
 							 * MIN/MAX scan may skip NULL keys (CBRD-24890) */
+#define PT_SELECT_INFO_LENIENT_JOIN_HINT  0x040000	/* retry of an optimization that failed with the join method
+							 * hints: ignore one that cannot be applied to a join for
+							 * that join only (CBRD-28089) */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
@@ -3004,12 +3053,21 @@ struct pt_query_info
     unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
     unsigned has_system_class:1;	/* do not cache the query result */
     unsigned subquery_cached:1;	/* subquery is cached */
+    unsigned group_having_alias_resolved:1;	/* aliases in group by/having/order by of the query and its subqueries
+						 * are resolved, and for a static SQL, the deferred names are converted
+						 * to host variables (see pt_resolve_group_having_alias_and_deferred_name ()) */
     unsigned uncorr_hoisted:1;	/* correlation_level was 0 (uncorrelated) until pt_uncorr_post ()
 				 * hoisted this subquery into an enclosing aptr list, overwriting
 				 * the level. Lets a plan regeneration from the same tree (see
 				 * do_replan_statement_with_bind_peek ()) restore the level to 0
 				 * first, so the subquery keeps its XASL_ZERO_CORR_LEVEL
 				 * (uncorrelated, parallel-executable) marking. */
+    unsigned stays_query:1;	/* a set operation of a statement typed again with its bound values
+				 * (db_execute_and_keep_statement_local ()): it folds into an empty operand,
+				 * never into a value (pt_check_union_is_foldable ()) */
+    unsigned folded_distinct:1;	/* a SELECT DISTINCT from a derived table of the operand a set operation
+				 * without ALL folded to (pt_fold_union_as_derived ()): where only the set of
+				 * its rows counts, the operand takes its place (pt_fold_union_unwrap ()) */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
@@ -3096,6 +3154,7 @@ struct pt_trigger_action_info
 {
   PT_NODE *expression;		/* parse tree for expression */
   PT_NODE *string;		/* PT_PRINT string */
+  PT_NODE *plcsql_block;	/* PT_PLCSQL_BLOCK text */
   PT_MISC_TYPE action_type;	/* REJECT, INVALIDATE_XACTION, etc. */
 };
 
@@ -3453,6 +3512,8 @@ struct pt_execute_info
   int do_cache;			/* query uses result cache */
   int column_count;		/* select list column count */
   int oids_included;		/* OIDs included in select list */
+  int is_click_counter;		/* INCR/DECR (click counter) */
+  int is_method_on_target;	/* method call with a target (ON or the first argument) */
 };
 
 struct pt_stored_proc_param_info
@@ -3569,6 +3630,17 @@ typedef struct pt_dblink_info
   char *remote_table_name;
   PT_NODE *sel_list;
   PT_NODE *owner_list;
+
+  /* a referenced name could not be pinned to this table (pt_get_column_name_pre ()), so the
+   * column list is described instead of prepared.  A prediction only: without it, a name the
+   * "SELECT *" prepare does not cover is described anyway (uncertain_name_seen). */
+  bool needs_describe;
+
+  /* a gathered name may not be this table's (pt_get_column_name_pre ()): an unqualified one,
+   * or one qualified with this table's name inside a nested block.  Without one every name is
+   * this table's, so a refused prepare is the answer and nothing is described.  With one, a
+   * name outside "SELECT *" is described: a remote accepting it proves nothing (Oracle's UID). */
+  bool uncertain_name_seen;
 
   void *remote_col_list;	/* remote table's column list */
 
@@ -3851,6 +3923,7 @@ struct parser_node
   int line_number;		/* the user line number originating this */
   int column_number;		/* the user column number originating this */
   int buffer_pos;		/* position in the parse buffer of the string originating this */
+  int stmt_start_line;		/* the user line number where the statement starts (top-level statements only) */
   char *sql_user_text;		/* user input sql string */
   int sql_user_text_len;	/* user input sql string length (one statement) */
 
@@ -3881,6 +3954,9 @@ struct parser_node
     unsigned use_plan_cache:1;	/* used for plan cache */
     unsigned use_query_cache:1;
     unsigned is_hidden_column:1;
+    unsigned is_remote_invisible_column:1;	/* a DBLink derived spec's as_attr_list name whose remote schema
+						 * marks it INVISIBLE: it keeps its tuple slot, but stars and
+						 * NATURAL JOIN skip it while explicit references still resolve */
     unsigned is_paren:1;
     unsigned with_rollup:1;	/* WITH ROLLUP clause for GROUP BY */
     unsigned force_auto_parameterize:1;	/* forces a call to qo_auto_parameterize (); this is a special flag used for
@@ -3911,6 +3987,10 @@ struct parser_node
 					 * Set in do_prepare_select () -- the driver-neutral prepare path --
 					 * because the SQL-level PREPARE/EXECUTE consumer of that header flag
 					 * is not reached by CCI/JDBC prepared statements. */
+    unsigned has_sp_call:1;	/* the semantic check found a stored procedure call in this query, and the root of a
+				 * view cache or a statement also gets it from a view under it or from the
+				 * statement it is made from, which mq_mark_sp_call () and the stored procedure
+				 * checks read */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
@@ -3989,6 +4069,13 @@ typedef enum
   PT_SS_INSERT_COLUMNS,		/* INSERT without a column list; pos is the end of the class name */
   PT_SS_MERGE_INSERT_COLUMNS	/* INSERT of MERGE without a column list; pos is not used */
 } PT_STATIC_SQL_STAR_KIND;
+
+/* a PL/CSQL variable of a static SQL statement replaced with a host variable (see pt_parameterize_for_static_sql ()) */
+struct pt_static_sql_host_var
+{
+  int end;			/* end of the name or the path expression in the original text, -1 if unknown */
+  const char *label;		/* the name or the path expression, NULL if unknown */
+};
 
 struct pt_static_sql_star
 {
@@ -4121,7 +4208,7 @@ struct parser_context
   PT_STATIC_SQL_EDIT *static_sql_edits;
   int static_sql_edit_count;
   int static_sql_edit_status;	/* 0: not collected, 1: collected, -1: can not be expressed as text edits */
-  int *static_sql_host_var_end;	/* end in the text of each PL/CSQL variable replaced with a host variable */
+  PT_STATIC_SQL_HOST_VAR *static_sql_host_vars;	/* each PL/CSQL variable replaced with a host variable */
   PT_STATIC_SQL_STAR *static_sql_stars;	/* column lists implied in the text */
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
@@ -4189,6 +4276,14 @@ struct parser_context
 					 * the values' format classes and ELT indexes */
     unsigned needs_bound_hostvar:1;	/* set to 1 when the compile failed because a host variable has no value yet
 					 * (UPDATE OBJECT ?, m () ON ?, TABLE (?)); see db_statement_needs_bound_values () */
+    unsigned view_has_sp_call:1;	/* the current mq_translate () expanded a view that calls a stored procedure,
+					 * and mq_translate () sets has_sp_call and cannot_prepare on the statement at
+					 * its end; while a view cache is built, has_sp_call on the view's root */
+    unsigned regu_has_sp_call:1;	/* a stored procedure regu variable was generated since
+					 * db_compile_statement_local () cleared it, so pt_add_read_class_oids () adds
+					 * the classes the statement reads to its XASL header. A parser compiled
+					 * elsewhere, such as that of a trigger action, keeps it, which only adds
+					 * classes to an XASL that pushes no frame */
   } flag;
 };
 

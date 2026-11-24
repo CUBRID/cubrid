@@ -142,6 +142,7 @@ extern void sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int ri
 extern void sqmgr_bind_variant (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_drop_query_clones (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sqmgr_get_xasl_stmt_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -249,7 +250,16 @@ extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 extern void ssession_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session);
-extern void ssession_destroy_load_session (THREAD_ENTRY * thread_p, void *session);
+extern void ssession_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session, int client_id);
+
+/* shared byte-stream transport, both directions (COPY, internal-LOB, ...) */
+extern void sstream_from_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_send_data (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_end (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_read_open (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_release (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 extern void slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -263,6 +273,8 @@ extern void scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 extern void scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_auth_challenge (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_auth_response (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sau_challenge (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sau_response (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 /* flashback */
 extern void sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

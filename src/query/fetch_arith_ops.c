@@ -122,11 +122,13 @@ fetch_arith_compare (THREAD_ENTRY * thread_p, const ARITH_TYPE * arithptr, int k
  */
 static int
 fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_descr * vd, DB_VALUE * peek_left,
-			 DB_VALUE * peek_right, bool least)
+			 DB_VALUE * peek_right, bool least, int *picked)
 {
   bool can_compare = true;
   const DB_VALUE_COMPARE_RESULT cmp_result =
     fetch_arith_compare (thread_p, arithptr, 0, vd, peek_left, peek_right, &can_compare);
+  /* the operand db_least_or_greatest_by copies: the left on a tie, the right for a NULL result */
+  *picked = cmp_result == DB_EQ ? 0 : cmp_result == DB_GT ? (least ? 1 : 0) : cmp_result == DB_LT ? (least ? 0 : 1) : 1;
   return db_least_or_greatest_by (peek_left, peek_right, cmp_result, can_compare, arithptr->value, least);
 }
 
@@ -365,6 +367,68 @@ error_exit:
   return error_status;
 }
 
+/*
+ * fetch_int_as_bigint () - an integer value widened to BIGINT
+ *   return: true for SHORT, INTEGER and BIGINT, false for any other type
+ *   value(in):
+ *   result(out):
+ */
+static bool
+fetch_int_as_bigint (const DB_VALUE * value, DB_BIGINT * result)
+{
+  switch (DB_VALUE_TYPE (value))
+    {
+    case DB_TYPE_SHORT:
+      *result = db_get_short (value);
+      return true;
+    case DB_TYPE_INTEGER:
+      *result = db_get_int (value);
+      return true;
+    case DB_TYPE_BIGINT:
+      *result = db_get_bigint (value);
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * fetch_limit_sum_ovf () - the BIGINT maximum, or minimum for a negative sum, for the offset + count of a LIMIT
+ *                          rewrite whose integers overflow
+ *   return: true when the sum overflows and holds the bound, false to leave the sum to its operator
+ *   a(in/out): the T_ADD flagged REGU_VARIABLE_LIMIT_SUM
+ *
+ * Note: Checked before the operator adds, so that the overflow raises no error. Only integers are checked: the sum of
+ *       integers is BIGINT, NUMERIC does not overflow and DOUBLE only beyond any number of rows.
+ */
+static bool
+fetch_limit_sum_ovf (FETCH_ARITH_ARGS * a)
+{
+  DB_BIGINT left, right, sum;
+
+  if (a->peek_left == NULL || a->peek_right == NULL || DB_IS_NULL (a->peek_left) || DB_IS_NULL (a->peek_right)
+      || !fetch_int_as_bigint (a->peek_left, &left) || !fetch_int_as_bigint (a->peek_right, &right))
+    {
+      return false;
+    }
+
+  if (!__builtin_add_overflow (left, right, &sum))
+    {
+      return false;
+    }
+
+  if (a->domain != NULL && TP_DOMAIN_TYPE (a->domain) != DB_TYPE_BIGINT
+      && TP_DOMAIN_TYPE (a->domain) != DB_TYPE_VARIABLE)
+    {
+      return false;
+    }
+
+  /* operands of one sign only overflow, so the left one's sign is the sum's */
+  pr_clear_value (a->arithptr->value);
+  db_make_bigint (a->arithptr->value, (left < 0) ? DB_BIGINT_MIN : DB_BIGINT_MAX);
+  return true;
+}
+
 /* ---- the operators: the arms of the former compute switch, one function per arm group ---- */
 
 /* T_ADD */
@@ -378,6 +442,11 @@ fetch_op_add (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN *domain = a->domain;
 
   bool check_empty_string;
+
+  if (REGU_VARIABLE_IS_FLAGED (a->regu_var, REGU_VARIABLE_LIMIT_SUM) && fetch_limit_sum_ovf (a))
+    {
+      return NO_ERROR;
+    }
 
   check_empty_string = (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) ? true : false);
 
@@ -4134,16 +4203,16 @@ fetch_op_least (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN_STATUS dom_status;
 
   int error;
+  int picked;
 
-  error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, true);
+  error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, true, &picked);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  /* the operand picked: the left's converter for a value of the left's type */
-  dom_status = fetch_cast_operand (arithptr, DB_VALUE_DOMAIN_TYPE (arithptr->value) == arithptr->conv_type[0] ? 0 : 1,
-				   arithptr->value, arithptr->value, domain, false);
+  /* the picked operand's converter */
+  dom_status = fetch_cast_operand (arithptr, picked, arithptr->value, arithptr->value, domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, domain);
@@ -4166,16 +4235,16 @@ fetch_op_greatest (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN_STATUS dom_status;
 
   int error;
+  int picked;
 
-  error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, false);
+  error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, false, &picked);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  /* the operand picked: the left's converter for a value of the left's type */
-  dom_status = fetch_cast_operand (arithptr, DB_VALUE_DOMAIN_TYPE (arithptr->value) == arithptr->conv_type[0] ? 0 : 1,
-				   arithptr->value, arithptr->value, domain, false);
+  /* the picked operand's converter */
+  dom_status = fetch_cast_operand (arithptr, picked, arithptr->value, arithptr->value, domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, domain);

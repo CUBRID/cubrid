@@ -707,34 +707,10 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
 	      *continue_walk = PT_LIST_WALK;	/* don't dive into */
 	      break;
 	    case PT_CAST:
-	      if (PT_HAS_COLLATION (name->type_enum) && tree_or_name->info.expr.op == PT_CAST
-		  && PT_HAS_COLLATION (tree_or_name->type_enum)
-		  && pt_name_equal (parser, name, tree_or_name->info.expr.arg1))
+	      if (pt_reduce_eq_keeps_cast (parser, tree->type_enum, name, tree_or_name))
 		{
-		  int cast_coll = LANG_SYS_COLLATION;
-		  int name_coll = LANG_SYS_COLLATION;
-
-		  name_coll = PT_GET_COLLATION_MODIFIER (name);
-
-		  if (!PT_HAS_COLLATION_MODIFIER (name) && name->data_type != NULL)
-		    {
-		      name_coll = name->data_type->info.data_type.collation_id;
-		    }
-
-		  if (PT_EXPR_INFO_IS_FLAGED (tree_or_name, PT_EXPR_INFO_CAST_COLL_MODIFIER))
-		    {
-		      cast_coll = PT_GET_COLLATION_MODIFIER (tree_or_name);
-		    }
-		  else if (tree_or_name->data_type != NULL)
-		    {
-		      cast_coll = tree_or_name->data_type->info.data_type.collation_id;
-		    }
-
-		  if (cast_coll != name_coll)
-		    {
-		      /* predicate evaluates with different collation */
-		      *continue_walk = PT_LIST_WALK;	/* don't dive into */
-		    }
+		  /* predicate evaluates with different collation */
+		  *continue_walk = PT_LIST_WALK;	/* don't dive into */
 		}
 	    default:
 	      break;
@@ -746,6 +722,52 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
     }
 
   return tree_or_name;
+}
+
+/*
+ * pt_reduce_eq_keeps_cast () - whether the reduce-equality substitution (pt_lambda_with_arg, type 1) of name by a
+ *				tree of tree_type leaves cast as it is: a cast of name to another collation
+ *   return: true if the substitution does not dive into cast
+ *   parser(in):
+ *   tree_type(in): type of the tree that replaces name
+ *   name(in):
+ *   cast(in):
+ */
+bool
+pt_reduce_eq_keeps_cast (PARSER_CONTEXT * parser, PT_TYPE_ENUM tree_type, PT_NODE * name, PT_NODE * cast)
+{
+  int cast_coll = LANG_SYS_COLLATION;
+  int name_coll = LANG_SYS_COLLATION;
+
+  if (tree_type != PT_TYPE_VARCHAR && tree_type != PT_TYPE_VARBIT)
+    {
+      return false;
+    }
+
+  if (cast == NULL || cast->node_type != PT_EXPR || cast->info.expr.op != PT_CAST
+      || !PT_HAS_COLLATION (name->type_enum) || !PT_HAS_COLLATION (cast->type_enum)
+      || !pt_name_equal (parser, name, cast->info.expr.arg1))
+    {
+      return false;
+    }
+
+  name_coll = PT_GET_COLLATION_MODIFIER (name);
+
+  if (!PT_HAS_COLLATION_MODIFIER (name) && name->data_type != NULL)
+    {
+      name_coll = name->data_type->info.data_type.collation_id;
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (cast, PT_EXPR_INFO_CAST_COLL_MODIFIER))
+    {
+      cast_coll = PT_GET_COLLATION_MODIFIER (cast);
+    }
+  else if (cast->data_type != NULL)
+    {
+      cast_coll = cast->data_type->info.data_type.collation_id;
+    }
+
+  return cast_coll != name_coll;
 }
 
 /*
@@ -2549,6 +2571,7 @@ parser_reinit_node (PT_NODE * node)
       int sql_user_text_len = node->sql_user_text_len;
       int line_number = node->line_number;
       int column_number = node->column_number;
+      int stmt_start_line = node->stmt_start_line;
       CACHE_TIME cache_time = node->cache_time;
 
       memset (node, 0x00, sizeof (PT_NODE));
@@ -2562,6 +2585,7 @@ parser_reinit_node (PT_NODE * node)
       node->sql_user_text_len = sql_user_text_len;
       node->line_number = line_number;
       node->column_number = column_number;
+      node->stmt_start_line = stmt_start_line;
       node->cache_time = cache_time;
 
       if (pt_init_f[node->node_type])
@@ -7263,6 +7287,19 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " invisible ");
     }
 
+  if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage prefer_inline ");
+    }
+  else if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage force_outline ");
+    }
+  else if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_INLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage force_inline ");
+    }
+
   if (p->info.attr_def.data_default)
     {
       r1 = pt_print_bytes (parser, p->info.attr_def.data_default);
@@ -9274,9 +9311,9 @@ pt_init_delete (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r1, *r2;
+  PARSER_VARCHAR *q = 0, *r1, *r2, *target;
 
-  r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
+  target = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
 
   if (p->info.delete_.with != NULL)
@@ -9466,7 +9503,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 
       q = pt_append_nulstring (parser, q, " */");
     }
-  if (r1)
+  if (target)
     {
       /* DELETE without target FROM ... for dblink's other DBMS */
       if (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK)
@@ -9474,13 +9511,13 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.delete_.spec->next)
 	    {
 	      q = pt_append_nulstring (parser, q, " ");
-	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_varchar (parser, q, target);
 	    }
 	}
       else
 	{
 	  q = pt_append_nulstring (parser, q, " ");
-	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_varchar (parser, q, target);
 	}
     }
   q = pt_append_nulstring (parser, q, " from ");
@@ -9522,6 +9559,7 @@ pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.query.into_list, arg);
   PT_APPLY_WALK (parser, p->info.query.order_by, arg);
   PT_APPLY_WALK (parser, p->info.query.orderby_for, arg);
+  PT_APPLY_WALK (parser, p->info.query.limit, arg);
   return p;
 }
 
@@ -12242,7 +12280,11 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	      r2 = r1 = pt_print_bytes (parser, arg3);
 	    }
 	  r3 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r4 = (p->info.expr.arg2->type_enum == PT_TYPE_NULL) ? NULL : pt_print_bytes (parser, p->info.expr.arg2);
+	  /* the ELSE is NULL when name resolution failed for it (a dotted name or a function that does not exist, a
+	   * subquery that failed to bind), and the error is reported with the statement printed (CBRD-28028). The
+	   * searched CASE and DECODE check it the same way */
+	  r4 = ((p->info.expr.arg2 == NULL || p->info.expr.arg2->type_enum == PT_TYPE_NULL)
+		? NULL : pt_print_bytes (parser, p->info.expr.arg2));
 
 	  if (!p->info.expr.continued_case)
 	    {
@@ -13235,6 +13277,11 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
       q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
       q = pt_append_nulstring (parser, q, "(");
+      /* the printed text is the XASL cache key and the stored view definition */
+      if (code == PT_MEDIAN && p->info.function.all_or_distinct == PT_DISTINCT)
+	{
+	  q = pt_append_nulstring (parser, q, "distinct ");
+	}
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
     }
@@ -14066,6 +14113,7 @@ pt_apply_intersection (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.query.into_list, arg);
   PT_APPLY_WALK (parser, p->info.query.order_by, arg);
   PT_APPLY_WALK (parser, p->info.query.orderby_for, arg);
+  PT_APPLY_WALK (parser, p->info.query.limit, arg);
   return p;
 }
 
@@ -16345,6 +16393,7 @@ pt_apply_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.trigger_action.expression, arg);
   PT_APPLY_WALK (parser, p->info.trigger_action.string, arg);
+  PT_APPLY_WALK (parser, p->info.trigger_action.plcsql_block, arg);
   return p;
 }
 
@@ -16374,6 +16423,13 @@ pt_print_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_EXPRESSION:
       r1 = pt_print_bytes (parser, p->info.trigger_action.expression);
       b = pt_append_varchar (parser, b, r1);
+      break;
+    case PT_PLCSQL_BLOCK:
+      /* the block as the user wrote it, without quotes */
+      if (p->info.trigger_action.plcsql_block != NULL)
+	{
+	  b = pt_append_varchar (parser, b, p->info.trigger_action.plcsql_block->info.value.data_value.str);
+	}
       break;
     default:
       break;

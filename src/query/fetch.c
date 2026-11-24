@@ -644,8 +644,7 @@ fetch_arith_node_domains (val_descr * vd, FETCH_ARITH_ARGS * a)
 }
 
 /*
- * fetch_arith_node_resolve () - the node's result slot cleared before its operator runs; a node whose compiled domain
- *   is variable computes without one
+ * fetch_arith_node_resolve () - the node's result slot cleared before its operator runs
  *   return: NO_ERROR
  *
  * The interpreter (fetch_peek_arith) and a program's generic step share this protocol around an operator: the operand
@@ -659,15 +658,6 @@ fetch_arith_node_resolve (val_descr * vd, FETCH_ARITH_ARGS * a)
   /* clear any previous result */
   pr_clear_value (arithptr->value);
   assert (a->domain == NULL || TP_DOMAIN_TYPE (a->domain) != DB_TYPE_VARIABLE);
-  if (a->domain != NULL && TP_DOMAIN_TYPE (a->domain) == DB_TYPE_VARIABLE)
-    {
-      /* exception to deciding before the rows: the operands leave their types to the data, so the operator computes
-       * without a domain and its values give the result's (a cast into a fixed target keeps the target) */
-      const bool cast = arithptr->opcode == T_CAST || arithptr->opcode == T_CAST_WRAP
-	|| arithptr->opcode == T_CAST_NOFAIL;
-      a->domain = cast && arithptr->domain != NULL && TP_DOMAIN_TYPE (arithptr->domain) != DB_TYPE_VARIABLE
-	? arithptr->domain : NULL;
-    }
   return NO_ERROR;
 }
 
@@ -1069,10 +1059,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
 	      && (arithptr->opcode == T_STRCAT || arithptr->opcode == T_ADD))
 	    {
-	      /* check for result type: a variable domain reads the values' domains */
-	      const TP_DOMAIN *result_domain = domain;
-	      if (TP_DOMAIN_TYPE (result_domain) == DB_TYPE_VARIABLE
-		  || QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (result_domain)))
+	      /* check for result type; CBRD-27583: XASL generation fixes the node's domain */
+	      assert (TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE);
+	      if (QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)))
 		{
 		  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) !=
 		      NO_ERROR)
@@ -1565,6 +1554,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      }
 	    goto error;
 	  }
+
+	/* an operator such as ABS returns its fixed operand without conversion */
+	numeric_db_value_to_float_domain (arithptr->value, args.domain);
       }
   }
 
@@ -1768,11 +1760,6 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       {
 	TP_DOMAIN *column_domain = regu_var->value.pos_descr.dom;
 	assert (TP_DOMAIN_TYPE (column_domain) != DB_TYPE_VARIABLE);
-	if (TP_DOMAIN_TYPE (column_domain) == DB_TYPE_VARIABLE)
-	  {
-	    /* exception to deciding before the rows: a position its producer leaves untyped reads the list's column */
-	    column_domain = tplrec->type_list->domp[regu_var->value.pos_descr.pos_no];
-	  }
 	if (column_domain->type == NULL)
 	  {
 	    goto exit_on_error;
@@ -2283,11 +2270,9 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * 
       assert (pos_descr->pos_no >= prev_pos);
       prev_pos = pos_descr->pos_no;
 #endif
-      /* the position's domain; one its producer leaves untyped reads the list's column (an exception to deciding
-       * before the rows) */
+      /* the position's domain */
       assert (TP_DOMAIN_TYPE (pos_descr->dom) != DB_TYPE_VARIABLE);
-      const TP_DOMAIN *column_domain = TP_DOMAIN_TYPE (pos_descr->dom) != DB_TYPE_VARIABLE ? pos_descr->dom
-	: tplrec->type_list->domp[pos_descr->pos_no];
+      const TP_DOMAIN *column_domain = pos_descr->dom;
       if (column_domain->type == NULL)
 	{
 	  return ER_FAILED;
@@ -2337,38 +2322,15 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
  */
 
 /*
- * key_limit_coerce () - CBRD-27583: convert a key limit value by its regu's compiled type
- *   return: the conversion's status
- *   regu_var(in): the regu the value was fetched from
- *   value(in): the fetched value, of the regu's type (a bind type signature's plan)
- *   dest(out): the converted value
- *   target(in): BIGINT, or DOUBLE for an overflowed bound's sign
- *   conv(in): the converter the unpack found (KEY_INFO key_limit_l_conv, key_limit_u_conv), NULL for none
- *
- * Note: a bound that does not fit BIGINT or is NULL falls back to key_limit_eval (), whose operands and the DOUBLE
- *       sign have no unpack converter: those are found by the compiled type at scan open, never by the value.
- */
-static TP_DOMAIN_STATUS
-key_limit_coerce (const REGU_VARIABLE * regu_var, const DB_VALUE * value, DB_VALUE * dest, const TP_DOMAIN * target,
-		  TP_VALUE_CONVERTER conv)
-{
-  const DB_TYPE planned = TP_DOMAIN_TYPE (regu_var->domain);
-  assert (DB_VALUE_DOMAIN_TYPE (value) == planned
-	  || (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (value)) && TP_IS_CHAR_TYPE (planned)));
-  if (conv == NULL && planned != TP_DOMAIN_TYPE (target))
-    {
-      conv = tp_value_find_converter (planned, target, DOMAIN_CONVERT_IMPLICIT);
-    }
-  return tp_value_coerce_with_converter (value, dest, target, planned, conv);
-}
-
-/*
  * key_limit_eval () - evaluate a key limit expression tree in BIGINT arithmetic
  *
  *   return        : NO_ERROR or error code
  *   thread_p(in)  : thread entry
  *   regu_var(in)  : key limit expression (lower or upper)
  *   vd(in)        : value descriptor
+ *   exclusive(in) : read a leaf as ceil (value) - 1 (rownum < N, rownum >= N), else as floor (value)
+ *   conv(in)      : the converter into BIGINT the unpack found for the key limit, NULL for a node
+ *                   below the top one
  *   result(out)   : evaluated BIGINT, valid when *is_null is false
  *   is_null(out)  : set to true when a NULL takes part in the expression
  *
@@ -2377,18 +2339,23 @@ key_limit_coerce (const REGU_VARIABLE * regu_var, const DB_VALUE * value, DB_VAL
  *       REGU_VARIABLE_KEY_LIMIT_ARITH and they are computed here in BIGINT, so a bound beyond the BIGINT
  *       range never reaches the generic arithmetic. Any other node, including arithmetic written by the
  *       user such as rownum <= ? - ?, is fetched as a whole and only its value is looked at.
+ *
+ *       A leaf is read by tp_value_to_row_bound (). An N - 1 flagged REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE is read
+ *       from N as ceil (N) - 1, not rounded after the subtraction (rownum < 2.4 keeps 2 rows, not 1).
+ *
  *       A negative bound only means "nothing to skip" or "nothing to read", so it becomes -1 whatever its
  *       magnitude. The sign is kept for the KEYLIMIT check and the upper += lower adjustment in
  *       scan_init_index_key_limit (). A positive bound beyond the BIGINT range becomes DB_BIGINT_MAX.
  */
 static int
-key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, DB_BIGINT * result, bool * is_null)
+key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, bool exclusive,
+		TP_VALUE_CONVERTER conv, DB_BIGINT * result, bool * is_null)
 {
   TP_DOMAIN *bigint_domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
   TP_DOMAIN_STATUS dom_status;
   DB_VALUE *peek_val;
-  DB_VALUE coerced_val;
   DB_BIGINT left, right, diff;
+  DB_TYPE planned;
   int error_code;
 
   assert (regu_var != NULL);
@@ -2401,14 +2368,21 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
       switch (arithptr->opcode)
 	{
 	case T_SUB:
+	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE))
+	    {
+	      /* ceil (N) - 1 from N itself. The optimizer builds this node as N - 1 with a constant 1 */
+	      assert (arithptr->rightptr != NULL && arithptr->rightptr->type == TYPE_DBVAL);
+	      return key_limit_eval (thread_p, arithptr->leftptr, vd, true, NULL, result, is_null);
+	    }
+	  [[fallthrough]];
 	case T_LEAST:
 	case T_GREATEST:
-	  error_code = key_limit_eval (thread_p, arithptr->leftptr, vd, &left, is_null);
+	  error_code = key_limit_eval (thread_p, arithptr->leftptr, vd, false, NULL, &left, is_null);
 	  if (error_code != NO_ERROR || *is_null)
 	    {
 	      return error_code;
 	    }
-	  error_code = key_limit_eval (thread_p, arithptr->rightptr, vd, &right, is_null);
+	  error_code = key_limit_eval (thread_p, arithptr->rightptr, vd, false, NULL, &right, is_null);
 	  if (error_code != NO_ERROR || *is_null)
 	    {
 	      return error_code;
@@ -2451,11 +2425,15 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
       return NO_ERROR;
     }
 
-  db_make_null (&coerced_val);
-  dom_status = key_limit_coerce (regu_var, peek_val, &coerced_val, bigint_domain, NULL);
+  /* a node below the top one has no converter from the unpack */
+  planned = regu_var->domain != NULL ? TP_DOMAIN_TYPE (regu_var->domain) : DB_TYPE_NULL;
+  if (conv == NULL && planned != DB_TYPE_BIGINT && planned != DB_TYPE_VARIABLE && planned != DB_TYPE_NULL)
+    {
+      conv = tp_value_find_converter (planned, bigint_domain, DOMAIN_CONVERT_IMPLICIT);
+    }
+  dom_status = tp_value_to_row_bound (peek_val, exclusive, planned, conv, result);
   if (dom_status == DOMAIN_COMPATIBLE)
     {
-      *result = db_get_bigint (&coerced_val);
       if (*result < 0)
 	{
 	  /* a negative bound skips or reads nothing whatever its magnitude, so keep only the sign
@@ -2464,18 +2442,11 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
 	}
       return NO_ERROR;
     }
-
   if (dom_status == DOMAIN_OVERFLOW)
     {
-      /* beyond the BIGINT range: only the sign matters, whatever the type (NUMERIC, DOUBLE, string)
-       * ex) rownum < 1e46: upper DB_BIGINT_MAX - 1, all rows.  rownum < -1e46: upper -1 - 1, no rows */
-      db_make_null (&coerced_val);
-      if (key_limit_coerce (regu_var, peek_val, &coerced_val, tp_domain_resolve_default (DB_TYPE_DOUBLE), NULL)
-	  == DOMAIN_COMPATIBLE)
-	{
-	  *result = (db_get_double (&coerced_val) < 0) ? -1 : DB_BIGINT_MAX;
-	  return NO_ERROR;
-	}
+      /* an overflow that is neither above nor below 0 is NaN: no number of rows, so it keeps no row as NULL does */
+      *is_null = true;
+      return NO_ERROR;
     }
 
   (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_val, bigint_domain);
@@ -2483,41 +2454,7 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
 }
 
 /*
- * key_limit_fetch_bigint () - fetch a key limit expression as a whole and coerce it to BIGINT
- *   return      : true on success; false when the fetch fails, the value does not fit in BIGINT or is NULL.
- *                 No error is set here for the last two cases
- *   thread_p(in): thread entry
- *   regu_var(in): key limit expression
- *   conv(in)    : its converter into BIGINT, found at unpack
- *   vd(in)      : value descriptor
- *   result(out) : BIGINT value on success
- */
-static bool
-key_limit_fetch_bigint (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, TP_VALUE_CONVERTER conv, VAL_DESCR * vd,
-			DB_BIGINT * result)
-{
-  DB_VALUE *peek_val;
-  DB_VALUE coerced_val;
-
-  if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, NULL, NULL, &peek_val) != NO_ERROR)
-    {
-      return false;
-    }
-
-  db_make_null (&coerced_val);
-  if (DB_IS_NULL (peek_val)
-      || key_limit_coerce (regu_var, peek_val, &coerced_val, &tp_Bigint_domain, conv) != DOMAIN_COMPATIBLE
-      || DB_IS_NULL (&coerced_val) || DB_VALUE_DOMAIN_TYPE (&coerced_val) != DB_TYPE_BIGINT)
-    {
-      return false;
-    }
-
-  *result = db_get_bigint (&coerced_val);
-  return true;
-}
-
-/*
- * fetch_key_limits () - fetch the lower and upper key limits as BIGINT
+ * fetch_key_limits () - fetch the lower and upper key limits as BIGINT (also the sort limit, built the same way)
  *
  *   return          : NO_ERROR or error code
  *   thread_p(in)    : thread entry
@@ -2530,11 +2467,8 @@ key_limit_fetch_bigint (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, TP_VA
  *   upper(out)      : upper limit, set when key_limit_u is not NULL
  *   is_null(out)    : set to true when a NULL takes part in either bound (no row can match)
  *
- * Note: Each bound is first fetched as a whole and coerced to BIGINT, so every in-range query behaves as
- *       before. When either bound fails that way (a value beyond the BIGINT range, or NULL), the error
- *       left by the fetch is cleared and both bounds are evaluated again with key_limit_eval (), which
- *       reports the error if the value is really bad. Both bounds, because the upper bound of a range is
- *       built as upper - lower and the two sides have to see the same lower value.
+ * Note: Both bounds go through key_limit_eval (), which computes the nodes the optimizer built on their operands
+ *       instead of rounding the whole tree once.
  */
 int
 fetch_key_limits (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_limit_l, TP_VALUE_CONVERTER l_conv,
@@ -2550,17 +2484,9 @@ fetch_key_limits (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_limit_l, TP_VALUE
 
   *is_null = false;
 
-  if ((key_limit_l == NULL || key_limit_fetch_bigint (thread_p, key_limit_l, l_conv, vd, lower))
-      && (key_limit_u == NULL || key_limit_fetch_bigint (thread_p, key_limit_u, u_conv, vd, upper)))
-    {
-      return NO_ERROR;
-    }
-
-  er_clear ();
-
   if (key_limit_l != NULL)
     {
-      error_code = key_limit_eval (thread_p, key_limit_l, vd, lower, is_null);
+      error_code = key_limit_eval (thread_p, key_limit_l, vd, false, l_conv, lower, is_null);
       if (error_code != NO_ERROR || *is_null)
 	{
 	  return error_code;
@@ -2569,7 +2495,7 @@ fetch_key_limits (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_limit_l, TP_VALUE
 
   if (key_limit_u != NULL)
     {
-      error_code = key_limit_eval (thread_p, key_limit_u, vd, upper, is_null);
+      error_code = key_limit_eval (thread_p, key_limit_u, vd, false, u_conv, upper, is_null);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;

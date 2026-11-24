@@ -37,6 +37,7 @@
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "file_io.h"
+#include "disk_manager.h"
 #include "lockfree_circular_queue.hpp"
 #include "log_append.hpp"
 #include "log_manager.h"
@@ -738,6 +739,46 @@ struct pgbuf_direct_victim
 #define PGBUF_FLUSHED_BCBS_BUFFER_SIZE (8 * 1024)	/* 8k */
 #endif /* SERVER_MODE */
 
+/* PGBUF_DISCARD_INTERVAL - log range of the dirty pages discarded by a destroy, from the oldest unflushed LSA to the
+ * last LSA among them. their disk images miss this range, so recovery must replay all of it or none of it. */
+typedef struct pgbuf_discard_interval PGBUF_DISCARD_INTERVAL;
+struct pgbuf_discard_interval
+{
+  LOG_LSA oldest_lsa;
+  LOG_LSA last_lsa;
+  int nopen;			/* destroys still adding pages */
+  bool is_used;
+};
+
+#define PGBUF_DISCARD_INTERVAL_COUNT 256
+
+/* PGBUF_DISCARD_REDO_BOUND - the discard intervals a checkpoint redo point must not fall into
+ * (see pgbuf_discard_redo_bound_apply). */
+typedef struct pgbuf_discard_redo_bound PGBUF_DISCARD_REDO_BOUND;
+struct pgbuf_discard_redo_bound
+{
+  pthread_mutex_t mutex;
+  PGBUF_DISCARD_INTERVAL intervals[PGBUF_DISCARD_INTERVAL_COUNT];
+};
+
+/* PGBUF_RV_UNRESERVED_SECTORS - sectors freed by the log replayed by crash recovery, with the LSA that freed them
+ * (see pgbuf_rv_discard_unreserved_pages). */
+typedef struct pgbuf_rv_unreserved_sector PGBUF_RV_UNRESERVED_SECTOR;
+struct pgbuf_rv_unreserved_sector
+{
+  VSID vsid;
+  LOG_LSA lsa;
+};
+
+typedef struct pgbuf_rv_unreserved_sectors PGBUF_RV_UNRESERVED_SECTORS;
+struct pgbuf_rv_unreserved_sectors
+{
+  pthread_mutex_t mutex;
+  PGBUF_RV_UNRESERVED_SECTOR *sectors;
+  int count;
+  int capacity;
+};
+
 /* The buffer Pool */
 struct pgbuf_buffer_pool
 {
@@ -814,6 +855,9 @@ struct pgbuf_buffer_pool
 #if defined (SERVER_MODE)
   pthread_mutex_t show_status_mutex;
 #endif
+
+  PGBUF_DISCARD_REDO_BOUND discard_redo_bound;
+  PGBUF_RV_UNRESERVED_SECTORS rv_unreserved_sectors;
 };
 
 /* victim candidate list */
@@ -1089,6 +1133,9 @@ static int pgbuf_initialize_page_quota (void);
 static int pgbuf_initialize_page_monitor (void);
 static int pgbuf_initialize_thrd_holder (void);
 STATIC_INLINE PGBUF_HOLDER *pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_clear_page_contents (PAGE_PTR pgptr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_rv_dealloc_restore_contents (PAGE_PTR pgptr, const LOG_RCV * rcv)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE PGBUF_HOLDER *pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
@@ -1128,6 +1175,12 @@ static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID *
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
 static int pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
+static bool pgbuf_discard_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, const VPID * vpid,
+				const LOG_LSA * below_lsa, int interval);
+static int pgbuf_discard_interval_open (void);
+static void pgbuf_discard_interval_add (int interval, const LOG_LSA * oldest_unflush_lsa, const LOG_LSA * page_lsa);
+static void pgbuf_discard_interval_close (int interval);
+static int pgbuf_rv_compare_unreserved_sectors (const void *a, const void *b);
 static int pgbuf_bcb_safe_flush_force_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous);
 static int pgbuf_bcb_safe_flush_force_unlock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous);
 static PGBUF_BCB *pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p);
@@ -1229,6 +1282,8 @@ STATIC_INLINE void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx) __att
 STATIC_INLINE int pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * expected_vpid,
 					     bool * flushed) __attribute__ ((ALWAYS_INLINE));
 
+static bool pgbuf_ordered_unfix_reused_page (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
+					     PAGE_PTR * pgptr);
 static int pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_PTR * pgptr,
 					VPID * groupid, bool do_unfix);
 #if !defined(NDEBUG)
@@ -1840,6 +1895,24 @@ pgbuf_initialize (void)
   pthread_mutex_init (&pgbuf_Pool.show_status_mutex, NULL);
 #endif
 
+  pthread_mutex_init (&pgbuf_Pool.discard_redo_bound.mutex, NULL);
+  {
+    int iv_idx;
+
+    for (iv_idx = 0; iv_idx < PGBUF_DISCARD_INTERVAL_COUNT; iv_idx++)
+      {
+	LSA_SET_NULL (&pgbuf_Pool.discard_redo_bound.intervals[iv_idx].oldest_lsa);
+	LSA_SET_NULL (&pgbuf_Pool.discard_redo_bound.intervals[iv_idx].last_lsa);
+	pgbuf_Pool.discard_redo_bound.intervals[iv_idx].nopen = 0;
+	pgbuf_Pool.discard_redo_bound.intervals[iv_idx].is_used = false;
+      }
+  }
+
+  pthread_mutex_init (&pgbuf_Pool.rv_unreserved_sectors.mutex, NULL);
+  pgbuf_Pool.rv_unreserved_sectors.sectors = NULL;
+  pgbuf_Pool.rv_unreserved_sectors.count = 0;
+  pgbuf_Pool.rv_unreserved_sectors.capacity = 0;
+
   return NO_ERROR;
 
 error:
@@ -2034,6 +2107,16 @@ pgbuf_finalize (void)
 #if defined(SERVER_MODE)
   pthread_mutex_destroy (&pgbuf_Pool.show_status_mutex);
 #endif
+
+  pthread_mutex_destroy (&pgbuf_Pool.discard_redo_bound.mutex);
+
+  if (pgbuf_Pool.rv_unreserved_sectors.sectors != NULL)
+    {
+      free_and_init (pgbuf_Pool.rv_unreserved_sectors.sectors);
+    }
+  pgbuf_Pool.rv_unreserved_sectors.count = 0;
+  pgbuf_Pool.rv_unreserved_sectors.capacity = 0;
+  pthread_mutex_destroy (&pgbuf_Pool.rv_unreserved_sectors.mutex);
 
   thread_clear_all_holder_anchor ();
 }
@@ -2446,6 +2529,15 @@ try_again:
 
   assert (bufptr == bufptr->iopage_buffer->bcb);
 
+  if (fetch_mode == NEW_PAGE)
+    {
+      /* a new page starts empty: the buffer may still hold what another page left in it (see
+       * pgbuf_clear_page_contents). the write latch keeps the page from being flushed meanwhile. */
+      assert (request_mode == PGBUF_LATCH_WRITE);
+      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+      pgbuf_clear_page_contents (pgptr);
+    }
+
   /* In case of NO_ERROR, bufptr->mutex has been released. */
 
   /* Dirty Pages Table Registration Pass */
@@ -2518,6 +2610,10 @@ fast_path:
 	   * it is not deallocated. However, if it is deallocated, no error is required. */
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
 		  fileio_get_volume_label (vpid->volid, PEEK));
+	  /* a deallocated page, read from disk only to learn that or still in the buffer: nobody reads it again, so
+	   * it does not take a place in the caller's LRU list (as pgbuf_dealloc_page () leaves the page it
+	   * deallocates) */
+	  pgbuf_mark_page_for_lru_bottom (thread_p, pgptr);
 	  /* fall through to unfix */
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  pgbuf_unfix (thread_p, pgptr);
@@ -3486,6 +3582,510 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * pgbuf_discard_page () - drop the buffered copy of a page of a destroyed file: clear dirty and invalidate, without
+ *                         flushing or logging. the caller unreserves the sector right after, so an in-flight write
+ *                         must be finished before returning.
+ *
+ * return         : true if the page left the buffer after this call tried to invalidate it
+ * thread_p (in)  : thread entry
+ * bufptr (in)    : bcb that held the page when the caller looked without the bcb mutex
+ * vpid (in)      : page identifier
+ * below_lsa (in) : if not NULL, drop the page only if its LSA precedes this one
+ * interval (in)  : discard interval of the caller (see pgbuf_discard_interval_open)
+ *
+ * note: the caller must guarantee the page cannot be fixed concurrently (file unregistered and exclusively locked,
+ *       vacuum notified of the drop).
+ */
+static bool
+pgbuf_discard_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, const VPID * vpid, const LOG_LSA * below_lsa,
+		    int interval)
+{
+  PAGE_PTR pgptr = NULL;
+  bool is_discarded = false;
+
+  assert (bufptr != NULL && vpid != NULL && !VPID_ISNULL (vpid));
+
+retry:
+  PGBUF_BCB_LOCK (bufptr);
+
+  /* the vpid of a bcb changes only under its mutex */
+  if (!VPID_EQ (&bufptr->vpid, vpid))
+    {
+      /* the page left the buffer */
+      PGBUF_BCB_UNLOCK (bufptr);
+      return is_discarded;
+    }
+  if (below_lsa != NULL && !LSA_LT (&bufptr->iopage_buffer->iopage.prv.lsa, below_lsa))
+    {
+      PGBUF_BCB_UNLOCK (bufptr);
+      return is_discarded;
+    }
+
+  if (get_fcnt (&bufptr->atomic_latch) > 0)
+    {
+      /* no one should be able to fix a page of a file being destroyed. */
+      assert (false);
+      /* never discard a page someone holds: wait until it is released, as the per-page destroy did. */
+      PGBUF_BCB_UNLOCK (bufptr);
+      pgptr = pgbuf_fix (thread_p, vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (pgptr != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, pgptr);
+	}
+      er_clear ();
+      goto retry;
+    }
+
+  /* must never reach disk. its disk image misses the unflushed log, so record the log range for the checkpoints. */
+  pgbuf_discard_interval_add (interval, &bufptr->oldest_unflush_lsa, &bufptr->iopage_buffer->iopage.prv.lsa);
+  if (pgbuf_bcb_is_dirty (bufptr))
+    {
+      pgbuf_bcb_clear_dirty (thread_p, bufptr);
+    }
+  LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
+
+  if (pgbuf_bcb_is_flushing (bufptr))
+    {
+      /* flush in progress: its write must finish before the sector is unreserved. wait for the flusher (the
+       * safe_flush variants skip this bcb because the flusher already cleared the dirty flag). */
+      set_waiter_exists (&bufptr->atomic_latch, true);
+      if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_FLUSH, 0, false) != NO_ERROR)
+	{
+	  /* interrupted. not propagated: the destroy cannot be cancelled, so wait again. clear the error so that it does
+	   * not mislead the caller. */
+	  er_clear ();
+	}
+      /* pgbuf_block_bcb () released bufptr->mutex. */
+      goto retry;
+    }
+
+  if (pgbuf_bcb_avoid_victim (bufptr))
+    {
+      /* assigned as a direct victim; the claiming thread reassigns the bcb shortly. */
+      PGBUF_BCB_UNLOCK (bufptr);
+      thread_sleep (1);		/* 1 msec */
+      goto retry;
+    }
+
+  /* residual hint flags would block the move to the invalid list (see pgbuf_put_bcb_into_invalid_list) */
+  pgbuf_bcb_update_flags (thread_p, bufptr, 0,
+			  PGBUF_BCB_TO_VACUUM_FLAG | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG | PGBUF_BCB_ASYNC_FLUSH_REQ);
+
+#if defined(CUBRID_DEBUG)
+  pgbuf_scramble (&bufptr->iopage_buffer->iopage);
+#endif /* CUBRID_DEBUG */
+
+  (void) pgbuf_invalidate_bcb (thread_p, bufptr);
+  /* bufptr->mutex has been released in above function. */
+  is_discarded = true;
+
+  /* confirm the page is really gone; pgbuf_invalidate_bcb gives up on rare transient states. */
+  goto retry;
+}
+
+/* a hash look-up of one page costs about as much as checking this many bcbs in a pool scan */
+#define PGBUF_DISCARD_PROBE_COST_IN_BCBS 16
+
+/*
+ * pgbuf_discard_pages_of_sectors () - discard all buffered pages of the given sectors; each hit goes through
+ *                                     pgbuf_discard_page (). a small file looks up each of its pages in the hash
+ *                                     (cost: file size); a large one scans the buffer pool once (cost: pool size).
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * vsids (in)    : sectors of the destroyed file, sorted by disk_compare_vsids
+ * nsects (in)   : number of sectors
+ *
+ * note: the caller must guarantee that no page of these sectors can be fixed concurrently.
+ */
+void
+pgbuf_discard_pages_of_sectors (THREAD_ENTRY * thread_p, const VSID * vsids, int nsects)
+{
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_BCB *bufptr;
+  VSID vsid_key;
+  VPID vpid;
+  int bufid, interval, i, offset;
+
+  if (vsids == NULL || nsects <= 0)
+    {
+      assert (false);
+      return;
+    }
+
+  interval = pgbuf_discard_interval_open ();
+
+  if ((INT64) nsects * DISK_SECTOR_NPAGES * PGBUF_DISCARD_PROBE_COST_IN_BCBS < (INT64) pgbuf_Pool.num_buffers)
+    {
+      for (i = 0; i < nsects; i++)
+	{
+	  vpid.volid = vsids[i].volid;
+	  for (offset = 0, vpid.pageid = SECTOR_FIRST_PAGEID (vsids[i].sectid); offset < DISK_SECTOR_NPAGES;
+	       offset++, vpid.pageid++)
+	    {
+	      /* under the anchor mutex the chain is stable; pgbuf_discard_page () checks the bcb again. */
+	      hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&vpid)];
+	      pthread_mutex_lock (&hash_anchor->hash_mutex);
+	      bufptr = pgbuf_search_hash_chain_no_bcb_lock (thread_p, hash_anchor, &vpid);
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	      if (bufptr != NULL)
+		{
+		  (void) pgbuf_discard_page (thread_p, bufptr, &vpid, NULL, interval);
+		}
+	    }
+	}
+      pgbuf_discard_interval_close (interval);
+      return;
+    }
+
+  for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
+    {
+      bufptr = PGBUF_FIND_BCB_PTR (bufid);
+
+      /* read without the bcb mutex to pick candidates; pgbuf_discard_page () checks again under the mutex. */
+      vpid = bufptr->vpid;
+      if (VPID_ISNULL (&vpid))
+	{
+	  continue;
+	}
+      vsid_key.volid = vpid.volid;
+      vsid_key.sectid = SECTOR_FROM_PAGEID (vpid.pageid);
+      if (bsearch (&vsid_key, vsids, nsects, sizeof (VSID), disk_compare_vsids) == NULL)
+	{
+	  continue;
+	}
+
+      (void) pgbuf_discard_page (thread_p, bufptr, &vpid, NULL, interval);
+    }
+  pgbuf_discard_interval_close (interval);
+}
+
+/*
+ * pgbuf_discard_interval_open () - start the discard interval of a destroy.
+ *
+ * return : interval index
+ */
+static int
+pgbuf_discard_interval_open (void)
+{
+  PGBUF_DISCARD_REDO_BOUND *bound = &pgbuf_Pool.discard_redo_bound;
+  PGBUF_DISCARD_INTERVAL *intervals = bound->intervals;
+  int i, interval = -1;
+
+  pthread_mutex_lock (&bound->mutex);
+  for (i = 0; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
+    {
+      if (!intervals[i].is_used)
+	{
+	  interval = i;
+	  break;
+	}
+    }
+  if (interval >= 0)
+    {
+      intervals[interval].is_used = true;
+      intervals[interval].nopen = 1;
+      LSA_SET_NULL (&intervals[interval].oldest_lsa);
+      LSA_SET_NULL (&intervals[interval].last_lsa);
+    }
+  else
+    {
+      /* all in use: share the most recent one. each of them starts at or after the redo point of the last
+       * checkpoint (see pgbuf_discard_redo_bound_apply), so merging only widens it after that point, which is still
+       * correct. */
+      interval = 0;
+      for (i = 1; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
+	{
+	  if (LSA_GT (&intervals[i].last_lsa, &intervals[interval].last_lsa))
+	    {
+	      interval = i;
+	    }
+	}
+      intervals[interval].nopen++;
+    }
+  pthread_mutex_unlock (&bound->mutex);
+
+  return interval;
+}
+
+/*
+ * pgbuf_discard_interval_add () - add a page being discarded to a discard interval.
+ *
+ * return                  : void
+ * interval (in)           : interval index
+ * oldest_unflush_lsa (in) : oldest unflushed LSA of the page
+ * page_lsa (in)           : LSA of the page
+ *
+ * note: called under the bcb mutex, before the dirty flag is cleared.
+ */
+static void
+pgbuf_discard_interval_add (int interval, const LOG_LSA * oldest_unflush_lsa, const LOG_LSA * page_lsa)
+{
+  PGBUF_DISCARD_REDO_BOUND *bound = &pgbuf_Pool.discard_redo_bound;
+  PGBUF_DISCARD_INTERVAL *iv;
+
+  if (LSA_ISNULL (oldest_unflush_lsa))
+    {
+      /* current on disk */
+      return;
+    }
+
+  pthread_mutex_lock (&bound->mutex);
+  iv = &bound->intervals[interval];
+  assert (iv->is_used && iv->nopen > 0);
+  if (LSA_ISNULL (&iv->oldest_lsa) || LSA_LT (oldest_unflush_lsa, &iv->oldest_lsa))
+    {
+      LSA_COPY (&iv->oldest_lsa, oldest_unflush_lsa);
+    }
+  if (LSA_ISNULL (&iv->last_lsa) || LSA_GT (page_lsa, &iv->last_lsa))
+    {
+      LSA_COPY (&iv->last_lsa, page_lsa);
+    }
+  pthread_mutex_unlock (&bound->mutex);
+}
+
+/*
+ * pgbuf_discard_interval_close () - end the discard interval of a destroy. the interval is kept for the checkpoints
+ *                                   if it holds any page.
+ *
+ * return        : void
+ * interval (in) : interval index
+ */
+static void
+pgbuf_discard_interval_close (int interval)
+{
+  PGBUF_DISCARD_REDO_BOUND *bound = &pgbuf_Pool.discard_redo_bound;
+  PGBUF_DISCARD_INTERVAL *iv;
+
+  pthread_mutex_lock (&bound->mutex);
+  iv = &bound->intervals[interval];
+  assert (iv->is_used && iv->nopen > 0);
+  iv->nopen--;
+  if (iv->nopen == 0 && LSA_ISNULL (&iv->oldest_lsa))
+    {
+      iv->is_used = false;
+    }
+  pthread_mutex_unlock (&bound->mutex);
+}
+
+/*
+ * pgbuf_discard_redo_bound_apply () - called by a checkpoint after it computed its redo point. the redo point must not
+ *                                     fall inside a discard interval: recovery would replay only the tail of the
+ *                                     discarded pages' log onto disk images that miss the head of it. lower it to
+ *                                     the start of such an interval, until it falls inside none.
+ *
+ * return             : void
+ * redo_lsa (in/out)  : redo point of the checkpoint
+ * prev_redo_lsa (in) : redo point of the last recorded checkpoint. the redo point never goes below it, as the log
+ *                      before it may be removed already.
+ *
+ * note: the intervals that end before the redo point are released right away, and an interval still open forgets
+ *       the pages added so far. no recovery from this redo point or a later one replays them, and the pages a
+ *       destroy adds later start at or after it, so every interval in use starts at or after the redo point of the
+ *       last checkpoint.
+ */
+void
+pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_lsa)
+{
+  PGBUF_DISCARD_REDO_BOUND *bound = &pgbuf_Pool.discard_redo_bound;
+  PGBUF_DISCARD_INTERVAL *iv;
+  bool is_lowered;
+  int i;
+
+  assert (redo_lsa != NULL && !LSA_ISNULL (redo_lsa));
+
+  pthread_mutex_lock (&bound->mutex);
+
+  do
+    {
+      is_lowered = false;
+      for (i = 0; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
+	{
+	  iv = &bound->intervals[i];
+	  if (!iv->is_used || LSA_ISNULL (&iv->oldest_lsa))
+	    {
+	      continue;
+	    }
+	  if (LSA_LT (&iv->oldest_lsa, redo_lsa) && LSA_GE (&iv->last_lsa, redo_lsa))
+	    {
+	      if (prev_redo_lsa != NULL && !LSA_ISNULL (prev_redo_lsa) && LSA_LT (&iv->oldest_lsa, prev_redo_lsa))
+		{
+		  /* cannot happen: every interval starts at or after the last redo point (see the note above) */
+		  assert (false);
+		  if (LSA_LT (prev_redo_lsa, redo_lsa))
+		    {
+		      LSA_COPY (redo_lsa, prev_redo_lsa);
+		      is_lowered = true;
+		    }
+		  continue;
+		}
+	      LSA_COPY (redo_lsa, &iv->oldest_lsa);
+	      is_lowered = true;
+	    }
+	}
+    }
+  while (is_lowered);
+
+  for (i = 0; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
+    {
+      iv = &bound->intervals[i];
+      if (!iv->is_used || LSA_ISNULL (&iv->oldest_lsa) || !LSA_LT (&iv->last_lsa, redo_lsa))
+	{
+	  continue;
+	}
+      if (iv->nopen == 0)
+	{
+	  iv->is_used = false;
+	}
+      else
+	{
+	  /* still open: forget the pages added so far */
+	  LSA_SET_NULL (&iv->oldest_lsa);
+	  LSA_SET_NULL (&iv->last_lsa);
+	}
+    }
+
+  pthread_mutex_unlock (&bound->mutex);
+}
+
+/*
+ * pgbuf_rv_add_unreserved_sector () - remember a sector freed by the log that crash recovery replays.
+ *
+ * return             : void
+ * vsid (in)          : sector
+ * unreserve_lsa (in) : LSA that freed the sector
+ *
+ * note: a destroy discards its buffered pages without logging, so redo re-creates the pages of a file whose destroy
+ *       comes later in the log. pgbuf_rv_discard_unreserved_pages () drops them.
+ */
+void
+pgbuf_rv_add_unreserved_sector (const VSID * vsid, const LOG_LSA * unreserve_lsa)
+{
+  PGBUF_RV_UNRESERVED_SECTORS *rv = &pgbuf_Pool.rv_unreserved_sectors;
+  PGBUF_RV_UNRESERVED_SECTOR *new_sectors;
+  int new_capacity;
+
+  if (log_Gl.rcv_phase != LOG_RECOVERY_REDO_PHASE)
+    {
+      /* only crash recovery, up to the end of its postpone phase */
+      return;
+    }
+
+  pthread_mutex_lock (&rv->mutex);
+  if (rv->count == rv->capacity)
+    {
+      new_capacity = (rv->capacity == 0) ? 1024 : rv->capacity * 2;
+      new_sectors = (PGBUF_RV_UNRESERVED_SECTOR *) malloc (new_capacity * sizeof (PGBUF_RV_UNRESERVED_SECTOR));
+      if (new_sectors == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) new_capacity * sizeof (PGBUF_RV_UNRESERVED_SECTOR));
+	  pthread_mutex_unlock (&rv->mutex);
+	  return;
+	}
+      if (rv->sectors != NULL)
+	{
+	  memcpy (new_sectors, rv->sectors, rv->count * sizeof (PGBUF_RV_UNRESERVED_SECTOR));
+	  free_and_init (rv->sectors);
+	}
+      rv->sectors = new_sectors;
+      rv->capacity = new_capacity;
+    }
+  rv->sectors[rv->count].vsid = *vsid;
+  rv->sectors[rv->count].lsa = *unreserve_lsa;
+  rv->count++;
+  pthread_mutex_unlock (&rv->mutex);
+}
+
+/*
+ * pgbuf_rv_discard_unreserved_pages () - at the end of crash recovery (after the postpone phase, before the flush),
+ *                                        drop the buffered pages that redo re-created for files destroyed later in
+ *                                        the log.
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ *
+ * note: a page is dropped if its sector was unreserved and its LSA precedes the unreserve. the pages of a file that
+ *       reused the sector afterwards have later LSAs and are kept.
+ */
+void
+pgbuf_rv_discard_unreserved_pages (THREAD_ENTRY * thread_p)
+{
+  PGBUF_RV_UNRESERVED_SECTORS *rv = &pgbuf_Pool.rv_unreserved_sectors;
+  PGBUF_RV_UNRESERVED_SECTOR key;
+  PGBUF_RV_UNRESERVED_SECTOR *entry;
+  PGBUF_BCB *bufptr;
+  VPID vpid;
+  int bufid, i, nsects, interval, ndiscarded = 0;
+
+  assert (log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE);
+
+  if (rv->count == 0)
+    {
+      return;
+    }
+
+  /* one entry per sector, with its latest unreserve */
+  qsort (rv->sectors, rv->count, sizeof (PGBUF_RV_UNRESERVED_SECTOR), pgbuf_rv_compare_unreserved_sectors);
+  nsects = 0;
+  for (i = 0; i < rv->count; i++)
+    {
+      if (nsects > 0 && pgbuf_rv_compare_unreserved_sectors (&rv->sectors[nsects - 1], &rv->sectors[i]) == 0)
+	{
+	  if (LSA_GT (&rv->sectors[i].lsa, &rv->sectors[nsects - 1].lsa))
+	    {
+	      rv->sectors[nsects - 1].lsa = rv->sectors[i].lsa;
+	    }
+	  continue;
+	}
+      rv->sectors[nsects++] = rv->sectors[i];
+    }
+
+  interval = pgbuf_discard_interval_open ();
+  for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
+    {
+      bufptr = PGBUF_FIND_BCB_PTR (bufid);
+
+      vpid = bufptr->vpid;
+      if (VPID_ISNULL (&vpid))
+	{
+	  continue;
+	}
+      key.vsid.volid = vpid.volid;
+      key.vsid.sectid = SECTOR_FROM_PAGEID (vpid.pageid);
+      entry = (PGBUF_RV_UNRESERVED_SECTOR *) bsearch (&key, rv->sectors, nsects, sizeof (PGBUF_RV_UNRESERVED_SECTOR),
+						      pgbuf_rv_compare_unreserved_sectors);
+      if (entry == NULL)
+	{
+	  continue;
+	}
+
+      if (pgbuf_discard_page (thread_p, bufptr, &vpid, &entry->lsa, interval))
+	{
+	  ndiscarded++;
+	}
+    }
+  pgbuf_discard_interval_close (interval);
+
+  er_log_debug (ARG_FILE_LINE, "pgbuf_rv_discard_unreserved_pages: %d unreserved sectors, %d pages discarded\n",
+		nsects, ndiscarded);
+
+  free_and_init (rv->sectors);
+  rv->count = 0;
+  rv->capacity = 0;
+}
+
+/*
+ * pgbuf_rv_compare_unreserved_sectors () - compare two PGBUF_RV_UNRESERVED_SECTOR by sector.
+ */
+static int
+pgbuf_rv_compare_unreserved_sectors (const void *a, const void *b)
+{
+  return disk_compare_vsids (&((const PGBUF_RV_UNRESERVED_SECTOR *) a)->vsid,
+			     &((const PGBUF_RV_UNRESERVED_SECTOR *) b)->vsid);
 }
 
 /*
@@ -5082,13 +5682,13 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
    */
   if (LSA_ISNULL (&bufptr->oldest_unflush_lsa))
     {
-      if (LSA_LT (lsa_ptr, &log_Gl.chkpt_redo_lsa))
+      if (*lsa_ptr < log_Gl.chkpt_redo_lsa.load ())
 	{
 	  LOG_LSA chkpt_redo_lsa;
 	  int rc;
 
 	  rc = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-	  LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
+	  chkpt_redo_lsa = log_Gl.chkpt_redo_lsa;
 	  pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
 	  if (LSA_LT (lsa_ptr, &chkpt_redo_lsa))
@@ -5096,7 +5696,7 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
 	      er_stack_push ();
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_SKIP_INVALID_PAGE, 6, bufptr->vpid.pageid,
 		      fileio_get_volume_label (bufptr->vpid.volid, PEEK), lsa_ptr->pageid, lsa_ptr->offset,
-		      log_Gl.chkpt_redo_lsa.pageid, log_Gl.chkpt_redo_lsa.offset);
+		      chkpt_redo_lsa.pageid, chkpt_redo_lsa.offset);
 	      er_stack_pop ();
 
 	      assert (false);
@@ -5449,7 +6049,8 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
  * Note: Keep the scope to a fix whose caller cannot act on a refusal - the disk manager's volume header and
  *       sector allocation table. Those two pass PGBUF_UNCONDITIONAL_LATCH and offer no conditional variant,
  *       and disk_reserve_sectors treats anything but an interrupt or an IO error as a disk cache
- *       inconsistency.
+ *       inconsistency. The OOS reclaim of a committed intent (oos_rv_reclaim_on_postpone) is the third: it runs
+ *       in a commit and stops the server on any error.
  *       Both no-wait values are lifted although they have different owners - LK_ZERO_WAIT carries the user's
  *       lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. A finite or an already infinite
  *       waiting time is kept, because pgbuf_timed_sleep () classifies a watchdog expiry by this very value and
@@ -7122,7 +7723,8 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 {
 #if defined(SERVER_MODE)
   THREAD_ENTRY *cur_thrd_entry, *thrd_entry;
-  assert (get_waiter_exists (&bufptr->atomic_latch) == true);
+  /* readers and writers set waiter_exists before they queue; a flush waiter does not */
+  assert (request_mode == PGBUF_LATCH_FLUSH || get_waiter_exists (&bufptr->atomic_latch) == true);
 
   /* caller is holding bufptr->mutex */
   /* request_mode == PGBUF_LATCH_READ/PGBUF_LATCH_WRITE/PGBUF_LATCH_FLUSH */
@@ -7196,12 +7798,6 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 		    }
 
 		  thrd_entry->next_wait_thrd = NULL;
-		  /* self-removed from the wait queue on interrupt: reconcile waiter_exists (see
-		   * pgbuf_wake_flush_waiters). */
-		  if (!pgbuf_is_exist_blocked_reader_writer (bufptr))
-		    {
-		      set_waiter_exists (&bufptr->atomic_latch, false);
-		    }
 		  PGBUF_BCB_UNLOCK (bufptr);
 		  /* set an error like the READ/WRITE wait path does (pgbuf_timed_sleep); callers assert one is set */
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -7306,12 +7902,23 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
   while (bufptr->next_wait_thrd != NULL)
     {
       curr_thrd_entry = bufptr->next_wait_thrd;
+
+      /* Check under the entry lock of the waiter that it still waits for a READ latch before adding its fix count, as
+       * pgbuf_wakeup_reader_writer () does. A waiter that times out gives up its request under this lock, and a fix
+       * count added for it would never be released. */
+      thread_lock_entry (curr_thrd_entry);
+      if (curr_thrd_entry->request_latch_mode != PGBUF_LATCH_READ)
+	{
+	  thread_unlock_entry (curr_thrd_entry);
+	  break;
+	}
+
       do
 	{
 	  can_grant = false;
 	  impl = get_impl (&bufptr->atomic_latch);
 	  impl_new = impl;
-	  if (impl.impl.latch_mode == PGBUF_LATCH_READ && curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
+	  if (impl.impl.latch_mode == PGBUF_LATCH_READ)
 	    {
 	      can_grant = true;
 	      impl_new.impl.fcnt += curr_thrd_entry->request_fix_count;
@@ -7319,31 +7926,21 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
 	}
       while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, impl_new.raw, std::memory_order_acq_rel,
 							  std::memory_order_acquire));
-      if (can_grant)
+      if (!can_grant)
 	{
-	  /* grant the request */
-	  thread_lock_entry (curr_thrd_entry);
-	  if (curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
-	    {
-	      /* do not handle BCB holder entry, at here. refer pgbuf_latch_bcb_upon_fix () */
-
-	      /* remove thrd_entry from BCB waiting queue. */
-	      bufptr->next_wait_thrd = curr_thrd_entry->next_wait_thrd;
-	      curr_thrd_entry->next_wait_thrd = NULL;
-
-	      /* wake up the thread */
-	      pgbuf_wakeup (curr_thrd_entry);
-	    }
-	  else
-	    {
-	      thread_unlock_entry (curr_thrd_entry);
-	      break;
-	    }
-	}
-      else
-	{
+	  thread_unlock_entry (curr_thrd_entry);
 	  break;
 	}
+
+      /* grant the request */
+      /* do not handle BCB holder entry, at here. refer pgbuf_latch_bcb_upon_fix () */
+
+      /* remove thrd_entry from BCB waiting queue. */
+      bufptr->next_wait_thrd = curr_thrd_entry->next_wait_thrd;
+      curr_thrd_entry->next_wait_thrd = NULL;
+
+      /* wake up the thread */
+      pgbuf_wakeup (curr_thrd_entry);
     }
 
   return NO_ERROR;
@@ -7416,6 +8013,10 @@ try_again:
     }
   else if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
+      /* The wait returns without the entry lock. Take it again before the check below: pgbuf_wakeup_reader_writer ()
+       * grants the latch under this lock, so the check and giving up the request must be one step. */
+      thread_lock_entry (thread_p);
+
       /* rollback operation, postpone operation, etc. */
       if (thread_p->resume_status == THREAD_PGBUF_RESUMED)
 	{
@@ -7425,6 +8026,7 @@ try_again:
 
       if (logtb_is_current_active (thread_p) == false)
 	{
+	  /* wait again, with the entry lock held as for the first wait */
 	  goto try_again;
 	}
 
@@ -7829,6 +8431,15 @@ pgbuf_lockfree_fix_ro (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MO
   while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, new_impl.raw,
 						      std::memory_order_acq_rel, std::memory_order_acquire));
 
+  /* the CAS compares only the latch word, which returns to the same value when the BCB is reused for another page and
+   * latched again. the fix just taken keeps the BCB from being reused, so its vpid is stable now. */
+  if (!VPID_EQ (&bufptr->vpid, vpid))
+    {
+      PGBUF_BCB_LOCK (bufptr);
+      (void) pgbuf_unlatch_bcb_upon_unfix (thread_p, bufptr, NO_ERROR);
+      /* bufptr->mutex has been released in above function. */
+      return NULL;
+    }
 
   holder = pgbuf_find_thrd_holder (thread_p, bufptr);
   if (holder != NULL)
@@ -8703,6 +9314,103 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   return bufptr;
 }
 
+/* BCBs a read-ahead check walks in one hash chain before it gives up */
+#define PGBUF_READ_AHEAD_MAX_CHAIN_STEPS 16
+/* pages of one call remembered so that none is told twice; a call with more pages may tell the later ones again */
+#define PGBUF_READ_AHEAD_TOLD_MAX 64
+
+/*
+ * pgbuf_read_ahead () - tell the OS which pages the caller is going to fix soon
+ *   vpids(in): pages of permanent volumes; consecutive pages in ascending order are handed over as one range
+ *   count(in): number of pages
+ *
+ * Note: A hint. Pages already in the buffer are left out: hinting them would make the device read what the
+ *       buffer holds. The check does not lock the hash chain: an answer made wrong by a concurrent fix or
+ *       victimization only costs one synchronous read or one needless hint. Runs of consecutive pages go to the
+ *       OS as one range. The pages are not fixed and no state is kept: the caller fixes each page as usual, and
+ *       that read finds the page in the OS cache or on its way. The pages handed to the OS are counted
+ *       (Num_data_page_read_ahead) while somebody watches the statistics.
+ */
+void
+pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count)
+{
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_BCB *bufptr;
+  VPID run_vpid = VPID_INITIALIZER;
+  int run_length = 0;
+  VPID told[PGBUF_READ_AHEAD_TOLD_MAX];
+  int told_count = 0;
+  int hinted = 0;
+  int steps;
+  int i, k;
+
+  for (i = 0; i <= count; i++)
+    {
+      bufptr = NULL;
+      if (i < count && !pgbuf_is_temporary_volume (vpids[i].volid))
+	{
+	  /* a page told earlier in this call is not told again and does not end the run: OIDs that alternate between
+	   * a few pages name each page many times */
+	  for (k = 0; k < told_count; k++)
+	    {
+	      if (told[k].pageid == vpids[i].pageid && told[k].volid == vpids[i].volid)
+		{
+		  break;
+		}
+	    }
+	  if (k < told_count)
+	    {
+	      continue;
+	    }
+	  /* No hash mutex: a chain changed meanwhile may give a wrong answer either way, which costs one synchronous
+	   * read or one needless hint. BCBs are never freed while the server runs, and the walk is bounded because a
+	   * BCB moved to another chain meanwhile leads the walk there; a walk cut short counts as found. */
+	  hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&vpids[i])];
+	  steps = 0;
+	  for (bufptr = __atomic_load_n (&hash_anchor->hash_next, __ATOMIC_RELAXED); bufptr != NULL;
+	       bufptr = __atomic_load_n (&bufptr->hash_next, __ATOMIC_RELAXED))
+	    {
+	      if (__atomic_load_n (&bufptr->vpid.pageid, __ATOMIC_RELAXED) == vpids[i].pageid
+		  && __atomic_load_n (&bufptr->vpid.volid, __ATOMIC_RELAXED) == vpids[i].volid)
+		{
+		  break;
+		}
+	      if (++steps >= PGBUF_READ_AHEAD_MAX_CHAIN_STEPS)
+		{
+		  break;
+		}
+	    }
+	  if (bufptr == NULL && told_count < PGBUF_READ_AHEAD_TOLD_MAX)
+	    {
+	      told[told_count++] = vpids[i];
+	    }
+	  if (bufptr == NULL && run_length > 0 && vpids[i].volid == run_vpid.volid
+	      && vpids[i].pageid == run_vpid.pageid + run_length)
+	    {
+	      run_length++;
+	      continue;
+	    }
+	}
+      /* the run ends here: at the last page, at a page in the buffer or of a temporary volume, or at a gap */
+      if (run_length > 0)
+	{
+	  fileio_read_ahead_hint (fileio_get_volume_descriptor (run_vpid.volid), run_vpid.pageid, run_length,
+				  IO_PAGESIZE);
+	  hinted += run_length;
+	  run_length = 0;
+	}
+      if (i < count && bufptr == NULL && !pgbuf_is_temporary_volume (vpids[i].volid))
+	{
+	  run_vpid = vpids[i];
+	  run_length = 1;
+	}
+    }
+  if (hinted > 0)
+    {
+      perfmon_add_stat (thread_p, PSTAT_PB_NUM_READ_AHEAD, hinted);
+    }
+}
+
 /*
  * pgbuf_victimize_bcb () - Victimize given buffer page
  *   return: NO_ERROR, or ER_code
@@ -8890,7 +9598,7 @@ static int
 pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked)
 {
   int error_code = NO_ERROR;
-  PGBUF_ATOMIC_LATCH_IMPL impl, impl_new;
+  PGBUF_LATCH_MODE latch_mode;
   bool immediate_flush = false, block = false, is_flushing = false;
 
   assert (get_latch (&bufptr->atomic_latch) != PGBUF_LATCH_FLUSH);
@@ -8915,32 +9623,22 @@ pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool
    * for the second case, we know the bcb is already being flushed. if we need to be sure page is flushed, we'll put
    * ourselves in bcb's waiting list (and a thread doing flush should wake us).
    */
-  do
+  /* latch_mode changes only under bufptr->mutex (the lock-free paths change only the fix count of a read latch) */
+  latch_mode = get_latch (&bufptr->atomic_latch);
+  is_flushing = pgbuf_bcb_is_flushing (bufptr);
+  if (!is_flushing
+      && (latch_mode == PGBUF_NO_LATCH || latch_mode == PGBUF_LATCH_READ
+	  || (latch_mode == PGBUF_LATCH_WRITE && pgbuf_find_thrd_holder (thread_p, bufptr) != NULL)))
     {
-      immediate_flush = false;
-      block = false;
-      is_flushing = false;
-      impl = get_impl (&bufptr->atomic_latch);
-      impl_new = impl;
-      is_flushing = pgbuf_bcb_is_flushing (bufptr);
-      if (!is_flushing
-	  && (impl.impl.latch_mode == PGBUF_NO_LATCH || impl.impl.latch_mode == PGBUF_LATCH_READ
-	      || (impl.impl.latch_mode == PGBUF_LATCH_WRITE && pgbuf_find_thrd_holder (thread_p, bufptr) != NULL)))
-	{
-	  immediate_flush = true;
-	}
-      else
-	{
-	  assert (is_flushing || impl.impl.latch_mode == PGBUF_LATCH_WRITE);
-	  if (synchronous)
-	    {
-	      block = true;
-	      impl_new.impl.waiter_exists = true;
-	    }
-	}
+      immediate_flush = true;
     }
-  while (!bufptr->atomic_latch.compare_exchange_strong (impl.raw, impl_new.raw, std::memory_order_acq_rel,
-							std::memory_order_acquire));
+  else
+    {
+      assert (is_flushing || latch_mode == PGBUF_LATCH_WRITE);
+      /* a flush waiter does not set waiter_exists: it waits for the flush to end, not for the latch, so readers may
+       * keep joining a read latch meanwhile. */
+      block = synchronous;
+    }
 
   if (immediate_flush)
     {
@@ -11172,16 +11870,6 @@ pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 	  prev_waiter = crt_waiter;
 	}
     }
-  /* every PGBUF_LATCH_FLUSH waiter was dequeued above. reconcile the atomic-latch waiter_exists bit exactly as
-   * pgbuf_wakeup_reader_writer does on the unlatch path: if no blocked reader/writer remains queued, clear it.
-   * leaving it set on a bcb that is (or goes) idle poisons pgbuf_latch_bcb_upon_fix's idle-grant CAS, which
-   * force-expects waiter_exists == false and never enqueues when latch_mode == PGBUF_NO_LATCH -- the next fix
-   * then spins forever while holding the bcb mutex (bulk-build CREATE INDEX livelock). caller holds the bcb
-   * mutex at all callsites, and all waiter_exists transitions are bcb-mutex-protected, so this is race-free. */
-  if (!pgbuf_is_exist_blocked_reader_writer (bcb))
-    {
-      set_waiter_exists (&bcb->atomic_latch, false);
-    }
 
   PERF_UTIME_TRACKER_TIME (thread_p, &timetr, PSTAT_PB_WAKE_FLUSH_WAITER);
 #endif /* SERVER_MODE */
@@ -12459,6 +13147,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   int er_status_get_hfid = NO_ERROR;
   VPID req_page_groupid;
   bool has_dealloc_prevent_flag = false;
+  bool req_page_gone = false;
   PGBUF_LATCH_CONDITION latch_condition;
   PGBUF_BCB *bufptr = NULL;
 #if defined(PGBUF_ORDERED_DEBUG)
@@ -12527,6 +13216,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 #else
   ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, latch_condition);
 #endif
+
+  if (ret_pgptr != NULL && pgbuf_ordered_unfix_reused_page (thread_p, req_vpid, fetch_mode, &ret_pgptr))
+    {
+      er_status = ER_PB_BAD_PAGEID;
+      goto exit;
+    }
 
   if (ret_pgptr != NULL)
     {
@@ -12935,7 +13630,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
 	      has_dealloc_prevent_flag = false;
 	    }
-	  if (pgbuf_get_page_ptype (thread_p, pgptr) == PAGE_HEAP)
+	  if (pgbuf_ordered_unfix_reused_page (thread_p, req_vpid, fetch_mode, &pgptr))
+	    {
+	      er_status_get_hfid = ER_PB_BAD_PAGEID;
+	      /* continue (re-latch old pages) */
+	    }
+	  else if (pgbuf_get_page_ptype (thread_p, pgptr) == PAGE_HEAP)
 	    {
 	      er_status = pgbuf_get_groupid_and_unfix (thread_p, req_vpid, &pgptr, &req_page_groupid, true);
 	      if (er_status != NO_ERROR)
@@ -13043,6 +13743,10 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 		  er_log_debug (ARG_FILE_LINE,
 				"pgbuf_ordered_fix: page %d|%d was deallocated (OLD_PAGE_MAYBE_DEALLOCATED mode).\n",
 				VPID_AS_ARGS (&ordered_holders_info[i].vpid));
+		  /* the pages unfixed for it are fixed again all the same: their watchers' owners still read them */
+		  req_page_gone = true;
+		  er_status = NO_ERROR;
+		  continue;
 		}
 	      else
 		{
@@ -13060,6 +13764,14 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 		      ordered_holders_info[i].vpid.pageid, prev_er_status);
 	    }
 	  goto exit;
+	}
+
+      if (VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid))
+	  && pgbuf_ordered_unfix_reused_page (thread_p, req_vpid, fetch_mode, &pgptr))
+	{
+	  /* gone as well (the warning is set); the pages unfixed for it are fixed again all the same */
+	  req_page_gone = true;
+	  continue;
 	}
 
       /* get holder of last fix: last fixed pages is in top of holder list, we use parse code just for safety */
@@ -13177,6 +13889,11 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
     }
 
 exit:
+  if (req_page_gone && er_status == NO_ERROR)
+    {
+      /* the warning the fix set is still the last error */
+      er_status = ER_PB_BAD_PAGEID;
+    }
   if (er_status_get_hfid != NO_ERROR && er_status == NO_ERROR)
     {
       er_status = er_status_get_hfid;
@@ -13566,6 +14283,33 @@ exit:
     }
 
   return er_status;
+}
+
+/*
+ * pgbuf_ordered_unfix_reused_page () - unfix a page fixed with OLD_PAGE_MAYBE_DEALLOCATED that was deallocated and
+ *					 allocated again as a page type ordered fix does not handle
+ *   return: true if the page was unfixed; ER_PB_BAD_PAGEID is set as a warning, as for a deallocated page
+ *   thread_p(in):
+ *   vpid(in): page identifier
+ *   fetch_mode(in): fetch mode of the fix
+ *   pgptr(in/out): the fixed page; NULL when unfixed
+ *
+ * Note: a heap page vacuum deallocates stays in its file's sectors and can come back as the file's table page
+ *	 (file_perm_dealloc); a caller holding a VPID from before the deallocation must not read it as a heap page.
+ */
+static bool
+pgbuf_ordered_unfix_reused_page (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
+				 PAGE_PTR * pgptr)
+{
+  if (fetch_mode != OLD_PAGE_MAYBE_DEALLOCATED || PGBUF_IS_ORDERED_PAGETYPE (pgbuf_get_page_ptype (thread_p, *pgptr)))
+    {
+      return false;
+    }
+
+  pgbuf_unfix_and_init (thread_p, *pgptr);
+  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
+	  fileio_get_volume_label (vpid->volid, PEEK));
+  return true;
 }
 
 /*
@@ -15254,6 +15998,17 @@ pgbuf_get_hold_count (THREAD_ENTRY * thread_p)
   return pgbuf_Pool.thrd_holder_info[me].num_hold_cnt;
 }
 
+/* pgbuf_get_page_type_for_stat () casts a stored PAGE_TYPE to PERF_PAGE_TYPE */
+static_assert ((int) PERF_PAGE_UNKNOWN == (int) PAGE_UNKNOWN && (int) PERF_PAGE_FTAB == (int) PAGE_FTAB
+	       && (int) PERF_PAGE_HEAP == (int) PAGE_HEAP && (int) PERF_PAGE_VOLHEADER == (int) PAGE_VOLHEADER
+	       && (int) PERF_PAGE_VOLBITMAP == (int) PAGE_VOLBITMAP && (int) PERF_PAGE_QRESULT == (int) PAGE_QRESULT
+	       && (int) PERF_PAGE_EHASH == (int) PAGE_EHASH && (int) PERF_PAGE_OVERFLOW == (int) PAGE_OVERFLOW
+	       && (int) PERF_PAGE_AREA == (int) PAGE_AREA && (int) PERF_PAGE_CATALOG == (int) PAGE_CATALOG
+	       && (int) PERF_PAGE_BTREE_GENERIC == (int) PAGE_BTREE && (int) PERF_PAGE_LOG == (int) PAGE_LOG
+	       && (int) PERF_PAGE_DROPPED_FILES == (int) PAGE_DROPPED_FILES
+	       && (int) PERF_PAGE_VACUUM_DATA == (int) PAGE_VACUUM_DATA && (int) PERF_PAGE_OOS == (int) PAGE_OOS
+	       && (int) PERF_PAGE_BTREE_ROOT == (int) PAGE_LAST + 1, "PERF_PAGE_TYPE must mirror PAGE_TYPE");
+
 /*
  * pgbuf_get_page_type_for_stat () - Return the page type for current page
  *
@@ -15362,20 +16117,120 @@ pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * pgbuf_clear_page_contents () - empty the body of a page and drop its tde bits
+ *
+ * return     : void
+ * pgptr (in) : page
+ *
+ * Note: the body and the tde bits of a page always go together: the tde bits say whether the body must be encrypted
+ *       when it leaves the buffer. so a page is cleared at both ends of its life, by the same function at runtime and
+ *       in recovery:
+ *       - when it is deallocated for good (pgbuf_dealloc_page with PGBUF_DEALLOC_CLEAR_CONTENTS), before it can be
+ *         written again.
+ *       - when it is fixed as a new page (pgbuf_fix with NEW_PAGE): the buffer may still hold the decrypted contents
+ *         of the page it served before, and the disk image may hold a page of a destroyed file.
+ */
+STATIC_INLINE void
+pgbuf_clear_page_contents (PAGE_PTR pgptr)
+{
+  FILEIO_PAGE *iopage = NULL;
+
+  CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
+  memset (pgptr, 0, DB_PAGESIZE);
+  iopage->prv.pflag = 0;
+}
+
+/*
+ * pgbuf_init_new_page () - start the life of a permanent or temporary page just fixed with NEW_PAGE
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * page_new (in) : page just fixed with NEW_PAGE, still empty
+ * tde_algo (in) : tde algorithm of the file
+ * is_temp (in)  : true for a page of a temporary file, which is not logged
+ *
+ * Note: recovery redoes a new page on its disk image, which may still hold the contents and the tde bits of a page of
+ *       a destroyed file. the record makes recovery start the page from the same empty state with the same tde
+ *       algorithm, before the records that fill it, so those records are already encrypted for an encrypted file.
+ *       it is an undo-redo record, as the RVPGBUF_NEW_PAGE of file_init_page_type: the overflow readers of CDC and HA
+ *       replication expect no redo-only record but the overflow records inside an overflow update.
+ */
+void
+pgbuf_init_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, TDE_ALGORITHM tde_algo, bool is_temp)
+{
+  assert (page_new != NULL);
+  assert (pgbuf_get_tde_algorithm (page_new) == TDE_ALGORITHM_NONE);	/* cleared by NEW_PAGE */
+
+  if (!is_temp)
+    {
+      log_append_undoredo_data2 (thread_p, RVPGBUF_INIT_NEW_PAGE, NULL, page_new, 0, 0, sizeof (tde_algo), NULL,
+				 &tde_algo);
+    }
+  /* logged above, with the init */
+  pgbuf_set_tde_algorithm (thread_p, page_new, tde_algo, true);
+  pgbuf_set_dirty (thread_p, page_new, DONT_FREE);
+}
+
+/*
+ * pgbuf_rv_init_new_page_redo () - redo the start of a new page: empty it and set the tde algorithm of its file
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+pgbuf_rv_init_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  TDE_ALGORITHM tde_algo;
+
+  assert (rcv->pgptr != NULL);
+  assert (rcv->length == sizeof (tde_algo));
+
+  memcpy (&tde_algo, rcv->data, sizeof (tde_algo));
+  pgbuf_clear_page_contents (rcv->pgptr);
+  pgbuf_set_tde_algorithm (thread_p, rcv->pgptr, tde_algo, true);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_rv_init_new_page_undo () - nothing to undo: the page was free before its init
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ *
+ * Note: rollback does not even call this, so that it does not fix the page (see RCV_IS_NOTHING_TO_UNDO). the other
+ *       records of the same system operation make the page free again.
+ */
+int
+pgbuf_rv_init_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return NO_ERROR;
+}
+
+/*
  * pgbuf_dealloc_page () - deallocate a page
  *
  * return        : error code
  * thread_p (in) : thread entry
  * page (in)     : page to deallocate
+ * contents (in) : PGBUF_DEALLOC_CLEAR_CONTENTS when the deallocation is final, PGBUF_DEALLOC_KEEP_CONTENTS when the
+ *                 page may come back to life with its contents (see pgbuf_clear_page_contents),
+ *                 PGBUF_DEALLOC_SAVE_CONTENTS when the same system operation reuses the page at once: the new contents
+ *                 replace the old ones before the deallocation can be undone, so the old ones are logged with it
  */
 void
-pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
+pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc, int contents)
 {
   PGBUF_BCB *bcb = NULL;
   PAGE_TYPE ptype;
   FILEIO_PAGE_RESERVED *prv;
   PGBUF_DEALLOC_UNDO_DATA udata;
   char undo_data[8];		// pageid(4) + volid(2) + pyte(1) + pflag(1)
+  LOG_DATA_ADDR addr;
+  LOG_CRUMB undo_crumbs[2];
+  int num_undo_crumbs = 1;
   int holder_status;
 
   /* how it works: page is "deallocated" by resetting its type to PAGE_UNKNOWN. also prepare bcb for victimization.
@@ -15395,22 +16250,34 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
   udata.ptype = prv->ptype;
   udata.pflag = prv->pflag;
 
-  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, page_dealloc, 0, sizeof (udata), 0, &udata, NULL);
+  assert (contents == PGBUF_DEALLOC_KEEP_CONTENTS || contents == PGBUF_DEALLOC_CLEAR_CONTENTS
+	  || contents == PGBUF_DEALLOC_SAVE_CONTENTS);
+
+  undo_crumbs[0].length = sizeof (udata);
+  undo_crumbs[0].data = &udata;
+  if (contents == PGBUF_DEALLOC_SAVE_CONTENTS)
+    {
+      /* the body follows the undo data, and the undo puts it back (see pgbuf_rv_dealloc_restore_contents) */
+      undo_crumbs[1].length = DB_PAGESIZE;
+      undo_crumbs[1].data = page_dealloc;
+      num_undo_crumbs = 2;
+    }
+
+  /* the record offset says what is done with the contents, so that redo does the same */
+  addr.vfid = NULL;
+  addr.pgptr = page_dealloc;
+  addr.offset = (PGLENGTH) contents;
+  log_append_undoredo_crumbs (thread_p, RVPGBUF_DEALLOC, &addr, num_undo_crumbs, 0, undo_crumbs, NULL);
+
+  if (contents == PGBUF_DEALLOC_CLEAR_CONTENTS)
+    {
+      pgbuf_clear_page_contents (page_dealloc);
+    }
 
   PGBUF_BCB_LOCK (bcb);
 
-#if !defined(NDEBUG)
-  if (bcb->iopage_buffer->iopage.prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
-    {
-      tde_er_log ("pgbuf_dealloc_page(): clear tde bit in pflag, VPID = %d|%d, tde_algorithm = %s\n",
-		  VPID_AS_ARGS (&bcb->vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (page_dealloc)));
-    }
-#endif /* !NDEBUG */
-
-  /* set unknown type */
+  /* set unknown type. the tde bits go with the contents: cleared above, or kept with them. */
   bcb->iopage_buffer->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
-  /* clear page flags (now only tde algorithm) */
-  bcb->iopage_buffer->iopage.prv.pflag = (unsigned char) 0;
 
   /* set dirty and mark to move to the bottom of lru */
   pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG, 0);
@@ -15434,10 +16301,36 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 int
 pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  /* as pgbuf_dealloc_page does; the record offset says what it did with the contents */
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
-  pgbuf_set_tde_algorithm (thread_p, rcv->pgptr, TDE_ALGORITHM_NONE, true);
+  if (rcv->offset == PGBUF_DEALLOC_CLEAR_CONTENTS)
+    {
+      pgbuf_clear_page_contents (rcv->pgptr);
+    }
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
+}
+
+/*
+ * pgbuf_rv_dealloc_restore_contents () - put back the body of a page deallocated with PGBUF_DEALLOC_SAVE_CONTENTS
+ *
+ * return     : void
+ * pgptr (in) : page being brought back to life
+ * rcv (in)   : recovery data of the deallocation or of its compensation
+ *
+ * Note: the body follows the undo data of the deallocation. other deallocations log no body, and the page keeps the
+ *       contents it has.
+ */
+STATIC_INLINE void
+pgbuf_rv_dealloc_restore_contents (PAGE_PTR pgptr, const LOG_RCV * rcv)
+{
+  if (rcv->length == (int) sizeof (PGBUF_DEALLOC_UNDO_DATA))
+    {
+      return;
+    }
+
+  assert (rcv->length == (int) sizeof (PGBUF_DEALLOC_UNDO_DATA) + DB_PAGESIZE);
+  memcpy (pgptr, rcv->data + sizeof (PGBUF_DEALLOC_UNDO_DATA), DB_PAGESIZE);
 }
 
 /*
@@ -15461,7 +16354,6 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   vpid.pageid = udata->pageid;
   vpid.volid = udata->volid;
 
-  assert (rcv->length == sizeof (PGBUF_DEALLOC_UNDO_DATA));
   assert (udata->ptype > PAGE_UNKNOWN && udata->ptype <= PAGE_LAST);
 
   /* fix deallocated page */
@@ -15476,6 +16368,7 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   CAST_PGPTR_TO_IOPGPTR (iopage, page_deallocated);
   iopage->prv.pflag = udata->pflag;
+  pgbuf_rv_dealloc_restore_contents (page_deallocated, rcv);
 
 #if !defined(NDEBUG)
   if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
@@ -15485,9 +16378,9 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
 #endif /* !NDEBUG */
 
+  /* with the saved body, if any, so that the redo of the compensation puts it back too */
   log_append_compensate_with_undo_nxlsa (thread_p, RVPGBUF_COMPENSATE_DEALLOC, &vpid, 0, page_deallocated,
-					 sizeof (PGBUF_DEALLOC_UNDO_DATA), udata, LOG_FIND_CURRENT_TDES (thread_p),
-					 &rcv->reference_lsa);
+					 rcv->length, rcv->data, LOG_FIND_CURRENT_TDES (thread_p), &rcv->reference_lsa);
   pgbuf_set_dirty_and_free (thread_p, page_deallocated);
   return NO_ERROR;
 }
@@ -15508,13 +16401,13 @@ pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   FILEIO_PAGE *iopage;
 
   assert (rcv->pgptr != NULL);
-  assert (rcv->length == sizeof (PGBUF_DEALLOC_UNDO_DATA));
   assert (udata->ptype > PAGE_UNKNOWN && udata->ptype <= PAGE_LAST);
 
   CAST_PGPTR_TO_IOPGPTR (iopage, rcv->pgptr);
 
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, (PAGE_TYPE) udata->ptype);
   iopage->prv.pflag = udata->pflag;
+  pgbuf_rv_dealloc_restore_contents (rcv->pgptr, rcv);
 
 #if !defined(NDEBUG)
   if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
@@ -17597,6 +18490,7 @@ pgbuf_scan_bcb_table ()
 	      break;
 	    case PAGE_OVERFLOW:
 	    case PAGE_HEAP:
+	    case PAGE_OOS:
 	      show_status_snapshot->num_data_pages++;
 	      break;
 	    case PAGE_CATALOG:
