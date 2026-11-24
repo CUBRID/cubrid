@@ -20879,97 +20879,115 @@ heap_bsmap_inline_used (const HEAP_HDR_STATS * hdr)
   return used;
 }
 
-typedef struct heap_bsmap_key_index HEAP_BSMAP_KEY_INDEX;
-struct heap_bsmap_key_index
+/* the keys of the map pages read so far (heap_bsmap_write_unloaded ()): open addressing, at most half full. 0 marks
+ * an empty slot: a map key is never 0 */
+typedef struct heap_bsmap_key_set HEAP_BSMAP_KEY_SET;
+struct heap_bsmap_key_set
 {
   // *INDENT-OFF*
-  std::uint64_t key;
+  std::uint64_t *slots;
   // *INDENT-ON*
-  int index;
+  std::size_t capacity;		/* 0, or a power of two */
+  std::size_t count;
 };
 
-static int
-heap_bsmap_key_index_cmp (const void *a, const void *b)
+/* the slot a key probes first: the keys of a heap are mostly consecutive sectors, so the bits are mixed first */
+// *INDENT-OFF*
+static std::size_t
+// *INDENT-ON*
+heap_bsmap_key_set_home (std::uint64_t key, std::size_t capacity)
 {
-  const HEAP_BSMAP_KEY_INDEX *x = (const HEAP_BSMAP_KEY_INDEX *) a;
-  const HEAP_BSMAP_KEY_INDEX *y = (const HEAP_BSMAP_KEY_INDEX *) b;
-
-  if (x->key != y->key)
-    {
-      return x->key < y->key ? -1 : 1;
-    }
-  return x->index - y->index;
+  key ^= key >> 33;
+  key *= 0xff51afd7ed558ccdULL;
+  key ^= key >> 33;
+  return (std::size_t) key & (capacity - 1);
 }
 
-static int
-heap_bsmap_key_cmp (const void *a, const void *b)
+/* false if the key is in the set already; the set has room for it (heap_bsmap_key_set_reserve ()) */
+static bool
+heap_bsmap_key_set_add (HEAP_BSMAP_KEY_SET * set, std::uint64_t key)
 {
-  // *INDENT-OFF*
-  std::uint64_t x = *(const std::uint64_t *) a, y = *(const std::uint64_t *) b;
-  // *INDENT-ON*
+  std::size_t i;
 
-  return x < y ? -1 : (x > y ? 1 : 0);
+  assert (key != 0 && (set->count + 1) * 2 <= set->capacity);
+  for (i = heap_bsmap_key_set_home (key, set->capacity); set->slots[i] != 0; i = (i + 1) & (set->capacity - 1))
+    {
+      if (set->slots[i] == key)
+	{
+	  return false;
+	}
+    }
+  set->slots[i] = key;
+  set->count++;
+  return true;
+}
+
+/* room for n more keys; the slots grow by doubling, so all the adds cost time linear in the keys */
+static int
+heap_bsmap_key_set_reserve (HEAP_BSMAP_KEY_SET * set, std::size_t n)
+{
+  HEAP_BSMAP_KEY_SET grown;
+  std::size_t i;
+
+  if ((set->count + n) * 2 <= set->capacity)
+    {
+      return NO_ERROR;
+    }
+  grown.capacity = MAX (set->capacity, (std::size_t) 64);
+  while (grown.capacity < (set->count + n) * 2)
+    {
+      grown.capacity *= 2;
+    }
+  // *INDENT-OFF*
+  grown.slots = (std::uint64_t *) calloc (grown.capacity, sizeof (std::uint64_t));
+  // *INDENT-ON*
+  if (grown.slots == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, grown.capacity * sizeof (std::uint64_t));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  grown.count = 0;
+  for (i = 0; i < set->capacity; i++)
+    {
+      if (set->slots[i] != 0)
+	{
+	  (void) heap_bsmap_key_set_add (&grown, set->slots[i]);
+	}
+    }
+  if (set->slots != NULL)
+    {
+      free_and_init (set->slots);
+    }
+  *set = grown;
+  return NO_ERROR;
 }
 
 /*
  * heap_bsmap_page_duplicate () - where the load stops in a map page: an entry whose key is 0 or was read before
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
- *   seen(in/out): the sorted keys of the pages before (malloc'd); this page's are added when it has no duplicate
+ *   seen(in/out): the keys of the pages before; this page's keys before the stop are added (the walk ends at a stop)
  *   dup(out): the index of the first entry the load does not read, or count
  */
 static int
-heap_bsmap_page_duplicate (const cubstorage::bestspace_map_entry * entries, int count, HEAP_BSMAP_KEY_INDEX * pairs,
-			   std::uint64_t ** seen, std::size_t * num_seen, int *dup)
+heap_bsmap_page_duplicate (const cubstorage::bestspace_map_entry * entries, int count, HEAP_BSMAP_KEY_SET * seen,
+			   int *dup)
 {
-  // *INDENT-OFF*
-  std::uint64_t *merged;
-  // *INDENT-ON*
-  std::size_t a, b, m;
-  int i;
+  int i, error;
 
   *dup = count;
+  error = heap_bsmap_key_set_reserve (seen, (std::size_t) count);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
   for (i = 0; i < count; i++)
     {
-      pairs[i].key = entries[i].key;
-      pairs[i].index = i;
-    }
-  qsort (pairs, count, sizeof (*pairs), heap_bsmap_key_index_cmp);
-  for (i = 0; i < count; i++)
-    {
-      if (pairs[i].key == 0 || (i > 0 && pairs[i - 1].key == pairs[i].key)
-	  || (*num_seen > 0 && bsearch (&pairs[i].key, *seen, *num_seen, sizeof (**seen), heap_bsmap_key_cmp) != NULL))
+      if (entries[i].key == 0 || !heap_bsmap_key_set_add (seen, entries[i].key))
 	{
-	  *dup = MIN (*dup, pairs[i].index);
+	  *dup = i;
+	  break;
 	}
     }
-  if (*dup < count || count == 0)
-    {
-      return NO_ERROR;
-    }
-
-  merged = (std::uint64_t *) malloc ((*num_seen + count) * sizeof (**seen));
-  if (merged == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (*num_seen + count) * sizeof (**seen));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  for (a = 0, b = 0, m = 0; a < *num_seen || b < (std::size_t) count; m++)
-    {
-      if (b == (std::size_t) count || (a < *num_seen && (*seen)[a] < pairs[b].key))
-	{
-	  merged[m] = (*seen)[a++];
-	}
-      else
-	{
-	  merged[m] = pairs[b++].key;
-	}
-    }
-  if (*seen != NULL)
-    {
-      free_and_init (*seen);
-    }
-  *seen = merged;
-  *num_seen = m;
   return NO_ERROR;
 }
 
@@ -21011,12 +21029,9 @@ heap_bsmap_write_unloaded (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WAT
   const int max_pages = (int) ((cubstorage::bestspace_map::MAX_SECTORS + per_page - 1) / per_page);
   HEAP_HDR_STATS *hdr;
   HEAP_BSMAP_LOG_ITEM *log_items = NULL;
-  HEAP_BSMAP_KEY_INDEX *pairs = NULL;
-  // *INDENT-OFF*
-  std::uint64_t *seen = NULL;
-  // *INDENT-ON*
+  HEAP_BSMAP_KEY_SET seen = { NULL, 0, 0 };
   bool *placed = NULL;
-  std::size_t k, num_placed = 0, num_seen = 0;
+  std::size_t k, num_placed = 0;
   int error = NO_ERROR, nlog, i, s, p, listed;
 
   hdr = heap_bsmap_get_header (thread_p, hdr_watcher->pgptr);
@@ -21101,8 +21116,7 @@ heap_bsmap_write_unloaded (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WAT
       bool is_last;
 
       log_items = (HEAP_BSMAP_LOG_ITEM *) malloc (per_page * sizeof (HEAP_BSMAP_LOG_ITEM));
-      pairs = (HEAP_BSMAP_KEY_INDEX *) malloc (per_page * sizeof (HEAP_BSMAP_KEY_INDEX));
-      if (log_items == NULL || pairs == NULL)
+      if (log_items == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (per_page * sizeof (HEAP_BSMAP_LOG_ITEM)));
@@ -21143,7 +21157,7 @@ heap_bsmap_write_unloaded (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WAT
 	  next_vpid.pageid = phdr->next_pageid;
 	  /* the load stops after a page that is not full, and at a key it has read already */
 	  is_last = count < per_page;
-	  error = heap_bsmap_page_duplicate (entries, count, pairs, &seen, &num_seen, &dup);
+	  error = heap_bsmap_page_duplicate (entries, count, &seen, &dup);
 	  if (error != NO_ERROR)
 	    {
 	      pgbuf_ordered_unfix (thread_p, &watcher);
@@ -21235,13 +21249,9 @@ end:
     {
       free_and_init (log_items);
     }
-  if (pairs != NULL)
+  if (seen.slots != NULL)
     {
-      free_and_init (pairs);
-    }
-  if (seen != NULL)
-    {
-      free_and_init (seen);
+      free_and_init (seen.slots);
     }
   free_and_init (placed);
   return error;
