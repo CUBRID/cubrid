@@ -5543,15 +5543,14 @@ lang_fastcmp_byte (const LANG_COLLATION * lang_coll, const unsigned char *string
   n = size1 < size2 ? size1 : size2;
 
   /* the same bytes weigh the same: step over them without looking up the weights */
-  i = 0;
-  while (i < n && string1[i] == string2[i])
+  while (n > 0 && *string1 == *string2)
     {
-      i++;
+      string1++;
+      string2++;
+      n--;
     }
-  string1 += i;
-  string2 += i;
 
-  for (cmp = 0; i < n && cmp == 0; i++)
+  for (; n > 0; n--)
     {
       c1 = *string1++;
       if (c1 == SPACE)
@@ -5574,18 +5573,23 @@ lang_fastcmp_byte (const LANG_COLLATION * lang_coll, const unsigned char *string
 	}
 
       cmp = c1 - c2;
+      if (cmp != 0)
+	{
+	  return cmp;
+	}
     }
 
-  if (cmp || size1 == size2)
+  if (size1 == size2)
     {
-      return cmp;
+      return 0;
     }
 
-  if (!ignore_trailing_space && size1 != size2)
+  if (!ignore_trailing_space)
     {
       return size1 - size2;
     }
 
+  cmp = 0;
   c1 = c2 = ZERO;
   if (size1 < size2)
     {
