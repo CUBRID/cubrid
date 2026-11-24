@@ -426,6 +426,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             // If it actually is, and is also a table name, then it is considered to be a cursor.
             // That is, a cursor definition overrides a table definition.
             ExprId id;
+            // decided here because the call below throws the same UndeclaredId for a hidden name
+            boolean hidden = isHiddenCorrelationName(symbolStack.getDeclForIdExpr(row));
             try {
                 id = visitNonFuncIdentifier(ctx.row_name().name);
                 if (id.decl instanceof DeclCursor) {
@@ -438,6 +440,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
             } catch (UndeclaredId e) {
                 // OK: 'row' is not a local variable
+                if (hidden) {
+                    noteHiddenCorrelationName(row, ctx, row + "%ROWTYPE");
+                }
             }
         } else {
             row = row.replaceAll(" ", ""); // it can have spaces
@@ -1046,6 +1051,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         DeclFunc decl = hidden ? null : symbolStack.getDeclFunc(name);
         if (decl == null) {
 
+            if (hidden) {
+                noteHiddenCorrelationName(name, ctx, name + "()");
+            }
+
             setConnectionRequired(ctx);
 
             ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, name, args, getSqlSerialNo());
@@ -1595,7 +1604,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 if (!field.isAssignableTo()) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.record_field()), // s080
-                            field.name() + " is not updatable");
+                            isCorrelationField(field)
+                                    ? CORRELATION_NAME_READ_ONLY
+                                    : field.name() + " is not updatable");
                 }
 
                 return field;
@@ -1681,6 +1692,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     TypeSpec.getBogus(iStore, retType));
                     ret = egfc;
                 }
+            }
+
+            if (ret != null && hidden) {
+                noteHiddenCorrelationName(name, ctx, name + "()");
             }
 
             if (ret == null) {
@@ -2516,6 +2531,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         DeclProc decl = hidden ? null : symbolStack.getDeclProc(name);
         if (decl == null) {
 
+            if (hidden) {
+                noteHiddenCorrelationName(name, ctx, name + "()");
+            }
+
             setConnectionRequired(ctx);
 
             StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args, getSqlSerialNo());
@@ -2788,6 +2807,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private final Set<String> correlationNames = new HashSet<>();
     // true while resolving the record of a field, the only place a correlation name is a record
     private boolean resolvingRecordOfField = false;
+    // correlation names resolved as a table or a function, with their first use
+    // and the form of the use qualified by an owner, such as OBJ%ROWTYPE or OBJ()
+    private final LinkedHashMap<String, Misc.Pair<ParserRuleContext, String>>
+            hiddenCorrelationNameUses = new LinkedHashMap<>();
     // fields of the correlation names that are read, keyed by "NAME.FIELD"
     private final LinkedHashMap<String, CompileInfo.CorrelationUse> correlationUses =
             new LinkedHashMap<>();
@@ -2800,6 +2823,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // Elsewhere it is resolved as if it were not declared, so it may be a table or a function.
     // The procedure the engine stores declares only the names whose fields are read,
     // so the check resolves the other uses as that procedure will.
+    // A name whose fields are also read is a record in that procedure.
+    // checkCorrelationNameUses refuses such a name.
     private boolean isHiddenCorrelationName(Decl decl) {
         return !resolvingRecordOfField && isCorrelationName(decl);
     }
@@ -2824,6 +2849,46 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         } finally {
             resolvingRecordOfField = saved;
         }
+    }
+
+    private void noteHiddenCorrelationName(String name, ParserRuleContext ctx, String form) {
+        hiddenCorrelationNameUses.putIfAbsent(name, new Misc.Pair<>(ctx, form));
+    }
+
+    // Refuses a correlation name that is read with a field and also used as a table or a function.
+    // The procedure the engine stores declares that name as a record.
+    // So the other use would change its meaning there.
+    public void checkCorrelationNameUses() {
+        Set<String> readNames = new HashSet<>();
+        for (CompileInfo.CorrelationUse u : correlationUses.values()) {
+            readNames.add(u.name);
+        }
+
+        for (Map.Entry<String, Misc.Pair<ParserRuleContext, String>> e :
+                hiddenCorrelationNameUses.entrySet()) {
+            String name = e.getKey();
+            if (readNames.contains(name)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(e.getValue().e1),
+                        "correlation name "
+                                + name
+                                + " is read as "
+                                + name
+                                + ".column, so "
+                                + name
+                                + " cannot also be used for a table or a function."
+                                + " Qualify it with its owner, such as dba."
+                                + e.getValue().e2);
+            }
+        }
+    }
+
+    private static final String CORRELATION_NAME_READ_ONLY =
+            "A value cannot be assigned to a correlation name. Correlation names are read only.";
+
+    // a field of a correlation name, such as NEW.QTY, which cannot be assigned to
+    private static boolean isCorrelationField(Expr e) {
+        return e instanceof ExprField && isCorrelationName(((ExprField) e).record.decl);
     }
 
     private void noteCorrelationField(ExprId record, String field) {
@@ -3337,8 +3402,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     if (!((AssignTarget) target).isAssignableTo()) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx), // s056
-                                ((AssignTarget) target).name()
-                                        + " in the INTO clause is not updatable");
+                                isCorrelationField(target)
+                                        ? CORRELATION_NAME_READ_ONLY
+                                        : ((AssignTarget) target).name()
+                                                + " in the INTO clause is not updatable");
                     }
                     intoTargetList.add(target);
                 }
@@ -3395,6 +3462,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         || arg instanceof ExprField
                                 && (((ExprField) arg).record).isAssignableTo()) {
                     // OK
+                } else if (isCorrelationField(arg)) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(arg.ctx), CORRELATION_NAME_READ_ONLY);
                 } else {
                     return (i + 1);
                 }

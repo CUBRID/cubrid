@@ -299,6 +299,9 @@ public class PlcsqlCompilerMain {
         ParseTreeConverter converter =
                 new ParseTreeConverter(iStore, owner, compileSeqNo, lineOffset, correlationNames);
         Unit unit = (Unit) converter.visit(tree);
+        if (checkOnly) {
+            converter.checkCorrelationNameUses();
+        }
 
         if (verbose) {
             t0 = logElapsedTime(logStore, "converting to AST", t0);
