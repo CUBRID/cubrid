@@ -13772,6 +13772,8 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 		  COPY_OID (&serial_obj_id, oidp);
 
 		  AU_SAVE_AND_DISABLE (save);
+		  /* before the delete takes the row's X lock, as in do_drop_serial () */
+		  (void) serial_decache (&serial_obj_id);
 		  error = obj_delete (att->auto_increment);
 		  AU_RESTORE (save);
 
