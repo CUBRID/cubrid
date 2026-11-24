@@ -505,6 +505,8 @@ static int pt_move_subinsert_class_oids (XASL_NODE * xasl);
 static int pt_add_click_counter_class_oids (XASL_NODE * top_xasl, XASL_NODE * xasl);
 static int pt_add_for_update_class_oids (XASL_NODE * xasl, PT_NODE * select);
 static bool pt_orderby_has_group_keys (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static bool pt_gby_output_reads_order (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static PT_NODE *pt_find_gby_order_read_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_mark_gby_order_free_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, OID ** oid_listp,
@@ -21485,13 +21487,20 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       /* where the order of the groups cannot reach the result (CBRD-28181): what else reads it is checked when they
        * are made (qexec_gby_order_reaches_result ()) */
       buildlist->g_order_free = 0;
-      if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_GBY_ORDER_FREE))
+      if (pt_gby_output_reads_order (parser, select_node))
 	{
-	  buildlist->g_order_free |= XASL_G_ORDER_FREE_SET;
+	  buildlist->g_order_free = XASL_G_ORDER_KEPT;
 	}
-      if (pt_orderby_has_group_keys (parser, select_node))
+      else
 	{
-	  buildlist->g_order_free |= XASL_G_ORDER_FREE_ORDERBY;
+	  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_GBY_ORDER_FREE))
+	    {
+	      buildlist->g_order_free |= XASL_G_ORDER_FREE_SET;
+	    }
+	  if (pt_orderby_has_group_keys (parser, select_node))
+	    {
+	      buildlist->g_order_free |= XASL_G_ORDER_FREE_ORDERBY;
+	    }
 	}
 
       /* this one will be altered further on and it's the actual output of the initial scan; will contain group key and
@@ -29411,6 +29420,50 @@ pt_mark_gby_order_free_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   if (query != NULL && query->node_type == PT_SELECT && query->info.query.q.select.group_by != NULL)
     {
       PT_SELECT_INFO_SET_FLAG (query, PT_SELECT_INFO_GBY_ORDER_FREE);
+    }
+  return node;
+}
+
+/*
+ * pt_gby_output_reads_order () - is an output expression of a GROUP BY block evaluated in the order the groups come
+ *				  out, so that their order stays in its values even where the rows are ordered again or
+ *				  only their set is read (CBRD-28181, XASL_G_ORDER_KEPT)?
+ *   return: true when the select list or the HAVING has one
+ */
+static bool
+pt_gby_output_reads_order (PARSER_CONTEXT * parser, PT_NODE * select_node)
+{
+  bool found = false;
+
+  (void) parser_walk_tree (parser, select_node->info.query.q.select.list, pt_find_gby_order_read_pre, (void *) &found,
+			   NULL, NULL);
+  if (!found)
+    {
+      (void) parser_walk_tree (parser, select_node->info.query.q.select.having, pt_find_gby_order_read_pre,
+			       (void *) &found, NULL, NULL);
+    }
+  return found;
+}
+
+/*
+ * pt_find_gby_order_read_pre () - find an expression whose values depend on the order it is evaluated in: a serial, a
+ *				   stored routine or method, a variable assignment, a random number (CBRD-28181,
+ *				   XASL_G_ORDER_KEPT)
+ *   return: node
+ *   arg(in/out): bool, set when one is found
+ */
+static PT_NODE *
+pt_find_gby_order_read_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (node->node_type == PT_METHOD_CALL
+      || (node->node_type == PT_EXPR
+	  && (PT_IS_SERIAL (node->info.expr.op) || node->info.expr.op == PT_DEFINE_VARIABLE
+	      || PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (node))))
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
     }
   return node;
 }

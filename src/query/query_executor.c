@@ -1067,6 +1067,8 @@ static void qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p, XASL_NODE 
 static int qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc, XASL_STATE * xasl_state,
 					 bool not_use_membuf);
 static void qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc);
+static int qexec_gby_spill_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+				QFILE_TUPLE_RECORD * tplrec, bool * spilled);
 static int qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, REGU_VARIABLE_LIST regu_list,
 				 QFILE_TUPLE_RECORD * tplrec, AGGREGATE_HASH_KEY * key);
 static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, AGGREGATE_HASH_KEY * key,
@@ -1454,6 +1456,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   TOPN_STATUS topn_stauts = TOPN_SUCCESS;
   int ret = NO_ERROR;
   bool output_tuple = true;
+  bool spilled;
 
   if ((COMPOSITE_LOCK (xasl->scan_op_type) || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
       && !XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
@@ -1619,7 +1622,13 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      return NO_ERROR;
 	    }
 
-	  if ((qfile_add_tuple_to_list (thread_p, xasl->list_id, tplrec->tpl) != NO_ERROR))
+	  spilled = false;
+	  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.agg_hash_context != NULL
+	      && qexec_gby_spill_row (thread_p, xasl, xasl_state, tplrec, &spilled) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  if (!spilled && (qfile_add_tuple_to_list (thread_p, xasl->list_id, tplrec->tpl) != NO_ERROR))
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -5220,6 +5229,7 @@ struct qexec_gby_spill
   INT64 n_evicted;		/* the groups evicted before that, into the unsorted and the partial lists */
 };
 
+static int qexec_gby_merge_part_of (AGGREGATE_HASH_KEY * key, int n_parts, int level);
 static int qexec_gby_merge_part_of_hash (unsigned int h, int n_parts, int level);
 static QFILE_LIST_ID *qexec_gby_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 					   QFILE_LIST_ID * like, QUERY_ID query_id, int flags, bool with_descr);
@@ -5372,6 +5382,41 @@ qexec_gby_spill_group (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * ctx, QF
       rc = (list != NULL) ? qdata_save_agg_hentry_to_list (thread_p, key, value, ctx->temp_dbval_array, list,
 							   &value->key_hash) : ER_FAILED;
     }
+  return rc;
+}
+
+/* a row the table does not take (a big one, one with a set) while the evictions go to the partitions: into its key's
+ * partition, after the first tuples evicted before it, as develop's unsorted list has it after them -- the merge puts
+ * the unsorted list before the partition's rows (qexec_gby_hash_merge ()), where it would come before a first tuple
+ * evicted earlier.  The key is read from the tuple as the merge's split reads it (qexec_gby_merge_split_list ()). */
+static int
+qexec_gby_spill_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec,
+		     bool * spilled)
+{
+  BUILDLIST_PROC_NODE *proc = &xasl->proc.buildlist;
+  AGGREGATE_HASH_CONTEXT *ctx = proc->agg_hash_context;
+  QFILE_TUPLE_RECORD row = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_LIST_ID *list;
+  int p, rc;
+
+  *spilled = false;
+  if (ctx->spill == NULL || !ctx->spill->active)
+    {
+      return NO_ERROR;
+    }
+  /* the row read as a list's tuple: tplrec is the buffer it was written into, with no layout */
+  qfile_slot_set_tuple_ptr_and_layout (&row, tplrec->tpl, QFILE_GET_TUPLE_LENGTH (tplrec->tpl),
+				       &xasl->list_id->type_list);
+  rc = qexec_build_agg_hkey (thread_p, xasl_state, proc->g_hk_sort_regu_list, &row, ctx->temp_key);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  p = qexec_gby_merge_part_of (ctx->temp_key, QEXEC_GBY_SPILL_PARTS, 1);
+  list = qexec_gby_spill_open (thread_p, &ctx->spill->rows[p], &xasl->list_id->type_list, xasl->list_id, false,
+			       &ctx->spill->n_spilled);
+  rc = (list != NULL) ? qfile_add_tuple_to_list (thread_p, list, tplrec->tpl) : ER_FAILED;
+  *spilled = (rc == NO_ERROR);
   return rc;
 }
 
@@ -6532,6 +6577,11 @@ qexec_gby_order_reaches_result (const XASL_NODE * xasl)
   if (!prm_get_bool_value (PRM_ID_AGG_HASH_RESPECT_ORDER))
     {
       return false;
+    }
+  /* an output expression reads them as they come out (a serial, a stored routine, ...) */
+  if (proc->g_order_free & XASL_G_ORDER_KEPT)
+    {
+      return true;
     }
   /* what reads the groups in their order before the result is made: analytics, a group or row number */
   numbered = (proc->a_eval_list != NULL || proc->g_grbynum_val != NULL || proc->g_grbynum_pred != NULL
