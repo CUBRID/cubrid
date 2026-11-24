@@ -48,7 +48,7 @@
 #include "utility.h"
 #include "util_func.h"
 
-#include "unload_object_file.h"	// MULTI_PROCESSING_UNLOADDB_WITH_FORK only, will be deleted
+#include "unload_object_file.h"	// UNLOAD_MAX_OUTPUT_FILES
 
 
 #define MAX_PROCESS_COUNT (36)
@@ -73,6 +73,7 @@ int g_pre_alloc_varchar_size = DFLT_PRE_ALLOC_VARCHAR_SIZE;
 int g_request_pages = DFLT_REQ_DATASIZE;
 int g_read_ahead_sectors = LC_FETCH_READ_AHEAD_MAX_SECTORS;
 int g_fetcher_count = 1;
+int g_output_files = 1;
 int g_parallel_process_cnt = -1;
 int g_parallel_process_idx = -1;
 
@@ -232,6 +233,14 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	{
 	  fprintf (stderr, "\nThe number of '--%s' option ranges from 1 to %d.\n", UNLOAD_FETCHER_COUNT_L,
 		   MAX_FETCHER_COUNT);
+	  goto end;
+	}
+
+      g_output_files = utility_get_option_int_value (arg_map, UNLOAD_OUTPUT_FILES_S);
+      if (g_output_files < 1 || g_output_files > UNLOAD_MAX_OUTPUT_FILES)
+	{
+	  fprintf (stderr, "\nThe number of '--%s' option ranges from 1 to %d.\n", UNLOAD_OUTPUT_FILES_L,
+		   UNLOAD_MAX_OUTPUT_FILES);
 	  goto end;
 	}
 

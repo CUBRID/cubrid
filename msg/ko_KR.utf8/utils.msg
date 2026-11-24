@@ -575,6 +575,7 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
       --data-format=NUMBER    0: 텍스트, 1: 바이너리, 2: LZ4로 압축한 바이너리; 기본값: 0\n\
       --read-ahead-sectors=NUMBER 서버가 테이블을 읽으면서 미리 읽는 섹터(섹터당 64페이지) 수의 상한; 서버가 그 안에서 거리를 조정함; 0: 미리 읽지 않음; 기본값: 32 최대값: 32\n\
       --fetcher-count=COUNT   테이블의 행을 병렬로 가져오는 연결 수; -C, -t 1 이상과 함께 사용; 기본값: 1 최대값: 16\n\
+      --output-files=COUNT    행을 병렬로 나누어 쓰는 object 파일 수, <prefix>_objects와 <prefix>_objects_2 ~ _COUNT; 각 파일을 따로 적재할 수 있음; -t 1 이상과 함께 사용; 기본값: 1 최대값: 16\n\
   -t, --thread-count=COUNT    사용할 스레드 개수를 지정; 기본값: 1 최대값: 127\n\
       --enhanced-estimates    언로드할 테이블의 정확한 레코드 건수 수집; 기본값 : 미적용\n\
   -v, --verbose               많은 상태 메시지를 출력; 기본값: 출력 안 함\n\

@@ -1487,6 +1487,8 @@ typedef struct _ha_config
 #define UNLOAD_READ_AHEAD_SECTORS_L             "read-ahead-sectors"
 #define UNLOAD_FETCHER_COUNT_S                  11930
 #define UNLOAD_FETCHER_COUNT_L                  "fetcher-count"
+#define UNLOAD_OUTPUT_FILES_S                   11931
+#define UNLOAD_OUTPUT_FILES_L                   "output-files"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'

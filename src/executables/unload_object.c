@@ -205,8 +205,8 @@ static volatile bool extractor_thread_proc_terminate = false;
 static int max_fetched_copyarea_list = 1;
 #if !defined(WINDOWS)
 static S_WAITING_INFO wi_unload_class;
-static S_WAITING_INFO wi_w_blk_getQ;
-S_WAITING_INFO wi_write_file;
+static S_WAITING_INFO wi_w_blk_getQ[UNLOAD_MAX_OUTPUT_FILES];
+S_WAITING_INFO wi_write_file[UNLOAD_MAX_OUTPUT_FILES];
 #endif
 #define INVALID_THREAD_ID  ((pthread_t) (-1))
 
@@ -438,6 +438,8 @@ static void unload_fetchers_run (LC_FETCH_VERSION_TYPE fetch_type);
 
 /* the fetchers of --fetcher-count that run; 0 when the main client fetches */
 static int unload_Nfetchers = 0;
+/* the object files of --output-files to open */
+static int unload_Noutput_files = 1;
 
 /*
  * get_estimated_objs - get the estimated number of object reside in file heap
@@ -815,6 +817,21 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
     }
 
   obj_out = &(g_thr_param[0].text_output);
+
+  /* the object files of --output-files are written by writer threads, which run with the extractor threads */
+  unload_Noutput_files = 1;
+  if (g_output_files > 1)
+    {
+      if (nthreads > 0)
+	{
+	  unload_Noutput_files = MIN (g_output_files, UNLOAD_MAX_OUTPUT_FILES);
+	}
+      else
+	{
+	  fprintf (stderr, "\n'--%s' needs '--%s' of 1 or more; one object file is written.\n", UNLOAD_OUTPUT_FILES_L,
+		   UNLOAD_THREAD_COUNT_L);
+	}
+    }
 
   if (!datafile_per_class)
     {
@@ -1206,7 +1223,10 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
   error_occurred = false;
   if (!datafile_per_class)
     {
+      /* the class ids, which every object file needs */
+      g_write_all_files = true;
       error = text_print_request_flush (&(g_thr_param[0].text_output), true);
+      g_write_all_files = false;
       if (error != NO_ERROR)
 	{
 	  status = 1;
@@ -1907,36 +1927,40 @@ unload_fetchers_run (LC_FETCH_VERSION_TYPE fetch_type)
 }
 #endif /* CS_MODE && MULTI_CONN_TO_A_SERVER */
 
+/*
+ * unload_writer_thread - write the rows the extractor threads queue to one object file
+ *    param(in): the object file, as an index into g_fd_handles
+ */
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 unload_writer_thread (void *param)
 {
-  pthread_t tid = pthread_self ();
+  int file_idx = (int) (intptr_t) param;
   int thr_ret = NO_ERROR;
   int ret;
 
   while (writer_thread_proc_terminate == false)
     {
-      ret = flushing_write_blk_queue ();
+      ret = flushing_write_blk_queue (file_idx);
       if (ret < 0)
 	{
 	  thr_ret = ER_IO_WRITE;
 	  break;
 	}
 
-      TIMER_BEGIN ((g_sampling_records >= 0), &wi_w_blk_getQ);
+      TIMER_BEGIN ((g_sampling_records >= 0), &wi_w_blk_getQ[file_idx]);
       usleep (100);
 #if !defined(WINDOWS)
       if (ret == 0)
 	{
-	  wi_w_blk_getQ.cnt--;
+	  wi_w_blk_getQ[file_idx].cnt--;
 	}
 #endif
-      TIMER_END ((g_sampling_records >= 0), &wi_w_blk_getQ);
+      TIMER_END ((g_sampling_records >= 0), &wi_w_blk_getQ[file_idx]);
     }
 
   if (thr_ret == NO_ERROR)
     {
-      ret = flushing_write_blk_queue ();
+      ret = flushing_write_blk_queue (file_idx);
       if (ret < 0)
 	{
 	  thr_ret = ER_IO_WRITE;
@@ -2127,7 +2151,9 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
   bool enabled_alarm = false;
   LC_FETCH_VERSION_TYPE fetch_type = latest_image_flag ? LC_FETCH_CURRENT_VERSION : LC_FETCH_MVCC_VERSION;
   UNLD_CLASS_PARAM unld_cls_info;
-  pthread_t writer_tid;
+  pthread_t writer_tids[UNLOAD_MAX_OUTPUT_FILES];
+  int nwriters = 0;
+  int nfiles;
   void *retval = NULL;
   class copyarea_list c_cparea_lst_class;
 
@@ -2172,8 +2198,11 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
       goto exit_on_error;
     }
 
-  TIMER_CLEAR (&wi_w_blk_getQ);
-  TIMER_CLEAR (&wi_write_file);
+  for (i = 0; i < UNLOAD_MAX_OUTPUT_FILES; i++)
+    {
+      TIMER_CLEAR (&wi_w_blk_getQ[i]);
+      TIMER_CLEAR (&wi_write_file[i]);
+    }
   TIMER_CLEAR (&wi_unload_class);
   TIMER_BEGIN ((g_sampling_records >= 0), &wi_unload_class);
 
@@ -2276,6 +2305,27 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
       goto exit_on_error;
     }
 
+  /*
+   * The object files the class goes to. Each of them gets the header of the class, so that each can be loaded alone.
+   * A class other classes refer to, or one with shared or class attributes, whose values can refer to objects, stays
+   * in the first file: loaddb finds the objects a reference names only among the rows of the same run, and makes an
+   * empty object for one it does not find.
+   */
+  nfiles = g_noutput_files;
+  if (referenced_class || class_ptr->shared != NULL || class_ptr->class_attributes != NULL)
+    {
+      nfiles = 1;
+    }
+
+  /* written now, as a class without a heap has nothing more */
+  g_write_all_files = (nfiles > 1);
+  error = text_print_request_flush (&(g_thr_param[0].text_output), true);
+  g_write_all_files = false;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_end;
+    }
+
   /* Find the heap where the instances are stored */
   hfid = sm_ch_heap ((MOBJ) class_ptr);
   if (hfid->vfid.fileid == NULL_FILEID)
@@ -2316,7 +2366,10 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 
   error_occurred = false;
   assert (g_multi_thread_mode == false);
+  /* the format line, to the same files as the header */
+  g_write_all_files = (nfiles > 1);
   error = text_print_request_flush (&(g_thr_param[0].text_output), true);
+  g_write_all_files = false;
   if (error != NO_ERROR)
     {
       goto exit_on_end;
@@ -2381,10 +2434,15 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 	    }
 	}
 
-      if (pthread_create (&writer_tid, NULL, unload_writer_thread, NULL) != 0)
+      /* a writer thread for each object file of the class */
+      nwriters = nfiles;
+      for (i = 0; i < nwriters; i++)
 	{
-	  perror ("pthread_create()\n");
-	  _exit (1);
+	  if (pthread_create (&writer_tids[i], NULL, unload_writer_thread, (void *) (intptr_t) i) != 0)
+	    {
+	      perror ("pthread_create()\n");
+	      _exit (1);
+	    }
 	}
     }
 
@@ -2427,7 +2485,10 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 	}
 
       writer_thread_proc_terminate = true;
-      pthread_join (writer_tid, &retval);
+      for (i = 0; i < nwriters; i++)
+	{
+	  pthread_join (writer_tids[i], &retval);
+	}
 
       g_multi_thread_mode = false;
 
@@ -2444,11 +2505,14 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
       memcpy (section_end, &end_of_records, sizeof (end_of_records));
       section_end[sizeof (end_of_records)] = '\n';
 
-      if (write (g_fd_handle, section_end, sizeof (section_end)) != (ssize_t) sizeof (section_end))
+      for (i = 0; i < nfiles; i++)
 	{
-	  if (error == NO_ERROR)
+	  if (write (g_fd_handles[i], section_end, sizeof (section_end)) != (ssize_t) sizeof (section_end))
 	    {
-	      error = ER_IO_WRITE;
+	      if (error == NO_ERROR)
+		{
+		  error = ER_IO_WRITE;
+		}
 	    }
 	}
     }
@@ -3200,20 +3264,34 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
 static void
 close_object_file ()
 {
+  int i;
 
-  if (g_fd_handle != INVALID_FILE_NO)
+  for (i = 0; i < UNLOAD_MAX_OUTPUT_FILES; i++)
     {
-      close (g_fd_handle);
-      g_fd_handle = INVALID_FILE_NO;
+      if (g_fd_handles[i] != INVALID_FILE_NO)
+	{
+	  close (g_fd_handles[i]);
+	  g_fd_handles[i] = INVALID_FILE_NO;
+	}
     }
+  g_noutput_files = 0;
 }
 
+/*
+ * open_object_file - open the object files of the unload, or of a class with --datafile-per-class
+ *    return: true if all are open
+ *    output_dirname(in): the directory
+ *    class_name(in): the class, with --datafile-per-class; NULL otherwise
+ *
+ * Note: with --output-files=K the files are <name>, <name>_2, ... <name>_K, each to be loaded alone.
+ */
 static bool
 open_object_file (extract_context & ctxt, const char *output_dirname, const char *class_name)
 {
   char out_fname[PATH_MAX];
   char tmp_name[DB_MAX_IDENTIFIER_LENGTH * 2];
   char *name_ptr = (char *) class_name;
+  int i;
 
 #if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
   if (g_parallel_process_cnt > 1)
@@ -3224,21 +3302,34 @@ open_object_file (extract_context & ctxt, const char *output_dirname, const char
     }
 #endif
 
-  out_fname[0] = '\0';
-  if (class_name && *class_name)
+  for (i = 0; i < unload_Noutput_files; i++)
     {
-      snprintf (out_fname, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix, name_ptr, OBJECT_SUFFIX);
-    }
-  else
-    {
-      snprintf (out_fname, PATH_MAX - 1, "%s/%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX);
-    }
+      char file_no[16] = { '\0' };
 
-  g_fd_handle = open (out_fname, O_WRONLY | O_CREAT | O_TRUNC, CREAT_OBJECT_FILE_PERM);
-  if (g_fd_handle == INVALID_FILE_NO)
-    {
-      fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
-      return false;
+      if (i > 0)
+	{
+	  snprintf (file_no, sizeof (file_no), "_%d", i + 1);
+	}
+
+      out_fname[0] = '\0';
+      if (class_name && *class_name)
+	{
+	  snprintf (out_fname, PATH_MAX - 1, "%s/%s_%s%s%s", output_dirname, ctxt.output_prefix, name_ptr,
+		    OBJECT_SUFFIX, file_no);
+	}
+      else
+	{
+	  snprintf (out_fname, PATH_MAX - 1, "%s/%s%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX, file_no);
+	}
+
+      g_fd_handles[i] = open (out_fname, O_WRONLY | O_CREAT | O_TRUNC, CREAT_OBJECT_FILE_PERM);
+      if (g_fd_handles[i] == INVALID_FILE_NO)
+	{
+	  fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+	  close_object_file ();
+	  return false;
+	}
+      g_noutput_files = i + 1;
     }
 
   return true;
@@ -3407,8 +3498,17 @@ print_monitoring_info (const char *class_name, int nthreads)
 	   g_uci->wi_fetch.ts_wait_sum.tv_sec + ((double) g_uci->wi_fetch.ts_wait_sum.tv_nsec / NANO_PREC_VAL),
 	   g_uci->wi_fetch.cnt);
 
-  fprintf (fp, ALIGN_SPACE_FMT "Write  : %12.6f sec\n", "",
-	   wi_write_file.ts_wait_sum.tv_sec + ((double) wi_write_file.ts_wait_sum.tv_nsec / NANO_PREC_VAL));
+  /* the slowest writer */
+  {
+    double write_sec = 0;
+
+    for (int k = 0; k < UNLOAD_MAX_OUTPUT_FILES; k++)
+      {
+	write_sec = MAX (write_sec, wi_write_file[k].ts_wait_sum.tv_sec
+			 + ((double) wi_write_file[k].ts_wait_sum.tv_nsec / NANO_PREC_VAL));
+      }
+    fprintf (fp, ALIGN_SPACE_FMT "Write  : %12.6f sec\n", "", write_sec);
+  }
 
   if (nthreads <= 0)
     {
@@ -3453,8 +3553,8 @@ print_monitoring_info (const char *class_name, int nthreads)
 	   (int64_t) (winfo.cnt / nthreads));
 
   fprintf (fp, ALIGN_SPACE_FMT "Get Q  : %12.6f sec, count= %" PRId64 "\n", "",
-	   (wi_w_blk_getQ.ts_wait_sum.tv_sec + ((double) wi_w_blk_getQ.ts_wait_sum.tv_nsec / NANO_PREC_VAL)),
-	   (int64_t) (wi_w_blk_getQ.cnt));
+	   (wi_w_blk_getQ[0].ts_wait_sum.tv_sec + ((double) wi_w_blk_getQ[0].ts_wait_sum.tv_nsec / NANO_PREC_VAL)),
+	   (int64_t) (wi_w_blk_getQ[0].cnt));
 
   memset (&winfo, 0x00, sizeof (S_WAITING_INFO));
   for (int i = 0; i < nthreads; i++)

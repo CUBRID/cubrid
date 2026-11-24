@@ -40,6 +40,7 @@ extern int g_parallel_process_idx;
 extern int g_request_pages;
 extern int g_read_ahead_sectors;
 extern int g_fetcher_count;
+extern int g_output_files;
 extern int g_data_format;
 extern int page_size;
 extern int cached_pages;
