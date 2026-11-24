@@ -12886,9 +12886,11 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	    edge_cnt++;
 
 	    /* set join type */
-	    if (join_type == NO_JOIN || is_dummy_term)
+	    if (join_type == NO_JOIN
+		|| (is_dummy_term && !(QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN && IS_OUTER_JOIN_TYPE (join_type))))
 	      {
-		/* the first time except dummy term */
+		/* the first time except dummy term;
+		 * a dummy term never replaces the outer join type of the dummy term before it */
 		join_type = QO_TERM_JOIN_TYPE (term);
 		is_dummy_term = QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN ? true : false;
 	      }
