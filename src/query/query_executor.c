@@ -5211,10 +5211,12 @@ static bool qexec_hash_gby_selectivity_abandons (AGGREGATE_HASH_STATE state, int
  * partitions: what it let go so far joins the unsorted and the partial lists, and those and every later row go to
  * the sort or the merge as they decide (qexec_hash_gby_abandon ()). */
 
-/* as many as the merge splits its lists into at most (QEXEC_GBY_MERGE_MAX_PARTS): each list holds a page while it is
+/* at most as many as the merge splits its lists into (QEXEC_GBY_MERGE_MAX_PARTS): each list holds a page while it is
  * appended to, and a thread pays for every page it holds whenever it dirties one -- more partitions cost more than the
- * second splits they save (measured with 128 to 512) */
+ * second splits they save (measured with 128 to 512).  How many a table takes is set when it takes them
+ * (qexec_gby_spill_check ()), at least QEXEC_GBY_SPILL_MIN_PARTS */
 #define QEXEC_GBY_SPILL_PARTS (64)
+#define QEXEC_GBY_SPILL_MIN_PARTS (4)
 /* QEXEC_GBY_MERGE_MIN_FOLD: the entries per key below which the sort is left them */
 #define QEXEC_GBY_SPILL_MIN_FOLD (3)
 
@@ -5226,7 +5228,9 @@ struct qexec_gby_spill
 							 * the key's hash (qdata_save_agg_hentry_to_list ()) */
   QFILE_TUPLE_VALUE_TYPE_LIST part_type;	/* that layout */
   bool active;			/* the evictions go to the partitions (qexec_gby_spill_check ()) */
+  int n_parts;			/* how many, set then */
   INT64 n_evicted;		/* the groups evicted before that, into the unsorted and the partial lists */
+  double keys_checked;		/* the distinct keys the sketch had at the check before */
 };
 
 static int qexec_gby_merge_part_of (AGGREGATE_HASH_KEY * key, int n_parts, int level);
@@ -5365,7 +5369,7 @@ qexec_gby_spill_group (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * ctx, QF
    * table's key values are the output values themselves (qexec_build_agg_hkey (): vfetch_to of the outptr list), the
    * same DB_VALUEs the first tuple and the partial entry are written from with the lists' domains, and read back with
    * them; a value of another type than its column's would not round trip through the partial list of develop either */
-  int p = qexec_gby_merge_part_of_hash (value->key_hash, QEXEC_GBY_SPILL_PARTS, 1);
+  int p = qexec_gby_merge_part_of_hash (value->key_hash, spill->n_parts, 1);
   QFILE_LIST_ID *list;
   int rc = NO_ERROR;
 
@@ -5412,12 +5416,38 @@ qexec_gby_spill_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
     {
       return rc;
     }
-  p = qexec_gby_merge_part_of (ctx->temp_key, QEXEC_GBY_SPILL_PARTS, 1);
+  p = qexec_gby_merge_part_of (ctx->temp_key, ctx->spill->n_parts, 1);
   list = qexec_gby_spill_open (thread_p, &ctx->spill->rows[p], &xasl->list_id->type_list, xasl->list_id, false,
 			       &ctx->spill->n_spilled);
   rc = (list != NULL) ? qfile_add_tuple_to_list (thread_p, list, tplrec->tpl) : ER_FAILED;
   *spilled = (rc == NO_ERROR);
   return rc;
+}
+
+/* How many partitions the evictions go to, set once when they start (the lists split by a key's hash cannot be split
+ * again without being read again).  The groups at the end are not known yet: the keys the sketch saw so far are as
+ * many at least, and close to all of them when the input mixes its keys, since the check passes when the keys it saw
+ * came back several times each.  Those keys, at the memory a group takes in the table, are given a budget's worth a
+ * partition (as qexec_gby_merge_n_parts () gives them), twice as many for the keys still to come, and four times when
+ * the keys still grew by QEXEC_GBY_SPILL_KEYS_GROWING since the check before.  Too few makes a partition over the
+ * budget, which the merge splits again (one more pass over that partition); too many holds a list and its temp file
+ * per partition for little in each. */
+#define QEXEC_GBY_SPILL_KEYS_GROWING (0.05)
+
+static int
+qexec_gby_spill_n_parts (AGGREGATE_HASH_CONTEXT * ctx, double keys, double grown)
+{
+  UINT64 budget = (UINT64) MAX (prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE), (INT64) 1);
+  double target = (double) MAX (budget - budget / 4, (UINT64) 1);
+  double group_bytes = (double) ctx->hash_size / MAX (mht_count (ctx->hash_table), 1);
+  double need = keys * group_bytes * ((grown < QEXEC_GBY_SPILL_KEYS_GROWING) ? 2 : 4) / target;
+  int n = QEXEC_GBY_SPILL_MIN_PARTS;
+
+  while (n < QEXEC_GBY_SPILL_PARTS && n < need)
+    {
+      n *= 2;
+    }
+  return n;
 }
 
 /* Whether the evictions fold: a group evicted comes back as a new group when more of its rows follow, so the groups
@@ -5432,17 +5462,20 @@ static void
 qexec_gby_spill_check (AGGREGATE_HASH_CONTEXT * ctx, bool keep_first)
 {
   struct qexec_gby_spill *spill = ctx->spill;
-  double keys;
+  double keys, grown;
 
   if (++spill->n_evicted % QEXEC_GBY_SPILL_CHECK != 0)
     {
       return;
     }
   keys = qdata_key_sketch_estimate (ctx->key_sketch);
+  grown = (spill->keys_checked > 0) ? (keys - spill->keys_checked) / spill->keys_checked : 1;
+  spill->keys_checked = keys;
   /* a group the table let go leaves its first tuple (when kept) and its accumulators */
   if ((double) ctx->group_count * (keep_first ? 2 : 1) >= QEXEC_GBY_SPILL_MIN_FOLD * keys)
     {
       spill->active = true;
+      spill->n_parts = qexec_gby_spill_n_parts (ctx, keys, grown);
     }
 }
 
@@ -9160,7 +9193,7 @@ fold:
   /* a group's memory: its first tuple, its key, its accumulators, the table's slots */
   bytes = (UINT64) (groups * (row_bytes + (double) qexec_gby_mtable_group_bytes (xasl->proc.buildlist.g_hkey_size,
 										 xasl->proc.buildlist.g_func_count)));
-  n_parts = (spill != NULL) ? QEXEC_GBY_SPILL_PARTS : qexec_gby_merge_n_parts ((double) bytes, budget);
+  n_parts = (spill != NULL) ? spill->n_parts : qexec_gby_merge_n_parts ((double) bytes, budget);
   if (parallel)
     {
       /* a few partitions a worker, so that the workers finish together */
