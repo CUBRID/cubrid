@@ -17420,6 +17420,13 @@ int
 bridge_locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes,
 					 RECDES * old_recdes)
 {
+  /* Entries a test published without attribute ids are consumed in attribute order (legacy metadata). */
+  if (!thread_p->oos_tracking_is_paired ())
+    {
+      thread_p->oos_attrids.clear ();
+      thread_p->oos_is_internal_lob.clear ();
+      thread_p->pair_oos_oids (thread_p->oos_oids.size (), NULL_ATTRID, false);
+    }
   /* Without a previous version, exercise the INSERT contract: every OOS attribute must be accounted for. */
   return locator_fixup_oos_oids_in_recdes (thread_p, class_oid, recdes, old_recdes == NULL, old_recdes);
 }
