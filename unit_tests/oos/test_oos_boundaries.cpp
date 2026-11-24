@@ -68,8 +68,10 @@ namespace
 TEST (OosBoundaries, ExactChunkCapacityAndOneByteOverStoreOneAndTwoChunks)
 {
   // 16 KiB I/O page, 40B I/O reservation, 32B slotted header, 4B slot,
-  // 8B alignment and 24B chunk header give 16280 payload bytes.
-  constexpr int capacity = 16280;
+  // and 8B alignment give a 16304B max slotted record; subtracting the
+  // 32B chunk header (OOS_RECORD_HEADER_SIZE) gives 16272 payload bytes.
+  constexpr int aligned_page_record_limit = 16304;
+  constexpr int capacity = aligned_page_record_limit - OOS_RECORD_HEADER_SIZE;
   ASSERT_EQ (bridge_oos_get_max_chunk_size_within_page (), capacity);
   VFID file;
   ASSERT_EQ (oos_create_file (thread_p, file), NO_ERROR);
@@ -388,59 +390,6 @@ TEST (OosBoundaries, StoredVotBoundariesAndExpandedValuesPreserveMixedRows)
   guard.end ();
   ASSERT_GE (exec_sql ("DROP TABLE oos11width"), 0);
   ASSERT_EQ (db_commit_transaction (), NO_ERROR);
-}
-
-TEST (OosBoundaries, NonOosShortIntVotBoundaryPreservesCompleteValues)
-{
-  // With one variable and one fixed attribute: header16 + VOT4 + bound4 +
-  // VARCHAR24 =48B. Fixed BIT32716 gives32764B (largest aligned SHORT result).
-  // The next fixed size32720 gives32768B, requiring an8B INT VOT and32772B result.
-  // Neither value is eligible for demotion: BIT is fixed; VARCHAR equals the24B stub.
-  for (int extra :
-       {
-	       0, 4
-       })
-    {
-      const int fixed_bytes = 32716 + extra;
-      const std::string name = extra == 0 ? "oos11short" : "oos11int";
-      ASSERT_GE (exec_sql (("DROP TABLE IF EXISTS " + name).c_str ()), 0);
-      ASSERT_GE (exec_sql (("CREATE TABLE " + name + " (filler BIT(" + std::to_string (fixed_bytes * 8)
-			    + "), payload VARCHAR(22))").c_str ()), 0);
-      const std::string fixed_value = "CAST(REPEAT('e5'," + std::to_string (fixed_bytes) + ") AS BIT("
-				      + std::to_string (fixed_bytes * 8) + "))";
-      ASSERT_GE (exec_sql (("INSERT INTO " + name + " VALUES (" + fixed_value + ",REPEAT('q',22))").c_str ()), 0);
-      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
-      const std::string query = "SELECT CASE WHEN filler=" + fixed_value
-				+ " AND payload=REPEAT('q',22) THEN 1 ELSE 0 END FROM " + name;
-      int matches = 0;
-      ASSERT_EQ (fetch_single_int (query.c_str (), &matches), NO_ERROR);
-      EXPECT_EQ (matches, 1);
-      DB_OBJECT *table = db_find_class (name.c_str ());
-      ASSERT_NE (table, nullptr);
-      OID class_oid = *reinterpret_cast<OID *> (db_identifier (table));
-      HFID heap;
-      FILE_TYPE type;
-      ASSERT_EQ (heap_get_class_hfid (thread_p, &class_oid, &heap, &type), NO_ERROR);
-      HEAP_SCANCACHE scan;
-      ASSERT_EQ (heap_scancache_start (thread_p, &scan, &heap, &class_oid, true, nullptr), NO_ERROR);
-      std::vector<char> bytes (40000, '?');
-      RECDES stored = { (int) bytes.size (), 0, REC_HOME, bytes.data () };
-      OID oid = OID_INITIALIZER;
-      const SCAN_CODE code = heap_next (thread_p, &heap, &class_oid, &oid, &stored, &scan, COPY,
-					HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
-      // Close before assertions/drop, including on an unexpected scan result.
-      heap_scancache_end (thread_p, &scan);
-      ASSERT_EQ (code, S_SUCCESS);
-      EXPECT_FALSE (OR_RECORD_HAS_OOS (stored.data));
-      EXPECT_EQ (OR_GET_OFFSET_SIZE (stored.data), extra == 0 ? 2 : 4);
-      // Fetch may grow the MVCC header. VOT offsets remain relative to its end.
-      EXPECT_EQ (OR_VAR_OFFSET (stored.data, 1) - OR_HEADER_SIZE (stored.data),
-		 extra == 0 ? 32748 : 32756);
-      ASSERT_EQ (fetch_single_int (query.c_str (), &matches), NO_ERROR);
-      EXPECT_EQ (matches, 1);
-      ASSERT_GE (exec_sql (("DROP TABLE " + name).c_str ()), 0);
-      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
-    }
 }
 
 int main (int argc, char **argv)

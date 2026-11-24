@@ -287,7 +287,7 @@ set_tests_properties(test_oos_concurrent_insert_driver PROPERTIES TIMEOUT 30)
 # =============================================================================
 add_test(NAME test_oos COMMAND test_oos)
 add_test(NAME test_oos_boundaries COMMAND test_oos_boundaries)
-set_tests_properties(test_oos_boundaries PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 60)
+set_tests_properties(test_oos_boundaries PROPERTIES FIXTURES_REQUIRED OOS_DB RESOURCE_LOCK OOS_SHARED_UNITTESTDB TIMEOUT 60)
 add_test(NAME test_oos_delete COMMAND test_oos_delete)
 # the OOS reclaimer and reclaim intents (ADR-0008, CBRD-27781): redo-only, tail first, link stamps, fail-stop.
 add_test(NAME test_oos_reclaim COMMAND test_oos_reclaim)

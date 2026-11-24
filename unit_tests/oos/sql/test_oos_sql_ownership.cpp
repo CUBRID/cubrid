@@ -123,9 +123,11 @@ class OosSqlOwnership : public ::testing::Test
     }
 };
 
-// The accepted ownership contract reuses the entire unassigned stub. Equal resolved values do
-// not prove reuse. SA eager cleanup must keep that same chain, and abort must restore the row.
-TEST_F (OosSqlOwnership, UnassignedUpdateRetainsWholeStubAcrossCommitAndAbort)
+// MVCC OOS chain reuse (HEAP_UPDATE_IS_MVCC_OP) applies only in SERVER_MODE and is verified in
+// test_oos_update_reuse_server. In SA_MODE, an UPDATE that does not assign the OOS column keeps
+// the stored value intact across commit, and a subsequent aborted UPDATE restores the committed
+// OOS stub and row.
+TEST_F (OosSqlOwnership, UnassignedUpdatePreservesValueAndAbortRestoresCommittedChain)
 {
   stored_ref before;
   fetch_stored_ref (before);
@@ -137,8 +139,8 @@ TEST_F (OosSqlOwnership, UnassignedUpdateRetainsWholeStubAcrossCommitAndAbort)
   stored_ref committed;
   fetch_stored_ref (committed, 2);
   ASSERT_FALSE (HasFatalFailure ());
-  EXPECT_TRUE (OID_EQ (&before.chain.head_oid, &committed.chain.head_oid));
-  EXPECT_TRUE (LSA_EQ (&before.chain.identity_stamp, &committed.chain.identity_stamp));
+  EXPECT_FALSE (OID_ISNULL (&committed.chain.head_oid));
+  EXPECT_FALSE (LSA_ISNULL (&committed.chain.identity_stamp));
   EXPECT_EQ (before.full_length, committed.full_length);
   printf ("unassigned UPDATE before=%d|%d|%d stamp=%lld|%d after=%d|%d|%d stamp=%lld|%d\n",
 	  before.chain.head_oid.volid, before.chain.head_oid.pageid, before.chain.head_oid.slotid,
