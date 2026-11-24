@@ -432,10 +432,15 @@ public class ExecuteThread extends Thread {
         String inSource = request.code;
         String owner = request.owner;
 
+        // a check with correlation names is not translated, so it has nothing to compile with javac
+        boolean checkOnly = !request.correlationNames.isEmpty();
+
         CompileInfo info = null;
         try {
-            info = PlcsqlCompilerMain.compilePLCSQL(inSource, owner, verbose, request.lineOffset);
-            if (info.errCode == 0) {
+            info =
+                    PlcsqlCompilerMain.compilePLCSQL(
+                            inSource, owner, verbose, request.lineOffset, request.correlationNames);
+            if (info.errCode == 0 && !checkOnly) {
                 MemoryJavaCompiler compiler = new MemoryJavaCompiler();
                 SourceCode sCode = new SourceCode(info.className, info.translated);
 

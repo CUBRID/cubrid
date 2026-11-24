@@ -35,13 +35,14 @@ namespace cubpl
 //////////////////////////////////////////////////////////////////////////
 
 #define COMPILE_REQUEST_PACKER_ARGS() \
-  code, owner, mode, line_offset
+  code, owner, mode, line_offset, correlation_names
 
   compile_request::compile_request ()
     : code {}
     , owner {}
     , mode {}
     , line_offset {0}
+    , correlation_names {}
   {
     //
   }
@@ -106,6 +107,13 @@ namespace cubpl
 	  {
 	    dependencies[i].pack (serializator);
 	  }
+
+	int correlation_uses_size = (int) correlation_uses.size ();
+	serializator.pack_int (correlation_uses_size);
+	for (int i = 0; i < correlation_uses_size; i++)
+	  {
+	    correlation_uses[i].pack (serializator);
+	  }
       }
   }
 
@@ -138,6 +146,12 @@ namespace cubpl
 	for (int i = 0; i < (int) dependencies.size(); i++)
 	  {
 	    dependencies[i].get_packed_size (serializator, size);
+	  }
+
+	size += serializator.get_packed_int_size (size); // size of correlation_uses
+	for (int i = 0; i < (int) correlation_uses.size (); i++)
+	  {
+	    size += correlation_uses[i].get_packed_size (serializator, size);
 	  }
       }
 
@@ -178,6 +192,17 @@ namespace cubpl
 		dependencies[i].unpack (deserializator);
 	      }
 	  }
+
+	int correlation_uses_size = 0;
+	deserializator.unpack_int (correlation_uses_size);
+	if (correlation_uses_size > 0)
+	  {
+	    correlation_uses.resize (correlation_uses_size);
+	    for (int i = 0; i < correlation_uses_size; i++)
+	      {
+		correlation_uses[i].unpack (deserializator);
+	      }
+	  }
       }
   }
 
@@ -207,6 +232,34 @@ namespace cubpl
   {
     deserializator.unpack_int (obj_type);
     deserializator.unpack_string (obj_uniq_name);
+  }
+
+//////////////////////////////////////////////////////////////////////////
+// plcsql_correlation_use
+//////////////////////////////////////////////////////////////////////////
+
+  plcsql_correlation_use::plcsql_correlation_use () { }
+
+  void
+  plcsql_correlation_use::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_string (name);
+    serializator.pack_string (field);
+  }
+
+  size_t
+  plcsql_correlation_use::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_string_size (name, start_offset); // name
+    size += serializator.get_packed_string_size (field, size); // field
+    return size;
+  }
+
+  void
+  plcsql_correlation_use::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_string (name);
+    deserializator.unpack_string (field);
   }
 
 //////////////////////////////////////////////////////////////////////////

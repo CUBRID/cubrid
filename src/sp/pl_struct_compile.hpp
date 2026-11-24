@@ -37,6 +37,7 @@ namespace cubpl
 {
   struct pl_parameter_info;
   struct plcsql_dependency;
+  struct plcsql_correlation_use;
 
   struct EXPORT_IMPORT compile_request : public cubpacking::packable_object
   {
@@ -48,6 +49,13 @@ namespace cubpl
 
     /* lines before the code of the user, which the compiler subtracts from the lines it reports */
     int line_offset;
+
+    /*
+     * Correlation names of a trigger, such as obj and new, declared as records at the top of
+     * the procedure. When it is not empty, the compiler only checks the code and reports
+     * the fields of the names it reads.
+     */
+    std::vector <std::string> correlation_names;
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -77,6 +85,8 @@ namespace cubpl
     std::string compiled_code;
 
     std::vector <plcsql_dependency> dependencies;
+    /* filled when the request has correlation_names */
+    std::vector <plcsql_correlation_use> correlation_uses;
   };
 
   struct EXPORT_IMPORT plcsql_dependency: public cubpacking::packable_object
@@ -90,6 +100,19 @@ namespace cubpl
 
     int obj_type;       // TODO: use predefined enum
     std::string obj_uniq_name;
+  };
+
+  /* a field of a correlation name the code reads, such as qty of obj.qty */
+  struct EXPORT_IMPORT plcsql_correlation_use: public cubpacking::packable_object
+  {
+    plcsql_correlation_use ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    std::string name;
+    std::string field;
   };
 
   struct EXPORT_IMPORT sql_semantics : public cubpacking::packable_object

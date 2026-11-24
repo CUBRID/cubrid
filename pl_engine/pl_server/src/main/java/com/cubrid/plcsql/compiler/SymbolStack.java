@@ -785,7 +785,7 @@ public class SymbolStack {
         }
     }
 
-    private Decl getDecl(String name) {
+    Decl getDecl(String name) {
         assert name != null;
 
         for (SymbolTable t : symbolTableStack) {

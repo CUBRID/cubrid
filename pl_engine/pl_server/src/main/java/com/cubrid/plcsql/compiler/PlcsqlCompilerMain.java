@@ -74,13 +74,25 @@ public class PlcsqlCompilerMain {
     }
 
     public static CompileInfo compilePLCSQL(
-            String in, String owner, boolean verbose, int lineOffset) {
-        return compilePLCSQL(in, verbose, owner, Long.toString(getCompileSeqNo()), lineOffset);
+            String in,
+            String owner,
+            boolean verbose,
+            int lineOffset,
+            List<String> correlationNames) {
+        return compilePLCSQL(
+                in, verbose, owner, Long.toString(getCompileSeqNo()), lineOffset, correlationNames);
     }
     // end of temporary code
 
+    // With correlation names, the code is checked up to the type checking and is not translated.
+    // The result has the fields of the names the code reads.
     public static CompileInfo compilePLCSQL(
-            String in, boolean verbose, String owner, String compileSeqNo, int lineOffset) {
+            String in,
+            boolean verbose,
+            String owner,
+            String compileSeqNo,
+            int lineOffset,
+            List<String> correlationNames) {
 
         // System.out.println("[TEMP] text to the compiler");
         // System.out.println(in);
@@ -89,7 +101,13 @@ public class PlcsqlCompilerMain {
         CharStream input = CharStreams.fromString(in);
         try {
             return compileInner(
-                    new InstanceStore(), input, optionFlags, owner, compileSeqNo, lineOffset);
+                    new InstanceStore(),
+                    input,
+                    optionFlags,
+                    owner,
+                    compileSeqNo,
+                    lineOffset,
+                    correlationNames);
         } catch (SyntaxError e) {
             return compileError(e.line - lineOffset, e.column, e.getMessage(), lineOffset);
         } catch (SemanticError e) {
@@ -234,9 +252,11 @@ public class PlcsqlCompilerMain {
             int optionFlags,
             String owner,
             String compileSeqNo,
-            int lineOffset) {
+            int lineOffset,
+            List<String> correlationNames) {
 
         boolean verbose = (optionFlags & OPT_VERBOSE) > 0;
+        boolean checkOnly = !correlationNames.isEmpty();
 
         long t0 = 0L;
         StringBuilder logStore = null;
@@ -277,7 +297,7 @@ public class PlcsqlCompilerMain {
         // converting parse tree to AST
 
         ParseTreeConverter converter =
-                new ParseTreeConverter(iStore, owner, compileSeqNo, lineOffset);
+                new ParseTreeConverter(iStore, owner, compileSeqNo, lineOffset, correlationNames);
         Unit unit = (Unit) converter.visit(tree);
 
         if (verbose) {
@@ -310,6 +330,14 @@ public class PlcsqlCompilerMain {
 
         if (verbose) {
             t0 = logElapsedTime(logStore, "typechecking", t0);
+        }
+
+        if (checkOnly) {
+            if (verbose) {
+                Server.log(unit.getClassName() + logStore.toString());
+            }
+
+            return new CompileInfo(converter.getCorrelationUses());
         }
 
         // ------------------------------------------
