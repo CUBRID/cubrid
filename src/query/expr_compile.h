@@ -348,7 +348,8 @@ extern void *expr_scan_pred_compile_at_generation (const cubxasl::pred_expr * pr
 extern DB_LOGICAL expr_scan_pred_eval (void *compiled, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid);
 extern void expr_scan_pred_free (void *compiled);
 
-/* end of an execution for a compiled scan filter: expr_prog_reset () of its operand program */
+/* end of an execution for a compiled scan filter: expr_prog_reset () of its operand program, and the values of the
+ * host variables its leaves pinned are forgotten (CBRD-28165) */
 extern void expr_scan_pred_reset (void *compiled);
 
 /* CBRD-27361: a compiled program as bytes from which another process holding the same XASL tree rebuilds it (see
@@ -389,7 +390,9 @@ struct expr_raw_leaf_info
   const DB_VALUE *k_value;	/* the constant side: a literal the leaf pinned or holds, or the bound
 				 * value of an auto-parameterized literal / host variable (TYPE_POS_VALUE:
 				 * one value for the execution, of the type the plan was compiled for --
-				 * a plan per bind-type signature) */
+				 * a plan per bind-type signature), or the leaf's own value of a host
+				 * variable it pinned, which expr_scan_pred_prepare () converts for the
+				 * execution (read it after that call, CBRD-28165) */
   DB_VALUE *const *k_cell;	/* ... or the program cell a prologue computes it into (read after
 				 * expr_scan_pred_prepare ()); exactly one of k_value / k_cell is set */
   const REGU_VARIABLE *col2_regu;	/* instead of a constant, another column of the scan ("a < b"): the right
