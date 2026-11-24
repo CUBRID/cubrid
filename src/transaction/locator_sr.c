@@ -334,7 +334,7 @@ static bool locator_has_isolation_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CO
 static int locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool * ours);
 static SCAN_CODE locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 						       LOCK lock_mode, bool transient, bool owner_bypass_ok,
-						       bool * lock_acquired_p);
+						       bool * lock_acquired_p, MVCC_REC_HEADER * mvcc_header_p);
 static SCAN_CODE locator_get_last_version_locked_at_select (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 							    RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 							    HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
@@ -4700,7 +4700,7 @@ locator_lock_gathered_child (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid
   recdes->data = NULL;
   /* kept to commit; a child row we stamped ourselves is touched again without its lock */
   scan_code = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY, NULL_CHN,
-					   LOG_ERROR_IF_DELETED, false, true, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+					   LOG_ERROR_IF_DELETED, false, true, HEAP_RECDES_DONT_CONSUME_RAW_BYTES, NULL);
   return locator_gathered_child_read_result (scan_code, oid, gone);
 }
 
@@ -9906,7 +9906,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  /* not locked at select: lock per the statement's policy; locator_update_force () will not lock again */
 	  scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, X_LOCK, COPY,
 					      NULL_CHN, LOG_ERROR_IF_DELETED, LOCATOR_LOCK_IS_TRANSIENT (lock_policy),
-					      true, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+					      true, HEAP_RECDES_DONT_CONSUME_RAW_BYTES, NULL);
 	  if (saved_mvcc_snapshot != NULL)
 	    {
 	      scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
@@ -15731,17 +15731,19 @@ locator_object_is_ours (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
  * owner_bypass_ok (in) : Whether a row this transaction stamped may be touched again without the row lock; not
  *			  for a client fetch, which caches the lock it asked for.
  * lock_acquired_p (out) : Whether this call took the lock and still holds it; may be NULL.
+ * mvcc_header_p (out) : The settled last version's MVCC header on success; may be NULL.
  *
  * NOTE: Caller must handle the cleanup of context
  */
 static SCAN_CODE
 locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, LOCK lock_mode,
-				      bool transient, bool owner_bypass_ok, bool * lock_acquired_p)
+				      bool transient, bool owner_bypass_ok, bool * lock_acquired_p,
+				      MVCC_REC_HEADER * mvcc_header_p)
 {
   SCAN_CODE scan = S_SUCCESS;
   bool lock_acquired = false;
   int granted;
-  MVCC_REC_HEADER recdes_header;
+  MVCC_REC_HEADER recdes_header = MVCC_REC_HEADER_INITIALIZER;
   bool is_mvcc_class;
   int (*lock_fn) (THREAD_ENTRY *, const OID *, const OID *, LOCK, int) =
     (transient ? lock_object_transient : lock_object);
@@ -15803,6 +15805,10 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   if (lock_acquired_p != NULL)
     {
       *lock_acquired_p = lock_acquired;
+    }
+  if (mvcc_header_p != NULL)
+    {
+      *mvcc_header_p = recdes_header;
     }
   return scan;
 
@@ -15984,7 +15990,8 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
     }
 
   scan =
-    locator_lock_and_get_object_internal (thread_p, &context, lock_mode, transient, owner_bypass_ok, &lock_acquired);
+    locator_lock_and_get_object_internal (thread_p, &context, lock_mode, transient, owner_bypass_ok, &lock_acquired,
+					  NULL);
 
   /* perform reevaluation */
   if (mvcc_reev_data != NULL && (scan == S_SUCCESS || scan == S_SUCCESS_CHN_UPTODATE))
@@ -16166,7 +16173,7 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
   else
     {
       /* Locking */
-      scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock_mode, false, false, NULL);
+      scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock_mode, false, false, NULL, NULL);
     }
 
   heap_clean_get_context (thread_p, &context);
@@ -16192,12 +16199,13 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
  *                            - LOG_WARNING_IF_DELETED: set only warning
  * transient (in)      : whether this request is one the statement gives back when it ends
  * recdes_consumption_policy (in) : Whether the caller consumes the returned raw RECDES bytes.
+ * mvcc_header (out)   : the settled last version's MVCC header on success; may be NULL
  */
 SCAN_CODE
 locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 			     HEAP_SCANCACHE * scan_cache, LOCK lock, int ispeeking, int old_chn,
 			     NON_EXISTENT_HANDLING non_ex_handling_type, bool transient, bool owner_bypass_ok,
-			     HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
+			     HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy, MVCC_REC_HEADER * mvcc_header)
 {
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan_code;
@@ -16213,7 +16221,8 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * cla
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn,
 			 recdes_consumption_policy);
-  scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock, transient, owner_bypass_ok, NULL);
+  scan_code =
+    locator_lock_and_get_object_internal (thread_p, &context, lock, transient, owner_bypass_ok, NULL, mvcc_header);
   heap_clean_get_context (thread_p, &context);
   return scan_code;
 }

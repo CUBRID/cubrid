@@ -525,6 +525,7 @@ EXPORTS
     pt_class_part
     pt_evaluate_tree_having_serial
     pt_from_entity_part
+    pt_is_ddl_node_type
     pt_length_of_list
     pt_str_compare
     pt_value_to_db
