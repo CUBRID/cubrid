@@ -3733,7 +3733,8 @@ jsp_rewrite_pkg_code (PARSER_CONTEXT *parser, PT_NODE *statement)
   const char *rewritten_code;
   int custom_print_saved = parser->custom_print;
 
-  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+  // quote the names as unloaddb does: a name can be a PL/CSQL keyword that is not an SQL one, such as "raise"
+  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME | PT_PRINT_QUOTES;
   parser->flag.is_unloading_plcsql_def = 1;
   rewritten_code = parser_print_tree (parser, statement);
   parser->flag.is_unloading_plcsql_def = 0;
@@ -4878,7 +4879,8 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
       {
 	int custom_print_saved = parser->custom_print;
 
-	parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+	// quote the names as unloaddb does: a name can be a PL/CSQL keyword that is not an SQL one, such as "raise"
+	parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME | PT_PRINT_QUOTES;
 	parser->flag.is_unloading_plcsql_def = 1;
 	rewritten_code = parser_print_tree (parser, statement);
 	parser->flag.is_unloading_plcsql_def = 0;
