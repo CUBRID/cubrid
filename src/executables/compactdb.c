@@ -68,7 +68,7 @@ static RECDES *alloc_recdes (int length);
 static void free_recdes (RECDES * rec);
 static void disk_init (void);
 static void disk_final (void);
-static int update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec);
+static int update_indexes (THREAD_ENTRY * thread_p, OID * class_oid, OID * obj_oid, RECDES * rec);
 static void compact_usage (const char *argv0);
 
 extern int get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_class_list);
@@ -698,7 +698,7 @@ disk_update_instance (THREAD_ENTRY * thread_p, MOP classop, DESC_OBJ * obj, OID 
 
   if (has_indexes)
     {
-      update_indexes (WS_OID (classop), oid, Diskrec);
+      update_indexes (thread_p, WS_OID (classop), oid, Diskrec);
     }
 
   heap_create_update_context (&update_context, hfid, oid, WS_OID (classop), Diskrec, NULL,
@@ -767,12 +767,13 @@ disk_final (void)
 /*
  * update_indexes - update index for given OID
  *    return: NO_ERROR or error code
+ *    thread_p(in): thread entry
  *    class_oid(in): class oid
  *    obj_oid(in): object oid
  *    rec(in): RECDES instance having new value
  */
 static int
-update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
+update_indexes (THREAD_ENTRY * thread_p, OID * class_oid, OID * obj_oid, RECDES * rec)
 {
   RECDES oldrec = { 0, 0, 0, NULL };
   bool old_object;
@@ -781,10 +782,10 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
   HEAP_SCANCACHE scan_cache;
 
   (void) heap_scancache_quick_start (&scan_cache);
-  heap_init_get_context (NULL, &context, obj_oid, class_oid, &oldrec, &scan_cache, COPY, NULL_CHN,
+  heap_init_get_context (thread_p, &context, obj_oid, class_oid, &oldrec, &scan_cache, COPY, NULL_CHN,
 			 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 
-  old_object = (heap_get_last_version (NULL, &context) == S_SUCCESS);
+  old_object = (heap_get_last_version (thread_p, &context) == S_SUCCESS);
 
   if (old_object)
     {
@@ -794,7 +795,7 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
        * 9rd arg -> data or schema, 10th arg -> max repl. log or not
        */
       success =
-	locator_update_index (NULL, rec, &oldrec, NULL, 0, obj_oid, class_oid, SINGLE_ROW_UPDATE,
+	locator_update_index (thread_p, rec, &oldrec, NULL, 0, obj_oid, class_oid, SINGLE_ROW_UPDATE,
 			      (HEAP_SCANCACHE *) NULL, NULL);
     }
   else
@@ -802,8 +803,8 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
       success = ER_FAILED;
     }
 
-  heap_clean_get_context (NULL, &context);
-  (void) heap_scancache_end (NULL, &scan_cache);
+  heap_clean_get_context (thread_p, &context);
+  (void) heap_scancache_end (thread_p, &scan_cache);
 
   return success;
 }

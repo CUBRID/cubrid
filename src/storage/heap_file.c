@@ -169,13 +169,6 @@ static int rv;
     } \
   while (0)
 
-#if defined (SERVER_MODE)
-#define HEAP_UPDATE_IS_MVCC_OP(is_mvcc_class, update_style) \
-    ((is_mvcc_class) && (!HEAP_IS_UPDATE_INPLACE (update_style)) ? (true) : (false))
-#else
-#define HEAP_UPDATE_IS_MVCC_OP(is_mvcc_class, update_style) (false)
-#endif
-
 #define HEAP_SCAN_ORDERED_HFID(scan) \
   (((scan) != NULL) ? (&(scan)->node.hfid) : (PGBUF_ORDERED_NULL_HFID))
 
@@ -746,21 +739,27 @@ static bool heap_capacity_vpid_is_counted (const FILE_FTAB_COLLECTOR * collector
 static int heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_reset);
 static int heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
-					    HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
 
 /* *INDENT-OFF* */
 static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class,
 						 size_t * offset_size_ptr);
+/* How one column is written: inline (not selected), as the stub of a new chain, or as the reused stub of the old
+ * version. A reused stub is copied byte for byte, so the new version names the same chain (CBRD-27230). */
 struct heap_oos_column_plan
 {
   bool selected = false;
+  bool reused = false;
   int pending_index = -1;
   OID oid = OID_INITIALIZER;
   DB_BIGINT length = 0;
   LOG_LSA identity_stamp = NULL_LSA;	/* identity stamp of the inserted OOS value chain (CBRD-26950) */
+  char reused_stub[OR_OOS_INLINE_SIZE];
 };
+static bool heap_attrinfo_plan_reused_oos_stubs (HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
+						 std::vector<heap_oos_column_plan> * oos_plan);
+static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
+					    HEAP_CACHE_ATTRINFO * attr_info, const heap_oos_column_plan * oos_plan);
 static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
 						size_t * offset_size_ptr,
 						std::vector<heap_oos_column_plan> * oos_plan,
@@ -794,6 +793,8 @@ static int heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info, const heap_pending_record *pending = nullptr);
 static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
+static OR_ATTRIBUTE *heap_midxkey_locate_record_attr (RECDES * recdes, OR_ATTRIBUTE * att,
+						      HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att,
                                 const heap_pending_record *pending = nullptr);
 
@@ -861,7 +862,7 @@ static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_
 static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							   RECDES * old_recdes, record_descriptor * new_recdes,
 							   int lobfile_create_flag, heap_pending_record * pending =
-							   nullptr);
+							   nullptr, bool reuse_oos_stubs = false);
 /* *INDENT-ON* */
 
 static int heap_update_statistics (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
@@ -951,7 +952,7 @@ static int heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTE
 static int heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, OID * oid_p);
 static void heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
-				      RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa, LOG_RCVINDEX rcvindex);
+				      RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa);
 
 /* heap update related functions */
 static int heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
@@ -2893,9 +2894,10 @@ heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
 }
 
 /*
- * heap_page_is_not_in_heap () - Check whether a normal heap page is not linked to its heap yet.
+ * heap_page_is_not_in_heap () - Check whether a normal heap page is not linked to its heap: not yet (a new page), or
+ *				  no longer (vacuum unlinked it and deallocates it when its system operation commits).
  *
- * return	  : true if page must not be exposed through bestspace yet
+ * return	  : true if page must not be exposed through bestspace
  * page_heap (in) : Heap page
  */
 bool
@@ -2917,6 +2919,129 @@ heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
     }
 
   return HEAP_PAGE_IS_NOT_IN_HEAP ((HEAP_CHAIN *) recdes.data);
+}
+
+/*
+ * heap_page_list_fix_next () - fix the next page of one sector of a page bitmap taken at scan start
+ *   return: S_SUCCESS (the page is held in watcher), S_END past the sector's last page (the held page is kept),
+ *	     S_ERROR
+ *   hfid(in): the heap
+ *   sector(in): the sector and its page bitmap
+ *   pgoffset(in/out): the page offset in the sector to look from; past the page returned
+ *   watcher(in/out): the held page, let go before the next one is fixed
+ *   vpid_out(out): the page fixed
+ *
+ * Note: a listed page may be deallocated since, or deallocated and allocated again as the file's table page
+ *	 (file_perm_dealloc); the fix reports both as ER_PB_BAD_PAGEID (pgbuf_ordered_unfix_reused_page ()) and the
+ *	 page is skipped.  Shared by the parallel heap scan and the serial sector-based heap scan.
+ */
+SCAN_CODE
+heap_page_list_fix_next (THREAD_ENTRY * thread_p, const HFID * hfid, const FILE_PARTIAL_SECTOR * sector,
+			 size_t * pgoffset, PGBUF_WATCHER * watcher, VPID * vpid_out)
+{
+  VPID vpid;
+  int error_code;
+
+  vpid.volid = sector->vsid.volid;
+  for (; *pgoffset < DISK_SECTOR_NPAGES; (*pgoffset)++)
+    {
+      /* straight to the next listed page: a sector of a small or thinned-out heap is mostly unset bits */
+      UINT64 rest = sector->page_bitmap >> *pgoffset;
+
+      if (rest == 0)
+	{
+	  *pgoffset = DISK_SECTOR_NPAGES;
+	  break;
+	}
+      *pgoffset += bit64_count_trailing_zeros (rest);
+      vpid.pageid = SECTOR_FIRST_PAGEID (sector->vsid.sectid) + (PAGEID) * pgoffset;
+      if (vpid.volid == hfid->vfid.volid && vpid.pageid == hfid->vfid.fileid)
+	{
+	  /* the file header page */
+	  continue;
+	}
+
+      /* release the held page first: the next page comes from the bitmap, not from this page's link, and holding
+       * this page while waiting deadlocks with vacuum deallocating an empty page */
+      if (watcher->pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, watcher);
+	}
+
+      error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, watcher);
+      if (watcher->pgptr == NULL)
+	{
+	  if (error_code != NO_ERROR && error_code != ER_PB_BAD_PAGEID)
+	    {
+	      /* e.g. ER_INTERRUPTED */
+	      return S_ERROR;
+	    }
+	  /* deallocated since the bitmap was taken */
+	  er_clear ();
+	  continue;
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+      if (pgbuf_get_page_ptype (thread_p, watcher->pgptr) != PAGE_HEAP)
+	{
+	  /* the ordered fix lets a heap file's overflow page through too; a sector stays with its file, so a listed
+	   * page comes back as no other type, but a page that is not a heap page is never read as one */
+	  assert (false);
+	  pgbuf_ordered_unfix (thread_p, watcher);
+	  PGBUF_CLEAR_WATCHER (watcher);
+	  continue;
+	}
+
+      if (heap_page_is_bestspace (thread_p, watcher->pgptr))
+	{
+	  /* heap metadata, no rows */
+	  pgbuf_ordered_unfix (thread_p, watcher);
+	  PGBUF_CLEAR_WATCHER (watcher);
+	  continue;
+	}
+
+      *vpid_out = vpid;
+      (*pgoffset)++;
+      return S_SUCCESS;
+    }
+
+  return S_END;
+}
+
+/*
+ * heap_page_belongs_to_class () - Check, under the page latch, whether a heap page reached by a VPID remembered
+ *				   outside the page still belongs to the heap of a class.
+ *
+ * return	  : true if the page is a heap page of class_oid that is linked to its heap
+ * page_heap (in) : Page fixed by the remembered VPID
+ * class_oid (in) : Class of the rows to insert
+ *
+ * Note: A remembered VPID may name a page that was deallocated, reused by another file or class, or unlinked from its
+ *	 heap since. Every path that fixes a heap page by such a VPID to insert into it must check the page here.
+ */
+bool
+heap_page_belongs_to_class (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, const OID * class_oid)
+{
+  OID page_class_oid;
+
+  if (pgbuf_get_page_ptype (thread_p, page_heap) != PAGE_HEAP || heap_page_is_not_in_heap (thread_p, page_heap))
+    {
+      return false;
+    }
+
+  if (heap_get_class_oid_from_page (thread_p, page_heap, &page_class_oid) != NO_ERROR)
+    {
+      /* heap_page_is_not_in_heap () has just read the same record */
+      assert_release (false);
+      er_clear ();
+      return false;
+    }
+
+  return OID_EQ (&page_class_oid, class_oid);
 }
 
 /*
@@ -3510,18 +3635,20 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       /* Even though we have fixed all required pages, somebody was doing a heap scan, and already reached our page. We
        * cannot deallocate it. */
       vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
-			     "Candidate heap page %d|%d to remove has waiters.", page_vpid.volid, page_vpid.pageid);
+			     "Skip removing empty heap page %d|%d: a heap scan has already reached it. "
+			     "The page stays in the heap.", VPID_AS_ARGS (&page_vpid));
       goto error;
     }
 
-  /* A chain-order heap scan is kept away by the dealloc mark checked above, but scans that reach pages through the
-   * heap file's page list (parallel heap scan, statistics sampling, parallel index build, parallel SHOW HEAP
-   * CAPACITY) wait without the mark; give the page up to them. */
+  /* A chain-order heap scan is kept away by the dealloc mark checked above. Two kinds of threads still reach the page
+   * without the mark and may wait for its latch: scans through the heap file's page list (parallel heap scan,
+   * statistics sampling, parallel index build, parallel SHOW HEAP CAPACITY), and inserters that took the page from
+   * bestspace, which hands out page VPIDs without the header latch. Give the page up to them; it stays in the heap. */
   if (pgbuf_has_any_waiters (crt_watcher.pgptr))
     {
       vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
-			     "Candidate heap page %d|%d to remove has waiters without dealloc mark.", page_vpid.volid,
-			     page_vpid.pageid);
+			     "Skip removing empty heap page %d|%d: it has latch waiters. The page stays in the heap.",
+			     VPID_AS_ARGS (&page_vpid));
       goto error;
     }
   /* all good, we can deallocate the page */
@@ -3629,6 +3756,33 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 				 sizeof (chain), sizeof (chain), copy_recdes.data, update_recdes.data);
       pgbuf_set_dirty (thread_p, next_watcher.pgptr, DONT_FREE);
     }
+
+  /* The page is deallocated only when the system operation commits, after it is unfixed below. bestspace may still
+   * hand the page to an inserter in between, and a row inserted there would be deallocated with the page. Mark the
+   * page not in heap while it is latched: every bestspace consumer checks the flag under the page latch and rejects
+   * the page. */
+  copy_recdes.area_size = sizeof (chain);
+  if (spage_get_record (thread_p, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &copy_recdes, COPY) != S_SUCCESS)
+    {
+      assert_release (false);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
+      goto error;
+    }
+  memcpy (&chain, copy_recdes.data, sizeof (chain));
+  HEAP_PAGE_SET_NOT_IN_HEAP (&chain);
+  update_recdes.data = (char *) &chain;
+  update_recdes.length = sizeof (chain);
+  if (spage_update (thread_p, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &update_recdes) != SP_SUCCESS)
+    {
+      assert_release (false);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
+      goto error;
+    }
+  log_append_undoredo_data2 (thread_p, RVHF_CHAIN, &hfid->vfid, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			     sizeof (chain), sizeof (chain), copy_recdes.data, update_recdes.data);
+  pgbuf_set_dirty (thread_p, crt_watcher.pgptr, DONT_FREE);
 
   /* Unfix current page. */
   pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
@@ -10132,9 +10286,9 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	      continue;
 	    }
 
-	  /* allocated but not published to the heap yet (bulk load links its pages on commit postpone), so the
-	   * serial chain walk cannot reach it. This is the predicate bestspace uses, and it covers only this
-	   * direction: a page already unlinked but not yet deallocated is still counted here, not by serial. */
+	  /* not linked to the heap, so the serial chain walk cannot reach it: allocated but not published yet
+	   * (bulk load links its pages on commit postpone), or unlinked by vacuum and not deallocated yet. This is
+	   * the predicate bestspace uses. */
 	  if (heap_page_is_not_in_heap (&thread_ref, page))
 	    {
 	      pgbuf_unfix_and_init (&thread_ref, page);
@@ -12307,7 +12461,6 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
   /* Stack scratch for OOS inline-reference reads up to one I/O page on the hot index-key path. */
   char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
-  int i;
   int error = NO_ERROR;
 
   /* Initialize disk value information */
@@ -12315,18 +12468,14 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 
   if (recdes != NULL && recdes->data != NULL && att != NULL)
     {
-      if (or_rep_id (recdes) != attr_info->last_classrepr->id)
+      OR_ATTRIBUTE *record_att = heap_midxkey_locate_record_attr (recdes, att, attr_info);
+      if (record_att != NULL)
+	{
+	  att = record_att;
+	}
+      else
 	{
 	  found = false;
-	  for (i = 0; i < attr_info->read_classrepr->n_attributes; i++)
-	    {
-	      if (attr_info->read_classrepr->attributes[i].id == att->id)
-		{
-		  att = &attr_info->read_classrepr->attributes[i];
-		  found = true;
-		  break;
-		}
-	    }
 	}
 
       if (found == false)
@@ -12384,6 +12533,39 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
     }
 
   return error;
+}
+
+/*
+ * heap_midxkey_locate_record_attr () - Find an index attribute in the representation the record was written with.
+ *
+ *   return: the attribute of the record's representation, or NULL if that representation does not have it
+ *           (the attribute was added after the record was written).
+ *   recdes(in): record descriptor
+ *   att(in): attribute of the current (last) representation, for example from OR_INDEX::atts
+ *   attr_info(in): attribute cache already recached to the record's representation
+ *
+ *   Note: att->location is a position in the current representation's variable offset table. A record written
+ *         with an older representation can keep the same attribute at another position, for example after a
+ *         preceding variable attribute is dropped. Every reader of the record's variable table must use the
+ *         attribute returned here.
+ */
+static OR_ATTRIBUTE *
+heap_midxkey_locate_record_attr (RECDES * recdes, OR_ATTRIBUTE * att, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  if (or_rep_id (recdes) == attr_info->last_classrepr->id)
+    {
+      return att;
+    }
+
+  for (int i = 0; i < attr_info->read_classrepr->n_attributes; i++)
+    {
+      if (attr_info->read_classrepr->attributes[i].id == att->id)
+	{
+	  return &attr_info->read_classrepr->attributes[i];
+	}
+    }
+
+  return NULL;
 }
 
 /*
@@ -13469,6 +13651,27 @@ exit_on_error:
 }
 
 /*
+ * heap_attrinfo_check_not_null_after_coercion () - check NOT NULL again on the value after coercion
+ *   return: NO_ERROR or ER_NULL_CONSTRAINT_VIOLATION
+ *   value(in): the attribute value after coercion
+ *
+ * Note: NOT NULL is checked against the value before coercion. However, coercion can still produce NULL:
+ *       '' converted to NUMERIC with numeric_empty_string_as_null, or a failed coercion with
+ *       return_null_on_function_errors.
+ */
+static int
+heap_attrinfo_check_not_null_after_coercion (const HEAP_ATTRVALUE * value)
+{
+  if (value->last_attrepr->is_notnull && DB_IS_NULL (&value->dbvalue))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
+      return ER_NULL_CONSTRAINT_VIOLATION;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * heap_attrinfo_set () - Set the value of given attribute
  *   return: NO_ERROR
  *   inst_oid(in): The instance oid
@@ -13520,6 +13723,10 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 	  assert (er_errid () != NO_ERROR);
 
 	  db_make_null (&value->dbvalue);
+	}
+      else
+	{
+	  ret = heap_attrinfo_check_not_null_after_coercion (value);
 	}
     }
 
@@ -13676,6 +13883,10 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
 	  assert (er_errid () != NO_ERROR);
 	  db_make_null (&value->dbvalue);
 	}
+      else
+	{
+	  ret = heap_attrinfo_check_not_null_after_coercion (value);
+	}
     }
   if (ret != NO_ERROR)
     {
@@ -13687,12 +13898,63 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
 }
 
 /*
+ * heap_attrinfo_plan_reused_oos_stubs () - Plan to copy the old version's stub of each OOS column an UPDATE does not
+ *   assign (CBRD-27230)
+ *   return: true when a column reuses its stub
+ *   attr_info(in): the new version's values; a column the UPDATE does not assign is still uninitialized
+ *   old_recdes(in): the row's latest version, locked by the UPDATE
+ *   oos_plan(in/out): per-column write plan
+ *
+ * Note: The copied stub keeps the chain's head OID and identity stamp, so the value is neither read nor inserted. A
+ *	 column an increment recomputes keeps the ordinary path, as does every column of a record in an older
+ *	 representation, where a column can lie elsewhere or have another domain.
+ */
+/* *INDENT-OFF* */
+static bool
+heap_attrinfo_plan_reused_oos_stubs (HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
+				     std::vector<heap_oos_column_plan> * oos_plan)
+/* *INDENT-ON* */
+{
+  bool has_reused = false;
+  int i;
+
+  if (!heap_recdes_contains_oos (old_recdes) || or_rep_id (old_recdes) != attr_info->last_classrepr->id)
+    {
+      return false;
+    }
+
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      const HEAP_ATTRVALUE *value = &attr_info->values[i];
+      char *stub = NULL;
+
+      if (value->state != HEAP_UNINIT_ATTRVALUE || value->do_increment != 0 || value->last_attrepr->is_fixed
+	  || heap_recdes_get_oos_inline_stub (old_recdes, value->last_attrepr->location, &stub) != NO_ERROR)
+	{
+	  continue;
+	}
+
+      if (oos_plan->empty ())
+	{
+	  oos_plan->resize (attr_info->num_values);
+	}
+      (*oos_plan)[i].selected = true;
+      (*oos_plan)[i].reused = true;
+      memcpy ((*oos_plan)[i].reused_stub, stub, OR_OOS_INLINE_SIZE);
+      has_reused = true;
+    }
+
+  return has_reused;
+}
+
+/*
  * heap_attrinfo_set_uninitialized () - Read unitialized attributes
  *   return: NO_ERROR
  *   inst_oid(in): The instance oid
  *   recdes(in): The instance record descriptor
  *   attr_info(in/out): The attribute information structure which describe the
  *                      desired attributes
+ *   oos_plan(in): per-column write plan, or NULL; a column that reuses its stub is not read
  *
  * Note: Read the db values of the unitialized attributes from the
  * given recdes. This function is used when we are ready to
@@ -13706,7 +13968,7 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
  */
 static int
 heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
-				 HEAP_CACHE_ATTRINFO * attr_info)
+				 HEAP_CACHE_ATTRINFO * attr_info, const heap_oos_column_plan * oos_plan)
 {
   int i;
   REPR_ID reprid;		/* Representation of object */
@@ -13762,6 +14024,10 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
       value = &attr_info->values[i];
       if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
+	  if (oos_plan != NULL && oos_plan[i].reused)
+	    {
+	      continue;
+	    }
 	  ret = heap_attrvalue_read (recdes, value, attr_info, layoutp);
 	  if (ret != NO_ERROR)
 	    {
@@ -13935,6 +14201,13 @@ try
 	  column_size[i] = tp_domain_disk_size (value->last_attrepr->domain);
 	  payload_size += column_size[i];
 	}
+      else if (!oos_plan->empty () && (*oos_plan)[i].reused)
+	{
+	  /* already a stub, so neither forced out nor a demotion candidate */
+	  column_size[i] = OR_OOS_INLINE_SIZE;
+	  payload_size += OR_OOS_INLINE_SIZE;
+	  *has_oos = true;
+	}
       else
 	{
 	  column_size[i] = pr_data_writeval_disk_size (&value->dbvalue);
@@ -13974,6 +14247,7 @@ try
 	  /* a variable column is OOS-eligible only if externalizing it shrinks the inline record:
 	   * its value must be larger than the OOS stub (OID + length) it is replaced with */
 	  if ((oos_plan->empty () || !(*oos_plan)[i].selected) && !attr_info->values[i].last_attrepr->is_fixed
+	      && attr_info->values[i].last_attrepr->oos_storage != OR_ATTRIBUTE_OOS_STORAGE_FORCE_INLINE
 	      && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
 	      /* *INDENT-OFF* */
@@ -14296,7 +14570,7 @@ heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_A
       heap_oos_column_plan & plan = (*oos_plan)[i];
       RECDES payload = { 0, 0, REC_HOME, NULL };
 
-      if (!plan.selected)
+      if (!plan.selected || plan.reused)
 	{
 	  continue;
 	}
@@ -14412,7 +14686,7 @@ void heap_oos_test_fail_heap_insert_once () { heap_Oos_fail_heap_insert.store (t
 
 SCAN_CODE
 heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes,
-                             heap_pending_record *pending, bool copy_lobs)
+                             heap_pending_record *pending, bool copy_lobs, bool reuse_oos_stubs)
 {
   record_descriptor *record = &pending->record ();
   assert (record->get_recdes ().data == nullptr);
@@ -14431,7 +14705,7 @@ heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_
   try
     {
       status = heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, record,
-                    copy_lobs ? LOB_FLAG_INCLUDE_LOBFILE : LOB_FLAG_EXCLUDE_LOBFILE, pending);
+                    copy_lobs ? LOB_FLAG_INCLUDE_LOBFILE : LOB_FLAG_EXCLUDE_LOBFILE, pending, reuse_oos_stubs);
     }
   catch (const std::bad_alloc &)
     {
@@ -14774,7 +15048,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       length = CAST_BUFLEN (*ptr_varvals - buf->buffer - header_size);
       if (oos_plan != nullptr && oos_plan->selected)
 	{
-	  assert (dbvalue != NULL && db_value_is_null (dbvalue) != true);
+	  assert (oos_plan->reused || (dbvalue != NULL && db_value_is_null (dbvalue) != true));
 
 	  /* see Implementation in CBRD-26352 for details on why this design is possible. */
 	  /* use 2-bit of offset value as flags */
@@ -14789,6 +15063,13 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       if (*ptr_varvals + OR_OOS_INLINE_SIZE > buf->endptr)
 	{
 	  return S_DOESNT_FIT;
+	}
+
+      if (oos_plan->reused)
+	{
+	  memcpy (*ptr_varvals, oos_plan->reused_stub, OR_OOS_INLINE_SIZE);
+	  *ptr_varvals += OR_OOS_INLINE_SIZE;
+	  return S_SUCCESS;
 	}
 
       /* *INDENT-OFF* */
@@ -14941,7 +15222,8 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
       else
 	{
 	  heap_oos_column_plan *plan = oos_plan->empty ()? nullptr : &(*oos_plan)[i];
-	  assert (plan == nullptr || !plan->selected || plan->pending_index >= 0 || !OID_ISNULL (&plan->oid));
+	  assert (plan == nullptr || !plan->selected || plan->reused || plan->pending_index >= 0
+		  || !OID_ISNULL (&plan->oid));
 
 	  status =
 	    heap_attrinfo_transform_variable_to_disk (thread_p, attr_info, buf, &ptr_varvals, plan, i, offset_size,
@@ -15002,7 +15284,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 static SCAN_CODE
 heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 					  RECDES * old_recdes, record_descriptor * new_recdes, int lobfile_create_flag,
-					  heap_pending_record * pending)
+					  heap_pending_record * pending, bool reuse_oos_stubs)
 {
   OR_BUF buf;
   size_t inline_size_after_oos, mvcc_extra;
@@ -15023,8 +15305,16 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       return S_ERROR;
     }
 
+  /* A reused stub names a chain of this class's OOS file, so finalization must keep the record in this class. */
+  if (reuse_oos_stubs && pending != nullptr && old_recdes != NULL && old_recdes->data != NULL
+      && heap_attrinfo_plan_reused_oos_stubs (attr_info, old_recdes, &oos_plan))
+    {
+      pending->set_reused_stubs_class (attr_info->class_oid);
+    }
+
   /* get any of the values that have not been set/read */
-  if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info) != NO_ERROR)
+  if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info,
+				       oos_plan.empty ()? NULL : oos_plan.data ()) != NO_ERROR)
     {
       return S_ERROR;
     }
@@ -15057,12 +15347,12 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       inline_size_after_oos += OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE;
     }
 
-  /* OOS + bigone coexistence is forbidden. heap_attrinfo_determine_disk_layout already demoted every
-   * OOS-eligible variable column. If the inline record still exceeds the maximum slotted record length,
-   * it would have to be stored as a multipage (REC_BIGONE) overflow record while also carrying OOS OIDs.
-   * That combination is unsupported, so reject it here with a user-visible error -- before writing any OOS
-   * record -- instead of silently building it and tripping debug-only asserts on the read path. */
-  if (unlikely (has_oos && heap_is_big_length ((int) inline_size_after_oos)))
+  /* Reject a non-system-class row that would need REC_BIGONE. heap_attrinfo_determine_disk_layout already demoted
+   * every OOS-eligible variable column, so the check runs before any OOS record is written. The size includes the
+   * full MVCC header, so a later header change cannot turn an accepted row into REC_BIGONE. Only writers that lay
+   * out rows here are covered; the heap layer does not check, and system classes keep REC_BIGONE for catalog rows. */
+  if (unlikely (heap_is_big_length ((int) inline_size_after_oos)
+		&& (has_oos || !oid_is_system_class (&attr_info->class_oid))))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE, 2, (int) inline_size_after_oos,
 	      heap_Maxslotted_reclength);
@@ -15081,7 +15371,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
            * For UPDATE, consider externalization immediately before locator_update_index. */
           for (int i = 0; i < attr_info->num_values && status == S_SUCCESS; ++i)
             {
-              if (!oos_plan[i].selected)
+              if (!oos_plan[i].selected || oos_plan[i].reused)
                 {
                   continue;
                 }
@@ -16240,8 +16530,14 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
        * Pre-scan to add the actual OOS data size so heap allocation is used instead of the stack buffer. */
       for (int oos_i = 0; oos_i < n_atts; oos_i++)
 	{
-	  /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
-	  midxkey_size += heap_midxkey_get_oos_extra_size (recdes, index->atts[oos_i], pending);
+	  /* index->atts locate the attribute in the current representation; the record can be older. */
+	  OR_ATTRIBUTE *oos_att = heap_midxkey_locate_record_attr (recdes, index->atts[oos_i], idx_attrinfo);
+	  if (oos_att != NULL)
+	    {
+	      /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
+	      midxkey_size += heap_midxkey_get_oos_extra_size (recdes, oos_att, pending);
+	    }
+	  /* else: attribute added after this record was written; its default value is not OOS */
 	}
 
       /* Allocate storage for the buf of midxkey */
@@ -20057,7 +20353,7 @@ heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid,
       return ER_FAILED;
     }
 
-  return heap_attrinfo_set_uninitialized (thread_p, inst_oid, recdes, attr_info);
+  return heap_attrinfo_set_uninitialized (thread_p, inst_oid, recdes, attr_info, NULL);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -20684,9 +20980,33 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	    }
 	}
 
-      if (!DB_IS_NULL (&orig_value))
+      if (!DB_IS_NULL (&orig_value) && DB_IS_NULL (&(value->dbvalue)))
 	{
-	  assert (!DB_IS_NULL (&(value->dbvalue)));
+	  /* '' and a whitespace-only string are NULL as NUMERIC with numeric_empty_string_as_null. */
+	  assert (prm_get_bool_value (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL) && dest_type == DB_TYPE_NUMERIC
+		  && QSTR_IS_ANY_CHAR (src_type));
+
+	  /* For attributes that are already NOT NULL, treat values that become NULL during coercion as
+	   * conversion failures, since existing NULL values are checked only when NOT NULL is newly added. */
+	  if (value->last_attrepr->is_notnull)
+	    {
+	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT))
+		{
+		  error = ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		  goto exit;
+		}
+
+	      error =
+		db_value_domain_default (&(value->dbvalue), dest_type, dest_prec, dest_dom->scale, dest_dom->codeset,
+					 dest_dom->collation_id, &dest_dom->enumeration);
+	      if (error != NO_ERROR)
+		{
+		  goto exit;
+		}
+	      log_warning = true;
+	      warning_code = ER_ALTER_CHANGE_CAST_FAILED_SET_DEFAULT;
+	    }
 	}
 
       if (log_warning)
@@ -23529,19 +23849,15 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	      if (error_code == NO_ERROR)
 		{
 		  PAGE_PTR page_p = context->home_page_watcher_p->pgptr;
-		  OID page_class_oid;
 		  bool page_valid = false;
 
-		  /* step 4: mirrors the candidate checks of bestspace::shard::L1_find
+		  /* step 4: the page check of every path that fixes a page by a remembered VPID,
 		   * and the space rule of bestspace::find -- the hint keeps the unfill reservation */
 		  int consume_size = context->recdes_p->length + SPAGE_SLOT_SIZE;
 		  int needed_size = bestspace->get_needed_size (consume_size);
 		  int freespace = 0;
 
-		  if (pgbuf_get_page_ptype (thread_p, page_p) == PAGE_HEAP
-		      && !heap_page_is_not_in_heap (thread_p, page_p)
-		      && heap_get_class_oid_from_page (thread_p, page_p, &page_class_oid) == NO_ERROR
-		      && OID_EQ (&page_class_oid, &context->class_oid))
+		  if (heap_page_belongs_to_class (thread_p, page_p, &context->class_oid))
 		    {
 		      page_valid = true;
 		      freespace = spage_max_space_for_new_record (thread_p, page_p);
@@ -24170,7 +24486,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  return rc;
 	}
 
-      log_append_supplemental_undo_record (thread_p, &ovf_recdes);
+      log_append_supplemental_undo_record (thread_p, &ovf_recdes,
+					   pgbuf_get_tde_algorithm (context->home_page_watcher_p->pgptr));
 
       LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
     }
@@ -24280,7 +24597,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       /* log operation */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable, NULL, RVHF_DELETE);
+				&context->home_recdes, is_reusable, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -24656,7 +24973,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  if (context->do_supplemental_log)
 	    {
 	      /* relocation -> relocation case does not have any undo image to refer */
-	      log_append_supplemental_undo_record (thread_p, &new_forward_recdes);
+	      log_append_supplemental_undo_record (thread_p, &new_forward_recdes,
+						   pgbuf_get_tde_algorithm (context->forward_page_watcher_p->pgptr));
 
 	      /* SUPPLEMENT_DELETE UNDO LSA */
 	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
@@ -24751,7 +25069,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        */
 
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable, NULL, RVHF_DELETE);
+				&context->home_recdes, is_reusable, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -24777,9 +25095,9 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       /* For non-MVCC deletes (!is_mvcc_op, as in SA_MODE or for an MVCC-disabled class), eagerly delete the OOS
        * records referenced by the forward REC_NEWHOME record before the destructive physical delete below removes
-       * the forward slot. There is no new image on DELETE and OOS OIDs are never shared across rows, so every
-       * OOS OID is reclaimed. MVCC mode keeps the old OOS alive for concurrent readers; that path is reclaimed
-       * by vacuum. */
+       * the forward slot. There is no new image on DELETE. An OOS chain is shared only across versions of one row
+       * (CBRD-27230), and no older version is read on this non-MVCC path, so every OOS OID is reclaimed. MVCC mode
+       * keeps the old OOS alive for concurrent readers; that path is reclaimed by vacuum. */
       if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
 	{
 	  rc = heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, NULL, "delete relocation");
@@ -24801,8 +25119,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last.
        * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true, context->do_supplemental_log ? &context->supp_undo_lsa : NULL,
-				RVHF_DELETE);
+				&forward_recdes, true, context->do_supplemental_log ? &context->supp_undo_lsa : NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -25098,7 +25415,8 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  /* undo lsa for SUPPLEMENT_DELETE : when REC_HOME is not changed  */
 	  if (context->do_supplemental_log)
 	    {
-	      log_append_supplemental_undo_record (thread_p, &built_recdes);
+	      log_append_supplemental_undo_record (thread_p, &built_recdes,
+						   pgbuf_get_tde_algorithm (context->home_page_watcher_p->pgptr));
 	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 	    }
 
@@ -25124,8 +25442,9 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       /* For non-MVCC deletes (!is_mvcc_op, as in SA_MODE or for an MVCC-disabled class), eagerly delete the OOS
        * records referenced by the home record before the destructive physical delete below removes the slot.
-       * There is no new image on DELETE and OOS OIDs are never shared across rows, so every OOS OID is
-       * reclaimed. MVCC mode keeps the old OOS alive for concurrent readers; that path is reclaimed by vacuum. */
+       * There is no new image on DELETE. An OOS chain is shared only across versions of one row (CBRD-27230), and
+       * no older version is read on this non-MVCC path, so every OOS OID is reclaimed. MVCC mode keeps the old OOS
+       * alive for concurrent readers; that path is reclaimed by vacuum. */
       if (!is_mvcc_op && context->record_type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
 	{
 	  error_code = heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, NULL, "delete home");
@@ -25139,7 +25458,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
        * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 				&context->home_recdes, is_reusable,
-				context->do_supplemental_log ? &context->supp_undo_lsa : NULL, RVHF_DELETE);
+				context->do_supplemental_log ? &context->supp_undo_lsa : NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -25199,13 +25518,10 @@ heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, O
  *   recdes_p(in): record descriptor of deleted record
  *   mark_reusable(in): if true, will mark the slot as reusable
  *   undo_lsa(out): lsa to the undo record; needed to set previous version lsa of record at update
- *   rcvindex(in): recovery index for the delete log record. Normally RVHF_DELETE; pass
- *                 RVHF_DELETE_NEWHOME_NOTIFY_VACUUM for the MVCC remove_old_forward forward
- *                 REC_NEWHOME delete so vacuum's forward-walk reclaims the old OOS records.
  */
 static void
 heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, RECDES * recdes_p,
-			  bool mark_reusable, LOG_LSA * undo_lsa, LOG_RCVINDEX rcvindex)
+			  bool mark_reusable, LOG_LSA * undo_lsa)
 {
   LOG_DATA_ADDR log_addr;
 
@@ -25232,12 +25548,12 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
       bytes_reserved = (INT16) recdes_p->length;
       temp_recdes.data = (char *) &bytes_reserved;
 
-      log_append_undoredo_recdes (thread_p, rcvindex, &log_addr, &temp_recdes, NULL);
+      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, &temp_recdes, NULL);
     }
   else
     {
       /* log record descriptor */
-      log_append_undoredo_recdes (thread_p, rcvindex, &log_addr, recdes_p, NULL);
+      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p, NULL);
     }
 
   if (undo_lsa)
@@ -25551,16 +25867,17 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  /* For non-MVCC updates (!is_mvcc_op, as in SA_MODE, for an MVCC-disabled class, or for an in-place update),
-   * eagerly delete old OOS records referenced only by the old forward record (REC_NEWHOME). All 4 sub-paths
-   * below either overwrite or remove the forward slot, so OOS attached to the old forward becomes unreachable.
-   * In MVCC mode the old OOS is preserved for concurrent readers; vacuum's forward-walk
-   * reclaims it from the undo image of both MVCC sub-paths: update_old_forward is tagged
-   * RVHF_UPDATE_NOTIFY_VACUUM and remove_old_forward is tagged
-   * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM (see the log calls below). */
-  if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
+  /* All 4 sub-paths below either overwrite or remove the forward slot, so OOS chains referenced only by the old
+   * forward record (REC_NEWHOME) become unreachable from the new version. A non-MVCC update (!is_mvcc_op, as in
+   * SA_MODE, for an MVCC-disabled class, or for an in-place update) reclaims them when its unit commits. An MVCC
+   * update keeps them for concurrent readers of the old version and hands them to vacuum after its commit (A',
+   * ADR-0008). Either intent is a postpone, so a rollback of the update keeps them. */
+  if (forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
     {
-      rc = heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, context->recdes_p, "update relocation");
+      rc = (is_mvcc_op
+	    ? heap_oos_log_update_drop (thread_p, context, &forward_recdes, context->recdes_p)
+	    : heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, context->recdes_p,
+					    "update relocation"));
       if (rc != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -25714,18 +26031,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  HEAP_PERF_TRACK_PREPARE (thread_p, context);
 	}
 
-      /* log operation. In MVCC mode the old forward REC_NEWHOME survives only in this delete's undo
-       * record (its LSA becomes the new version's prev_version_lsa). Tag an OOS-bearing forward delete
-       * with RVHF_DELETE_NEWHOME_NOTIFY_VACUUM so vacuum's forward-walk reclaims the old OOS records
-       * from the undo image; otherwise (non-OOS, or !is_mvcc_op, handled by the eager-delete path above)
-       * use the plain RVHF_DELETE — no behavior change. */
-      LOG_RCVINDEX delete_rcvindex = RVHF_DELETE;
-      if (is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
-	{
-	  delete_rcvindex = RVHF_DELETE_NEWHOME_NOTIFY_VACUUM;
-	}
+      /* log operation */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true, &prev_version_lsa, delete_rcvindex);
+				&forward_recdes, true, &prev_version_lsa);
 
       /* undo lsa for SUPPLEMENT_UPDATE log
        * case : 1. relocation to home
@@ -25755,13 +26063,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    */
   if (update_old_forward)
     {
-      /* log operation. In MVCC mode use RVHF_UPDATE_NOTIFY_VACUUM so the vacuum forward-walk
-       * picks up the old forward recdes and reclaims any OOS records it referenced. The
-       * update_old_home log on the other sub-paths carries REC_RELOCATION (8-byte pointer, no
-       * OOS); this forward page log is the one that actually carries the old REC_NEWHOME with OOS. */
+      /* log operation */
       heap_log_update_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, context->recdes_p,
-				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
+				&forward_recdes, context->recdes_p, RVHF_UPDATE);
 
       /* undo, redo lsa for SUPPLEMENT_UPDATE log : relocation to relocation (forward recdes fits in existing page) */
       if (context->do_supplemental_log)
@@ -26040,13 +26344,16 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	}
     }
 
-  /* For non-MVCC updates (!is_mvcc_op, as in SA_MODE, for an MVCC-disabled class, or for an in-place update),
-   * eagerly delete old OOS records that were replaced. In MVCC mode, old OOS is preserved for concurrent readers
-   * and cleaned by vacuum via a forward walk of the log block (vacuum_process_log_block). */
-  if (!is_mvcc_op && context->home_recdes.type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
+  /* OOS chains the old record referenced and the new one does not: a non-MVCC update (!is_mvcc_op, as in
+   * SA_MODE, for an MVCC-disabled class, or for an in-place update) reclaims them when its unit commits; an MVCC
+   * update keeps them for concurrent readers of the old version and hands them to vacuum after its commit (A',
+   * ADR-0008). Either intent is a postpone, so a rollback of the update keeps them. */
+  if (context->home_recdes.type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
     {
-      error_code = heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, context->recdes_p,
-						 "update home");
+      error_code = (is_mvcc_op
+		    ? heap_oos_log_update_drop (thread_p, context, &context->home_recdes, context->recdes_p)
+		    : heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, context->recdes_p,
+						    "update home"));
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

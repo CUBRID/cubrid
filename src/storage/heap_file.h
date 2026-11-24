@@ -275,6 +275,13 @@ typedef enum update_inplace_style UPDATE_INPLACE_STYLE;
 #define HEAP_IS_UPDATE_INPLACE(update_inplace_style) \
   ((update_inplace_style) != UPDATE_INPLACE_NONE)
 
+#if defined (SERVER_MODE)
+#define HEAP_UPDATE_IS_MVCC_OP(is_mvcc_class, update_style) \
+    ((is_mvcc_class) && (!HEAP_IS_UPDATE_INPLACE (update_style)) ? (true) : (false))
+#else
+#define HEAP_UPDATE_IS_MVCC_OP(is_mvcc_class, update_style) (false)
+#endif
+
 /* heap operation information structure */
 typedef struct heap_operation_context HEAP_OPERATION_CONTEXT;
 struct heap_operation_context
@@ -470,7 +477,11 @@ extern SCAN_CODE heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID 
 
 
 extern bool heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
+extern SCAN_CODE heap_page_list_fix_next (THREAD_ENTRY * thread_p, const HFID * hfid,
+					  const FILE_PARTIAL_SECTOR * sector, size_t * pgoffset,
+					  PGBUF_WATCHER * watcher, VPID * vpid_out);
 extern bool heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
+extern bool heap_page_belongs_to_class (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, const OID * class_oid);
 
 extern SCAN_CODE heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 					RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
@@ -548,7 +559,7 @@ extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lobfile (THREAD_ENTRY * 
 
 /* *INDENT-OFF* */
 extern SCAN_CODE heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info,
-    RECDES *old_recdes, heap_pending_record *pending, bool copy_lobs = true);
+    RECDES *old_recdes, heap_pending_record *pending, bool copy_lobs = true, bool reuse_oos_stubs = false);
 /* *INDENT-ON* */
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,

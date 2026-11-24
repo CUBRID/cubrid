@@ -42,6 +42,12 @@
          || (client_type) == DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY \
          || (client_type) == DB_CLIENT_TYPE_LOADDB_UTILITY)
 
+/* client types that must prove the declared user's password before the server registers them */
+#define BOOT_PASSWORD_PROOF_CLIENT_TYPE(client_type) \
+        (BOOT_NORMAL_CLIENT_TYPE (client_type) \
+         || (client_type) == DB_CLIENT_TYPE_SLAVE_ONLY_BROKER \
+         || (client_type) == DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY)
+
 #define BOOT_READ_ONLY_CLIENT_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_READ_ONLY_CSQL \
          || (client_type) == DB_CLIENT_TYPE_READ_ONLY_BROKER \

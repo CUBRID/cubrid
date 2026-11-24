@@ -183,6 +183,8 @@ struct mvcc_snapshot
   MVCC_SNAPSHOT_FUNC snapshot_fnc;	/* the snapshot function */
 
   bool valid;			/* true, if the snapshot is valid */
+  unsigned int build_serial;	/* counts the builds of this transaction's snapshot: what was read under one build
+				 * (a heap scan's page bitmap) is told from what a later build must read again */
 
   // *INDENT-OFF*
   mvcc_snapshot ();
@@ -265,15 +267,11 @@ typedef enum mvcc_satisfies_vacuum_result MVCC_SATISFIES_VACUUM_RESULT;
    || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM)
 
 /* Is log record for a MVCC operation */
-/* TODO: the RVOOS_NOTIFY_VACUUM clause below currently has no emitter; it is left in
- * place because the rcvindex is pinned at 134 for on-disk-format reasons (see recovery.h). Drop
- * this clause together with the enum slot if/when we bump the log format. */
 #define LOG_IS_MVCC_OPERATION(rcvindex) \
   (LOG_IS_MVCC_HEAP_OPERATION (rcvindex) \
    || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
    || ((rcvindex) == RVES_NOTIFY_VACUUM) \
-   || ((rcvindex) == RVOOS_NOTIFY_VACUUM) \
-   || ((rcvindex) == RVHF_DELETE_NEWHOME_NOTIFY_VACUUM))
+   || ((rcvindex) == RVOOS_NOTIFY_VACUUM))
 
 extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 							       MVCC_SNAPSHOT * snapshot);

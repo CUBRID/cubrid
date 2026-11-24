@@ -40,6 +40,7 @@ heap_pending_record::heap_pending_record ()
 
 heap_pending_record::heap_pending_record (heap_pending_record &&other) noexcept
   : m_record (std::move (other.m_record))
+  , m_reused_stubs_class (other.m_reused_stubs_class)
   , m_bytes (other.m_bytes)
   , m_state (other.m_state)
 {

@@ -81,10 +81,9 @@ TEST_F (OosSqlBigone, OosColumnWithBigoneRejected)
   EXPECT_EQ (count, 0);
 }
 
-// Guard the has_oos gate: the same oversized fixed column WITHOUT an OOS-eligible
-// column is a plain REC_BIGONE overflow record, which is still supported. The
-// gate must not fire here.
-TEST_F (OosSqlBigone, BigoneWithoutOosColumnSucceeds)
+// Without an OOS-eligible column the same oversized fixed column is rejected too:
+// a user-class record never becomes REC_BIGONE.
+TEST_F (OosSqlBigone, BigoneWithoutOosColumnRejected)
 {
   int rc;
 
@@ -93,13 +92,15 @@ TEST_F (OosSqlBigone, BigoneWithoutOosColumnSucceeds)
   db_commit_transaction ();
 
   rc = exec_sql ("INSERT INTO t_oos_big VALUES (B'1')");
-  EXPECT_GE (rc, 0);
-  db_commit_transaction ();
+  int errid = er_errid ();
+  EXPECT_LT (rc, 0);
+  EXPECT_EQ (errid, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);
+  db_abort_transaction ();
 
   int count = -1;
   rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_big", &count);
   ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (count, 1);
+  EXPECT_EQ (count, 0);
 }
 
 // Regression guard for the 16 KB threshold choice (not DB_PAGESIZE/4): a record
@@ -134,11 +135,12 @@ TEST_F (OosSqlBigone, UpdateIntoOosBigoneRejected)
 {
   int rc;
 
-  rc = exec_sql ("CREATE TABLE t_oos_big (a BIT(140000), b BIT VARYING(16000))");
+  // a stays inline just under the limit; demoting b leaves its 24-byte stub, which pushes the record over.
+  rc = exec_sql ("CREATE TABLE t_oos_big (a BIT VARYING STORAGE FORCE_INLINE, b BIT VARYING(16000))");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  rc = exec_sql ("INSERT INTO t_oos_big VALUES (B'1', NULL)");
+  rc = exec_sql ("INSERT INTO t_oos_big VALUES (CAST(REPEAT('AA', 16180) AS BIT VARYING), NULL)");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 

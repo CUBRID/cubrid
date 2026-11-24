@@ -16,10 +16,10 @@
  *
  */
 
-// Growth-gate incremental sweep (CBRD-26786): when the OOS file is about to allocate a new page
-// while deletes are pending, it reclaims one empty page instead. Every test first calls
-// simulate_hint_loss: with bestspace hints alive an emptied page is reused directly and the
-// growth path is never entered.
+// Growth-side reclaim (CBRD-26786, ADR-0010): when the OOS file is about to allocate a new page while
+// its emptied-page set holds a reclaimable page, or while the file is unknown after a restart or a
+// set loss, it reclaims one empty page instead. Every test first calls simulate_hint_loss: with
+// bestspace hints alive an emptied page is reused directly and the growth path is never entered.
 
 #include "gtest/gtest.h"
 #include <algorithm>
@@ -42,6 +42,8 @@ using namespace test_oos_log;
 
 // bridge functions to access static functions in oos_file.cpp
 int bridge_oos_get_max_chunk_size_within_page ();
+void bridge_oos_debug_counters_reset ();
+oos_debug_counters bridge_oos_debug_counters_get ();
 int bridge_oos_stats_del_bestspace_by_vfid (THREAD_ENTRY *thread_p, const VFID *vfid);
 OOS_HDR_STATS *bridge_oos_get_header_stats_ptr (THREAD_ENTRY *thread_p, PAGE_PTR page_header);
 
@@ -102,6 +104,19 @@ namespace
   int insert_page_filling_record (const VFID &oos_vfid, OID &oid)
   {
     std::string data = page_filling_pattern ();
+    RECDES rec{};
+    int err = test_oos_utils::from_string_into_recdes (data, rec);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+    test_oos_utils::auto_freed_recdes_ptr defer_free (&rec, recdes_free_data_area);
+    return test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
+  }
+
+  int insert_small_record (const VFID &oos_vfid, OID &oid)
+  {
+    std::string data = test_oos_utils::make_repeated_pattern_string (100);
     RECDES rec{};
     int err = test_oos_utils::from_string_into_recdes (data, rec);
     if (err != NO_ERROR)
@@ -217,7 +232,7 @@ TEST (OosGrowthSweepTest, ConcurrentGrowerWaitsForActiveSweep)
   remove_file_and_commit (oos_vfid);
 }
 
-TEST (OosGrowthSweepTest, SweepLeavesAbortRestoredChunksAlone)
+TEST (OosGrowthSweepTest, SweepLeavesTheChainOfAnAbortedReclaimIntentAlone)
 {
   VFID oos_vfid;
   ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
@@ -227,8 +242,10 @@ TEST (OosGrowthSweepTest, SweepLeavesAbortRestoredChunksAlone)
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_EQ (count_user_pages (oos_vfid), 2);
 
-  // Delete, then abort: undo restores the chunks; the pending-delete count is now stale.
-  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
+  // Decide the chain is dead, then abort: the intent is discarded and nothing was deleted (ADR-0008).
+  oos_chain_ref ref;
+  ASSERT_EQ (test_oos_utils::oos_current_chain_ref (thread_p, oid1, ref), NO_ERROR);
+  ASSERT_EQ (oos_log_reclaim_intent (thread_p, oos_vfid, oid_Null_oid, 0, "unit test", {ref}), NO_ERROR);
   ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
 
   bool exists = false;
@@ -237,7 +254,7 @@ TEST (OosGrowthSweepTest, SweepLeavesAbortRestoredChunksAlone)
 
   simulate_hint_loss (oos_vfid);
 
-  // The wasted lap reclaims nothing, so growth proceeds and the count rises by one.
+  // No page became empty, so growth proceeds and the count rises by one.
   OID oid2 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid2), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 3);
@@ -248,7 +265,7 @@ TEST (OosGrowthSweepTest, SweepLeavesAbortRestoredChunksAlone)
 }
 
 // An INSERT rollback also empties an allocated page; repeated rollbacks must keep reusing it.
-TEST (OosGrowthSweepTest, InsertRollbackRearmsGrowthSweep)
+TEST (OosGrowthSweepTest, InsertRollbackAddsEmptiedPage)
 {
   VFID oos_vfid;
   ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
@@ -375,7 +392,7 @@ TEST (OosGrowthSweepTest, SweepCursorWrapsAcrossSectorBoundary)
   remove_file_and_commit (oos_vfid);
 }
 
-TEST (OosGrowthSweepTest, SweepCounterResetsOnCleanLapAndRearms)
+TEST (OosGrowthSweepTest, EmptySetGrowsAndALaterDeleteAddsAgain)
 {
   VFID oos_vfid;
   ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
@@ -386,8 +403,8 @@ TEST (OosGrowthSweepTest, SweepCounterResetsOnCleanLapAndRearms)
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   simulate_hint_loss (oos_vfid);
 
-  // Growth 1 reclaims the emptied page (count stays 2), leaving the stale counter to be
-  // settled by the clean lap of growth 2, which then grows the file (count 3).
+  // Growth 1 reclaims the emptied page (count stays 2); the set is then empty, so growth 2
+  // grows the file (count 3).
   OID oid2 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid2), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 2);
@@ -403,14 +420,16 @@ TEST (OosGrowthSweepTest, SweepCounterResetsOnCleanLapAndRearms)
   OID oid4 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid4), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 3)
-      << "counter did not re-arm after the clean-lap reset";
+      << "the page emptied after the set drained was not reused";
   assert_value_intact (oid3);
   assert_value_intact (oid4);
 
   remove_file_and_commit (oos_vfid);
 }
 
-TEST (OosGrowthSweepTest, SweepDefersUncommittedDeletesButAllowsGrowth)
+// ADR-0008 removed the LSA reclaim gate: a reclaim is redo-only and never undone, so the pages it empties are
+// reclaimable at once, even while the reclaiming transaction is still running.
+TEST (OosGrowthSweepTest, SweepReusesPagesAReclaimEmptiedBeforeItsTransactionEnds)
 {
   VFID oos_vfid;
   ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
@@ -421,24 +440,20 @@ TEST (OosGrowthSweepTest, SweepDefersUncommittedDeletesButAllowsGrowth)
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_EQ (count_user_pages (oos_vfid), 3);
 
-  // Empty both pages but stay uncommitted: this transaction is a live undo source.
   ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
   ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid2), NO_ERROR);
   simulate_hint_loss (oos_vfid);
 
   OID oid3 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid3), NO_ERROR);
-  ASSERT_EQ (count_user_pages (oos_vfid), 4)
-      << "an uncommitted deleter's page was reclaimed, or growth was blocked";
+  ASSERT_EQ (count_user_pages (oos_vfid), 3) << "growth reserved a page while a reclaimed one was empty";
 
-  // The commit ends the undo source; the kept (deferred) count arms the next growth to reclaim.
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   simulate_hint_loss (oos_vfid);
 
   OID oid4 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid4), NO_ERROR);
-  ASSERT_EQ (count_user_pages (oos_vfid), 4)
-      << "deferred page was not reclaimed after its deleter committed";
+  ASSERT_EQ (count_user_pages (oos_vfid), 3) << "the second emptied page was not reused";
   assert_value_intact (oid3);
   assert_value_intact (oid4);
 
@@ -476,6 +491,16 @@ TEST (OosGrowthSweepTest, BootRuleSweepsUnconditionallyAfterRestart)
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid_c), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 4);
 
+  // The lap that found nothing cleared the unknown mark, so the next growth checks no page.
+  simulate_hint_loss (oos_vfid);
+  bridge_oos_debug_counters_reset ();
+  OID oid_d = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, oid_d), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), 5);
+  const oos_debug_counters counters = bridge_oos_debug_counters_get ();
+  EXPECT_EQ (counters.reclaim_growth_laps, 0ULL) << "a completed lap left the file unknown";
+  EXPECT_EQ (counters.reclaim_growth_examined_pages, 0ULL);
+
   remove_file_and_commit (oos_vfid);
 }
 
@@ -492,22 +517,23 @@ TEST (OosGrowthSweepTest, SweepSkipsRefilledPageAndNeverReclaimsHeader)
   ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
 
-  // Hints are still alive: this insert refills the emptied page through bestspace, leaving the
-  // pending-delete count stale.
+  // Hints are still alive: this insert refills the emptied page through bestspace, which drops it
+  // from the emptied-page set.
   OID oid2 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid2), NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_EQ (count_user_pages (oos_vfid), 2);
+  ASSERT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 0U) << "a refilled page stayed a candidate";
 
-  // The stale count makes this growth sweep; the refilled page must be skipped, not reclaimed.
+  // The refilled page must not be reclaimed.
   simulate_hint_loss (oos_vfid);
   OID oid3 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid3), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 3);
   assert_value_intact (oid2);
 
-  // Empty EVERY data page, then grow: the sweep may reclaim only data pages — the sticky first
-  // page survives even though the lap visits it.
+  // Empty EVERY data page, then grow: growth may reclaim only data pages, and the sticky first
+  // page survives.
   ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid2), NO_ERROR);
   ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid3), NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
@@ -522,6 +548,196 @@ TEST (OosGrowthSweepTest, SweepSkipsRefilledPageAndNeverReclaimsHeader)
   ASSERT_NE (hdr_check, nullptr);
   pgbuf_unfix (thread_p, hdr_check);
   assert_value_intact (oid4);
+
+  remove_file_and_commit (oos_vfid);
+}
+
+// ADR-0010 consequence 5: an INSERT rollback empties a page and still holds its latch when a growth
+// checks it (Work818). The forced READ-fix miss stands in for that latch; the page must stay a
+// candidate, so the next growth reclaims it.
+TEST (OosGrowthSweepTest, PageLatchedByRollbackStaysCandidate)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  OID live_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, live_oid), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  OID aborted_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, aborted_oid), NO_ERROR);
+  ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
+  ASSERT_EQ (count_user_pages (oos_vfid), 3);
+  ASSERT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 1U);
+
+  simulate_hint_loss (oos_vfid);
+  oos_test_fail_next_reclaim_read_fix ();
+  OID grown_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, grown_oid), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), 4) << "the busy page should make this growth allocate";
+  ASSERT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 1U) << "a busy page left the set";
+
+  simulate_hint_loss (oos_vfid);
+  OID reuse_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, reuse_oid), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), 4) << "the page a rollback emptied was stranded";
+  ASSERT_EQ (reuse_oid.pageid, aborted_oid.pageid);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  assert_value_intact (live_oid);
+  assert_value_intact (grown_oid);
+  assert_value_intact (reuse_oid);
+
+  remove_file_and_commit (oos_vfid);
+}
+
+// A page the lap finds busy is still reused when an earlier step left ER_PB_BAD_PAGEID set: the failed
+// conditional fix of a latched page sets no error, so that error must not mark the page deallocated, which would
+// keep it out of the set and make the file grow (PR #8434 review U-2).
+TEST (OosGrowthSweepTest, StaleBadPageIdErrorDoesNotStrandABusyPage)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  OID oid1 = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_EQ (count_user_pages (oos_vfid), 2);
+
+  oos_test_reclaim_reset_side_map ();
+  simulate_hint_loss (oos_vfid);
+
+  // The lap's READ fix of the emptied page fails as for a latched page, with no error of its own.
+  oos_test_fail_next_reclaim_read_fix ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, oid1.pageid, "stale volume");
+  OID oid2 = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, oid2), NO_ERROR);
+  er_clear ();
+  ASSERT_EQ (count_user_pages (oos_vfid), 2) << "a stale error made the busy page look deallocated";
+  ASSERT_EQ (oid2.pageid, oid1.pageid);
+  assert_value_intact (oid2);
+
+  remove_file_and_commit (oos_vfid);
+}
+
+// ADR-0010 consequence 5: a delete that leaves records on its page arms nothing, so the next growth
+// checks no page.
+TEST (OosGrowthSweepTest, DeleteThatEmptiesNoPageCostsGrowthNothing)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  OID kept_oid = OID_INITIALIZER, deleted_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_small_record (oos_vfid, kept_oid), NO_ERROR);
+  ASSERT_EQ (insert_small_record (oos_vfid, deleted_oid), NO_ERROR);
+  ASSERT_EQ (kept_oid.pageid, deleted_oid.pageid);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, deleted_oid), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 0U);
+
+  simulate_hint_loss (oos_vfid);
+  bridge_oos_debug_counters_reset ();
+  OID grown_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, grown_oid), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), 3);
+  const oos_debug_counters counters = bridge_oos_debug_counters_get ();
+  EXPECT_EQ (counters.reclaim_growth_examined_pages, 0ULL) << "growth checked pages although none was empty";
+  EXPECT_EQ (counters.reclaim_growth_laps, 0ULL);
+
+  remove_file_and_commit (oos_vfid);
+}
+
+// ADR-0010 decision 4: a page the lap finds busy enters the set, and the same growth checks the set
+// again after the lap, so the page is reused as soon as it is free. The completed lap clears the
+// unknown mark.
+TEST (OosGrowthSweepTest, LapAfterRestartRechecksBusyPage)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  OID oid1 = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_EQ (count_user_pages (oos_vfid), 2);
+
+  oos_test_reclaim_reset_side_map ();
+  simulate_hint_loss (oos_vfid);
+
+  // The lap's first page is the sticky header, which is skipped without a fix; the next fix is the
+  // emptied page, and it fails once.
+  oos_test_fail_next_reclaim_read_fix ();
+  bridge_oos_debug_counters_reset ();
+  OID oid2 = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, oid2), NO_ERROR);
+  EXPECT_EQ (bridge_oos_debug_counters_get ().reclaim_growth_laps, 1ULL);
+  ASSERT_EQ (count_user_pages (oos_vfid), 2) << "the page the lap found busy was not rechecked after the lap";
+  ASSERT_EQ (oid2.pageid, oid1.pageid);
+  ASSERT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 0U);
+
+  simulate_hint_loss (oos_vfid);
+  bridge_oos_debug_counters_reset ();
+  OID oid3 = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, oid3), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), 3);
+  EXPECT_EQ (bridge_oos_debug_counters_get ().reclaim_growth_laps, 0ULL) << "the completed lap left the file unknown";
+  EXPECT_EQ (bridge_oos_debug_counters_get ().reclaim_growth_examined_pages, 0ULL);
+  assert_value_intact (oid2);
+  assert_value_intact (oid3);
+
+  remove_file_and_commit (oos_vfid);
+}
+
+// ADR-0010 consequence 5: emptied pages beyond the set limit mark the file unknown, and the lap that
+// follows still reuses every one of them before the file grows.
+TEST (OosGrowthSweepTest, SetOverflowFallsBackToOneLap)
+{
+  oos_test_reclaim_set_emptied_limit (1);
+  struct limit_restorer
+  {
+    ~limit_restorer ()
+    {
+      oos_test_reclaim_set_emptied_limit (0);
+    }
+  } restore_limit;
+
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  std::vector<OID> oids (3, OID_INITIALIZER);
+  for (OID &oid : oids)
+    {
+      ASSERT_EQ (insert_page_filling_record (oos_vfid, oid), NO_ERROR);
+    }
+  for (const OID &oid : oids)
+    {
+      ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid), NO_ERROR);
+    }
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  const int pages_full = count_user_pages (oos_vfid);
+  ASSERT_EQ (pages_full, 4);
+  ASSERT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 1U);
+
+  bridge_oos_debug_counters_reset ();
+  for (int i = 0; i < 3; i++)
+    {
+      simulate_hint_loss (oos_vfid);
+      OID oid = OID_INITIALIZER;
+      ASSERT_EQ (insert_page_filling_record (oos_vfid, oid), NO_ERROR);
+      ASSERT_EQ (count_user_pages (oos_vfid), pages_full) << "growth " << i << " stranded an emptied page";
+    }
+  EXPECT_GE (bridge_oos_debug_counters_get ().reclaim_growth_laps, 1ULL) << "overflow did not mark the file unknown";
+
+  simulate_hint_loss (oos_vfid);
+  OID grown_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, grown_oid), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), pages_full + 1);
+
+  simulate_hint_loss (oos_vfid);
+  bridge_oos_debug_counters_reset ();
+  OID after_lap_oid = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, after_lap_oid), NO_ERROR);
+  EXPECT_EQ (bridge_oos_debug_counters_get ().reclaim_growth_laps, 0ULL) << "the completed lap left the file unknown";
 
   remove_file_and_commit (oos_vfid);
 }
