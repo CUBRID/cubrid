@@ -452,10 +452,21 @@ namespace cubstorage
       bestspace_map *m_map;	// owned: freed with this object
       std::atomic<bool> m_absorbed;
       std::atomic<bool> m_orphan_suspect;
-      // a refill's claim of pages of the request's own tier found none that fits: the map's feedback count then, and
-      // the request size. A refill for a request that large skips that claim until a feedback measured a page again
-      std::atomic<std::uint64_t> m_tier_miss_feedback;
-      std::atomic<std::uint16_t> m_tier_miss_size;
+      // the claims of pages of a request's own tier (bestspace_map::claim_tier ()) go round the tier's pages. A round
+      // that ended with no page that fits, and that no feedback into the tier interrupted, keeps a refill for a request
+      // that large from claiming the tier until a feedback writes the tier again
+      struct tier_round
+      {
+	std::atomic<std::uint64_t> start_feedback;	// the tier's feedback count when the current round began (or max)
+	std::atomic<std::uint16_t> max_size;		// the largest request of the current round
+	std::atomic<std::uint64_t> miss_feedback;	// the tier's feedback count when a round ended with no fit
+	std::atomic<std::uint16_t> miss_size;		// that round's largest request (the maximum value: none)
+      };
+      tier_round m_tier_rounds[bestspace_map::CODE_MAX_TIER];	// by code; the top tier is claimed by claim ()
+
+      // after a refill claimed pages of the request's own tier: the round of the tier ends where the claims went round
+      void end_tier_claim (std::uint8_t code, std::uint16_t needed_size, std::uint64_t feedback, bool found,
+			   bool went_round);
 
       // under m_layout_mutex: the orphan hints not taken yet, and the map layout on disk
       std::mutex m_layout_mutex;

@@ -110,7 +110,6 @@ namespace cubstorage
     , m_bytes (sizeof (bestspace_map))
     , m_failed_alloc_bytes (0)
     , m_reserved_for (std::numeric_limits<std::size_t>::max ())
-    , m_tier_cursor (0)
   {
     std::size_t i;
 
@@ -133,6 +132,11 @@ namespace cubstorage
     for (i = 0; i < CNT_LAST; i++)
       {
 	m_counters[i].store (0);
+      }
+    for (i = 0; i <= NUM_TIERS; i++)
+      {
+	m_tier_cursor[i].store (0);
+	m_tier_feedback[i].store (0);
       }
   }
 
@@ -965,6 +969,10 @@ namespace cubstorage
     // and after it: a claim that cleared the first mark may hold the older code, and its release must keep this one
     rec->dirty.fetch_or (1ULL << off);
     count (CNT_FEEDBACK);
+    if (code >= 1 && code <= CODE_MAX_TIER)
+      {
+	m_tier_feedback[code].fetch_add (1, std::memory_order_relaxed);
+      }
   }
 
   // A sector seen first here is new to the heap, so its other pages are NOT_DATA. While needs_retry () is set it may be
@@ -1207,10 +1215,11 @@ namespace cubstorage
   }
 
   std::size_t
-  bestspace_map::claim_tier (std::uint8_t code, bestspace_map_page *out, std::size_t max_count)
+  bestspace_map::claim_tier (std::uint8_t code, bestspace_map_page *out, std::size_t max_count, bool &went_round)
   {
     std::size_t found = 0, looked = 0, n, total, limit, start, pos, s, off;
 
+    went_round = false;
     n = m_num_sectors.load (std::memory_order_acquire);
     if (code < 1 || code > CODE_MAX_TIER || max_count == 0 || n == 0)
       {
@@ -1219,7 +1228,7 @@ namespace cubstorage
 
     total = n * PAGES_PER_SECTOR;
     limit = (n < CLAIM_VISIT_LIMIT ? n : CLAIM_VISIT_LIMIT) * PAGES_PER_SECTOR;
-    start = m_tier_cursor.load (std::memory_order_relaxed) % total;
+    start = m_tier_cursor[code].load (std::memory_order_relaxed) % total;
     while (looked < limit && found < max_count)
       {
 	pos = (start + looked) % total;
@@ -1246,7 +1255,8 @@ namespace cubstorage
 	  }
       }
     // the next call starts right after the last page looked at
-    m_tier_cursor.store ((start + looked) % total, std::memory_order_relaxed);
+    m_tier_cursor[code].store ((start + looked) % total, std::memory_order_relaxed);
+    went_round = start + looked >= total;
     count (CNT_CLAIMED, found);
     return found;
   }
@@ -1769,9 +1779,10 @@ namespace cubstorage
   }
 
   std::uint64_t
-  bestspace_map::feedback_count () const
+  bestspace_map::tier_feedback_count (std::uint8_t code) const
   {
-    return m_counters[CNT_FEEDBACK].load (std::memory_order_relaxed);
+    assert (code <= NUM_TIERS);
+    return m_tier_feedback[code].load (std::memory_order_relaxed);
   }
 
   void

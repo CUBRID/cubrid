@@ -139,11 +139,11 @@ namespace cubstorage
       // ---- search
       // up to max_count non-resident pages with min_code <= code <= CODE_MAX_TIER; they become resident
       std::size_t claim (std::uint8_t min_code, bestspace_map_page *out, std::size_t max_count);
-      // up to max_count non-resident pages whose code is this tier, in page order from where the previous call stopped
-      // (right after the last page it handed out or looked at), wrapping, looking at no more than CLAIM_VISIT_LIMIT
-      // sectors of pages; they become resident. Such a page may be too small for the request; it comes out again only
-      // after the walk went round
-      std::size_t claim_tier (std::uint8_t code, bestspace_map_page *out, std::size_t max_count);
+      // up to max_count non-resident pages whose code is this tier, in page order from where the previous call for the
+      // tier stopped (right after the last page it handed out or looked at), wrapping, looking at no more than
+      // CLAIM_VISIT_LIMIT sectors of pages; they become resident. Such a page may be too small for the request; it
+      // comes out again only after the walk went round. went_round: this call passed the end of the map
+      std::size_t claim_tier (std::uint8_t code, bestspace_map_page *out, std::size_t max_count, bool &went_round);
       bool peek (short volid, std::int32_t pageid, std::uint8_t &code, bool &resident);
       // a claim (min_code) may find a page: the root hint bits, or a scan of the inline records. Read only
       bool may_claim (std::uint8_t min_code);
@@ -184,8 +184,8 @@ namespace cubstorage
       // counts[c]: pages with code c over every sector; atomic loads, not a snapshot
       void count_codes (std::uint64_t counts[16]);
       void count (counter id, std::uint64_t value = 1);
-      // feedback () calls so far: moves on whenever a page's measured free space is written
-      std::uint64_t feedback_count () const;
+      // feedback () calls that wrote this tier (1..CODE_MAX_TIER) so far: a page of the tier may have more room
+      std::uint64_t tier_feedback_count (std::uint8_t code) const;
       void get_usage (std::size_t &bytes, std::uint64_t counters[CNT_LAST]);
 
       static std::uint64_t make_key (short volid, std::int32_t pageid);
@@ -273,7 +273,9 @@ namespace cubstorage
       };
       spare_nodes m_spare;
       std::atomic<std::size_t> m_reserved_for;	// the sector number the reserve was filled for
-      std::atomic<std::size_t> m_tier_cursor;	// claim_tier () starts here: sector number * PAGES_PER_SECTOR + offset
+      // claim_tier () of a tier starts at [tier]: sector number * PAGES_PER_SECTOR + offset
+      std::atomic<std::size_t> m_tier_cursor[NUM_TIERS + 1];
+      std::atomic<std::uint64_t> m_tier_feedback[NUM_TIERS + 1];	// tier_feedback_count ()
 
       static std::uint64_t radix_key (std::uint64_t key);
       static std::size_t radix_slot (std::uint64_t rk, int level);

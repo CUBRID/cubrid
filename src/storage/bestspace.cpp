@@ -1183,9 +1183,9 @@ namespace cubstorage
     bestspace_entry entry;
     bestspace_map *map = m_parent.m_map;
     std::size_t num_claimed, num_candidates, num_dirty, fit_index, i, j;
-    std::uint64_t feedback_seen = 0;
+    std::uint64_t tier_feedback = 0;
     std::uint8_t min_code;
-    bool found, valid, same_tier = false;
+    bool found, valid, same_tier = false, went_round = false;
     status result;
     int error;
 
@@ -1211,12 +1211,15 @@ namespace cubstorage
 			      picked, ALLOC_BATCH_SIZE);
     if (num_claimed == 0 && min_code != bestspace_map::CODE_NONE && min_code < bestspace_map::CODE_MAX_TIER)
       {
-	feedback_seen = map->feedback_count ();
-	// pages filled up by inserts stay in the request's tier: without a feedback since, the last miss holds
-	if (feedback_seen != m_parent.m_tier_miss_feedback.load (std::memory_order_relaxed)
-	    || needed_size < m_parent.m_tier_miss_size.load (std::memory_order_relaxed))
+	tier_round &round = m_parent.m_tier_rounds[min_code];
+
+	tier_feedback = map->tier_feedback_count (min_code);
+	// pages filled up by inserts stay in the request's tier: a round of the tier that found none for a request this
+	// large holds until a feedback writes the tier again
+	if (tier_feedback != round.miss_feedback.load (std::memory_order_relaxed)
+	    || needed_size < round.miss_size.load (std::memory_order_relaxed))
 	  {
-	    num_claimed = map->claim_tier (min_code, picked, ALLOC_BATCH_SIZE);
+	    num_claimed = map->claim_tier (min_code, picked, ALLOC_BATCH_SIZE, went_round);
 	    same_tier = true;
 	  }
       }
@@ -1331,15 +1334,7 @@ namespace cubstorage
 
     if (same_tier)
       {
-	if (found)
-	  {
-	    m_parent.m_tier_miss_size.store (std::numeric_limits<std::uint16_t>::max (), std::memory_order_relaxed);
-	  }
-	else
-	  {
-	    m_parent.m_tier_miss_feedback.store (feedback_seen, std::memory_order_relaxed);
-	    m_parent.m_tier_miss_size.store (needed_size, std::memory_order_relaxed);
-	  }
+	m_parent.end_tier_claim (min_code, needed_size, tier_feedback, found, went_round);
       }
 
     num_candidates = 0;
@@ -1428,8 +1423,6 @@ namespace cubstorage
     , m_map (map)
     , m_absorbed (false)
     , m_orphan_suspect (false)
-    , m_tier_miss_feedback (0)
-    , m_tier_miss_size (std::numeric_limits<std::uint16_t>::max ())
     , m_layout_mutex ()
     , m_orphan_num_hints (0)
     , m_orphan_walk (false)
@@ -1449,6 +1442,14 @@ namespace cubstorage
 
     VPID_SET_NULL (&m_orphan_walk_next);
     VPID_SET_NULL (&m_orphan_walk_prev);
+    for (tier_round &round : m_tier_rounds)
+      {
+	// none yet: the map's cursors start at its first page, so the tier's first claim begins its first round
+	round.start_feedback.store (std::numeric_limits<std::uint64_t>::max (), std::memory_order_relaxed);
+	round.max_size.store (0, std::memory_order_relaxed);
+	round.miss_feedback.store (0, std::memory_order_relaxed);
+	round.miss_size.store (std::numeric_limits<std::uint16_t>::max (), std::memory_order_relaxed);
+      }
     for (std::size_t i = 0; i < shard_count; i++)
       {
 	m_shards.emplace_back (*this);
@@ -1462,6 +1463,45 @@ namespace cubstorage
       {
 	free_and_init (m_map_pages);
       }
+  }
+
+  // A round may skip no page of the tier: a page it passed may have come into the tier (feedback) only afterwards, and
+  // a page it has not reached yet may fit. So a miss is kept only when a round ends where the claims went round, the
+  // tier had no feedback since the round began, and the refill that ended it found nothing. Its size is the round's
+  // largest request: a page too small for a request is too small for a larger one.
+  void
+  bestspace::end_tier_claim (std::uint8_t code, std::uint16_t needed_size, std::uint64_t feedback, bool found,
+			     bool went_round)
+  {
+    tier_round &round = m_tier_rounds[code];
+    std::uint16_t largest = round.max_size.load (std::memory_order_relaxed);
+
+    if (round.start_feedback.load (std::memory_order_relaxed) == std::numeric_limits<std::uint64_t>::max ())
+      {
+	round.start_feedback.store (feedback, std::memory_order_relaxed);
+      }
+    if (found)
+      {
+	// a page of the tier fit: no refill skips the tier
+	round.miss_size.store (std::numeric_limits<std::uint16_t>::max (), std::memory_order_relaxed);
+      }
+    while (largest < needed_size
+	   && !round.max_size.compare_exchange_weak (largest, needed_size, std::memory_order_relaxed))
+      {
+	;
+      }
+    if (!went_round)
+      {
+	return;
+      }
+    if (!found && round.start_feedback.load (std::memory_order_relaxed) == feedback)
+      {
+	round.miss_feedback.store (feedback, std::memory_order_relaxed);
+	round.miss_size.store (round.max_size.load (std::memory_order_relaxed), std::memory_order_relaxed);
+      }
+    // the claims after the end of the map begin the next round
+    round.start_feedback.store (feedback, std::memory_order_relaxed);
+    round.max_size.store (needed_size, std::memory_order_relaxed);
   }
 
   bool

@@ -559,6 +559,7 @@ TEST_CASE ("claim_tier hands out pages of its tier only, from where the previous
 {
   bestspace_map map;
   bestspace_map_page out[4];
+  bool went_round = true;
 
   REQUIRE (map.feedback (0, page_of (0, 1), 3));
   REQUIRE (map.feedback (0, page_of (0, 2), 4));
@@ -568,22 +569,29 @@ TEST_CASE ("claim_tier hands out pages of its tier only, from where the previous
   REQUIRE_FALSE (map.is_inline ());
 
   // one page per call: each call starts with the sector the previous one stopped in
-  REQUIRE (map.claim_tier (3, out, 1) == 1);
+  REQUIRE (map.claim_tier (3, out, 1, went_round) == 1);
   REQUIRE (out[0].pageid == page_of (0, 1));
   REQUIRE (out[0].code == 3);
-  REQUIRE (map.claim_tier (3, out, 1) == 1);
+  REQUIRE_FALSE (went_round);
+  REQUIRE (map.claim_tier (3, out, 1, went_round) == 1);
   REQUIRE (out[0].pageid == page_of (1, 0));
-  REQUIRE (map.claim_tier (3, out, 1) == 1);
+  REQUIRE_FALSE (went_round);
+  REQUIRE (map.claim_tier (3, out, 1, went_round) == 1);
   REQUIRE (out[0].pageid == page_of (2, 5));
-  REQUIRE (map.claim_tier (3, out, 4) == 0);
+  REQUIRE_FALSE (went_round);
+  // the rest of the map, then its start: the call went round
+  REQUIRE (map.claim_tier (3, out, 4, went_round) == 0);
+  REQUIRE (went_round);
 
   // a page that went back with its tier (too small for that request) comes out again only after the walk wrapped
   map.release (0, page_of (0, 1), 3, true);
   map.release (0, page_of (2, 5), 3, true);
-  REQUIRE (map.claim_tier (3, out, 1) == 1);
+  REQUIRE (map.claim_tier (3, out, 1, went_round) == 1);
   REQUIRE (out[0].pageid == page_of (0, 1));
-  REQUIRE (map.claim_tier (3, out, 1) == 1);
+  REQUIRE (went_round);
+  REQUIRE (map.claim_tier (3, out, 1, went_round) == 1);
   REQUIRE (out[0].pageid == page_of (2, 5));
+  REQUIRE_FALSE (went_round);
 
   // the other tiers are still there for claim ()
   REQUIRE (map.claim (2, out, 4) == 2);
@@ -604,15 +612,69 @@ TEST_CASE ("claim_tier looks at no more than CLAIM_VISIT_LIMIT sectors a call an
     }
   REQUIRE (map.feedback (0, page_of (sectors - 1, 9), 5));
 
+  bool went_round = true;
   int calls = 1;
-  while (map.claim_tier (5, out, 4) == 0)
+  while (map.claim_tier (5, out, 4, went_round) == 0)
     {
+      // a call that stops at the limit has not gone round
+      REQUIRE_FALSE (went_round);
       REQUIRE (calls < 10);
       calls++;
     }
   REQUIRE (out[0].pageid == page_of (sectors - 1, 9));
+  // that call looked on for more pages, past the end of the map
+  REQUIRE (went_round);
   REQUIRE (calls == (sectors + static_cast<int> (bestspace_map::CLAIM_VISIT_LIMIT) - 1)
 	   / static_cast<int> (bestspace_map::CLAIM_VISIT_LIMIT));
+}
+
+TEST_CASE ("claim_tier keeps a cursor per tier", "[bestspace_map]")
+{
+  bestspace_map map;
+  bestspace_map_page out[4];
+  bool went_round = true;
+
+  REQUIRE (map.feedback (0, page_of (0, 5), 5));
+  REQUIRE (map.feedback (0, page_of (1, 0), 3));
+  REQUIRE (map.feedback (0, page_of (2, 0), 5));
+  REQUIRE (map.feedback (0, page_of (3, 0), 3));
+
+  REQUIRE (map.claim_tier (3, out, 1, went_round) == 1);
+  REQUIRE (out[0].pageid == page_of (1, 0));
+  REQUIRE_FALSE (went_round);
+  // tier 5 starts where its own walk is: the first page of the map, not after the page of tier 3
+  REQUIRE (map.claim_tier (5, out, 1, went_round) == 1);
+  REQUIRE (out[0].pageid == page_of (0, 5));
+  REQUIRE_FALSE (went_round);
+  REQUIRE (map.claim_tier (5, out, 1, went_round) == 1);
+  REQUIRE (out[0].pageid == page_of (2, 0));
+  REQUIRE_FALSE (went_round);
+  REQUIRE (map.claim_tier (3, out, 1, went_round) == 1);
+  REQUIRE (out[0].pageid == page_of (3, 0));
+  REQUIRE_FALSE (went_round);
+}
+
+TEST_CASE ("tier_feedback_count counts the feedback that wrote each tier", "[bestspace_map]")
+{
+  bestspace_map map;
+
+  REQUIRE (map.feedback (0, page_of (0, 1), 3));
+  REQUIRE (map.feedback (0, page_of (0, 2), 3));
+  REQUIRE (map.feedback (0, page_of (1, 0), 5));
+  REQUIRE (map.feedback (0, page_of (1, 1), 0));
+  REQUIRE (map.feedback (0, page_of (1, 2), bestspace_map::CODE_MAX_TIER));
+  REQUIRE (map.feedback_if_known (0, page_of (1, 3), 3));
+  REQUIRE_FALSE (map.feedback_if_known (0, page_of (9, 0), 5));
+
+  REQUIRE (map.tier_feedback_count (3) == 3);
+  REQUIRE (map.tier_feedback_count (5) == 1);
+  REQUIRE (map.tier_feedback_count (bestspace_map::CODE_MAX_TIER) == 1);
+  REQUIRE (map.tier_feedback_count (1) == 0);
+
+  // a page that enters or leaves a slot is not feedback
+  REQUIRE (map.set_resident (0, page_of (2, 0), 3));
+  map.release (0, page_of (2, 0), 3, true);
+  REQUIRE (map.tier_feedback_count (3) == 3);
 }
 
 TEST_CASE ("concurrent claim_tier, claim and release never hand out a page twice", "[bestspace_map]")
@@ -636,7 +698,8 @@ TEST_CASE ("concurrent claim_tier, claim and release never hand out a page twice
 	for (int i = 0; i < 20000; i++)
 	  {
 	    std::uint8_t code = static_cast<std::uint8_t> (1 + rng () % 8);
-	    std::size_t n = t % 2 == 0 ? map.claim_tier (code, out, 4) : map.claim (code, out, 4);
+	    bool went_round;
+	    std::size_t n = t % 2 == 0 ? map.claim_tier (code, out, 4, went_round) : map.claim (code, out, 4);
 	    for (std::size_t k = 0; k < n; k++)
 	      {
 		if (holders[out[k].pageid].fetch_add (1) != 0)
