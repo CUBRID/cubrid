@@ -261,6 +261,8 @@ struct qo_plan
   double limit_nljoin_guessed_card;
   double limit_scan_fraction;	/* the share of its rows an index scan that skips the ORDER BY or GROUP BY of a LIMIT
 				 * query was charged for (qo_scan_limit_fraction ()); 1 when charged whole */
+  double limit_whole_cpu_cost;	/* the variable cost of such a scan read whole; set when limit_scan_fraction < 1 */
+  double limit_whole_io_cost;
   double iscan_index_rows;	/* index-condition-only rows per probe (before non-index filters); set by
 				   qo_iscan_cost, consumed by qo_nljoin_cost for the repeated-probe N */
   double iscan_range_rows;	/* rows in the key range per probe, covering scans included; set by
@@ -498,8 +500,10 @@ struct qo_planner
 
 /* the variable cost of a plan read whole: an index scan charged for the share of its rows it reads before the LIMIT
  * (limit_scan_fraction) is read whole by a nested loop inner, a hash or merge join input and a sort input */
-#define QO_PLAN_VARIABLE_CPU_COST_WHOLE(plan) ((plan)->variable_cpu_cost / (plan)->limit_scan_fraction)
-#define QO_PLAN_VARIABLE_IO_COST_WHOLE(plan) ((plan)->variable_io_cost / (plan)->limit_scan_fraction)
+#define QO_PLAN_VARIABLE_CPU_COST_WHOLE(plan) \
+  ((plan)->limit_scan_fraction < 1.0 ? (plan)->limit_whole_cpu_cost : (plan)->variable_cpu_cost)
+#define QO_PLAN_VARIABLE_IO_COST_WHOLE(plan) \
+  ((plan)->limit_scan_fraction < 1.0 ? (plan)->limit_whole_io_cost : (plan)->variable_io_cost)
 
 extern QO_PLAN *qo_planner_search (QO_ENV *);
 extern void qo_planner_free (QO_PLANNER *);

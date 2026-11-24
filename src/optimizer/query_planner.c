@@ -433,6 +433,7 @@ static PT_NODE *qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_N
 						   int *continue_walk);
 static double qo_analytic_sort_cost (QO_PLAN * plan);
 static QO_PLAN *qo_plan_top_scan (QO_PLAN * plan);
+static double qo_limit_rows (QO_ENV * env);
 static double qo_orderby_limit_fraction (QO_ENV * env);
 static bool qo_scan_has_join_term (QO_PLAN * plan);
 static double qo_scan_limit_fraction (QO_PLAN * plan);
@@ -695,6 +696,8 @@ qo_plan_malloc (QO_ENV * env)
   plan->groupby_skip_join = false;
   plan->limit_nljoin_guessed_card = 0.0;
   plan->limit_scan_fraction = 1.0;
+  plan->limit_whole_cpu_cost = 0.0;
+  plan->limit_whole_io_cost = 0.0;
   plan->iscan_index_rows = 0.0;
   plan->iscan_range_rows = 0.0;
   plan->iscan_heap_io = 0.0;
@@ -1651,6 +1654,7 @@ qo_plan_compute_cost (QO_PLAN * plan)
    * A pinned subquery is not evaluated for every scanned row: a term containing a subquery is never put on the
    * access predicate of the scan but on the if-predicate, which is evaluated only for the rows that survived the
    * access predicate. Multiply the cost by that estimated number of evaluations (see qo_plan_subquery_eval_rows ()).
+   * A scan that stops at the LIMIT (limit_scan_fraction, CBRD-28111) evaluates it for the share of the rows it reads.
    */
   for (i = bitset_iterate (&(plan->subqueries), &iter); i != -1; i = bitset_next_member (&iter))
     {
@@ -1659,8 +1663,13 @@ qo_plan_compute_cost (QO_PLAN * plan)
       qo_plan_compute_subquery_cost (query, &subq_cpu_cost, &subq_io_cost);
       eval_rows = qo_plan_subquery_eval_rows (plan, i);
 
-      plan->variable_cpu_cost += eval_rows * subq_cpu_cost;
-      plan->variable_io_cost += eval_rows * subq_io_cost;
+      plan->variable_cpu_cost += eval_rows * subq_cpu_cost * plan->limit_scan_fraction;
+      plan->variable_io_cost += eval_rows * subq_io_cost * plan->limit_scan_fraction;
+      if (plan->limit_scan_fraction < 1.0)
+	{
+	  plan->limit_whole_cpu_cost += eval_rows * subq_cpu_cost;
+	  plan->limit_whole_io_cost += eval_rows * subq_io_cost;
+	}
     }
 }
 
@@ -3815,10 +3824,25 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->variable_io_cost = object_IO * QO_COST_RANDOM_PAGE;
   planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * heap_sel);
 
-  /* a scan that skips the ORDER BY or GROUP BY of a LIMIT query stops at the LIMIT (CBRD-28111) */
+  /* a scan that skips the ORDER BY or GROUP BY of a LIMIT query stops at the LIMIT (CBRD-28111): it is charged for
+   * the share of its rows it reads. The leaf pages and the CPU go by the share; the heap pages are those the rows of
+   * the share touch (Mackert-Lohman, as above), not the share of the pages of the whole scan, which the heap size
+   * saturates. The cost of the whole scan is kept for the plans that read it whole. */
   planp->limit_scan_fraction = qo_scan_limit_fraction (planp);
-  planp->variable_cpu_cost *= planp->limit_scan_fraction;
-  planp->variable_io_cost *= planp->limit_scan_fraction;
+  if (planp->limit_scan_fraction < 1.0)
+    {
+      planp->limit_whole_cpu_cost = planp->variable_cpu_cost;
+      planp->limit_whole_io_cost = planp->variable_io_cost;
+
+      object_IO = (leaves - first_leaf) * planp->limit_scan_fraction;
+      if (!qo_is_index_covering_scan (planp))
+	{
+	  heap_rows = (double) QO_NODE_NCARD (nodep) * heap_sel * planp->limit_scan_fraction;
+	  object_IO += MAX (1.0, qo_mackert_lohman_pages ((double) opages, heap_rows));
+	}
+      planp->variable_cpu_cost *= planp->limit_scan_fraction;
+      planp->variable_io_cost = MIN (planp->variable_io_cost, object_IO * QO_COST_RANDOM_PAGE);
+    }
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");
@@ -6135,6 +6159,18 @@ qo_can_apply_limit_card (QO_ENV * env)
 }
 
 /*
+ * qo_limit_rows () - the rows the LIMIT of the query stops at
+ *   return: LIMIT rows, GUESSED_BIND_LIMIT_CARD for a host variable
+ *   env(in):
+ */
+static double
+qo_limit_rows (QO_ENV * env)
+{
+  return (!DB_IS_NULL (&QO_ENV_LIMIT_VALUE (env)) && db_get_bigint (&QO_ENV_LIMIT_VALUE (env)) > 0)
+    ? (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (env)) : GUESSED_BIND_LIMIT_CARD;
+}
+
+/*
  * qo_orderby_limit_fraction () - the share of its rows a plan that reads them in the ORDER BY order and stops at the
  *				  LIMIT reads
  *   return: LIMIT rows (GUESSED_BIND_LIMIT_CARD for a host variable) over the estimated rows of the query, at most 1;
@@ -6164,8 +6200,7 @@ qo_orderby_limit_fraction (QO_ENV * env)
       return 1.0;
     }
 
-  limit = (!DB_IS_NULL (&QO_ENV_LIMIT_VALUE (env)) && db_get_bigint (&QO_ENV_LIMIT_VALUE (env)) > 0)
-    ? (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (env)) : GUESSED_BIND_LIMIT_CARD;
+  limit = qo_limit_rows (env);
 
   rows = 1.0;
   for (i = 0; i < env->Nnodes; i++)
@@ -6226,16 +6261,18 @@ qo_scan_has_join_term (QO_PLAN * plan)
  *	 again (QO_PLAN_VARIABLE_CPU_COST_WHOLE ()). An index join inner is read once per outer row and is not
  *	 discounted. For an ORDER BY the share is the query's (qo_orderby_limit_fraction ()); for a GROUP BY it is
  *	 the rows of the LIMIT groups (CBRD-27685) over the rows of the key range. An index skip scan and a loose
- *	 index scan do not stop at the LIMIT and are charged whole.
+ *	 index scan do not stop at the LIMIT and are charged whole. A multi range optimization scan reads the LIMIT
+ *	 rows of each of its key ranges.
  */
 static double
 qo_scan_limit_fraction (QO_PLAN * plan)
 {
   QO_PLANNER *planner;
-  double rows_per_group, rows, range_rows, filter_sel, group_prob;
+  QO_NODE_INDEX_ENTRY *ni_entry;
+  double rows_per_group, rows, range_rows, filter_sel, group_prob, ranges;
+  int sort_col;
 
-  if (plan == NULL || plan->info == NULL || plan->plan_un.scan.index == NULL || !qo_is_interesting_order_scan (plan)
-      || qo_is_index_mro_scan (plan))
+  if (plan == NULL || plan->info == NULL || plan->plan_un.scan.index == NULL || !qo_is_interesting_order_scan (plan))
     {
       return 1.0;
     }
@@ -6250,6 +6287,23 @@ qo_scan_limit_fraction (QO_PLAN * plan)
   if (planner == NULL || planner->sort_limit_costing || qo_scan_has_join_term (plan))
     {
       return 1.0;
+    }
+
+  if (qo_is_index_mro_scan (plan))
+    {
+      /* the key ranges are the values of the columns before the first sort column that the key range holds; the scan
+       * reads each of them in the ORDER BY order until its rows cannot enter the LIMIT rows any more */
+      ni_entry = plan->plan_un.scan.index;
+      sort_col = ni_entry->head->first_sort_column;
+      if (sort_col < 1 || sort_col > ni_entry->cum_stats.pkeys_size || ni_entry->cum_stats.pkeys[sort_col - 1] < 1
+	  || QO_NODE_NCARD (plan->plan_un.scan.node) < 1)
+	{
+	  return 1.0;
+	}
+      ranges = plan->iscan_range_rows * ni_entry->cum_stats.pkeys[sort_col - 1]
+	/ (double) QO_NODE_NCARD (plan->plan_un.scan.node);
+      rows = MAX (1.0, ranges) * qo_limit_rows (plan->info->env);
+      return MIN (1.0, rows / MAX (1.0, (plan->info)->cardinality));
     }
 
   if (planner->orderby_limit_fraction < 1.0 && qo_plan_is_orderby_skip_candidate (plan))
@@ -7465,7 +7519,8 @@ qo_nljoin_cost (QO_PLAN * planp)
    * before the LIMIT (qo_scan_limit_fraction ()) keeps that cost when this join skips the ORDER BY or the GROUP BY
    * in its order, and is read whole by any other join (CBRD-28111) */
   if (outer->plan_type == QO_PLANTYPE_SCAN && outer->limit_scan_fraction < 1.0
-      && !(is_groupby_limit || (QO_PLAN_HAS_LIMIT (planp) && qo_plan_is_orderby_skip_candidate (planp))))
+      && !(is_groupby_limit || (QO_PLAN_HAS_LIMIT (planp) && qo_plan_is_orderby_skip_candidate (planp))
+	   || (qo_is_index_mro_scan (outer) && qo_plan_multi_range_opt (planp))))
     {
       outer_cpu_cost = QO_PLAN_VARIABLE_CPU_COST_WHOLE (outer);
       outer_io_cost = QO_PLAN_VARIABLE_IO_COST_WHOLE (outer);
