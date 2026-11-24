@@ -3871,13 +3871,6 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
   if (result == BTREE_KEY_FOUND)
     {
       obj = ws_mop (&oid, NULL);
-      if (lookup == OBJ_FIND_CATALOG_READ && obj != NULL && ws_get_lock (obj) == NULL_LOCK && !WS_ISDIRTY (obj))
-	{
-	  /* locator_can_skip_fetch_from_server () reuses an unlocked copy until the workspace snapshot version
-	   * changes, which under REPEATABLE READ is the end of the transaction. A copy this transaction locked cannot
-	   * be stale, and a dirty one holds its change not yet flushed */
-	  ws_decache (obj);
-	}
       if (au_fetch_instance_force (obj, NULL, fetchmode,
 				   (lookup == OBJ_FIND_CATALOG_READ) ? LC_FETCH_CATALOG_VERSION :
 				   LC_FETCH_DIRTY_VERSION) != NO_ERROR)
