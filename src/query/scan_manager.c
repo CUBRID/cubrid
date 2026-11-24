@@ -3252,8 +3252,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       isidp->key_vals = NULL;
     }
 
-  /* a min/max only scan reads the rows in index order: it takes MIN or MAX from the first row of a pass, and the OID
-   * order would sort the rows of a call by OID */
+  /* a min/max only scan takes MIN or MAX from the first row of a pass, so it keeps the index order: the OID order
+   * sorts the rows that one scan_get_index_oidset () call reads by OID */
   isidp->iscan_oid_order = iscan_oid_order && !min_max_optimzied_scan;
   isidp->min_max_only_desc_pass = false;
   isidp->ahead_next = INT_MAX;
@@ -3295,8 +3295,8 @@ exit_on_error:
     {
       isidp->key_vals = NULL;
     }
-  /* the scan stays S_OPENED, so scan_end_scan () may still walk key_vals up to key_cnt */
   isidp->key_cnt = 0;
+
   if (isidp->bt_attr_ids)
     {
       db_private_free_and_init (thread_p, isidp->bt_attr_ids);

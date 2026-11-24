@@ -406,8 +406,6 @@ struct indx_scan_id
   int key_cnt;			/* number of valid ranges */
   bool iscan_oid_order;		/* index_scan_oid_order flag */
   bool need_count_only;		/* get count only, no OIDs are copied */
-  bool min_max_only_desc_pass;	/* a pass of a min/max only scan that reads the MIN/MAX aggregates' column descending:
-				 * it takes MAX from its first row, so it reads the key ranges from the last */
   bool caches_inited;		/* are the caches initialized?? */
   bool scancache_inited;
   /* TODO: Can we use these instead of BTS pointers to limits? */
@@ -426,6 +424,8 @@ struct indx_scan_id
   int ahead_limit;		/* OIDs a read-ahead window holds at most */
   bool ahead_single;		/* the scan's XASL may stop at its first row (EXISTS, an inst_num () condition): the
 				 * windows start after the first lookup */
+  bool min_max_only_desc_pass;	/* a pass of a min/max only scan that reads the MIN/MAX aggregates' column descending:
+				 * it takes MAX from its first row, so it reads the key ranges from the last */
   /* Parallel index scan pending state. Set in scan_open_parallel_index_scan when the spec is
    * parallel-eligible; consumed by scan_start_scan to attempt the promotion after
    * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
@@ -468,7 +468,6 @@ struct parallel_index_scan_id
   int key_cnt;			/* number of valid ranges */
   bool iscan_oid_order;		/* index_scan_oid_order flag */
   bool need_count_only;		/* get count only, no OIDs are copied */
-  bool min_max_only_desc_pass;	/* mirror of INDX_SCAN_ID::min_max_only_desc_pass */
   bool caches_inited;		/* are the caches initialized?? */
   bool scancache_inited;
   DB_BIGINT key_limit_lower;	/* lower key limit */
@@ -485,6 +484,7 @@ struct parallel_index_scan_id
   int ahead_distance;		/* mirror of INDX_SCAN_ID::ahead_distance */
   int ahead_limit;		/* mirror of INDX_SCAN_ID::ahead_limit */
   bool ahead_single;		/* mirror of INDX_SCAN_ID::ahead_single */
+  bool min_max_only_desc_pass;	/* mirror of INDX_SCAN_ID::min_max_only_desc_pass */
   void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
   INDX_GBY_SKIP *gby_skip;	/* mirror of INDX_SCAN_ID::gby_skip */
   /* parallel-only fields (must follow all isid fields) */
