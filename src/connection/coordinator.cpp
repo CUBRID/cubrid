@@ -21,7 +21,6 @@
  */
 
 #include <random>
-#include <algorithm>
 #include <unistd.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
@@ -33,7 +32,6 @@
 #include "connection_pool.hpp"
 #include "coordinator.hpp"
 #include "connection_sr.h"
-#include "server_support.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -55,15 +53,12 @@ namespace cubconn::connection
   REGISTER_CONNECTION (coordinator, 1);
 
   coordinator::coordinator (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core,
-			    std::uint32_t max_worker, std::uint32_t min_worker) :
+			    std::uint32_t max_worker) :
     m_parent (pool),
     m_watcher (watcher),
     m_core (core),
-    m_status (status::PREPARING),
     m_stop (false),
     m_max_worker (max_worker),
-    m_min_worker (min_worker),
-    m_current_worker (max_worker),
     m_statistics (max_worker)
   {
     std::size_t i;
@@ -103,7 +98,8 @@ namespace cubconn::connection
       }
 #endif
 
-    /* timer */
+    /* timer: eventfd_addtimer () takes the first base time from m_timens */
+    m_timens = this->get_monotonic_ns ();
     for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
       {
 	m_timer_handler[i].valid = false;
@@ -123,36 +119,9 @@ namespace cubconn::connection
 	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to add timer\n");
 	assert_release (false);
       }
-    if (!this->eventfd_addtimer (timer_type::SCALING, timer_latency::HIGH_LATENCY,
-				 std::bind (&coordinator::statistics_scaling, this)))
-      {
-	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to add timer\n");
-	assert_release (false);
-      }
 
     /* request queue */
     m_queue_size.store (0, std::memory_order_relaxed);
-
-    /* scaling */
-    m_scaling.last_drain_ns = 0;
-    m_scaling.last_expand_ns = 0;
-    m_scaling.draining_worker = -1;
-
-    /* auto scaling */
-    m_scaling_statistics.status = scaling_status::STABLE;
-    m_scaling_statistics.window_size =
-	    static_cast<std::size_t> (prm_get_integer_value (PRM_ID_CSS_AUTO_SCALING_WINDOW_SIZE));
-    m_scaling_statistics.history.reserve (m_scaling_statistics.window_size + 1);
-    m_scaling_statistics.previous_direction = scaling_direction::UP;
-    m_scaling_statistics.previous_scale = m_max_worker;
-
-    /* task statistics */
-    m_task_statistics.workers = static_cast<std::size_t> (prm_get_integer_value (PRM_ID_MAX_REQUEST_CONCURRENCY));
-    m_task_statistics.time_ns = get_monotonic_ns ();
-    m_task_statistics.requested = { 0, 0 };
-    m_task_statistics.started = { 0, 0 };
-    m_task_statistics.completed = { 0, 0 };
-    m_task_statistics.depth = { 0, 0 };
 
     /* connection statistics */
     for (i = 0; i < max_worker; i++)
@@ -279,192 +248,12 @@ namespace cubconn::connection
     request.worker_ptr = workers[to].get ();
     request.worker_index = to;
 
-    workers[from]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-    if (!workers[from]->notify ())
+    if (!workers[from]->enqueue_and_notify (cubconn::connection::worker::queue_type::LAZY, std::move (request)))
       {
 	assert_release (false);
       }
 
     return true;
-  }
-
-  bool coordinator::scale_up ()
-  {
-    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
-    connection::worker::message request;
-
-    if (m_current_worker >= m_max_worker ||
-	m_status != status::STABLE)
-      {
-	/* there is no extra worker */
-	return false;
-      }
-
-    assert (m_current_worker < m_max_worker);
-
-    m_scaling.draining_worker = -1;
-
-    m_status = status::EXPANDING;
-
-    /* new clients must be entered in this worker */
-    m_statistics[m_current_worker].m_score = 0;
-
-    request.type = connection::worker::message_type::AWAKEN;
-    workers[m_current_worker]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-    if (!workers[m_current_worker]->notify ())
-      {
-	assert_release (false);
-      }
-    m_current_worker++;
-
-    m_scaling.last_expand_ns = get_monotonic_ns ();
-
-    m_status = status::STABLE;
-
-    return true;
-  }
-
-  bool coordinator::scale_down_finish ()
-  {
-    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
-    connection::worker::message request;
-
-    request.type = connection::worker::message_type::HIBERNATE;
-    workers[m_scaling.draining_worker]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-    if (!workers[m_scaling.draining_worker]->notify ())
-      {
-	assert_release (false);
-      }
-
-    /* clear the statistics */
-    m_statistics[m_scaling.draining_worker].m_score = 0;
-    m_statistics[m_scaling.draining_worker].m_core = 0;
-    m_statistics[m_scaling.draining_worker].m_last_cpu_time = 0;
-    m_statistics[m_scaling.draining_worker].m_client_num = 0;
-    m_statistics[m_scaling.draining_worker].m_last_updated = 0;
-    m_statistics[m_scaling.draining_worker].m_sum.reset ();
-    m_statistics[m_scaling.draining_worker].m_worker.first.reset ();
-    m_statistics[m_scaling.draining_worker].m_worker.second.reset ();
-    m_statistics[m_scaling.draining_worker].m_contexts.clear ();
-
-    m_scaling.last_drain_ns = get_monotonic_ns ();
-    m_scaling.draining_worker = -1;
-
-    m_status = status::STABLE;
-
-    return true;
-  }
-
-  bool coordinator::scale_down ()
-  {
-    std::size_t newhome;
-
-    if (m_current_worker <= m_min_worker ||
-	m_status != status::STABLE)
-      {
-	/* the number of workers cannot be further reduced */
-	return false;
-      }
-
-    m_current_worker--;
-
-    /* TODO: we need more graceful migration method using statistics */
-    for (auto &stats : m_statistics[m_current_worker].m_contexts)
-      {
-	std::tie (newhome, std::ignore) = this->statistics_find_score_extremes ();
-	transfer_connection (stats.first, m_current_worker, newhome);
-
-	/* TODO: m_statistics[newhome].m_score += CLIENT_SCORE */
-      }
-
-    /* register the target worker index */
-    m_scaling.draining_worker = m_current_worker;
-
-    m_status = status::DRAINING;
-
-    return true;
-  }
-
-  void coordinator::scale_trial ()
-  {
-    m_scaling_statistics.history.clear ();
-
-    if (m_scaling_statistics.previous_scale == m_current_worker)
-      {
-	m_scaling_statistics.direction = m_scaling_statistics.previous_direction == scaling_direction::DOWN ?
-					 scaling_direction::UP : scaling_direction::DOWN;
-      }
-    else
-      {
-	m_scaling_statistics.direction = m_scaling_statistics.previous_direction;
-      }
-
-    if (m_scaling_statistics.direction == scaling_direction::DOWN)
-      {
-	m_scaling_statistics.count = std::min (m_current_worker - m_min_worker,
-					       static_cast<std::uint32_t> (m_scaling_statistics.window_size));
-      }
-    else
-      {
-	m_scaling_statistics.count = std::min (m_max_worker - m_current_worker,
-					       static_cast<std::uint32_t> (m_scaling_statistics.window_size));
-      }
-
-    if (m_scaling_statistics.count == 0)
-      {
-	m_scaling_statistics.previous_direction = (m_scaling_statistics.previous_direction == scaling_direction::DOWN) ?
-	    scaling_direction::UP : scaling_direction::DOWN;
-	m_scaling_statistics.status = scaling_status::STABLE;
-      }
-    else
-      {
-	m_scaling_statistics.status = scaling_status::TRIAL;
-      }
-  }
-
-  std::size_t coordinator::scale_selection ()
-  {
-    static std::mt19937 gen (std::random_device { } ());
-    std::vector<std::size_t> candidates;
-    double max_score;
-
-    max_score = 0;
-    for (auto &stats : m_scaling_statistics.history)
-      {
-	if (max_score < stats.score)
-	  {
-	    max_score = stats.score;
-	  }
-      }
-
-    for (auto &stats : m_scaling_statistics.history)
-      {
-	if (max_score * 0.95 < stats.score)
-	  {
-	    candidates.push_back (stats.scale);
-	  }
-      }
-
-    if (candidates.size () != 0)
-      {
-	std::uniform_int_distribution<size_t> dis (0, candidates.size () - 1);
-
-	return candidates[dis (gen)];
-      }
-    return m_current_worker;
-  }
-
-  void coordinator::statistics_EWMA (double alpha, uint64_t time_delta, double &acc, uint64_t &prev, uint64_t current)
-  {
-    double diff;
-
-    diff = 0;
-    if (current > prev)
-      {
-	diff = static_cast<double> (current - prev);
-      }
-    acc = acc * (1 - alpha) + diff * (alpha / (time_delta * 1e-6));
-    prev = current;
   }
 
   std::pair<std::size_t, std::size_t> coordinator::statistics_find_score_extremes ()
@@ -474,7 +263,7 @@ namespace cubconn::connection
 
     max = 0;
     min = 0;
-    for (i = 1; i < m_current_worker; i++)
+    for (i = 1; i < m_max_worker; i++)
       {
 	if (m_statistics[i].m_score < m_statistics[min].m_score)
 	  {
@@ -552,43 +341,9 @@ namespace cubconn::connection
       }
   }
 
-  void coordinator::statistics_update_task ()
-  {
-    uint64_t stats[3] = { 0, 0, 0 };
-    uint64_t depth;
-    uint64_t delta, time_ns;
-
-    time_ns = get_monotonic_ns ();
-    delta = time_ns - m_task_statistics.time_ns;
-
-    css_get_task_stats (stats);
-    /* queue depth is a gauge. smooth the absolute value to avoid negative delta. */
-    depth = stats[0] > stats[1] ? stats[0] - stats[1] : 0;
-    if (m_task_statistics.requested.second)
-      {
-	this->statistics_EWMA (EWMA_ALPHA, delta, m_task_statistics.requested.first, m_task_statistics.requested.second,
-			       stats[0]);
-	this->statistics_EWMA (EWMA_ALPHA, delta, m_task_statistics.started.first, m_task_statistics.started.second, stats[1]);
-	this->statistics_EWMA (EWMA_ALPHA, delta, m_task_statistics.completed.first, m_task_statistics.completed.second,
-			       stats[2]);
-	this->statistics_EWMA (EWMA_ALPHA, delta, m_task_statistics.depth.first, m_task_statistics.depth.second, depth);
-      }
-    else
-      {
-	/* there is no previous */
-	m_task_statistics.requested.second = stats[0];
-	m_task_statistics.started.second = stats[1];
-	m_task_statistics.completed.second = stats[2];
-	m_task_statistics.depth.second = depth;
-      }
-
-    m_task_statistics.time_ns = time_ns;
-  }
-
   bool coordinator::statistics_update ()
   {
     this->handle_message_queue ();
-    this->statistics_update_task ();
 
     return true;
   }
@@ -636,74 +391,6 @@ namespace cubconn::connection
 #undef EWMA_CONTEXT
   }
 
-  bool coordinator::statistics_scaling ()
-  {
-    double bytes_inout;
-    std::size_t selected;
-    std::size_t i;
-
-    if (m_scaling_statistics.status == scaling_status::STABLE)
-      {
-	this->scale_trial ();
-	return true;
-      }
-
-    assert (m_scaling_statistics.status == scaling_status::TRIAL);
-
-    /* record at this point */
-    bytes_inout = 0;
-    for (i = 0; i < m_max_worker; i++)
-      {
-	bytes_inout += m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL);
-	bytes_inout += m_statistics[i].m_sum.get (statistics::context::BYTES_OUT_TOTAL);
-      }
-    m_scaling_statistics.history.push_back (
-    {
-      m_current_worker,
-      VAL_TO_SCORE (50, 1000, bytes_inout) + m_task_statistics.completed.first * 2
-    });
-    m_scaling_statistics.count--;
-
-    if (m_scaling_statistics.count == 0)
-      {
-	m_scaling_statistics.previous_scale = m_current_worker;
-
-	selected = this->scale_selection ();
-	if (selected < m_current_worker)
-	  {
-	    m_scaling_statistics.previous_direction = scaling_direction::DOWN;
-	    this->scale_down ();
-	    this->scale_trial ();
-	  }
-	else if (selected > m_current_worker)
-	  {
-	    m_scaling_statistics.previous_direction = scaling_direction::UP;
-	    for (i = 0; i < selected - m_current_worker; i++)
-	      {
-		this->scale_up ();
-	      }
-	    this->scale_trial ();
-	  }
-	else
-	  {
-	    m_scaling_statistics.status = scaling_status::STABLE;
-	  }
-      }
-    else
-      {
-	if (m_scaling_statistics.direction == scaling_direction::DOWN)
-	  {
-	    this->scale_down ();
-	  }
-	else
-	  {
-	    this->scale_up ();
-	  }
-      }
-
-    return true;
-  }
-
   void coordinator::statistics_print ()
   {
     double bytes_in, bytes_out;
@@ -748,21 +435,13 @@ namespace cubconn::connection
       }
 
     printf ("------ summary ------\n");
-    printf ("STATUS               : %s (draining worker: %d)\n",
-	    m_status == status::STABLE ? "STABLE" : (m_status == status::DRAINING ? "DRAINING" : "EXPANDING"),
-	    m_scaling.draining_worker);
-    printf ("WORKER COUNT         : %d (min: %d, max: %d)\n", m_current_worker, m_min_worker, m_max_worker);
+    printf ("WORKER COUNT         : %d\n", m_max_worker);
     printf ("CORE USAGE           : %0.4lf / %d\n", core, m_max_worker);
     printf ("CORE USAGE PER WORKER: %0.4lf\n", core / m_max_worker);
     printf ("BYTES IN             : %lf\n", bytes_in);
     printf ("BYTES OUT            : %lf\n\n", bytes_out);
 
     printf ("MQ COMPLETED         : %0.4lf\n\n", mq_completed);
-
-    printf ("TASK REQUESTED       : %lf\n", m_task_statistics.requested.first);
-    printf ("TASK STARTED         : %lf\n", m_task_statistics.started.first);
-    printf ("TASK COMPLETED       : %lf\n", m_task_statistics.completed.first);
-    printf ("TASK QUEUE DEPTH     : %lf\n\n", m_task_statistics.depth.first / m_task_statistics.workers * 100);
   }
 
   bool coordinator::eventfd_register (int fd)
@@ -954,6 +633,7 @@ namespace cubconn::connection
     if (!ctx)
       {
 	/* failed to allocate the resources */
+	css_prepare_shutdown_conn (item.conn);
 	css_free_conn (item.conn);
 
 	/* just ignore */
@@ -976,8 +656,7 @@ namespace cubconn::connection
     request.ctx->m_id = id++;
     request.conn = item.conn;
 
-    workers[worker]->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
-    if (!workers[worker]->notify ())
+    if (!workers[worker]->enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request)))
       {
 	assert_release (false);
       }
@@ -1071,13 +750,6 @@ not_transferred:
     /* update score */
     this->statistics_update_score (index);
 
-    /* hibernate */
-    if ((m_status == status::DRAINING && static_cast<int> (index) == m_scaling.draining_worker) &&
-	item.statistics.contexts.empty ())
-      {
-	this->scale_down_finish ();
-      }
-
     return true;
   }
 
@@ -1134,8 +806,6 @@ not_transferred:
     const char *name_table[] =
     {
       "SHOW STATS",
-      "SCALE UP",
-      "SCALE DOWN",
       "CLIENT MOVE",
       "OK",
       "NOK"
@@ -1160,14 +830,6 @@ not_transferred:
       case control_type::CLIENT_MOVE:
 	this->transfer_connection (rx.id, rx.from, rx.to);
 	tx.type = control_type::OK;
-	break;
-
-      case control_type::SCALE_UP:
-	tx.type = this->scale_up () ? control_type::OK : control_type::NOK;
-	break;
-
-      case control_type::SCALE_DOWN:
-	tx.type = this->scale_down () ? control_type::OK : control_type::NOK;
 	break;
 
       default:
@@ -1243,8 +905,6 @@ not_transferred:
 
     m_entry->get_error_context ().register_thread_local ();
 
-    m_status = status::STABLE;
-
     m_parent->lock_resource ();
   }
 
@@ -1319,10 +979,11 @@ not_transferred:
 	      {
 		if (events[i].data.fd == m_eventfd)
 		  {
+		    /* a failed read costs at most a spurious wake-up; stopping leaves new connections unassigned */
 		    if (!this->eventfd_clear (m_eventfd))
 		      {
-			er_log_conn (__FILE__, __LINE__, "connection::coordinator->run: eventfd_clear failed\n");
-			return false;
+			_er_log_debug (ARG_FILE_LINE, "connection coordinator: failed to read the eventfd: %s\n",
+				       strerror (errno));
 		      }
 		    this->handle_message_queue ();
 		  }
@@ -1348,8 +1009,8 @@ not_transferred:
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {
-			er_log_conn (__FILE__, __LINE__, "connection::coordinator->eventfd_handler: eventfd_clear failed\n");
-			return false;
+			_er_log_debug (ARG_FILE_LINE, "connection coordinator: failed to read the timerfd: %s\n",
+				       strerror (errno));
 		      }
 		  }
 #if defined (ENABLE_CONTROLLER)

@@ -26,12 +26,14 @@
 #include <float.h>
 #include "query_rewrite.h"
 
-static void qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where);
+static void qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where, bool in_tree);
 static void qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
+static void qo_rewrite_like_in_factor (PARSER_CONTEXT * parser, PT_NODE * node);
 static void qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** wherep);
+static bool qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 
 /*
  * qo_rewrite_terms () - checks all subqueries for rewrite optimizations
@@ -48,7 +50,7 @@ qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE * nodes, PT_NODE ** terms)
 {
   if (*terms)
     {
-      qo_converse_sarg_terms (parser, *terms);
+      qo_converse_sarg_terms (parser, *terms, false);
       qo_reduce_comp_pair_terms (parser, terms);
       qo_rewrite_like_terms (parser, terms);
       qo_convert_to_range (parser, terms);
@@ -419,6 +421,94 @@ qo_check_condition_null (PARSER_CONTEXT * parser, PT_NODE * path_spec, PT_NODE *
 }
 
 /*
+ * qo_has_alternative_without_spec () - can a RANGE / IN / op SOME term reading the spec be true without it?
+ *   return: true if the left operand does not read the spec and the alternatives read it only in part,
+ *           or read it in a collection whose alternatives cannot be enumerated
+ *   parser(in):
+ *   node(in): expression to check
+ *   info(in): spec to look for
+ */
+static bool
+qo_has_alternative_without_spec (PARSER_CONTEXT * parser, PT_NODE * node, SPEC_ID_INFO * info)
+{
+  PT_NODE *alt, *list, *save_next, *save_or_next;
+  bool is_or_list, with_spec = false, without_spec = false;
+
+  if (node->node_type != PT_EXPR || node->info.expr.arg2 == NULL)
+    {
+      return false;
+    }
+
+  switch (node->info.expr.op)
+    {
+    case PT_RANGE:
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+    case PT_NE_SOME:
+    case PT_GE_SOME:
+    case PT_GT_SOME:
+    case PT_LT_SOME:
+    case PT_LE_SOME:
+      break;
+
+    default:
+      return false;
+    }
+
+  info->appears = false;
+  parser_walk_tree (parser, node->info.expr.arg1, qo_get_name_by_spec_id, info, NULL, NULL);
+  if (info->appears)
+    {
+      return false;
+    }
+
+  list = node->info.expr.arg2;
+  is_or_list = (node->info.expr.op == PT_RANGE);
+  if (!is_or_list)
+    {
+      while (list != NULL && list->node_type == PT_EXPR && list->info.expr.op == PT_CAST)
+	{
+	  list = list->info.expr.arg1;
+	}
+
+      if (list == NULL || PT_IS_QUERY_NODE_TYPE (list->node_type))
+	{
+	  return false;
+	}
+
+      if (list->node_type != PT_FUNCTION
+	  || (list->info.function.function_type != F_SET && list->info.function.function_type != F_MULTISET
+	      && list->info.function.function_type != F_SEQUENCE))
+	{
+	  /* e.g. a set union: any element may come from the other operand */
+	  info->appears = false;
+	  parser_walk_tree (parser, list, qo_get_name_by_spec_id, info, NULL, NULL);
+	  return info->appears;
+	}
+
+      list = list->info.function.arg_list;
+    }
+
+  for (alt = list; alt != NULL && !(with_spec && without_spec); alt = is_or_list ? alt->or_next : alt->next)
+    {
+      /* parser_walk_tree follows both next and or_next */
+      save_next = alt->next;
+      save_or_next = alt->or_next;
+      alt->next = alt->or_next = NULL;
+
+      info->appears = false;
+      parser_walk_tree (parser, alt, qo_get_name_by_spec_id, info, NULL, NULL);
+      with_spec = with_spec || info->appears;
+      without_spec = without_spec || !info->appears;
+
+      alt->next = save_next;
+      alt->or_next = save_or_next;
+    }
+
+  return with_spec && without_spec;
+}
+
+/*
  * qo_check_nullable_expr_with_spec () -
  *   return:
  *   parser(in):
@@ -441,6 +531,11 @@ qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void 
 	  info->nullable = true;
 	  *continue_walk = PT_STOP_WALK;
 	}
+    }
+  else if (qo_has_alternative_without_spec (parser, node, info))
+    {
+      info->nullable = true;
+      *continue_walk = PT_STOP_WALK;
     }
 
   return node;
@@ -610,6 +705,137 @@ qo_bind_copy_domain (PARSER_CONTEXT * parser, PT_NODE * column, PT_NODE * hv)
 }
 
 /*
+ * qo_find_column_pre () - whether a tree reads a column
+ */
+static PT_NODE *
+qo_find_column_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (node->node_type == PT_NAME && node->info.name.meta_class != PT_PARAMETER)
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  return node;
+}
+
+/*
+ * qo_unmark_constant_function_index () - clear the function index mark of an expression the equality substitution
+ *					   left without a column
+ *
+ * Note: nvl (x.b, -1) under an index on nvl (b, -1) is marked as the index expression (PT_EXPR_INFO_FUNCTION_INDEX),
+ *	 and the planner looks up the node of its column by the mark (qo_index_cardinality ()).  Once x.b = ?:1 puts
+ *	 the host variable in place of x.b, nvl (?:1, -1) reads no column, and the lookup gave up the plan: the
+ *	 statement then ran with the predicate the optimizer had begun to take apart.
+ */
+static PT_NODE *
+qo_unmark_constant_function_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *save_next;
+  bool found = false;
+
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  if (node->node_type == PT_EXPR && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_FUNCTION_INDEX))
+    {
+      save_next = node->next;
+      node->next = NULL;
+      (void) parser_walk_tree (parser, node, qo_find_column_pre, &found, NULL, NULL);
+      node->next = save_next;
+      if (!found)
+	{
+	  PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_FUNCTION_INDEX);
+	}
+    }
+  return node;
+}
+
+/* the column an equality substitution is about to replace, see qo_unmark_substituted_function_index () */
+typedef struct qo_substituted_column QO_SUBSTITUTED_COLUMN;
+struct qo_substituted_column
+{
+  PT_NODE *name;		/* the column */
+  bool loc_check;		/* the substitution replaces only at the location of the column */
+  bool found;
+};
+
+/*
+ * qo_find_substituted_column_pre () - whether a tree reads the column the substitution replaces
+ *
+ * Note: the conditions are those of pt_lambda_node ().
+ */
+static PT_NODE *
+qo_find_substituted_column_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_SUBSTITUTED_COLUMN *column = (QO_SUBSTITUTED_COLUMN *) arg;
+
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  if (node->node_type != PT_NAME || PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_DOT_SPEC))
+    {
+      return node;
+    }
+  if (column->loc_check
+      && (node->info.name.location == 0 || node->info.name.location != column->name->info.name.location))
+    {
+      return node;
+    }
+  if (pt_name_equal (parser, node, column->name))
+    {
+      column->found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * qo_unmark_substituted_function_index () - clear the function index mark of an expression the equality substitution
+ *					      is about to put a constant into
+ *   arg(in): the column the substitution replaces (QO_SUBSTITUTED_COLUMN)
+ *
+ * Note: the mark says the expression is the one an index is built on.  With a constant in place of one of its
+ *	 columns it is not that expression any more, whether or not another column is left in it: an index on
+ *	 concat (a, b) does not hold concat ('x', b).  To be called before the substitution, while the column is
+ *	 still there to be found.
+ */
+static PT_NODE *
+qo_unmark_substituted_function_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_SUBSTITUTED_COLUMN *column = (QO_SUBSTITUTED_COLUMN *) arg;
+  PT_NODE *save_next;
+
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  if (node->node_type == PT_EXPR && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_FUNCTION_INDEX))
+    {
+      column->found = false;
+      save_next = node->next;
+      node->next = NULL;
+      (void) parser_walk_tree (parser, node, qo_find_substituted_column_pre, column, NULL, NULL);
+      node->next = save_next;
+      if (column->found)
+	{
+	  PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_FUNCTION_INDEX);
+	}
+    }
+  return node;
+}
+
+/*
  * qo_reduce_equality_terms () -
  *   return:
  *   parser(in):
@@ -641,6 +867,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   PT_NODE *opd1, *opd2;
   DB_VALUE *dbv1, *dbv2;
   TP_DOMAIN *pad_domain;
+  PT_NODE *cast_attr;
   int pad_user;
 
   /* init */
@@ -709,6 +936,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	{
 	  arg1 = (i == 0) ? expr->info.expr.arg1 : expr->info.expr.arg2;
 	  arg2 = (i == 0) ? expr->info.expr.arg2 : expr->info.expr.arg1;
+	  cast_attr = NULL;
 
 	  if (expr->info.expr.op == PT_RANGE)
 	    {
@@ -755,6 +983,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		}
 	      else if (qo_is_cast_attr (arg2))
 		{
+		  cast_attr = arg2;
 		  arg2 = arg2->info.expr.arg1;
 		}
 	      else
@@ -812,8 +1041,14 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 			  col = col->info.name.constant_value;
 			}
 		    }
-		  /* do not reduce PT_NAME that belongs to PT_NODE_LIST to PT_VALUE */
-		  if (attr && col && !PT_IS_VALUE_QUERY (col) && qo_is_reduceable_const (col))
+		  /* do not reduce PT_NAME that belongs to PT_NODE_LIST to PT_VALUE. nor a column the substitution
+		   * below leaves in a cast to another collation (pt_lambda_check_reduce_eq): the added copy of the
+		   * term would stay as it is and be found again at every restart, adding a copy forever. for the same
+		   * reason a copy added here (PT_EXPR_INFO_DO_NOT_AUTOPARAM) is never copied again: the substitution
+		   * turns it into attr = const, so one that still gets here was left as it is */
+		  if (attr && col && !PT_IS_VALUE_QUERY (col) && qo_is_reduceable_const (col)
+		      && !PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_DO_NOT_AUTOPARAM)
+		      && !pt_reduce_eq_keeps_cast (parser, arg2->type_enum, arg2, cast_attr))
 		    {
 		      /* add additional equailty-term; is reduced */
 		      PT_NODE *expr_copy = parser_copy_tree (parser, expr);
@@ -887,6 +1122,13 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	  if (temp->node_type != PT_EXPR || !pt_is_symmetric_op (temp->info.expr.op))
 	    {
 	      /* skip and go ahead */
+	      continue;
+	    }
+
+	  if (temp->info.expr.op == PT_AND || temp->info.expr.op == PT_OR)
+	    {
+	      /* a factor pt_cnf_where () kept whole is no join term: its operands are predicates, not the
+	       * expressions the cases below compare, and the copy would evaluate the whole factor twice */
 	      continue;
 	    }
 
@@ -1113,8 +1355,18 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 							       (temp->info.name.location > 0 ? true : false), 1,
 							       true /* dont_replace */ );
 	}
+      if (temp->node_type == PT_NAME)
+	{
+	  QO_SUBSTITUTED_COLUMN column;
+
+	  column.name = temp;
+	  column.loc_check = (temp->info.name.location > 0 ? true : false);
+	  column.found = false;
+	  (void) parser_walk_tree (parser, *wherep, qo_unmark_substituted_function_index, &column, NULL, NULL);
+	}
       *wherep = pt_lambda_with_arg (parser, *wherep, arg1, arg2, (temp->info.name.location > 0 ? true : false), 1,
 				    false /* dont_replace: DEFAULT */ );
+      (void) parser_walk_tree (parser, *wherep, qo_unmark_constant_function_index, NULL, NULL, NULL);
 
       /* Leave "wherep" pointing at the begining of the rest of the predicate. We still gurantee loop termination
        * because we have removed a term. future iterations which do not fall into this case will advance to the next
@@ -1189,7 +1441,165 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	}
     }
 
+  if (qo_fold_or_factors (parser, orgp))
+    {
+      /* a factor folded to a conjunction with an equality of its own: reduce with it as with the others, while the
+       * constant is still a literal; a later rewrite of the statement (the SELECT an UPDATE builds) would substitute
+       * the host variable the auto-parameterization makes of it, which other terms then read in another type */
+      qo_reduce_equality_terms (parser, node, orgp);
+    }
+}
 
+/*
+ * qo_fold_or_factors () - fold the factors pt_cnf_where () kept whole and keep the CNF list shape
+ *   return: true when a factor folded to a conjunction that holds an equality of a column with a constant
+ *   parser(in):
+ *   wherep(in/out): CNF list
+ *
+ * Note: The substitution above turns the attribute of an equality term into a constant in every
+ *	 other term, so a disjunct of a factor kept whole can become constant: (o.c <> i.c and
+ *	 o.c < i.c) or (i.c <> i.c) with i.c = 12.  The constant folding that mq_translate () repeats
+ *	 after the rewrite drops such a disjunct, and what remains of the factor may be a conjunction
+ *	 (op PT_AND, or_next NULL), which a CNF list cannot hold as one term: qo_analyze_term () has no
+ *	 term class for it and aborts the plan, which for a join's ON condition fails the query with
+ *	 MSGCAT_RUNTIME_OUTER_JOIN_OPT_FAILED.  A distributed factor never raised this, as each of
+ *	 its clauses folds to one literal.  Fold the kept factors here instead, so the rewrites that
+ *	 follow start from the shape that is evaluated, and put what a factor folds to back in the
+ *	 list in CNF shape:
+ *	 - a smaller disjunction stays the factor it was, marks included, so qo_extract_or_restrictions ()
+ *	   neither derives from it twice nor loses the restriction it derived;
+ *	 - a conjunction or a single predicate becomes one term per conjunct, through pt_cnf_where ()
+ *	   so that a disjunction of single predicates among them takes the or_next shape the range
+ *	   conversion reads; each term is put at the factor's location, which its operands do not carry;
+ *	 - a derived factor (PT_EXPR_INFO_OR_DERIVED) that folds to less than a disjunction is dropped:
+ *	   its origin folds the same way and then holds those conjuncts itself, and a copy without the
+ *	   mark would be counted and evaluated twice;
+ *	 - a factor of a join's ON condition (location > 0) that folds to false is left as it was: a false
+ *	   value there makes the rewrites cut the ON condition down to that value, and the inner scan then
+ *	   reads the whole table for each outer row instead of the index the other terms give it.
+ */
+static bool
+qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
+{
+  PT_NODE *term, *next, *folded, *last, *saved, *dnf, **prevp;
+  bool new_equality = false;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  int marks;
+  short location;
+  bool derived, cnf_start;
+
+  prevp = wherep;
+  while ((term = *prevp) != NULL)
+    {
+      if (!PT_IS_EXPR_NODE_WITH_OPERATOR (term, PT_OR) || term->or_next != NULL)
+	{
+	  prevp = &term->next;	/* not a factor kept whole */
+	  continue;
+	}
+
+      next = term->next;
+      term->next = NULL;
+
+      /* pt_fold_const_expr () frees the factor it replaces, so read it before the fold */
+      marks = PT_EXPR_INFO_IS_FLAGED (term, (PT_EXPR_INFO_CNF_DONE | PT_EXPR_INFO_OR_EXTRACTED
+					     | PT_EXPR_INFO_OR_DERIVED | PT_EXPR_INFO_OR_DERIVED_EXPENSIVE
+					     | PT_EXPR_INFO_OR_DERIVED_COLUMN));
+      derived = PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_OR_DERIVED) != 0;
+      cnf_start = term->flag.is_cnf_start;
+      location = term->info.expr.location;
+
+      /* a false value in a join's ON condition drops the other terms of it; see the note above */
+      saved = (term->info.expr.location > 0) ? parser_copy_tree (parser, term) : NULL;
+
+      folded = term;
+      sc_info.top_node = term;
+      sc_info.donot_fold = false;
+      /* a subquery in the factor is left as it is: in the middle of its own rewrite, see the function */
+      if (pt_semantic_type_term_in_place (parser, &folded, &sc_info) != NO_ERROR)
+	{
+	  /* the error is reported, and the statement fails before it is planned; keep what the fold left
+	   * in the list, as the term may be freed */
+	  if (saved != NULL)
+	    {
+	      parser_free_tree (parser, saved);
+	    }
+	  folded->next = next;
+	  *prevp = folded;
+	  return false;
+	}
+
+      if (saved != NULL)
+	{
+	  if (folded != term && folded->node_type == PT_VALUE && pt_false_search_condition (parser, folded))
+	    {
+	      parser_free_tree (parser, folded);
+	      folded = term = saved;
+	    }
+	  else
+	    {
+	      parser_free_tree (parser, saved);
+	    }
+	}
+
+      if (folded == term)
+	{
+	  term->next = next;
+	  *prevp = term;
+	  prevp = &term->next;
+	  continue;
+	}
+
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (folded, PT_OR))
+	{
+	  PT_EXPR_INFO_SET_FLAG (folded, marks);
+	  folded->flag.is_cnf_start = cnf_start;
+	  folded->next = next;
+	  *prevp = folded;
+	  prevp = &folded->next;
+	}
+      else if (derived)
+	{
+	  parser_free_tree (parser, folded);
+	  *prevp = next;
+	}
+      else
+	{
+	  folded = pt_cnf_where (parser, folded);
+	  for (last = folded;; last = last->next)
+	    {
+	      /* a conjunct was an operand of the factor, and its own location is not the factor's: an operand
+	       * of an ON condition's factor carries 0, which makes it a WHERE term filtering the preserved side */
+	      for (dnf = last; dnf != NULL; dnf = dnf->or_next)
+		{
+		  if (dnf->node_type == PT_EXPR)
+		    {
+		      dnf->info.expr.location = location;
+		    }
+		  else if (dnf->node_type == PT_VALUE)
+		    {
+		      dnf->info.value.location = location;
+		    }
+		}
+	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (last, PT_EQ) && last->or_next == NULL
+		  && ((pt_is_attr (last->info.expr.arg1) && qo_is_reduceable_const (last->info.expr.arg2))
+		      || (pt_is_attr (last->info.expr.arg2) && qo_is_reduceable_const (last->info.expr.arg1))))
+		{
+		  new_equality = true;
+		}
+	      if (last->next == NULL)
+		{
+		  break;
+		}
+	      last->next->flag.is_cnf_start = false;
+	    }
+	  folded->flag.is_cnf_start = cnf_start;
+	  last->next = next;
+	  *prevp = folded;
+	  prevp = &last->next;
+	}
+    }
+
+  return new_equality;
 }
 
 /*
@@ -1213,7 +1623,7 @@ qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 
 	  qo_move_on_of_explicit_join_to_where (parser, &node->info.query.q.select.from,
 						&node->info.query.q.select.where);
-	  node->info.query.q.select.where = pt_cnf (parser, node->info.query.q.select.where);
+	  node->info.query.q.select.where = pt_cnf_where (parser, node->info.query.q.select.where);
 	  qo_rewrite_innerjoin (parser, node, NULL, &continue_innerjoin);
 	}
 
@@ -1228,7 +1638,8 @@ qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
  * qo_converse_sarg_terms () -
  *   return:
  *   parser(in):
- *   where(in): CNF list of WHERE clause
+ *   where(in): CNF list of WHERE clause, or an operand of AND or OR in one of its terms
+ *   in_tree(in): true if where is such an operand
  *
  * Note:
  *      Convert terms of the form 'constant op attr' to 'attr op constant'
@@ -1259,7 +1670,7 @@ qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
  *	prior (attr) between -opd2 and -opd1
  */
 static void
-qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
+qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where, bool in_tree)
 {
   PT_NODE *cnf_node, *dnf_node, *arg1, *arg2, *arg1_arg1, *arg2_arg1;
   PT_NODE *arg1_prior_father, *arg2_prior_father;
@@ -1315,8 +1726,9 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	    {
 	      /* term in the form of '-attr between opd1 and opd2' convert to '-attr >= opd1 and -attr <= opd2' */
 
-	      /* check for one range spec */
-	      if (cnf_node == dnf_node && dnf_node->or_next == NULL)
+	      /* check for one range spec; an operand of AND or OR is not a term of the CNF list, and the term
+	       * linked to its next would not be read as a conjunct of it */
+	      if (!in_tree && cnf_node == dnf_node && dnf_node->or_next == NULL)
 		{
 		  arg2 = dnf_node->info.expr.arg2;
 		  assert (arg2->node_type == PT_EXPR);
@@ -1430,7 +1842,9 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	      arg2_arg1 =
 		((pt_is_expr_node (arg2) && arg2->info.expr.op == PT_UNARY_MINUS) ? arg2->info.expr.arg1 : NULL);
 
-	      if (arg1_arg1 && arg2_arg1)
+	      /* An operator without a converse (pt_converse_op () gives 0, as for <=>) keeps both minus signs, as the
+	       * other two cases below do: removing them would end in writing op 0 over the term's operator. */
+	      if (op_type != 0 && arg1_arg1 && arg2_arg1)
 		{
 		  /* Delete both minus from prior also. */
 		  if (arg1_prior_father)
@@ -1545,9 +1959,9 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	      /* not CNF form; what do I have to do? */
 
 	      /* traverse left child */
-	      qo_converse_sarg_terms (parser, arg1);
+	      qo_converse_sarg_terms (parser, arg1, true);
 	      /* traverse right child */
-	      qo_converse_sarg_terms (parser, arg2);
+	      qo_converse_sarg_terms (parser, arg2, true);
 
 	    }
 	  else if (op_type == PT_OR)
@@ -1555,9 +1969,9 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	      /* not DNF form; what do I have to do? */
 
 	      /* traverse left child */
-	      qo_converse_sarg_terms (parser, arg1);
+	      qo_converse_sarg_terms (parser, arg1, true);
 	      /* traverse right child */
-	      qo_converse_sarg_terms (parser, arg2);
+	      qo_converse_sarg_terms (parser, arg2, true);
 
 	    }
 	  /* sargable term, where 'op_type' is one of '=', '<' '<=', '>', or '>=' */
@@ -2695,6 +3109,72 @@ qo_check_like_expression_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 }
 
 /*
+ * qo_rewrite_like_in_factor () - the in-place LIKE rewrites on the leaves of a factor kept whole
+ *   return:
+ *   parser(in):
+ *   node(in/out): a disjunct or conjunct of the factor
+ *
+ * Note: qo_rewrite_like_terms () reads the CNF list and the or_next chains, where the distribution
+ *	 put every LIKE; the leaves of a factor pt_cnf_where () kept whole hang off arg1/arg2 of its
+ *	 OR and AND nodes.  Only the rewrites that replace the LIKE node in place apply to a leaf
+ *	 (qo_rewrite_one_like_term ()): col LIKE 'abc' to col = 'abc', col LIKE 'abc%' to a BETWEEN,
+ *	 and col LIKE '%' to col IS NOT NULL, whose selectivity is read from the column where the
+ *	 LIKE is a guess that made a wider OR estimate fewer rows than its own branch.  The generic
+ *	 rewrite adds a term next to the LIKE, which a leaf has no place for.
+ */
+static void
+qo_rewrite_like_in_factor (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *compared_expr, *arg2, *pattern, *escape;
+  bool perform_generic_rewrite;
+
+  for (; node != NULL; node = node->or_next)
+    {
+      if (node->node_type != PT_EXPR)
+	{
+	  continue;
+	}
+
+      if (node->info.expr.op == PT_AND || node->info.expr.op == PT_OR)
+	{
+	  qo_rewrite_like_in_factor (parser, node->info.expr.arg1);
+	  qo_rewrite_like_in_factor (parser, node->info.expr.arg2);
+	  continue;
+	}
+
+      if (node->info.expr.op != PT_LIKE)
+	{
+	  continue;
+	}
+
+      compared_expr = pt_get_first_arg_ignore_prior (node);
+      if (!pt_is_attr (compared_expr) && !qo_is_cast_attr (compared_expr)
+	  && !pt_is_function_index_expr (parser, compared_expr, false))
+	{
+	  continue;
+	}
+
+      arg2 = node->info.expr.arg2;
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
+	{
+	  pattern = arg2->info.expr.arg1;
+	  escape = arg2->info.expr.arg2;
+	}
+      else
+	{
+	  pattern = arg2;
+	  escape = NULL;
+	}
+
+      if (pt_is_ascii_string_value_node (pattern)
+	  && (escape == NULL || PT_IS_NULL_NODE (escape) || pt_is_ascii_string_value_node (escape)))
+	{
+	  qo_rewrite_one_like_term (parser, node, pattern, escape, &perform_generic_rewrite);
+	}
+    }
+}
+
+/*
  * qo_rewrite_like_terms ()
  *   return:
  *   parser(in):
@@ -2719,6 +3199,14 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
   for (cnf_node = *cnf_list; cnf_node != NULL; cnf_node = cnf_node->next)
     {
       PT_NODE *crt_expr = NULL;
+
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (cnf_node, PT_OR) && cnf_node->or_next == NULL)
+	{
+	  /* a factor kept whole: its LIKEs are leaves of the tree */
+	  qo_rewrite_like_in_factor (parser, cnf_node);
+	  prev = cnf_node;
+	  continue;
+	}
 
       or_prev = NULL;
       for (crt_expr = cnf_node; crt_expr != NULL; crt_expr = crt_expr->or_next)
@@ -4516,6 +5004,17 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
 	  /* found a node of the same attribute */
 
+	  if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_OR_DERIVED)
+	      != PT_EXPR_INFO_IS_FLAGED (sibling, PT_EXPR_INFO_OR_DERIVED))
+	    {
+	      /* an OR-derived restriction (qo_extract_or_restrictions ()) is implied by its factor and is
+	       * dropped at plan time unless an index adopts it; a user bound merged into it would be
+	       * dropped with it.  UPDATE and DELETE rewrite their subqueries twice, and the second pass
+	       * meets the derived term ahead of a user range of the same ON condition.  Keep them apart */
+	      sibling_prev = sibling_prev->next;
+	      continue;
+	    }
+
 	  /* A LIKE-derived range must stay excluded from row-count only while it is
 	   * still the pure LIKE proxy. The flag only needs adjusting when the two
 	   * ranges are actually combined into one (sibling fully absorbed below):
@@ -4691,6 +5190,9 @@ struct qo_or_extract_ref_info
   bool refers_spec;		/* a column of the tested spec appears */
   bool refers_other;		/* a column of any other spec appears */
   bool is_unsafe;		/* contains a piece that must not be evaluated twice or out of place */
+  PT_NODE *column;		/* when set, the one column of the spec a conjunct may reference */
+  bool refers_other_column;	/* a column of the tested spec other than column appears */
+  bool walk_past_unsafe;	/* note an unsafe piece and go on to its siblings, not into a subquery */
 };
 
 /*
@@ -4727,6 +5229,10 @@ qo_or_extract_check_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
       else if (node->info.name.spec_id == info->spec_id)
 	{
 	  info->refers_spec = true;
+	  if (info->column != NULL && !pt_name_equal (parser, node, info->column))
+	    {
+	      info->refers_other_column = true;
+	    }
 	}
       else
 	{
@@ -4768,7 +5274,15 @@ qo_or_extract_check_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
   if (info->is_unsafe)
     {
-      *continue_walk = PT_STOP_WALK;
+      if (!info->walk_past_unsafe)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+      else if (PT_IS_QUERY (node) || node->node_type == PT_METHOD_CALL)
+	{
+	  /* the columns a subquery reads are its own; the conjuncts after it still count */
+	  *continue_walk = PT_LIST_WALK;
+	}
     }
 
   return node;
@@ -4867,10 +5381,11 @@ qo_or_extract_is_cheap_restriction (PT_NODE * conjunct)
 
   if (conjunct->info.expr.op == PT_RANGE)
     {
-      /* arg2 is the list of range items, each holding its bounds in arg1/arg2 */
+      /* arg2 is the list of range items chained through or_next, each holding its bounds in
+       * arg1/arg2 */
       PT_NODE *item;
 
-      for (item = other; item != NULL; item = item->next)
+      for (item = other; item != NULL; item = item->or_next)
 	{
 	  if (item->node_type != PT_EXPR || !qo_or_extract_is_constant_side (item->info.expr.arg1)
 	      || !qo_or_extract_is_constant_side (item->info.expr.arg2))
@@ -4898,6 +5413,66 @@ qo_or_extract_is_cheap_restriction (PT_NODE * conjunct)
     }
 
   return qo_or_extract_is_constant_side (other) && qo_or_extract_is_constant_side (conjunct->info.expr.arg3);
+}
+
+/*
+ * qo_or_extract_restriction_column () - the column a cheap single-column restriction is over
+ *   return: the column, or NULL when the predicate is not such a restriction
+ *   parser(in):
+ *   conjunct(in): a conjunct of a disjunct
+ *
+ * Note: a cheap restriction (qo_or_extract_is_cheap_restriction ()), or a disjunction of cheap
+ *	 restrictions over one column -- pt_cnf () keeps `(a = 1 or a = 2)` inside a factor as a
+ *	 PT_OR tree, and it is as much a key range on a as `a = 1` is.
+ */
+static PT_NODE *
+qo_or_extract_restriction_column (PARSER_CONTEXT * parser, PT_NODE * conjunct)
+{
+  PT_NODE *lhs, *rhs;
+
+  if (conjunct == NULL || conjunct->node_type != PT_EXPR || conjunct->or_next != NULL)
+    {
+      return NULL;
+    }
+
+  if (conjunct->info.expr.op == PT_OR)
+    {
+      lhs = qo_or_extract_restriction_column (parser, conjunct->info.expr.arg1);
+      rhs = qo_or_extract_restriction_column (parser, conjunct->info.expr.arg2);
+      return (lhs != NULL && rhs != NULL && pt_name_equal (parser, lhs, rhs)) ? lhs : NULL;
+    }
+
+  return qo_or_extract_is_cheap_restriction (conjunct) ? conjunct->info.expr.arg1 : NULL;
+}
+
+/*
+ * qo_or_extract_or_tree_to_list () - turn a PT_OR tree into the or_next chain of its disjuncts
+ *   return: the head of the chain
+ *   parser(in):
+ *   node(in): a PT_OR tree of restrictions over one column (qo_or_extract_restriction_column ())
+ */
+static PT_NODE *
+qo_or_extract_or_tree_to_list (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *lhs, *rhs, *tail;
+
+  if (node->node_type != PT_EXPR || node->info.expr.op != PT_OR)
+    {
+      return node;
+    }
+
+  lhs = qo_or_extract_or_tree_to_list (parser, node->info.expr.arg1);
+  rhs = qo_or_extract_or_tree_to_list (parser, node->info.expr.arg2);
+  node->info.expr.arg1 = node->info.expr.arg2 = NULL;
+  parser_free_node (parser, node);
+
+  for (tail = lhs; tail->or_next != NULL; tail = tail->or_next)
+    {
+      ;
+    }
+  tail->or_next = rhs;
+
+  return lhs;
 }
 
 /*
@@ -4973,18 +5548,121 @@ qo_or_extract_flatten (PT_NODE * expr, PT_OP_TYPE op, PT_NODE ** out, int cnt, i
 }
 
 /*
+ * qo_or_extract_volatile_pre () - a piece whose second evaluation differs from the first, or has a side effect
+ */
+static PT_NODE *
+qo_or_extract_volatile_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *is_volatile = (bool *) arg;
+
+  if (node->node_type == PT_METHOD_CALL)
+    {
+      *is_volatile = true;
+    }
+  else if (node->node_type == PT_EXPR)
+    {
+      switch (node->info.expr.op)
+	{
+	case PT_RAND:
+	case PT_RANDOM:
+	case PT_DRAND:
+	case PT_DRANDOM:
+	case PT_SYS_GUID:
+	case PT_CURRENT_VALUE:
+	case PT_NEXT_VALUE:
+	case PT_INST_NUM:
+	case PT_ROWNUM:
+	case PT_ORDERBY_NUM:
+	case PT_LEVEL:
+	case PT_PRIOR:
+	case PT_CONNECT_BY_ROOT:
+	case PT_SYS_CONNECT_BY_PATH:
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	  *is_volatile = true;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  if (*is_volatile)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * qo_or_extract_subquery_conjunct_ok () - may a conjunct holding a subquery join the restriction on one spec?
+ *   return: true when it reads the spec, no other spec of the statement, and nothing volatile, the subquery
+ *	     included
+ *   parser(in):
+ *   conjunct(in):
+ *   spec_id(in):
+ *   spec_list(in): FROM specs of the current statement
+ *
+ * Note: the clauses of a distributed factor held such conjuncts, y.a in (select z.a from z) or y.c like 'V1%',
+ *	 and the scan of the spec evaluated them as its filter; the subquery is evaluated again in the factor,
+ *	 as it was in the clauses the factor was distributed into.
+ */
+static bool
+qo_or_extract_subquery_conjunct_ok (PARSER_CONTEXT * parser, PT_NODE * conjunct, UINTPTR spec_id, PT_NODE * spec_list)
+{
+  PT_NODE *spec;
+  UINTPTR ref;
+  bool is_volatile = false;
+
+  (void) parser_walk_tree (parser, conjunct, qo_or_extract_volatile_pre, &is_volatile, NULL, NULL);
+  if (is_volatile)
+    {
+      return false;
+    }
+
+  ref = spec_id;
+  (void) parser_walk_tree (parser, conjunct, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
+  if (ref != 0)
+    {
+      return false;		/* does not read the spec */
+    }
+
+  for (spec = spec_list; spec != NULL; spec = spec->next)
+    {
+      if (spec->node_type != PT_SPEC || spec->info.spec.id == spec_id)
+	{
+	  continue;
+	}
+      ref = spec->info.spec.id;
+      (void) parser_walk_tree (parser, conjunct, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
+      if (ref == 0)
+	{
+	  return false;		/* reads another spec */
+	}
+    }
+
+  return true;
+}
+
+/*
  * qo_or_extract_build_for_spec () - conjunction of the copies of the conjuncts of one disjunct
  *				     that reference only the given spec
  *   return: newly built expression, or NULL when the disjunct has no usable conjunct
  *   parser(in):
  *   disjunct(in): one disjunct of a CNF OR factor; may itself be an AND tree
  *   spec_id(in):
+ *   column(in): when not NULL, keep only the conjuncts over this one column of the spec
  *   cheap_only(in): keep only conjuncts no costlier than a column-vs-constant compare
+ *   spec_list(in): FROM specs of the current statement, or NULL: a conjunct holding a subquery joins the
+ *		   restriction when it reads the spec alone (qo_or_extract_subquery_conjunct_ok ())
+ *
+ * Note: a conjunct that must not be evaluated twice (a subquery, rand () ...) is left out; the
+ *	 restriction built from the others is still implied by the disjunct.
  */
 static PT_NODE *
-qo_or_extract_build_for_spec (PARSER_CONTEXT * parser, PT_NODE * disjunct, UINTPTR spec_id, bool cheap_only)
+qo_or_extract_build_for_spec (PARSER_CONTEXT * parser, PT_NODE * disjunct, UINTPTR spec_id, PT_NODE * column,
+			      bool cheap_only, PT_NODE * spec_list)
 {
-#define QO_OR_EXTRACT_MAX_CONJUNCTS 16
+#define QO_OR_EXTRACT_MAX_CONJUNCTS PT_CNF_KEEP_MAX_CONJUNCTS
   PT_NODE *conjuncts[QO_OR_EXTRACT_MAX_CONJUNCTS];
   PT_NODE *result = NULL, *copied;
   QO_OR_EXTRACT_REF_INFO info;
@@ -5002,17 +5680,24 @@ qo_or_extract_build_for_spec (PARSER_CONTEXT * parser, PT_NODE * disjunct, UINTP
       info.refers_spec = false;
       info.refers_other = false;
       info.is_unsafe = false;
+      info.column = column;
+      info.refers_other_column = false;
+      info.walk_past_unsafe = false;
       (void) parser_walk_tree (parser, conjuncts[i], qo_or_extract_check_ref_pre, &info, NULL, NULL);
 
       if (info.is_unsafe)
 	{
-	  return NULL;		/* should have been filtered at the factor gate; stay safe */
+	  if (spec_list == NULL || column != NULL || cheap_only
+	      || !qo_or_extract_subquery_conjunct_ok (parser, conjuncts[i], spec_id, spec_list))
+	    {
+	      continue;		/* evaluated only in the original factor */
+	    }
 	}
-      if (!info.refers_spec || info.refers_other)
+      else if (!info.refers_spec || info.refers_other || info.refers_other_column)
 	{
-	  continue;		/* not a single-spec conjunct of this spec */
+	  continue;		/* not a single-spec (single-column) conjunct of this spec */
 	}
-      if (cheap_only && !qo_or_extract_is_cheap_restriction (conjuncts[i]))
+      if (cheap_only && qo_or_extract_restriction_column (parser, conjuncts[i]) == NULL)
 	{
 	  continue;		/* the first pass keeps only what a scan evaluates cheaply */
 	}
@@ -5041,8 +5726,678 @@ qo_or_extract_build_for_spec (PARSER_CONTEXT * parser, PT_NODE * disjunct, UINTP
 #undef QO_OR_EXTRACT_MAX_CONJUNCTS
 }
 
+/* the most disjuncts of an OR factor qo_extract_or_restrictions () derives restrictions from */
+#define QO_OR_EXTRACT_MAX_DISJUNCTS PT_CNF_KEEP_MAX_DISJUNCTS
+
 /*
- * qo_extract_or_restrictions () - derive single-spec scan filters from multi-spec OR terms
+ * qo_or_extract_join_parts () - the disjunction of the restrictions derived from each disjunct
+ *   return: the derived factor, or NULL when a node cannot be allocated
+ *   parser(in):
+ *   parts(in): one derived restriction per disjunct
+ *   dis_cnt(in):
+ *   location(in): the location of the factor they come from
+ *
+ * Note: single-predicate contributions chain through or_next -- the CNF shape of a disjunction --
+ *	 so qo_convert_to_range () can merge them into one RANGE term, which is what lets an index
+ *	 (notably a function index on a costly expression) adopt the derived factor.  An AND-tree
+ *	 contribution is not an or_next literal, so such factors keep the nested-OR shape and can
+ *	 only serve as data filters.  The location of the factor goes to every piece: a factor from
+ *	 a join's ON condition derives restrictions evaluated at that join, as the factor is.
+ */
+static PT_NODE *
+qo_or_extract_join_parts (PARSER_CONTEXT * parser, PT_NODE ** parts, int dis_cnt, short location)
+{
+  PT_NODE *ors, *or_node, *tail;
+  bool all_single = true;
+  int i;
+
+  for (i = 0; i < dis_cnt; i++)
+    {
+      if (qo_or_extract_restriction_column (parser, parts[i]) != NULL)
+	{
+	  /* `a = 1 or a = 2` taken whole from a disjunct: its disjuncts join the chain */
+	  parts[i] = qo_or_extract_or_tree_to_list (parser, parts[i]);
+	}
+      for (tail = parts[i]; tail != NULL; tail = tail->or_next)
+	{
+	  if (tail->node_type == PT_EXPR)
+	    {
+	      tail->info.expr.location = location;
+	    }
+	}
+      if (parts[i]->node_type == PT_EXPR && (parts[i]->info.expr.op == PT_AND || parts[i]->info.expr.op == PT_OR))
+	{
+	  all_single = false;
+	}
+    }
+
+  ors = parts[0];
+  if (all_single)
+    {
+      for (i = 0; i < dis_cnt - 1; i++)
+	{
+	  for (tail = parts[i]; tail->or_next != NULL; tail = tail->or_next)
+	    {
+	      ;
+	    }
+	  tail->or_next = parts[i + 1];
+	}
+      return ors;
+    }
+
+  for (i = 1; i < dis_cnt; i++)
+    {
+      or_node = parser_new_node (parser, PT_EXPR);
+      if (or_node == NULL)
+	{
+	  return NULL;
+	}
+      or_node->info.expr.op = PT_OR;
+      /* as qo_convert_to_range_helper () does for the predicate nodes it builds */
+      or_node->type_enum = PT_TYPE_LOGICAL;
+      or_node->info.expr.location = location;
+      or_node->info.expr.arg1 = ors;
+      or_node->info.expr.arg2 = parts[i];
+      ors = or_node;
+    }
+
+  return ors;
+}
+
+/*
+ * qo_or_extract_has_null_test () - does a single-column restriction test the column for NULL?
+ *   return: true when a disjunct is IS NULL or IS NOT NULL
+ *   node(in): a restriction accepted by qo_or_extract_restriction_column ()
+ *
+ * Note: a B-tree holds no NULL key, so a disjunction with such a disjunct is no key range, and
+ *	 the restriction derived from it would serve neither an index nor the estimate.
+ */
+static bool
+qo_or_extract_has_null_test (PT_NODE * node)
+{
+  if (node->info.expr.op == PT_OR)
+    {
+      return qo_or_extract_has_null_test (node->info.expr.arg1) || qo_or_extract_has_null_test (node->info.expr.arg2);
+    }
+
+  return node->info.expr.op == PT_IS_NULL || node->info.expr.op == PT_IS_NOT_NULL;
+}
+
+/*
+ * qo_or_extract_fold_column_part () - fold the restrictions a disjunct puts on one column into
+ *				       one range
+ *   return: a RANGE term, or NULL when they do not fold into one
+ *   parser(in):
+ *   part(in): the conjunction of a disjunct's restrictions over one column
+ *		(qo_or_extract_build_for_spec () with a column); left intact
+ *
+ * Note: a disjunct that bounds the column on both sides, `d >= 10 and d < 20`, is no single
+ *	 restriction, yet it is one key range.  Distributing the factor used to reach it through
+ *	 qo_convert_to_range () and the range intersection; the same two rewrites fold a copy here.
+ */
+static PT_NODE *
+qo_or_extract_fold_column_part (PARSER_CONTEXT * parser, PT_NODE * part)
+{
+#define QO_OR_EXTRACT_MAX_CONJUNCTS PT_CNF_KEEP_MAX_CONJUNCTS
+  PT_NODE *conjuncts[QO_OR_EXTRACT_MAX_CONJUNCTS];
+  PT_NODE *list = NULL, *copied;
+  int cnt, i;
+
+  cnt = qo_or_extract_flatten (part, PT_AND, conjuncts, 0, QO_OR_EXTRACT_MAX_CONJUNCTS);
+  if (cnt < 2)
+    {
+      return NULL;
+    }
+
+  for (i = cnt - 1; i >= 0; i--)
+    {
+      copied = parser_copy_tree (parser, conjuncts[i]);
+      if (copied == NULL)
+	{
+	  parser_free_tree (parser, list);
+	  return NULL;
+	}
+      copied->next = list;
+      list = copied;
+    }
+
+  qo_convert_to_range (parser, &list);
+  qo_apply_range_intersection (parser, &list);
+  if (list != NULL && list->next == NULL && list->or_next == NULL && PT_IS_EXPR_NODE_WITH_OPERATOR (list, PT_RANGE)
+      && qo_or_extract_restriction_column (parser, list) != NULL)
+    {
+      return list;
+    }
+
+  parser_free_tree (parser, list);
+  return NULL;
+#undef QO_OR_EXTRACT_MAX_CONJUNCTS
+}
+
+/*
+ * qo_or_extract_merge_ranges () - merge the RANGE terms of a derived disjunction into one
+ *   return: the disjunction
+ *   parser(in):
+ *   chain(in/out): a derived per-column disjunction chained through or_next
+ *
+ * Note: qo_convert_to_range () folds comparisons into a RANGE but leaves two RANGE terms side
+ *	 by side, and an or_next chain of them is no key range.  Their item lists join into the
+ *	 first, as the range intersection gives the distributed factor.
+ */
+static PT_NODE *
+qo_or_extract_merge_ranges (PARSER_CONTEXT * parser, PT_NODE * chain)
+{
+  PT_NODE *range = NULL, *node, *prev = NULL, *next, *tail;
+
+  for (node = chain; node != NULL; node = next)
+    {
+      next = node->or_next;
+      if (!PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_RANGE) || node->info.expr.arg2 == NULL)
+	{
+	  prev = node;
+	  continue;
+	}
+      if (range == NULL)
+	{
+	  range = prev = node;
+	  continue;
+	}
+
+      for (tail = range->info.expr.arg2; tail->or_next != NULL; tail = tail->or_next)
+	{
+	  ;
+	}
+      tail->or_next = node->info.expr.arg2;
+      node->info.expr.arg2 = NULL;
+      node->or_next = NULL;
+      prev->or_next = next;
+      parser_free_tree (parser, node);
+    }
+
+  return chain;
+}
+
+/*
+ * qo_or_extract_for_columns () - derive the per-column restrictions of one spec from an OR factor
+ *   return: the derived factors, chained through next
+ *   parser(in):
+ *   disjuncts(in):
+ *   dis_cnt(in):
+ *   spec_id(in):
+ *   location(in): the location of the factor
+ *
+ * Note: for a column C of the spec, when every disjunct holds a cheap conjunct over C alone, the
+ *	 disjunction of those conjuncts is implied by the factor and is a key range on C -- the
+ *	 restriction pt_cnf () used to get by distributing the factor into clauses.  Only
+ *	 single-predicate contributions are taken: they are what an index can adopt.
+ */
+static PT_NODE *
+qo_or_extract_for_columns (PARSER_CONTEXT * parser, PT_NODE ** disjuncts, int dis_cnt, UINTPTR spec_id, short location)
+{
+#define QO_OR_EXTRACT_MAX_CONJUNCTS PT_CNF_KEEP_MAX_CONJUNCTS
+  PT_NODE *conjuncts[QO_OR_EXTRACT_MAX_CONJUNCTS];
+  PT_NODE *columns[QO_OR_EXTRACT_MAX_CONJUNCTS];
+  PT_NODE *parts[QO_OR_EXTRACT_MAX_DISJUNCTS];
+  PT_NODE *column, *derived, *folded, *result = NULL;
+  int cnt, ncols = 0, c, i, j;
+  bool ok;
+
+  cnt = qo_or_extract_flatten (disjuncts[0], PT_AND, conjuncts, 0, QO_OR_EXTRACT_MAX_CONJUNCTS);
+  for (i = 0; i < cnt; i++)
+    {
+      /* the candidate columns: those a cheap conjunct of the first disjunct is over */
+      column = qo_or_extract_restriction_column (parser, conjuncts[i]);
+      if (column == NULL || column->info.name.spec_id != spec_id)
+	{
+	  continue;
+	}
+      for (c = 0; c < ncols && !pt_name_equal (parser, columns[c], column); c++)
+	{
+	  ;
+	}
+      if (c == ncols)
+	{
+	  columns[ncols++] = column;
+	}
+    }
+
+  for (c = 0; c < ncols; c++)
+    {
+      ok = true;
+      for (i = 0; i < dis_cnt && ok; i++)
+	{
+	  parts[i] = qo_or_extract_build_for_spec (parser, disjuncts[i], spec_id, columns[c], true, NULL);
+	  if (parts[i] != NULL && qo_or_extract_restriction_column (parser, parts[i]) == NULL)
+	    {
+	      folded = qo_or_extract_fold_column_part (parser, parts[i]);
+	      if (folded != NULL)
+		{
+		  parser_free_tree (parser, parts[i]);
+		  parts[i] = folded;
+		}
+	    }
+	  ok = (parts[i] != NULL && qo_or_extract_restriction_column (parser, parts[i]) != NULL
+		&& !qo_or_extract_has_null_test (parts[i]));
+	}
+      if (!ok)
+	{
+	  for (j = 0; j < i; j++)
+	    {
+	      parser_free_tree (parser, parts[j]);
+	    }
+	  continue;
+	}
+
+      derived = qo_or_extract_join_parts (parser, parts, dis_cnt, location);
+      if (derived != NULL)
+	{
+	  derived = qo_or_extract_merge_ranges (parser, derived);
+	  result = parser_append_node (derived, result);
+	}
+    }
+
+  return result;
+#undef QO_OR_EXTRACT_MAX_CONJUNCTS
+}
+
+/*
+ * qo_or_extract_build_outer () - conjunction of the copies of the conjuncts of one disjunct that read
+ *				  only the columns of an enclosing query
+ *   return: newly built expression, or NULL when the disjunct has no such conjunct
+ *   parser(in):
+ *   disjunct(in): one disjunct of a CNF OR factor; may itself be an AND tree
+ *   spec_list(in): FROM specs of the current statement
+ */
+static PT_NODE *
+qo_or_extract_build_outer (PARSER_CONTEXT * parser, PT_NODE * disjunct, PT_NODE * spec_list)
+{
+#define QO_OR_EXTRACT_MAX_CONJUNCTS PT_CNF_KEEP_MAX_CONJUNCTS
+  PT_NODE *conjuncts[QO_OR_EXTRACT_MAX_CONJUNCTS];
+  PT_NODE *result = NULL, *copied, *spec;
+  QO_OR_EXTRACT_REF_INFO info;
+  UINTPTR ref;
+  int cnt, i;
+
+  cnt = qo_or_extract_flatten (disjunct, PT_AND, conjuncts, 0, QO_OR_EXTRACT_MAX_CONJUNCTS);
+  if (cnt < 0)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < cnt; i++)
+    {
+      /* no spec has id 0: refers_other notes any column, of this query or of an enclosing one */
+      info.spec_id = 0;
+      info.refers_spec = false;
+      info.refers_other = false;
+      info.is_unsafe = false;
+      info.column = NULL;
+      info.refers_other_column = false;
+      info.walk_past_unsafe = false;
+      (void) parser_walk_tree (parser, conjuncts[i], qo_or_extract_check_ref_pre, &info, NULL, NULL);
+      if (info.is_unsafe || !info.refers_other)
+	{
+	  continue;
+	}
+
+      for (spec = spec_list; spec != NULL; spec = spec->next)
+	{
+	  if (spec->node_type != PT_SPEC)
+	    {
+	      continue;
+	    }
+	  ref = spec->info.spec.id;
+	  (void) parser_walk_tree (parser, conjuncts[i], pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
+	  if (ref == 0)
+	    {
+	      break;
+	    }
+	}
+      if (spec != NULL)
+	{
+	  continue;		/* reads a table of this query */
+	}
+
+      copied = parser_copy_tree (parser, conjuncts[i]);
+      if (copied == NULL)
+	{
+	  return NULL;
+	}
+      result = (result == NULL) ? copied : pt_and (parser, result, copied);
+      if (result == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  return result;
+#undef QO_OR_EXTRACT_MAX_CONJUNCTS
+}
+
+/*
+ * qo_or_extract_join_key () - is a conjunct an equality of a column of the spec to an expression
+ *			       over other specs?
+ *   return: a copy of the conjunct with the column on the left, or NULL
+ *   parser(in):
+ *   conjunct(in): a conjunct of a disjunct
+ *   spec_id(in):
+ *   column(in): when not NULL, the column the equality has to be over
+ */
+static PT_NODE *
+qo_or_extract_join_key (PARSER_CONTEXT * parser, PT_NODE * conjunct, UINTPTR spec_id, PT_NODE * column)
+{
+  QO_OR_EXTRACT_REF_INFO info;
+  PT_NODE *attr, *other, *copied;
+  int side;
+
+  if (conjunct == NULL || !PT_IS_EXPR_NODE_WITH_OPERATOR (conjunct, PT_EQ) || conjunct->or_next != NULL)
+    {
+      return NULL;
+    }
+
+  for (side = 0; side < 2; side++)
+    {
+      attr = (side == 0) ? conjunct->info.expr.arg1 : conjunct->info.expr.arg2;
+      other = (side == 0) ? conjunct->info.expr.arg2 : conjunct->info.expr.arg1;
+      if (!pt_is_attr (attr) || attr->node_type != PT_NAME || attr->info.name.spec_id != spec_id)
+	{
+	  continue;
+	}
+      if (column != NULL && !pt_name_equal (parser, attr, column))
+	{
+	  continue;
+	}
+
+      info.spec_id = spec_id;
+      info.refers_spec = false;
+      info.refers_other = false;
+      info.is_unsafe = false;
+      info.column = NULL;
+      info.refers_other_column = false;
+      info.walk_past_unsafe = false;
+      (void) parser_walk_tree (parser, other, qo_or_extract_check_ref_pre, &info, NULL, NULL);
+      if (info.is_unsafe || info.refers_spec || !info.refers_other)
+	{
+	  continue;		/* a constant side is a restriction (qo_or_extract_for_columns ()) */
+	}
+
+      copied = parser_copy_tree (parser, conjunct);
+      if (copied != NULL && side == 1)
+	{
+	  other = copied->info.expr.arg1;
+	  copied->info.expr.arg1 = copied->info.expr.arg2;
+	  copied->info.expr.arg2 = other;
+	}
+      return copied;
+    }
+
+  return NULL;
+}
+
+/*
+ * qo_or_extract_join_keys () - derive the join keys of one spec from an OR factor
+ *   return: the derived factors, chained through next
+ *   parser(in):
+ *   disjuncts(in):
+ *   dis_cnt(in):
+ *   spec_id(in):
+ *   location(in): the location of the factor
+ *
+ * Note: for a column C of the spec, when every disjunct equates C to an expression over other
+ *	 specs, (t.a = u.a and u.f = 1) or (t.a = u.b and u.f = 2), the disjunction of those
+ *	 equalities is implied by the factor, and the range conversion makes it a join term with a
+ *	 key range on C, t.a range (u.a =, u.b =), the term an index join on C is planned with.  It is
+ *	 the clause pt_cnf () used to get by distributing the factor.  The join product skips an
+ *	 OR-derived term, so the term adds an access path and leaves the join estimate alone.
+ */
+static PT_NODE *
+qo_or_extract_join_keys (PARSER_CONTEXT * parser, PT_NODE ** disjuncts, int dis_cnt, UINTPTR spec_id, short location)
+{
+#define QO_OR_EXTRACT_MAX_CONJUNCTS PT_CNF_KEEP_MAX_CONJUNCTS
+  PT_NODE *conjuncts[QO_OR_EXTRACT_MAX_CONJUNCTS];
+  PT_NODE *columns[QO_OR_EXTRACT_MAX_CONJUNCTS];
+  PT_NODE *parts[QO_OR_EXTRACT_MAX_DISJUNCTS];
+  PT_NODE *key, *attr, *derived, *result = NULL;
+  int cnt, ncols = 0, c, i, j, k;
+
+  cnt = qo_or_extract_flatten (disjuncts[0], PT_AND, conjuncts, 0, QO_OR_EXTRACT_MAX_CONJUNCTS);
+  for (i = 0; i < cnt; i++)
+    {
+      /* the candidate columns: those an equality of the first disjunct joins */
+      key = qo_or_extract_join_key (parser, conjuncts[i], spec_id, NULL);
+      if (key == NULL)
+	{
+	  continue;
+	}
+      for (c = 0; c < ncols && !pt_name_equal (parser, columns[c], key->info.expr.arg1); c++)
+	{
+	  ;
+	}
+      if (c == ncols)
+	{
+	  /* the column of the conjunct itself, which outlives the copy */
+	  attr = conjuncts[i]->info.expr.arg1;
+	  if (attr->node_type != PT_NAME || attr->info.name.spec_id != spec_id
+	      || !pt_name_equal (parser, attr, key->info.expr.arg1))
+	    {
+	      attr = conjuncts[i]->info.expr.arg2;
+	    }
+	  columns[ncols++] = attr;
+	}
+      parser_free_tree (parser, key);
+    }
+
+  for (c = 0; c < ncols; c++)
+    {
+      for (i = 0; i < dis_cnt; i++)
+	{
+	  parts[i] = NULL;
+	  cnt = qo_or_extract_flatten (disjuncts[i], PT_AND, conjuncts, 0, QO_OR_EXTRACT_MAX_CONJUNCTS);
+	  for (k = 0; k < cnt && parts[i] == NULL; k++)
+	    {
+	      parts[i] = qo_or_extract_join_key (parser, conjuncts[k], spec_id, columns[c]);
+	    }
+	  if (parts[i] == NULL)
+	    {
+	      break;		/* a disjunct without such an equality: no join key on this column */
+	    }
+	}
+      if (i < dis_cnt)
+	{
+	  for (j = 0; j < i; j++)
+	    {
+	      parser_free_tree (parser, parts[j]);
+	    }
+	  continue;
+	}
+
+      derived = qo_or_extract_join_parts (parser, parts, dis_cnt, location);
+      if (derived != NULL)
+	{
+	  result = parser_append_node (derived, result);
+	}
+    }
+
+  return result;
+#undef QO_OR_EXTRACT_MAX_CONJUNCTS
+}
+
+/* bookkeeping for qo_or_extract_collect_columns () */
+typedef struct qo_or_extract_columns QO_OR_EXTRACT_COLUMNS;
+struct qo_or_extract_columns
+{
+  UINTPTR spec_id;
+  PT_NODE **columns;
+  int cnt;
+  int max;
+};
+
+/*
+ * qo_or_extract_collect_columns () - collect the distinct columns of one spec an expression reads
+ */
+static PT_NODE *
+qo_or_extract_collect_columns (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_OR_EXTRACT_COLUMNS *info = (QO_OR_EXTRACT_COLUMNS *) arg;
+  int c;
+
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  if (node->node_type != PT_NAME || node->info.name.spec_id != info->spec_id
+      || node->info.name.meta_class == PT_PARAMETER || !pt_is_attr (node))
+    {
+      return node;
+    }
+  for (c = 0; c < info->cnt && !pt_name_equal (parser, info->columns[c], node); c++)
+    {
+      ;
+    }
+  if (c == info->cnt && info->cnt < info->max)
+    {
+      info->columns[info->cnt++] = node;
+    }
+
+  return node;
+}
+
+/*
+ * qo_or_extract_key_filters () - derive, per column of one spec, the condition an index on that column can
+ *				  check on its keys
+ *   return: the derived factors, chained through next
+ *   parser(in):
+ *   disjuncts(in):
+ *   dis_cnt(in):
+ *   spec_id(in):
+ *   location(in): the location of the factor
+ *
+ * Note: for a column C of the spec, each disjunct keeps the conjuncts that read no other column of the spec --
+ *	 conjuncts over C, over other specs, over an enclosing query -- and the disjunction of those is implied by
+ *	 the factor.  Where the other specs are bound, as for the inner of a nested-loop join or a correlated
+ *	 subquery, an index on C checks it on its keys before it reads a row: the key filter the clauses of the
+ *	 distributed factor used to give, (x.c like '%1' or y.a = 7) for (x.c like '%1' and y.id <> 0) or
+ *	 (y.a = 7 and y.b > 0).  A condition a restriction on C alone or a join key already is, is left to
+ *	 qo_or_extract_for_columns () and qo_or_extract_join_keys ().
+ */
+static PT_NODE *
+qo_or_extract_key_filters (PARSER_CONTEXT * parser, PT_NODE ** disjuncts, int dis_cnt, UINTPTR spec_id, short location)
+{
+#define QO_OR_EXTRACT_MAX_CONJUNCTS PT_CNF_KEEP_MAX_CONJUNCTS
+  PT_NODE *conjuncts[QO_OR_EXTRACT_MAX_CONJUNCTS];
+  PT_NODE *columns[QO_OR_EXTRACT_MAX_CONJUNCTS];
+  PT_NODE *parts[QO_OR_EXTRACT_MAX_DISJUNCTS];
+  PT_NODE *copied, *derived, *result = NULL;
+  QO_OR_EXTRACT_COLUMNS col_info;
+  QO_OR_EXTRACT_REF_INFO info;
+  int cnt, c, i, j, k, n_kept;
+  bool reads_column, reads_other, mixed;
+
+  col_info.spec_id = spec_id;
+  col_info.columns = columns;
+  col_info.cnt = 0;
+  col_info.max = QO_OR_EXTRACT_MAX_CONJUNCTS;
+  (void) parser_walk_tree (parser, disjuncts[0], qo_or_extract_collect_columns, &col_info, NULL, NULL);
+
+  for (c = 0; c < col_info.cnt; c++)
+    {
+      reads_column = reads_other = mixed = false;
+      for (i = 0; i < dis_cnt; i++)
+	{
+	  parts[i] = NULL;
+	  n_kept = 0;
+	  cnt = qo_or_extract_flatten (disjuncts[i], PT_AND, conjuncts, 0, QO_OR_EXTRACT_MAX_CONJUNCTS);
+	  for (k = 0; k < cnt; k++)
+	    {
+	      info.spec_id = spec_id;
+	      info.refers_spec = false;
+	      info.refers_other = false;
+	      info.is_unsafe = false;
+	      info.column = columns[c];
+	      info.refers_other_column = false;
+	      info.walk_past_unsafe = false;
+	      (void) parser_walk_tree (parser, conjuncts[k], qo_or_extract_check_ref_pre, &info, NULL, NULL);
+	      if (info.is_unsafe || info.refers_other_column || (!info.refers_spec && !info.refers_other))
+		{
+		  continue;	/* not checked twice, another column of the spec, or a constant */
+		}
+
+	      copied = parser_copy_tree (parser, conjuncts[k]);
+	      if (copied == NULL)
+		{
+		  break;
+		}
+	      parts[i] = (parts[i] == NULL) ? copied : pt_and (parser, parts[i], copied);
+	      n_kept++;
+	      reads_column = reads_column || info.refers_spec;
+	      reads_other = reads_other || info.refers_other;
+	      mixed = mixed || !info.refers_spec || info.refers_other;
+	    }
+	  if (parts[i] == NULL)
+	    {
+	      break;		/* a disjunct with nothing an index on the column can check */
+	    }
+	  mixed = mixed || n_kept > 1;
+	}
+
+      /* it has to read the column, and something a restriction on the column alone cannot hold */
+      if (i < dis_cnt || !reads_column || !reads_other || !mixed)
+	{
+	  for (j = 0; j < i && j < dis_cnt; j++)
+	    {
+	      parser_free_tree (parser, parts[j]);
+	    }
+	  if (i < dis_cnt && parts[i] != NULL)
+	    {
+	      parser_free_tree (parser, parts[i]);
+	    }
+	  continue;
+	}
+
+      derived = qo_or_extract_join_parts (parser, parts, dis_cnt, location);
+      if (derived != NULL)
+	{
+	  result = parser_append_node (derived, result);
+	}
+    }
+
+  return result;
+#undef QO_OR_EXTRACT_MAX_CONJUNCTS
+}
+
+/*
+ * qo_or_extract_mark_derived () - mark a derived factor for the optimizer
+ *   return:
+ *   derived(in/out): a derived factor, after the term-level rewrites
+ *   index_only(in): the factor serves an index alone, never a plain data filter
+ */
+static void
+qo_or_extract_mark_derived (PT_NODE * derived, bool index_only)
+{
+  if (derived->node_type != PT_EXPR)
+    {
+      return;
+    }
+
+  PT_EXPR_INFO_SET_FLAG (derived, PT_EXPR_INFO_OR_DERIVED);
+  if (index_only)
+    {
+      /* a key range on one column: qo_derived_term_origin () pairs it on its own node */
+      PT_EXPR_INFO_SET_FLAG (derived, PT_EXPR_INFO_OR_DERIVED_COLUMN);
+    }
+  if (index_only || !qo_or_derived_shape_is_cheap (derived))
+    {
+      PT_EXPR_INFO_SET_FLAG (derived, PT_EXPR_INFO_OR_DERIVED_EXPENSIVE);
+    }
+  /* a later rewrite pass re-runs pt_cnf () on the WHERE; the original factors carry CNF_DONE from
+   * their own conversion, but without it here that pass would treat the derived factor as a fresh
+   * one.  The derived factor is designed to stay whole: one implied term, judged against the plan */
+  PT_EXPR_INFO_SET_FLAG (derived, PT_EXPR_INFO_CNF_DONE);
+}
+
+/*
+ * qo_extract_or_restrictions () - derive single-spec scan filters and key ranges from OR terms
  *   return:
  *   parser(in):
  *   spec_list(in): FROM specs of the current statement
@@ -5058,6 +6413,16 @@ qo_or_extract_build_for_spec (PARSER_CONTEXT * parser, PT_NODE * disjunct, UINTP
  *	 part table gets no filter at all from the brand/container/size branches and every plan
  *	 has to carry the full table through the join.
  *
+ *	 The same holds per column: when every disjunct restricts one column C of S on its own,
+ *	 the disjunction of those restrictions is a key range on C.  pt_cnf () keeps such factors
+ *	 whole rather than distributing them, so this is where both kinds of restriction come from,
+ *	 for a factor over one spec as well as over several.  A factor from a join's ON condition
+ *	 derives restrictions with the same location, evaluated at that join as the factor is (a
+ *	 restriction on the side an earlier outer join null-supplies is held at its join by
+ *	 qo_classify_outerjoin_terms (), CBRD-27341); a conjunct that must not be evaluated twice
+ *	 stays only in the factor.  A factor is a source once: UPDATE and DELETE rewrite their
+ *	 subqueries twice (PT_EXPR_INFO_OR_EXTRACTED).
+ *
  *	 The derived factor's selectivity is counted at the node scan (qo_node_add_sarg ()), so
  *	 the scan cardinality reflects the filter and the join order can react to it; to keep the
  *	 join output estimate unchanged, the origin factor's join selectivity is discounted by
@@ -5071,14 +6436,13 @@ qo_or_extract_build_for_spec (PARSER_CONTEXT * parser, PT_NODE * disjunct, UINTP
 void
 qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE ** wherep)
 {
-#define QO_OR_EXTRACT_MAX_DISJUNCTS 8
   PT_NODE *disjuncts[QO_OR_EXTRACT_MAX_DISJUNCTS];
   PT_NODE *parts[QO_OR_EXTRACT_MAX_DISJUNCTS];
-  PT_NODE *cnf, *spec, *ors, *or_node, *derived, *new_terms = NULL;
+  PT_NODE *cnf, *spec, *derived, *new_terms = NULL, *column_terms = NULL;
   PT_NODE *save_next;
   QO_OR_EXTRACT_REF_INFO info;
-  int dis_cnt, i, pass;
-  bool ok, all_single;
+  int dis_cnt, i;
+  bool ok, all_single, extracted;
 
   if (wherep == NULL || *wherep == NULL || spec_list == NULL)
     {
@@ -5096,11 +6460,10 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
 	  continue;
 	}
 
-      /* only true WHERE-level factors may donate restrictions: a factor that came from an outer
-       * join's ON condition (location > 0) is evaluated at its join level and does not reject the
-       * null-padded rows, while the derived filter would run at WHERE level and wrongly reject
-       * them; the same asymmetry makes any outer-join-context factor unsafe to project down */
-      if (cnf->info.expr.location != 0)
+      /* an already derived factor is not a source again, nor is a factor an earlier pass over the
+       * same tree has extracted from: UPDATE and DELETE rewrite their subqueries twice, and the
+       * second pass would add a second set of restrictions next to the first */
+      if (PT_EXPR_INFO_IS_FLAGED (cnf, PT_EXPR_INFO_OR_DERIVED | PT_EXPR_INFO_OR_EXTRACTED))
 	{
 	  continue;
 	}
@@ -5111,6 +6474,7 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
 	  continue;		/* too many disjuncts (-1) or degenerate */
 	}
 
+      extracted = false;
       for (spec = spec_list; spec != NULL; spec = spec->next)
 	{
 	  if (spec->node_type != PT_SPEC)
@@ -5118,38 +6482,43 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
 	      continue;
 	    }
 
-	  /* factor gate: it must be safe to duplicate pieces of this factor, it must touch this
-	   * spec, and it must touch something else too -- otherwise it already is a sarg of it */
+	  /* factor gate: it must touch this spec.  cnf is an element of the WHERE CNF list, and
+	   * parser_walk_tree () follows 'next' after the sub-trees (parse_tree_cl.c, pt_walk_private),
+	   * so the walk would classify this factor together with every later WHERE term: their spec
+	   * references would set refers_other and let a single-spec factor through as a multi-spec
+	   * one. Detach the tail for the walk, as qo_rewrite_outerjoin () does */
 	  info.spec_id = spec->info.spec.id;
 	  info.refers_spec = false;
 	  info.refers_other = false;
 	  info.is_unsafe = false;
-	  /* cnf is an element of the WHERE CNF list, and parser_walk_tree () follows 'next' after
-	   * the sub-trees (parse_tree_cl.c, pt_walk_private), so the walk would classify this
-	   * factor together with every later WHERE term: a subquery in any of them would set
-	   * is_unsafe and silently disable the extraction, while their spec references would set
-	   * refers_other and let a single-spec factor through the "already a sarg" guard, adding a
-	   * duplicate of itself. Detach the tail for the walk, as qo_rewrite_outerjoin () does */
+	  info.column = NULL;
+	  info.refers_other_column = false;
+	  /* the walk has to see every conjunct: one that must not be evaluated twice only stays out of
+	   * the restriction (qo_or_extract_build_for_spec ()), the ones after it still count */
+	  info.walk_past_unsafe = true;
 	  save_next = cnf->next;
 	  cnf->next = NULL;
 	  (void) parser_walk_tree (parser, cnf, qo_or_extract_check_ref_pre, &info, NULL, NULL);
 	  cnf->next = save_next;
-	  if (info.is_unsafe || !info.refers_spec || !info.refers_other)
+	  if (!info.refers_spec)
 	    {
 	      continue;
 	    }
 
-	  /* prefer the conjuncts a scan can evaluate cheaply -- such a factor may stay as a plain
-	   * data filter; only when some disjunct has no cheap conjunct fall back to every safe
-	   * one, since a costly conjunct can still meet a function index (the fallback factor is
-	   * dropped at XASL emission unless an index adopts it) */
-	  ok = true;
-	  for (pass = 0; pass < 2; pass++)
+	  all_single = false;
+	  if (info.refers_other)
 	    {
+	      /* the restriction on this spec: every conjunct that is safe to evaluate twice.  It is the
+	       * scan's only filter from the factor, which pt_cnf () keeps whole instead of distributing
+	       * it into clauses evaluated at the scan whatever their cost; a costly restriction is still
+	       * kept as a filter when the factor is evaluated at a join (qo_derived_term_compensate ()),
+	       * and is dropped at XASL emission otherwise, unless an index adopts it.  A factor over
+	       * this spec alone is that restriction already */
 	      ok = true;
 	      for (i = 0; i < dis_cnt; i++)
 		{
-		  parts[i] = qo_or_extract_build_for_spec (parser, disjuncts[i], spec->info.spec.id, pass == 0);
+		  parts[i] = qo_or_extract_build_for_spec (parser, disjuncts[i], spec->info.spec.id, NULL, false,
+							   spec_list);
 		  if (parts[i] == NULL)
 		    {
 		      ok = false;	/* one disjunct contributes nothing; no implied restriction */
@@ -5159,100 +6528,123 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
 
 	      if (ok)
 		{
-		  break;
-		}
-	    }
-
-	  if (!ok)
-	    {
-	      continue;
-	    }
-
-	  /* single-predicate contributions chain through or_next -- the CNF shape of a
-	   * disjunction -- so qo_convert_to_range () can merge them into one RANGE term, which
-	   * is what lets an index (notably a function index on a costly expression) adopt the
-	   * derived factor.  An AND-tree contribution is not an or_next literal, so such factors
-	   * keep the nested-OR shape and can only serve as data filters */
-	  all_single = true;
-	  for (i = 0; i < dis_cnt; i++)
-	    {
-	      if (parts[i]->node_type == PT_EXPR && parts[i]->info.expr.op == PT_AND)
-		{
-		  all_single = false;
-		  break;
-		}
-	    }
-
-	  ors = parts[0];
-	  if (all_single)
-	    {
-	      for (i = 0; i < dis_cnt - 1; i++)
-		{
-		  parts[i]->or_next = parts[i + 1];
-		}
-	      parts[dis_cnt - 1]->or_next = NULL;
-	    }
-	  else
-	    {
-	      for (i = 1; i < dis_cnt && ok; i++)
-		{
-		  or_node = parser_new_node (parser, PT_EXPR);
-		  if (or_node == NULL)
+		  all_single = true;
+		  for (i = 0; i < dis_cnt; i++)
 		    {
-		      ok = false;
-		      break;
+		      if (qo_or_extract_restriction_column (parser, parts[i]) == NULL)
+			{
+			  all_single = false;	/* not a key range on one column: per-column ones may be */
+			}
 		    }
-		  or_node->info.expr.op = PT_OR;
-		  /* as qo_convert_to_range_helper () does for the predicate nodes it builds;
-		   * the location is 0 under the WHERE-level guard above, but carry it
-		   * explicitly so an extension to ON-clause factors (location > 0) does not
-		   * silently lose it */
-		  or_node->type_enum = PT_TYPE_LOGICAL;
-		  or_node->info.expr.location = cnf->info.expr.location;
-		  or_node->info.expr.arg1 = ors;
-		  or_node->info.expr.arg2 = parts[i];
-		  ors = or_node;
-		}
 
-	      if (!ok)
-		{
-		  continue;
+		  derived = qo_or_extract_join_parts (parser, parts, dis_cnt, cnf->info.expr.location);
+		  if (derived != NULL)
+		    {
+		      new_terms = parser_append_node (derived, new_terms);
+		      extracted = true;
+		    }
 		}
 	    }
 
-	  new_terms = parser_append_node (ors, new_terms);
+	  /* the join keys on single columns: the factor joins this spec to the others through them */
+	  if (info.refers_other)
+	    {
+	      derived = qo_or_extract_join_keys (parser, disjuncts, dis_cnt, spec->info.spec.id,
+						 cnf->info.expr.location);
+	      if (derived != NULL)
+		{
+		  column_terms = parser_append_node (derived, column_terms);
+		  extracted = true;
+		}
+	    }
+
+	  /* the conditions an index on one column checks on its keys while the other specs are bound */
+	  if (info.refers_other)
+	    {
+	      derived = qo_or_extract_key_filters (parser, disjuncts, dis_cnt, spec->info.spec.id,
+						   cnf->info.expr.location);
+	      if (derived != NULL)
+		{
+		  column_terms = parser_append_node (derived, column_terms);
+		  extracted = true;
+		}
+	    }
+
+	  /* the key ranges on single columns, unless the restriction above already is one */
+	  if (!all_single)
+	    {
+	      derived = qo_or_extract_for_columns (parser, disjuncts, dis_cnt, spec->info.spec.id,
+						   cnf->info.expr.location);
+	      if (derived != NULL)
+		{
+		  column_terms = parser_append_node (derived, column_terms);
+		  extracted = true;
+		}
+	    }
+	}
+
+      /* the restriction on the enclosing query's columns a correlated factor implies: it reads no table of
+       * this query, so it is checked once per outer row before any of them is read, as the clause the
+       * distributed factor used to give was */
+      for (i = 0; i < dis_cnt; i++)
+	{
+	  parts[i] = qo_or_extract_build_outer (parser, disjuncts[i], spec_list);
+	  if (parts[i] == NULL)
+	    {
+	      break;
+	    }
+	}
+      if (i == dis_cnt)
+	{
+	  derived = qo_or_extract_join_parts (parser, parts, dis_cnt, cnf->info.expr.location);
+	  if (derived != NULL)
+	    {
+	      new_terms = parser_append_node (derived, new_terms);
+	      extracted = true;
+	    }
+	}
+      else
+	{
+	  while (--i >= 0)
+	    {
+	      parser_free_tree (parser, parts[i]);
+	    }
+	}
+
+      if (extracted)
+	{
+	  PT_EXPR_INFO_SET_FLAG (cnf, PT_EXPR_INFO_OR_EXTRACTED);
 	}
     }
 
+  /* give the derived terms the same term-level rewrites the original CNF factors received */
   if (new_terms != NULL)
     {
-      /* give the derived terms the same term-level rewrites the original CNF factors received */
       qo_rewrite_terms (parser, spec_list, &new_terms);
+    }
+  if (column_terms != NULL)
+    {
+      qo_rewrite_terms (parser, spec_list, &column_terms);
+    }
 
-      /* mark what survived the rewrites: qo_analyze_term () carries the marks into the term
-       * flags, so qo_derived_term_compensate () can pay the node-counted share back to the origin
-       * factor and make_pred_from_plan () can drop the costly ones no index adopted.  Classify
-       * on the rewritten shape -- that is what a scan would actually evaluate */
-      for (derived = new_terms; derived != NULL; derived = derived->next)
-	{
-	  if (derived->node_type != PT_EXPR)
-	    {
-	      continue;
-	    }
-	  PT_EXPR_INFO_SET_FLAG (derived, PT_EXPR_INFO_OR_DERIVED);
-	  if (!qo_or_derived_shape_is_cheap (derived))
-	    {
-	      PT_EXPR_INFO_SET_FLAG (derived, PT_EXPR_INFO_OR_DERIVED_EXPENSIVE);
-	    }
-	  /* a later rewrite pass re-runs pt_cnf () on the WHERE; the original factors carry
-	   * CNF_DONE from their own conversion, but without it here that pass distributes the
-	   * derived factor into per-branch products -- new nodes that shed these marks and
-	   * multiply the very evaluations the plan-time judgment is meant to drop.  The derived
-	   * factor is designed to stay whole: one implied term, judged against the plan */
-	  PT_EXPR_INFO_SET_FLAG (derived, PT_EXPR_INFO_CNF_DONE);
-	}
+  /* mark what survived the rewrites: qo_analyze_term () carries the marks into the term flags, so
+   * qo_derived_term_compensate () can pay the node-counted share back to the origin factor and
+   * make_pred_from_plan () can drop the costly ones no index adopted.  Classify on the rewritten
+   * shape -- that is what a scan would actually evaluate.  A key range on one column is implied by
+   * the factor, or by the restriction on its spec, which the scan evaluates anyway: it is there
+   * for an index alone and is dropped like a costly one when no index adopts it */
+  for (derived = new_terms; derived != NULL; derived = derived->next)
+    {
+      qo_or_extract_mark_derived (derived, false);
+    }
+  for (derived = column_terms; derived != NULL; derived = derived->next)
+    {
+      qo_or_extract_mark_derived (derived, true);
+    }
 
+  new_terms = parser_append_node (column_terms, new_terms);
+  if (new_terms != NULL)
+    {
       *wherep = parser_append_node (new_terms, *wherep);
     }
-#undef QO_OR_EXTRACT_MAX_DISJUNCTS
 }

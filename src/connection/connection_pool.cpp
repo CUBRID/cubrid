@@ -49,7 +49,6 @@ namespace cubconn::connection
   pool::pool () :
     m_max_connections (-1),
     m_max_connection_workers (-1),
-    m_min_connection_workers (-1),
     m_freelist { nullptr, 0, 0 }
   {
     m_watcher = std::make_shared<thread_watcher> ();
@@ -60,16 +59,12 @@ namespace cubconn::connection
   {
   }
 
-  bool pool::initialize (std::uint32_t max_connections, int max_connection_workers, int min_connection_workers)
+  bool pool::initialize (std::uint32_t max_connections, int max_connection_workers)
   {
     (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
     (void) os_set_signal_handler (SIGFPE, SIG_IGN);
 
     max_connection_workers = this->initialize_topology (max_connection_workers);
-    if (min_connection_workers > max_connection_workers)
-      {
-	min_connection_workers = max_connection_workers;
-      }
 
     this->lock_resource ();
 
@@ -79,8 +74,8 @@ namespace cubconn::connection
 
 	return false;
       }
-    this->initialize_coordinator (max_connection_workers, min_connection_workers);
-    this->initialize_workers (max_connection_workers, min_connection_workers);
+    this->initialize_coordinator (max_connection_workers);
+    this->initialize_workers (max_connection_workers);
 
     this->release_resource ();
 
@@ -89,7 +84,6 @@ namespace cubconn::connection
 
     m_max_connections = max_connections;
     m_max_connection_workers = max_connection_workers;
-    m_min_connection_workers = min_connection_workers;
 
     return true;
   }
@@ -114,7 +108,6 @@ namespace cubconn::connection
 
     m_max_connections = -1;
     m_max_connection_workers = -1;
-    m_min_connection_workers = -1;
   }
 
   void pool::dispatch (css_conn_entry *conn)
@@ -312,7 +305,7 @@ namespace cubconn::connection
   {
   }
 
-  void pool::initialize_workers (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers)
+  void pool::initialize_workers (std::uint32_t max_connection_workers)
   {
     std::vector<std::size_t> cores;
     std::uint32_t i;
@@ -376,8 +369,7 @@ namespace cubconn::connection
       {
 	worker::message request;
 	request.type = worker::message_type::SHUTDOWN;
-	worker->enqueue (worker::queue_type::IMMEDIATE, std::move (request));
-	if (!worker->notify ())
+	if (!worker->enqueue_and_notify (worker::queue_type::IMMEDIATE, std::move (request)))
 	  {
 	    assert_release (false);
 	  }
@@ -404,7 +396,7 @@ namespace cubconn::connection
       }
   }
 
-  void pool::initialize_coordinator (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers)
+  void pool::initialize_coordinator (std::uint32_t max_connection_workers)
   {
     std::size_t core;
     const auto &ctx = os::resources::cpu::effective ();
@@ -422,8 +414,7 @@ namespace cubconn::connection
 			    this,
 			    m_watcher,
 			    core,
-			    max_connection_workers,
-			    min_connection_workers
+			    max_connection_workers
 		    );
   }
 

@@ -37,9 +37,9 @@
 
 namespace parallel_query_execute
 {
-  task::task (THREAD_ENTRY *parent_thread_p, queue *job_execution_queue_p, err_messages_with_lock *error_messages_p,
-	      interrupt *interrupt_p, worker_manager *worker_manager_p)
-    :m_args (parent_thread_p, job_execution_queue_p, error_messages_p, interrupt_p, worker_manager_p)
+  task::task (THREAD_ENTRY *parent_thread_p, queue *job_execution_queue_p, wake_event *wake_event_p,
+	      err_messages_with_lock *error_messages_p, interrupt *interrupt_p, worker_manager *worker_manager_p)
+    :m_args (parent_thread_p, job_execution_queue_p, wake_event_p, error_messages_p, interrupt_p, worker_manager_p)
   {
   }
   task::~task()
@@ -48,16 +48,27 @@ namespace parallel_query_execute
   }
   void task::execute (cubthread::entry &thread_ref)
   {
-    int err_code;
     init (thread_ref);
-    while (true)
+    /* run queued jobs; with none queued, sleep on the statement's wake event (the same wait as run_jobs ()) until
+     * a push, or until the root's run_jobs () ended or a job raised the interrupt */
+    while (!is_ended())
       {
-	job job = get_job();
-	if (m_local.m_pop_job_ended)
+	job j;
+	if (m_args.m_job_execution_queue_p->try_pop (j))
+	  {
+	    (void) execute_job (thread_ref, j);
+	    continue;
+	  }
+	std::uint64_t seen_epoch = m_args.m_wake_event_p->get_epoch();
+	if (is_ended())
 	  {
 	    break;
 	  }
-	err_code = execute_job (thread_ref, job);
+	if (!m_args.m_job_execution_queue_p->is_empty())
+	  {
+	    continue;
+	  }
+	m_args.m_wake_event_p->wait (seen_epoch);
       }
     end (thread_ref);
   }
@@ -69,11 +80,10 @@ namespace parallel_query_execute
   void task::init (cubthread::entry &thread_ref)
   {
   }
-  job task::get_job()
+  bool task::is_ended() const
   {
-    job j;
-    m_local.m_pop_job_ended = !m_args.m_job_execution_queue_p->pop (j, *m_args.m_interrupt_p);
-    return j;
+    return m_args.m_wake_event_p->is_workers_stopped()
+	   || m_args.m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT;
   }
 
   int task::execute_job (cubthread::entry &thread_ref, job &job)

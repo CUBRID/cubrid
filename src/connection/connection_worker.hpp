@@ -56,14 +56,12 @@ namespace cubconn::connection
       {
 	READY,
 	RUNNING,
-	HIBERNATING,
 	TERMINATING
       };
 
       enum class timer_type : uint32_t
       {
 	NA,
-	HIBERNATE,
 	STATISTICS,
 	QUEUE,
 	HA,
@@ -110,9 +108,6 @@ namespace cubconn::connection
 	/* WORKER */
 
 	START,
-
-	HIBERNATE, /* lazy queue */
-	AWAKEN, /* lazy queue */
 
 	SHUTDOWN,
 
@@ -202,13 +197,15 @@ namespace cubconn::connection
 				       std::function<void ()> &&deleter, int wait_time,
 				       bool may_wait_for_room = false);
 
-      /* used for control from other threads */
-      void enqueue (queue_type type, message &&item);
-      bool notify ();
+      /* used for control from other threads; nothing else wakes the worker for the message */
       bool enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func = nullptr,
 			       int wait_time = 0 /* no wait */);
 
     private:
+      /* only a close retry enqueues without notify (): the QUEUE timer wakes the worker for it */
+      void enqueue (queue_type type, message &&item);
+      bool notify ();
+
       /* connection pool */
       pool *m_parent;
       std::shared_ptr<coordinator> m_coordinator;
@@ -244,7 +241,6 @@ namespace cubconn::connection
 
       /* true while an eventfd notification is pending or being handled */
       std::atomic<bool> m_notified;
-      bool m_has_retry;
 
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
@@ -273,6 +269,8 @@ namespace cubconn::connection
       void push_task_into_worker_pool (context *ctx);
       void purge_stale_contexts ();
       void wakeup_blocked_worker (std::shared_ptr<message_blocker> handle);
+      bool register_connection (const message &item, int flags);
+      void close_failed_takeover (context *ctx);
 
       /* --------------------------------------------------------------------------- */
       /* close connection							     */
@@ -289,11 +287,9 @@ namespace cubconn::connection
       bool handle_connection_close (context *ctx, bool is_retry = false, std::shared_ptr<message_blocker> handle = nullptr);
 
       /* --------------------------------------------------------------------------- */
-      /* statistics and hibernation						     */
+      /* statistics								     */
       /* --------------------------------------------------------------------------- */
       bool statistics_metrics_to_coordinator ();
-
-      bool hibernate_check ();
 
       /* --------------------------------------------------------------------------- */
       /* HA									     */
@@ -309,7 +305,6 @@ namespace cubconn::connection
       bool eventfd_settimer (int fd, uint64_t sec, uint64_t nsec);
       bool eventfd_settimer (int fd, timer_latency latency);
 
-      bool eventfd_starttimer ();
       bool eventfd_stoptimer ();
       bool eventfd_addtimer (timer_type type, timer_latency latency, std::function<bool ()> handle);
       bool eventfd_removetimer (timer_type type);
@@ -322,20 +317,18 @@ namespace cubconn::connection
       bool validate_message_generation (const message &item, context *ctx) const;
       bool forward_message_to_successor (queue_type type, message &item, context *ctx);
 
-      bool handle_message_queue_release_packet (message &item);
+      void handle_message_queue_release_packet (message &item);
 
-      bool handle_message_queue_new_client (message &item);
-      bool handle_message_queue_handoff_client (message &item);
-      bool handle_message_queue_takeover_client (message &item);
-      bool handle_message_queue_shutdown_client (message &item);
+      void handle_message_queue_new_client (message &item);
+      void handle_message_queue_handoff_client (message &item);
+      void handle_message_queue_takeover_client (message &item);
+      void handle_message_queue_shutdown_client (message &item);
 
-      bool handle_message_queue_start (message &item);
-      bool handle_message_queue_hibernate (message &item);
-      bool handle_message_queue_awaken (message &item);
-      bool handle_message_queue_shutdown (message &item);
+      void handle_message_queue_start (message &item);
+      void handle_message_queue_shutdown (message &item);
 
-      bool handle_message_queue_by_index (queue_type type);
-      bool handle_message_queue ();
+      void handle_message_queue_by_index (queue_type type);
+      void handle_message_queue ();
 
       /* --------------------------------------------------------------------------- */
       /* error									     */

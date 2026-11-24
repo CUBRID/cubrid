@@ -54,6 +54,7 @@
 
 #define LC_RECDES_TO_GET_ONEOBJ(copy_area_ptr, oneobj_ptr, recdes_ptr) \
   do { \
+    (recdes_ptr)->type = REC_HOME; \
     (recdes_ptr)->data = (char *) ((copy_area_ptr)->mem + \
                                    (oneobj_ptr)->offset); \
     (recdes_ptr)->length = (recdes_ptr)->area_size = (oneobj_ptr)->length; \
@@ -66,6 +67,7 @@
 
 #define LC_REPL_RECDES_FOR_ONEOBJ(copy_area_ptr, oneobj_ptr, key_length, recdes_ptr)    \
   do {                                                                                  \
+      (recdes_ptr)->type = REC_HOME;                                                   \
       (recdes_ptr)->data = (char *)((copy_area_ptr)->mem                                \
                                     + (oneobj_ptr)->offset + (key_length));             \
       (recdes_ptr)->length = (recdes_ptr)->area_size = (oneobj_ptr)->length             \
@@ -74,6 +76,7 @@
 
 #define LC_RECDES_IN_COPYAREA(copy_area_ptr, recdes_ptr) \
   do { \
+    (recdes_ptr)->type = REC_HOME; \
     (recdes_ptr)->data = (copy_area_ptr)->mem; \
     (recdes_ptr)->area_size = \
       (copy_area_ptr)->length - DB_SIZEOF(LC_COPYAREA_MANYOBJS); \
@@ -112,16 +115,25 @@ typedef enum
   LC_FLUSH_INSERT,
   LC_FLUSH_INSERT_PRUNE,
   LC_FLUSH_INSERT_PRUNE_VERIFY,
+  LC_FLUSH_INSERT_OOS,
   LC_FLUSH_DELETE,
   LC_FLUSH_UPDATE,
   LC_FLUSH_UPDATE_PRUNE,
   LC_FLUSH_UPDATE_PRUNE_VERIFY,
-  LC_FETCH_VERIFY_CHN
+  LC_FETCH_VERIFY_CHN,
+  LC_FLUSH_REUSE_OOS
 } LC_COPYAREA_OPERATION;
 
+/* LC_FLUSH_INSERT_OOS is included on purpose: xlocator_repl_force handles an OOS item like an insert (it has no
+ * primary key to look up). locator_mflush never produces it. */
 #define LC_IS_FLUSH_INSERT(operation) \
   (operation == LC_FLUSH_INSERT || operation == LC_FLUSH_INSERT_PRUNE \
-   || operation == LC_FLUSH_INSERT_PRUNE_VERIFY)
+   || operation == LC_FLUSH_INSERT_PRUNE_VERIFY || operation == LC_FLUSH_INSERT_OOS)
+
+/* A replicated OOS item belongs to the heap row that follows it in the same force area: a new chain
+ * (LC_FLUSH_INSERT_OOS) or a chain the master's UPDATE reused, which carries no record (LC_FLUSH_REUSE_OOS). */
+#define LC_IS_FLUSH_OOS_ITEM(operation) \
+  ((operation) == LC_FLUSH_INSERT_OOS || (operation) == LC_FLUSH_REUSE_OOS)
 
 #define LC_IS_FLUSH_UPDATE(operation) \
   (operation == LC_FLUSH_UPDATE || operation == LC_FLUSH_UPDATE_PRUNE \
@@ -182,8 +194,8 @@ typedef enum
   LC_FETCH_MVCC_VERSION = 0x02,	/* fetch MVCC - visible version */
   LC_FETCH_DIRTY_VERSION = 0x03,	/* fetch dirty version - S-locked */
   LC_FETCH_CURRENT_VERSION_NO_CHECK = 0x04,	/* fetch current version and not check server side */
-  LC_FETCH_COMMITTED_VERSION = 0x05,	/* fetch the latest committed version - no lock, no transaction snapshot
-					 * (see mvcc_satisfies_committed) */
+  LC_FETCH_CATALOG_VERSION = 0x05,	/* fetch the version a catalog read snapshot sees - no lock, no
+					 * transaction snapshot (see logtb_get_catalog_read_snapshot) */
 } LC_FETCH_VERSION_TYPE;
 
 #define LC_FETCH_IS_MVCC_VERSION_NEEDED(fetch_type) \
@@ -238,6 +250,14 @@ typedef enum
 
 #define LC_ONEOBJ_HAS_PRIOR_VALUE(obj) \
   (((obj)->flag & LC_FLAG_HAS_PRIOR_VALUE) != 0)
+
+#define LC_FLAG_SERIAL_ISSUE 0x40	/* Used for replication: a _db_serial write that issued values */
+
+#define LC_ONEOBJ_SET_SERIAL_ISSUE(obj) \
+  (obj)->flag |= LC_FLAG_SERIAL_ISSUE
+
+#define LC_ONEOBJ_IS_SERIAL_ISSUE(obj) \
+  (((obj)->flag & LC_FLAG_SERIAL_ISSUE) != 0)
 
 typedef struct lc_copyarea_oneobj LC_COPYAREA_ONEOBJ;
 struct lc_copyarea_oneobj

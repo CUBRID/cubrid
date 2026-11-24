@@ -29,6 +29,7 @@
 
 #include "porting.h"
 
+#include <vector>
 #include <cassert>
 #include <cstring>
 #include <cinttypes>
@@ -67,17 +68,19 @@ using LOG_LSA = log_lsa;	/* Log address identifier */
 /*
  * An LSA that one thread advances under its own lock while other threads read it without that lock.
  * Every access moves the whole 64-bit word at once, so a reader never composes pageid and offset from two moments,
- * and a two-field update never exposes an intermediate value. The bit-fields are reachable only through load ()/store ().
+ * and a two-field update never exposes an intermediate value. The bit-fields are private and whole-value assignment
+ * is deleted, so the value moves only through load () and store (). A writer advances a local log_lsa under its own
+ * lock and stores it when a reader may look.
  * The layout is that of log_lsa: a struct holding it keeps its disk image and stays trivially copyable.
  */
 struct log_lsa_atomic
 {
     inline log_lsa_atomic () = default;
-    inline log_lsa_atomic (const log_lsa &lsa);
+    inline explicit log_lsa_atomic (const log_lsa &lsa);
+    log_lsa_atomic &operator= (const log_lsa_atomic &) = delete;
 
     inline log_lsa load () const;
     inline void store (const log_lsa &lsa);
-    inline void advance (int add);	/* offset += add, published as one store */
     inline operator log_lsa () const;
 
   private:
@@ -121,6 +124,48 @@ constexpr log_lsa MAX_LSA = { MAX_LOG_LSA_PAGEID, MAX_LOG_LSA_OFFSET };
 
 // functions
 void lsa_to_string (char *buf, int buf_size, const log_lsa *lsa);
+
+// log_lsa_queue
+struct log_lsa_queue
+{
+  std::vector<LOG_LSA> m_queue;
+  std::size_t m_head = 0;
+
+  inline void push (const LOG_LSA &lsa)
+  {
+    m_queue.push_back (lsa);
+  }
+
+  inline bool is_empty () const
+  {
+    return m_head >= m_queue.size ();
+  }
+
+  inline LOG_LSA pop ()
+  {
+    assert (!is_empty ());
+    return m_queue[m_head++];
+  }
+
+  inline const LOG_LSA &front () const
+  {
+    assert (!is_empty ());
+    return m_queue[m_head];
+  }
+
+  inline std::size_t size () const
+  {
+    return m_queue.size () - m_head;
+  }
+
+  inline void clear ()
+  {
+    m_queue.clear ();
+    m_head = 0;
+  }
+};
+
+using LOG_LSA_QUEUE = log_lsa_queue;
 
 //
 // macro replacements
@@ -213,14 +258,6 @@ void
 log_lsa_atomic::store (const log_lsa &lsa)
 {
   ATOMIC_STORE_64_RELEASE (&m_lsa, lsa);
-}
-
-void
-log_lsa_atomic::advance (int add)
-{
-  log_lsa lsa = load ();
-  lsa.offset += add;
-  store (lsa);
 }
 
 log_lsa_atomic::operator log_lsa () const

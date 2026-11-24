@@ -42,6 +42,10 @@ static int log_data_length = 0;
 bool log_Zip_support = false;
 int log_Zip_min_size_to_compress = 255;
 
+/* Append position that the holder of prior_lsa_mutex works on. log_Gl.prior_info.prior_lsa is its published copy:
+ * loaded when a record starts and stored back when the record ends. */
+static LOG_LSA log_Prior_lsa;
+
 size_t
 LOG_PRIOR_LSA_LAST_APPEND_OFFSET ()
 {
@@ -59,7 +63,7 @@ static int prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, L
 				 const char *data);
 static int prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node,
     LOG_RCVINDEX rcvindex, LOG_DATA_ADDR *addr, int num_ucrumbs, const LOG_CRUMB *ucrumbs, int num_rcrumbs,
-    const LOG_CRUMB *rcrumbs);
+    const LOG_CRUMB *rcrumbs, MVCCID explicit_mvccid);
 static int prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int gtran_length,
     const char *gtran_data, int lock_length, const char *lock_data);
 static int prior_lsa_gen_end_chkpt_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int tran_length,
@@ -73,7 +77,7 @@ static void prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
 static void prior_lsa_append_data (int length);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
-static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid);
+static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid, bool is_explicit_mvccid);
 static char *log_append_get_data_ptr (THREAD_ENTRY *thread_p);
 static bool log_append_realloc_data_ptr (THREAD_ENTRY *thread_p, int length);
 
@@ -121,13 +125,13 @@ log_append_info::set_nxio_lsa (const LOG_LSA &next_io_lsa)
 LOG_LSA
 log_append_info::get_copied_lsa () const
 {
-  return copied_lsa.load (std::memory_order_acquire);
+  return copied_lsa.load ();
 }
 
 void
 log_append_info::set_copied_lsa (const LOG_LSA &copied)
 {
-  copied_lsa.store (copied, std::memory_order_release);
+  copied_lsa.store (copied);
 }
 
 log_prior_lsa_info::log_prior_lsa_info ()
@@ -146,7 +150,7 @@ LOG_RESET_APPEND_LSA (const LOG_LSA *lsa)
 {
   // todo - prior_info.prior_lsa is set without prior_lsa_mutex
   log_Gl.hdr.append_lsa.store (*lsa);
-  log_Gl.prior_info.prior_lsa = *lsa;
+  log_Gl.prior_info.prior_lsa.store (*lsa);
   /* The prior list is empty at *lsa now. Publishing here is what keeps copied_lsa <= append_lsa across
    * every reset. */
   log_Gl.append.set_copied_lsa (*lsa);
@@ -157,7 +161,7 @@ LOG_RESET_PREV_LSA (const LOG_LSA *lsa)
 {
   // todo - prior_info.prev_lsa is set without prior_lsa_mutex
   log_Gl.append.prev_lsa.store (*lsa);
-  log_Gl.prior_info.prev_lsa = *lsa;
+  log_Gl.prior_info.prev_lsa.store (*lsa);
 }
 
 char *
@@ -173,12 +177,13 @@ log_prior_has_worker_log_records (THREAD_ENTRY *thread_p)
 
   std::unique_lock<std::mutex> ulock (log_Gl.prior_info.prior_lsa_mutex);
   LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+  const LOG_LSA prior_lsa = log_Gl.prior_info.prior_lsa.load ();
 
-  if (!LSA_EQ (&nxio_lsa, &log_Gl.prior_info.prior_lsa))
+  if (!LSA_EQ (&nxio_lsa, &prior_lsa))
     {
       LOG_PRIOR_NODE *node;
 
-      assert (LSA_LT (&nxio_lsa, &log_Gl.prior_info.prior_lsa));
+      assert (LSA_LT (&nxio_lsa, &prior_lsa));
       node = log_Gl.prior_info.prior_list_header;
       while (node != NULL)
 	{
@@ -357,6 +362,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_OOS_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_SUPPLEMENTAL_INFO:
 
@@ -427,7 +433,8 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
 LOG_PRIOR_NODE *
 prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
 				 LOG_DATA_ADDR *addr, const int num_ucrumbs,
-				 const LOG_CRUMB *ucrumbs, const int num_rcrumbs, const LOG_CRUMB *rcrumbs)
+				 const LOG_CRUMB *ucrumbs, const int num_rcrumbs, const LOG_CRUMB *rcrumbs,
+				 MVCCID explicit_mvccid)
 {
   LOG_PRIOR_NODE *node;
   int error = NO_ERROR;
@@ -463,7 +470,7 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, L
     case LOG_MVCC_UNDO_DATA:
     case LOG_MVCC_REDO_DATA:
       error = prior_lsa_gen_undoredo_record_from_crumbs (thread_p, node, rcvindex, addr, num_ucrumbs, ucrumbs,
-	      num_rcrumbs, rcrumbs);
+	      num_rcrumbs, rcrumbs, explicit_mvccid);
       break;
 
     default:
@@ -665,11 +672,12 @@ prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE *node, int num_crumbs, const 
  * ucrumbs (in)	    : Undo data crumbs.
  * num_rcrumbs (in) : Number of redo data crumbs.
  * rcrumbs (in)	    : Redo data crumbs.
+ * explicit_mvccid (in) : MVCCID of an MVCC record, or MVCCID_NULL to take the current transaction's.
  */
 static int
 prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RCVINDEX rcvindex,
     LOG_DATA_ADDR *addr, int num_ucrumbs, const LOG_CRUMB *ucrumbs,
-    int num_rcrumbs, const LOG_CRUMB *rcrumbs)
+    int num_rcrumbs, const LOG_CRUMB *rcrumbs, MVCCID explicit_mvccid)
 {
   LOG_REC_REDO *redo_p = NULL;
   LOG_REC_UNDO *undo_p = NULL;
@@ -963,7 +971,13 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
       assert (LOG_IS_MVCC_OPERATION (rcvindex));
 
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      if (tdes == NULL || !MVCCID_IS_VALID (tdes->mvccinfo.id))
+      if (MVCCID_IS_VALID (explicit_mvccid))
+	{
+	  /* The record is appended after its transaction completed its MVCC info, e.g. by a commit postpone. */
+	  assert (rcvindex == RVOOS_NOTIFY_VACUUM);
+	  *mvccid_p = explicit_mvccid;
+	}
+      else if (tdes == NULL || !MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
@@ -1244,6 +1258,7 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
     case LOG_DUMMY_HEAD_POSTPONE:
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_DUMMY_OVF_RECORD:
+    case LOG_DUMMY_OOS_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
@@ -1335,10 +1350,21 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
   return error_code;
 }
 
+/* is_explicit_mvccid: the record names an MVCCID given by its appender (RVOOS_NOTIFY_VACUUM, appended by a commit
+ * postpone), which may already be complete, and older than every snapshot, when the block starts. */
 static void
-prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
+prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid, bool is_explicit_mvccid)
 {
   assert (MVCCID_IS_VALID (mvccid));
+  if (is_explicit_mvccid && !LOG_ISRESTARTED ())
+    {
+      /* Restart recovery reruns a committed UPDATE's drop postpone, which appends a notification. Recovery does not
+       * keep the block's MVCCIDs (the global oldest visible MVCCID is not known yet, and only mvcc_op_log_lsa was
+       * redone); vacuum_recover_lost_block_data rebuilds the blocks from the log at vacuum boot, starting here. */
+      log_Gl.hdr.mvcc_op_log_lsa = record_lsa;
+      log_Gl.hdr.does_block_need_vacuum = true;
+      return;
+    }
   if (!log_Gl.hdr.does_block_need_vacuum)
     {
       // first mvcc record for this block
@@ -1350,7 +1376,7 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
       // sanity checks
       assert (MVCCID_IS_VALID (log_Gl.hdr.oldest_visible_mvccid));
       assert (MVCCID_IS_VALID (log_Gl.hdr.newest_block_mvccid));
-      assert (log_Gl.hdr.oldest_visible_mvccid <= mvccid);
+      assert (is_explicit_mvccid || log_Gl.hdr.oldest_visible_mvccid <= mvccid);
       assert (!log_Gl.hdr.mvcc_op_log_lsa.is_null ());
       assert (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) == vacuum_get_log_blockid (record_lsa.pageid));
 
@@ -1359,6 +1385,10 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
 	  log_Gl.hdr.newest_block_mvccid = mvccid;
 	}
     }
+  /* An explicit MVCCID (RVOOS_NOTIFY_VACUUM) belongs to a transaction that already left the MVCC table, so it may
+   * precede the block's oldest visible MVCCID, and a block of notifications only can have its newest MVCCID below
+   * its oldest. The oldest is not lowered: vacuum needs the blocks' oldest visible MVCCIDs non-decreasing, and the
+   * notification does not need it (see vacuum_process_log_block). */
   log_Gl.hdr.mvcc_op_log_lsa = record_lsa;
   log_Gl.hdr.does_block_need_vacuum = true;
 }
@@ -1389,6 +1419,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
     {
       log_Gl.prior_info.prior_lsa_mutex.lock ();
     }
+
+  log_Prior_lsa = log_Gl.prior_info.prior_lsa.load ();
 
   prior_lsa_start_append (thread_p, node, tdes);
 
@@ -1447,7 +1479,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 		     "log mvcc op at (%lld, %d) and create link with log_lsa(%lld, %d)",
 		     LSA_AS_ARGS (&node->start_lsa), LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
-      prior_update_header_mvcc_info (start_lsa, mvccid);
+      prior_update_header_mvcc_info (start_lsa, mvccid,
+				     mvcc_undo != NULL && mvcc_undo->undo.data.rcvindex == RVOOS_NOTIFY_VACUUM);
     }
   else if (node->log_header.type == LOG_SYSOP_START_POSTPONE)
     {
@@ -1524,6 +1557,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   /* END append */
   prior_lsa_end_append (thread_p, node);
 
+  log_Gl.prior_info.prior_lsa.store (log_Prior_lsa);
+
   /* Nothing writes into the node again, so publish it now - in start_lsa order, the order the drain
    * retires in. */
   log_prior_inflight_register (start_lsa, node);
@@ -1597,7 +1632,8 @@ prior_set_tde_encrypted (log_prior_node *node, LOG_RCVINDEX recvindex)
       return ER_TDE_CIPHER_IS_NOT_LOADED;
     }
 
-  tde_er_log ("prior_set_tde_encrypted(): rcvindex = %s\n", rv_rcvindex_string (recvindex));
+  tde_er_log ("prior_set_tde_encrypted(): rcvindex = %s\n",
+	      recvindex == RV_NOT_DEFINED ? "RV_NOT_DEFINED" : rv_rcvindex_string (recvindex));
 
   node->tde_encrypted = true;
 
@@ -1628,7 +1664,7 @@ prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *
    * Link the record with the previous transaction record for quick undos.
    * Link the record backward for backward traversal of the log.
    */
-  LSA_COPY (&node->start_lsa, &log_Gl.prior_info.prior_lsa);
+  LSA_COPY (&node->start_lsa, &log_Prior_lsa);
 
   if (tdes->is_system_worker_transaction () && !tdes->is_under_sysop ())
     {
@@ -1641,7 +1677,7 @@ prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *
     {
       LSA_COPY (&node->log_header.prev_tranlsa, &tdes->tail_lsa);
 
-      LSA_COPY (&tdes->tail_lsa, &log_Gl.prior_info.prior_lsa);
+      LSA_COPY (&tdes->tail_lsa, &log_Prior_lsa);
 
       /*
        * Is this the first log record of transaction ?
@@ -1651,16 +1687,16 @@ prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *
 	  LSA_COPY (&tdes->head_lsa, &tdes->tail_lsa);
 	}
 
-      LSA_COPY (&tdes->undo_nxlsa, &log_Gl.prior_info.prior_lsa);
+      LSA_COPY (&tdes->undo_nxlsa, &log_Prior_lsa);
     }
 
   /*
    * Remember the address of new append record
    */
-  LSA_COPY (&node->log_header.back_lsa, &log_Gl.prior_info.prev_lsa);
+  node->log_header.back_lsa = log_Gl.prior_info.prev_lsa;
   LSA_SET_NULL (&node->log_header.forw_lsa);
 
-  LSA_COPY (&log_Gl.prior_info.prev_lsa, &log_Gl.prior_info.prior_lsa);
+  log_Gl.prior_info.prev_lsa.store (log_Prior_lsa);
 
   /*
    * Set the page dirty, increase and align the append offset
@@ -1681,7 +1717,7 @@ prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node)
   log_prior_lsa_append_align ();
   log_prior_lsa_append_advance_when_doesnot_fit (sizeof (LOG_RECORD_HEADER));
 
-  LSA_COPY (&node->log_header.forw_lsa, &log_Gl.prior_info.prior_lsa);
+  LSA_COPY (&node->log_header.forw_lsa, &log_Prior_lsa);
 }
 
 static void
@@ -1702,7 +1738,7 @@ prior_lsa_append_data (int length)
    */
   log_prior_lsa_append_align ();
 
-  current_offset = (int) log_Gl.prior_info.prior_lsa.offset;
+  current_offset = (int) log_Prior_lsa.offset;
   last_offset = (int) LOG_PRIOR_LSA_LAST_APPEND_OFFSET ();
 
   /* Does data fit completely in current page ? */
@@ -1715,8 +1751,8 @@ prior_lsa_append_data (int length)
 	      /*
 	       * Get next page and set the current one dirty
 	       */
-	      log_Gl.prior_info.prior_lsa.pageid++;
-	      log_Gl.prior_info.prior_lsa.offset = 0;
+	      log_Prior_lsa.pageid++;
+	      log_Prior_lsa.offset = 0;
 
 	      current_offset = 0;
 	      last_offset = (int) LOG_PRIOR_LSA_LAST_APPEND_OFFSET ();
@@ -1733,12 +1769,12 @@ prior_lsa_append_data (int length)
 
 	  current_offset += copy_length;
 	  length -= copy_length;
-	  log_Gl.prior_info.prior_lsa.offset += copy_length;
+	  log_Prior_lsa.offset += copy_length;
 	}
     }
   else
     {
-      log_Gl.prior_info.prior_lsa.offset += length;
+      log_Prior_lsa.offset += length;
     }
 
   /*
@@ -1948,33 +1984,33 @@ log_append_get_data_ptr (THREAD_ENTRY *thread_p)
 static void
 log_prior_lsa_append_align ()
 {
-  assert (log_Gl.prior_info.prior_lsa.offset >= 0);
+  assert (log_Prior_lsa.offset >= 0);
 
-  log_Gl.prior_info.prior_lsa.offset = DB_ALIGN (log_Gl.prior_info.prior_lsa.offset, DOUBLE_ALIGNMENT);
-  if ((size_t) log_Gl.prior_info.prior_lsa.offset >= (size_t) LOGAREA_SIZE)
+  log_Prior_lsa.offset = DB_ALIGN (log_Prior_lsa.offset, DOUBLE_ALIGNMENT);
+  if ((size_t) log_Prior_lsa.offset >= (size_t) LOGAREA_SIZE)
     {
-      log_Gl.prior_info.prior_lsa.pageid++;
-      log_Gl.prior_info.prior_lsa.offset = 0;
+      log_Prior_lsa.pageid++;
+      log_Prior_lsa.offset = 0;
     }
 }
 
 static void
 log_prior_lsa_append_advance_when_doesnot_fit (size_t length)
 {
-  assert (log_Gl.prior_info.prior_lsa.offset >= 0);
+  assert (log_Prior_lsa.offset >= 0);
 
-  if ((size_t) log_Gl.prior_info.prior_lsa.offset + length >= (size_t) LOGAREA_SIZE)
+  if ((size_t) log_Prior_lsa.offset + length >= (size_t) LOGAREA_SIZE)
     {
-      log_Gl.prior_info.prior_lsa.pageid++;
-      log_Gl.prior_info.prior_lsa.offset = 0;
+      log_Prior_lsa.pageid++;
+      log_Prior_lsa.offset = 0;
     }
 }
 
 static void
 log_prior_lsa_append_add_align (size_t add)
 {
-  assert (log_Gl.prior_info.prior_lsa.offset >= 0);
+  assert (log_Prior_lsa.offset >= 0);
 
-  log_Gl.prior_info.prior_lsa.offset += (add);
+  log_Prior_lsa.offset += (int) (add);
   log_prior_lsa_append_align ();
 }

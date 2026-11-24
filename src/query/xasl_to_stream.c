@@ -76,6 +76,7 @@ static int xts_Ptr_max[MAX_PTR_BLOCKS] = { 0 };
 
 /* error code specific to this file */
 static int xts_Xasl_errcode = NO_ERROR;
+static bool xts_Has_sp_call = false;
 
 /* CBRD-27583: a filter index predicate, a function index or a partition expression stream is being packed - it
  * carries no comparison decision (its unpack decides, stx_decide_stream_compare) */
@@ -222,6 +223,7 @@ static char *xts_process_sort_list (char *ptr, const SORT_LIST * sort_list);
 static char *xts_process_connectby_proc (char *ptr, const CONNECTBY_PROC_NODE * connectby_proc);
 static char *xts_process_regu_value_list (char *ptr, const REGU_VALUE_LIST * regu_value_list);
 static char *xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache);
+static char *xts_process_memoize_key (char *ptr, const SQ_KEY * key);
 
 static int xts_sizeof (const json_table_column & ptr);
 static int xts_sizeof (const json_table_node & ptr);
@@ -334,7 +336,12 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
     + sizeof (int)		/* xasl->n_oid_list */
     + sizeof (OID) * xasl_tree->n_oid_list	/* xasl->class_oid_list */
     + sizeof (int) * xasl_tree->n_oid_list	/* xasl->class_locks */
-    + sizeof (int) * xasl_tree->n_oid_list;	/* xasl->tcard_list */
+    + sizeof (int) * xasl_tree->n_oid_list	/* xasl->tcard_list */
+    + sizeof (int)		/* xasl->stmt_flags */
+    + sizeof (int)		/* xasl->n_write_oid_list */
+    + sizeof (OID) * xasl_tree->n_write_oid_list	/* xasl->write_class_oid_list */
+    + sizeof (int)		/* xasl->n_read_oid_list */
+    + sizeof (OID) * xasl_tree->n_read_oid_list;	/* xasl->read_class_oid_list */
 
   offset = sizeof (int)		/* [size of header data] */
     + header_size		/* [header data] */
@@ -346,6 +353,7 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   xts_reserve_location_in_stream (offset);
 
   xts_id_serial = 0;
+  xts_Has_sp_call = false;
 
 #if !defined(NDEBUG)
   /* suppress valgrind UMW error */
@@ -381,6 +389,17 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   for (i = 0; i < xasl_tree->n_oid_list; i++)
     {
       p = or_pack_int (p, xasl_tree->tcard_list[i]);
+    }
+  p = or_pack_int (p, xasl_tree->stmt_flags | (xts_Has_sp_call ? XASL_STMT_HAS_SP_CALL : 0));
+  p = or_pack_int (p, xasl_tree->n_write_oid_list);
+  for (i = 0; i < xasl_tree->n_write_oid_list; i++)
+    {
+      p = or_pack_oid (p, &xasl_tree->write_class_oid_list[i]);
+    }
+  p = or_pack_int (p, xasl_tree->n_read_oid_list);
+  for (i = 0; i < xasl_tree->n_read_oid_list; i++)
+    {
+      p = or_pack_oid (p, &xasl_tree->read_class_oid_list[i]);
     }
 
   /* set body size of new XASL format */
@@ -2932,6 +2951,37 @@ xts_save_key_val_array (const KEY_VAL_RANGE * key_val_array, int nelements)
   return offset;
 }
 
+/* CBRD-27993: -1 for no key, else the slot count, the slots and their domains */
+static char *
+xts_process_memoize_key (char *ptr, const SQ_KEY * key)
+{
+  int offset;
+
+  if (key == NULL)
+    {
+      return or_pack_int (ptr, -1);
+    }
+
+  ptr = or_pack_int (ptr, key->n_elements);
+  if (key->n_elements == 0)
+    {
+      return ptr;
+    }
+
+  offset = xts_save_db_value_array (key->dbv_array, key->n_elements);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+  for (int i = 0; i < key->n_elements; i++)
+    {
+      ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, key->domains[i], 0, 0);
+    }
+
+  return ptr;
+}
+
 static char *
 xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache)
 {
@@ -3424,6 +3474,12 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
   ptr = or_pack_int (ptr, offset);
 
   ptr = xts_process_sq_cache (ptr, xasl->sq_cache);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  ptr = xts_process_memoize_key (ptr, xasl->memoize_key);
   if (ptr == NULL)
     {
       return NULL;
@@ -5892,6 +5948,7 @@ xts_pack_regu_variable_value (char *ptr, const REGU_VARIABLE * regu_var)
       break;
 
     case TYPE_SP:
+      xts_Has_sp_call = true;
       offset = xts_save_sp_type (regu_var->value.sp_ptr);
       if (offset == ER_FAILED)
 	{
@@ -6721,10 +6778,16 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + PTR_SIZE		/* next */
 	   + OR_INT_SIZE	/* sq_cache_n_elements */
 	   + PTR_SIZE		/* sq_cache */
+	   + OR_INT_SIZE	/* memoize key n_elements */
+	   + PTR_SIZE		/* memoize key slots */
 	   + OR_INT_SIZE);	/* parallelism */
   for (int i = 0; xasl->sq_cache != NULL && i < xasl->sq_cache->sq_key_struct->n_elements; i++)
     {
       size += or_packed_domain_size (xasl->sq_cache->sq_key_struct->domains[i], 0);	/* sq_cache key domains */
+    }
+  for (int i = 0; xasl->memoize_key != NULL && i < xasl->memoize_key->n_elements; i++)
+    {
+      size += or_packed_domain_size (xasl->memoize_key->domains[i], 0);	/* memoize key domains */
     }
 
   return size;

@@ -94,6 +94,9 @@
 /* below this a counting pass costs more than a few compares; 64 measured best of 16/24/32/48/64/96/128 */
 #define RADIX_MSD_CUTOFF 64
 
+/* a walk of the slots fetches the record this many slots ahead */
+#define RADIX_PREFETCH_AHEAD 16
+
 /* the radix key of a NUMERIC without a precision: a byte for the sign, two of decimal exponent, then the mantissa
  * of DB_MAX_NUMERIC_PRECISION digits, padded to the word, see float_numeric_word () */
 #define FLOAT_NUMERIC_KEY_LENGTH DB_ALIGN (OR_BYTE_SIZE + OR_SHORT_SIZE + DB_NUMERIC_BUF_SIZE, OR_BIGINT_SIZE)
@@ -344,6 +347,12 @@ btsort_radix_sorter_next (BTSORT_RUN *run)
   if (run->cursor >= run->readrecs)
     {
       return NULL;
+    }
+
+  /* the sorted slots point all over the buffer */
+  if (run->cursor + RADIX_PREFETCH_AHEAD < run->readrecs)
+    {
+      prefetch (run->base + slots[run->cursor + RADIX_PREFETCH_AHEAD], PREFETCH_READ, PREFETCH_CACHE_L1);
     }
 
   return run->base + slots[run->cursor++];
@@ -757,6 +766,27 @@ fixed_key_word (RADIX_KEY_FORMAT format, const unsigned char *key)
   return word;
 }
 
+/* whether IEEE 754 bits, as big_endian_to_host () reads a radix word, are a NaN: every exponent bit set and a fraction
+ * that is not 0. No IEEE key is two bytes. */
+static inline bool
+ieee_bits_are_nan (UINT16 bits)
+{
+  (void) bits;
+  return false;
+}
+
+static inline bool
+ieee_bits_are_nan (UINT32 bits)
+{
+  return (bits & 0x7fffffffU) > 0x7f800000U;
+}
+
+static inline bool
+ieee_bits_are_nan (UINT64 bits)
+{
+  return (bits & 0x7fffffffffffffffULL) > 0x7ff0000000000000ULL;
+}
+
 /*
  * ieee_to_order () - Puts a big-endian IEEE 754 value in unsigned byte order
  *   return: the radix word in order
@@ -767,6 +797,13 @@ template <typename RADIX_WORD>
 static inline RADIX_WORD
 ieee_to_order (RADIX_WORD word, RADIX_WORD sign_bit)
 {
+  /* a NaN of either sign: above every other value and equal to the other NaNs, as the comparator orders FLOAT, DOUBLE
+   * and MONETARY (MR_CMP_FLOATING () in object_primitive.c). Its bits would put a negative NaN below -inf. */
+  if (ieee_bits_are_nan (big_endian_to_host (word)))
+    {
+      return (RADIX_WORD) ~0ULL;
+    }
+
   /* a positive value: flipping the first bit puts it above every negative value */
   if ((word & sign_bit) == 0)
     {
@@ -1173,6 +1210,8 @@ encode_byte_string_words (const RADIX_KEY_ENCODING *encoding, const char *rec_ba
 {
   const radix_word<WORD_WIDTH> desc_flip = encoding->is_desc ? (radix_word<WORD_WIDTH>) ~0ULL : 0;
   const int from = word_index * WORD_WIDTH;
+  /* past the first word the slots are in bucket order, all over the buffer */
+  const int prefetch_end = (word_index > 0) ? record_count - RADIX_PREFETCH_AHEAD : 0;
   const char *rec;
   byte_string value;
   radix_word<WORD_WIDTH> word, any_set = 0, all_set = (radix_word<WORD_WIDTH>) ~0ULL;
@@ -1182,6 +1221,11 @@ encode_byte_string_words (const RADIX_KEY_ENCODING *encoding, const char *rec_ba
 
   for (rec_index = 0; rec_index < record_count; rec_index++)
     {
+      if (rec_index < prefetch_end)
+	{
+	  prefetch (rec_base + slots[rec_index + RADIX_PREFETCH_AHEAD], PREFETCH_READ, PREFETCH_CACHE_L1);
+	}
+
       rec = rec_base + slots[rec_index];
 
       assert (!BTSORT_REC_HDR (rec)->is_bigone && !BTSORT_REC_HDR (rec)->has_null);
@@ -2308,6 +2352,13 @@ sort_by_word (const midxkey_sort &ms, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *s
       subarray_word = rec_word;
       for (end = start + 1; end < record_count; end++)
 	{
+	  /* the sorted slots point all over the buffer, and the column often lies on the record's second cache line */
+	  if (end + RADIX_PREFETCH_AHEAD < record_count)
+	    {
+	      prefetch (ms.rec_base + slots[end + RADIX_PREFETCH_AHEAD], PREFETCH_READ, PREFETCH_CACHE_L1);
+	      prefetch (ms.rec_base + slots[end + RADIX_PREFETCH_AHEAD] + 32, PREFETCH_READ, PREFETCH_CACHE_L1);
+	    }
+
 	  rec_word = column_word_of<WORD_WIDTH> (ms, slots[end], column_index, word_index);
 	  if (rec_word != subarray_word)
 	    {

@@ -491,6 +491,10 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_SHA1_PLANS];
   req_p->processing_function = sqmgr_drop_query_plans_by_sha1;
 
+  req_p = &net_Requests[NET_SERVER_QM_QUERY_GET_STMT_INFO];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sqmgr_get_xasl_stmt_info;
+
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_CLONES];
   req_p->processing_function = sqmgr_drop_query_clones;
 
@@ -721,6 +725,38 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_LD_UPDATE_STATS];
   req_p->processing_function = sloaddb_update_stats;
 
+  /* shared client->server byte-stream transport (COPY, internal-LOB, ...) */
+  req_p = &net_Requests[NET_SERVER_STREAM_INIT];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sstream_from_init;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_SEND_DATA];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sstream_send_data;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_END];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sstream_end;
+
+  /* the only one of the four without CHECK_DB_MODIFICATION: it writes nothing, and a server that
+   * turned read-only mid-stream would otherwise refuse the request that cleans the stream up */
+  req_p = &net_Requests[NET_SERVER_STREAM_ABORT];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_abort;
+
+  /* the download family reads, so a read-only server serves it */
+  req_p = &net_Requests[NET_SERVER_STREAM_READ_OPEN];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_read_open;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_READ];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_read;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_RELEASE];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_release;
+
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];
   req_p->action_attribute = IN_TRANSACTION;
@@ -764,6 +800,13 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_CDC_AUTH_RESPONSE];
   req_p->processing_function = scdc_auth_response;
+
+  /* a client proves its password with these two before logging in or switching users */
+  req_p = &net_Requests[NET_SERVER_AU_CHALLENGE];
+  req_p->processing_function = sau_challenge;
+
+  req_p = &net_Requests[NET_SERVER_AU_RESPONSE];
+  req_p->processing_function = sau_response;
 
   /* flashback : DBA-only, checked first thing in each handler with
    * log_extract_check_authorization (), the function CDC uses too */

@@ -1480,6 +1480,56 @@ pt_is_method_call_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int 
 }
 
 /*
+ * pt_is_ddl_node_type () - test whether a statement type is DDL
+ *   return:
+ *   node_type(in):
+ */
+bool
+pt_is_ddl_node_type (PT_NODE_TYPE node_type)
+{
+  switch (node_type)
+    {
+    case PT_ALTER:
+    case PT_ALTER_INDEX:
+    case PT_ALTER_SERIAL:
+    case PT_ALTER_STORED_PROCEDURE:
+    case PT_ALTER_TRIGGER:
+    case PT_ALTER_USER:
+    case PT_CREATE_ENTITY:
+    case PT_CREATE_INDEX:
+    case PT_CREATE_SERIAL:
+    case PT_CREATE_STORED_PROCEDURE:
+    case PT_CREATE_TRIGGER:
+    case PT_CREATE_USER:
+    case PT_DROP:
+    case PT_DROP_INDEX:
+    case PT_DROP_SERIAL:
+    case PT_DROP_STORED_PROCEDURE:
+    case PT_DROP_TRIGGER:
+    case PT_DROP_USER:
+    case PT_GRANT:
+    case PT_RENAME:
+    case PT_REVOKE:
+    case PT_REMOVE_TRIGGER:
+    case PT_RENAME_TRIGGER:
+    case PT_UPDATE_STATS:
+      /* TODO: check it  */
+    case PT_CREATE_SERVER:
+    case PT_DROP_SERVER:
+    case PT_RENAME_SERVER:
+    case PT_ALTER_SERVER:
+    case PT_TRUNCATE:
+    case PT_ALTER_SYNONYM:
+    case PT_CREATE_SYNONYM:
+    case PT_DROP_SYNONYM:
+    case PT_RENAME_SYNONYM:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * pt_is_ddl_statement () - test PT_NODE statement types,
  * 			    without exposing internals
  *   return:
@@ -1488,50 +1538,7 @@ pt_is_method_call_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int 
 int
 pt_is_ddl_statement (const PT_NODE * node)
 {
-  if (node)
-    {
-      switch (node->node_type)
-	{
-	case PT_ALTER:
-	case PT_ALTER_INDEX:
-	case PT_ALTER_SERIAL:
-	case PT_ALTER_STORED_PROCEDURE:
-	case PT_ALTER_TRIGGER:
-	case PT_ALTER_USER:
-	case PT_CREATE_ENTITY:
-	case PT_CREATE_INDEX:
-	case PT_CREATE_SERIAL:
-	case PT_CREATE_STORED_PROCEDURE:
-	case PT_CREATE_TRIGGER:
-	case PT_CREATE_USER:
-	case PT_DROP:
-	case PT_DROP_INDEX:
-	case PT_DROP_SERIAL:
-	case PT_DROP_STORED_PROCEDURE:
-	case PT_DROP_TRIGGER:
-	case PT_DROP_USER:
-	case PT_GRANT:
-	case PT_RENAME:
-	case PT_REVOKE:
-	case PT_REMOVE_TRIGGER:
-	case PT_RENAME_TRIGGER:
-	case PT_UPDATE_STATS:
-	  /* TODO: check it  */
-	case PT_CREATE_SERVER:
-	case PT_DROP_SERVER:
-	case PT_RENAME_SERVER:
-	case PT_ALTER_SERVER:
-	case PT_TRUNCATE:
-	case PT_ALTER_SYNONYM:
-	case PT_CREATE_SYNONYM:
-	case PT_DROP_SYNONYM:
-	case PT_RENAME_SYNONYM:
-	  return true;
-	default:
-	  break;
-	}
-    }
-  return false;
+  return node != NULL && pt_is_ddl_node_type (node->node_type);
 }
 
 /*
@@ -2897,6 +2904,55 @@ pt_is_filtering_expression (PARSER_CONTEXT * parser, PT_NODE * expression)
 }
 
 /*
+ * pt_join_part_of_factor () - the join predicates a disjunction of conjunctions kept whole implies
+ *   return: a new predicate built from copies of the join predicates of the factor, or NULL if one of its
+ *           disjuncts has none
+ *   parser(in):
+ *   factor(in): the factor or a subtree of it
+ *
+ * Note: Each disjunct keeps its join predicates and drops its filtering ones, so the result holds whenever
+ *       the factor does.  It is the conjunction of the CNF clauses made only of join predicates that the
+ *       distribution of the factor would give, the part pt_split_join_preds () runs before the
+ *       hierarchical query when the factor is distributed.
+ */
+static PT_NODE *
+pt_join_part_of_factor (PARSER_CONTEXT * parser, PT_NODE * factor)
+{
+  PT_NODE *left, *right, *result;
+  PT_OP_TYPE op;
+
+  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (factor, PT_AND) && !PT_IS_EXPR_NODE_WITH_OPERATOR (factor, PT_OR))
+    {
+      return pt_is_filtering_expression (parser, factor) ? NULL : parser_copy_tree (parser, factor);
+    }
+
+  op = factor->info.expr.op;
+  left = pt_join_part_of_factor (parser, factor->info.expr.arg1);
+  right = pt_join_part_of_factor (parser, factor->info.expr.arg2);
+  if (left == NULL || right == NULL)
+    {
+      if (op == PT_OR)
+	{
+	  parser_free_tree (parser, left);
+	  parser_free_tree (parser, right);
+	  return NULL;
+	}
+      return (left != NULL) ? left : right;
+    }
+
+  result = parser_make_expression (parser, op, left, right, NULL);
+  if (result == NULL)
+    {
+      parser_free_tree (parser, left);
+      parser_free_tree (parser, right);
+      return NULL;
+    }
+  result->type_enum = PT_TYPE_LOGICAL;
+  result->info.expr.location = factor->info.expr.location;
+  return result;
+}
+
+/*
  * pt_is_filtering_expression ()
  *   return: Splits the given predicate list into two: a part to be executed
  *           before the hierarchical query as it defines the join conditions and
@@ -2914,10 +2970,9 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** j
       bool has_filter_pred = false;
 
       assert (PT_IS_EXPR_NODE (current_conj) || PT_IS_VALUE_NODE (current_conj));
-      /* It is either fully CNF or not at all. */
-      assert (!(current_conj->next != NULL
-		&& (PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_AND)
-		    || PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_OR))));
+      /* It is either fully CNF or not at all.  A disjunction of conjunctions pt_cnf () keeps whole is a
+       * PT_OR tree, and still one CNF term: pt_is_filtering_expression () looks inside it */
+      assert (!(current_conj->next != NULL && PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_AND)));
       next_conj = current_conj->next;
       current_conj->next = NULL;
 
@@ -2937,6 +2992,16 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** j
 
       if (has_filter_pred)
 	{
+	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_OR) && current_conj->or_next == NULL)
+	    {
+	      /* a factor kept whole: its join predicates still join the tables before the hierarchical query */
+	      PT_NODE *join_pred = pt_join_part_of_factor (parser, current_conj);
+
+	      if (join_pred != NULL)
+		{
+		  *join_part = parser_append_node (pt_cnf (parser, join_pred), *join_part);
+		}
+	    }
 	  *after_cb_filter = parser_append_node (current_conj, *after_cb_filter);
 	}
       else
@@ -4678,6 +4743,151 @@ regu_set_global_error (void)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
+ * pt_cast_limit_operand () - wrap an operand of a LIMIT value in CAST (... AS DOUBLE)
+ *   return: none
+ *   parser(in):
+ *   arg(in/out): the operand, the cast on return
+ */
+static void
+pt_cast_limit_operand (PARSER_CONTEXT * parser, PT_NODE ** arg)
+{
+  PT_NODE *cast;
+
+  cast = pt_wrap_with_cast_op (parser, *arg, PT_TYPE_DOUBLE, 0, 0, NULL);
+  if (cast == NULL)
+    {
+      return;
+    }
+
+  if ((*arg)->node_type == PT_HOST_VAR)
+    {
+      /* a cast of the rule, not of the text: the position keeps the type the value was bound with, so that the next
+       * execution of another type does not bind into DOUBLE */
+      (*arg)->info.host_var.rule_cast = true;
+    }
+  *arg = cast;
+}
+
+/*
+ * pt_limit_is_string () - whether an operand of a LIMIT value is a string
+ *   return: true when it is
+ *   parser(in):
+ *   node(in): the operand
+ *
+ * Note: Under a bind type signature a host variable stays MAYBE, so its type is read from the bound value. A PL/CSQL
+ *       variable has no value at compile time and may be a string.
+ */
+static bool
+pt_limit_is_string (const PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  int index;
+
+  if (node == NULL || node->node_type == PT_EXPR)
+    {
+      return false;
+    }
+
+  if (PT_IS_CHAR_STRING_TYPE (node->type_enum))
+    {
+      return true;
+    }
+
+  if (node->node_type != PT_HOST_VAR)
+    {
+      return false;
+    }
+
+  if (parser->flag.is_parsing_static_sql)
+    {
+      return true;
+    }
+
+  index = node->info.host_var.index;
+  return (parser->host_variables != NULL && index >= 0 && index < parser->host_var_count
+	  && TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&parser->host_variables[index])));
+}
+
+/*
+ * pt_cast_limit_string_operands () - cast the string operands of a + in the user's LIMIT values to DOUBLE
+ *   return: none
+ *   parser(in):
+ *   limit(in/out): the values
+ *
+ * Note: Two strings bound to + concatenate ('2' + '2' is '22'). The cast is the one the type checking gives a
+ *       string added to a number ('2' + 1 is 3).
+ */
+void
+pt_cast_limit_string_operands (PARSER_CONTEXT * parser, PT_NODE * limit)
+{
+  PT_NODE *node;
+
+  for (node = limit; node != NULL; node = node->next)
+    {
+      if (node->node_type != PT_EXPR)
+	{
+	  continue;
+	}
+
+      pt_cast_limit_string_operands (parser, node->info.expr.arg1);
+      pt_cast_limit_string_operands (parser, node->info.expr.arg2);
+      if (node->info.expr.op == PT_PLUS)
+	{
+	  if (pt_limit_is_string (parser, node->info.expr.arg1))
+	    {
+	      pt_cast_limit_operand (parser, &node->info.expr.arg1);
+	    }
+
+	  if (pt_limit_is_string (parser, node->info.expr.arg2))
+	    {
+	      pt_cast_limit_operand (parser, &node->info.expr.arg2);
+	    }
+	}
+    }
+}
+
+/*
+ * pt_limit_has_host_var () - whether a LIMIT value has a host variable
+ *   return: true when it has
+ *   node(in): a host variable, a literal or an arithmetic of them (the LIMIT grammar allows nothing else)
+ */
+static bool
+pt_limit_has_host_var (const PT_NODE * node)
+{
+  if (node != NULL && node->node_type == PT_EXPR)
+    {
+      return pt_limit_has_host_var (node->info.expr.arg1) || pt_limit_has_host_var (node->info.expr.arg2);
+    }
+  return node != NULL && node->node_type == PT_HOST_VAR;
+}
+
+/*
+ * pt_cast_limit_rewritten_sum () - cast the string operands of a sum the rewrite builds over LIMIT values to DOUBLE
+ *                                  and mark the sum so that an overflow gives the BIGINT maximum
+ *   return: true when an operand has a host variable, false for a sum of literals
+ *   parser(in):
+ *   sum(in/out): the offset + count of a numbering predicate, or the sum a UNION pushes down to its arms
+ *
+ * Note: Every path reads the sum the same way: an overflow gives the BIGINT maximum (PT_EXPR_INFO_LIMIT_SUM), so
+ *       LIMIT 5, 9223372036854775807 reads from row 6 instead of failing at the scan open of one path only.
+ */
+bool
+pt_cast_limit_rewritten_sum (PARSER_CONTEXT * parser, PT_NODE * sum)
+{
+  if (pt_limit_is_string (parser, sum->info.expr.arg1))
+    {
+      pt_cast_limit_operand (parser, &sum->info.expr.arg1);
+    }
+
+  if (pt_limit_is_string (parser, sum->info.expr.arg2))
+    {
+      pt_cast_limit_operand (parser, &sum->info.expr.arg2);
+    }
+
+  PT_EXPR_INFO_SET_FLAG (sum, PT_EXPR_INFO_LIMIT_SUM);
+  return pt_limit_has_host_var (sum->info.expr.arg1) || pt_limit_has_host_var (sum->info.expr.arg2);
+}
+
+/*
  * pt_limit_to_numbering_expr () -rewrite limit expr to xxx_num() expr
  *   return: expr node with numbering
  *   limit(in): limit node
@@ -4690,6 +4900,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 {
   PT_NODE *lhs, *sum, *part1, *part2, *node;
   DB_VALUE sum_val;
+  bool sum_cast;
 
   db_make_null (&sum_val);
 
@@ -4748,6 +4959,11 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	{
 	  goto error_exit;
 	}
+      if (parser->flag.is_parsing_static_sql)
+	{
+	  /* the predicate may be printed and parsed again without the LIMIT clause */
+	  pt_cast_limit_string_operands (parser, node->info.expr.arg2);
+	}
     }
   else
     {
@@ -4767,6 +4983,10 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
       if (part1->info.expr.arg2 == NULL)
 	{
 	  goto error_exit;
+	}
+      if (parser->flag.is_parsing_static_sql)
+	{
+	  pt_cast_limit_string_operands (parser, part1->info.expr.arg2);
 	}
 
       part2 = parser_new_node (parser, PT_EXPR);
@@ -4792,23 +5012,33 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	}
 
       sum->info.expr.op = PT_PLUS;
-      sum->type_enum = PT_TYPE_NUMERIC;
-      sum->data_type = parser_new_node (parser, PT_DATA_TYPE);
-      if (sum->data_type == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  goto error_exit;
-	}
-
-      sum->data_type->type_enum = PT_TYPE_NUMERIC;
-      sum->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
-      sum->data_type->info.data_type.dec_precision = 0;
-
       sum->info.expr.arg1 = parser_copy_tree (parser, limit);
       sum->info.expr.arg2 = parser_copy_tree (parser, limit->next);
       if (sum->info.expr.arg1 == NULL || sum->info.expr.arg2 == NULL)
 	{
 	  goto error_exit;
+	}
+
+      sum_cast = pt_cast_limit_rewritten_sum (parser, sum);
+      if (parser->flag.is_parsing_static_sql)
+	{
+	  pt_cast_limit_string_operands (parser, sum);
+	}
+
+      /* a sum without a host variable adds in NUMERIC as it did (LIMIT 9223372036854775806 + 1, 1) */
+      if (!sum_cast)
+	{
+	  sum->type_enum = PT_TYPE_NUMERIC;
+	  sum->data_type = parser_new_node (parser, PT_DATA_TYPE);
+	  if (sum->data_type == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      goto error_exit;
+	    }
+
+	  sum->data_type->type_enum = PT_TYPE_NUMERIC;
+	  sum->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
+	  sum->data_type->info.data_type.dec_precision = 0;
 	}
 
       if (limit->node_type == PT_VALUE && limit->next->node_type == PT_VALUE)
@@ -10389,7 +10619,7 @@ static int
 pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val, bool add_offset)
 {
   int save_set_host_var;
-  TP_DOMAIN *domainp = NULL;
+  DB_BIGINT row_bound;
   int error = NO_ERROR;
 
   db_make_null (limit_val);
@@ -10398,8 +10628,6 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
     {
       return NO_ERROR;
     }
-
-  domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
 
   save_set_host_var = parser->flag.set_host_var;
   parser->flag.set_host_var = 1;
@@ -10416,12 +10644,6 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
   if (DB_IS_NULL (limit_val))
     {
       /* probably value is not bound yet */
-      goto cleanup;
-    }
-
-  if (tp_value_coerce (limit_val, limit_val, domainp) != DOMAIN_COMPATIBLE)
-    {
-      error = ER_FAILED;
       goto cleanup;
     }
 
@@ -10445,25 +10667,43 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
       if (DB_IS_NULL (&range))
 	{
 	  /* probably value is not bound yet */
-	  goto cleanup;
-	}
-
-      if (tp_value_coerce (&range, &range, domainp) != DOMAIN_COMPATIBLE)
-	{
-	  error = ER_FAILED;
+	  pr_clear_value (limit_val);
+	  db_make_null (limit_val);
 	  goto cleanup;
 	}
 
       /* add range to current limit */
       if (add_offset)
 	{
-	  db_make_bigint (limit_val, db_get_bigint (limit_val) + db_get_bigint (&range));
+	  /* the sum first, as the numbering predicate reads it: LIMIT 1.5, 1.5 reads up to row 3 */
+	  DB_VALUE offset_dbl, range_dbl;
+
+	  if (tp_value_coerce (limit_val, &offset_dbl, &tp_Double_domain) != DOMAIN_COMPATIBLE
+	      || tp_value_coerce (&range, &range_dbl, &tp_Double_domain) != DOMAIN_COMPATIBLE)
+	    {
+	      pr_clear_value (&range);
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	  pr_clear_value (limit_val);
+	  db_make_double (limit_val, db_get_double (&offset_dbl) + db_get_double (&range_dbl));
 	}
       else
 	{
-	  db_make_bigint (limit_val, db_get_bigint (&range));
+	  pr_clear_value (limit_val);
+	  pr_clone_value (&range, limit_val);
 	}
+      pr_clear_value (&range);
     }
+
+  /* the rows the value admits: floor (2.5) is 2 rows, beyond BIGINT every row */
+  if (tp_value_to_row_bound (limit_val, false, DB_VALUE_DOMAIN_TYPE (limit_val), NULL, &row_bound) != DOMAIN_COMPATIBLE)
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+  pr_clear_value (limit_val);
+  db_make_bigint (limit_val, row_bound);
 
 cleanup:
   if (error != NO_ERROR)
@@ -10874,6 +11114,7 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
   PT_NODE *arg1 = NULL, *arg2 = NULL;
   PT_NODE *save_next = NULL;
   DB_VALUE limit;
+  DB_BIGINT row_bound;
   int error = NO_ERROR;
   bool lt = false;
 
@@ -10935,20 +11176,20 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
     {
       arg_ordby_num = arg2;
       rhs = arg1;
-      /* reverse operators */
+      /* ORDERBY_NUM () is on the right: mirror the operator, n >= ORDERBY_NUM () is ORDERBY_NUM () <= n */
       switch (op)
 	{
 	case PT_LE:
-	  op = PT_GT;
-	  break;
-	case PT_LT:
 	  op = PT_GE;
 	  break;
+	case PT_LT:
+	  op = PT_GT;
+	  break;
 	case PT_GT:
-	  op = PT_LE;
+	  op = PT_LT;
 	  break;
 	case PT_GE:
-	  op = PT_LT;
+	  op = PT_LE;
 	  break;
 	default:
 	  break;
@@ -11007,20 +11248,19 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
       pt_evaluate_tree_having_serial (parser, rhs, &limit, 1);
     }
 
+  /* the rows the comparison keeps: floor (n) for <= n, ceil (n) - 1 for < n */
   if (DB_IS_NULL (&limit)
-      || tp_value_coerce (&limit, &limit, tp_domain_resolve_default (DB_TYPE_BIGINT)) != DOMAIN_COMPATIBLE)
+      || tp_value_to_row_bound (&limit, lt, DB_VALUE_DOMAIN_TYPE (&limit), NULL, &row_bound) != DOMAIN_COMPATIBLE)
     {
       /* has unusable upper_limit */
+      pr_clear_value (&limit);
       pr_clear_value (upper_limit);
       *has_limit = true;
       return NO_ERROR;
     }
 
-  if (lt)
-    {
-      /* ORDERBY_NUM () < n => ORDERBY_NUM <= n - 1 */
-      db_make_bigint (&limit, (db_get_bigint (&limit) - 1));
-    }
+  pr_clear_value (&limit);
+  db_make_bigint (&limit, row_bound);
   if (DB_IS_NULL (upper_limit) || (db_get_bigint (upper_limit) > db_get_bigint (&limit)))
     {
       /* update upper limit */
@@ -12764,6 +13004,9 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
   int error = NO_ERROR;
   int upd_cls_cnt = 0;
   int remote = 0, local = 0;
+  bool has_remote_spec = false;
+  bool *counted;
+  int i;
 
   PT_ASSIGNMENTS_HELPER ea;
   PT_NODE *node = NULL, *assignments, *spec;
@@ -12774,10 +13017,22 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
   while (spec)
     {
       upd_cls_cnt++;
+      if (spec->info.spec.remote_server_name)
+	{
+	  has_remote_spec = true;
+	}
       spec = spec->next;
     }
 
-  spec = statement->info.update.spec;
+  /* local_upd and remote_upd count target specs, not assignments: a spec counts once however many of its
+   * columns are assigned, the way DELETE counts its target classes. The dblink sinks read remote_upd == 1
+   * as "a single remote target". counted[i] is set once the i-th spec has been counted. */
+  counted = (bool *) parser_alloc (parser, upd_cls_cnt * sizeof (bool));
+  if (counted == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_FAILED;
+    }
 
   pt_init_assignments_helper (parser, &ea, assignments);
 
@@ -12787,9 +13042,11 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
       char *tbl_alias = NULL;
       char *lhs_name;
       bool found = false;
+      PT_NODE *target = NULL;	/* the spec this assignment updates */
+      int target_pos = 0;
 
       lhs_name = (char *) ea.lhs->info.name.original;
-      while (spec && !found)
+      for (spec = statement->info.update.spec, i = 0; spec && !found; spec = spec->next, i++)
 	{
 	  if (spec->info.spec.entity_name)
 	    {
@@ -12803,17 +13060,86 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
 		  || upd_cls_cnt == 1)
 		{
 		  found = true;
-		  if (spec->info.spec.remote_server_name)
-		    {
-		      remote++;
-		    }
-		  else
-		    {
-		      local++;
-		    }
+		  target = spec;
+		  target_pos = i;
 		}
 	    }
-	  spec = spec->next;
+	}
+
+      if (!found && has_remote_spec)
+	{
+	  /* unqualified column, before name binding (no spec_id to ask): a name some
+	   * local class owns is a local update; only a name no local spec knows is
+	   * assumed to target the remote table, whose columns are not fetched yet.
+	   * This only routes the rewrite - a name both sides own still fails at name
+	   * binding as ambiguous, like the native path. */
+	  er_stack_push ();
+	  for (spec = statement->info.update.spec, i = 0; spec && !found; spec = spec->next, i++)
+	    {
+	      /* DB_MAX_IDENTIFIER_LENGTH is the budget for the qualified form already:
+	       * DB_MAX_CLASS_LENGTH is derived from it as owner + '.' + class */
+	      char qualified_name[DB_MAX_IDENTIFIER_LENGTH];
+	      const char *owner, *cls_name;
+
+	      if (spec->info.spec.remote_server_name != NULL || spec->info.spec.entity_name == NULL
+		  || spec->info.spec.entity_name->node_type != PT_NAME)
+		{
+		  continue;
+		}
+
+	      owner = spec->info.spec.entity_name->info.name.resolved;
+	      cls_name = spec->info.spec.entity_name->info.name.original;
+
+	      if (owner != NULL && owner[0] != '\0')
+		{
+		  /* the owner is still in resolved, not in original: this rewrite runs before
+		   * name binding.  db_find_class () resolves a bare name in the connected user's
+		   * schema only, so another owner's class would be missed and its column taken
+		   * for a remote one. */
+		  if (snprintf (qualified_name, sizeof (qualified_name), "%s.%s", owner, cls_name)
+		      >= (int) sizeof (qualified_name))
+		    {
+		      /* longer than any class name can be, so no local class matches it */
+		      continue;
+		    }
+
+		  cls_name = qualified_name;
+		}
+
+	      if (db_get_attribute_by_name (cls_name, lhs_name) != NULL)
+		{
+		  found = true;
+		  target = spec;
+		  target_pos = i;
+		}
+	    }
+	  er_stack_pop ();
+
+	  if (!found)
+	    {
+	      /* which remote spec owns the name is unknown until its columns are fetched, so it is charged
+	       * to the first one and several remote specs can count as one. The sinks need a single
+	       * spec anyway, and name binding still resolves the real target. */
+	      found = true;
+	      for (target = statement->info.update.spec, target_pos = 0; target->info.spec.remote_server_name == NULL;
+		   target = target->next, target_pos++)
+		{
+		  ;
+		}
+	    }
+	}
+
+      if (found && !counted[target_pos])
+	{
+	  counted[target_pos] = true;
+	  if (target->info.spec.remote_server_name)
+	    {
+	      remote++;
+	    }
+	  else
+	    {
+	      local++;
+	    }
 	}
 
       if (!found && remote > 0 && local > 0)
@@ -14092,6 +14418,17 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  sub_sel->info.query.q.select.from = spec;
 	  list->info.spec.derived_table = sub_sel;
 	  list->info.spec.derived_table_type = PT_IS_SUBQUERY;
+
+	  /* The statement did not ask for this derived table - it is generated so that the
+	   * DML rewrite can treat the remote source as a subquery.  Mark both halves so the
+	   * name resolution can tell it apart from a subquery the statement wrote, and keep
+	   * it transparent to the remote invisible columns the statement references.
+	   *
+	   * Its star expansion carries invisible-marked names into the select list
+	   * (pt_dblink_spec_star_passes_invisible ()).  That mark is a bit of its own, so the
+	   * compiler's hidden-column readers never see it. */
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_DBLINK_DML_SRC);
+	  list->info.spec.flag = (PT_SPEC_FLAG) (list->info.spec.flag | PT_SPEC_FLAG_DBLINK_DML_SRC);
 	}
 
       if (sub_sel && sub_sel->node_type == PT_SELECT)
@@ -14655,6 +14992,15 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_UPDATE:
     case PT_MERGE:
       parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_dml, &snl);
+      if (pt_has_error (parser))
+	{
+	  return;
+	}
+
+      /* The rewrite above wrapped every remote source spec in a derived table the
+       * statement did not write, so the columns it references on those tables were left
+       * behind in the enclosing block.  Collect them now that the specs exist. */
+      pt_gather_dblink_cols_in_dml (parser, stmt);
       if (pt_has_error (parser))
 	{
 	  return;
@@ -15310,10 +15656,10 @@ pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
 	  && node->info.host_var.index < parser->host_var_count)
 	{
 	  /* a PL/CSQL variable replaced by pt_parameterize_for_static_sql (): the end of the name or the path
-	   * expression (e.g. rec.field) is kept in parser->static_sql_host_var_end, and the start is found from the
+	   * expression (e.g. rec.field) is kept in parser->static_sql_host_vars, and the start is found from the
 	   * tokens ending there */
-	  int end = (parser->static_sql_host_var_end != NULL)
-	    ? parser->static_sql_host_var_end[node->info.host_var.index] : -1;
+	  int end = (parser->static_sql_host_vars != NULL)
+	    ? parser->static_sql_host_vars[node->info.host_var.index].end : -1;
 	  int start = (end > 0) ? pt_static_sql_path_start (list, end, node->info.host_var.label) : -1;
 	  char *hv = NULL;
 
@@ -15739,14 +16085,23 @@ pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       qsort (list.edits, list.count, sizeof (PT_STATIC_SQL_EDIT), pt_static_sql_compare_edits);
 
-      /* the same insertion can be collected more than once */
+      /* the same edit can be collected more than once: an insertion, or a host variable copied by the parser
+       * (see pt_parameterize_for_static_sql ()) */
       for (i = 1, j = 0; i < list.count; i++)
 	{
 	  if (list.edits[i].start == list.edits[j].start && list.edits[i].end == list.edits[j].end
-	      && list.edits[i].host_var_index < 0 && list.edits[j].host_var_index < 0
-	      && strcmp (list.edits[i].text, list.edits[j].text) == 0)
+	      && list.edits[i].host_var_index == list.edits[j].host_var_index)
 	    {
-	      continue;
+	      if (list.edits[i].host_var_index >= 0)
+		{
+		  /* a host variable edit has the text made from its index (see pt_collect_static_sql_edits_pre ()) */
+		  assert (strcmp (list.edits[i].text, list.edits[j].text) == 0);
+		  continue;
+		}
+	      if (strcmp (list.edits[i].text, list.edits[j].text) == 0)
+		{
+		  continue;
+		}
 	    }
 	  list.edits[++j] = list.edits[i];
 	}
