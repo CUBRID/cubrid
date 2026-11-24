@@ -185,14 +185,11 @@ namespace cubpl
       }
     while (error_code == NO_ERROR && code != METHOD_REQUEST_COMPILE);
 
-    /* as in cubpl::executor::execute (); the client reads the error from the response */
-    if (error_code == NO_ERROR)
+    /* a deferred abort wins over the error the loop ended with: splcsql_transfer_file () aborts only on its error */
+    if (logtb_fail_if_abort_deferred (logtb_get_current_tran_index ()) != NO_ERROR)
       {
-	error_code = logtb_fail_if_abort_deferred (logtb_get_current_tran_index ());
-	if (error_code != NO_ERROR)
-	  {
-	    create_error_response (out_blk, error_code);
-	  }
+	error_code = ER_LK_UNILATERALLY_ABORTED;
+	create_error_response (out_blk, error_code);
       }
     return error_code;
   }
