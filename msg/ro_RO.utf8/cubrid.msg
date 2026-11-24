@@ -1322,7 +1322,10 @@ $ LOADDB
 1300 Recuperarea jurnalului: %1$S este terminată.
 1301 Recuperare jurnal: %1$s progres: (%2$lld/%3$lld), %4$.2f procent, timp scurs: %5$.2f (s), timp rămas estimat: %6$.2f (s).
 
-1302 Ultima eroare
+1302 The secret of session %1$u does not match.
+1303 Cannot end session %1$u because it is not attached to this connection.
+
+1304 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
