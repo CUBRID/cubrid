@@ -4505,19 +4505,22 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
  * logtb_get_catalog_read_snapshot () - build into local a snapshot for one catalog read request
  *
  * Whatever the isolation level, the transaction snapshot is neither built nor changed, so reading the catalog does
- * not fix the point in time a transaction's queries see. Like that snapshot, it holds vacuum back from the versions
- * it may read until the transaction ends.
+ * not fix the point in time a transaction's queries see. It holds vacuum back from the versions it may read until
+ * logtb_release_catalog_read_snapshot ().
  *
  * return: local, or NULL for a system transaction
  *
  *   thread_p(in): thread entry
  *   local(out): snapshot owned by the caller for the duration of the request
+ *   holds_vacuum(out): set when local registered the transaction's lowest visible MVCCID; the caller then calls
+ *			logtb_release_catalog_read_snapshot ()
  */
 MVCC_SNAPSHOT *
-logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local)
+logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local, bool * holds_vacuum)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
+  *holds_vacuum = false;
   if (!tdes->is_active_worker_transaction ())
     {
       return NULL;
@@ -4526,8 +4529,32 @@ logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local)
   /* no parallel worker reads the catalog this way, so the main thread's snapshot mutex is not needed */
   assert (thread_p->m_px_orig_thread_entry == NULL);
 
-  log_Gl.mvcc_table.build_snapshot (tdes->tran_index, *local, false);
+  *holds_vacuum = log_Gl.mvcc_table.build_snapshot (tdes->tran_index, *local, false);
   return local;
+}
+
+/*
+ * logtb_release_catalog_read_snapshot () - stop holding vacuum back for a catalog read snapshot no longer used, so
+ *					    that a transaction which only compiles does not hold it back until it ends
+ *
+ * Call it on the thread that built local. In between, the transaction starts no other catalog read and does not
+ * build and then drop its own snapshot.
+ *
+ *   thread_p(in): thread entry
+ *   local(in): a snapshot logtb_get_catalog_read_snapshot () built with holds_vacuum set
+ */
+void
+logtb_release_catalog_read_snapshot (THREAD_ENTRY * thread_p, const MVCC_SNAPSHOT * local)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  assert (thread_p->m_px_orig_thread_entry == NULL);
+
+  /* a transaction snapshot built in the meantime relies on the same registration */
+  if (!tdes->mvccinfo.snapshot.valid)
+    {
+      log_Gl.mvcc_table.reset_transaction_lowest_active (tdes->tran_index, *local);
+    }
 }
 
 /*
