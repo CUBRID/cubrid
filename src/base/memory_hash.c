@@ -577,7 +577,7 @@ mht_ptrhash (const void *key, const unsigned int ht_size)
  *   hash(in): the hash
  *
  * Behavior:
- *   mht_valhash () mixes every value's 32-bit hash with it once, after mht_mixhash64_to_32 () cuts a 64-bit hash.
+ *   mht_valhash () mixes with it once every value's hash that mht_mixhash64_to_32 () has not mixed already.
  *
  * Reason:
  *   - A table that indexes by the low bits (hash & mask, as mht_get_hls () does) sees only them, and a value's hash can
@@ -836,6 +836,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 {
   const DB_VALUE *val = (const DB_VALUE *) key;
   unsigned int hash = 0;
+  bool is_mixed = false;	/* hashed by mht_mixhash64_to_32 (), which mixes all the bits already */
 
   if (unlikely (val == NULL || DB_IS_NULL (val) || ht_size <= 1))
     {
@@ -846,33 +847,40 @@ mht_valhash (const void *key, const unsigned int ht_size)
     {
     case DB_TYPE_SMALLINT:
       hash = mht_mixhash64_to_32 (numeric_hash_int64 (db_get_short (val)));
+      is_mixed = true;
       break;
 
     case DB_TYPE_INTEGER:
       hash = mht_mixhash64_to_32 (numeric_hash_int64 (db_get_int (val)));
+      is_mixed = true;
       break;
 
     case DB_TYPE_BIGINT:
       hash = mht_mixhash64_to_32 (numeric_hash_int64 (db_get_bigint (val)));
+      is_mixed = true;
       break;
 
     case DB_TYPE_NUMERIC:
       /* 1.0 and 1.00, of any precision and scale, hash alike */
       hash = mht_mixhash64_to_32 (numeric_db_value_hash (val));
+      is_mixed = true;
       break;
 
     case DB_TYPE_FLOAT:
       /* as the DOUBLE it equals, so a FLOAT and a DOUBLE of one value hash alike */
       hash = mht_hash_double (db_get_float (val));
+      is_mixed = true;
       break;
 
     case DB_TYPE_DOUBLE:
       hash = mht_hash_double (db_get_double (val));
+      is_mixed = true;
       break;
 
     case DB_TYPE_MONETARY:
       /* by its amount, as mr_cmpval_money () compares */
       hash = mht_hash_double (db_get_monetary (val)->amount);
+      is_mixed = true;
       break;
 
     case DB_TYPE_CHAR:
@@ -924,6 +932,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
       {
 	const DB_DATETIME *datetime = db_get_datetime (val);
 	hash = mht_mixhash64_to_32 (((UINT64) datetime->date << 32) | datetime->time);
+	is_mixed = true;
       }
       break;
 
@@ -931,6 +940,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
       {
 	const DB_DATETIME *datetime = &db_get_datetimetz (val)->datetime;
 	hash = mht_mixhash64_to_32 (((UINT64) datetime->date << 32) | datetime->time);
+	is_mixed = true;
       }
       break;
 
@@ -1018,8 +1028,10 @@ mht_valhash (const void *key, const unsigned int ht_size)
       break;
     }
 
-  /* mht_mixhash () is a bijection: mixing a hash mht_mixhash64_to_32 () already mixed adds no collision */
-  hash = mht_mixhash (hash);
+  if (!is_mixed)
+    {
+      hash = mht_mixhash (hash);
+    }
 
   /* ht_size UINT_MAX asks for the whole hash: hash % UINT_MAX, without the division */
   if (ht_size == UINT_MAX)
@@ -1817,42 +1829,6 @@ mht_get (MHT_TABLE * ht, const void *key)
 	  mht_adjust_lru_list (ht, hentry);
 
 	  /* return value */
-	  return hentry->data;
-	}
-    }
-  return NULL;
-}
-
-/*
- * mht_get_hash - find data associated with key, its hash computed by the caller
- *   return: the data associated with the key, or NULL if not found
- *   ht(in): hash table
- *   key(in): hashing key
- *   hash(in): the key's hash over the full unsigned range, of which the table's hash function takes hash % size
- *	       as the bucket for every size (so the caller's one hash serves the lookup and whatever else it
- *	       hashes the key for)
- *
- * Note: mht_get () without the call of the table's hash function.
- */
-void *
-mht_get_hash (MHT_TABLE * ht, const void *key, unsigned int hash)
-{
-  HENTRY_PTR hentry;
-
-  assert (ht != NULL);
-  assert (key != NULL);
-
-  if (hash >= ht->size)
-    {
-      hash %= ht->size;
-    }
-  assert (hash == (*ht->hash_func) (key, ht->size));
-
-  for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
-    {
-      if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
-	{
-	  mht_adjust_lru_list (ht, hentry);
 	  return hentry->data;
 	}
     }
@@ -2874,7 +2850,8 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY * entry
  *   n(in): requested minimum number of buckets
  *
  * Note: HASH LIST SCAN tables index buckets with a bit-mask (hash & (size - 1)) instead of a modulo. Their hash values
- *       are already avalanche-mixed (see mht_mixhash ()), so the low bits spread evenly across a power-of-two table.
+ *       are already avalanche-mixed (mht_mixhash () or mht_mixhash64_to_32 ()), so the low bits spread evenly across
+ *       a power-of-two table.
  */
 static unsigned int
 mht_next_power_of_2 (unsigned int n)

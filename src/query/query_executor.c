@@ -5264,11 +5264,14 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     {
       return rc;
     }
-  /* the key hashed once: the table takes its bucket (qdata_hash_agg_hkey_bucket ()), the sketch the hash */
+
+  /* the key hashed once: the table takes its bucket from the stored hash (qdata_hash_agg_hkey_bucket ()), the
+   * sketch the hash */
   h = qdata_hash_agg_hkey (key, 0xffffffffu);
+  key->hash = h;
 
   /* probe hash table */
-  value = (AGGREGATE_HASH_VALUE *) mht_get_hash (context->hash_table, (void *) key, h);
+  value = (AGGREGATE_HASH_VALUE *) mht_get (context->hash_table, (void *) key);
   if (value == NULL)
     {
       /* the sketch counts distinct keys and a key it has is a no-op: a group's key went in when the group was made
@@ -6198,14 +6201,12 @@ qexec_gby_order_reaches_result (const XASL_NODE * xasl)
   return true;
 }
 
-/* the partition of a key: its hash, mixed again so that it does not follow the tables' own buckets.  level 1 is
- * the split of the lists; level 2, the split of one partition again, mixes the hash another way, so that the
- * high bits it takes do not repeat the ones the first split fixed */
+/* the partition of a key by its hash h (qdata_hash_agg_hkey ()), mixed again so that it does not follow the tables'
+ * own buckets.  level 1 is the split of the lists; level 2, the split of one partition again, mixes the hash another
+ * way, so that the high bits it takes do not repeat the ones the first split fixed */
 static int
-qexec_gby_merge_part_of (AGGREGATE_HASH_KEY * key, int n_parts, int level)
+qexec_gby_merge_part_of (unsigned int h, int n_parts, int level)
 {
-  unsigned int h = qdata_hash_agg_hkey (key, 0xffffffffu);
-
   if (level == 1)
     {
       h ^= h >> 16;
@@ -6349,11 +6350,10 @@ qexec_gby_mtable_group_bytes (int n_keys, int n_funcs)
 		   + 8 * MAX_ALIGNMENT + 2 * sizeof (QEXEC_GBY_SLOT));
 }
 
+/* the merge table's hash of a key by its hash h (qdata_hash_agg_hkey ()) */
 static unsigned int
-qexec_gby_mtable_hash (AGGREGATE_HASH_KEY * key)
+qexec_gby_mtable_hash (unsigned int h)
 {
-  unsigned int h = qdata_hash_agg_hkey (key, 0xffffffffu);
-
   /* another mix than the partition's (qexec_gby_merge_part_of ()), whose high bits are one per partition */
   h ^= h >> 15;
   h *= 0x2c1b3c6du;
@@ -6695,7 +6695,7 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
 	  break;
 	}
       /* the key by its hash (0 is the empty mark): two keys of one hash count as one, rarely */
-      h = qexec_gby_mtable_hash (ctx->temp_key) | 1;
+      h = qexec_gby_mtable_hash (qdata_hash_agg_hkey (ctx->temp_key, 0xffffffffu)) | 1;
       for (i = h & mask; hashes[i] != 0 && hashes[i] != h; i = (i + 1) & mask)
 	;
       hashes[i] = h;
@@ -6790,7 +6790,7 @@ qexec_gby_merge_rows (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_GBY_
 	{
 	  (*n_read)++;
 	}
-      h = qexec_gby_mtable_hash (rd->temp_key);
+      h = qexec_gby_mtable_hash (qdata_hash_agg_hkey (rd->temp_key, 0xffffffffu));
       s = qexec_gby_mtable_find (t, rd->temp_key, h);
       if (s->key == NULL)
 	{
@@ -6876,7 +6876,7 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
 	{
 	  (*n_read)++;
 	}
-      h = qexec_gby_mtable_hash (rd->temp_part_key);
+      h = qexec_gby_mtable_hash (qdata_hash_agg_hkey (rd->temp_part_key, 0xffffffffu));
       s = qexec_gby_mtable_find (t, rd->temp_part_key, h);
       if (s->key == NULL && rd->no_first_tuple)
 	{
@@ -7020,14 +7020,17 @@ qexec_gby_merge_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QFIL
 	{
 	  rc = qdata_load_agg_hkey_from_tuple (thread_p, tpl.tpl, from->type_list.hdr_size, from->type_list.type_cnt,
 					       rd->temp_part_key, rd->ctx->key_domains, false);
-	  k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_part_key, n_parts, level) : 0;
+	  k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (qdata_hash_agg_hkey (rd->temp_part_key, 0xffffffffu), n_parts,
+							  level) : 0;
 	}
       else
 	{
 	  /* the key's nodes are positions (g_hk_sort_regu_list) reading the tuple itself: the row's other values are not
 	   * fetched here, the pass that aggregates the part fetches them */
 	  rc = qexec_build_agg_hkey (thread_p, rd->xasl_state, rd->hk_regu, &tpl, rd->temp_key);
-	  k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_key, n_parts, level) : 0;
+	  k =
+	    (rc == NO_ERROR) ? qexec_gby_merge_part_of (qdata_hash_agg_hkey (rd->temp_key, 0xffffffffu), n_parts,
+							level) : 0;
 	}
       if (rc == NO_ERROR)
 	{
@@ -7681,7 +7684,8 @@ qexec_gby_px_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_R
 	    {
 	      rc = qdata_load_agg_hkey_from_tuple (thread_p, tpl, from->type_list.hdr_size, from->type_list.type_cnt,
 						   rd->temp_part_key, rd->ctx->key_domains, false);
-	      k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_part_key, px->n_parts, 1) : 0;
+	      k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (qdata_hash_agg_hkey (rd->temp_part_key, 0xffffffffu),
+							      px->n_parts, 1) : 0;
 	    }
 	  else
 	    {
@@ -7689,7 +7693,9 @@ qexec_gby_px_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_R
 	      /* the key reads the tuple's positions only, as the serial split does */
 	      rc = qexec_build_agg_hkey (thread_p, rd->xasl_state, rd->hk_regu, &slot, rd->temp_key);
 	      /* a key the fetch did not build has unset values: not hashed (as the serial split does not) */
-	      k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_key, px->n_parts, 1) : 0;
+	      k =
+		(rc == NO_ERROR) ? qexec_gby_merge_part_of (qdata_hash_agg_hkey (rd->temp_key, 0xffffffffu),
+							    px->n_parts, 1) : 0;
 	    }
 	  if (rc == NO_ERROR)
 	    {

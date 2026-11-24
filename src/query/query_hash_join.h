@@ -486,7 +486,8 @@ extern void hjoin_prehash_release (THREAD_ENTRY * thread_p, HJOIN_PREHASH * preh
  *   - hash_key % part_cnt would fix the low k bits within a partition when 2^k divides part_cnt: the tuples of a
  *     partition would start probing from only 1 / 2^k of the slots.
  *   - The partition comes from the high bits of the hash key instead, which leave the low bits free. mht_valhash ()
- *     ends the hash of every key value with a mix (mht_mixhash ()), so the high bits spread as the low ones do.
+ *     ends the hash of every key value with a mix (mht_mixhash () or mht_mixhash64_to_32 ()), so the high bits spread
+ *     as the low ones do.
  */
 STATIC_INLINE UINT32
 hjoin_get_partition_id (UINT32 hash_key, UINT32 part_cnt, bool has_null_fill_side)
