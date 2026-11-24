@@ -156,7 +156,8 @@ extern "C"
   extern PT_NODE *pt_compile (PARSER_CONTEXT * parser, PT_NODE * volatile statement);
 
   extern PT_NODE *pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info);
-<<<<<<< HEAD
+  extern int pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info);
+  extern int pt_semantic_type_term_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info);
   extern PT_NODE *pt_fold_const_node (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO * sc_info);
 
   extern PT_VOLATILITY pt_get_expr_tree_volatility (PT_NODE * node, PT_NODE ** unclassified_node);
@@ -172,10 +173,6 @@ extern "C"
   extern int pt_get_expr_tree_si_requirement (const PT_NODE * node);
   extern bool pt_op_reads_client_value (PT_OP_TYPE op);
   extern bool pt_expr_tree_reads_client_value (PARSER_CONTEXT * parser, PT_NODE * tree);
-=======
-  extern int pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info);
-  extern int pt_semantic_type_term_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info);
->>>>>>> upstream/develop
 
   extern void pt_report_to_ersys (const PARSER_CONTEXT * parser, const PT_ERROR_TYPE error_type);
 
