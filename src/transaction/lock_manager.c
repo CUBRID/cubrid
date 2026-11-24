@@ -10337,7 +10337,7 @@ lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid)
     }
   else
     {
-      entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, class_oid, true);
+      entry_ptr = lock_find_class_entry (tran_index, class_oid);
     }
 
   return entry_ptr;
