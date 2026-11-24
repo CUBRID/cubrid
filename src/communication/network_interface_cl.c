@@ -10914,6 +10914,91 @@ log_get_mvcc_snapshot (void)
 }
 
 /*
+ * log_export_mvcc_snapshot () - pin the snapshot of the transaction for the other connections of this client
+ *
+ * return : error code
+ * tran_index (out) : the transaction, for log_import_mvcc_snapshot ()
+ * trid (out) : its id
+ */
+int
+log_export_mvcc_snapshot (int *tran_index, int *trid)
+{
+#if defined(CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int err;
+
+  err = net_client_request (NET_SERVER_LOG_EXPORT_MVCC_SNAPSHOT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+			    0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  ptr = or_unpack_int (reply, &err);
+  ptr = or_unpack_int (ptr, tran_index);
+  (void) or_unpack_int (ptr, trid);
+
+  return err;
+#else /* !CS_MODE */
+  int err;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  err = xlogtb_export_mvcc_snapshot (thread_p, tran_index, trid);
+
+  exit_server (*thread_p);
+
+  return err;
+#endif /* CS_MODE */
+}
+
+/*
+ * log_import_mvcc_snapshot () - take over the snapshot another connection of this client exported
+ *
+ * return : error code
+ * tran_index (in) : from log_export_mvcc_snapshot ()
+ * trid (in) : likewise
+ */
+int
+log_import_mvcc_snapshot (int tran_index, int trid)
+{
+#if defined(CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int err;
+
+  ptr = or_pack_int (request, tran_index);
+  (void) or_pack_int (ptr, trid);
+
+  err = net_client_request (NET_SERVER_LOG_IMPORT_MVCC_SNAPSHOT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  (void) or_unpack_int (reply, &err);
+
+  return err;
+#else /* !CS_MODE */
+  int err;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  err = xlogtb_import_mvcc_snapshot (thread_p, tran_index, trid);
+
+  exit_server (*thread_p);
+
+  return err;
+#endif /* CS_MODE */
+}
+
+/*
  * locator_upgrade_instances_domain () - performs an upgrade of domain for
  *					 instances of a class
  * return : NO_ERROR if all OK, error status otherwise

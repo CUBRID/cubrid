@@ -75,6 +75,7 @@ class mvcctable
 
     void alloc_transaction_lowest_active ();
     void reset_transaction_lowest_active (int tran_index);
+    bool share_lowest_visible (int dest_tran_index, int src_tran_index);
 
     // mvcc_snapshot/mvcc_info functions
     void build_mvcc_info (log_tdes &tdes);

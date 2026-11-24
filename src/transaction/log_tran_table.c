@@ -4136,9 +4136,9 @@ logtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
-  if (tdes->mvccinfo.snapshot.valid)
+  if (tdes->mvccinfo.snapshot.valid && !tdes->mvccinfo.snapshot.pinned)
     {
-      /* Invalidate snapshot */
+      /* Invalidate snapshot, unless it is shared with other transactions (see xlogtb_export_mvcc_snapshot ()) */
       tdes->mvccinfo.snapshot.valid = false;
       logtb_tran_reset_count_optim_state (thread_p);
     }
@@ -4164,6 +4164,112 @@ xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
       ASSERT_ERROR_AND_SET (error_code);
     }
   return error_code;
+}
+
+/*
+ * xlogtb_export_mvcc_snapshot () - hand the snapshot of the transaction to the other connections of its client
+ *
+ * return	    : error code
+ * thread_p (in)    : thread entry
+ * tran_index (out) : the transaction, for xlogtb_import_mvcc_snapshot ()
+ * trid (out)	    : its id, so that a later transaction on the same index is not taken for it
+ *
+ * Note: the snapshot is built if it has not been, and pinned: it is kept until the transaction ends, so that all the
+ *	 connections read one point in time (unloaddb --fetcher-count). The transaction holds vacuum back meanwhile.
+ */
+int
+xlogtb_export_mvcc_snapshot (THREAD_ENTRY * thread_p, int *tran_index, int *trid)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
+  int error_code = NO_ERROR;
+
+  if (snapshot == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  snapshot->pinned = true;
+  *tran_index = tdes->tran_index;
+  *trid = tdes->trid;
+
+  return NO_ERROR;
+}
+
+/*
+ * logtb_is_snapshot_exporter () - is src the transaction which exported the snapshot tdes may take over?
+ *
+ * return : true if src is active with the snapshot pinned, has the given id, and belongs to the client process of tdes
+ */
+static bool
+logtb_is_snapshot_exporter (const LOG_TDES * tdes, const LOG_TDES * src, int src_trid)
+{
+  return (src != NULL
+	  && src != tdes
+	  && src->trid == src_trid
+	  && LOG_ISTRAN_ACTIVE (src)
+	  && src->mvccinfo.snapshot.valid
+	  && src->mvccinfo.snapshot.pinned
+	  && src->client.process_id == tdes->client.process_id
+	  && src->client.host_name == tdes->client.host_name && src->client.db_user == tdes->client.db_user);
+}
+
+/*
+ * xlogtb_import_mvcc_snapshot () - take over the snapshot another transaction of the client exported
+ *
+ * return	      : error code
+ * thread_p (in)      : thread entry
+ * src_tran_index (in): the transaction, from xlogtb_export_mvcc_snapshot ()
+ * src_trid (in)      : its id
+ *
+ * Note: only a transaction of the same client process and user takes the snapshot over, while the exporting one is
+ *	 active. The snapshot is pinned here too, and this transaction holds vacuum back as far as the exporting one
+ *	 does, so the versions the snapshot sees stay even if the exporting one ends first.
+ */
+int
+xlogtb_import_mvcc_snapshot (THREAD_ENTRY * thread_p, int src_tran_index, int src_trid)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  LOG_TDES *src;
+  MVCC_SNAPSHOT *snapshot;
+  unsigned int build_serial;
+  bool done = false;
+
+  if (tdes == NULL || !tdes->is_active_worker_transaction () || src_tran_index <= LOG_SYSTEM_TRAN_INDEX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
+      return ER_MVCC_CANT_GET_SNAPSHOT;
+    }
+
+  snapshot = &tdes->mvccinfo.snapshot;
+
+  TR_TABLE_CS_ENTER_READ_MODE (thread_p);
+  src = LOG_FIND_TDES (src_tran_index);
+  if (logtb_is_snapshot_exporter (tdes, src, src_trid))
+    {
+      build_serial = snapshot->build_serial;
+      src->mvccinfo.snapshot.copy_to (*snapshot);
+      /* a new build for what this transaction has read under its own snapshot, see heap_file_order_cache_get () */
+      snapshot->build_serial = build_serial + 1;
+      snapshot->pinned = true;
+      tdes->mvccinfo.recent_snapshot_lowest_active_mvccid = snapshot->lowest_active_mvccid;
+
+      /* src must still be the exporting transaction after the copy and the hold, or both may be stale */
+      done = (log_Gl.mvcc_table.share_lowest_visible (tdes->tran_index, src_tran_index)
+	      && logtb_is_snapshot_exporter (tdes, src, src_trid));
+    }
+  TR_TABLE_CS_EXIT (thread_p);
+
+  if (!done)
+    {
+      snapshot->valid = false;
+      snapshot->pinned = false;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
+      return ER_MVCC_CANT_GET_SNAPSHOT;
+    }
+
+  return NO_ERROR;
 }
 
 /*

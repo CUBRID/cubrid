@@ -607,6 +607,39 @@ mvcctable::reset_transaction_lowest_active (int tran_index)
 		     oldest_active_event::RESET);
 }
 
+/*
+ * share_lowest_visible () - hold vacuum back for a transaction as far as another transaction does, for the snapshot
+ *			     the first one takes over from the second (see xlogtb_import_mvcc_snapshot ())
+ *   return: false if src holds nothing back, so the snapshot cannot be taken over
+ *   dest_tran_index(in): the transaction which takes the snapshot over
+ *   src_tran_index(in): the transaction whose snapshot it is
+ *
+ * Note: vacuum has not gone past what src holds back, so dest may hold back the same. dest keeps a lower value.
+ *	 The caller checks that src has not ended meanwhile.
+ */
+bool
+mvcctable::share_lowest_visible (int dest_tran_index, int src_tran_index)
+{
+  MVCCID src = oldest_active_get (m_transaction_lowest_visible_mvccids[src_tran_index], src_tran_index,
+				  oldest_active_event::BUILD_MVCC_INFO);
+  MVCCID dest;
+
+  if (src == MVCCID_NULL || src == MVCCID_ALL_VISIBLE)
+    {
+      return false;
+    }
+
+  dest = oldest_active_get (m_transaction_lowest_visible_mvccids[dest_tran_index], dest_tran_index,
+			    oldest_active_event::BUILD_MVCC_INFO);
+  if (dest == MVCCID_NULL || dest == MVCCID_ALL_VISIBLE || MVCC_ID_PRECEDES (src, dest))
+    {
+      oldest_active_set (m_transaction_lowest_visible_mvccids[dest_tran_index], dest_tran_index, src,
+			 oldest_active_event::BUILD_MVCC_INFO);
+    }
+
+  return true;
+}
+
 void
 mvcctable::reset_start_mvccid ()
 {

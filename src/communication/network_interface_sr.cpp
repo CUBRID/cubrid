@@ -10634,6 +10634,62 @@ slogtb_get_mvcc_snapshot (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 }
 
 /*
+ * slogtb_export_mvcc_snapshot () - pin the snapshot of the transaction for the other connections of the client
+ *
+ * reply: [int error][int tran_index][int trid]
+ */
+void
+slogtb_export_mvcc_snapshot (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int tran_index = NULL_TRAN_INDEX;
+  int trid = NULL_TRANID;
+  int err;
+
+  err = xlogtb_export_mvcc_snapshot (thread_p, &tran_index, &trid);
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, err);
+  ptr = or_pack_int (ptr, tran_index);
+  (void) or_pack_int (ptr, trid);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * slogtb_import_mvcc_snapshot () - take over the snapshot another connection of the client exported
+ *
+ * request: [int tran_index][int trid], reply: [int error]
+ */
+void
+slogtb_import_mvcc_snapshot (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int tran_index, trid;
+  int err;
+
+  ptr = or_unpack_int (request, &tran_index);
+  (void) or_unpack_int (ptr, &trid);
+
+  err = xlogtb_import_mvcc_snapshot (thread_p, tran_index, trid);
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  (void) or_pack_int (reply, err);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * ssession_drop_session_variables () - drop session variables
  * return : void
  * thread_p (in) :

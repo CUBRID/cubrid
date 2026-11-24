@@ -314,7 +314,11 @@
   \
   /* password proof for a client login or user switch, appended likewise */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_AU_CHALLENGE) \
-  NET_SERVER_REQUEST_ITEM(NET_SERVER_AU_RESPONSE)
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_AU_RESPONSE) \
+  \
+  /* one MVCC snapshot for the connections of a client process (unloaddb --fetcher-count), appended likewise */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_LOG_EXPORT_MVCC_SNAPSHOT) \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_LOG_IMPORT_MVCC_SNAPSHOT)
 
 enum net_server_request
 {

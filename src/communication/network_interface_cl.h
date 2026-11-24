@@ -383,6 +383,8 @@ extern int csession_drop_session_variables (DB_VALUE * variables, const int coun
 
 extern int cvacuum (void);
 extern int log_get_mvcc_snapshot (void);
+extern int log_export_mvcc_snapshot (int *tran_index, int *trid);
+extern int log_import_mvcc_snapshot (int tran_index, int trid);
 extern int tran_lock_rep_read (LOCK lock_rr_tran);
 
 extern int chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info, const OID * class_oidp);

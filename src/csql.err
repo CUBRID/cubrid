@@ -1,0 +1,12 @@
+
+Time: 11/24/26 14:45:47.867 - NOTIFICATION *** file /home/cubrid/Repo/cubrid/src/transaction/boot_cl.c, line 888  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 727961) connected to database server 'shsrc' on the host 'localhost' (port 41577).
+
+*** The previous error message is the last one. ***
+
+
+Time: 11/24/26 14:45:58.859 - NOTIFICATION *** file /home/cubrid/Repo/cubrid/src/transaction/boot_cl.c, line 888  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 728313) connected to database server 'shsrc' on the host 'localhost' (port 41577).
+
+*** The previous error message is the last one. ***
+

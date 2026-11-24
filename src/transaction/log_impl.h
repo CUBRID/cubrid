@@ -1201,6 +1201,8 @@ extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);
 extern int logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p);
 extern int logtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p);
 extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
+extern int xlogtb_export_mvcc_snapshot (THREAD_ENTRY * thread_p, int *tran_index, int *trid);
+extern int xlogtb_import_mvcc_snapshot (THREAD_ENTRY * thread_p, int src_tran_index, int src_trid);
 
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);

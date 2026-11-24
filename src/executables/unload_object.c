@@ -1245,6 +1245,12 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
       if (nthreads > 0)
 	{
 	  unload_Nfetchers = unload_fetchers_start (g_fetcher_count);
+	  if (unload_Nfetchers < 0)
+	    {
+	      unload_Nfetchers = 0;
+	      status = 1;
+	      goto end;
+	    }
 	}
       else
 	{
@@ -1716,7 +1722,8 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
  * The fetchers of --fetcher-count: each thread holds a sub-client (db_restart_sub ()), so each has its own connection,
  * server worker and transaction, and reads its own part of every class: the part of this process (--process) is split
  * again by the fetchers.  The threads live through the whole unload; the main thread hands them one class at a time.
- * Each sub-client takes its own snapshot, as each process of --process does.
+ * All read one snapshot: the main client exports its own, pinned for the whole unload, and each sub-client takes it
+ * over before it fetches anything (log_import_mvcc_snapshot ()). The processes of --process still have their own.
  */
 typedef struct unload_fetcher_slot UNLOAD_FETCHER_SLOT;
 struct unload_fetcher_slot
@@ -1724,6 +1731,7 @@ struct unload_fetcher_slot
   int idx;
   pthread_t tid;
   int error;			/* the error of db_restart_sub () */
+  int import_error;		/* the error of log_import_mvcc_snapshot () */
   S_WAITING_INFO wi_fetch;
 };
 
@@ -1738,6 +1746,8 @@ static struct
   bool quit;
   LC_FETCH_VERSION_TYPE fetch_type;
   int read_ahead_sectors;	/* the upper bound for each fetcher */
+  int snapshot_tran_index;	/* the snapshot of the main client, see log_export_mvcc_snapshot () */
+  int snapshot_trid;		/* transaction id */
   UNLOAD_FETCHER_SLOT *slots;
 } unload_Fetchers;
 
@@ -1749,9 +1759,19 @@ unload_fetcher_thread (void *param)
   int error;
 
   error = db_restart_sub (slot->idx);
+  if (error == NO_ERROR)
+    {
+      /* before anything is fetched: a sub-client reads the snapshot of the main client only */
+      slot->import_error =
+	log_import_mvcc_snapshot (unload_Fetchers.snapshot_tran_index, unload_Fetchers.snapshot_trid);
+    }
 
   pthread_mutex_lock (&unload_Fetchers.mtx);
   slot->error = error;
+  if (slot->import_error != NO_ERROR)
+    {
+      error = slot->import_error;
+    }
   unload_Fetchers.nstarted++;
   pthread_cond_broadcast (&unload_Fetchers.cond);
   while (error == NO_ERROR)
@@ -1819,15 +1839,17 @@ unload_fetchers_stop (void)
 
 /*
  * unload_fetchers_start () - start the fetcher threads of --fetcher-count and wait for their sub-clients
- *    return: the fetchers running; 0 when the rows are fetched by the main client (one fetcher)
+ *    return: the fetchers running; 0 when the rows are fetched by the main client (one fetcher); -1 on an error
  *    nfetchers(in): --fetcher-count
  *
- * Note: when a sub-client cannot start, the others are stopped and the main client fetches alone.
+ * Note: the snapshot of the main client is exported first, so the main client reads it too when a sub-client cannot
+ *	 start and the others are stopped. But when a sub-client cannot take the snapshot over, the unload fails rather
+ *	 than read with one of its own.
  */
 static int
 unload_fetchers_start (int nfetchers)
 {
-  int i, error = NO_ERROR;
+  int i, error = NO_ERROR, import_error = NO_ERROR;
 
   memset (&unload_Fetchers, 0, sizeof (unload_Fetchers));
   if (nfetchers <= 1)
@@ -1847,6 +1869,18 @@ unload_fetchers_start (int nfetchers)
   /* --read-ahead-sectors bounds the read-ahead of the whole unload: the fetchers share it */
   unload_Fetchers.read_ahead_sectors =
     (g_read_ahead_sectors == 0) ? 0 : MAX (MIN (g_read_ahead_sectors, 2), g_read_ahead_sectors / nfetchers);
+
+  error = log_export_mvcc_snapshot (&unload_Fetchers.snapshot_tran_index, &unload_Fetchers.snapshot_trid);
+  if (error != NO_ERROR)
+    {
+      fprintf (stderr, "\nThe snapshot of the unload could not be shared with the fetchers of '--%s' (error %d).\n",
+	       UNLOAD_FETCHER_COUNT_L, error);
+      pthread_cond_destroy (&unload_Fetchers.cond);
+      pthread_mutex_destroy (&unload_Fetchers.mtx);
+      free_and_init (unload_Fetchers.slots);
+      unload_Fetchers.nfetchers = 0;
+      return -1;
+    }
 
   for (i = 0; i < nfetchers; i++)
     {
@@ -1872,7 +1906,19 @@ unload_fetchers_start (int nfetchers)
     {
       error = unload_Fetchers.slots[i].error;
     }
+  for (i = 0; i < nfetchers && import_error == NO_ERROR; i++)
+    {
+      import_error = unload_Fetchers.slots[i].import_error;
+    }
   pthread_mutex_unlock (&unload_Fetchers.mtx);
+
+  if (import_error != NO_ERROR)
+    {
+      fprintf (stderr, "\nThe fetchers of '--%s' could not take over the snapshot of the unload (error %d).\n",
+	       UNLOAD_FETCHER_COUNT_L, import_error);
+      unload_fetchers_stop ();
+      return -1;
+    }
 
   if (error != NO_ERROR)
     {

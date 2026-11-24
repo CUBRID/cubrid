@@ -690,6 +690,12 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_GET_MVCC_SNAPSHOT];
   req_p->processing_function = slogtb_get_mvcc_snapshot;
 
+  req_p = &net_Requests[NET_SERVER_LOG_EXPORT_MVCC_SNAPSHOT];
+  req_p->processing_function = slogtb_export_mvcc_snapshot;
+
+  req_p = &net_Requests[NET_SERVER_LOG_IMPORT_MVCC_SNAPSHOT];
+  req_p->processing_function = slogtb_import_mvcc_snapshot;
+
   req_p = &net_Requests[NET_SERVER_LOCK_RR];
   req_p->processing_function = stran_lock_rep_read;
 
