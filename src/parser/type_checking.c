@@ -5903,12 +5903,17 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 		      arg2_type = common_type;
 		    }
 		}
-	      /* we're not casting collection types in this context but we should "propagate" types */
-	      if (arg2_type != PT_TYPE_NONE)
+	      /* we're not casting collection types in this context but we should "propagate" types -- to an operation
+	       * whose result is a collection.  CBRD-28066: a comparison's result is a logical value; the element types
+	       * of its operands are not its data type (the result column's domain is built from it, and an element
+	       * domain whose collation a bound value decides failed the query type copy) */
+	      const bool logical_result = (sig.return_type.type == pt_arg_type::NORMAL
+					   && sig.return_type.val.type == PT_TYPE_LOGICAL);
+	      if (arg2_type != PT_TYPE_NONE && !logical_result)
 		{
 		  pt_propagate_types (parser, expr, PT_NODE_DATA_TYPE (arg1), PT_NODE_DATA_TYPE (arg2));
 		}
-	      if (arg3_type != PT_TYPE_NONE)
+	      if (arg3_type != PT_TYPE_NONE && !logical_result)
 		{
 		  pt_propagate_types (parser, expr, PT_NODE_DATA_TYPE (arg2), PT_NODE_DATA_TYPE (arg3));
 		}
@@ -22398,6 +22403,12 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 	}
       break;
     case PT_VALUE:
+      if (!PT_HAS_COLLATION (node->type_enum) && !PT_IS_COLLECTION_TYPE (node->type_enum))
+	{
+	  /* CBRD-28066: a value without a collation - a NUMERIC literal carries its precision in a data type - keeps
+	   * it, as an element of a collection whose collation is applied to its elements */
+	  return node;
+	}
       if (node->data_type == NULL && PT_HAS_COLLATION (node->type_enum) && coll_id != LANG_SYS_COLLATION)
 	{
 	  /* create a data type */
@@ -22657,6 +22668,13 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 
 	      /* 'wrap_dt' is copied in 'pt_wrap_with_cast_op' */
 	      parser_free_node (parser, wrap_dt);
+	    }
+	  else if (node->data_type == NULL)
+	    {
+	      /* a CAST is not wrapped above, and a COLLATE modifier CAST whose type could not be resolved (an error is
+	       * already set, but type checking goes on inside a collection constructor or an IN list) has no data type
+	       * to take the collation */
+	      goto cannot_coerce;
 	    }
 	  else
 	    {
