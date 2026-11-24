@@ -28,11 +28,12 @@ namespace cubschema
   {
   }
 
-  attribute::attribute (const attribute_kind k, const std::string &n, const std::string &t)
+  attribute::attribute (const attribute_kind k, const std::string &n, const std::string &t,
+			default_value_init_type dval_f)
     : kind {k}
     , name {n}
     , type {t}
-    , dvalue_func {nullptr}
+    , dvalue_func {dval_f}
   {
   }
 

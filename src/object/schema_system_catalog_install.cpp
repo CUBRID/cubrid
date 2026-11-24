@@ -287,7 +287,10 @@ catcls_get_class_definitions (void)
     system_catalog_initializer::get_synonym (),
     system_catalog_initializer::get_server (),
     system_catalog_initializer::get_histogram (),
-    system_catalog_initializer::get_global_tran ()
+    system_catalog_initializer::get_global_tran (),
+    system_catalog_initializer::get_ha_apply_stat (),
+    system_catalog_initializer::get_ha_apply_worker_stat (),
+    system_catalog_initializer::get_ha_applied_tx_marker ()
   };
 }
 
@@ -957,6 +960,8 @@ namespace cubschema
 		   CT_HA_APPLY_INFO_NAME,
 		   // columns
     {
+      {attribute_kind::CLASS_ATTRIBUTE, "last_stream_id", "bigint", make_int_value_fn (0)},
+      {"stream_id", "bigint"},
       {"db_name", format_varchar (255)},
       {"db_creation_time", "datetime"},
       {"copied_log_path", format_varchar (4096)},
@@ -986,6 +991,8 @@ namespace cubschema
     },
 // constraints
     {
+      {DB_CONSTRAINT_UNIQUE, "", {"stream_id", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"stream_id", nullptr}},
       {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", nullptr}},
       {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}},
       {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}},
@@ -1187,6 +1194,133 @@ namespace cubschema
     },
 // constraints
     {},
+// authorization
+    make_authorization (Au_dba_user),
+// initializer
+    nullptr
+	   );
+  }
+
+  /* parallel apply statistics of each applylogdb on this node, one row per applier; see log_applier.c */
+  system_metadata_definition
+  system_catalog_initializer::get_ha_apply_stat ()
+  {
+    return system_metadata_definition (
+		   // name
+		   CT_HA_APPLY_STAT_NAME,
+		   // columns
+    {
+      {"db_name", format_varchar (255)},
+      {"copied_log_path", format_varchar (4096)},
+      {"start_time", "datetime"},
+      {"last_update_time", "datetime"},
+      {"worker_count", "integer"},
+      {"apply_state", format_varchar (32)},
+      {"done_hold_since", "datetime"},
+      {"commit_read_count", "bigint"},
+      {"dispatch_direct_count", "bigint"},
+      {"dispatch_parked_count", "bigint"},
+      {"inflight_count", "integer"},
+      {"pending_count", "integer"},
+      {"task_count", "bigint"},
+      {"dependency_wait_count", "bigint"},
+      {"dependency_wait_usec", "bigint"},
+      {"worker_wait_count", "bigint"},
+      {"worker_wait_usec", "bigint"},
+      {"queue_wait_usec", "bigint"},
+      {"result_collect_wait_usec", "bigint"},
+      {"total_task_usec", "bigint"},
+      {"total_worker_busy_usec", "bigint"},
+      {"out_of_order_completion_count", "bigint"},
+      {"running_worker_count", "integer"},
+      {"max_running_worker_count", "integer"},
+      {"max_task_queue_count", "integer"},
+      {"max_pending_count", "integer"},
+      {"observation_usec", "bigint"},
+      {"concurrency_usec", format_varchar (1024)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}},
+    },
+// authorization
+    make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
+// initializer
+    nullptr
+	   );
+  }
+
+  /* per-worker statistics of each applylogdb on this node, one row per running worker; see log_applier.c */
+  system_metadata_definition
+  system_catalog_initializer::get_ha_apply_worker_stat ()
+  {
+    return system_metadata_definition (
+		   // name
+		   CT_HA_APPLY_WORKER_STAT_NAME,
+		   // columns
+    {
+      {"db_name", format_varchar (255)},
+      {"copied_log_path", format_varchar (4096)},
+      {"worker_idx", "integer"},
+      {"start_time", "datetime"},
+      {"last_update_time", "datetime"},
+      {"state", format_varchar (16)},
+      {"applied_task_count", "bigint"},
+      {"applied_row_count", "bigint"},
+      {"busy_usec", "bigint"},
+      {"queue_wait_usec", "bigint"},
+      {"error_count", "bigint"},
+      {"applying_commit_lsa_pageid", "bigint"},
+      {"applying_commit_lsa_offset", "integer"},
+      {"applying_master_commit_time", "datetime"},
+      {"applying_since", "datetime"},
+      {"last_applied_commit_lsa_pageid", "bigint"},
+      {"last_applied_commit_lsa_offset", "integer"},
+      {"last_applied_master_commit_time", "datetime"},
+      {"last_applied_time", "datetime"},
+      {"last_error_code", "integer"},
+      {"last_error_time", "datetime"}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", "worker_idx", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"worker_idx", nullptr}},
+    },
+// authorization
+    make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
+// initializer
+    nullptr
+	   );
+  }
+
+  /* commits an applylogdb on this node has applied above its stored position; a restart skips them. A row is keyed
+   * by the largest commit it covers and is a range marker (applied_lsas NULL, every commit up to the key) or a list
+   * marker (applied_lsas, exactly the commits it lists as "pageid:offset,"). Written by the applier only; see
+   * LA_APPLIED_TX_MARKER_NAME in log_applier.c */
+  system_metadata_definition
+  system_catalog_initializer::get_ha_applied_tx_marker ()
+  {
+    return system_metadata_definition (
+		   // name
+		   CT_HA_APPLIED_TX_MARKER_NAME,
+		   // columns
+    {
+      {"stream_id", "bigint"},
+      {"commit_pageid", "bigint"},
+      {"commit_offset", "integer"},
+      {"applied_lsas", format_varchar (4096)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"stream_id", "commit_pageid", "commit_offset", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"stream_id", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"commit_pageid", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"commit_offset", nullptr}},
+    },
 // authorization
     make_authorization (Au_dba_user),
 // initializer

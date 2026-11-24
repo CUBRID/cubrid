@@ -141,6 +141,9 @@ enum log_rectype
 				 * applier can distinguish a multi-chunk OOS record from a series of
 				 * independent single-chunk OOS inserts. */
 
+  LOG_DUMMY_WSET_LABEL = 54,	/* carries dependency metadata before COMMIT or independent SYSOP_END.
+				 * No-op for crash recovery; read by the replication applier to gate parallel apply. */
+
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
 typedef enum log_rectype LOG_RECTYPE;
@@ -255,6 +258,16 @@ struct log_rec_ha_server_state
   int dummy;			/* dummy for alignment */
 
   INT64 at_time;		/* time recorded by active server */
+};
+
+/* Writeset dependency metadata carried just before COMMIT or independent SYSOP_END. */
+typedef struct log_rec_wset_label LOG_REC_WSET_LABEL;
+struct log_rec_wset_label
+{
+  LOG_LSA dependency_lsa;	/* dependency selected from history for this apply unit */
+  UINT64 unit_key_hash;		/* an independent replication unit (serial update, INCR/DECR) ordered by a single key:
+				 * the writeset hash of that key; 0 otherwise. The slave does not read it since SYSOP
+				 * fragments are no longer merged; it stays in the record format */
 };
 
 /* Information of database external redo log records */

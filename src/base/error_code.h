@@ -1818,7 +1818,9 @@
 
 #define ER_BT_LOAD_NO_LOGGING_DURING_BACKUP         -1404
 
-#define ER_LAST_ERROR                               -1405
+#define ER_HA_WRITESET_KEY_BUILD_FAILED             -1405
+
+#define ER_LAST_ERROR                               -1406
 
 /*
  * CAUTION!

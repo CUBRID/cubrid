@@ -26,6 +26,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 #include <assert.h>
 #if !defined(WINDOWS)
 #include <langinfo.h>
@@ -4115,6 +4116,162 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
     }
 
   return pseudo_key;
+}
+
+/*
+ * lang_uca_weight_key() - the collation weights the UCA compare (lang_strmatch_utf8_uca_w_level) looks at
+ *			   for one string, in the order it looks at them
+ *   return: NO_ERROR, or an error code
+ *   lang_coll(in): collation
+ *   str(in): string
+ *   size(in): string size in bytes
+ *   ignore_trailing_space(in): the ignore_trailing_space the compare is called with
+ *   key_out(out): a malloc'ed byte sequence the caller frees, or NULL when the collation does not compare by
+ *		   full UCA weights (expansions)
+ *   key_size_out(out): size of that sequence
+ *
+ * Note: Two strings this collation compares as equal get the same sequence, and only those. The compare walks
+ *	 the collation elements of both strings level by level, up to the collation strength, and skips a zero
+ *	 weight (unless its character is a space) that a non-zero weight follows; zero weights left at the end
+ *	 of a string (a space's among them) are skipped only with ignore_trailing_space, otherwise the string
+ *	 that still has them is the greater one. So the sequence holds, per level, every weight the compare does
+ *	 not skip, each as 0x01 and two bytes, then one 0x02 for each other zero weight left at the end unless
+ *	 ignore_trailing_space, then 0x00. The collation pseudo key (lang_mht2str_utf8_exp) is not fit for this: it folds every zero weight
+ *	 in, so 'ae' and 'æ' (one expansion) get different pseudo keys.
+ */
+int
+lang_uca_weight_key (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size,
+		     const bool ignore_trailing_space, unsigned char **key_out, int *key_size_out)
+{
+  const COLL_DATA *coll_data = &(lang_coll->coll);
+  const unsigned char *str_end = str + size;
+  unsigned char *key;
+  size_t key_capacity;
+  int out = 0;
+  int level;
+
+  assert (key_out != NULL && key_size_out != NULL);
+  *key_out = NULL;
+  *key_size_out = 0;
+
+  if (lang_coll->fastcmp != lang_strcmp_utf8_uca)
+    {
+      return NO_ERROR;
+    }
+
+  /* every byte can start a character of at most uca_exp_num elements, three bytes each, per level; the sizes
+   * are multiplied as size_t, and a sequence an int cannot measure is refused rather than allocated short */
+  key_capacity = (size_t) coll_data->uca_opt.sett_strength * ((size_t) size * (size_t) coll_data->uca_exp_num * 3 + 1);
+  if (size < 0 || key_capacity > (size_t) INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, key_capacity);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  key = (unsigned char *) malloc (key_capacity);
+  if (key == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, key_capacity);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (level = 0; level < (int) coll_data->uca_opt.sett_strength; level++)
+    {
+      const unsigned char *cur = str;
+      unsigned char *next = (unsigned char *) str;
+      UCA_L13_W *uca_w_l13 = NULL;
+      UCA_L4_W *uca_w_l4 = NULL;
+      unsigned int cp_contr = 0;
+      int num_ce = 0;
+      int ce_index = 0;
+      int trailing_zero = 0;
+      int last_weight_end = out;
+
+      for (;;)
+	{
+	  unsigned int w;
+
+	  if (num_ce == 0)
+	    {
+	      cur = next;
+	      if (cur >= str_end)
+		{
+		  break;
+		}
+
+	      if (level == 3)
+		{
+		  lang_get_uca_w_l4 (coll_data, true, cur, CAST_BUFLEN (str_end - cur), &uca_w_l4, &num_ce, &next,
+				     &cp_contr);
+		}
+	      else
+		{
+		  lang_get_uca_w_l13 (coll_data, true, cur, CAST_BUFLEN (str_end - cur), &uca_w_l13, &num_ce, &next,
+				      &cp_contr);
+		}
+	      assert (num_ce > 0);
+	      ce_index = 0;
+	    }
+
+	  w = GET_UCA_WEIGHT (level, ce_index, uca_w_l13, uca_w_l4);
+	  ce_index++;
+	  num_ce--;
+
+	  /* the compare ignores zero weights (unless character is space) that a weight follows */
+	  if (w == 0 && *cur != ASCII_SPACE)
+	    {
+	      trailing_zero++;
+	      continue;
+	    }
+	  trailing_zero = 0;
+
+	  if ((size_t) out + 3 > key_capacity)
+	    {
+	      assert (false);
+	      free_and_init (key);
+	      return ER_FAILED;
+	    }
+	  key[out++] = 0x01;
+	  key[out++] = (unsigned char) ((w >> 8) & 0xff);
+	  key[out++] = (unsigned char) (w & 0xff);
+	  if (w != 0)
+	    {
+	      last_weight_end = out;
+	    }
+	}
+
+      /* zero weights at the end of the string, a space's among them: skipped when trailing spaces are ignored,
+       * otherwise the string that has them is the greater one */
+      if (ignore_trailing_space)
+	{
+	  out = last_weight_end;
+	}
+      else
+	{
+	  if ((size_t) out + (size_t) trailing_zero > key_capacity)
+	    {
+	      assert (false);
+	      free_and_init (key);
+	      return ER_FAILED;
+	    }
+	  while (trailing_zero-- > 0)
+	    {
+	      key[out++] = 0x02;
+	    }
+	}
+
+      if ((size_t) out + 1 > key_capacity)
+	{
+	  assert (false);
+	  free_and_init (key);
+	  return ER_FAILED;
+	}
+      key[out++] = 0x00;
+    }
+
+  *key_out = key;
+  *key_size_out = out;
+
+  return NO_ERROR;
 }
 
 

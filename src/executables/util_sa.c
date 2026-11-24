@@ -128,6 +128,7 @@ static int delete_all_ha_apply_info (void);
 static int insert_ha_apply_info (char *database_name, char *master_host_name, INT64 database_creation, INT64 pageid,
 				 int offset, INT64 committed_pageid, int committed_offset);
 static int delete_all_slave_ha_apply_info (char *database_name, char *master_host_name);
+static int delete_ha_applied_tx_markers (const char *keep_copied_log_path);
 
 static bool check_ha_db_and_node_list (char *database_name, char *source_host_name);
 
@@ -4624,6 +4625,60 @@ synccoll_force (void)
 }
 
 /*
+ * delete_ha_applied_tx_markers () - delete the applied-transaction markers of the copied logs whose apply info
+ *     restoreslave deletes, in the caller's transaction
+ *   return: number of deleted markers, or error code
+ *   keep_copied_log_path(in): copied log whose markers stay with its apply info, or NULL to delete all
+ *
+ * Note: restoreslave -s master deletes all the apply info and inserts the master's row anew, so it passes NULL.
+ *       -s slave and -s replica keep the apply info of the master's copied log from the backup, so they pass that
+ *       path and its markers stay as well. The markers only mean something next to the apply info of their copied
+ *       log: left without it, they would skip the commits of a new log stream at the same positions.
+ *       The caller disables authorization: a user cannot change the system catalog.
+ */
+static int
+delete_ha_applied_tx_markers (const char *keep_copied_log_path)
+{
+#define QUERY_BUF_SIZE		2048
+
+  int res;
+  DB_VALUE in_value;
+  DB_QUERY_RESULT *result;
+  DB_QUERY_ERROR query_error;
+  char query_buf[QUERY_BUF_SIZE];
+
+  if (keep_copied_log_path == NULL)
+    {
+      snprintf (query_buf, sizeof (query_buf), "DELETE FROM %s ;", CT_HA_APPLIED_TX_MARKER_NAME);
+      res = db_execute (query_buf, &result, &query_error);
+    }
+  else
+    {
+      snprintf (query_buf, sizeof (query_buf),
+		"DELETE FROM %s WHERE stream_id NOT IN "
+		"(SELECT stream_id FROM %s WHERE copied_log_path = ?)",
+		CT_HA_APPLIED_TX_MARKER_NAME, CT_HA_APPLY_INFO_NAME);
+      db_make_varchar (&in_value, 4096, keep_copied_log_path, strlen (keep_copied_log_path), LANG_SYS_CODESET,
+		       LANG_SYS_COLLATION);
+      res = db_execute_with_values (query_buf, &result, &query_error, 1, &in_value);
+    }
+
+  if (res >= 0)
+    {
+      int error;
+
+      error = db_query_end (result);
+      if (error != NO_ERROR)
+	{
+	  res = error;
+	}
+    }
+
+  return res;
+#undef QUERY_BUF_SIZE
+}
+
+/*
  * delete_all_ha_apply_info () - delete ha apply info
  *   return:
  */
@@ -4650,6 +4705,16 @@ delete_all_ha_apply_info (void)
       if (error != NO_ERROR)
 	{
 	  res = error;
+	}
+    }
+
+  if (res >= 0)
+    {
+      int deleted = delete_ha_applied_tx_markers (NULL);
+
+      if (deleted < 0)
+	{
+	  res = deleted;
 	}
     }
 
@@ -4721,8 +4786,8 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
 	    "  schema_counter, "	/* 23 */
 	    "  commit_counter, "	/* 24 */
 	    "  fail_counter, "	/* 25 */
-	    "  start_time ) "	/* 26 */
-	    " VALUES ( ?, "	/* 1. db_name */
+	    "  start_time, "	/* 26 */
+	    "  stream_id ) " " VALUES ( ?, "	/* 1. db_name */
 	    "   ?, "		/* 2. db_creation_time */
 	    "   ?, "		/* 3. copied_log_path */
 	    "   ?, "		/* 4. committed_lsa_pageid */
@@ -4747,8 +4812,8 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
 	    "   0, "		/* 23. schema_counter */
 	    "   0, "		/* 24. commit_counter */
 	    "   0, "		/* 25. fail_counter */
-	    "   NULL "		/* 26. start_time */
-	    "   ) ;", CT_HA_APPLY_INFO_NAME);
+	    "   NULL, "		/* 26. start_time */
+	    "   (SELECT last_stream_id FROM CLASS [%s]) " "   ) ;", CT_HA_APPLY_INFO_NAME, CT_HA_APPLY_INFO_NAME);
 
   in_value_idx = 0;
 
@@ -4777,7 +4842,16 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
 
   AU_SAVE_AND_DISABLE (au_save);
 
-  res = db_execute_with_values (query_buf, &result, &query_error, in_value_idx, &in_value[0]);
+  res = db_execute ("UPDATE CLASS [" CT_HA_APPLY_INFO_NAME "] "
+		    "SET last_stream_id = last_stream_id + 1;", &result, &query_error);
+  if (res >= 0)
+    {
+      res = db_query_end (result);
+    }
+  if (res >= 0)
+    {
+      res = db_execute_with_values (query_buf, &result, &query_error, in_value_idx, &in_value[0]);
+    }
   if (res >= 0)
     {
       int error;
@@ -4857,6 +4931,16 @@ delete_all_slave_ha_apply_info (char *database_name, char *master_host_name)
       if (error != NO_ERROR)
 	{
 	  res = error;
+	}
+    }
+
+  if (res >= 0)
+    {
+      int deleted = delete_ha_applied_tx_markers (log_path);
+
+      if (deleted < 0)
+	{
+	  res = deleted;
 	}
     }
 
@@ -5092,7 +5176,18 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 	}
 
     }
-  db_commit_transaction ();
+  error_code = db_commit_transaction ();
+  if (error_code != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      fprintf (stderr,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTORESLAVE,
+			       RESTORESLAVE_MSG_HA_CATALOG_FAIL), db_creation_time,
+	       restart_arg.restart_repl_lsa.pageid, restart_arg.restart_repl_lsa.offset);
+      (void) db_abort_transaction ();
+      db_shutdown ();
+      return EXIT_FAILURE;
+    }
   db_shutdown ();
 
   return EXIT_SUCCESS;

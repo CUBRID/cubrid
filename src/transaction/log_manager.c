@@ -69,6 +69,9 @@
 #include "log_prior_inflight.hpp"
 #include "log_record.hpp"
 #include "log_recovery.h"
+#include "writeset.hpp"
+#include "writeset_order.hpp"
+#include "writeset_trace.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "log_writer.h"
@@ -78,6 +81,7 @@
 #include "slotted_page.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "schema_system_catalog_constants.h"
 #include "set_object.h"
 #include "tz_support.h"
 #include "db_date.h"
@@ -254,13 +258,14 @@ static void log_append_commit_postpone_obsolete (THREAD_ENTRY * thread_p, LOG_TD
 static void log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 					     LOG_REC_SYSOP_START_POSTPONE * sysop_start_postpone, int data_size,
 					     const char *data);
-static void log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
-				  int data_size, const char *data);
+static LOG_PRIOR_NODE *log_prepare_sysop_end_node (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * sysop_end,
+						   int data_size, const char *data);
 static void log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit, int with_lock);
 static void log_append_supplemental_info_internal (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length,
 						   const void *data, TDE_ALGORITHM tde_algo);
 static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
+static void log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, UINT64 unit_key_hash);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
 static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
@@ -319,6 +324,8 @@ static LOG_PAGE *log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, F
 						      LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						  LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_wset_label (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+					     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						    LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * lsa_p,
@@ -525,6 +532,8 @@ log_to_string (LOG_RECTYPE type)
 
     case LOG_DUMMY_HA_SERVER_STATE:
       return "LOG_DUMMY_HA_SERVER_STATE";
+    case LOG_DUMMY_WSET_LABEL:
+      return "LOG_DUMMY_WSET_LABEL";
     case LOG_DUMMY_OVF_RECORD:
       return "LOG_DUMMY_OVF_RECORD";
     case LOG_DUMMY_OOS_RECORD:
@@ -1531,6 +1540,20 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       /* defense code */
       log_Gl.prior_info.prior_lsa.store (log_Gl.hdr.append_lsa.load ());
     }
+
+#if defined (SERVER_MODE)
+  /* Restart boundary for the writeset history. The history lives in process memory and is empty
+   * now, so a transaction committed after this restart cannot find the earlier transactions it
+   * conflicts with. Every label floors at history_start, so raising it to the end of the recovered
+   * log makes every later replicated commit wait on the slave until everything written before the
+   * restart has been applied (the gate waits for the gap-free frontier to reach the label). Nothing
+   * is written to the log for this; the labels of the first commits after the restart carry it. */
+  {
+    const LOG_LSA restart_lsa = log_Gl.hdr.append_lsa;
+
+    wset_order_advance_barrier (&restart_lsa, "RESTART");
+  }
+#endif /* SERVER_MODE */
 
   /*
    *
@@ -3846,6 +3869,12 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
 
+  /* Remember this operation's key range. Replication publishes or discards it when the operation ends. */
+  tdes->topops.stack[tdes->topops.last].wset_mark = tdes->wset_entries.size ();
+  tdes->topops.stack[tdes->topops.last].repl_flushed = false;
+  tdes->topops.stack[tdes->topops.last].repl_unit = false;
+  tdes->topops.stack[tdes->topops.last].repl_unit_begin = 0;
+
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_START_TOPOPS);
 }
 
@@ -4022,6 +4051,8 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 {
   int tran_index;
   LOG_TDES *tdes = NULL;
+  bool append_end = false;
+  REPL_SYSOP_INFO repl_info = { 0, 0, false, "none" };
 
   assert (log_record != NULL);
   assert (log_record->type != LOG_SYSOP_END_ABORT);
@@ -4076,13 +4107,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 		  && (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || is_rv_finish_postpone));
 	}
 
-      if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
-	  && log_does_allow_replication () == true)
-	{
-	  /* for the replication agent guarantee the order of transaction */
-	  /* for CC(Click Counter) : at here */
-	  log_append_repl_info (thread_p, tdes, false);
-	}
+      repl_prepare_sysop (thread_p, tdes, &repl_info);
 
       log_record->lastparent_lsa = *LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes);
       log_record->prv_topresult_lsa = tdes->tail_topresult_lsa;
@@ -4090,12 +4115,10 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
       /* do postpone */
       log_sysop_do_postpone (thread_p, tdes, log_record, data_size, data);
 
-      /* log system operation end */
-      log_append_sysop_end (thread_p, tdes, log_record, data_size, data);
-
-      /* Remember last partial result */
-      LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
+      append_end = true;
     }
+
+  repl_finish_sysop (thread_p, tdes, log_record, data_size, data, append_end, &repl_info);
 
   log_sysop_end_final (thread_p, tdes);
 }
@@ -4255,6 +4278,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
 	  && log_does_allow_replication () == true)
 	{
 	  repl_log_abort_after_lsa (tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+	  wset_discard_keys_after_lsa (tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
 
       /* Abort changes in system op. */
@@ -4687,37 +4711,31 @@ log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 }
 
 /*
- * log_append_sysop_end () - append sys op end log record
- *
- * return         : void
- * thread_p (in)  : thread entry
- * tdes (in)      : transaction descriptor
- * sysop_end (in) : sys op end log record
- * data_size (in) : data size
- * data (in)      : recovery data
+ * log_prepare_sysop_end_node () - allocate, copy and set encryption before taking the log mutex
+ *   return: the prepared node, or NULL on failure; the append takes ownership on success
+ *   thread_p(in): thread entry
+ *   sysop_end(in): system operation end record
+ *   data_size(in): recovery data size
+ *   data(in): recovery data
  */
-static void
-log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end, int data_size,
-		      const char *data)
+static LOG_PRIOR_NODE *
+log_prepare_sysop_end_node (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * sysop_end, int data_size, const char *data)
 {
   LOG_PRIOR_NODE *node = NULL;
 
-  assert (tdes != NULL);
   assert (sysop_end != NULL);
   assert (data_size == 0 || data != NULL);
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_SYSOP_END, RV_NOT_DEFINED, NULL, data_size, data, 0, NULL);
   if (node == NULL)
     {
-      /* Is this possible? */
-      assert (false);
+      return NULL;
     }
   else
     {
       LOG_RCVINDEX rcvindex = RV_NOT_DEFINED;
       /* Save data head. */
       /* First save lastparent_lsa and prv_topresult_lsa. */
-      LOG_LSA start_lsa = LSA_INITIALIZER;
 
       memcpy (node->data_header, sysop_end, node->data_header_length);
 
@@ -4746,13 +4764,153 @@ log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_EN
 	      if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 		{
 		  assert (false);
-		  return;
+		  logpb_free_prior_node (node);
+		  return NULL;
 		}
 	    }
 	}
 
-      start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-      assert (!LSA_ISNULL (&start_lsa));
+    }
+
+  return node;
+}
+
+/*
+ * log_append_sysop_end () - prepare and append an ordinary system operation end
+ *   thread_p(in): thread entry
+ *   tdes(in/out): transaction descriptor
+ *   sysop_end(in): system operation end record
+ *   data_size(in): recovery data size
+ *   data(in): recovery data
+ */
+void
+log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end, int data_size,
+		      const char *data)
+{
+  assert (tdes != NULL);
+
+  LOG_PRIOR_NODE *node = log_prepare_sysop_end_node (thread_p, sysop_end, data_size, data);
+  if (node == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  LOG_LSA start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  assert (!LSA_ISNULL (&start_lsa));
+
+  if (sysop_end->type == LOG_SYSOP_END_ABORT && wset_trace_is_enabled (1))
+    {
+      int pending_item_count = 0;
+      for (int item_index = 0; item_index < tdes->cur_repl_record; item_index++)
+	{
+	  LOG_REPL_RECORD *repl_record = &tdes->repl_records[item_index];
+	  if ((repl_record->repl_type == LOG_REPLICATION_DATA
+	       || repl_record->repl_type == LOG_REPLICATION_STATEMENT)
+	      && repl_record->must_flush == LOG_REPL_NEED_FLUSH)
+	    {
+	      pending_item_count++;
+	    }
+	}
+
+      WSET_TRACE (1, "SYSOP master trid=%d type=%s appended=1 sysop_lsa=%lld|%d repl_items=%d "
+		  "flushed_items=0 buffered_items=%d append_index=%d\n",
+		  tdes->trid, log_sysop_end_type_string (sysop_end->type), LSA_AS_ARGS (&start_lsa),
+		  pending_item_count, tdes->cur_repl_record, tdes->append_repl_recidx);
+    }
+}
+
+/*
+ * log_append_repl_sysop_end - append the writeset dependency label and the SYSOP_END atomically
+ *
+ *   tdes(in): transaction carrying the operation's selected dependency
+ *   by_keys(in): order the operation by its keys (from key_begin) instead of commit order
+ *   key_begin(in): index in wset_entries where the operation's keys start
+ *   sysop_end_lsa_out(out): LSA of the appended SYSOP_END record
+ *
+ * NOTE: The label and the SYSOP_END are written inside one prior_lsa_mutex region so no other
+ *       transaction's label or commit record can fall between them. The applier binds a label to the
+ *       SYSOP_END of the same trid that immediately follows it, so this adjacency must be preserved.
+ *       Key candidates are probed before the mutex; the final label is resolved and the commit-order state
+ *       updated in the same region, as in log_append_repl_info_and_commit_log. In commit order the history floor
+ *       is raised to the SYSOP_END, so the operation is a barrier on the slave. By keys the label comes from the
+ *       keys like a commit's, and the commit-order baseline (prev_commit_lsa) moves to the SYSOP_END: without it
+ *       a later label lowered to the baseline, or a later commit-order label, could fall below this operation.
+ *       The keys are published after the mutex is released, as a commit's are, so a history clear does not stop
+ *       every log append. The caller still holds the row lock or serial page latch, so a later operation on the
+ *       same key collects and resolves its keys only after they are published.
+ */
+void
+log_append_repl_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
+			   int data_size, const char *data, bool by_keys, size_t key_begin, LOG_LSA * sysop_end_lsa_out)
+{
+  UINT64 unit_key_hash = 0;
+  wset_dependency_candidate candidate;
+
+  assert (tdes != NULL && sysop_end_lsa_out != NULL);
+  LSA_SET_NULL (sysop_end_lsa_out);
+
+  if (by_keys)
+    {
+      wset_order_probe_keys (tdes, key_begin, &candidate);
+      /* one key, possibly collected more than once (an INCR of two columns of one row) */
+      unit_key_hash = tdes->wset_entries[key_begin].hash;
+      for (size_t i = key_begin; i < tdes->wset_entries.size (); i++)
+	{
+	  if (tdes->wset_entries[i].kind != LOG_WSET_KIND_WRITE || tdes->wset_entries[i].hash != unit_key_hash)
+	    {
+	      unit_key_hash = 0;
+	      break;
+	    }
+	}
+    }
+
+  /* Both records must be ready before either is appended. Preparation can allocate and fix a TDE header page. */
+  LOG_PRIOR_NODE *end_node = log_prepare_sysop_end_node (thread_p, sysop_end, data_size, data);
+  if (end_node == NULL)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "cannot prepare replicated system operation end");
+      return;
+    }
+  LOG_PRIOR_NODE *label_node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_DUMMY_WSET_LABEL, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  if (label_node == NULL)
+    {
+      logpb_free_prior_node (end_node);
+      /* This void SYSOP-end API cannot report a failed commit to its caller. Never complete it without a label. */
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "cannot prepare system operation replication label");
+      return;
+    }
+
+  log_Gl.prior_info.prior_lsa_mutex.lock ();
+  if (by_keys)
+    {
+      wset_order_resolve_dependency (tdes, &candidate, &tdes->wset_dependency_lsa);
+    }
+  else
+    {
+      wset_order_find_sysop_dependency (tdes, &tdes->wset_dependency_lsa);
+    }
+  LOG_REC_WSET_LABEL *label = (LOG_REC_WSET_LABEL *) label_node->data_header;
+  LSA_COPY (&label->dependency_lsa, &tdes->wset_dependency_lsa);
+  label->unit_key_hash = unit_key_hash;
+  (void) prior_lsa_next_record_with_lock (thread_p, label_node, tdes);
+  *sysop_end_lsa_out = prior_lsa_next_record_with_lock (thread_p, end_node, tdes);
+  assert (!LSA_ISNULL (sysop_end_lsa_out));
+  if (by_keys)
+    {
+      wset_order_record_sysop (sysop_end_lsa_out);
+    }
+  else
+    {
+      wset_order_advance_barrier (sysop_end_lsa_out, "SYSOP_COMMIT_ORDER");
+    }
+
+  log_Gl.prior_info.prior_lsa_mutex.unlock ();
+
+  if (by_keys)
+    {
+      wset_order_publish_sysop_keys (tdes, key_begin, sysop_end_lsa_out);
     }
 }
 
@@ -4834,6 +4992,13 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
 	    }
 
 	  repl_rec->must_flush = LOG_REPL_DONT_NEED_FLUSH;
+
+	  /* Appended before the transaction commits, so it is applied on the slave at the SYSOP_END of the system
+	   * operation open here; log_sysop_commit_internal labels that SYSOP_END. */
+	  if (!is_commit && tdes->topops.last >= 0)
+	    {
+	      tdes->topops.stack[tdes->topops.last].repl_flushed = true;
+	    }
 	}
 
       tdes->append_repl_recidx++;
@@ -4860,8 +5025,8 @@ log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool i
  *   tdes(in):
  *   commit_lsa(out): LSA of commit log
  *
- * NOTE: Atomic write of replication log and commit log is crucial for replication consistencies.
- *       When a commit log of others is written in the middle of one's replication and commit log,
+ * NOTE: Atomic write of replication log, WSET_LABEL, and commit log is crucial for replication consistencies.
+ *       When a commit log of others is written in the middle of one's replication log, WSET_LABEL, and commit log,
  *       a restart of replication will break consistencies of slaves/replicas.
  */
 static void
@@ -4876,12 +5041,52 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
     }
 
 
+  /* Postpone actions are finished and the writeset is stable. Both local and 2PC commits probe here, before
+   * acquiring the log mutex and before releasing the row/MVCCID locks that serialize conflicting writers. */
+  wset_dependency_candidate candidate;
+  wset_order_probe_keys (tdes, 0, &candidate);
+
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
   log_append_repl_info_with_lock (thread_p, tdes, true);
+  /* Re-read the boundaries in log order: clear or a barrier may have raised the history floor since probing.
+   * Only constant-time correction remains here; label, commit and baseline still change atomically. */
+  wset_order_resolve_dependency (tdes, &candidate, &tdes->wset_dependency_lsa);
+  log_append_wset_label_with_lock (thread_p, tdes, 0);
   log_append_commit_log_with_lock (thread_p, tdes, commit_lsa);
+  wset_order_record_commit (tdes, commit_lsa);
 
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
+}
+
+/*
+ * log_append_wset_label_with_lock - append the writeset dependency label record
+ *
+ *   tdes(in): transaction whose selected writeset dependency is carried
+ *   unit_key_hash(in): hash of the only key of an independent replication unit ordered by keys, or 0
+ *
+ * NOTE: Appended inside prior_lsa_mutex, immediately before the transaction's commit record.
+ *       No-op for crash recovery; read by the replication applier to set the apply task's
+ *       dependency_lsa.
+ */
+static void
+log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, UINT64 unit_key_hash)
+{
+  LOG_REC_WSET_LABEL *wset_label;
+  LOG_PRIOR_NODE *node;
+
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_DUMMY_WSET_LABEL, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      /* FIXME */
+      return;
+    }
+
+  wset_label = (LOG_REC_WSET_LABEL *) node->data_header;
+  LSA_COPY (&wset_label->dependency_lsa, &tdes->wset_dependency_lsa);
+  wset_label->unit_key_hash = unit_key_hash;
+
+  (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
 }
 
 /*
@@ -5473,6 +5678,9 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      /* for the replication agent guarantee the order of transaction */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
+	      assert_release (LSA_ISNULL (&tdes->wset_dependency_lsa)
+			      || LSA_LE (&tdes->wset_dependency_lsa, &commit_lsa));
+	      wset_order_publish_commit_keys (tdes, &commit_lsa);
 	    }
 	  else
 	    {
@@ -5493,7 +5701,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	}
       else
 	{
-	  /* Postpone appending replication and commit log and releasing locks to log_complete_for_2pc. */
+	  /* Postpone appending replication and commit log, the writeset dependency and publish, and releasing locks
+	   * to log_complete_for_2pc. */
 	}
     }
   else
@@ -6251,7 +6460,12 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	   * committed. */
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	    {
+	      /* Like a local commit, probe stable keys before the log mutex, resolve the dependency in log order,
+	       * then publish before releasing row and MVCCID locks. */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
+	      assert_release (LSA_ISNULL (&tdes->wset_dependency_lsa)
+			      || LSA_LE (&tdes->wset_dependency_lsa, &commit_lsa));
+	      wset_order_publish_commit_keys (tdes, &commit_lsa);
 	    }
 	  else
 	    {
@@ -7210,6 +7424,19 @@ log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 }
 
 static LOG_PAGE *
+log_dump_record_wset_label (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  LOG_REC_WSET_LABEL *wset_label;
+
+  /* Get the DATA HEADER */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*wset_label), log_lsa, log_page_p);
+  wset_label = ((LOG_REC_WSET_LABEL *) ((char *) log_page_p->area + log_lsa->offset));
+  fprintf (out_fp, "  dependency_lsa = %lld|%d\n", LSA_AS_ARGS (&wset_label->dependency_lsa));
+
+  return log_page_p;
+}
+
+static LOG_PAGE *
 log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_SUPPLEMENT *supplement;
@@ -7316,6 +7543,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_DUMMY_HA_SERVER_STATE:
       log_page_p = log_dump_record_ha_server_state (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
+    case LOG_DUMMY_WSET_LABEL:
+      log_page_p = log_dump_record_wset_label (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
     case LOG_SUPPLEMENTAL_INFO:
@@ -8246,6 +8477,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_SYSOP_ATOMIC_START:
 	    case LOG_DUMMY_HA_SERVER_STATE:
+	    case LOG_DUMMY_WSET_LABEL:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_OOS_RECORD:
 	    case LOG_DUMMY_GENERIC:
@@ -8682,6 +8914,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_REPLICATION_STATEMENT:
 		    case LOG_SYSOP_ATOMIC_START:
 		    case LOG_DUMMY_HA_SERVER_STATE:
+		    case LOG_DUMMY_WSET_LABEL:
 		    case LOG_DUMMY_OVF_RECORD:
 		    case LOG_DUMMY_OOS_RECORD:
 		    case LOG_DUMMY_GENERIC:
