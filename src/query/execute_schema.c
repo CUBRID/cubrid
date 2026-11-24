@@ -14665,7 +14665,6 @@ do_check_kept_default_expr (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, P
       pt_report_to_ersys (parser, PT_SEMANTIC);
       return er_errid ();
     }
-  data_default->info.data_default.default_expr_type = att->default_value.default_expr.default_expr_type;
 
   /* the check only: the attribute keeps its stored default expression */
   db_make_null (&value);
