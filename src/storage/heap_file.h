@@ -31,6 +31,10 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "config.h"
+
+#include <assert.h>
+#include <string.h>
+
 #include "file_manager.h"
 #include "heap_attrinfo.h"
 #include "mem_block.hpp"
@@ -379,6 +383,37 @@ typedef enum
   HEAP_PAGE_VACUUM_ONCE,	/* Heap page requires one vacuum action. */
   HEAP_PAGE_VACUUM_UNKNOWN	/* Heap page requires an unknown number of vacuum actions. */
 } HEAP_PAGE_VACUUM_STATUS;
+
+/*
+ * Forwarding record: the home slot record of a REC_RELOCATION or REC_BIGONE row. It holds, at offset 0, the OID of the
+ * REC_NEWHOME record or of the first overflow page. Every reader in the heap, vacuum and recovery code goes through
+ * heap_fwd_record_get_oid () and every buffer that copies one is a HEAP_FWD_RECORD_AREA, so the layout and the size are
+ * defined here only. The page dumper spage_dump_record () prints the slot bytes on its own; it depends only on the
+ * forward OID staying at offset 0.
+ */
+#define HEAP_FWD_RECORD_SIZE OR_OID_SIZE
+
+typedef union heap_fwd_record_area HEAP_FWD_RECORD_AREA;
+union heap_fwd_record_area
+{
+  OID forward_oid;		/* keeps the area aligned for an OID */
+  char data[HEAP_FWD_RECORD_SIZE];
+};
+
+/*
+ * heap_fwd_record_get_oid () - read the forward OID out of a forwarding record
+ *   fwd_recdes (in): the home slot record of a REC_RELOCATION or REC_BIGONE row (PEEK or COPY)
+ *   forward_oid (out): OID of the REC_NEWHOME record or of the first overflow page
+ */
+static inline void
+heap_fwd_record_get_oid (const RECDES * fwd_recdes, OID * forward_oid)
+{
+  assert (fwd_recdes != NULL && fwd_recdes->data != NULL && forward_oid != NULL);
+  assert (fwd_recdes->type == REC_RELOCATION || fwd_recdes->type == REC_BIGONE);
+  assert (fwd_recdes->length == HEAP_FWD_RECORD_SIZE);
+
+  memcpy (forward_oid, fwd_recdes->data, sizeof (OID));
+}
 
 /* Use CONSUME_RAW_BYTES only when the caller needs materialized logical RECDES bytes outside the OOS-aware
  * attribute layer; otherwise preserve the stored RECDES (CBRD-26847). */
