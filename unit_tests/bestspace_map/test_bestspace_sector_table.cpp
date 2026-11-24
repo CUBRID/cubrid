@@ -19,6 +19,7 @@
 #include "catch2/catch.hpp"
 
 #include "bestspace_map.hpp"
+#include "bit.h"
 
 #include <algorithm>
 #include <atomic>
@@ -470,7 +471,7 @@ TEST_CASE ("a record_if that succeeds is always in the group the locked take det
 	std::atomic<bool> *flag = (std::atomic<bool> *) ((void **) arg)[1];
 	for (; list != nullptr; list = list->next)
 	  {
-	    *pages += static_cast<std::size_t> (__builtin_popcountll (list->mask));
+	    *pages += static_cast<std::size_t> (bit64_count_ones (list->mask));
 	  }
 	flag->store (true);
       };
