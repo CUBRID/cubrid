@@ -515,9 +515,12 @@ mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
       switch (spec->info.spec.join_type)
 	{
 	case PT_JOIN_NONE:
-	case PT_JOIN_CROSS:
-	  /* joins from this point forward do not matter */
+	  /* a comma closes the join expression; joins from this point forward do not matter */
 	  return false;
+
+	case PT_JOIN_CROSS:
+	  /* a cross join keeps the join expression, so a later right outer join still joins this spec */
+	  break;
 
 	case PT_JOIN_RIGHT_OUTER:
 	  /* right outer joined */
@@ -566,9 +569,12 @@ mq_is_right_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
       switch (spec->info.spec.join_type)
 	{
 	case PT_JOIN_NONE:
-	case PT_JOIN_CROSS:
-	  /* joins from this point forward do not matter */
+	  /* a comma closes the join expression; joins from this point forward do not matter */
 	  return false;
+
+	case PT_JOIN_CROSS:
+	  /* a cross join keeps the join expression, so a later right outer join still joins this spec */
+	  break;
 
 	case PT_JOIN_RIGHT_OUTER:
 	  /* right outer joined */
