@@ -2439,10 +2439,6 @@ struct pt_expr_info
   PT_NODE *arg2;		/* PT_EXPR etc.  possible second argument */
   PT_NODE *value;		/* only set if we evaluate it */
   PT_OP_TYPE op;		/* binary or unary op code */
-  PT_VOLATILITY expr_volatility;	/* volatility of the overload matched for the node's argument types, stamped
-					 * by type checking or restored from a Compact DEFAULT Tree; the node's own
-					 * value, not its operands' (pt_get_expr_tree_volatility combines them) */
-  int expr_si_requirement;	/* SI requirement of that overload (bitmask of PT_SI_REQUIREMENT bits) */
   int paren_type;		/* 0 - none, else - () */
   PT_NODE *arg3;		/* possible third argument (like, between, or case) */
   PT_NODE *cast_type;		/* PT_DATA_TYPE, resultant cast domain */
@@ -2519,6 +2515,11 @@ struct pt_expr_info
   PT_TYPE_ENUM recursive_type;	/* common type for recursive expression arguments (like PT_GREATEST, PT_LEAST,...) */
   int coll_modifier;		/* collation modifier = collation + 1 */
   int pred_order;		/* for view-merge or predicate-push. pred is ordered by pred_order in qo_discover_edges */
+  /* the fields above keep their offsets: some code reads them through this member on nodes of other types */
+  PT_VOLATILITY expr_volatility;	/* volatility of the overload matched for the node's argument types, stamped
+					 * by type checking or restored from a Compact DEFAULT Tree; the node's own
+					 * value, not its operands' (pt_get_expr_tree_volatility combines them) */
+  int expr_si_requirement;	/* SI requirement of that overload (bitmask of PT_SI_REQUIREMENT bits) */
 };
 
 /* FILE PATH INFO */
@@ -2532,9 +2533,6 @@ struct pt_function_info
 {
   PT_NODE *arg_list;		/* PT_EXPR(list) */
   FUNC_CODE function_type;	/* PT_COUNT, PT_AVG, ... */
-  PT_VOLATILITY expr_volatility;	/* volatility of the signature matched for the node's argument types (see
-					 * PT_EXPR_INFO.expr_volatility) */
-  int expr_si_requirement;	/* SI requirement of that signature (bitmask of PT_SI_REQUIREMENT bits) */
   PT_MISC_TYPE all_or_distinct;	/* will be PT_ALL or PT_DISTINCT */
   const char *generic_name;	/* only for type PT_GENERIC */
   char hidden_column;		/* used for updates and deletes for the class OID column */
@@ -2555,6 +2553,10 @@ struct pt_function_info
     bool ignore_nulls;		/* determines whether the calculation eliminate or includes null values */
     bool is_analytic;		/* is analytic clause */
   } analytic;
+  /* the fields above keep their offsets: some code reads them through this member on nodes of other types */
+  PT_VOLATILITY expr_volatility;	/* volatility of the signature matched for the node's argument types (see
+					 * PT_EXPR_INFO.expr_volatility) */
+  int expr_si_requirement;	/* SI requirement of that signature (bitmask of PT_SI_REQUIREMENT bits) */
 };
 
 /* Info for Get Optimization Level statement */
