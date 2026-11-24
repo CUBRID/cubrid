@@ -13846,46 +13846,6 @@ pt_init_insert (PT_NODE * p)
 }
 
 /*
- * pt_append_query_defaults () - append copies of the DEFAULTs of a view to the select list of each arm of a query,
- *				 after its visible columns
- *   return:
- *   parser(in):
- *   query(in/out): a copy of the source of an INSERT ... SELECT, to print
- *   defaults(in): default_values of the insert
- */
-static void
-pt_append_query_defaults (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * defaults)
-{
-  PT_NODE **link, *copy;
-
-  switch (query->node_type)
-    {
-    case PT_SELECT:
-      for (link = &query->info.query.q.select.list; *link != NULL && !(*link)->flag.is_hidden_column;
-	   link = &(*link)->next)
-	{
-	  ;
-	}
-      copy = parser_copy_tree_list (parser, defaults);
-      if (copy != NULL)
-	{
-	  *link = parser_append_node (*link, copy);
-	}
-      break;
-
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-      pt_append_query_defaults (parser, query->info.query.q.union_.arg1, defaults);
-      pt_append_query_defaults (parser, query->info.query.q.union_.arg2, defaults);
-      break;
-
-    default:
-      break;
-    }
-}
-
-/*
  * pt_print_insert () -
  *   return:
  *   parser(in):
@@ -13897,7 +13857,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = NULL, *r1, *r2;
   PT_NODE *crt_list = NULL;
   PT_NODE *named_last = NULL, *defaulted = NULL, *entity;
-  bool is_first_list = true, multiple_values_insert = false, select_defaults = false;
+  bool is_first_list = true, multiple_values_insert = false;
   PT_PRINT_BUFFER print_buf = PT_PRINT_BUFFER_INITIALIZER;
 
   // TODO: [PL/CSQL] need refactoring
@@ -13910,9 +13870,8 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.insert.default_values != NULL && (parser->custom_print & PT_PRINT_HOST_VAR_COUNT) == 0)
     {
-      /* a text parsed again: on the view (the action of a trigger), it names only the attributes the statement named,
-       * and parsing it gives the DEFAULTs of the view again; translated (the text a PL/CSQL static SQL falls back to),
-       * the DEFAULTs go into the select list of the source, with nothing else to show them */
+      /* a text parsed again (the action of a trigger, or a PL/CSQL static SQL) is printed before view translation:
+       * naming only the attributes the statement named, parsing it gives the DEFAULTs of the view again */
       entity = p->info.insert.spec != NULL ? p->info.insert.spec->info.spec.entity_name : NULL;
       if (entity != NULL && entity->node_type == PT_NAME && entity->info.name.db_object != NULL
 	  && db_is_vclass (entity->info.name.db_object) > 0)
@@ -13924,10 +13883,6 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 	      defaulted = named_last->next;
 	      named_last->next = NULL;
 	    }
-	}
-      else
-	{
-	  select_defaults = true;
 	}
     }
 
@@ -14061,20 +14016,8 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 		/* TODO why do we change is_subquery? What about PT_UNION and the rest? */
 		ptr_subquery->info.query.is_subquery = (PT_MISC_TYPE) 0;
 	      }
-	    if (select_defaults && ptr_subquery != NULL)
-	      {
-		ptr_subquery = parser_copy_tree (parser, ptr_subquery);
-		if (ptr_subquery != NULL)
-		  {
-		    pt_append_query_defaults (parser, ptr_subquery, p->info.insert.default_values);
-		  }
-	      }
 	    r1 = pt_print_bytes (parser, ptr_subquery);
 	    pt_print_buffer_append_varchar (parser, &print_buf, r1);
-	    if (select_defaults && ptr_subquery != NULL)
-	      {
-		parser_free_tree (parser, ptr_subquery);
-	      }
 	  }
 	  break;
 
@@ -14099,10 +14042,11 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
       return NULL;
     }
 
-  if (p->info.insert.default_values != NULL && (parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
+  if (p->info.insert.default_values != NULL && named_last == NULL)
     {
-      /* the cache key text: the plan holds the DEFAULTs of the view the statement was written on, which no other
-       * part of the translated statement shows; a comment, as the text is shown with the plan */
+      /* translated (the cache key text, or a message): the plan holds the DEFAULTs of the view the statement was
+       * written on, which no other part of the translated statement shows; a comment, as the text is shown with the
+       * plan */
       r1 = pt_print_bytes_l (parser, p->info.insert.default_values);
       b = pt_append_nulstring (parser, b, " /* view defaults (");
       b = pt_append_varchar (parser, b, r1);

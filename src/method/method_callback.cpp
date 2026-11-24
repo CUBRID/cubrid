@@ -643,11 +643,18 @@ namespace cubmethod
 	    /* the rewritten query is embedded verbatim in the compiled PL/CSQL class and re-parsed at runtime.
 	     * keep the original text with the text edits if possible; printing the compiled tree is the fallback */
 	    std::string edited_text;
+	    /* a text with a host variable for each PL/CSQL variable, as the statement was before view translation */
 	    bool use_text_edits = make_static_sql_text (parser, s, edited_text);
 
 	    if (use_text_edits)
 	      {
 		semantics.rewritten_query = edited_text;
+	      }
+	    else if (parser->static_sql_untranslated_text != NULL)
+	      {
+		/* the compiled tree can not be printed (see pt_keep_static_sql_tree ()) */
+		semantics.rewritten_query = parser->static_sql_untranslated_text;
+		use_text_edits = true;
 	      }
 	    else
 	      {
@@ -695,21 +702,24 @@ namespace cubmethod
 		 * Instead, we count the actual number of markers as follows.
 		*/
 		int markers_cnt = 0;
+		int max_index = -1;
 		DB_MARKER *marker_save = marker;
 		do
 		  {
 		    markers_cnt++;
+		    max_index = MAX (max_index, marker->info.host_var.index);
 		    marker = db_marker_next (marker);
 		  }
 		while (marker);
 		marker = marker_save;
 
-		semantics.hvs.resize (markers_cnt);
+		/* the text keeps the index of a PL/CSQL variable that a rewrite removed from the compiled statement */
+		semantics.hvs.resize (use_text_edits ? MAX (markers_cnt, max_index + 1) : markers_cnt);
 
 		do
 		  {
 		    int idx = marker->info.host_var.index;
-		    if (idx >= markers_cnt)
+		    if (idx >= (int) semantics.hvs.size ())
 		      {
 			error = ER_FAILED;
 			semantics.sql_type = error;
@@ -771,18 +781,30 @@ namespace cubmethod
 	      {
 		/* the host variables in the text are "?:N" with the indexes of the PL/CSQL variables, and each of them
 		 * needs its value. a PL/CSQL variable removed from the compiled statement (e.g. with an ORDER BY of
-		 * an IN subquery, or with an unused column of a merged derived table) has no marker: print the tree */
-		bool all_bound = semantics.hvs.size () >= (size_t) parser->host_var_count;
+		 * an IN subquery, or with an unused column of a merged derived table) has no marker: it is bound by its
+		 * label, and the statement compiled again at runtime removes it again */
+		const char **labels = parser->static_sql_host_var_labels;
+		bool all_bound = true;
 
 		for (int k = 0; all_bound && k < parser->host_var_count; k++)
 		  {
-		    all_bound = (semantics.hvs[k].mode != 0);
+		    all_bound = ((size_t) k < semantics.hvs.size () && semantics.hvs[k].mode != 0)
+				|| (labels != NULL && labels[k] != NULL);
 		  }
 
 		if (all_bound)
 		  {
 		    /* auto-parameterized values (the indexes after them) are not in the text, where they are literals */
 		    semantics.hvs.resize (parser->host_var_count);
+
+		    for (int k = 0; k < parser->host_var_count; k++)
+		      {
+			if (semantics.hvs[k].mode == 0)
+			  {
+			    semantics.hvs[k].mode = 1;
+			    semantics.hvs[k].name.assign (labels[k]);
+			  }
+		      }
 		  }
 		else
 		  {

@@ -13425,6 +13425,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	{
 	  /* the text of a static SQL is taken before type checking and view translation transform the tree */
 	  pt_collect_static_sql_edits (parser, node);
+	  pt_keep_static_sql_tree (parser, node);
 	}
 
       if (!pt_has_error (parser))
