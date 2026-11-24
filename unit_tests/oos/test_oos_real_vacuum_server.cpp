@@ -1063,8 +1063,7 @@ TEST_F (OosRealVacuum, VacuumWaitsForHeapHeaderWithoutHoldingLastPage)
     }
   if (log_advanced)
     {
-      LOG_LSA flush_lsa = log_Gl.prior_info.prior_lsa;
-      logpb_flush_pages (thread_p, &flush_lsa);
+      logpb_force_flush_pages (thread_p);
     }
 
   const bool vacuum_waits_for_header = log_advanced
@@ -1314,8 +1313,7 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
     /* Vacuum skips log blocks near the end of the flushed log. */
     static void flush_log ()
     {
-      LOG_LSA flush_lsa = log_Gl.prior_info.prior_lsa;
-      logpb_flush_pages (thread_p, &flush_lsa);
+      logpb_force_flush_pages (thread_p);
     }
 
     bool close_block_with_oos_fillers (VACUUM_LOG_BLOCKID block)
