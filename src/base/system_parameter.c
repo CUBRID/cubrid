@@ -9791,9 +9791,9 @@ sysprm_set_value_internal (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag
       /* update the session parameter of the sub-client of this thread, not prm_Def shared with the other clients */
       (void) sysprm_set_session_parameter_value (PRM_SUB_CLIENT_SESSION_PARAM (prm->id), value);
 
-      /* Set the cached parsed session timezone region of this thread */
+      /* Set the cached parsed session timezone region of the sub-client of this thread */
       if (prm->id == PRM_ID_TIMEZONE
-	  && tz_str_to_region (value.str, strlen (value.str), tz_get_client_tz_region_session ()) != NO_ERROR)
+	  && tz_str_to_region (value.str, strlen (value.str), tz_get_sub_client_tz_region_session ()) != NO_ERROR)
 	{
 	  return PRM_ERR_BAD_PARAM;
 	}
@@ -11604,11 +11604,11 @@ sysprm_set_sub_client_session_parameters (const SESSION_PARAM * session_params)
   sysprm_free_sub_client_session_parameters ();
   sysprm_Sub_client_session_params = params;
 
-  /* Set the cached parsed session timezone region of this thread */
+  /* Set the cached parsed session timezone region of the sub-client of this thread */
   timezone = prm_get_string_value (PRM_ID_TIMEZONE);
   if (timezone != NULL)
     {
-      (void) tz_str_to_region (timezone, strlen (timezone), tz_get_client_tz_region_session ());
+      (void) tz_str_to_region (timezone, strlen (timezone), tz_get_sub_client_tz_region_session ());
     }
 
   return NO_ERROR;
@@ -11623,6 +11623,7 @@ void
 sysprm_free_sub_client_session_parameters (void)
 {
   sysprm_free_session_parameters (&sysprm_Sub_client_session_params);
+  tz_reset_sub_client_tz_region_session ();
 }
 #endif /* CS_MODE && MULTI_CONN_TO_A_SERVER */
 
