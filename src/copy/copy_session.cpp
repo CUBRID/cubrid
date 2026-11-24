@@ -570,7 +570,7 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	  int is_set;
 
 	  error = heap_set_autoincrement_value (thread_p, &attrinfo, &serial_scancache, &is_set, m_auto_incr_pos,
-					      m_auto_incr_serial_name);
+						m_auto_incr_serial_name);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;

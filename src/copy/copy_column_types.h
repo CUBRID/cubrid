@@ -40,6 +40,7 @@ extern "C"
    * bound INSERT casts a string. Their binary forms (scaled integers, bit
    * lengths, enum indexes, zone ids) are internal and not worth asking a client
    * to produce. */
+  // *INDENT-OFF*
   inline bool
   copy_type_is_text_cast (DB_TYPE type)
   {
@@ -82,9 +83,10 @@ extern "C"
 	return copy_type_is_text_cast (type);
       }
   }
+  // *INDENT-ON*
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _COPY_COLUMN_TYPES_H_ */
+#endif				/* _COPY_COLUMN_TYPES_H_ */
