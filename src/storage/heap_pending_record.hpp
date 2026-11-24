@@ -83,11 +83,29 @@ class heap_pending_record
     {
       return OID_EQ (&m_reused_stubs_class, &class_oid);
     }
+    // An internal LOB column whose stub the record reuses (its chain is written at preparation, so a stub alone
+    // does not tell reused from new).
+    void add_reused_lob_attr (int attrid)
+    {
+      m_reused_lob_attrs.push_back (attrid);
+    }
+    bool reuses_lob_attr (int attrid) const
+    {
+      for (int reused : m_reused_lob_attrs)
+	{
+	  if (reused == attrid)
+	    {
+	      return true;
+	    }
+	}
+      return false;
+    }
 
   private:
     record_descriptor m_record;
     std::vector<oos_buffer> m_values;
     OID m_reused_stubs_class = OID_INITIALIZER;
+    std::vector<int> m_reused_lob_attrs;
     std::size_t m_bytes = 0;
     enum class state { empty, prepared, finalized, failed };
     state m_state = state::empty;

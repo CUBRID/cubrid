@@ -14116,10 +14116,8 @@ heap_attrinfo_plan_reused_oos_stubs (HEAP_CACHE_ATTRINFO * attr_info, RECDES * o
       char *stub = NULL;
 
       if (value->state != HEAP_UNINIT_ATTRVALUE || value->do_increment != 0 || value->last_attrepr->is_fixed
-	  || TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (value->last_attrepr->domain))
 	  || heap_recdes_get_oos_inline_stub (old_recdes, value->last_attrepr->location, &stub) != NO_ERROR)
 	{
-	  /* an internal LOB is cloned for now */
 	  continue;
 	}
 
@@ -16372,6 +16370,14 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       && heap_attrinfo_plan_reused_oos_stubs (attr_info, old_recdes, &oos_plan))
     {
       pending->set_reused_stubs_class (attr_info->class_oid);
+      for (int i = 0; i < attr_info->num_values; i++)
+	{
+	  /* an internal LOB stub looks the same reused or new; finalization needs to know which to replicate */
+	  if (oos_plan[i].reused && TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (attr_info->values[i].last_attrepr->domain)))
+	    {
+	      pending->add_reused_lob_attr (attr_info->values[i].attrid);
+	    }
+	}
     }
 
   /* get any of the values that have not been set/read */

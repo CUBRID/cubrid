@@ -339,7 +339,13 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	    }
 	  if (TP_IS_LOB_TYPE (attr.type))
 	    {
-	      /* An Internal LOB is never retained: its chain was written when the record was prepared. */
+	      /* An Internal LOB is never retained: its chain was written when the record was prepared, or the UPDATE
+	       * reused the old version's stub, which the replica must take from its own previous version. */
+	      if (pending->reuses_stubs_of (*destination) && pending->reuses_lob_attr (attr.id))
+		{
+		  reused.push_back (true);
+		  reused_attrids.push_back (attr.id);
+		}
 	      continue;
 	    }
 	  char *stub = nullptr;

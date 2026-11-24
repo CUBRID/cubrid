@@ -45,6 +45,7 @@ heap_pending_record::heap_pending_record (heap_pending_record &&other) noexcept
   , m_state (other.m_state)
 {
   m_values.swap (other.m_values);
+  m_reused_lob_attrs.swap (other.m_reused_lob_attrs);
   other.m_bytes = 0;
   other.m_state = state::empty;
 }
