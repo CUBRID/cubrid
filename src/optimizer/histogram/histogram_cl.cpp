@@ -2692,6 +2692,7 @@ stats_get_histogram (MOP classop, HIST_STATS **histogram)
   SM_ATTRIBUTE *att;
   SM_CLASS *class_ = NULL;
   int attr_count = 0;
+  int au_save;
 
   error = au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
@@ -2792,16 +2793,24 @@ stats_get_histogram (MOP classop, HIST_STATS **histogram)
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_end;
 	}
+      /* the values of the row come out of _db_histogram, which only DBA may read, so they are read without the
+       * user's authorization like the lookup that found the row (db_get_histogram_for_optimizer ()); the user's
+       * right to the class itself was checked above (au_fetch_class (AU_SELECT)). A compile reads here with
+       * authorization already off while it generates XASL, but a bind value check at execution does not, and for a
+       * user other than DBA it failed here and went on without the histogram (CBRD-28192) */
+      AU_SAVE_AND_DISABLE (au_save);
       error = db_get (histogram_obj, "histogram_values", histogram_value);
-      if (error != NO_ERROR)
+      if (error == NO_ERROR)
 	{
-	  db_ws_free (histogram_value);
-	  goto error_end;
+	  error = db_get (histogram_obj, "null_frequency", &null_frequency_value);
+	  if (error != NO_ERROR)
+	    {
+	      db_value_clear (histogram_value);
+	    }
 	}
-      error = db_get (histogram_obj, "null_frequency", &null_frequency_value);
+      AU_RESTORE (au_save);
       if (error != NO_ERROR)
 	{
-	  db_value_clear (histogram_value);
 	  db_ws_free (histogram_value);
 	  goto error_end;
 	}
