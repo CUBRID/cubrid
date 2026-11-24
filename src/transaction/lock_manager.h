@@ -70,12 +70,23 @@ enum
 enum
 { LK_UNCOND_LOCK, LK_COND_LOCK };
 
-/* what a self-lock waiter saw: the owner a stamp named, and the wake generation read with that stamp */
+/* the row a self-lock wait is about, for the lock wait diagnostics: the row whose stamp named the owner */
+typedef struct lk_wait_target LK_WAIT_TARGET;
+struct lk_wait_target
+{
+  OID oid;
+  OID class_oid;
+  LOCK mode;			/* the lock the statement asks for on that row */
+};
+
+/* what a self-lock waiter saw: the owner a stamp named, the wake generation read with that stamp, and the row it was
+ * on */
 typedef struct lk_stamp_seen LK_STAMP_SEEN;
 struct lk_stamp_seen
 {
   MVCCID owner;			/* the MVCCID to wait out, or MVCCID_NULL */
   UINT64 wake_gen;		/* lock_get_tran_wake_generation (), read as that function says */
+  LK_WAIT_TARGET target;
 };
 
 /* the row a self-lock waiter holds X while it waits: the owner may be handed it (lock_wait_transaction_mvccid ()) */
