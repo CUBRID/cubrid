@@ -1174,6 +1174,17 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
   if (arg1->node_type == PT_EXPR && arg1->info.expr.op == PT_CAST)
     {
       /* arg1 is a cast, so arg1.type_enum is not yet set; pull type from expression's cast type */
+      if (arg1->info.expr.cast_type == NULL)
+	{
+	  /* arg1 is a COLLATE modifier whose type could not be resolved (e.g. COLLATE on a non-string value).
+	   * Type checking does not stop at that error inside a collection constructor or an IN list, so the outer
+	   * CAST still comes here; the error is already set. */
+	  if (!pt_has_error (parser))
+	    {
+	      PT_INTERNAL_ERROR (parser, "null cast type");
+	    }
+	  return false;
+	}
       arg_type = arg1->info.expr.cast_type->type_enum;
     }
   else
