@@ -312,6 +312,9 @@
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_READ) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_RELEASE) \
   \
+  /* what the cached XASL of an XASL_ID writes, for a stored procedure inside a SQL statement */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_QUERY_GET_STMT_INFO) \
+  \
   /* password proof for a client login or user switch, appended likewise */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_AU_CHALLENGE) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_AU_RESPONSE) \
