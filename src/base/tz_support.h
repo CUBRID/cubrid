@@ -202,10 +202,6 @@ extern "C"
   extern void tz_set_tz_region_system (const TZ_REGION * tz_region);
 #if !defined(SERVER_MODE)
   extern TZ_REGION *tz_get_client_tz_region_session (void);
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-  extern TZ_REGION *tz_get_sub_client_tz_region_session (void);
-  extern void tz_reset_sub_client_tz_region_session (void);
-#endif
 #else
   extern TZ_REGION *tz_get_server_tz_region_session (void);
 #endif
