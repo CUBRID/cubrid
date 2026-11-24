@@ -370,6 +370,76 @@ qo_set_optimization_param (void *retval, int param, ...)
 }
 
 /*
+ * qo_split_and_terms () - turn the conjunctions on a CNF list into terms of their own
+ *   return: the list
+ *   parser(in):
+ *   list(in/out): a WHERE or an ON condition, as a CNF list
+ *
+ * Note: a term the planner takes is a predicate or a disjunction; a conjunction has no term class, and
+ *	 qo_analyze_term () gives up the plan, which fails the statement with "Outer join query optimization
+ *	 failed.".  The rewrites keep the list in that shape (qo_fold_or_factors ()), but a fold after them can
+ *	 still leave a conjunction: a factor of an ON condition kept whole is parameterized, and the constant
+ *	 folding of the XASL preparation drops its false disjuncts and leaves (z.c = ?:1 and nvl (2, -1) = ?:2).
+ *	 Each conjunct becomes a term at the conjunction's location.
+ */
+static PT_NODE *
+qo_split_and_terms (PARSER_CONTEXT * parser, PT_NODE * list)
+{
+  PT_NODE *term, *prev = NULL, *next, *conj, *last, *dnf;
+  short location;
+
+  for (term = list; term != NULL; term = next)
+    {
+      next = term->next;
+      if (!PT_IS_EXPR_NODE_WITH_OPERATOR (term, PT_AND) || term->or_next != NULL)
+	{
+	  prev = term;
+	  continue;
+	}
+
+      location = term->info.expr.location;
+      conj = parser_append_node (term->info.expr.arg2, term->info.expr.arg1);
+      term->info.expr.arg1 = term->info.expr.arg2 = NULL;
+      term->next = NULL;
+      parser_free_node (parser, term);
+
+      /* the conjuncts may be conjunctions themselves */
+      conj = qo_split_and_terms (parser, conj);
+      for (last = conj;; last = last->next)
+	{
+	  for (dnf = last; dnf != NULL; dnf = dnf->or_next)
+	    {
+	      if (dnf->node_type == PT_EXPR)
+		{
+		  dnf->info.expr.location = location;
+		}
+	      else if (dnf->node_type == PT_VALUE)
+		{
+		  dnf->info.value.location = location;
+		}
+	    }
+	  if (last->next == NULL)
+	    {
+	      break;
+	    }
+	}
+
+      last->next = next;
+      if (prev != NULL)
+	{
+	  prev->next = conj;
+	}
+      else
+	{
+	  list = conj;
+	}
+      prev = last;
+    }
+
+  return list;
+}
+
+/*
  * qo_optimize_query () - optimize a single select statement, skip nested
  *			  selects since embedded selects are optimized first
  *   return: void
@@ -380,6 +450,7 @@ QO_PLAN *
 qo_optimize_query (PARSER_CONTEXT * parser, PT_NODE * tree)
 {
   QO_ENV *env;
+  PT_NODE *spec;
   int level;
 
   /*
@@ -396,6 +467,15 @@ qo_optimize_query (PARSER_CONTEXT * parser, PT_NODE * tree)
   if (tree->node_type != PT_SELECT)
     {
       return NULL;
+    }
+
+  tree->info.query.q.select.where = qo_split_and_terms (parser, tree->info.query.q.select.where);
+  for (spec = tree->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      if (spec->node_type == PT_SPEC)
+	{
+	  spec->info.spec.on_cond = qo_split_and_terms (parser, spec->info.spec.on_cond);
+	}
     }
 
   env = qo_env_init (parser, tree);
@@ -1126,6 +1206,10 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree, void 
 		      if (expr_str != NULL
 			  && !intl_identifier_casecmp (expr_str, constraints->func_index_info->expr_str))
 			{
+			  /* name resolution marks the expression only over the class itself; one over a view
+			   * reaches here unmarked, and the hash join, which finds the column a segment is fetched
+			   * into by the mark (pt_find_attribute_with_func_index_expr ()), would not find it */
+			  PT_EXPR_INFO_SET_FLAG (tree, PT_EXPR_INFO_FUNCTION_INDEX);
 			  for (i = 0; i < env->nsegs; i++)
 			    {
 			      seg_fi = QO_ENV_SEG (env, i);
@@ -10153,6 +10237,14 @@ qo_derived_term_compensate (QO_ENV * env)
       j = QO_TERM_IDX (origin);
       pair[i] = j;
       bitset_add (&taken, j);
+      if (QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED) && !QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED_COLUMN)
+	  && QO_TERM_CLASS (origin) != QO_TC_SARG)
+	{
+	  /* the factor is evaluated at a join, not at this scan: a row the restriction rejects is not
+	   * joined at all, which pays for a costly conjunct as much as the clauses the factor used to
+	   * be distributed into, evaluated at the scan whatever their cost, did.  Keep it as a filter */
+	  QO_TERM_CLEAR_FLAG (derived, QO_TERM_OR_DERIVED_EXPENSIVE);
+	}
       if (QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED_COLUMN) && QO_TERM_IS_FLAGED (origin, QO_TERM_OR_DERIVED))
 	{
 	  /* the division below leaves the restriction only what it rejects on top of the key range,

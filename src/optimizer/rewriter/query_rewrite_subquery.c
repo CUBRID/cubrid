@@ -295,6 +295,62 @@ qo_operand_is_non_null (PARSER_CONTEXT * parser, PT_NODE * operand, PT_NODE * sp
 }
 
 /*
+ * qo_reads_inner_spec () - does one conjunct read a table of the subquery?
+ *   return: bool
+ *   parser(in):
+ *   node(in): a conjunct, or an operand of AND or OR inside one
+ *   inner_spec(in): the FROM list of the subquery
+ */
+static bool
+qo_reads_inner_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * inner_spec)
+{
+  PT_NODE *spec, *save_next;
+  UINTPTR ref;
+
+  save_next = node->next;
+  node->next = NULL;
+  for (spec = inner_spec; spec != NULL; spec = spec->next)
+    {
+      ref = spec->info.spec.id;
+      (void) parser_walk_tree (parser, node, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
+      if (ref == 0)
+	{
+	  break;
+	}
+    }
+  node->next = save_next;
+
+  return spec != NULL;
+}
+
+/*
+ * qo_factor_implies_outer_part () - does a factor pt_cnf () kept whole imply a condition on the outer tables alone?
+ *   return: true when every disjunct holds a conjunct that reads no table of the subquery
+ *   parser(in):
+ *   node(in): the factor, or an operand of AND or OR inside it
+ *   inner_spec(in): the FROM list of the subquery
+ *
+ * Note: distributing the factor gives that condition as a clause of its own, the disjunction of those
+ *	 conjuncts, and an ANTI JOIN has no place for a conjunct over the outer tables alone.
+ */
+static bool
+qo_factor_implies_outer_part (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * inner_spec)
+{
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_OR))
+    {
+      return (qo_factor_implies_outer_part (parser, node->info.expr.arg1, inner_spec)
+	      && qo_factor_implies_outer_part (parser, node->info.expr.arg2, inner_spec));
+    }
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_AND))
+    {
+      return (qo_factor_implies_outer_part (parser, node->info.expr.arg1, inner_spec)
+	      || qo_factor_implies_outer_part (parser, node->info.expr.arg2, inner_spec));
+    }
+
+  return !qo_reads_inner_spec (parser, node, inner_spec);
+}
+
+/*
  * qo_conjunct_is_unnestable () - decide whether one WHERE conjunct is a [NOT] EXISTS / [NOT] IN form that
  *      can become a SEMI / ANTI joined spec, and assemble the ON condition it would carry
  *   return: bool
@@ -505,6 +561,15 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
 	    }
 	  cnf->next = save_next;
 	  if (spec == NULL)
+	    {
+	      goto exit;
+	    }
+
+	  /* the same holds for the clause a factor kept whole would give if it were distributed: refused, the
+	   * NOT EXISTS stays a nested subquery, which checks that clause once per outer row before reading a
+	   * row of its own (qo_extract_or_restrictions () derives it there) */
+	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (cnf, PT_OR) && cnf->or_next == NULL
+	      && qo_factor_implies_outer_part (parser, cnf, inner_spec))
 	    {
 	      goto exit;
 	    }
