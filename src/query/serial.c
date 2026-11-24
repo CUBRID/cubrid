@@ -2155,7 +2155,9 @@ serial_repl_rebuild_image (THREAD_ENTRY * thread_p, const OID * serial_oidp, REC
     {
       goto end;
     }
-  if (heap_attrinfo_transform_to_disk (thread_p, &row_info, &row, rebuilt) == S_SUCCESS)
+  /* keep this node's storage form: a _db_serial row that holds an OOS stub would write a new chain on
+   * every replicated NEXT VALUE and break HA apply after failover */
+  if (heap_attrinfo_transform_to_disk_keep_form (thread_p, &row_info, &row, rebuilt) == S_SUCCESS)
     {
       error = NO_ERROR;
     }
