@@ -9330,11 +9330,11 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
 	  /* A deadlock victim must give up its locks. Going on with the next object would make it wait
 	   * again with those locks still held, and the cycle it was chosen to break would never clear.
-	   * Fail the whole call instead so the client aborts the transaction. */
+	   * Fail the whole call instead so the client aborts the transaction. exit_on_error aborts the row topop,
+	   * then the outer one. */
 	  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()))
 	    {
 	      error_code = er_errid ();
-	      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
 	      goto exit_on_error;
 	    }
 
