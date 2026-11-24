@@ -9905,7 +9905,9 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	  /* the page batch (expr_batch.h): the pages it took and handed back are counted as the scan runs, so they are
 	   * in the default trace, in a group of their own after the scan's -- the scan's own figures end the line as
 	   * they do without it.  A parallel scan's workers count theirs on their own line, per worker
-	   * (accumulative_trace_storage::dump_stats_text ()); the parent's counters stay 0 */
+	   * (accumulative_trace_storage::dump_stats_text ()); the parent's counters stay 0.  The cause of the row path
+	   * (last:, batch skipped:) is printed by default too, as a runtime diagnosis of the scan: so a trace-carrying
+	   * answer changes when the batch's coverage changes, which a coverage commit re-blesses (CBRD-28184) */
 	  if (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0)
 	    {
 	      /* the last chunk's cause for the row path, kept on the scan (the plan is gone by now) */

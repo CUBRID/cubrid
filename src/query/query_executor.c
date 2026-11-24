@@ -8367,7 +8367,7 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
        * nothing is merged */
       if (thread_is_on_trace (thread_p))
 	{
-	  xasl->groupby_stats.groupby_hash_merge_skip = "no rows left";
+	  xasl->groupby_stats.groupby_hash_merge_skip = "no leftovers";
 	}
       return NO_ERROR;
     }

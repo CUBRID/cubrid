@@ -3085,7 +3085,7 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
 		    break;	/* statistics only: the rest of the lines are left out */
 		  }
 		trace_json_array_append_new (lines, trace_json_string (one));
-		free (one);
+		free_and_init (one);
 	      }
 	      line = nl + 1;
 	    }
@@ -3168,7 +3168,7 @@ session_set_trace_plan_detail (THREAD_ENTRY * thread_p, char *plan_detail)
     {
       if (plan_detail != NULL)
 	{
-	  free (plan_detail);
+	  free_and_init (plan_detail);
 	}
       return ER_FAILED;
     }

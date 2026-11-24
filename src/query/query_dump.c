@@ -4789,7 +4789,7 @@ qdump_print_plan_detail_text (FILE * fp, xasl_node * xasl_p, int indent)
 	    }
 	  fputs (body, fp);
 	}
-      free (body);
+      free_and_init (body);
     }
 }
 
