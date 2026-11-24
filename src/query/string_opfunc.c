@@ -16667,6 +16667,14 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
     }
   else				/* format_str != NULL */
     {
+      /* A NULL format value (a column, a host variable or a NULL literal folded by the parser) holds no string,
+       * so the result is NULL as for a NULL source, as in TO_CHAR and TO_DATE. */
+      if (DB_IS_NULL (format_str))
+	{
+	  db_make_null (result_num);
+	  goto exit;
+	}
+
       /* Format string type checking */
       if (is_char_string (format_str))
 	{
