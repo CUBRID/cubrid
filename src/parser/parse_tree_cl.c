@@ -21361,32 +21361,20 @@ pt_print_create_package (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       /*
        * The block of a package keeps the white spaces after AS/IS and before the end of the statement.
-       * Drop the blank lines at the start and the white spaces at the end, so that the text does not grow
-       * with each print, which is saved and then unloaded and loaded again. The indentation of the first line is kept.
+       * Print the block right after AS as it is, so that its lines keep their numbers in the statement of the user
+       * when CREATE and AS are on one line. Drop the white spaces at the end, so that the text does not grow
+       * with each print, which is saved and then unloaded and loaded again.
        */
       PARSER_VARCHAR *impl = p->info.pkg.block->info.sp_body.impl->info.value.data_value.str;
       const char *start = (const char *) impl->bytes;
       const char *end = start + impl->length;
-      const char *s;
 
-      for (s = start; s < end && (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n'); s++)
-	{
-	  if (*s == '\n')
-	    {
-	      start = s + 1;
-	    }
-	}
-      if (s == end || start == (const char *) impl->bytes)
-	{
-	  /* no line break before the first text: AS is printed with one below */
-	  start = s;
-	}
       while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r' || end[-1] == '\n'))
 	{
 	  end--;
 	}
 
-      q = pt_append_nulstring (parser, q, " AS\n");
+      q = pt_append_nulstring (parser, q, " AS");
       q = pt_append_bytes (parser, q, start, (int) (end - start));
     }
   else
