@@ -18105,6 +18105,19 @@ pt_set_dptr (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl, UINTPTR 
  *   select_node(in):
  *   xasl(in):
  */
+static XASL_NODE *
+pt_find_shared_view_cte (XASL_NODE * list, const XASL_NODE * shared)
+{
+  for (; list != NULL; list = list->next)
+    {
+      if (list->type == CTE_PROC && list->proc.cte.non_recursive_part == shared)
+	{
+	  return list;
+	}
+    }
+  return NULL;
+}
+
 static void
 pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl)
 {
@@ -18112,6 +18125,36 @@ pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl)
     {
       xasl->aptr_list =
 	pt_remove_xasl (pt_append_xasl (xasl->aptr_list, pt_to_uncorr_subquery_list (parser, select_node)), xasl);
+
+      /* CBRD-27351: the result of a share group runs as a CTE of the statement, before anything that reads it */
+      XASL_NODE **insert_at = &xasl->aptr_list;
+      for (PT_SHARE_GROUP * group = PT_IS_QUERY (select_node) ? select_node->info.query.share_groups : NULL;
+	   group != NULL; group = group->next)
+	{
+	  XASL_NODE *shared = (XASL_NODE *) group->donor->info.spec.derived_table->info.query.xasl;
+	  XASL_NODE *cte;
+
+	  if (shared == NULL || pt_find_shared_view_cte (xasl->aptr_list, shared) != NULL)
+	    {
+	      /* no member was generated, or a second call for the block, as of an analytic function */
+	      continue;
+	    }
+	  assert (shared->next == NULL);
+	  cte = regu_xasl_node_alloc (CTE_PROC);
+	  if (cte == NULL)
+	    {
+	      PT_ERRORm (parser, select_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return;
+	    }
+	  cte->proc.cte.non_recursive_part = shared;
+	  cte->proc.cte.recursive_part = NULL;
+	  cte->projected_size = shared->projected_size;
+	  cte->cardinality = shared->cardinality;
+	  XASL_SET_FLAG (cte, XASL_ZERO_CORR_LEVEL);
+	  cte->next = *insert_at;
+	  *insert_at = cte;
+	  insert_at = &cte->next;
+	}
     }
 }
 
@@ -18347,6 +18390,12 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
     case PT_INTERSECTION:
       info->level--;
       xasl = (XASL_NODE *) node->info.query.xasl;
+
+      if (node->info.query.flag.shared_view_body)
+	{
+	  /* CBRD-27351: the statement runs the result of a share group first (pt_set_aptr ()) */
+	  break;
+	}
 
       /* subquery or cached subquery */
       if (xasl && pt_is_subquery (node))
@@ -29061,6 +29110,23 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
 }
 
 /*
+ * pt_generate_shared_view_body () - CBRD-27351: make the XASL of the donor's derived table of a share group, once a
+ *   generation, whichever member is generated first
+ */
+static void
+pt_generate_shared_view_body (PARSER_CONTEXT * parser, PT_NODE * donor)
+{
+  PT_NODE *body = donor->info.spec.derived_table;
+
+  assert (body != NULL && body->info.query.flag.shared_view_body);
+  if (body != NULL && body->info.query.xasl == NULL)
+    {
+      donor->info.spec.derived_table =
+	parser_walk_tree (parser, body, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
+    }
+}
+
+/*
  * pt_generate_ctes_and_derived_tables () - CBRD-27583: the XASL of the subqueries of a SELECT's FROM list, made
  *   before its select list, whose correlated subqueries read their columns' domains, after the CTEs
  *   of its WITH clause, which they may read; the walk then skips the WITH clause and their specs
@@ -29085,7 +29151,16 @@ pt_generate_ctes_and_derived_tables (PARSER_CONTEXT * parser, PT_NODE * query)
     }
   for (PT_NODE * spec = query->info.query.q.select.from; spec != NULL && !pt_has_error (parser); spec = spec->next)
     {
-      if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY && spec->info.spec.derived_table != NULL)
+      if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY && spec->info.spec.derived_table != NULL
+	  && spec->info.spec.share_group != NULL)
+	{
+	  /* CBRD-27351: a member of a share group reads the XASL of the donor's derived table, made once */
+	  PT_NODE *donor = spec->info.spec.share_group->donor;
+
+	  pt_generate_shared_view_body (parser, donor);
+	  spec->info.spec.derived_table->info.query.xasl = donor->info.spec.derived_table->info.query.xasl;
+	}
+      else if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY && spec->info.spec.derived_table != NULL)
 	{
 	  spec->info.spec.derived_table =
 	    parser_walk_tree (parser, spec->info.spec.derived_table, parser_generate_xasl_pre, NULL,
@@ -29298,6 +29373,12 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       if (node)
 	{
 	  node = meth_translate (parser, node);
+	}
+
+      /* CBRD-27351: the share groups whose result the statement makes first, each with its donor */
+      if (node)
+	{
+	  node->info.query.share_groups = mq_share_settle_groups (parser, node);
 	}
 
       if (node)

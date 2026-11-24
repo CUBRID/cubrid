@@ -1739,6 +1739,7 @@ typedef struct pt_histogram_info PT_HISTOGRAM_INFO;
 typedef struct pt_create_user_info PT_CREATE_USER_INFO;
 typedef struct pt_create_trigger_info PT_CREATE_TRIGGER_INFO;
 typedef struct pt_cte_info PT_CTE_INFO;
+typedef struct pt_share_group PT_SHARE_GROUP;
 typedef struct pt_serial_info PT_SERIAL_INFO;
 typedef struct pt_data_default_info PT_DATA_DEFAULT_INFO;
 typedef struct pt_auto_increment_info PT_AUTO_INCREMENT_INFO;
@@ -2373,6 +2374,20 @@ struct pt_spec_info
   DB_AUTH auth_bypass_mask;	/* flag to bypass normal authorization : used only by SHOW statements currently */
   PT_SPEC_FLAG flag;		/* flag wich marks this spec for DELETE or UPDATE operations */
   int num_parallel_threads;	/* number of parallel threads for this spec */
+  PT_SHARE_GROUP *share_group;	/* CBRD-27351: the group of a view reference that reads one result of the view with
+				 * the other references of the group, NULL for none */
+  bool share_pushed;		/* CBRD-27351: a term was pushed into the body of this reference, which leaves its group */
+};
+
+/* CBRD-27351: the references to one view, outside correlated subqueries, that read one result of the view */
+struct pt_share_group
+{
+  DB_OBJECT *view;		/* the view */
+  PT_NODE *attrs;		/* the names of the columns the references read; NULL for none */
+  PT_NODE *donor;		/* the reference whose derived table makes the result the others read */
+  int n_members;		/* the references expanded as a derived table */
+  bool all_columns;		/* the view's body gives other rows without the columns not read, as DISTINCT */
+  PT_SHARE_GROUP *next;		/* the next group of the statement */
 };
 
 /* Info for an EVALUATE object */
@@ -3068,6 +3083,7 @@ struct pt_query_info
     unsigned folded_distinct:1;	/* a SELECT DISTINCT from a derived table of the operand a set operation
 				 * without ALL folded to (pt_fold_union_as_derived ()): where only the set of
 				 * its rows counts, the operand takes its place (pt_fold_union_unwrap ()) */
+    unsigned shared_view_body:1;	/* CBRD-27351: the derived table of a view reference in a share group */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
@@ -3080,6 +3096,7 @@ struct pt_query_info
   PT_HINT_ENUM hint;		/* hint flag */
   bool is_order_dependent;	/* true if query is order dependent */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
+  PT_SHARE_GROUP *share_groups;	/* CBRD-27351: the share groups whose result this statement makes first */
   union
   {
     PT_SELECT_INFO select;

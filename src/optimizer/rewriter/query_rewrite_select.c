@@ -124,7 +124,11 @@ qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE **
 	  if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY
 	      || spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	    {
-	      (void) mq_copypush_sargable_terms (parser, (*nodep), spec);
+	      if (mq_copypush_sargable_terms (parser, (*nodep), spec) > 0 && spec->info.spec.share_group != NULL)
+		{
+		  /* CBRD-27351: the pushed terms make the body of this reference differ from the others' */
+		  spec->info.spec.share_pushed = true;
+		}
 	    }
 	  else
 	    {
