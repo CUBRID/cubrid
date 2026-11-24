@@ -16877,7 +16877,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 			  /* handle the scan procedure */
 			  xasl->scan_ptr->next_scan_on = false;
-			  if (qexec_reset_sa_inner_scan_block (thread_p, xasl->scan_ptr) == S_ERROR)
+			  /* the row after the first scan's end, taken only for the following scan to pass on the rows held
+			   * below it: that scan does not run for it, and rewound it would have a next scan block */
+			  if (!(xasl->scan_ptr->nl_batch != NULL && xasl->scan_ptr->nl_batch->outer_ended
+				&& !xasl->scan_ptr->nl_batch->flush)
+			      && qexec_reset_sa_inner_scan_block (thread_p, xasl->scan_ptr) == S_ERROR)
 			    {
 			      return S_ERROR;
 			    }
