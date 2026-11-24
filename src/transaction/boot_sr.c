@@ -3136,8 +3136,8 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #ifdef CCI_XA
   dblink_2pc_daemon_stop ();
 #endif /* CCI_XA */
-  /* stop the CDC producer before the page buffer daemons it may wake while it fixes pages, as the restart failure
-   * path does */
+  /* a CDC producer that fixes a page while no buffer is free wakes the page flush daemon; stop it before
+   * pgbuf_daemons_destroy deletes that daemon */
   cdc_daemons_destroy ();
   pgbuf_daemons_destroy ();
   pl_server_destroy ();
