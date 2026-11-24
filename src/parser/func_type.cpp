@@ -2687,12 +2687,24 @@ pt_character_length_for_node (PT_NODE *node, const PT_TYPE_ENUM coerce_type)
 	  break;
 	}
 
-      /* fixed numeric: a sign, the integer digits or a 0 when there are none, then a point and the fraction digits */
-      if (scale == DB_DEFAULT_SCALE)
+      /* fixed numeric: calculate precision based on precision and scale*/
+      precision++;	  /* for sign */
+
+      if (scale != DB_DEFAULT_SCALE && scale != DB_DEFAULT_NUMERIC_SCALE)
 	{
-	  scale = 0;
+	  if (scale > precision)
+	    {
+	      precision = scale + 2; /* for sign and decimal point */
+	    }
+	  else if (scale < 0)
+	    {
+	      precision = (precision - scale); /* for negative scale, no decimal point is needed */
+	    }
+	  else
+	    {
+	      precision++; /* for decimal point */
+	    }
 	}
-      precision = 1 + MAX (precision - scale, 1) + (scale > 0 ? scale + 1 : 0);
     }
     break;
     case PT_TYPE_CHAR:

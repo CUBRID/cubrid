@@ -2273,10 +2273,7 @@ static bool
 domain_key_converts_losslessly (DB_TYPE source, const TP_DOMAIN * column)
 {
   const DB_TYPE target = TP_DOMAIN_TYPE (column);
-  /* a float NUMERIC holds every integer, a negative scale rounds the units */
-  const int integer_digits = target != DB_TYPE_NUMERIC ? 0
-    : column->precision == DB_DEFAULT_NUMERIC_PRECISION ? DB_DEFAULT_NUMERIC_PRECISION
-    : column->scale < 0 ? 0 : column->precision - column->scale;
+  const int integer_digits = target == DB_TYPE_NUMERIC ? column->precision - column->scale : 0;
   switch (source)
     {
     case DB_TYPE_SHORT:

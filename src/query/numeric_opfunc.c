@@ -5682,6 +5682,9 @@ int
 numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale, bool is_float,
 			      bool * is_value_negative)
 {
+  char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, NUMERIC_MAX_STRING_SIZE)];
+  int i = 0;
+
   assert (is_value_negative);
 
   switch (get_fp_value_type (adouble))
@@ -5692,11 +5695,16 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
        * does */
       return ER_IT_DATA_OVERFLOW;
     case FP_VALUE_TYPE_ZERO:
-      /* a zero has one digit at any scale */
-      numeric_zero (num, DB_NUMERIC_BUF_SIZE);
-      *is_value_negative = false;
-      *prec = 1;
       *scale = dst_scale;
+      *prec = dst_scale ? dst_scale : 1;
+
+      while (i < *prec)
+	{
+	  numeric_str[i++] = '0';
+	}
+      numeric_str[i] = '\0';
+
+      numeric_coerce_dec_str_to_num (numeric_str, num, is_value_negative);
       return NO_ERROR;
     default:
       /* check for overflow and underflow against the limits of any NUMERIC domain before the conversion */
@@ -5710,10 +5718,16 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 	    {
 	      /* the floating-point number underflows any possible CUBRID NUMERIC domain type, so just return 0 with no
 	       * other conversion */
-	      numeric_zero (num, DB_NUMERIC_BUF_SIZE);
-	      *is_value_negative = false;
-	      *prec = 1;
 	      *scale = dst_scale;
+	      *prec = dst_scale ? dst_scale : 1;
+
+	      while (i < *prec)
+		{
+		  numeric_str[i++] = '0';
+		}
+	      numeric_str[i] = '\0';
+
+	      numeric_coerce_dec_str_to_num ("0", num, is_value_negative);
 	      return NO_ERROR;
 	    }
 	  else
@@ -7175,6 +7189,7 @@ numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS
 
       numeric_coerce_bigint_to_num (bigint, num, &num_is_negative);
       precision = get_significant_digit (bigint);
+      desired_precision = MAX (desired_precision, precision);
       scale = 0;
     }
   else if constexpr (SRC == DB_TYPE_NUMERIC)
