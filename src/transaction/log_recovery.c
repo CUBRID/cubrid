@@ -952,11 +952,18 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   /* Flush all dirty pages */
   logpb_flush_pages_direct (thread_p);
-  (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-  (void) fileio_synchronize_all (thread_p);
+  int flush_error = pgbuf_flush_all (thread_p, NULL_VOLID);
+  int sync_error = fileio_synchronize_all (thread_p);
 
   if (ismedia_crash != false)
     {
+      if (flush_error != NO_ERROR || sync_error != NO_ERROR)
+	{
+	  /* the restored volumes may not be on disk: keep the mark, so that a restart refuses them */
+	  logpb_flush_header (thread_p);
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery: the restored volumes are not on disk");
+	  return;
+	}
       /* the restored volumes are now on disk with the log replayed */
       log_Gl.hdr.is_restore_incomplete = 0;
     }

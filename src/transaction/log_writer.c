@@ -3116,7 +3116,7 @@ logwr_dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
   fprintf (out, "%*s\"has_logging_been_skipped\": %s,\n", indent + 2, "",
 	   hdr->has_logging_been_skipped ? "true" : "false");
   fprintf (out, "%*s\"vacuum_last_blockid\": %lld,\n", indent + 2, "", (long long) hdr->vacuum_last_blockid);
-  fprintf (out, "%*s\"is_restore_incomplete\": %d,\n", indent + 2, "", hdr->is_restore_incomplete);
+  fprintf (out, "%*s\"is_restore_incomplete\": %s,\n", indent + 2, "", hdr->is_restore_incomplete ? "true" : "false");
   logwr_dump_json_string_field (out, indent + 2, "ha_server_state", ha_server_state, true);
   logwr_dump_json_string_field (out, indent + 2, "ha_file_status", ha_file_status, true);
 

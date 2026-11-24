@@ -1531,7 +1531,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1404 Index %1$s is built with logging because an online backup is in progress; --no-logging-index is not applied to it.
 
-1405 A restore of database %1$s did not finish. Run restoredb again: the database cannot be used until a restore of it ends without an error.
+1405 A restore of database %1$s did not finish. Run restoredb again: the database cannot be used until a restore of it ends without an error. If the restore fails again with the same backup, use another backup or restore up to an earlier time (-d).
 
 1406 Last Error
 

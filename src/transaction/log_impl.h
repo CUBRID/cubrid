@@ -1064,6 +1064,7 @@ extern void logpb_push_backup_read_task (cubthread::entry_task * task);
 extern void logpb_destroy_backup_read_worker_pool ();
 extern int logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			  const char *prefix_logname, bo_restart_arg * r_args);
+extern int logpb_mark_restore_incomplete (THREAD_ENTRY * thread_p, int vdes, const char *vlabel);
 extern int logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *to_db_fullname,
 				const char *to_logpath, const char *to_prefix_logname, const char *toext_path,
 				const char *fileof_vols_and_copypaths);
