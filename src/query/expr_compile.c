@@ -3347,7 +3347,16 @@ expr_pred_pin_hostvar (EXPR_PRED * pred, cubthread::entry * thread_p, val_descr 
       const DOMAIN_COMPARE *compare = pred->compare;
       TP_DOMAIN_STATUS status;
 
-      assert (compare != NULL && compare->conv[1] != NULL);
+      if (compare == NULL || compare->conv[1] == NULL)
+	{
+	  /* the build pins a host variable only when the term's decided comparison converts the right side
+	   * (expr_scan_pred_build ()), and the leaf takes the comparison of the term the server unpacked
+	   * (expr_pred_bind ()); if the two disagree, the bound value has no converter: fail the scan instead of reading
+	   * through NULL */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
       status = tp_value_convert (compare->conv[1], compare->target[1], bound, &pred->pinned_rhs);
       if (status != DOMAIN_COMPATIBLE || DB_VALUE_DOMAIN_TYPE (&pred->pinned_rhs) != pred->fast_type)
 	{
