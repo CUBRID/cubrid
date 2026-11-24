@@ -6642,11 +6642,11 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
  * --+-----+---------------------+----------+---------------+------------------
  * NO|Major|Minor                |nidx_self |dep_set        | Classify
  * --+-----+---------------------+----------+---------------+------------------
+ * N1|ON   |TC_sarg/other        |-         |pad ref        |TC_dj
  * O1|ON   |TC_sarg(on_conn)     |!Right    |!Outer(ex R_on)|TC_sarg(ow TC_dj)
  * O2|ON   |TC_join              |term_tail=|=on_node       |TC_join(ow O3)
  * O3|ON   |TC_other(n>0,on_conn)|-         |!Outer(ex R_on)|TC_dj
  * O4|ON   |TC_other(n==0)       |-         |-              |TC_dj
- * N1|ON   |TC_sarg/other        |-         |pad ref        |TC_dj
  * W1|WHERE|TC_sarg              |!Left     |!Right         |TC_sarg(ow TC_aj)
  * W2|WHERE|TC_join              |!Outer    |!Right,!pad ref|TC_join(ow TC_aj)
  * W3|WHERE|TC_other(n>0)        |!Outer    |!Right,!pad ref|TC_other(ow TC_aj)
@@ -6947,7 +6947,8 @@ qo_classify_outerjoin_terms (QO_ENV * env)
  *   return:
  *   env(in):
  *
- * Note: qo_classify_outerjoin_terms () skips the ON-clause terms of semi/anti joins.
+ * Note: qo_classify_outerjoin_terms () only turns the ON-clause terms of semi/anti joins that read a NULL-padded
+ *   node into during-join terms, and leaves the rest of them to this function.
  *   An anti join emits an outer row only when no inner row satisfies its whole ON clause,
  *   so an ON-clause term that does not read the anti node must not become a sarg of an outer node.
  *
