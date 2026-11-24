@@ -575,6 +575,7 @@ valid options:\n\
                               It could include uncommitted data and deleted data which is not vacuummed; default: disabled\n\
       --data-format=NUMBER    0: text, 1: binary, 2: binary compressed with LZ4; default: 0\n\
       --read-ahead-sectors=NUMBER upper bound of the sectors (64 pages each) the server reads ahead while it reads a table; the server tunes the distance below it; 0: no read-ahead; default: 32 maximum: 32\n\
+      --fetcher-count=COUNT   number of connections that fetch the rows of a table in parallel; only with -C and -t 1 or more; default: 1 maximum: 16\n\
   -t, --thread-count=COUNT    Number of threads; default: 1 maximum: 127\n\
       --enhanced-estimates    Obtaining the exact number of records in the table to unload; default: disabled\n\
   -v, --verbose               enable verbose status messages; default: disabled\n\

@@ -1232,8 +1232,8 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 		   UNLOAD_THREAD_COUNT_L);
 	}
 #else
-      fprintf (stderr, "\n'--%s' is not supported in this mode or build; one fetcher is used.\n",
-	       UNLOAD_FETCHER_COUNT_L);
+      fprintf (stderr, "\n'--%s' is valid only with '--%s'; one fetcher is used.\n", UNLOAD_FETCHER_COUNT_L,
+	       UNLOAD_CS_MODE_L);
 #endif
     }
 
