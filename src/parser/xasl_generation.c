@@ -194,6 +194,7 @@ static PRED_EXPR *pt_make_pred_term_like (const REGU_VARIABLE * arg1, const REGU
 static PRED_EXPR *pt_make_pred_term_rlike (REGU_VARIABLE * arg1, REGU_VARIABLE * arg2, REGU_VARIABLE * case_sensitive);
 static PRED_EXPR *pt_make_pred_term_is (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, const BOOL_OP bop);
 static PRED_EXPR *pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *argp);
+static PRED_EXPR *pt_to_pred_expr_factor_dnf (PARSER_CONTEXT * parser, PT_NODE * factor, int *argp);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int hhhhmmss (const DB_TIME * time, char *buf, int buflen);
@@ -289,7 +290,8 @@ static REGU_VARIABLE *pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT
 
 static REGU_VARIABLE *pt_to_regu_reserved_name (PARSER_CONTEXT * parser, PT_NODE * attr);
 static int pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID reserved_id);
-static void pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statement, PT_SPEC_FLAG spec_flag);
+static void pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statement, PT_SPEC_FLAG spec_flag,
+						 PT_SPEC_FLAG mark);
 
 static void pt_optimize_min_max_list (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan,
 				      AGGREGATE_TYPE * aggregate);
@@ -656,9 +658,6 @@ static PT_NODE *pt_translate_dml_query_unbound (PARSER_CONTEXT * parser, PT_NODE
 static int pt_get_mvcc_reev_range_data (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * where_key_part,
 					QO_XASL_INDEX_INFO * index_pred, PRED_EXPR ** where_range,
 					REGU_VARIABLE_LIST * regu_attributes_range, HEAP_CACHE_ATTRINFO ** cache_range);
-static PT_NODE *pt_has_reev_in_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-static PT_NODE *pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-static bool pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 int pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl);
 static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
@@ -2249,7 +2248,25 @@ pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *arg
 	}
 
 
-      dnf_pred = NULL;
+      dnf_pred = pt_to_pred_expr_factor_dnf (parser, cnf_node, argp);
+      if (dnf_pred != NULL)
+	{
+	  /* set information for inst_num() scan type, as for the OR of the factor below */
+	  *argp |= PT_PRED_ARG_INSTNUM_CONTINUE;
+	  *argp |= PT_PRED_ARG_GRBYNUM_CONTINUE;
+	  *argp |= PT_PRED_ARG_ORDBYNUM_CONTINUE;
+	  parser_walk_tree (parser, cnf_node, NULL, NULL, pt_numbering_set_continue_post, argp);
+	  cnf_pred = (cnf_pred) ? pt_make_pred_expr_pred (dnf_pred, cnf_pred, B_AND) : dnf_pred;
+	  if (cnf_pred == NULL)
+	    {
+	      goto error;
+	    }
+	  continue;
+	}
+      if (pt_has_error (parser))
+	{
+	  goto error;
+	}
 
       num_dnf = 0;
       for (dnf_node = cnf_node; dnf_node; dnf_node = dnf_node->or_next)
@@ -2298,6 +2315,462 @@ pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *arg
 error:
   PT_INTERNAL_ERROR (parser, "predicate");
   return NULL;
+}
+
+/* the disjunctive normal form pt_to_pred_expr_factor_dnf () builds a factor in, as an array of disjuncts */
+#define PT_FACTOR_DNF_MAX_DISJUNCTS PRED_OR_RAW_MAX_DISJUNCTS
+#define PT_FACTOR_DNF_MAX_CONJUNCTS PRED_OR_RAW_MAX_LEAVES
+typedef struct pt_factor_dnf_term PT_FACTOR_DNF_TERM;
+struct pt_factor_dnf_term
+{
+  int n;
+  PT_NODE *leaf[PT_FACTOR_DNF_MAX_CONJUNCTS];
+};
+
+/* bookkeeping for pt_factor_dnf_is_unsafe () */
+typedef struct pt_factor_dnf_check PT_FACTOR_DNF_CHECK;
+struct pt_factor_dnf_check
+{
+  UINTPTR spec_id;		/* the spec the columns of the factor belong to, 0 before the first */
+  bool unsafe;
+};
+
+/*
+ * pt_factor_dnf_is_unsafe () - a predicate that must not be evaluated more often than written, or that reads the
+ *				columns of a second spec
+ */
+static PT_NODE *
+pt_factor_dnf_is_unsafe (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_FACTOR_DNF_CHECK *check = (PT_FACTOR_DNF_CHECK *) arg;
+  bool *unsafe = &check->unsafe;
+
+  if (PT_IS_QUERY (node) || node->node_type == PT_METHOD_CALL)
+    {
+      *unsafe = true;
+    }
+  else if (node->node_type == PT_NAME && node->info.name.meta_class != PT_PARAMETER)
+    {
+      /* the page path the form is for reads the columns of the scanned spec against constants; a factor that
+       * also reads a bound outer spec, as a nested-loop inner or a correlated subquery does, keeps its form */
+      if (check->spec_id == 0)
+	{
+	  check->spec_id = node->info.name.spec_id;
+	}
+      else if (check->spec_id != node->info.name.spec_id)
+	{
+	  *unsafe = true;
+	}
+    }
+  else if (node->node_type == PT_EXPR)
+    {
+      switch (node->info.expr.op)
+	{
+	case PT_RAND:
+	case PT_RANDOM:
+	case PT_DRAND:
+	case PT_DRANDOM:
+	case PT_SYS_GUID:
+	case PT_CURRENT_VALUE:
+	case PT_NEXT_VALUE:
+	case PT_INST_NUM:
+	case PT_ROWNUM:
+	case PT_ORDERBY_NUM:
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	  *unsafe = true;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  if (*unsafe)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_factor_dnf_operand_is_raw () - a constant a column of the type compares with without converting the column
+ */
+static bool
+pt_factor_dnf_operand_is_raw (PT_NODE * operand, PT_TYPE_ENUM col_type)
+{
+  if (operand == NULL || (operand->node_type != PT_VALUE && operand->node_type != PT_HOST_VAR))
+    {
+      return false;
+    }
+  return ((PT_IS_NUMERIC_TYPE (col_type) && PT_IS_NUMERIC_TYPE (operand->type_enum))
+	  || (PT_IS_CHAR_STRING_TYPE (col_type) && PT_IS_CHAR_STRING_TYPE (operand->type_enum)));
+}
+
+/*
+ * pt_factor_dnf_leaf_is_raw () - a leaf the page path filters by (expr_pred_term_raw_info ()): a column compared with
+ *				  a constant of its kind, or a column in a list of such constants
+ *
+ * Note: such a leaf cannot fail for a row, so evaluating it where the written order would have skipped it -- the
+ *	 guard of (b = 0 or 10 / b > 1) and a = 1 is lost once the OR is distributed -- returns no new error.
+ */
+static bool
+pt_factor_dnf_leaf_is_raw (PT_NODE * leaf)
+{
+  PT_NODE *col, *other, *elem;
+
+  if (leaf == NULL || leaf->node_type != PT_EXPR || leaf->or_next != NULL)
+    {
+      return false;
+    }
+
+  col = leaf->info.expr.arg1;
+  other = leaf->info.expr.arg2;
+  switch (leaf->info.expr.op)
+    {
+    case PT_EQ:
+    case PT_NE:
+    case PT_GT:
+    case PT_GE:
+    case PT_LT:
+    case PT_LE:
+      if (other != NULL && other->node_type == PT_NAME)
+	{
+	  col = leaf->info.expr.arg2;
+	  other = leaf->info.expr.arg1;
+	}
+      return (col != NULL && col->node_type == PT_NAME && col->info.name.meta_class != PT_PARAMETER
+	      && pt_factor_dnf_operand_is_raw (other, col->type_enum));
+
+    case PT_IS_IN:
+      if (col == NULL || col->node_type != PT_NAME || col->info.name.meta_class == PT_PARAMETER || other == NULL)
+	{
+	  return false;
+	}
+      if (other->node_type == PT_VALUE && PT_IS_COLLECTION_TYPE (other->type_enum))
+	{
+	  elem = other->info.value.data_value.set;
+	}
+      else if (other->node_type == PT_FUNCTION && other->info.function.function_type == F_SEQUENCE)
+	{
+	  elem = other->info.function.arg_list;
+	}
+      else
+	{
+	  return false;
+	}
+      for (; elem != NULL; elem = elem->next)
+	{
+	  if (!pt_factor_dnf_operand_is_raw (elem, col->type_enum))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+static int pt_factor_dnf_list (PT_NODE * list, PT_FACTOR_DNF_TERM * out, int max);
+
+/*
+ * pt_factor_dnf_and () - the disjuncts of the conjunction of two disjunctive normal forms
+ *   return: n1 * n2, written to out, or -1 when there would be more than max of them or a disjunct would have more than
+ *	     PT_FACTOR_DNF_MAX_CONJUNCTS conjuncts
+ */
+static int
+pt_factor_dnf_and (const PT_FACTOR_DNF_TERM * lhs, int n1, const PT_FACTOR_DNF_TERM * rhs, int n2,
+		   PT_FACTOR_DNF_TERM * out, int max)
+{
+  int i, j, k;
+
+  if (n1 * n2 > max)
+    {
+      return -1;
+    }
+  for (i = 0; i < n1; i++)
+    {
+      for (j = 0; j < n2; j++)
+	{
+	  if (lhs[i].n + rhs[j].n > PT_FACTOR_DNF_MAX_CONJUNCTS)
+	    {
+	      return -1;
+	    }
+	  k = i * n2 + j;
+	  memcpy (out[k].leaf, lhs[i].leaf, lhs[i].n * sizeof (PT_NODE *));
+	  memcpy (out[k].leaf + lhs[i].n, rhs[j].leaf, rhs[j].n * sizeof (PT_NODE *));
+	  out[k].n = lhs[i].n + rhs[j].n;
+	}
+    }
+  return n1 * n2;
+}
+
+/*
+ * pt_factor_dnf_node () - the disjuncts of the disjunctive normal form of one node, its next and or_next aside
+ *   return: the number of disjuncts written to out, or -1 (pt_factor_dnf_and ())
+ *   node(in): an AND/OR tree, whose operands are read as pt_to_pred_expr () reads them: CNF lists, next for AND and
+ *	       or_next for OR; its leaves are not copied
+ *   out(out): max disjuncts
+ *   max(in):
+ */
+static int
+pt_factor_dnf_node (PT_NODE * node, PT_FACTOR_DNF_TERM * out, int max)
+{
+  PT_FACTOR_DNF_TERM *lhs, *rhs;
+  int n1, n2, n = -1;
+
+  if (max <= 0)
+    {
+      return -1;
+    }
+
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_OR))
+    {
+      n1 = pt_factor_dnf_list (node->info.expr.arg1, out, max);
+      if (n1 < 0)
+	{
+	  return -1;
+	}
+      n2 = pt_factor_dnf_list (node->info.expr.arg2, out + n1, max - n1);
+      return (n2 < 0) ? -1 : n1 + n2;
+    }
+
+  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_AND))
+    {
+      out[0].n = 1;
+      out[0].leaf[0] = node;
+      return 1;
+    }
+
+  lhs = (PT_FACTOR_DNF_TERM *) malloc (2 * PT_FACTOR_DNF_MAX_DISJUNCTS * sizeof (PT_FACTOR_DNF_TERM));
+  if (lhs == NULL)
+    {
+      return -1;
+    }
+  rhs = lhs + PT_FACTOR_DNF_MAX_DISJUNCTS;
+
+  n1 = pt_factor_dnf_list (node->info.expr.arg1, lhs, PT_FACTOR_DNF_MAX_DISJUNCTS);
+  n2 = (n1 < 0) ? -1 : pt_factor_dnf_list (node->info.expr.arg2, rhs, PT_FACTOR_DNF_MAX_DISJUNCTS);
+  if (n2 >= 0)
+    {
+      n = pt_factor_dnf_and (lhs, n1, rhs, n2, out, max);
+    }
+
+  free_and_init (lhs);
+  return n;
+}
+
+/*
+ * pt_factor_dnf_list () - the disjuncts of the disjunctive normal form of a CNF list: an AND over next of ORs over
+ *			   or_next of nodes
+ *   return: the number of disjuncts written to out, or -1 (pt_factor_dnf_and ())
+ *   list(in):
+ *   out(out): max disjuncts
+ *   max(in):
+ */
+static int
+pt_factor_dnf_list (PT_NODE * list, PT_FACTOR_DNF_TERM * out, int max)
+{
+  PT_FACTOR_DNF_TERM *acc, *term;
+  PT_NODE *cnf, *dnf;
+  int n_acc = 0, n_term, n, k;
+
+  if (list == NULL || max <= 0)
+    {
+      return -1;
+    }
+
+  acc = (PT_FACTOR_DNF_TERM *) malloc (2 * PT_FACTOR_DNF_MAX_DISJUNCTS * sizeof (PT_FACTOR_DNF_TERM));
+  if (acc == NULL)
+    {
+      return -1;
+    }
+  term = acc + PT_FACTOR_DNF_MAX_DISJUNCTS;
+
+  for (cnf = list; cnf != NULL; cnf = cnf->next)
+    {
+      /* one element of the AND: the OR of its or_next chain */
+      n_term = 0;
+      for (dnf = cnf; dnf != NULL; dnf = dnf->or_next)
+	{
+	  n = pt_factor_dnf_node (dnf, term + n_term, PT_FACTOR_DNF_MAX_DISJUNCTS - n_term);
+	  if (n < 0)
+	    {
+	      n_acc = -1;
+	      goto end;
+	    }
+	  n_term += n;
+	}
+
+      if (cnf == list)
+	{
+	  memcpy (acc, term, n_term * sizeof (PT_FACTOR_DNF_TERM));
+	  n_acc = n_term;
+	}
+      else
+	{
+	  /* out holds the conjunction while acc and term are both read */
+	  n_acc = pt_factor_dnf_and (acc, n_acc, term, n_term, out, max);
+	  if (n_acc < 0)
+	    {
+	      goto end;
+	    }
+	  memcpy (acc, out, n_acc * sizeof (PT_FACTOR_DNF_TERM));
+	}
+      if (n_acc > max)
+	{
+	  n_acc = -1;
+	  goto end;
+	}
+    }
+
+  for (k = 0; k < n_acc; k++)
+    {
+      out[k] = acc[k];
+    }
+
+end:
+  free_and_init (acc);
+  return n_acc;
+}
+
+static int pt_factor_dnf_top_list (PT_NODE * list);
+
+/*
+ * pt_factor_dnf_top () - the number of disjuncts of a node as written: its ORs, not distributed over its ANDs
+ */
+static int
+pt_factor_dnf_top (PT_NODE * node)
+{
+  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_OR))
+    {
+      return 1;
+    }
+  return pt_factor_dnf_top_list (node->info.expr.arg1) + pt_factor_dnf_top_list (node->info.expr.arg2);
+}
+
+/*
+ * pt_factor_dnf_top_list () - pt_factor_dnf_top () of a CNF list: one disjunct when it is an AND
+ */
+static int
+pt_factor_dnf_top_list (PT_NODE * list)
+{
+  PT_NODE *dnf;
+  int n = 0;
+
+  if (list == NULL || list->next != NULL)
+    {
+      return 1;
+    }
+  for (dnf = list; dnf != NULL; dnf = dnf->or_next)
+    {
+      n += pt_factor_dnf_top (dnf);
+    }
+  return n;
+}
+
+/*
+ * pt_to_pred_expr_factor_dnf () - the predicate of a factor pt_cnf () kept whole, in disjunctive normal form
+ *   return: the predicate, or NULL when the factor is evaluated as it is written
+ *   parser(in):
+ *   factor(in): a CNF term, an OR tree
+ *   argp(in/out):
+ *
+ * Note: a factor (A and B) or C is two levels deep, as is every clause pt_cnf () distributes into, and a scan
+ *	 runs such a filter over a page of rows at once (expr_pred_or_raw_leaves ()).  A disjunct holding a further
+ *	 OR, (A and (B or D)) or C, leaves that path, and the filter is evaluated row by row, several times slower than
+ *	 the clauses it used to be distributed into.  Evaluate (A and B) or (A and D) or C instead: AND distributes
+ *	 over OR in the three-valued logic as well, so the result is the same.  An operand is read as
+ *	 pt_to_pred_expr () reads it, a CNF list: the restrictions qo_extract_or_restrictions () derives hold or_next
+ *	 chains under their ORs.  The form is taken only where the page path takes it: the data filter of a heap
+ *	 scan, not an index scan, a join or a list scan, which evaluate it row by row and would only repeat the
+ *	 common conjuncts; a factor over the columns of one spec; within the bounds of the path
+ *	 (PRED_OR_RAW_MAX_DISJUNCTS, PRED_OR_RAW_MAX_LEAVES); and every leaf a column compared with a constant
+ *	 (pt_factor_dnf_leaf_is_raw ()).  Such a leaf cannot fail, so evaluating it where the order as written would
+ *	 have skipped it, as a disjunct guarding the next one does, returns no error the written factor would not.
+ */
+static PRED_EXPR *
+pt_to_pred_expr_factor_dnf (PARSER_CONTEXT * parser, PT_NODE * factor, int *argp)
+{
+  PT_FACTOR_DNF_TERM *dnf;
+  PRED_EXPR *pred = NULL, *conj, *leaf;
+  PT_NODE *save_next;
+  PT_FACTOR_DNF_CHECK check = { 0, false };
+  int n, top, d, i, leaves;
+
+  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (factor, PT_OR) || factor->or_next != NULL || parser->symbols == NULL
+      || !parser->symbols->heap_scan_filter)
+    {
+      return NULL;
+    }
+
+  save_next = factor->next;
+  factor->next = NULL;
+  (void) parser_walk_tree (parser, factor, pt_factor_dnf_is_unsafe, &check, NULL, NULL);
+  factor->next = save_next;
+  if (check.unsafe)
+    {
+      return NULL;
+    }
+
+  dnf = (PT_FACTOR_DNF_TERM *) malloc (PT_FACTOR_DNF_MAX_DISJUNCTS * sizeof (PT_FACTOR_DNF_TERM));
+  if (dnf == NULL)
+    {
+      return NULL;
+    }
+
+  n = pt_factor_dnf_node (factor, dnf, PT_FACTOR_DNF_MAX_DISJUNCTS);
+  top = (n > 0) ? pt_factor_dnf_top (factor) : 0;
+  if (n <= 0 || n == top)
+    {
+      free_and_init (dnf);
+      return NULL;
+    }
+
+  /* the form is for the page path alone: every leaf one it filters by, and no more of them than it takes */
+  leaves = 0;
+  for (d = 0; d < n; d++)
+    {
+      leaves += dnf[d].n;
+      for (i = 0; i < dnf[d].n; i++)
+	{
+	  if (!pt_factor_dnf_leaf_is_raw (dnf[d].leaf[i]))
+	    {
+	      free_and_init (dnf);
+	      return NULL;
+	    }
+	}
+    }
+  if (leaves > PRED_OR_RAW_MAX_LEAVES)
+    {
+      free_and_init (dnf);
+      return NULL;
+    }
+
+  /* right-linear chains, as pt_to_pred_expr_with_arg () builds them */
+  for (d = n - 1; d >= 0; d--)
+    {
+      conj = NULL;
+      for (i = dnf[d].n - 1; i >= 0; i--)
+	{
+	  leaf = pt_to_pred_expr_local_with_arg (parser, dnf[d].leaf[i], argp);
+	  conj = (conj == NULL) ? leaf : pt_make_pred_expr_pred (leaf, conj, B_AND);
+	  if (leaf == NULL || conj == NULL)
+	    {
+	      free_and_init (dnf);
+	      return NULL;
+	    }
+	}
+      pred = (pred == NULL) ? conj : pt_make_pred_expr_pred (conj, pred, B_OR);
+      if (pred == NULL)
+	{
+	  break;
+	}
+    }
+
+  free_and_init (dnf);
+  return pred;
 }
 
 /*
@@ -3770,6 +4243,7 @@ pt_symbol_info_alloc (void)
       symbols->query_node = NULL;
       symbols->func_idx_cover_list = NULL;
       symbols->func_idx_routed_list = NULL;
+      symbols->heap_scan_filter = false;
     }
 
   return symbols;
@@ -6902,8 +7376,10 @@ pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
     {
       return parse_tree;
     }
-  /* a NULL producer column (a derived table whose query is false) types nothing */
+  /* a NULL producer column (a derived table whose query is false) types nothing, but a parse tree domain whose type
+   * or (CBRD-28134) collation is left to the values reads it: no value comes to decide them */
   if (TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE
+      || (TP_DOMAIN_TYPE (producer) == DB_TYPE_NULL && TP_DOMAIN_COLLATION_FLAG (parse_tree) != TP_DOMAIN_COLL_NORMAL)
       || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != DB_TYPE_NULL
 	  && TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree)))
     {
@@ -11049,6 +11525,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		{
 		case PT_PLUS:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_ADD, domain);
+		  /* only the offset + count a LIMIT rewrite builds gives the maximum on an overflow */
+		  if (regu != NULL && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_LIMIT_SUM))
+		    {
+		      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_LIMIT_SUM);
+		    }
 		  break;
 
 		case PT_MINUS:
@@ -14556,6 +15037,11 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
       /* We cannot use the lower limit in a hierarchy */
       limit_infop->lower = NULL;
     }
+  else if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      /* We cannot use the lower limit with the analytic limit optimization: the skipped rows must be counted */
+      limit_infop->lower = NULL;
+    }
   else
     {
       /* a trivial select: we can keep the lower limit, but we must adjust the upper limit.
@@ -16129,7 +16615,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      symbols->cache_attrinfo = cache_pred;
 	      symbols->reserved_values = db_values_array_p;
 
+	      /* a heap scan filters a page of rows at once (pt_to_pred_expr_factor_dnf ()) */
+	      symbols->heap_scan_filter = (access_method == ACCESS_METHOD_SEQUENTIAL);
 	      where = pt_to_pred_expr (parser, where_part);
+	      symbols->heap_scan_filter = false;
 
 	      if (scan_type == TARGET_CLASS_ATTR)
 		{
@@ -16451,6 +16940,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
 		{
 		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE);
+		}
+	      else if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED)
+		{
+		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED);
 		}
 
 	      if (access->access == ACCESS_METHOD_SEQUENTIAL || access->access == ACCESS_METHOD_INDEX)
@@ -25776,6 +26269,188 @@ exit_on_error:
 }
 
 /*
+ * pt_reev_reads_no_spec () - is there no spec for force-time reevaluation to re-read?
+ *   return: true when the flagging pass flagged none of the statement's own specs
+ *   spec_list(in): the statement's spec list
+ */
+static bool
+pt_reev_reads_no_spec (PT_NODE * spec_list)
+{
+  PT_NODE *spec;
+
+  for (spec = spec_list; spec != NULL; spec = spec->next)
+    {
+      if (spec->info.spec.flag & (PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * pt_reev_check_row_local () - can the force phase evaluate this node again from the row alone?
+ *   return: node
+ *   parser(in): parser context
+ *   node(in): a node of a condition or an assignment
+ *   arg(in/out): a bool, cleared at the first node that cannot
+ *   continue_walk(in/out): walk type
+ *
+ * Note: the node types let through are listed.  Everything else stops the walk: a subquery or a path expression,
+ *	 which reads rows other than the target's; an aggregate or analytic function and row numbering, which depend on
+ *	 the other rows; a serial value or a session variable assignment, which changes when evaluated again; a method
+ *	 or stored procedure call.
+ */
+static PT_NODE *
+pt_reev_check_row_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *row_local = (bool *) arg;
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+    case PT_VALUE:
+    case PT_HOST_VAR:
+    case PT_DATA_TYPE:
+      return node;
+
+    case PT_EXPR:
+      switch (node->info.expr.op)
+	{
+	case PT_INST_NUM:
+	case PT_ROWNUM:
+	case PT_ORDERBY_NUM:
+	case PT_NEXT_VALUE:
+	case PT_CURRENT_VALUE:
+	case PT_DEFINE_VARIABLE:
+	  break;
+	default:
+	  return node;
+	}
+      break;
+
+    case PT_FUNCTION:
+      if (!PT_IS_ANALYTIC_NODE (node) && !pt_is_aggregate_function (parser, node)
+	  && node->info.function.function_type != PT_GROUPBY_NUM)
+	{
+	  return node;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  *row_local = false;
+  *continue_walk = PT_STOP_WALK;
+  return node;
+}
+
+/*
+ * pt_upd_del_reevaluates_at_force () - may a DELETE or an UPDATE leave its rows unlocked at select?
+ *   return: true when the force phase can re-check every row the select phase picked against its latest version
+ *   parser(in): parser context
+ *   statement(in): the DELETE or the UPDATE
+ *   aptr_statement(in): the SELECT generated for it
+ *   has_partitioned(in): a class it changes is partitioned
+ *   has_lob(in): a class it deletes from has a BLOB or CLOB attribute
+ *
+ * Note: a statement qualifies only by the shape tested here: one plain class read by itself, every row it picks a row
+ *	 it acts on, and conditions and assignments the force phase can evaluate again from that row alone.  Reevaluation
+ *	 replays one spec's own range, key and data filters against one row, and this is the shape where they are the
+ *	 whole statement.  Any other statement locks its rows at select, as every DELETE and UPDATE did before.  Widen it
+ *	 only with a scenario that shows the force phase re-checks the new shape.
+ */
+static bool
+pt_upd_del_reevaluates_at_force (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * aptr_statement,
+				 bool has_partitioned, bool has_lob)
+{
+  PT_NODE *spec, *select_spec, *where, *limit, *using_index, *assignments = NULL;
+  bool row_local = true;
+
+  if (statement->node_type == PT_DELETE)
+    {
+      spec = statement->info.delete_.spec;
+      where = statement->info.delete_.search_cond;
+      limit = statement->info.delete_.limit;
+      using_index = statement->info.delete_.using_index;
+
+      /* qexec_execute_delete () schedules the removal of a row's LOB files before the force phase re-checks it */
+      if (has_lob)
+	{
+	  return false;
+	}
+    }
+  else
+    {
+      assert (statement->node_type == PT_UPDATE);
+      spec = statement->info.update.spec;
+      where = statement->info.update.search_cond;
+      limit = statement->info.update.limit;
+      using_index = statement->info.update.using_index;
+      assignments = statement->info.update.assignment;
+
+      if (statement->info.update.order_by != NULL || statement->info.update.check_where != NULL
+	  || statement->info.update.do_class_attrs)
+	{
+	  return false;
+	}
+    }
+
+  /* one plain class, read by itself */
+  select_spec = aptr_statement->info.query.q.select.from;
+  if (has_partitioned || spec == NULL || spec->next != NULL || select_spec == NULL || select_spec->next != NULL
+      || aptr_statement->info.query.upd_del_class_cnt != 1)
+    {
+      return false;
+    }
+  if (spec->info.spec.derived_table != NULL || spec->info.spec.path_entities != NULL
+      || spec->info.spec.flat_entity_list == NULL || spec->info.spec.flat_entity_list->next != NULL
+      || select_spec->info.spec.derived_table != NULL || select_spec->info.spec.path_entities != NULL)
+    {
+      return false;
+    }
+
+  /* every row it picks is a row it acts on: a row rejected at force is not replaced by another */
+  if (limit != NULL || aptr_statement->info.query.q.select.group_by != NULL)
+    {
+      return false;
+    }
+  for (; using_index != NULL; using_index = using_index->next)
+    {
+      /* USING INDEX ... KEYLIMIT counts rows as LIMIT does */
+      if (using_index->node_type == PT_NAME && using_index->info.name.indx_key_limit != NULL)
+	{
+	  return false;
+	}
+    }
+
+  (void) parser_walk_tree (parser, where, pt_reev_check_row_local, &row_local, NULL, NULL);
+  if (row_local)
+    {
+      (void) parser_walk_tree (parser, aptr_statement->info.query.q.select.where, pt_reev_check_row_local, &row_local,
+			       NULL, NULL);
+    }
+  if (row_local)
+    {
+      (void) parser_walk_tree (parser, assignments, pt_reev_check_row_local, &row_local, NULL, NULL);
+    }
+  if (!row_local)
+    {
+      return false;
+    }
+
+  /* a condition that flags no spec leaves no row to re-check it against */
+  if ((where != NULL || aptr_statement->info.query.q.select.where != NULL) && pt_reev_reads_no_spec (spec))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
  * pt_mvcc_flag_specs_cond_reev () - flag specs that are involved in condition
  *   return: NO_ERROR or error code.
  *   parser(in):
@@ -26052,16 +26727,18 @@ pt_mvcc_prepare_upd_del_select (PARSER_CONTEXT * parser, PT_NODE * select_stmt)
 }
 
 /*
- * pt_mark_spec_list_for_update_clause -- mark the spec which need be
- *                  updated/deleted with PT_SPEC_FLAG_FOR_UPDATE_CLAUSE flag
+ * pt_mark_spec_list_for_update_clause -- mark the specs to be updated/deleted with the given flag
  *   return:
  *   parser(in): context
  *   statement(in): select parse tree
  *   spec_flag(in): spec flag: PT_SPEC_FLAG_UPDATE or PT_SPEC_FLAG_DELETE
+ *   mark(in): PT_SPEC_FLAG_FOR_UPDATE_CLAUSE, or PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED for a statement left to
+ *	       the force-phase reevaluation
  */
 
 void
-pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statement, PT_SPEC_FLAG spec_flag)
+pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statement, PT_SPEC_FLAG spec_flag,
+				     PT_SPEC_FLAG mark)
 {
   PT_NODE *spec;
 
@@ -26071,12 +26748,12 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
     {
       if (spec->info.spec.flag & spec_flag)
 	{
-	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | mark);
 	}
 
       if (spec->info.spec.derived_table != NULL && spec->info.spec.derived_table->node_type == PT_SELECT)
 	{
-	  pt_mark_spec_list_for_update_clause (parser, spec->info.spec.derived_table, spec_flag);
+	  pt_mark_spec_list_for_update_clause (parser, spec->info.spec.derived_table, spec_flag, mark);
 	}
     }
 }
@@ -26426,7 +27103,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
   if (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
     {
       pt_mark_spec_list_for_update_clause (parser, statement,
-					   (scan_op_type == S_DELETE) ? PT_SPEC_FLAG_DELETE : PT_SPEC_FLAG_UPDATE);
+					   (scan_op_type == S_DELETE) ? PT_SPEC_FLAG_DELETE : PT_SPEC_FLAG_UPDATE,
+					   PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
     }
 
   return statement;
@@ -26459,7 +27137,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   int error = NO_ERROR;
   PT_NODE *hint_arg, *node;
   float hint_wait_secs;
-  bool has_partitioned = false, abort_reevaluation = false;
+  bool has_partitioned = false, abort_reevaluation = false, has_lob = false;
 
   assert (parser != NULL && statement != NULL);
 
@@ -26581,6 +27259,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 			    }
 
 			  select_list = parser_append_node (select_node, select_list);
+			  has_lob = true;
 			}
 		    }
 		  attr = db_attribute_next (attr);
@@ -26599,34 +27278,13 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto error_return;
 	}
 
-      if (aptr_statement->info.query.q.select.group_by != NULL)
-	{
-	  /* remove reevaluation flags if we have GROUP BY because the locking will be made at SELECT stage */
-	  abort_reevaluation = true;
-	}
-      else
-	{
-	  /* if at least one table involved in reevaluation is a derived table then abort reevaluation and force
-	   * locking on select */
-	  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL;
-	       cl_name_node = cl_name_node->next)
-	    {
-	      if (cl_name_node->info.spec.derived_table != NULL
-		  && (cl_name_node->info.spec.flag & PT_SPEC_FLAG_MVCC_COND_REEV))
-		{
-		  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-		  abort_reevaluation = true;
-		  break;
-		}
-	    }
-	}
-
-      /* These two lines disable reevaluation on UPDATE. To activate it just remove them */
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      abort_reevaluation = true;
+      abort_reevaluation =
+	!pt_upd_del_reevaluates_at_force (parser, statement, aptr_statement, has_partitioned, has_lob);
 
       if (abort_reevaluation)
 	{
+	  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+
 	  /* In order to abort reevaluation is enough to clear reevaluation flags from all specs (from both, delete and
 	   * select statements) */
 	  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL;
@@ -26646,7 +27304,15 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
        * will be deleted. This will ensure that rows will be locked at SELECT stage. */
       if (PT_SELECT_INFO_IS_FLAGED (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
 	{
-	  pt_mark_spec_list_for_update_clause (parser, aptr_statement, PT_SPEC_FLAG_DELETE);
+	  pt_mark_spec_list_for_update_clause (parser, aptr_statement, PT_SPEC_FLAG_DELETE,
+					       PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
+	}
+      else if (!abort_reevaluation)
+	{
+	  /* Reevaluation re-checks a row only under READ COMMITTED and with mvcc_reevaluate_at_force on.  The plan is
+	   * shared by sessions of any isolation level and setting, so the executor decides. */
+	  pt_mark_spec_list_for_update_clause (parser, aptr_statement, PT_SPEC_FLAG_DELETE,
+					       PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED);
 	}
 
       /* Prepare generated SELECT statement for mvcc reevaluation */
@@ -26893,9 +27559,23 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (PT_IS_SPEC_FLAG_SET (node, PT_SPEC_FLAG_MVCC_COND_REEV))
 	    {
 	      /* set the position in SELECT list */
+	      assert (j < delete_->num_reev_classes);
+	      if (j >= delete_->num_reev_classes)
+		{
+		  break;
+		}
 	      delete_->mvcc_reev_classes[j++] = i;
 	    }
 	}
+
+      /* The count above was taken over the DELETE statement's spec list, but only a class that owns an
+       * OID - CLASS OID pair in the generated SELECT can be reevaluated at all. A class the SELECT dropped
+       * (an outer-joined table none of whose columns the outer query reads) leaves an entry unfilled, so the
+       * executor must be told how many entries this loop actually wrote.  Dropping every one of them would
+       * tell it this statement reads no row of its own; the target class always owns a pair, so no shape
+       * has been found that does. */
+      assert (j > 0 || delete_->num_reev_classes == 0);
+      delete_->num_reev_classes = j;
 
       /* OID of the user who is creating this XASL */
       if ((oid = ws_identifier (db_get_user ())) != NULL)
@@ -26986,91 +27666,6 @@ error_return:
       xasl = NULL;
     }
   return xasl;
-}
-
-/*
- * pt_has_reev_in_subquery_pre - increments subquery level and check for
- *				 reevaluation spec in subquery
- *  returns: unmodified tree
- *  parser(in): parser context
- *  tree(in): tree that can be a subquery
- *  arg(in/out): a pointer to an integer which represents the subquery level
- *  continue_walk(in/out): walk type
- *
- *  Note: used by pt_has_reev_in_subquery
- */
-static PT_NODE *
-pt_has_reev_in_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
-{
-  int level = *(int *) arg;
-
-  if (level < 0)
-    {
-      return tree;
-    }
-
-  if (PT_IS_QUERY (tree))
-    {
-      level++;
-    }
-  else if (tree->node_type == PT_SPEC
-	   && (tree->info.spec.flag & (PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV)) && level > 1)
-    {
-      level = -1;
-      *continue_walk = PT_STOP_WALK;
-    }
-
-  return tree;
-}
-
-/*
- * pt_has_reev_in_subquery_post - decrements subquery level
- *  returns: unmodified tree
- *  parser(in): parser context
- *  tree(in): tree that can be a subquery
- *  arg(in/out): a pointer to an integer which represents the subquery level
- *  continue_walk(in/out): walk type
- *
- *  Note: used by pt_has_reev_in_subquery
- */
-static PT_NODE *
-pt_has_reev_in_subquery_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
-{
-  int level = *(int *) arg;
-
-  if (level < 0)
-    {
-      return tree;
-    }
-
-  if (PT_IS_QUERY (tree))
-    {
-      level--;
-    }
-
-  return tree;
-}
-
-/*
- * pt_has_reev_in_subquery () - Checks if the statement has a subquery with
- *				specs involved in reevaluation
- *   return:
- *   parser(in): context
- *   statement(in): statement to be checked
- */
-static bool
-pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  int level = 0;
-
-  (void) parser_walk_tree (parser, statement, pt_has_reev_in_subquery_pre, &level, pt_has_reev_in_subquery_post,
-			   &level);
-  if (level < 0)
-    {
-      return true;
-    }
-
-  return false;
 }
 
 static PT_NODE *
@@ -27347,39 +27942,12 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
       goto cleanup;
     }
 
-  if (aptr_statement->info.query.q.select.group_by != NULL)
-    {
-      /* remove reevaluation flags if we have GROUP BY because the locking will be made at SELECT stage */
-      abort_reevaluation = true;
-    }
-  else if (has_partitioned || pt_has_reev_in_subquery (parser, aptr_statement))
-    {
-      /* if we have at least one class partitioned then perform locking at SELECT stage */
-      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-      abort_reevaluation = true;
-    }
-  else
-    {
-      /* if at least one table involved in reevaluation is a derived table then abort reevaluation and force locking on
-       * select */
-      for (p = aptr_statement->info.query.q.select.from; p != NULL; p = p->next)
-	{
-	  if (p->info.spec.derived_table != NULL
-	      && (p->info.spec.flag & (PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV)))
-	    {
-	      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-	      abort_reevaluation = true;
-	      break;
-	    }
-	}
-    }
-
-  /* These two lines disable reevaluation on UPDATE. To activate it just remove them */
-  PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
-  abort_reevaluation = true;
+  abort_reevaluation = !pt_upd_del_reevaluates_at_force (parser, statement, aptr_statement, has_partitioned, false);
 
   if (abort_reevaluation)
     {
+      PT_SELECT_INFO_SET_FLAG (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED);
+
       /* In order to abort reevaluation is enough to clear reevaluation flags from all specs (from both, update and
        * select statements) */
       for (p = aptr_statement->info.query.q.select.from; p != NULL; p = p->next)
@@ -27398,7 +27966,13 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
    * be updated. This will ensure that rows will be locked at SELECT stage. */
   if (PT_SELECT_INFO_IS_FLAGED (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
     {
-      pt_mark_spec_list_for_update_clause (parser, aptr_statement, PT_SPEC_FLAG_UPDATE);
+      pt_mark_spec_list_for_update_clause (parser, aptr_statement, PT_SPEC_FLAG_UPDATE, PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
+    }
+  else if (!abort_reevaluation)
+    {
+      /* see pt_to_delete_xasl () */
+      pt_mark_spec_list_for_update_clause (parser, aptr_statement, PT_SPEC_FLAG_UPDATE,
+					   PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED);
     }
 
   /* Prepare generated SELECT statement for mvcc reevaluation */
@@ -27845,9 +28419,22 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	    }
 
 	  /* set the position in SELECT list */
+	  assert (cl < update->num_reev_classes);
+	  if (cl >= update->num_reev_classes)
+	    {
+	      break;
+	    }
 	  update->mvcc_reev_classes[cl++] = cls_idx;
 	}
     }
+
+  /* The count above was taken over the UPDATE statement's spec list, but only a class that owns an
+   * OID - CLASS OID pair in the generated SELECT can be reevaluated at all. A class the SELECT dropped
+   * leaves an entry unfilled, so the executor must be told how many entries this loop actually wrote.
+   * As on the DELETE side, dropping every flagged class would tell the executor this statement reads no
+   * row of its own; the target class always owns a pair, so no shape has been found that does. */
+  assert (cl > 0 || update->num_reev_classes == 0);
+  update->num_reev_classes = cl;
 
   /* fill in XASL cache related information */
   /* OID of the user who is creating this XASL */
@@ -31978,7 +32565,7 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
 
   if (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
     {
-      pt_mark_spec_list_for_update_clause (parser, statement, PT_SPEC_FLAG_UPDATE);
+      pt_mark_spec_list_for_update_clause (parser, statement, PT_SPEC_FLAG_UPDATE, PT_SPEC_FLAG_FOR_UPDATE_CLAUSE);
     }
 
   return statement;

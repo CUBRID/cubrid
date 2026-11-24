@@ -23,6 +23,7 @@
 #include "load_class_registry.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <iterator>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -49,7 +50,11 @@ namespace cubload
     , m_is_not_null (is_not_null)
     , m_repr_id (repr_id)
   {
-    //
+    /*
+     * get_domain () hands the domain out as a reference, and the converters read it without asking
+     * whether there is one. Catch an attribute without a domain where it is made, not where it is read.
+     */
+    assert (domain != NULL);
   }
 
   const char *

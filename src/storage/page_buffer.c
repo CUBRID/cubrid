@@ -1134,6 +1134,8 @@ static int pgbuf_initialize_page_monitor (void);
 static int pgbuf_initialize_thrd_holder (void);
 STATIC_INLINE PGBUF_HOLDER *pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_clear_page_contents (PAGE_PTR pgptr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_rv_dealloc_restore_contents (PAGE_PTR pgptr, const LOG_RCV * rcv)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE PGBUF_HOLDER *pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
@@ -6047,7 +6049,8 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
  * Note: Keep the scope to a fix whose caller cannot act on a refusal - the disk manager's volume header and
  *       sector allocation table. Those two pass PGBUF_UNCONDITIONAL_LATCH and offer no conditional variant,
  *       and disk_reserve_sectors treats anything but an interrupt or an IO error as a disk cache
- *       inconsistency.
+ *       inconsistency. The OOS reclaim of a committed intent (oos_rv_reclaim_on_postpone) is the third: it runs
+ *       in a commit and stops the server on any error.
  *       Both no-wait values are lifted although they have different owners - LK_ZERO_WAIT carries the user's
  *       lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. A finite or an already infinite
  *       waiting time is kept, because pgbuf_timed_sleep () classifies a watchdog expiry by this very value and
@@ -7899,12 +7902,23 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
   while (bufptr->next_wait_thrd != NULL)
     {
       curr_thrd_entry = bufptr->next_wait_thrd;
+
+      /* Check under the entry lock of the waiter that it still waits for a READ latch before adding its fix count, as
+       * pgbuf_wakeup_reader_writer () does. A waiter that times out gives up its request under this lock, and a fix
+       * count added for it would never be released. */
+      thread_lock_entry (curr_thrd_entry);
+      if (curr_thrd_entry->request_latch_mode != PGBUF_LATCH_READ)
+	{
+	  thread_unlock_entry (curr_thrd_entry);
+	  break;
+	}
+
       do
 	{
 	  can_grant = false;
 	  impl = get_impl (&bufptr->atomic_latch);
 	  impl_new = impl;
-	  if (impl.impl.latch_mode == PGBUF_LATCH_READ && curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
+	  if (impl.impl.latch_mode == PGBUF_LATCH_READ)
 	    {
 	      can_grant = true;
 	      impl_new.impl.fcnt += curr_thrd_entry->request_fix_count;
@@ -7912,31 +7926,21 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
 	}
       while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, impl_new.raw, std::memory_order_acq_rel,
 							  std::memory_order_acquire));
-      if (can_grant)
+      if (!can_grant)
 	{
-	  /* grant the request */
-	  thread_lock_entry (curr_thrd_entry);
-	  if (curr_thrd_entry->request_latch_mode == PGBUF_LATCH_READ)
-	    {
-	      /* do not handle BCB holder entry, at here. refer pgbuf_latch_bcb_upon_fix () */
-
-	      /* remove thrd_entry from BCB waiting queue. */
-	      bufptr->next_wait_thrd = curr_thrd_entry->next_wait_thrd;
-	      curr_thrd_entry->next_wait_thrd = NULL;
-
-	      /* wake up the thread */
-	      pgbuf_wakeup (curr_thrd_entry);
-	    }
-	  else
-	    {
-	      thread_unlock_entry (curr_thrd_entry);
-	      break;
-	    }
-	}
-      else
-	{
+	  thread_unlock_entry (curr_thrd_entry);
 	  break;
 	}
+
+      /* grant the request */
+      /* do not handle BCB holder entry, at here. refer pgbuf_latch_bcb_upon_fix () */
+
+      /* remove thrd_entry from BCB waiting queue. */
+      bufptr->next_wait_thrd = curr_thrd_entry->next_wait_thrd;
+      curr_thrd_entry->next_wait_thrd = NULL;
+
+      /* wake up the thread */
+      pgbuf_wakeup (curr_thrd_entry);
     }
 
   return NO_ERROR;
@@ -8009,6 +8013,10 @@ try_again:
     }
   else if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
+      /* The wait returns without the entry lock. Take it again before the check below: pgbuf_wakeup_reader_writer ()
+       * grants the latch under this lock, so the check and giving up the request must be one step. */
+      thread_lock_entry (thread_p);
+
       /* rollback operation, postpone operation, etc. */
       if (thread_p->resume_status == THREAD_PGBUF_RESUMED)
 	{
@@ -8018,6 +8026,7 @@ try_again:
 
       if (logtb_is_current_active (thread_p) == false)
 	{
+	  /* wait again, with the entry lock held as for the first wait */
 	  goto try_again;
 	}
 
@@ -15989,6 +15998,17 @@ pgbuf_get_hold_count (THREAD_ENTRY * thread_p)
   return pgbuf_Pool.thrd_holder_info[me].num_hold_cnt;
 }
 
+/* pgbuf_get_page_type_for_stat () casts a stored PAGE_TYPE to PERF_PAGE_TYPE */
+static_assert ((int) PERF_PAGE_UNKNOWN == (int) PAGE_UNKNOWN && (int) PERF_PAGE_FTAB == (int) PAGE_FTAB
+	       && (int) PERF_PAGE_HEAP == (int) PAGE_HEAP && (int) PERF_PAGE_VOLHEADER == (int) PAGE_VOLHEADER
+	       && (int) PERF_PAGE_VOLBITMAP == (int) PAGE_VOLBITMAP && (int) PERF_PAGE_QRESULT == (int) PAGE_QRESULT
+	       && (int) PERF_PAGE_EHASH == (int) PAGE_EHASH && (int) PERF_PAGE_OVERFLOW == (int) PAGE_OVERFLOW
+	       && (int) PERF_PAGE_AREA == (int) PAGE_AREA && (int) PERF_PAGE_CATALOG == (int) PAGE_CATALOG
+	       && (int) PERF_PAGE_BTREE_GENERIC == (int) PAGE_BTREE && (int) PERF_PAGE_LOG == (int) PAGE_LOG
+	       && (int) PERF_PAGE_DROPPED_FILES == (int) PAGE_DROPPED_FILES
+	       && (int) PERF_PAGE_VACUUM_DATA == (int) PAGE_VACUUM_DATA && (int) PERF_PAGE_OOS == (int) PAGE_OOS
+	       && (int) PERF_PAGE_BTREE_ROOT == (int) PAGE_LAST + 1, "PERF_PAGE_TYPE must mirror PAGE_TYPE");
+
 /*
  * pgbuf_get_page_type_for_stat () - Return the page type for current page
  *
@@ -16196,7 +16216,9 @@ pgbuf_rv_init_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * thread_p (in) : thread entry
  * page (in)     : page to deallocate
  * contents (in) : PGBUF_DEALLOC_CLEAR_CONTENTS when the deallocation is final, PGBUF_DEALLOC_KEEP_CONTENTS when the
- *                 page may come back to life with its contents (see pgbuf_clear_page_contents)
+ *                 page may come back to life with its contents (see pgbuf_clear_page_contents),
+ *                 PGBUF_DEALLOC_SAVE_CONTENTS when the same system operation reuses the page at once: the new contents
+ *                 replace the old ones before the deallocation can be undone, so the old ones are logged with it
  */
 void
 pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc, int contents)
@@ -16206,6 +16228,9 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc, int contents
   FILEIO_PAGE_RESERVED *prv;
   PGBUF_DEALLOC_UNDO_DATA udata;
   char undo_data[8];		// pageid(4) + volid(2) + pyte(1) + pflag(1)
+  LOG_DATA_ADDR addr;
+  LOG_CRUMB undo_crumbs[2];
+  int num_undo_crumbs = 1;
   int holder_status;
 
   /* how it works: page is "deallocated" by resetting its type to PAGE_UNKNOWN. also prepare bcb for victimization.
@@ -16225,11 +16250,24 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc, int contents
   udata.ptype = prv->ptype;
   udata.pflag = prv->pflag;
 
-  assert (contents == PGBUF_DEALLOC_KEEP_CONTENTS || contents == PGBUF_DEALLOC_CLEAR_CONTENTS);
+  assert (contents == PGBUF_DEALLOC_KEEP_CONTENTS || contents == PGBUF_DEALLOC_CLEAR_CONTENTS
+	  || contents == PGBUF_DEALLOC_SAVE_CONTENTS);
+
+  undo_crumbs[0].length = sizeof (udata);
+  undo_crumbs[0].data = &udata;
+  if (contents == PGBUF_DEALLOC_SAVE_CONTENTS)
+    {
+      /* the body follows the undo data, and the undo puts it back (see pgbuf_rv_dealloc_restore_contents) */
+      undo_crumbs[1].length = DB_PAGESIZE;
+      undo_crumbs[1].data = page_dealloc;
+      num_undo_crumbs = 2;
+    }
 
   /* the record offset says what is done with the contents, so that redo does the same */
-  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, page_dealloc, (PGLENGTH) contents, sizeof (udata), 0,
-			     &udata, NULL);
+  addr.vfid = NULL;
+  addr.pgptr = page_dealloc;
+  addr.offset = (PGLENGTH) contents;
+  log_append_undoredo_crumbs (thread_p, RVPGBUF_DEALLOC, &addr, num_undo_crumbs, 0, undo_crumbs, NULL);
 
   if (contents == PGBUF_DEALLOC_CLEAR_CONTENTS)
     {
@@ -16274,6 +16312,28 @@ pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * pgbuf_rv_dealloc_restore_contents () - put back the body of a page deallocated with PGBUF_DEALLOC_SAVE_CONTENTS
+ *
+ * return     : void
+ * pgptr (in) : page being brought back to life
+ * rcv (in)   : recovery data of the deallocation or of its compensation
+ *
+ * Note: the body follows the undo data of the deallocation. other deallocations log no body, and the page keeps the
+ *       contents it has.
+ */
+STATIC_INLINE void
+pgbuf_rv_dealloc_restore_contents (PAGE_PTR pgptr, const LOG_RCV * rcv)
+{
+  if (rcv->length == (int) sizeof (PGBUF_DEALLOC_UNDO_DATA))
+    {
+      return;
+    }
+
+  assert (rcv->length == (int) sizeof (PGBUF_DEALLOC_UNDO_DATA) + DB_PAGESIZE);
+  memcpy (pgptr, rcv->data + sizeof (PGBUF_DEALLOC_UNDO_DATA), DB_PAGESIZE);
+}
+
+/*
  * pgbuf_rv_dealloc_undo () - undo page deallocation. the page is validated by setting its page type back.
  *
  * return        : error code
@@ -16294,7 +16354,6 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   vpid.pageid = udata->pageid;
   vpid.volid = udata->volid;
 
-  assert (rcv->length == sizeof (PGBUF_DEALLOC_UNDO_DATA));
   assert (udata->ptype > PAGE_UNKNOWN && udata->ptype <= PAGE_LAST);
 
   /* fix deallocated page */
@@ -16309,6 +16368,7 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   CAST_PGPTR_TO_IOPGPTR (iopage, page_deallocated);
   iopage->prv.pflag = udata->pflag;
+  pgbuf_rv_dealloc_restore_contents (page_deallocated, rcv);
 
 #if !defined(NDEBUG)
   if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
@@ -16318,9 +16378,9 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
 #endif /* !NDEBUG */
 
+  /* with the saved body, if any, so that the redo of the compensation puts it back too */
   log_append_compensate_with_undo_nxlsa (thread_p, RVPGBUF_COMPENSATE_DEALLOC, &vpid, 0, page_deallocated,
-					 sizeof (PGBUF_DEALLOC_UNDO_DATA), udata, LOG_FIND_CURRENT_TDES (thread_p),
-					 &rcv->reference_lsa);
+					 rcv->length, rcv->data, LOG_FIND_CURRENT_TDES (thread_p), &rcv->reference_lsa);
   pgbuf_set_dirty_and_free (thread_p, page_deallocated);
   return NO_ERROR;
 }
@@ -16341,13 +16401,13 @@ pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   FILEIO_PAGE *iopage;
 
   assert (rcv->pgptr != NULL);
-  assert (rcv->length == sizeof (PGBUF_DEALLOC_UNDO_DATA));
   assert (udata->ptype > PAGE_UNKNOWN && udata->ptype <= PAGE_LAST);
 
   CAST_PGPTR_TO_IOPGPTR (iopage, rcv->pgptr);
 
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, (PAGE_TYPE) udata->ptype);
   iopage->prv.pflag = udata->pflag;
+  pgbuf_rv_dealloc_restore_contents (rcv->pgptr, rcv);
 
 #if !defined(NDEBUG)
   if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
@@ -18430,6 +18490,7 @@ pgbuf_scan_bcb_table ()
 	      break;
 	    case PAGE_OVERFLOW:
 	    case PAGE_HEAP:
+	    case PAGE_OOS:
 	      show_status_snapshot->num_data_pages++;
 	      break;
 	    case PAGE_CATALOG:

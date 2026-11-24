@@ -7265,6 +7265,19 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " invisible ");
     }
 
+  if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage prefer_inline ");
+    }
+  else if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage force_outline ");
+    }
+  else if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_INLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage force_inline ");
+    }
+
   if (p->info.attr_def.data_default)
     {
       r1 = pt_print_bytes (parser, p->info.attr_def.data_default);
@@ -9524,6 +9537,7 @@ pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.query.into_list, arg);
   PT_APPLY_WALK (parser, p->info.query.order_by, arg);
   PT_APPLY_WALK (parser, p->info.query.orderby_for, arg);
+  PT_APPLY_WALK (parser, p->info.query.limit, arg);
   return p;
 }
 
@@ -14077,6 +14091,7 @@ pt_apply_intersection (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.query.into_list, arg);
   PT_APPLY_WALK (parser, p->info.query.order_by, arg);
   PT_APPLY_WALK (parser, p->info.query.orderby_for, arg);
+  PT_APPLY_WALK (parser, p->info.query.limit, arg);
   return p;
 }
 

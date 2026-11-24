@@ -1638,6 +1638,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->fl_mark_repl_recidx = -1;
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
+  tdes->oos_insert_lsa_queue.clear ();
+  tdes->oos_suppress_insert_lsa_queueing = false;
   tdes->first_save_entry = NULL;
   tdes->query_timeout = 0;
   tdes->last_query_deadline = 0;
@@ -1727,6 +1729,8 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->repl_records = NULL;
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
+  tdes->oos_insert_lsa_queue.clear ();
+  tdes->oos_suppress_insert_lsa_queueing = false;
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
   tdes->lob_locator_root.init ();
@@ -4202,8 +4206,8 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
  * Note: shared by the acquire-at-assignment choke points and logtb_ensure_mvccid_self_lock; takes the MVCCID
  *	 explicitly so the choke points do not recurse through logtb_get_current_mvccid. Idempotent via the
  *	 self_locked_mvccid hint. A fresh MVCCID is unknown to any other transaction, so the X never waits.
- *	 A no-op during boot/recovery and for non-worker (system/vacuum) transactions -- the guard is here so
- *	 both entry points inherit it.
+ *	 A no-op during boot/recovery, for non-worker (system/vacuum) transactions and for load workers -- the
+ *	 guard is here so both entry points inherit it.
  */
 static int
 logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
@@ -4216,6 +4220,18 @@ logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_i
   if (curr_mvcc_info->self_locked_mvccid == mvccid)
     {
       /* already self-locked in this (sub-)transaction */
+      return NO_ERROR;
+    }
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p->type == TT_LOADDB)
+    {
+      /* Load workers rely on the session transaction's BU_LOCK, and bulk records do not expose an INSID. No waiter
+       * can address the worker's MVCCID, so a transaction self-lock is not needed. */
       return NO_ERROR;
     }
 
@@ -4385,36 +4401,45 @@ logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 }
 
 /*
- * logtb_has_active_savepoint () - Is a savepoint declared, so a partial rollback can reach back to here?
+ * logtb_wait_for_tran_end () - Block until the transaction a stamp named ends, or until what the caller saw may be
+ *				gone
  *
- * return: true if this transaction has declared a savepoint
- *
- *   thread_p(in): thread entry
- */
-bool
-logtb_has_active_savepoint (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-  return tdes != NULL && !LSA_ISNULL (&tdes->savept_lsa);
-}
-
-/*
- * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends
- *
- * return	 : NO_ERROR once that transaction has ended.  An error if the lock failed, or if the lock was granted
- *		   while that transaction is still active -- waiting again cannot help.
+ * return	 : NO_ERROR once that transaction has ended, or when the caller is to read the stamp again
+ *		   (lock_wait_transaction_mvccid ()). An error if the lock failed, or if it was granted while that
+ *		   transaction is still active -- waiting again cannot help.
  * thread_p (in) : Thread entry.
- * mvccid (in)	 : MVCCID of the in-progress transaction to wait out.
+ * seen (in)	 : the in-progress transaction to wait out (seen->owner), the wake generation read with its stamp, and
+ *		   the row the stamp was on, for the lock wait diagnostics.
  *
  * Note: call with no page latch held.
  */
 int
-logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
+logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen)
+{
+  return logtb_wait_for_tran_end_on_row (thread_p, seen, NULL);
+}
+
+/*
+ * logtb_wait_for_tran_end_on_row () - logtb_wait_for_tran_end () for a caller that holds a row X while it waits; the
+ *				       owner may be handed the row (held->lost when it is not had back)
+ */
+int
+logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen, LK_HELD_ROW * held)
 {
   int error_code;
+  int granted;
 
-  if (lock_transaction_mvccid (thread_p, mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  granted = lock_wait_transaction_mvccid (thread_p, seen, held);
+  if (granted == LK_NOTGRANTED_DUE_RECHECK)
+    {
+      return NO_ERROR;
+    }
+  if (granted != LK_GRANTED)
     {
       error_code = er_errid ();
       if (error_code == NO_ERROR)
@@ -4424,9 +4449,9 @@ logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
 	}
       return error_code;
     }
-  lock_unlock_transaction_mvccid (thread_p, mvccid, S_LOCK);
+  lock_unlock_transaction_mvccid (thread_p, seen->owner, S_LOCK);
 
-  if (log_Gl.mvcc_table.is_active (mvccid))
+  if (log_Gl.mvcc_table.is_active (seen->owner))
     {
       /* Invariant breach: no-op grant while that transaction is still active. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
@@ -4475,6 +4500,35 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 
   return &tdes->mvccinfo.snapshot;
 
+}
+
+/*
+ * logtb_get_catalog_read_snapshot () - build into local a snapshot for one catalog read request
+ *
+ * Whatever the isolation level, the transaction snapshot is neither built nor changed, so reading the catalog does
+ * not fix the point in time a transaction's queries see. Like that snapshot, it holds vacuum back from the versions
+ * it may read until the transaction ends.
+ *
+ * return: local, or NULL for a system transaction
+ *
+ *   thread_p(in): thread entry
+ *   local(out): snapshot owned by the caller for the duration of the request
+ */
+MVCC_SNAPSHOT *
+logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  if (!tdes->is_active_worker_transaction ())
+    {
+      return NULL;
+    }
+
+  /* no parallel worker reads the catalog this way, so the main thread's snapshot mutex is not needed */
+  assert (thread_p->m_px_orig_thread_entry == NULL);
+
+  log_Gl.mvcc_table.build_snapshot (tdes->tran_index, *local, false);
+  return local;
 }
 
 /*
