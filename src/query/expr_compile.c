@@ -1598,6 +1598,9 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     {
       return ER_FAILED;		/* the interpreter's error exit: the body set the error */
     }
+
+  /* an operator such as ABS returns its fixed operand without conversion */
+  numeric_db_value_to_float_domain (a.arithptr->value, a.domain);
   *step->out_cell = a.arithptr->value;
   return NO_ERROR;
 }
@@ -4521,8 +4524,8 @@ int
 expr_pred_or_raw_leaves (const void *or_src, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap, int *n_disj,
 			 int disj_cap)
 {
-  const PRED_EXPR *disj[16];
-  const PRED_EXPR *terms[32];
+  const PRED_EXPR *disj[PRED_OR_RAW_MAX_DISJUNCTS];
+  const PRED_EXPR *terms[PRED_OR_RAW_MAX_LEAVES];
   int nd, d, i, nt, n = 0;
 
   if (or_src == NULL || ((const PRED_EXPR *) or_src)->type != T_PRED
@@ -5524,6 +5527,11 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
     {
       /* CBRD-27583: a node that raises its rule's error (operand types the operator rejects) has no kernel; the
        * interpreter raises it */
+      return -1;
+    }
+  if (REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_LIMIT_SUM))
+    {
+      /* the offset + count of a LIMIT rewrite gives the maximum on an overflow, which only the interpreter does */
       return -1;
     }
   if (expr_arith_side_effect (regu->value.arithptr->opcode))

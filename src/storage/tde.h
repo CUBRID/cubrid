@@ -108,6 +108,7 @@ typedef struct tde_mk_file_item
   ((rcvindex) == RVHF_INSERT \
    || (rcvindex) == RVHF_DELETE \
    || (rcvindex) == RVHF_UPDATE \
+   || (rcvindex) == RVHF_SERIAL_DDL_UPDATE_UNDO \
    || (rcvindex) == RVHF_MVCC_INSERT \
    || (rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME \
    || (rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM \
