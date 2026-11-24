@@ -19898,7 +19898,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
       if (opd1 && opd1->node_type != PT_VALUE)
 	{
-	  if (expr->info.expr.arg2 == opd1 && (opd1->info.expr.op == PT_CASE || opd1->info.expr.op == PT_DECODE))
+	  if (expr->info.expr.arg2 == opd1 && PT_IS_EXPR_NODE (opd1)
+	      && (opd1->info.expr.op == PT_CASE || opd1->info.expr.op == PT_DECODE))
 	    {
 	      opd1->info.expr.continued_case = 0;
 	    }

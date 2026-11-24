@@ -2407,7 +2407,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	}
       if (lhs_indexable
 	  && (pt_is_function_index_expr (parser, lhs_expr, false)
-	      || (lhs_expr && lhs_expr->info.expr.op == PT_PRIOR
+	      || (pt_is_expr_node (lhs_expr) && lhs_expr->info.expr.op == PT_PRIOR
 		  && pt_is_function_index_expr (parser, lhs_expr->info.expr.arg1, false))))
 	{
 	  /* we should be dealing with a function indexable expression, so we must check if a segment has been

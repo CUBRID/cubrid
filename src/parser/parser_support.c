@@ -2214,7 +2214,7 @@ pt_check_level_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool * has_greater
     case PT_RANGE:
     case PT_EQ_SOME:
     case PT_IS_IN:
-      if (arg1->info.expr.op == PT_LEVEL)
+      if (PT_IS_EXPR_NODE (arg1) && arg1->info.expr.op == PT_LEVEL)
 	{
 	  *has_lesser = true;
 	  *has_greater = true;

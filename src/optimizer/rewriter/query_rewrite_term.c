@@ -1961,7 +1961,7 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
   find_attr = (pt_is_attr (start->info.expr.arg2) || pt_is_function_index_expression (start->info.expr.arg2));
 
   arg_prior_start = start->info.expr.arg1;	/* original value */
-  if (arg_prior_start->info.expr.op == PT_PRIOR)
+  if (pt_is_expr_node (arg_prior_start) && arg_prior_start->info.expr.op == PT_PRIOR)
     {
       arg_prior_start = arg_prior_start->info.expr.arg1;
     }
