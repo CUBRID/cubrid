@@ -21847,6 +21847,8 @@ heap_bsmap_pending_any (void)
  *
  * Note: logpb_checkpoint () calls it after the page flush; the shutdown calls it too, as log_final () does not
  *	 checkpoint a clean shutdown. An error leaves what was not written persist-dirty or pending.
+ *	 log_final () checkpoints a shutdown that leaves 2PC loose ends, after it has reset the recovery phase to
+ *	 analysis (no other checkpoint runs in that phase): that checkpoint writes nothing, like a clean shutdown.
  */
 int
 heap_bestspace_checkpoint (THREAD_ENTRY * thread_p, bool * busy)
@@ -21862,6 +21864,13 @@ heap_bestspace_checkpoint (THREAD_ENTRY * thread_p, bool * busy)
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
+    }
+  if (!LOG_ISRESTARTED () && log_Gl.rcv_phase == LOG_RECOVERY_ANALYSIS_PHASE)
+    {
+      /* log_final () at a shutdown with 2PC loose ends: the shutdown wrote the maps before it, as for any shutdown,
+       * and the system transactions are gone, so nothing can be logged now. Nor may this fail: logpb_checkpoint ()
+       * would then release the log critical section that log_final () holds */
+      return NO_ERROR;
     }
   if (!LOG_ISRESTARTED ())
     {
