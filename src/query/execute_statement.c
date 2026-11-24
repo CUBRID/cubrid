@@ -12984,6 +12984,8 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (contextp->xasl)
 	{
+	  ODKU_INFO *odku = contextp->xasl->proc.insert.odku;
+
 	  assert (contextp->xasl->dptr_list == NULL);
 
 	  if (error == NO_ERROR)
@@ -12992,6 +12994,14 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (error != NO_ERROR)
 		{
 		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+		}
+	    }
+
+	  for (int i = 0; odku != NULL && i < odku->num_assigns; i++)
+	    {
+	      if (odku->assignments[i].constant)
+		{
+		  pr_clear_value (odku->assignments[i].constant);
 		}
 	    }
 	}
@@ -13090,10 +13100,20 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (xasl)
     {
+      ODKU_INFO *odku = xasl->proc.insert.odku;
+
       error = xts_map_xasl_to_stream (xasl, &stream);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	}
+
+      for (int i = 0; odku != NULL && i < odku->num_assigns; i++)
+	{
+	  if (odku->assignments[i].constant)
+	    {
+	      pr_clear_value (odku->assignments[i].constant);
+	    }
 	}
     }
   else

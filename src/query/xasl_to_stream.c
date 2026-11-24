@@ -6022,6 +6022,7 @@ static char *
 xts_process_db_value (char *ptr, const DB_VALUE * value)
 {
   ptr = or_pack_db_value (ptr, (DB_VALUE *) value);
+  pr_clear_compressed_string ((DB_VALUE *) value);
 
   return ptr;
 }

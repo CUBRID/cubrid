@@ -14382,6 +14382,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  db_make_int (result, pr_data_writeval_disk_size (arg1));
 	  /* call pr_data_writeval_disk_size function to return the size on disk */
+	  pr_clear_compressed_string (arg1);
 	}
       break;
 
