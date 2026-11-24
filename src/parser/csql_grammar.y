@@ -15997,7 +15997,8 @@ reserved_func
 
 			if (node_unit)
 			  {
-			    node_unit->info.expr.qualifier = $8;
+			    /* the unit is the value of an INTEGER constant */
+			    node_unit->info.value.data_value.i = $8;
 			    node_unit->type_enum = PT_TYPE_INTEGER;
 			  }
 
@@ -16026,7 +16027,8 @@ reserved_func
 
 			if (node_unit)
 			  {
-			    node_unit->info.expr.qualifier = $8;
+			    /* the unit is the value of an INTEGER constant */
+			    node_unit->info.value.data_value.i = $8;
 			    node_unit->type_enum = PT_TYPE_INTEGER;
 			  }
 

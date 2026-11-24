@@ -11274,7 +11274,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  bool type_date_flag = false;
 
 	  assert (arg3);
-	  switch (arg3->info.expr.qualifier)
+	  switch ((PT_MISC_TYPE) arg3->info.value.data_value.i)
 	    {
 	    case PT_DAY:
 	    case PT_WEEK:
@@ -17947,7 +17947,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_DATE_ADD:
-      error = db_date_add_interval_expr (result, arg1, arg2, o3->info.expr.qualifier);
+      error = db_date_add_interval_expr (result, arg1, arg2, o3->info.value.data_value.i);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17959,7 +17959,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_DATE_SUB:
-      error = db_date_sub_interval_expr (result, arg1, arg2, o3->info.expr.qualifier);
+      error = db_date_sub_interval_expr (result, arg1, arg2, o3->info.value.data_value.i);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());

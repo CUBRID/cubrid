@@ -10849,11 +10849,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  r2 = pt_to_regu_variable (parser, node->info.expr.arg2, unbox);
-		  /* store the info.expr.qualifier which is the unit parameter into a constant regu variable */
+		  /* the unit parameter as a constant regu variable */
 		  regu_alloc (val);
 		  if (val)
 		    {
-		      db_make_int (val, node->info.expr.arg3->info.expr.qualifier);
+		      db_make_int (val, node->info.expr.arg3->info.value.data_value.i);
 		      r3 = pt_make_regu_constant (parser, val, DB_TYPE_INTEGER, NULL);
 		    }
 

@@ -11360,7 +11360,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.expr.arg2);
       q = pt_append_varchar (parser, q, r1);
 
-      switch (p->info.expr.arg3->info.expr.qualifier)
+      switch ((PT_MISC_TYPE) p->info.expr.arg3->info.value.data_value.i)
 	{
 	case PT_MILLISECOND:
 	  q = pt_append_nulstring (parser, q, " MILLISECOND");
