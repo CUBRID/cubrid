@@ -4404,6 +4404,7 @@ pt_register_orphan_db_value (PARSER_CONTEXT * parser, const DB_VALUE * orphan)
 
   if (orphan)
     {
+      pr_clear_compressed_string ((DB_VALUE *) orphan);
       dummy = parser_new_node (parser, PT_VALUE);
       dummy->info.value.db_value_is_in_workspace = 1;
       dummy->info.value.db_value = *orphan;	/* structure copy */

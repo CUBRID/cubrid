@@ -139,6 +139,7 @@
 
 static void do_set_trace_to_query_flag (QUERY_FLAG * query_flag);
 static void do_send_plan_trace_to_session (PARSER_CONTEXT * parser);
+static void do_clear_odku_constants (ODKU_INFO * odku);
 static int do_set_lock_timeout_hint (PT_HINT_ENUM hint, PT_NODE * hint_arg);
 static int do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class_,
@@ -12987,8 +12988,6 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (contextp->xasl)
 	{
-	  ODKU_INFO *odku = contextp->xasl->proc.insert.odku;
-
 	  assert (contextp->xasl->dptr_list == NULL);
 
 	  if (error == NO_ERROR)
@@ -13000,13 +12999,7 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	    }
 
-	  for (int i = 0; odku != NULL && i < odku->num_assigns; i++)
-	    {
-	      if (odku->assignments[i].constant)
-		{
-		  pr_clear_value (odku->assignments[i].constant);
-		}
-	    }
+	  do_clear_odku_constants (contextp->xasl->proc.insert.odku);
 	}
       else
 	{
@@ -13103,21 +13096,13 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (xasl)
     {
-      ODKU_INFO *odku = xasl->proc.insert.odku;
-
       error = xts_map_xasl_to_stream (xasl, &stream);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 	}
 
-      for (int i = 0; odku != NULL && i < odku->num_assigns; i++)
-	{
-	  if (odku->assignments[i].constant)
-	    {
-	      pr_clear_value (odku->assignments[i].constant);
-	    }
-	}
+      do_clear_odku_constants (xasl->proc.insert.odku);
     }
   else
     {
@@ -22526,6 +22511,30 @@ do_set_trace_to_query_flag (QUERY_FLAG * query_flag)
       && DETAILED_DUMP (prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL)))
     {
       *query_flag |= XASL_TRACE_PLAN_DETAIL;
+    }
+}
+
+/*
+ * do_clear_odku_constants () - clear the constants of the ON DUPLICATE KEY UPDATE assignments of an insert XASL
+ *   return: none
+ *   odku(in): the ON DUPLICATE KEY UPDATE info of the insert XASL, or NULL
+ */
+static void
+do_clear_odku_constants (ODKU_INFO * odku)
+{
+  int i;
+
+  if (odku == NULL)
+    {
+      return;
+    }
+
+  for (i = 0; i < odku->num_assigns; i++)
+    {
+      if (odku->assignments[i].constant)
+	{
+	  pr_clear_value (odku->assignments[i].constant);
+	}
     }
 }
 
