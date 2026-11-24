@@ -68,6 +68,7 @@
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
 #include "execute_statement.h"
+#include "sp_context_rules.hpp"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
@@ -997,6 +998,8 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   if (error == NO_ERROR && locator_get_sig_interrupt () == 0)
     {
       std::vector <DB_VALUE> out_args;
+      sp_depth_guard sql_guard (sp_In_sql_depth, statement->info.method_call.call_or_expr == PT_IS_MTHD_EXPR);
+
       error = pl_call (sig, args, out_args, ret_value);
       if (error == NO_ERROR)
 	{
@@ -1375,6 +1378,7 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
     {
       SP_ARG_INFO arg_info (sp_info.unique_name);
 
+      arg_info.is_system_generated = sp_info.is_system_generated;
       arg_info.index_of = param_count++;
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
       arg_info.data_type = pt_type_enum_to_db (p->type_enum);
