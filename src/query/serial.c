@@ -1630,8 +1630,9 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 #if defined (SERVER_MODE)
 	  /* A serial update changes db_serial through the heap directly, so it never passes the index-loop
 	   * writeset collection. Collect the db_serial key here as this system operation's WRITE. If the
-	   * cached index is unavailable, fall back to commit-order replication; if key collection fails,
-	   * return the error to the caller like the regular DML path instead of silently degrading. */
+	   * cached index is unavailable or the key cannot be collected, fall back to commit-order replication.
+	   * Failing here would not undo the change: the heap update above is redo-only, so aborting this system
+	   * operation would keep it on the master while dropping its replication record. */
 	  {
 	    LOG_TDES *serial_tdes = LOG_FIND_TDES (tran_index);
 
@@ -1644,7 +1645,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 		else if (wset_add_write_key (serial_tdes, serial_class_oidp, &serial_Cached_btid.vfid, key_val)
 			 != NO_ERROR)
 		  {
-		    goto exit_on_error;
+		    er_clear ();
+		    wset_switch_to_commit_order (serial_tdes, WSET_FALLBACK_KEY_UNAVAILABLE);
 		  }
 		else
 		  {
