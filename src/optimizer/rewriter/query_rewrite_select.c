@@ -2927,7 +2927,7 @@ qo_is_exclude_spec (PT_NODE * exclude_spec_point_list, PT_NODE * spec)
  * 
  *       In the following cases, add to the exclude_pk_spec_point_list.
  *         1. Access to hierarchical tables.
- *         2. Not an inner join or natural join.
+ *         2. Not an inner join or natural join, or followed by a RIGHT OUTER JOIN in its join chain.
  *         3. CTEs or derived tables.
  *         4. No primary key.
  *         5. No foreign key referencing the primary key.
@@ -2989,6 +2989,12 @@ qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
     case PT_JOIN_FULL_OUTER:
     case PT_JOIN_UNION:
     default:
+      goto exit_on_fail_with_exclude;
+    }
+
+  /* the IS NOT NULL put on the foreign key in place of the join would drop the rows a later RIGHT OUTER JOIN keeps */
+  if (mq_is_outer_join_spec (parser, curr_pk_spec))
+    {
       goto exit_on_fail_with_exclude;
     }
 
