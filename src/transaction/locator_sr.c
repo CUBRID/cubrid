@@ -5826,6 +5826,30 @@ locator_key_changes (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk, OID *
 }
 
 /*
+ * locator_assigns_unique_key () - does an UPDATE assign an attribute of a unique index of the class?
+ *
+ * return: NO_ERROR or error code
+ *   assigns(out): an assigned attribute is a key attribute of a unique index
+ */
+int
+locator_assigns_unique_key (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID * att_id, int n_att_id, bool * assigns)
+{
+  HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_IDX_ELEMENTS_INFO idx_info;
+  int num_found;
+
+  *assigns = false;
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &attr_info, &idx_info);
+  if (num_found <= 0)
+    {
+      return num_found;
+    }
+  *assigns = heap_attrinfo_check_unique_index (thread_p, &attr_info, att_id, n_att_id);
+  heap_attrinfo_end (thread_p, &attr_info);
+  return NO_ERROR;
+}
+
+/*
  * locator_children_may_be_written () - does another transaction hold IX or stronger on a class whose foreign key
  *					 refers to the key?
  */
