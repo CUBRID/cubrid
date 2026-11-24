@@ -8783,6 +8783,7 @@ static bool update_check_having_meta_attr (PARSER_CONTEXT * parser, PT_NODE * as
 static int update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_started);
 static XASL_NODE *statement_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
 static int do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement);
+static int do_append_share_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement);
 static int is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs, int *has_uniques,
 				     int *const server_allowed, const PT_NODE * statement);
 static int delete_object_tuple (DB_OBJECT * obj);
@@ -16329,6 +16330,94 @@ do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp,
   return NO_ERROR;
 }
 
+/* CBRD-27351: the share groups of a query, written after its hash text */
+typedef struct do_share_key_info DO_SHARE_KEY_INFO;
+struct do_share_key_info
+{
+  PT_SHARE_GROUP *groups;	/* the groups of the query, as mq_share_settle_groups () returns them */
+  char *key;			/* the position, group and role of each member */
+  int n_specs;			/* specs visited so far */
+  bool failed;
+};
+
+/*
+ * do_collect_share_key () - add a member of a share group to the key: its position among the specs of the query,
+ *   the number of its group and whether it is the donor (d) or another member (m)
+ */
+static PT_NODE *
+do_collect_share_key (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  DO_SHARE_KEY_INFO *info = (DO_SHARE_KEY_INFO *) arg;
+  PT_SHARE_GROUP *group;
+  char buf[32];
+  int n = 1;
+
+  if (node->node_type != PT_SPEC)
+    {
+      return node;
+    }
+  info->n_specs++;
+  if (node->info.spec.share_group == NULL)
+    {
+      return node;
+    }
+
+  for (group = info->groups; group != NULL && group != node->info.spec.share_group; group = group->next)
+    {
+      n++;
+    }
+  snprintf (buf, sizeof (buf), " %d:%d%c", info->n_specs, n, (group != NULL && node == group->donor) ? 'd' : 'm');
+  info->key = pt_append_string (parser, info->key, buf);
+  if (info->key == NULL)
+    {
+      info->failed = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * do_append_share_key () - CBRD-27351: write the share groups of a query after its hash text, as the bind-value
+ *   variant key is: a query sharing a view result and one that does not may print alike, the views expanded and
+ *   their constants turned into host variables, and must not use each other's plan
+ * return : error code
+ */
+static int
+do_append_share_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement)
+{
+  DO_SHARE_KEY_INFO info = { NULL, NULL, 0, false };
+  char *text;
+
+  if (!PT_IS_QUERY (statement) || contextp->sql_hash_text == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  info.groups = mq_share_settle_groups (parser, statement);
+  if (info.groups == NULL)
+    {
+      /* no share group: the hash text is as without sharing */
+      return NO_ERROR;
+    }
+
+  (void) parser_walk_tree (parser, statement, do_collect_share_key, &info, NULL, NULL);
+
+  /* append to a copy: the hash text is the statement's alias_print */
+  text = info.failed ? NULL : pt_append_string (parser, NULL, contextp->sql_hash_text);
+  text = (text != NULL) ? pt_append_string (parser, text, " [share") : NULL;
+  text = (text != NULL) ? pt_append_string (parser, text, info.key) : NULL;
+  text = (text != NULL) ? pt_append_string (parser, text, "]") : NULL;
+  if (text == NULL)
+    {
+      int err;
+
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  contextp->sql_hash_text = text;
+  return NO_ERROR;
+}
+
 /*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
  *                       plan generation, and creating XASL as the result
@@ -16391,6 +16480,11 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   contextp->sql_hash_text = (char *) statement->alias_print;
   err = do_append_bind_variant_key (parser, contextp, statement);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  err = do_append_share_key (parser, contextp, statement);
   if (err != NO_ERROR)
     {
       return err;
