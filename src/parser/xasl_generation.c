@@ -25876,6 +25876,16 @@ exit_on_error:
       PT_INTERNAL_ERROR (parser, "ODKU Info generation failed");
       error = ER_FAILED;
     }
+  if (odku != NULL && odku->assignments != NULL)
+    {
+      for (i = 0; i < odku->num_assigns; i++)
+	{
+	  if (odku->assignments[i].constant != NULL)
+	    {
+	      pr_clear_value (odku->assignments[i].constant);
+	    }
+	}
+    }
   if (pt_pred != NULL)
     {
       parser_free_tree (parser, pt_pred);
