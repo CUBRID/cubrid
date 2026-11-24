@@ -2473,7 +2473,9 @@ struct pt_expr_info
 						 * derived restrictions from; not a source again */
 #define PT_EXPR_INFO_OR_DERIVED_COLUMN 268435456	/* 0x10000000, an OR-derived key range on one column;
 							 * paired with its origin on its own node */
-#define PT_EXPR_INFO_FILTER_TERM 536870912	/* 0x20000000, an AND or OR on the AND/OR spine of a search condition
+#define PT_EXPR_INFO_LIMIT_SUM 536870912	/* 0x20000000, the offset + count a LIMIT rewrite builds: an overflow gives
+						 * the BIGINT maximum (REGU_VARIABLE_LIMIT_SUM) */
+#define PT_EXPR_INFO_FILTER_TERM 1073741824	/* 0x40000000, an AND or OR on the AND/OR spine of a search condition
 						 * (WHERE, ON, HAVING, ...), where UNKNOWN rejects the row as FALSE does */
   int flag;			/* flags */
 /* the largest OR factor pt_cnf_where () keeps whole and qo_extract_or_restrictions () derives from */

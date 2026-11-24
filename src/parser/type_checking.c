@@ -227,7 +227,6 @@ static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void pt_mark_filter_terms (PT_NODE * cond);
 static void pt_mark_filter_spine (PT_NODE * node);
-static int pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr);
 static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -7632,6 +7631,29 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
     default:
       break;
+    }
+
+  /* cast before the switch below types the LIMIT values and copies them into the numbering predicates. A PL/CSQL
+   * static SQL keeps the clause as written and casts the copies (pt_limit_to_numbering_expr) */
+  if (!parser->flag.is_parsing_static_sql)
+    {
+      switch (node->node_type)
+	{
+	case PT_SELECT:
+	case PT_UNION:
+	case PT_DIFFERENCE:
+	case PT_INTERSECTION:
+	  pt_cast_limit_string_operands (parser, node->info.query.limit);
+	  break;
+	case PT_UPDATE:
+	  pt_cast_limit_string_operands (parser, node->info.update.limit);
+	  break;
+	case PT_DELETE:
+	  pt_cast_limit_string_operands (parser, node->info.delete_.limit);
+	  break;
+	default:
+	  break;
+	}
     }
 
   switch (node->node_type)
@@ -20103,6 +20125,116 @@ end:
 }
 
 /*
+ * pt_eval_type_outside_query_pre () - pt_eval_type_pre () that leaves a subquery as it is
+ *
+ * Note: a subquery is typed with its own statement.  Typed again from the rewrite of the query holding it, it may
+ *	 be in the middle of its own rewrite: qo_reduce_equality_terms () moves the ON condition of a join into the
+ *	 WHERE for a while, and pt_where_type () would read a false ON term there as a false WHERE.
+ */
+static PT_NODE *
+pt_eval_type_outside_query_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  return pt_eval_type_pre (parser, node, arg, continue_walk);
+}
+
+/*
+ * pt_eval_type_outside_query () - pt_eval_type () that leaves a subquery as it is; the walk calls the post of a node
+ *				    whose pre stopped there
+ */
+static PT_NODE *
+pt_eval_type_outside_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (PT_IS_QUERY (node))
+    {
+      return node;
+    }
+  return pt_eval_type (parser, node, arg, continue_walk);
+}
+
+/*
+ * pt_fold_constants_outside_query_pre () - pt_fold_constants_pre () that leaves a subquery as it is
+ */
+static PT_NODE *
+pt_fold_constants_outside_query_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  /* pt_fold_constants_pre () does not reset what the pre of a subquery left */
+  *continue_walk = PT_CONTINUE_WALK;
+  return pt_fold_constants_pre (parser, node, arg, continue_walk);
+}
+
+/*
+ * pt_fold_constants_outside_query_post () - pt_fold_constants_post () that leaves a subquery as it is
+ */
+static PT_NODE *
+pt_fold_constants_outside_query_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (PT_IS_QUERY (node))
+    {
+      return node;
+    }
+  return pt_fold_constants_post (parser, node, arg, continue_walk);
+}
+
+/*
+ * pt_semantic_type_term_in_place () - pt_semantic_type_in_place () of a search condition term in the middle of a
+ *					rewrite: the subqueries it holds are left as they are
+ *   return: NO_ERROR or ER_FAILED
+ *   parser(in):
+ *   tree(in/out): replaced with the resulting tree; kept if the result is NULL
+ *   sc_info_ptr(in):
+ */
+int
+pt_semantic_type_term_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr)
+{
+  PT_NODE *result, *spec_list = NULL;
+
+  if (pt_has_error (parser))
+    {
+      return ER_FAILED;
+    }
+  sc_info_ptr->has_dblink = false;
+
+  result = parser_walk_tree (parser, *tree, pt_eval_type_outside_query_pre, sc_info_ptr, pt_eval_type_outside_query,
+			     sc_info_ptr);
+  if (result == NULL)
+    {
+      return ER_FAILED;
+    }
+  *tree = result;
+  if (pt_has_error (parser))
+    {
+      return ER_FAILED;
+    }
+
+  if (!parser->flag.is_parsing_static_sql)
+    {
+      result = parser_walk_tree (parser, *tree, pt_fold_constants_outside_query_pre, &spec_list,
+				 pt_fold_constants_outside_query_post, sc_info_ptr);
+      if (result == NULL)
+	{
+	  return ER_FAILED;
+	}
+      *tree = result;
+      if (pt_has_error (parser))
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * pt_semantic_type_in_place () - pt_semantic_type () that keeps *tree pointing to the resulting tree even on error
  *   return: NO_ERROR or ER_FAILED
  *   parser(in):
@@ -20112,7 +20244,7 @@ end:
  * Note: pt_semantic_type () returns NULL on error, so a caller cannot get the node that replaced (and freed) the input
  *       tree during type checking or constant folding.
  */
-static int
+int
 pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr)
 {
   PT_NODE *spec = NULL;
@@ -22679,6 +22811,13 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 
 	      /* 'wrap_dt' is copied in 'pt_wrap_with_cast_op' */
 	      parser_free_node (parser, wrap_dt);
+	    }
+	  else if (node->data_type == NULL)
+	    {
+	      /* a CAST is not wrapped above, and a COLLATE modifier CAST whose type could not be resolved (an error is
+	       * already set, but type checking goes on inside a collection constructor or an IN list) has no data type
+	       * to take the collation */
+	      goto cannot_coerce;
 	    }
 	  else
 	    {
