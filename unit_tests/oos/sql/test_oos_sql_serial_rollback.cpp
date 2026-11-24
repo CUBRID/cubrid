@@ -154,7 +154,8 @@ TEST_F (OosSqlSerialRollback, RolledBackLaterNextValueKeepsTheCommentReadable)
   ASSERT_NO_FATAL_FAILURE (expect_next_value ("s_again", 7));
 }
 
-TEST_F (OosSqlSerialRollback, RolledBackAlterAndNextValueRestoreTheCommittedRow)
+/* CBRD-27744 keeps issued serial values across a DDL rollback while restoring the pre-ALTER definition. */
+TEST_F (OosSqlSerialRollback, RolledBackAlterAndNextValueKeepIssuedValuesAndComment)
 {
   const std::string comment = incompressible_comment (1000);
   ASSERT_NO_FATAL_FAILURE (create_serial ("s_alter", comment));
@@ -166,7 +167,8 @@ TEST_F (OosSqlSerialRollback, RolledBackAlterAndNextValueRestoreTheCommittedRow)
   ASSERT_NO_FATAL_FAILURE (next_values ("s_alter", 3));
   db_abort_transaction ();
 
-  ASSERT_NO_FATAL_FAILURE (expect_serial_row ("s_alter", comment, 1));
+  ASSERT_NO_FATAL_FAILURE (expect_serial_row ("s_alter", comment, 31));
+  ASSERT_NO_FATAL_FAILURE (expect_next_value ("s_alter", 32));
 }
 
 TEST_F (OosSqlSerialRollback, RolledBackCreateAndNextValueLeaveNoSerial)
