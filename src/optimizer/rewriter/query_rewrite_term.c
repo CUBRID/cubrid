@@ -2133,6 +2133,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   PT_NODE *opd1, *opd2;
   DB_VALUE *dbv1, *dbv2;
   TP_DOMAIN *pad_domain;
+  PT_NODE *cast_attr;
   int pad_user;
 
   /* init */
@@ -2201,6 +2202,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	{
 	  arg1 = (i == 0) ? expr->info.expr.arg1 : expr->info.expr.arg2;
 	  arg2 = (i == 0) ? expr->info.expr.arg2 : expr->info.expr.arg1;
+	  cast_attr = NULL;
 
 	  if (expr->info.expr.op == PT_RANGE)
 	    {
@@ -2247,6 +2249,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		}
 	      else if (qo_is_cast_attr (arg2))
 		{
+		  cast_attr = arg2;
 		  arg2 = arg2->info.expr.arg1;
 		}
 	      else
@@ -2304,8 +2307,14 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 			  col = col->info.name.constant_value;
 			}
 		    }
-		  /* do not reduce PT_NAME that belongs to PT_NODE_LIST to PT_VALUE */
-		  if (attr && col && !PT_IS_VALUE_QUERY (col) && qo_is_reduceable_const (col))
+		  /* do not reduce PT_NAME that belongs to PT_NODE_LIST to PT_VALUE. nor a column the substitution
+		   * below leaves in a cast to another collation (pt_lambda_check_reduce_eq): the added copy of the
+		   * term would stay as it is and be found again at every restart, adding a copy forever. for the same
+		   * reason a copy added here (PT_EXPR_INFO_DO_NOT_AUTOPARAM) is never copied again: the substitution
+		   * turns it into attr = const, so one that still gets here was left as it is */
+		  if (attr && col && !PT_IS_VALUE_QUERY (col) && qo_is_reduceable_const (col)
+		      && !PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_DO_NOT_AUTOPARAM)
+		      && !pt_reduce_eq_keeps_cast (parser, arg2->type_enum, arg2, cast_attr))
 		    {
 		      /* add additional equailty-term; is reduced */
 		      PT_NODE *expr_copy = parser_copy_tree (parser, expr);

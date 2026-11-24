@@ -12670,6 +12670,7 @@ select_expression_without_subquery
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
                             stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
+                            stmt->flag.is_click_counter = $1->flag.is_click_counter | $9->flag.is_click_counter;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12755,6 +12756,7 @@ select_expression
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
                             stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
+                            stmt->flag.is_click_counter = $1->flag.is_click_counter | $9->flag.is_click_counter;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12838,6 +12840,7 @@ select_expression_without_values_query_no_with_clause
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
                             stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
+                            stmt->flag.is_click_counter = $1->flag.is_click_counter | $9->flag.is_click_counter;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12922,6 +12925,7 @@ select_expression_without_values_and_single_subquery
 			     stmt->info.query.q.union_.arg1 = $1;
 			     stmt->info.query.q.union_.arg2 = $9;
                              stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
+                             stmt->flag.is_click_counter = $1->flag.is_click_counter | $9->flag.is_click_counter;
 
 			     if (arg1 != NULL
 				 && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -13310,6 +13314,7 @@ cte_query_list
 			    stmt->info.query.q.union_.arg1 = arg1;
 		            stmt->info.query.q.union_.arg2 = arg2;
                             stmt->flag.recompile = arg1->flag.recompile | arg2->flag.recompile;
+                            stmt->flag.is_click_counter = arg1->flag.is_click_counter | arg2->flag.is_click_counter;
 			  }
 
 			$$ = stmt;
