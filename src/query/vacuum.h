@@ -126,6 +126,7 @@ struct vacuum_worker
   LOG_PAGEID prefetch_last_pageid;	/* last prefetch log pageid */
 
   bool allocated_resources;
+  bool is_job_rerun;		/* The current job re-runs an interrupted block (see btree_ovf_dir_find_oid ()). */
   int idx;			// -1 for vacuum_master;  Otherwise, the sequence number of vacuum_worker
 };
 

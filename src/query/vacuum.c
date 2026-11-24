@@ -1301,6 +1301,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
   vacuum_Master.prefetch_first_pageid = NULL_PAGEID;
   vacuum_Master.prefetch_last_pageid = NULL_PAGEID;
   vacuum_Master.allocated_resources = false;
+  vacuum_Master.is_job_rerun = false;
   vacuum_Master.idx = -1;
 #if defined (SERVER_MODE)
   g_ovfp_threshold_mgr.init ();
@@ -1321,6 +1322,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       vacuum_Workers[i].prefetch_first_pageid = NULL_PAGEID;
       vacuum_Workers[i].prefetch_last_pageid = NULL_PAGEID;
       vacuum_Workers[i].allocated_resources = false;
+      vacuum_Workers[i].is_job_rerun = false;
       vacuum_Workers[i].idx = i;
     }
 
@@ -3641,6 +3643,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
    * are usually marked in blockid, however sa_mode_partial_block can also be interrupted and will no flag is set in
    * blockid. */
   was_interrupted = data->was_interrupted () || sa_mode_partial_block;
+  worker->is_job_rerun = was_interrupted;
 
   /* Follow the linked records starting with start_lsa */
   for (LSA_COPY (&log_lsa, &data->start_lsa); !LSA_ISNULL (&log_lsa) && log_lsa.pageid >= first_block_pageid;

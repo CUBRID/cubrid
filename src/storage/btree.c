@@ -14148,6 +14148,16 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
   switch (purpose)
     {
     case BTREE_OP_DELETE_VACUUM_OBJECT:
+      /* CBRD-28214: vacuum also misses on a regular path, the delete of a rolled-back DELETE or key-changing UPDATE
+       * (the rollback only cleared the delete MVCCID), and the walk would cost every such object the chain pages
+       * before the routed one. A leftover of vacuum's own leaf swap is retried only by the job re-running the
+       * interrupted block: walk there alone. */
+      if (!vacuum_get_vacuum_worker (thread_p)->is_job_rerun)
+	{
+	  return NO_ERROR;
+	}
+      /* Removing an object that a leaf swap may have left behind: walk below. */
+      break;
     case BTREE_OP_DELETE_UNDO_INSERT:
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
