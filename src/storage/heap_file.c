@@ -4492,6 +4492,9 @@ heap_bsmap_lsa_key (const LOG_LSA * lsa)
 /* a create count no lookup reads: heap_bsmap_still_unloaded () then looks the bestspace up */
 #define HEAP_BSMAP_NO_CREATE_COUNT UINT64_MAX
 
+/* heap_bestspace_page_in_heap (): how many times a busy file header is probed, 1 ms apart */
+#define HEAP_BESTSPACE_PAGE_PROBES 3
+
 typedef struct heap_bsmap_loaded_check HEAP_BSMAP_LOADED_CHECK;
 struct heap_bsmap_loaded_check
 {
@@ -4994,9 +4997,41 @@ heap_bestspace_rv_finish (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * heap_bestspace_page_in_heap () - whether a page the caller holds is one of the pages of a heap file
+ *   return: true if the file says so; false if it does not, or if it cannot tell (an error, or its header stays latched)
+ *
+ * Note: the file header is latched conditionally: a destroy latches it, then waits for the pages of the file. An
+ *	 allocation or a deallocation holds it briefly, so a busy header is probed again a few times. A header still
+ *	 busy then (a destroy, or an allocation that extends a volume) leaves the map with the page's older code, which
+ *	 the page's next feedback or measurement replaces.
+ */
+static bool
+heap_bestspace_page_in_heap (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid)
+{
+  FILE_HEAP_PAGE_STATE state = FILE_HEAP_PAGE_BUSY;
+  int probe;
+
+  /* the caller's error (rollback and abort paths have one set) survives: whatever the probe sets is dropped */
+  er_stack_push ();
+  for (probe = 0; probe < HEAP_BESTSPACE_PAGE_PROBES; probe++)
+    {
+      if (probe > 0)
+	{
+	  thread_sleep (1);
+	}
+      if (file_probe_heap_page (thread_p, &hfid->vfid, vpid, &state) != NO_ERROR || state != FILE_HEAP_PAGE_BUSY)
+	{
+	  break;
+	}
+    }
+  er_stack_pop ();
+  return state == FILE_HEAP_PAGE_OWNED;
+}
+
+/*
  * heap_bestspace_feedback () - record the free space of a heap page the caller has changed, before it releases the
  *				 page latch (the checkpoint relies on this order)
- *   hfid(in): the page's heap, or NULL (rollback) to update the map of the page's class only where it has the sector
+ *   hfid(in): the page's heap, or NULL (rollback): the heap of the page's class, if its map or its file has the page
  *
  * Note: never loads a bestspace: until the map is absorbed, feedback goes to the pending table (see
  *       heap_bsmap_still_unloaded ()). During restart recovery it goes to the recovery table, with no lookup.
@@ -5035,7 +5070,7 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
   if (hfid == NULL)
     {
       /* the rollback hook. The class gives its current heap, which may not own the page (TRUNCATE switches heaps
-       * before the old one is destroyed): update only a sector the map has, where a rollback's page normally is */
+       * before the old one is destroyed): a sector the map has is that heap's, another needs the file to say so */
       if (heap_bestspace_hfid_of_class (thread_p, &class_oid, &found_hfid) != NO_ERROR)
 	{
 	  return;
@@ -5048,21 +5083,33 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
 	  return;
 	}
 
-      /* the map is not loaded (or not absorbed yet): the change rolled back recorded the page in the pending table,
-       * and the load would take that code. Rewrite it there, never adding a sector, as above */
+      /* the map is not loaded (or not absorbed yet): the change rolled back recorded the page in the pending table.
+       * Rewrite it there if the entry is still there */
       check.hfid = &found_hfid;
       check.found = NULL;
       check.creates = (bestspace == NULL) ? creates : HEAP_BSMAP_NO_CREATE_COUNT;
       group = heap_bsmap_group_key (&found_hfid.vfid);
       key = cubstorage::bestspace_map::make_key (vpid->volid, vpid->pageid);
       offset = (std::uint32_t) vpid->pageid % cubstorage::bestspace_map::PAGES_PER_SECTOR;
-      if (!cubstorage::bestspace_pending.update_if_present (group, key, offset, code, heap_bsmap_still_unloaded,
-							    &check, rejected) && rejected)
+      if (cubstorage::bestspace_pending.update_if_present (group, key, offset, code, heap_bsmap_still_unloaded,
+							   &check, rejected))
+	{
+	  return;
+	}
+      if (rejected)
 	{
 	  /* the loader has absorbed the group meanwhile */
 	  (void) check.found->get_map ()->feedback_if_known (vpid->volid, vpid->pageid, code);
+	  return;
 	}
-      return;
+
+      /* a checkpoint has taken the entry since (or is writing it): record the page as any feedback does, for the next
+       * checkpoint, once the file says the page is that heap's */
+      if (!heap_bestspace_page_in_heap (thread_p, &found_hfid, vpid))
+	{
+	  return;
+	}
+      hfid = &found_hfid;
     }
 
   /* read before the lookup: on a miss, heap_bsmap_still_unloaded () compares it instead of walking the registry */

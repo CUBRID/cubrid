@@ -71,6 +71,14 @@ typedef enum
   FILE_HEAP_SECTORS_COLLECTED	/* the sectors with an allocated page are collected */
 } FILE_HEAP_SECTORS_STATE;
 
+/* What file_probe_heap_page () finds for a page and a heap file */
+typedef enum
+{
+  FILE_HEAP_PAGE_OWNED,		/* the page is one of the heap file's user pages */
+  FILE_HEAP_PAGE_NOT_OWNED,	/* it is not, or the file id names no permanent heap file any more */
+  FILE_HEAP_PAGE_BUSY		/* cannot tell now: the file header is latched by someone else */
+} FILE_HEAP_PAGE_STATE;
+
 /* Set a vfid with values of volid and fileid */
 #define VFID_SET(vfid_ptr, volid_value, fileid_value) \
   do { \
@@ -274,6 +282,8 @@ extern int file_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, 
 extern int file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * class_oid, int *n_data_pages_out);
 extern DISK_ISVALID file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup);
 extern DISK_ISVALID file_is_vpid_in_file (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup);
+extern int file_probe_heap_page (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid,
+				 FILE_HEAP_PAGE_STATE * state);
 extern int file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out);
 extern int file_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp);
 extern int file_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE latch_mode,

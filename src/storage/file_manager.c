@@ -7023,20 +7023,18 @@ end:
 }
 
 /*
- * file_is_vpid_in_file () - check whether vpid is one of the file's user pages
+ * file_header_has_vpid () - check whether vpid is one of the user pages of the file whose header the caller latched
  *
  * return           : DISK_INVALID if page does not belong to file, DISK_ERROR for errors and DISK_VALID for successful
  *                    check
  * thread_p (in)    : thread entry
- * vfid (in)        : file identifier
+ * page_fhead (in)  : the file header page, read or write latched
  * vpid_lookup (in) : checked VPID
  */
-DISK_ISVALID
-file_is_vpid_in_file (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup)
+static DISK_ISVALID
+file_header_has_vpid (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vpid_lookup)
 {
-  VPID vpid_fhead;
-  PAGE_PTR page_fhead;
-  FILE_HEADER *fhead;
+  FILE_HEADER *fhead = (FILE_HEADER *) page_fhead;
   PAGE_PTR page_ftab = NULL;
   VSID vsid_lookup;
   bool found;
@@ -7045,17 +7043,6 @@ file_is_vpid_in_file (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * v
   FILE_EXTENSIBLE_DATA *extdata_full_ftab;
   FILE_EXTENSIBLE_DATA *extdata_user_page_ftab;
   DISK_ISVALID isvalid = DISK_VALID;
-
-  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
-  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_fhead == NULL)
-    {
-      ASSERT_ERROR ();
-      return DISK_ERROR;
-    }
-
-  fhead = (FILE_HEADER *) page_fhead;
-  file_header_sanity_check (thread_p, fhead);
 
   /* first search the VPID in sector tables: partial, then full. */
   VSID_FROM_VPID (&vsid_lookup, vpid_lookup);
@@ -7150,10 +7137,36 @@ exit:
     {
       pgbuf_unfix (thread_p, page_ftab);
     }
-  if (page_fhead != NULL)
+  return isvalid;
+}
+
+/*
+ * file_is_vpid_in_file () - check whether vpid is one of the file's user pages
+ *
+ * return           : DISK_INVALID if page does not belong to file, DISK_ERROR for errors and DISK_VALID for successful
+ *                    check
+ * thread_p (in)    : thread entry
+ * vfid (in)        : file identifier
+ * vpid_lookup (in) : checked VPID
+ */
+DISK_ISVALID
+file_is_vpid_in_file (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead;
+  DISK_ISVALID isvalid;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
     {
-      pgbuf_unfix (thread_p, page_fhead);
+      ASSERT_ERROR ();
+      return DISK_ERROR;
     }
+
+  file_header_sanity_check (thread_p, (FILE_HEADER *) page_fhead);
+  isvalid = file_header_has_vpid (thread_p, page_fhead, vpid_lookup);
+  pgbuf_unfix (thread_p, page_fhead);
   return isvalid;
 }
 
@@ -7172,6 +7185,57 @@ file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_l
       assert_release (false);
     }
   return isvalid;
+}
+
+/*
+ * file_probe_heap_page () - whether a page is one of the user pages of a permanent heap file, for a caller that holds a
+ *			     heap page: the file header is latched conditionally (file_header_fix_conditional ())
+ *
+ * return        : error code (state is then FILE_HEAP_PAGE_BUSY)
+ * thread_p (in) : thread entry
+ * vfid (in)     : the heap file
+ * vpid (in)     : the page
+ * state (out)   : FILE_HEAP_PAGE_OWNED, _NOT_OWNED or _BUSY
+ */
+int
+file_probe_heap_page (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FILE_HEAP_PAGE_STATE * state)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  DISK_ISVALID isvalid;
+  bool busy;
+  int error_code = NO_ERROR;
+
+  *state = FILE_HEAP_PAGE_NOT_OWNED;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  error_code = file_header_fix_conditional (thread_p, &vpid_fhead, &page_fhead, &busy);
+  if (error_code != NO_ERROR)
+    {
+      *state = FILE_HEAP_PAGE_BUSY;
+      return error_code;
+    }
+  if (page_fhead == NULL)
+    {
+      *state = busy ? FILE_HEAP_PAGE_BUSY : FILE_HEAP_PAGE_NOT_OWNED;
+      return NO_ERROR;
+    }
+
+  if (file_header_is_perm_heap (thread_p, page_fhead, vfid))
+    {
+      isvalid = file_header_has_vpid (thread_p, page_fhead, vpid);
+      if (isvalid == DISK_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  *state = FILE_HEAP_PAGE_BUSY;
+	}
+      else if (isvalid == DISK_VALID)
+	{
+	  *state = FILE_HEAP_PAGE_OWNED;
+	}
+    }
+  pgbuf_unfix_and_init (thread_p, page_fhead);
+  return error_code;
 }
 
 /*
