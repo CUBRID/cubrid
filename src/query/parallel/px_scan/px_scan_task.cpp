@@ -1475,6 +1475,7 @@ namespace parallel_scan
 	scan_bitmap_marks &marks = m_input_handler->bitmap ();
 	const std::uint32_t parts_of_partition = marks.parts_of_partition ();
 	std::uint32_t part;
+	std::uint32_t part_end;
 	/* the pages a worker's loaded table has on offer, a chunk at a time, until none is left */
 	auto read_chunks = [&] (scan_bitmap_worker *from) -> bool
 	{
@@ -1509,13 +1510,13 @@ namespace parallel_scan
 	};
 
 	marks.enter_partitions ();
-	while (!stop && marks.take_partition (&part))
+	while (!stop && marks.take_partitions (&part, &part_end))
 	  {
 	    for (std::uint32_t sub = 0; sub < parts_of_partition && !stop; sub++)
 	      {
 		if (counted ([&] ()
 		{
-		  return marks.load (&thread_ref, worker, part, sub);
+		  return marks.load (&thread_ref, worker, part, part_end, sub);
 		  }) != NO_ERROR)
 		{
 		  raise ();

@@ -7566,7 +7566,8 @@ scan_bitmap_marks::end_marks (THREAD_ENTRY *thread_p, scan_bitmap_worker *w)
 }
 
 int
-scan_bitmap_marks::load (THREAD_ENTRY *thread_p, scan_bitmap_worker *w, std::uint32_t part, std::uint32_t sub)
+scan_bitmap_marks::load (THREAD_ENTRY *thread_p, scan_bitmap_worker *w, std::uint32_t part, std::uint32_t end,
+			 std::uint32_t sub)
 {
   scan_bitmap_table &table = w->heap_tbl;
   int error_code = NO_ERROR;
@@ -7628,7 +7629,7 @@ scan_bitmap_marks::load (THREAD_ENTRY *thread_p, scan_bitmap_worker *w, std::uin
 
 	  /* a worker that left the index step by an error has no entries in order, and the scan has stopped */
 	  for (std::uint32_t k = from.tbl_start.empty () ? 0 : from.tbl_start[part];
-	       !from.tbl_start.empty () && k < from.tbl_start[part + 1] && error_code == NO_ERROR; k++)
+	       !from.tbl_start.empty () && k < from.tbl_start[end] && error_code == NO_ERROR; k++)
 	    {
 	      const scan_bitmap_entry &x = from.tbl.e[from.tbl_order[k]];
 
@@ -7640,9 +7641,9 @@ scan_bitmap_marks::load (THREAD_ENTRY *thread_p, scan_bitmap_worker *w, std::uin
 		    }
 		}
 	    }
-	  if (error_code == NO_ERROR && from.rec.tfile != nullptr)
+	  for (std::uint32_t p = part; p < end && error_code == NO_ERROR && from.rec.tfile != nullptr; p++)
 	    {
-	      error_code = read_chain (thread_p, from.rec, part, put);
+	      error_code = read_chain (thread_p, from.rec, p, put);
 	    }
 	}
       if (error_code == NO_ERROR)
@@ -7672,20 +7673,57 @@ scan_bitmap_marks::load (THREAD_ENTRY *thread_p, scan_bitmap_worker *w, std::uin
   return NO_ERROR;
 }
 
-bool
-scan_bitmap_marks::has_marks (std::uint32_t part) const
+void
+scan_bitmap_marks::count_marks ()
 {
-  for (int i = 0; i < m_bm_nworkers; i++)
+  m_bm_part_pages.assign (m_bm_nparts, 0);
+  for (std::uint32_t part = 0; part < m_bm_nparts; part++)
     {
-      const scan_bitmap_worker &from = m_bm_workers[i];
+      std::uint64_t pages = 0;
 
-      if ((!from.tbl_start.empty () && from.tbl_start[part] < from.tbl_start[part + 1])
-	  || (part < from.rec.chain.size () && !VPID_ISNULL (&from.rec.chain[part].first)))
+      for (int i = 0; i < m_bm_nworkers; i++)
 	{
-	  return true;
+	  const scan_bitmap_worker &from = m_bm_workers[i];
+
+	  if (!from.tbl_start.empty ())
+	    {
+	      /* the same page counts once a worker that marked it */
+	      pages += from.tbl_start[part + 1] - from.tbl_start[part];
+	    }
+	  if (part < from.rec.chain.size () && !VPID_ISNULL (&from.rec.chain[part].first))
+	    {
+	      pages = m_bm_cap;
+	    }
+	}
+      /* a partition wider than a table is divided by the worker that takes it, alone */
+      m_bm_part_pages[part] = (std::uint32_t) ((m_bm_nsub > 1 && pages > 0) ? m_bm_cap : MIN (pages, (std::uint64_t) m_bm_cap));
+    }
+}
+
+bool
+scan_bitmap_marks::take_partitions (std::uint32_t *part, std::uint32_t *end)
+{
+  std::call_once (m_bm_counted, [this] { count_marks (); });
+
+  std::uint32_t first = m_bm_next_part.load (std::memory_order_relaxed);
+
+  while (true)
+    {
+      std::uint32_t last = first;
+      std::uint32_t pages = 0;
+
+      /* partitions without a mark add nothing; the first with marks always fits */
+      while (last < m_bm_nparts && pages + m_bm_part_pages[last] <= (std::uint32_t) m_bm_cap)
+	{
+	  pages += m_bm_part_pages[last++];
+	}
+      if (m_bm_next_part.compare_exchange_weak (first, last, std::memory_order_relaxed))
+	{
+	  *part = first;
+	  *end = last;
+	  return pages > 0;
 	}
     }
-  return false;
 }
 
 int
@@ -7948,8 +7986,9 @@ struct scan_index_bitmap
   scan_bitmap_worker *worker;
   int sector_hint;		/* sector of the last mark */
   bool heap_step;		/* the index step is over */
-  bool part_on;			/* a partition is being read */
+  bool part_on;			/* partitions [part, part_end) are being read */
   std::uint32_t part;
+  std::uint32_t part_end;
   std::uint32_t sub;		/* which part of it */
   size_t entry;			/* place in worker->order of the page being read, or to read next */
   bool entry_on;		/* that page's rows are being looked up */
@@ -8006,6 +8045,7 @@ scan_index_bitmap_start (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   bm->heap_step = false;
   bm->part_on = false;
   bm->part = 0;
+  bm->part_end = 0;
   bm->sub = 0;
   bm->entry = 0;
   bm->entry_on = false;
@@ -8189,7 +8229,7 @@ scan_next_index_bitmap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, FILTER_INFO 
 	    }
 	  if (++bm->sub < bm->marks.parts_of_partition ())
 	    {
-	      if (bm->marks.load (thread_p, bm->worker, bm->part, bm->sub) != NO_ERROR)
+	      if (bm->marks.load (thread_p, bm->worker, bm->part, bm->part_end, bm->sub) != NO_ERROR)
 		{
 		  status = S_ERROR;
 		  break;
@@ -8202,10 +8242,10 @@ scan_next_index_bitmap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, FILTER_INFO 
 	    }
 	  continue;
 	}
-      else if (!bm->over_asked && bm->marks.take_partition (&bm->part))
+      else if (!bm->over_asked && bm->marks.take_partitions (&bm->part, &bm->part_end))
 	{
 	  bm->sub = 0;
-	  if (bm->marks.load (thread_p, bm->worker, bm->part, 0) != NO_ERROR)
+	  if (bm->marks.load (thread_p, bm->worker, bm->part, bm->part_end, 0) != NO_ERROR)
 	    {
 	      status = S_ERROR;
 	      break;
