@@ -77,10 +77,14 @@ typedef enum
   /* FILE MANAGER */
   FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER = 200000,	/* unused */
   FI_TEST_FILE_MANAGER_DESTROY_HOLD = 200001,	/* hold a destroy after its pages are discarded, before its sectors are freed */
+  FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_FAIL = 200002,	/* fail an allocation that reused the first partial table page,
+							 * after the init of the page */
+  FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_HOLD = 200003,	/* hold that allocation after the init, its log flushed */
 
   /* BTREE MANAGER */
   FI_TEST_BTREE_MANAGER_RANDOM_EXIT = 300000,
   FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL = 300001,
+  FI_TEST_BTREE_LOAD_NO_LOGGING_HOLD = 300002,	/* hold a registered no-logging index build before it writes pages */
 
   /* QUERY MANAGER (start number is 400000) */
 
@@ -101,6 +105,12 @@ typedef enum
   FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL = 700001,	/* epoll registration of a connection moved in */
   FI_TEST_CONNECTION_WORKER_QUEUE_TIMER_STOP_FAIL = 700002,	/* disarming the queue timer */
   FI_TEST_CONNECTION_WORKER_CLOSE_HOLD = 700003,	/* hold a close before it drains the worker's queue */
+
+  /* SERIAL */
+  FI_TEST_SERIAL_DDL_UNDO_HOLD_AFTER_CLR = 700010,	/* flush the compensation of a serial row undo, then hold */
+  FI_TEST_SERIAL_DDL_UNDO_FALLBACK = 700011,	/* (FI_INSERTED only) the serial row undo restores the replaced row */
+  FI_TEST_SERIAL_REPL_APPLY_HOLD = 700012,	/* hold the log applier's serial row image before its write */
+  FI_TEST_SERIAL_APPLIER_DDL_WRITE_HOLD = 700013,	/* hold the serial row write of a DDL the log applier runs */
 
   /* VACUUM */
   FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT = 800000,	/* vacuum's wait for a busy heap header fails at once as a latch

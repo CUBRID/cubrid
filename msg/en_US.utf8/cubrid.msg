@@ -1529,9 +1529,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1403 The binary section of the object file is corrupted or truncated at offset %1$lld.
 
-1404 Volume %1$d cannot be deleted. Only the last permanent volume, other than volume 0, can be deleted when it has no used sectors.
+1404 Index %1$s is built with logging because an online backup is in progress; --no-logging-index is not applied to it.
+1405 Volume %1$d cannot be deleted. Only the last permanent volume, other than volume 0, can be deleted when it has no used sectors.
 
-1405 Last Error
+1406 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -2234,6 +2235,9 @@ $set 14 MSGCAT_SET_LOCK
 48 class %1$s
 49 instance %1$d|%2$d|%3$d of class %4$s
 50 transaction MVCCID %1$llu
+51 %1$s (%2$s on %3$s)
+52 Object type: Transaction lock (MVCCID = %1$llu).\n
+53 \t%1$13s Wait_for_row = %2$s, Wanted_mode = %3$s\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n

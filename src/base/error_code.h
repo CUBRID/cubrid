@@ -1816,9 +1816,10 @@
 
 #define ER_LDR_CORRUPTED_BINARY_RECORD              -1403
 
-#define ER_DISK_CANNOT_DELETE_VOLUME                -1404
+#define ER_BT_LOAD_NO_LOGGING_DURING_BACKUP         -1404
+#define ER_DISK_CANNOT_DELETE_VOLUME                -1405
 
-#define ER_LAST_ERROR                               -1405
+#define ER_LAST_ERROR                               -1406
 
 /*
  * CAUTION!
