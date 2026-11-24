@@ -117,7 +117,8 @@ struct lk_entry
   int ngranules;		/* number of finer granules */
   int bind_index_in_tran;
   XASL_ID xasl_id;
-  int transient_count;		/* requests on this entry that the statement gives up before commit */
+  int transient_count;		/* requests on this entry the scope at transient_scope gives up when it ends */
+  int transient_scope;		/* depth of the statement scope that counted them, 0 when none did */
   bool shared_requested;	/* a request on this entry asked for S: the holder read the object and decided */
   LOCK escalated_from;		/* class mode before this statement's escalation, to lower back to; else NULL_LOCK */
 #else				/* not SERVER_MODE */
@@ -256,8 +257,6 @@ extern void lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * o
 extern bool lock_transient_scope_is_outermost (THREAD_ENTRY * thread_p);
 extern bool lock_transient_scope_start (THREAD_ENTRY * thread_p);
 extern void lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release);
-extern void lock_release_transient_object_locks (THREAD_ENTRY * thread_p);
-extern void lock_forget_transient_object_locks (THREAD_ENTRY * thread_p);
 extern int lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int cond_flag);
 extern void lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
 extern int lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
