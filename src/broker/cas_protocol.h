@@ -296,7 +296,8 @@ extern "C"
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
     PROTOCOL_V13 = 13,		/* CAS-issued session id required (not just optionally checked) for
 				 * QC/X1 query cancel; byte-stream transport (CAS_FC_STREAM_*);
-				 * schema info: attribute IS_INVISIBLE, EXT_DOMAIN, CODESET columns */
+				 * schema info: attribute IS_INVISIBLE, EXT_DOMAIN, CODESET columns;
+				 * CURSOR_CLOSE accepts multiple srv_h_id values. */
     CURRENT_PROTOCOL = PROTOCOL_V13
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;

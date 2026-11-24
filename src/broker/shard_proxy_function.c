@@ -2536,9 +2536,9 @@ fn_proxy_client_cursor_close (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p, 
     }
 
 out_tran:
-  /* send cursor_close response to the client, if this context is not IN_TRAN, or context is IN_TRAN status but
-   * cas_srv_h_id is not found */
-  /* FIXME : if context is IN_TRAN and cas_srv_hd_id is not found ? */
+  /* Answer the client here when there is nothing to relay: the context is not IN_TRAN, or it is IN_TRAN but none of
+   * the requested srv_h_ids has a handle on the bound CAS. Such a handle is already closed or was never prepared on
+   * that CAS, so nothing is left to close there and OK is the right answer. */
   error =
     proxy_send_response_to_client_with_new_event (ctx_p, PROXY_EVENT_IO_WRITE, PROXY_EVENT_FROM_CLIENT,
 						  proxy_io_make_cursor_close_out_tran_ok);
