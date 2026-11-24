@@ -56,14 +56,12 @@ namespace cubconn::connection
       {
 	READY,
 	RUNNING,
-	HIBERNATING,
 	TERMINATING
       };
 
       enum class timer_type : uint32_t
       {
 	NA,
-	HIBERNATE,
 	STATISTICS,
 	QUEUE,
 	HA,
@@ -110,9 +108,6 @@ namespace cubconn::connection
 	/* WORKER */
 
 	START,
-
-	HIBERNATE, /* lazy queue */
-	AWAKEN, /* lazy queue */
 
 	SHUTDOWN,
 
@@ -297,11 +292,9 @@ namespace cubconn::connection
       bool handle_connection_close (context *ctx, bool is_retry = false, std::shared_ptr<message_blocker> handle = nullptr);
 
       /* --------------------------------------------------------------------------- */
-      /* statistics and hibernation						     */
+      /* statistics								     */
       /* --------------------------------------------------------------------------- */
       bool statistics_metrics_to_coordinator ();
-
-      bool hibernate_check ();
 
       /* --------------------------------------------------------------------------- */
       /* HA									     */
@@ -317,7 +310,6 @@ namespace cubconn::connection
       bool eventfd_settimer (int fd, uint64_t sec, uint64_t nsec);
       bool eventfd_settimer (int fd, timer_latency latency);
 
-      bool eventfd_starttimer ();
       bool eventfd_stoptimer ();
       bool eventfd_addtimer (timer_type type, timer_latency latency, std::function<bool ()> handle);
       bool eventfd_removetimer (timer_type type);
@@ -338,8 +330,6 @@ namespace cubconn::connection
       void handle_message_queue_shutdown_client (message &item);
 
       void handle_message_queue_start (message &item);
-      void handle_message_queue_hibernate (message &item);
-      void handle_message_queue_awaken (message &item);
       void handle_message_queue_shutdown (message &item);
 
       void handle_message_queue_by_index (queue_type type);
