@@ -1393,8 +1393,11 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	       * default value to the attribute. This should be handled by using candidates in the template and storing
 	       * an extra bit field in the candidate structure. See the comment above sm_attribute for more information
 	       * about "original_value". */
-	      if (error == NO_ERROR && (att->flags & SM_ATTFLAG_NEW))
+	      if (error == NO_ERROR && (att->flags & SM_ATTFLAG_NEW)
+		  && !(template_->op == NULL && default_expr != NULL && DB_IS_RESIDUAL_DEFAULT_EXPR (default_expr)))
 		{
+		  /* only rows older than the attribute read the original value, and a new class has none: the
+		   * DDL-time value of a residual DEFAULT is kept there only for an attribute added to a class */
 		  smt_set_attribute_orig_default_value (att, value);
 		}
 	    }
