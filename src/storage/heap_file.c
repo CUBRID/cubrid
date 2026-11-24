@@ -798,13 +798,16 @@ static OR_ATTRIBUTE *heap_midxkey_locate_record_attr (RECDES * recdes, OR_ATTRIB
 						      HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att,
                                 const heap_pending_record *pending = nullptr);
+static int heap_midxkey_attr_extra_size (RECDES * recdes, OR_ATTRIBUTE * att, HEAP_CACHE_ATTRINFO * attr_info,
+					 const heap_pending_record * pending);
 
-static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
+static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, int buf_size, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
                                          TP_DOMAIN **key_domain, const heap_pending_record *pending = nullptr);
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
-					      int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
-					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain);
+					      int buf_size, int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo,
+					      DB_VALUE * func_res, int func_col_id, int func_attr_index_start,
+					      TP_DOMAIN * midxkey_domain);
 
 static int heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr);
 
@@ -12714,6 +12717,31 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att, const heap
 }
 
 /*
+ * heap_midxkey_attr_extra_size () - Bytes a key attribute can add to the midxkey beyond recdes->length.
+ *
+ *   return: the default value size if the record does not hold the attribute, else the OOS value size or 0
+ *   recdes(in): record descriptor
+ *   att(in): attribute of the current (last) representation
+ *   attr_info(in): attribute cache already recached to the record's representation
+ *   pending(in): pending OOS values of the record, or NULL
+ */
+static int
+heap_midxkey_attr_extra_size (RECDES * recdes, OR_ATTRIBUTE * att, HEAP_CACHE_ATTRINFO * attr_info,
+			      const heap_pending_record * pending)
+{
+  OR_ATTRIBUTE *record_att = heap_midxkey_locate_record_attr (recdes, att, attr_info);
+
+  if (record_att == NULL)
+    {
+      /* heap_midxkey_get_value () writes the default value, which recdes does not hold. */
+      return att->default_value.val_length;
+    }
+
+  /* Returns 0 on error or if the attribute is not OOS. */
+  return heap_midxkey_get_oos_extra_size (recdes, record_att, pending);
+}
+
+/*
  * heap_attrinfo_read_dbvalues () - Find db_values of desired attributes of given
  *                                instance
  *   return: NO_ERROR
@@ -16020,13 +16048,14 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
  *   return:
  *   recdes(in):
  *   midxkey(in/out):
+ *   buf_size(in): size of midxkey->buf
  *   index(in):
  *   attrinfo(in):
  *   func_domain(in):
  *   key_domain(out):
  */
 static DB_MIDXKEY *
-heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
+heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, int buf_size, OR_INDEX * index,
 		      HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
 		      TP_DOMAIN ** key_domain, const heap_pending_record * pending)
 {
@@ -16050,7 +16079,8 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 
   assert (PTR_ALIGN (midxkey->buf, INT_ALIGNMENT) == midxkey->buf);
 
-  or_init (&buf, midxkey->buf, -1);
+  /* buf_size bounds the writes in debug builds */
+  or_init (&buf, midxkey->buf, buf_size);
 
   nullmap_ptr = midxkey->buf;
   or_multi_clear_header (nullmap_ptr, num_atts);
@@ -16213,6 +16243,7 @@ error:
  *   return:
  *   recdes(in):
  *   midxkey(in):
+ *   buf_size(in): size of midxkey->buf
  *   att_ids(in):
  *   attrinfo(in):
  *   func_res(out):
@@ -16221,7 +16252,7 @@ error:
  *   midxkey_domain(in):
  */
 static DB_MIDXKEY *
-heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
+heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey, int buf_size,
 			   int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
 			   int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain)
 {
@@ -16259,7 +16290,8 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 
   assert (PTR_ALIGN (midxkey->buf, INT_ALIGNMENT) == midxkey->buf);
 
-  or_init (&buf, midxkey->buf, -1);
+  /* buf_size bounds the writes in debug builds */
+  or_init (&buf, midxkey->buf, buf_size);
 
   nullmap_ptr = midxkey->buf;
   or_multi_clear_header (nullmap_ptr, num_vals);
@@ -16426,7 +16458,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 
       assert (recdes != NULL && recdes->data != NULL);
 
-      /* Ensure attr_info is recached to the record's representation before OOS scan */
+      /* Ensure attr_info is recached to the record's representation before the size estimate */
       if (unlikely ((attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != or_rep_id (recdes))))
 	{
 	  if (heap_attrinfo_recache (thread_p, or_rep_id (recdes), attr_info) != NO_ERROR)
@@ -16435,18 +16467,16 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	    }
 	}
 
-      /* If any indexed attribute is OOS, recdes->length underestimates the actual midxkey size.
-       * Pre-scan to add the actual OOS data size so heap allocation is used instead of the stack buffer. */
-      for (int oos_i = 0; oos_i < n_atts; oos_i++)
+      /* recdes->length covers neither the key header, OOS values, nor default values of attributes added after
+       * the record was written. */
+      midxkey_size += or_multi_header_size (func_index_info ? fi_attr_index_start + 1 : attr_info->num_values);
+      for (int i = 0; i < n_atts; i++)
 	{
-
-	  OR_ATTRIBUTE *oos_att = heap_locate_attribute (att_ids[oos_i], attr_info);
-	  if (oos_att != NULL)
+	  OR_ATTRIBUTE *key_att = heap_locate_last_attrepr (att_ids[i], attr_info);
+	  if (key_att != NULL)
 	    {
-	      /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
-	      midxkey_size += heap_midxkey_get_oos_extra_size (recdes, oos_att);
+	      midxkey_size += heap_midxkey_attr_extra_size (recdes, key_att, attr_info, NULL);
 	    }
-	  /* else: attribute not found in this representation — skip (uses default value, not OOS) */
 	}
 
       /* Allocate storage for the buf of midxkey */
@@ -16463,8 +16493,8 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	  midxkey.buf = buf;
 	}
 
-      if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
-				     fi_attr_index_start, midxkey_domain) == NULL)
+      if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, MAX (midxkey_size, DBVAL_BUFSIZE), att_ids,
+				     attr_info, fi_res, fi_col_id, fi_attr_index_start, midxkey_domain) == NULL)
 	{
 	  /* CBRD-26769: clean up everything this function owns before the error return, since
 	   * db_make_midxkey (the ownership-transfer point) is never reached on this path:
@@ -16624,18 +16654,13 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       assert (recdes != NULL && recdes->data != NULL);
 
-      /* If any indexed attribute is OOS, recdes->length underestimates the actual midxkey size.
-       * Pre-scan to add the actual OOS data size so heap allocation is used instead of the stack buffer. */
-      for (int oos_i = 0; oos_i < n_atts; oos_i++)
+      /* recdes->length covers neither the key header, OOS values, nor default values of attributes added after
+       * the record was written. */
+      midxkey_size +=
+	or_multi_header_size (index->func_index_info ? index->func_index_info->attr_index_start + 1 : n_atts);
+      for (int i = 0; i < n_atts; i++)
 	{
-	  /* index->atts locate the attribute in the current representation; the record can be older. */
-	  OR_ATTRIBUTE *oos_att = heap_midxkey_locate_record_attr (recdes, index->atts[oos_i], idx_attrinfo);
-	  if (oos_att != NULL)
-	    {
-	      /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
-	      midxkey_size += heap_midxkey_get_oos_extra_size (recdes, oos_att, pending);
-	    }
-	  /* else: attribute added after this record was written; its default value is not OOS */
+	  midxkey_size += heap_midxkey_attr_extra_size (recdes, index->atts[i], idx_attrinfo, pending);
 	}
 
       /* Allocate storage for the buf of midxkey */
@@ -16654,7 +16679,8 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       midxkey.min_max_val.position = -1;
 
-      if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, pending) == NULL)
+      if (heap_midxkey_key_get (recdes, &midxkey, MAX (midxkey_size, DBVAL_BUFSIZE), index, idx_attrinfo, fi_res,
+				fi_domain, key_domain, pending) == NULL)
 	{
 	  /* CBRD-26769: clean up everything this function owns before the error return, since
 	   * db_make_midxkey (the ownership-transfer point) is never reached on this path:
