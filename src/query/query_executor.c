@@ -13492,6 +13492,9 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 
 	      spec->indexptr->btid = btid;
 
+	      /* the planner gives no min/max only scan to a partitioned class, which QO_NODE_IS_CLASS_HIERARCHY ()
+	       * counts as a class hierarchy; the open below would leave min_max_only_desc_pass false */
+	      assert (!ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
 	      error =
 		scan_open_index_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,
 				      spec->s_id.upddel_target_scan, spec->s_id.click_counter_scan,

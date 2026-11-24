@@ -22144,13 +22144,6 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   if (xasl->spec_list)
     {
       pt_set_access_spec_for_aggregation (parser, aggregate, xasl->spec_list);
-
-      /* a min/max only scan reads the rows in index order: it takes MIN or MAX from the first row of a pass, and the
-       * OID order would sort the rows of a call by OID */
-      if (ACCESS_SPEC_IS_FLAGED (xasl->spec_list, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN))
-	{
-	  xasl->iscan_oid_order = false;
-	}
     }
 
   /* save info for derived table size estimation */

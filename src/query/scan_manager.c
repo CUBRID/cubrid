@@ -3252,7 +3252,9 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       isidp->key_vals = NULL;
     }
 
-  isidp->iscan_oid_order = iscan_oid_order;
+  /* a min/max only scan reads the rows in index order: it takes MIN or MAX from the first row of a pass, and the OID
+   * order would sort the rows of a call by OID */
+  isidp->iscan_oid_order = iscan_oid_order && !min_max_optimzied_scan;
   isidp->min_max_only_desc_pass = false;
   isidp->ahead_next = INT_MAX;
   isidp->ahead_distance = 0;
@@ -5188,6 +5190,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  isidp->key_vals = NULL;
 	}
+      isidp->key_cnt = 0;
 
       /* free allocated memory for the scan */
       if (isidp->bt_attr_ids)
