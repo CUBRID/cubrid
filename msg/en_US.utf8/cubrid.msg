@@ -2237,6 +2237,9 @@ $set 14 MSGCAT_SET_LOCK
 48 class %1$s
 49 instance %1$d|%2$d|%3$d of class %4$s
 50 transaction MVCCID %1$llu
+51 %1$s (%2$s on %3$s)
+52 Object type: Transaction lock (MVCCID = %1$llu).\n
+53 \t%1$13s Wait_for_row = %2$s, Wanted_mode = %3$s\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n

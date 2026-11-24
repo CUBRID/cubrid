@@ -106,6 +106,7 @@ struct symbol_info
   DB_VALUE **reserved_values;	/* db_values array used for reserved attributes */
   PT_FUNC_INDEX_COVER *func_idx_cover_list;	/* function index expressions to route to their result attribute */
   PT_FUNC_INDEX_COVER *func_idx_routed_list;	/* covered scans of the query whose output is routed */
+  bool heap_scan_filter;	/* translating the data filter of a heap scan (pt_to_pred_expr_factor_dnf ()) */
 };
 
 typedef struct aggregate_info AGGREGATE_INFO;
