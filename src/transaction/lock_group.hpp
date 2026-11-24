@@ -137,7 +137,8 @@ class lock_group
     /* a lock call of the transaction while it is gated (lock_group_guard) */
     int enter (THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const LK_RES_KEY *guest_key,
 	       const LK_PENDING_RELEASE *release);
-    int enter_object (THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const OID *oid, const OID *class_oid);
+    int enter_object (THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const OID *oid, const OID *class_oid,
+		      LOCK lock);
     int enter_release (THREAD_ENTRY *thread_p, LK_PENDING_RELEASE_TYPE type, const OID *oid, const OID *class_oid,
 		       LOCK lock, bool force);
     void exit (THREAD_ENTRY *thread_p);
@@ -201,12 +202,12 @@ class lock_group_guard
     }
     /* an acquisition of an object */
     lock_group_guard (lock_group *group, THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const OID *oid,
-		      const OID *class_oid)
+		      const OID *class_oid, LOCK lock)
       : lock_group_guard (group, thread_p)
     {
       if (m_group->is_gated ())
 	{
-	  admit (m_group->enter_object (m_thread_p, request, oid, class_oid));
+	  admit (m_group->enter_object (m_thread_p, request, oid, class_oid, lock));
 	}
       else
 	{
@@ -241,7 +242,7 @@ class lock_group_guard
 #endif
     }
 
-    /* false also for a release handed to the owner, which runs it before it leaves */
+    /* false also for a release handed to the owner, which runs it before it leaves, or dropped for want of memory */
     bool admitted () const
     {
       return m_lock_result == LK_GRANTED;

@@ -42,10 +42,10 @@
  * section of the transaction is open, the guard lets one of its threads in at a time, and the thread inside (the
  * owner) keeps the entrance while it sleeps for a lock: the lock state, its waits included, stay one thread's as
  * lock_manager.c assumes. While the owner sleeps, one more thread may come in as the guest to lock or release a
- * catalog directory OID or an MVCCID, or to release a row, other than the resource the owner waits for and the row it
- * may hand over: requests with no escalation, no class entry to free, no hold-list walk and no hand-over, the locks
- * of the first two the only ones a thread may wait for with a page fixed. The owner wakes to wait for the guest to
- * leave. A thread already inside only re-enters.
+ * catalog directory OID or an MVCCID, to release a row, or to lock a class up to IS with a page fixed, other than the
+ * resource the owner waits for and the row it may hand over: requests with no escalation, no class entry to free, no
+ * hold-list walk and no hand-over, the locks of the first two the only ones a thread may wait for with a page fixed.
+ * The owner wakes to wait for the guest to leave. A thread already inside only re-enters.
  */
 
 /* the clock of m_cond's timed waits: a wall clock set back would stretch them */
@@ -667,10 +667,21 @@ lock_group::defer_abort (THREAD_ENTRY *thread_p)
 }
 
 /*
+ * a release that may be dropped for want of memory, its lock kept: a class or a transient one. Not another instance
+ * one: its class may be released first, and a catalog directory OID left locked fails the next catalog access.
+ */
+static bool
+lock_pending_release_may_drop (const LK_PENDING_RELEASE * release)
+{
+  return (release->type == LK_PENDING_UNLOCK_TRANSIENT || OID_ISNULL (&release->class_oid)
+	  || OID_IS_ROOTOID (&release->class_oid));
+}
+
+/*
  * enter () - a lock call of the transaction while it is gated
  *   return: LK_GRANTED once inside, or why not: LK_NOTGRANTED_DUE_ABORTED or _ERROR with the error set,
  *	     LK_NOTGRANTED_DUE_TIMEOUT with none for a conditional request that met the owner asleep, or LK_NOTGRANTED
- *	     for a release handed to the owner, which runs it before it leaves
+ *	     for a release handed to the owner, which runs it before it leaves, or dropped for want of memory
  *   guest_key(in): the resource, for a request that may enter as the guest
  *   release(in): a release that may be handed to the owner
  */
@@ -748,7 +759,9 @@ lock_group::enter (THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const LK_RE
       if (m_owner_sleeping.load (std::memory_order_relaxed) && guest_key != NULL
 	  && m_guest.load (std::memory_order_relaxed) == NULL
 	  && lock_res_key_compare ((void *) guest_key, &m_owner_wait_key) != 0
-	  && (guest_key->type != LOCK_RESOURCE_INSTANCE || lock_pack_row_oid (&guest_key->oid) != m_owner_held_row))
+	  && (guest_key->type != LOCK_RESOURCE_INSTANCE || lock_pack_row_oid (&guest_key->oid) != m_owner_held_row)
+	  /* a class guest in lock_object () may take its intention lock on the root */
+	  && (guest_key->type != LOCK_RESOURCE_CLASS || m_owner_wait_key.type != LOCK_RESOURCE_ROOT_CLASS))
 	{
 	  m_guest.store (thread_p, std::memory_order_release);
 	  m_guest_depth = 1;
@@ -772,9 +785,19 @@ lock_group::enter (THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const LK_RE
 	      pthread_mutex_unlock (&m_mutex);
 	      return LK_NOTGRANTED;
 	    }
-	  /* a guest-family request waits behind the guest, or the owner on its own resource: a catalog updater that
-	   * needs no user page, as lock_is_safe_lock_with_page () assumes */
-	  assert (request == LK_GROUP_NEVER_REFUSED || guest_key != NULL || !pgbuf_has_perm_pages_fixed (thread_p));
+	  if (release != NULL && lock_pending_release_may_drop (release) && pgbuf_has_perm_pages_fixed (thread_p))
+	    {
+	      /* no memory to hand it over */
+	      pthread_mutex_unlock (&m_mutex);
+	      return LK_NOTGRANTED;
+	    }
+	  /* a page-fixed acquisition waits only behind a guest, or as a catalog directory OID or MVCCID one for the
+	   * resource the owner waits for: a catalog updater that needs no user page, as lock_is_safe_lock_with_page ()
+	   * assumes */
+	  assert (request == LK_GROUP_NEVER_REFUSED || !pgbuf_has_perm_pages_fixed (thread_p)
+		  || (guest_key != NULL && (guest_key->type != LOCK_RESOURCE_CLASS
+					    || !m_owner_sleeping.load (std::memory_order_relaxed)
+					    || m_guest.load (std::memory_order_relaxed) != NULL)));
 	}
       (void) wait_for_owner ();
     }
@@ -848,16 +871,23 @@ lock_pending_release_init (LK_PENDING_RELEASE * release, LK_PENDING_RELEASE_TYPE
   release->force = force;
 }
 
-/* the key of a catalog directory OID lock, which may enter as the guest, or NULL */
+/*
+ * the key of an acquisition that may enter as the guest, or NULL: a catalog directory OID lock, or a class lock up to
+ * IS taken with a page fixed. Up to IS it raises no IS, IX or SIX entry of the class, so it frees none of the instance
+ * locks under it (lock_remove_all_inst_locks ()), the owner's among them.
+ */
 static const LK_RES_KEY *
-lock_group_dir_oid_key (const OID * oid, const OID * class_oid, LK_RES_KEY * key)
+lock_group_acquire_guest_key (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
+			      LK_RES_KEY * key)
 {
-  if (oid == NULL || class_oid == NULL || !OID_IS_VIRTUAL_CLASS_OF_DIR_OID (class_oid))
+  if (oid != NULL && class_oid != NULL
+      && (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (class_oid)
+	  || (OID_IS_ROOTOID (class_oid) && lock <= IS_LOCK && pgbuf_has_perm_pages_fixed (thread_p))))
     {
-      return NULL;
+      *key = lock_create_search_key (oid, class_oid);
+      return key;
     }
-  *key = lock_create_search_key (oid, class_oid);
-  return key;
+  return NULL;
 }
 
 /*
@@ -877,11 +907,12 @@ lock_group_row_release_key (const OID * oid, const OID * class_oid, LK_RES_KEY *
 
 /* enter () for an acquisition of an object; its guest key is made here, only while the transaction is gated */
 int
-lock_group::enter_object (THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const OID *oid, const OID *class_oid)
+lock_group::enter_object (THREAD_ENTRY *thread_p, LK_GROUP_REQUEST request, const OID *oid, const OID *class_oid,
+			  LOCK lock)
 {
   LK_RES_KEY key;
 
-  return enter (thread_p, request, lock_group_dir_oid_key (oid, class_oid, &key), NULL);
+  return enter (thread_p, request, lock_group_acquire_guest_key (thread_p, oid, class_oid, lock, &key), NULL);
 }
 
 /* enter () for a release of an object; a transient one changes the statement's counts and never enters as the guest */

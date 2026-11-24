@@ -7309,7 +7309,7 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   lock_group_guard guard (lock_guard_group (tran_index), thread_p, lock_group_acquire_request (cond_flag), oid,
-			  class_oid);
+			  class_oid, lock);
   if (!guard.admitted ())
     {
       return guard.lock_result ();
@@ -7654,7 +7654,7 @@ lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OI
 			  false);
   if (!guard.admitted ())
     {
-      /* handed to the entrance owner */
+      /* handed to the entrance owner, or dropped for want of memory */
       return;
     }
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
@@ -9020,7 +9020,7 @@ lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
 #else /* !SERVER_MODE */
   int old_wait_msecs, lock_result;
   lock_group_guard guard (lock_guard_group (LOG_FIND_THREAD_TRAN_INDEX (thread_p)), thread_p,
-			  lock_group_acquire_request (cond_flag), oid, class_oid);
+			  lock_group_acquire_request (cond_flag), oid, class_oid, lock);
 
   if (!guard.admitted ())
     {
@@ -9078,7 +9078,8 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
 #endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_group_guard guard (lock_guard_group (tran_index), thread_p, lock_group_acquire_request (cond_flag));
+  lock_group_guard guard (lock_guard_group (tran_index), thread_p, lock_group_acquire_request (cond_flag), class_oid,
+			  oid_Root_class_oid, class_lock);
   if (!guard.admitted ())
     {
       return guard.lock_result ();
@@ -9358,7 +9359,7 @@ lock_unlock_object_lock_internal (THREAD_ENTRY * thread_p, const OID * oid, cons
 			  lock, false);
   if (!guard.admitted ())
     {
-      /* handed to the entrance owner */
+      /* handed to the entrance owner, or dropped for want of memory */
       return;
     }
   entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, is_class);
@@ -9452,7 +9453,7 @@ lock_unlock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_
   lock_group_guard guard (lock_guard_group (tran_index), thread_p, LK_PENDING_UNLOCK, oid, class_oid, lock, force);
   if (!guard.admitted ())
     {
-      /* handed to the entrance owner */
+      /* handed to the entrance owner, or dropped for want of memory */
       return;
     }
 
