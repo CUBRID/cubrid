@@ -89,7 +89,7 @@ class copy_session : public stream_session
     std::string m_null_str;		/* CSV: the unquoted field that reads as NULL (default empty) */
     bool m_on_error_ignore;		/* CSV: skip a row in error instead of failing (ON_ERROR IGNORE) */
     std::int64_t m_reject_limit;	/* the most rows ON_ERROR IGNORE may skip; 0 for no limit */
-    std::int64_t m_rows_rejected;	/* rows skipped so far; COPY_REJECTED_ROWS () reports it */
+    std::int64_t m_rows_rejected;	/* rows skipped so far; finish () leaves it for COPY_REJECTED_ROWS () */
     bool m_skip_header;			/* CSV: a leading header line is still to be skipped */
     bool m_bulk;			/* bulk-load mode requested (BU_LOCK acquired at open) */
     bool m_footer_seen;			/* BINARY: the end-of-data marker has arrived */

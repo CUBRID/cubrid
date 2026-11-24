@@ -158,14 +158,13 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const COPY_CON
   m_on_error_ignore = (config.on_error_ignore != 0);
   m_reject_limit = config.reject_limit;
   m_rows_rejected = 0;
-
-  /* COPY_REJECTED_ROWS () answers for the COPY that ran last, so a COPY that
-   * fails does not leave the count of an earlier one behind */
-  (void) session_set_copy_rejected_rows (thread_p, 0);
   m_skip_header = (config.header != 0);
   m_bulk = (config.bulk != 0);
   m_col_types.assign (config.col_types, config.col_types + config.num_cols);
   m_rows_loaded = 0;
+
+  /* reset at open, so a COPY that fails once opened does not report an earlier COPY's count */
+  (void) session_set_copy_rejected_rows (thread_p, 0);
 
   FILE_TYPE ftype;
   bool has_heap = false;
