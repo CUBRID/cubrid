@@ -17639,8 +17639,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  return 0;
 	}
-      assert (expr->node_type == PT_EXPR);
-      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP | PT_EXPR_INFO_CAST_NOFAIL))
+      if (PT_IS_EXPR_NODE (expr) && PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP | PT_EXPR_INFO_CAST_NOFAIL))
 	{
 	  dom_status = tp_value_cast (arg1, result, domain, false);
 	}
@@ -17651,6 +17650,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
+	  assert (expr->node_type == PT_EXPR);
 	  if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_NOFAIL))
 	    {
 	      db_make_null (result);
