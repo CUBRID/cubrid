@@ -1460,12 +1460,17 @@ heap_oos_log_update_drop (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *contex
   OOS_REF_VECTOR dropped_lob_refs;
   int error_code =
 	  heap_oos_collect_dropped_refs (context, old_recdes, new_recdes, "mvcc update", dropped_refs, dropped_lob_refs);
-  if (error_code != NO_ERROR || dropped_refs.empty ())
+  if (error_code != NO_ERROR)
     {
       return error_code;
     }
-  /* The caller holds heap data pages; the OOS file is resolved by vacuum, not here. */
-  return oos_log_update_drop_intent (thread_p, context->hfid, dropped_refs);
+  /* The caller holds heap data pages; the OOS and internal LOB files are resolved by vacuum, not here. */
+  error_code = oos_log_update_drop_intent (thread_p, context->hfid, dropped_refs);
+  if (error_code == NO_ERROR)
+    {
+      error_code = oos_log_update_drop_intent (thread_p, context->hfid, dropped_lob_refs, OOS_RECLAIM_INTERNAL_LOB);
+    }
+  return error_code;
 }
 
 /*

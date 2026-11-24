@@ -74,13 +74,14 @@ struct oos_chain_ref
  * for a malformed chain, which a rerun rejects again: it is reported and left in place. */
 enum oos_reclaim_intent_flag
 {
-  OOS_RECLAIM_DIAGNOSE_SKIPS = 0x1	/* the owner held the only reference; report a skipped chain */
+  OOS_RECLAIM_DIAGNOSE_SKIPS = 0x1,	/* the owner held the only reference; report a skipped chain */
+  OOS_RECLAIM_INTERNAL_LOB = 0x2	/* an UPDATE's chains are in the heap's internal LOB file, not its OOS file */
 };
 
 extern int oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &owner_oid, int flags,
 				   const char *op_ctx, const std::vector<oos_chain_ref> &refs);
 extern int oos_log_update_drop_intent (THREAD_ENTRY *thread_p, const HFID &heap_hfid,
-				       const std::vector<oos_chain_ref> &refs);
+				       const std::vector<oos_chain_ref> &refs, int flags = 0);
 /* Vacuum's consumer of one RVOOS_NOTIFY_VACUUM record. emptied_vpids receives the pages the deletes
  * emptied. The notify record names its OOS file; it is returned through oos_vfid_out. Returns NO_ERROR,
  * ER_INTERRUPTED (shutdown), or the error of a failed heap header lookup for the OOS file, whose heap is

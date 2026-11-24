@@ -4428,6 +4428,7 @@ oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID 
  *   thread_p(in): thread entry
  *   heap_hfid(in): heap file of the updated record
  *   refs(in): references the old record held and the new one does not
+ *   flags(in): OOS_RECLAIM_INTERNAL_LOB when refs name chains of the heap's internal LOB file
  *
  * The postpone carries the UPDATE's MVCCID, because the transaction completes its MVCC info before its
  * postpones run. After the commit it appends RVOOS_NOTIFY_VACUUM under that MVCCID, and vacuum
@@ -4437,7 +4438,8 @@ oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID 
  * UPDATE never fixes the heap header page here.
  */
 int
-oos_log_update_drop_intent (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const std::vector<oos_chain_ref> &refs)
+oos_log_update_drop_intent (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const std::vector<oos_chain_ref> &refs,
+			    int flags)
 {
   if (refs.empty ())
     {
@@ -4456,8 +4458,8 @@ oos_log_update_drop_intent (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const
 
   std::vector<char> payload;
   VFID no_oos_vfid = VFID_INITIALIZER;
-  int error = oos_pack_reclaim_intent (no_oos_vfid, heap_hfid, oid_Null_oid, 0, "mvcc update", refs, sizeof (prefix),
-				       payload);
+  int error = oos_pack_reclaim_intent (no_oos_vfid, heap_hfid, oid_Null_oid, flags, "mvcc update", refs,
+				       sizeof (prefix), payload);
   if (error != NO_ERROR)
     {
       return error;
@@ -4752,11 +4754,13 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
 	}
 
       /* The UPDATE did not resolve the OOS file; vacuum holds no page and can fix the heap header. */
+      const bool is_lob = (header.flags & OOS_RECLAIM_INTERNAL_LOB) != 0;
+      VFID lob_vfid = VFID_INITIALIZER;
       bool found;
       if (FI_INSERTED (FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT))
 	{
 	  /* A latch timeout stops debug builds in pgbuf_timed_sleep, so a busy header fails here at once instead. */
-	  found = heap_oos_find_vfid_nowait (thread_p, &header.heap_hfid, &header.oos_vfid);
+	  found = heap_oos_find_both_vfids_nowait (thread_p, &header.heap_hfid, &header.oos_vfid, &lob_vfid);
 	  if (!found)
 	    {
 	      VPID header_vpid = { header.heap_hfid.hpgid, header.heap_hfid.vfid.volid };
@@ -4765,7 +4769,13 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
 	}
       else
 	{
-	  found = heap_oos_find_vfid (thread_p, &header.heap_hfid, &header.oos_vfid, false);
+	  found = heap_oos_find_both_vfids (thread_p, &header.heap_hfid, &header.oos_vfid, &lob_vfid);
+	}
+      if (found && is_lob)
+	{
+	  header.oos_vfid = lob_vfid;
+	  /* internal LOB pages stay in that file's emptied set; vacuum's batch reclaim is for the OOS file */
+	  emptied_vpids = NULL;
 	}
       if (!found)
 	{
