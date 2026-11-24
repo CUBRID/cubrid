@@ -558,14 +558,16 @@ namespace cubconn::connection
   /* Receive the next request of this connection on the calling thread.
    *   1. Claim the socket; give up when it is busy or the connection is closing.
    *   2. Wait up to window_ms for the next request.
-   *   3. Receive what came in, or leave an error to the worker.
+   *   3. Receive what came in, or leave a socket error to the worker.
    *   4. Give the socket back. m_eager_running is lowered now,
    *      or in eager_finish () once the caller has run what was received.
+   *   5. Request the close of a stream that cannot go on; no socket event tells the worker.
    * When count_out > 0, the caller runs that many requests, then calls eager_finish (ctx_out).
    * Returns whether the caller may wait again. */
   bool worker::eager_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms, int &count_out,
 				       context *&ctx_out)
   {
+    statistics::metrics<statistics::context> recv_stats;
     worker *owner;
     context *ctx;
     struct pollfd po;
@@ -590,14 +592,14 @@ namespace cubconn::connection
     po.revents = 0;
     n = poll (&po, 1, window_ms);
 
-    /* STEP 3. Receive what came in, or leave an error to the worker. */
+    /* STEP 3. Receive what came in, or leave a socket error to the worker. */
     status = result::Ok;
     more_data = false;
 
     if (n > 0 && (po.revents & POLLIN) != 0)
       {
 	/* owner may have changed since the claim; eager_drain () needs no worker state */
-	status = owner->eager_drain (ctx, entry, count_out, more_data);
+	status = owner->eager_drain (ctx, entry, recv_stats, count_out, more_data);
       }
     else if (n > 0 || (n < 0 && errno != EINTR))
       {
@@ -607,7 +609,7 @@ namespace cubconn::connection
 
     /* STEP 4. Give the socket back. m_eager_running is lowered now,
      * or in eager_finish () once the caller has run what was received. */
-    eager_release (conn, entry, ctx);
+    eager_release (conn, entry, ctx, recv_stats);
     if (count_out == 0)
       {
 	ctx->m_recv.m_eager_running.fetch_sub (1, std::memory_order_release);
@@ -615,6 +617,12 @@ namespace cubconn::connection
     else
       {
 	ctx_out = ctx;
+      }
+
+    /* STEP 5. Request the close of a stream that cannot go on; no socket event tells the worker. */
+    if (status == result::ClosedConnection)
+      {
+	css_request_shutdown_conn (&conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
       }
 
     return status == result::Ok && !more_data && count_out > 0;
@@ -1276,19 +1284,25 @@ retry:
     for (context *ctx : m_context)
       {
 	/* stats */
-	uint64_t bytes_out_total;
+	uint64_t bytes_out_total, bytes_in_total, recv_budget_hit;
 
 	r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
 	assert (r == NO_ERROR);
 
 	bytes_out_total = ctx->m_guarded_stats.bytes_out_total;
 	ctx->m_guarded_stats.bytes_out_total = 0;
+	bytes_in_total = ctx->m_guarded_stats.bytes_in_total;
+	ctx->m_guarded_stats.bytes_in_total = 0;
+	recv_budget_hit = ctx->m_guarded_stats.recv_budget_hit;
+	ctx->m_guarded_stats.recv_budget_hit = 0;
 
 	r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
 	assert (r == NO_ERROR);
 
-	/* integrate direct send stats to owned stats */
+	/* integrate the stats of direct send and eager receive to owned stats */
 	ctx->m_stats.add (statistics::context::BYTES_OUT_TOTAL, bytes_out_total);
+	ctx->m_stats.add (statistics::context::BYTES_IN_TOTAL, bytes_in_total);
+	ctx->m_stats.add (statistics::context::RECV_BUDGET_HIT, recv_budget_hit);
 
 	/* store */
 	message.statistics.contexts.emplace_back (ctx->m_id, ctx->m_stats);
@@ -2593,10 +2607,12 @@ respond:
    *   1. Read the socket up to the receive budget.
    *   2. Recheck under rmutex that the connection is still open.
    *   3. Handle the packets; complete requests are counted instead of pushed as tasks.
+   *      A close request or a packet that cannot be queued ends the stream: ClosedConnection.
    *   4. Return the count, or push the counted requests to the pool when a method-mode packet ended counting.
-   * Under the constraint at the reception declarations, m_stats and LAST_ACTIVE_NS are left to the worker.
+   * The worker's m_stats and LAST_ACTIVE_NS are left to the worker; the receiver counts into recv_stats.
    * m_recv_budget is the only worker member read, and every worker has the same value. */
-  result worker::eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out)
+  result worker::eager_drain (context *ctx, cubthread::entry *entry,
+			      statistics::metrics<statistics::context> &recv_stats, int &count_out, bool &more_data_out)
   {
     std::vector<cubbase::span<std::byte>> *packets;
     result status, io_status;
@@ -2608,7 +2624,7 @@ respond:
     /* STEP 1. Read the socket up to the receive budget.
      * The fd is read without cmutex: must_defer_close_for_eager_receiver () defers the close
      * while this thread holds the socket. */
-    io_status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd, m_recv_budget);
+    io_status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd, m_recv_budget, &recv_stats);
     if (io_status == result::PeerReset || io_status == result::Error)
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker->eager_drain: status = %d\n", io_status);
@@ -2656,7 +2672,7 @@ respond:
 	    this->eager_abort (ctx);
 	    r = rmutex_unlock (entry, &ctx->m_conn->rmutex);
 	    assert (r == NO_ERROR);
-	    return status;
+	    return result::ClosedConnection;
 	  }
       }
 
@@ -2702,7 +2718,8 @@ respond:
 
   /* Give the socket taken by eager_claim () back. Putting EPOLLIN back with EPOLL_CTL_MOD makes the kernel check
    * the socket again, so data this thread left, or data whose edge the worker dropped meanwhile, wakes the worker. */
-  void worker::eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx)
+  void worker::eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx,
+			      statistics::metrics<statistics::context> &recv_stats)
   {
     bool rearmed;
     int r;
@@ -2715,6 +2732,8 @@ respond:
 	return;
       }
     ctx->m_recv.m_recv_busy.store (false, std::memory_order_release);
+    ctx->m_guarded_stats.bytes_in_total += recv_stats.get (statistics::context::BYTES_IN_TOTAL);
+    ctx->m_guarded_stats.recv_budget_hit += recv_stats.get (statistics::context::RECV_BUDGET_HIT);
 
     /* a context in handoff is not registered; the takeover's EPOLL_CTL_ADD checks the socket the same way */
     rearmed = (!ctx->m_epoll_registered || conn.worker == nullptr || conn.context != ctx

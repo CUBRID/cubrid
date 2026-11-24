@@ -208,10 +208,12 @@ namespace cubconn::connection
     /* owned statistics */
     statistics::metrics<statistics::context> m_stats;
 
-    /* statistics updated by direct send, guarded by m_conn->cmutex */
+    /* statistics updated off the worker (direct send, eager receive), guarded by m_conn->cmutex */
     struct
     {
       uint64_t bytes_out_total { 0 };
+      uint64_t bytes_in_total { 0 };
+      uint64_t recv_budget_hit { 0 };
     } m_guarded_stats;
 
     context (std::size_t capacity);

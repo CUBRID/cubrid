@@ -342,7 +342,6 @@ namespace cubconn
 	m_received += bytes;
 	consumption += bytes;
 
-	m_stats->add (statistics::context::BYTES_IN_TOTAL, bytes);
 	er_log_conn (ARG_FILE_LINE, "receiver->receive_in_allocated: state = %d, received = %d, accumulated = %d\n",
 		     (int) m_state,
 		     (int) bytes, (int) m_received);
@@ -390,7 +389,6 @@ namespace cubconn
 	m_received += bytes;
 	consumption += bytes;
 
-	m_stats->add (statistics::context::BYTES_IN_TOTAL, bytes);
 	er_log_conn (ARG_FILE_LINE, "receiver->receive_in_tmpsize: state = %d, received = %d, accumulated = %d\n",
 		     (int) m_state,
 		     (int) bytes, (int) m_received);
@@ -427,7 +425,6 @@ namespace cubconn
 	m_received += bytes;
 	consumption += bytes;
 
-	m_stats->add (statistics::context::BYTES_IN_TOTAL, bytes);
 	er_log_conn (ARG_FILE_LINE, "receiver->receive: state = %d, received = %d, accumulated = %d\n", (int) m_state,
 		     (int) bytes, (int) m_received);
 	if (m_received < SIZE_HEADER)
@@ -443,6 +440,11 @@ namespace cubconn
   }
 
   result receiver::drain (int fd, size_t limit)
+  {
+    return this->drain (fd, limit, m_stats);
+  }
+
+  result receiver::drain (int fd, size_t limit, statistics::metrics<statistics::context> *stats)
   {
     std::lock_guard<std::mutex> lock (m_mutex);
     result status;
@@ -488,12 +490,13 @@ namespace cubconn
 	    break;
 
 	  case result::BudgetExhausted:
-	    m_stats->add (statistics::context::RECV_BUDGET_HIT, 1);
+	    stats->add (statistics::context::RECV_BUDGET_HIT, 1);
 	    [[fallthrough]];
 
 	  case result::Pending:
 	  case result::Error:
 	  case result::PeerReset:
+	    stats->add (statistics::context::BYTES_IN_TOTAL, consumption);
 	    return status;
 
 	  default:

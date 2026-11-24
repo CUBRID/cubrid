@@ -58,6 +58,8 @@ namespace cubconn
       void reset ();
 
       result drain (int fd, size_t limit = 0);
+      /* counts into stats, not the context's: the worker copies the context's without the receiver lock */
+      result drain (int fd, size_t limit, statistics::metrics<statistics::context> *stats);
       bool try_release (std::byte *ptr);
       void release (std::byte *ptr);
 

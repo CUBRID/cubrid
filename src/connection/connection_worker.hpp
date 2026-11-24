@@ -377,10 +377,12 @@ namespace cubconn::connection
 
       /* eager receiver: claim, drain and release the socket, in eager_poll_and_receive () */
       static context *eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&owner_out, SOCKET &fd_out);
-      result eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
+      result eager_drain (context *ctx, cubthread::entry *entry, statistics::metrics<statistics::context> &recv_stats,
+			  int &count_out, bool &more_data_out);
       void eager_abort (context *ctx);
       void eager_flush_counted_to_pool (context *ctx);
-      static void eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx);
+      static void eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx,
+				 statistics::metrics<statistics::context> &recv_stats);
       static uint32_t eager_epoll_flags (context *ctx, bool with_epollin);
 
       /* --------------------------------------------------------------------------- */

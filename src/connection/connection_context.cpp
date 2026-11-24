@@ -156,6 +156,8 @@ namespace cubconn::connection
     m_send.m_room = nullptr;
 
     m_guarded_stats.bytes_out_total = 0;
+    m_guarded_stats.bytes_in_total = 0;
+    m_guarded_stats.recv_budget_hit = 0;
     m_stats.reset ();
   }
 }
