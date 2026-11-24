@@ -6635,6 +6635,7 @@ qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
 	{
 	case PT_NEXT_VALUE:
 	case PT_CURRENT_VALUE:
+	case PT_CURRENT_VALUE_BY_OID:
 	case PT_DEFINE_VARIABLE:
 	case PT_EVALUATE_VARIABLE:
 	  *found = true;
@@ -6707,7 +6708,8 @@ static PT_NODE *
 qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   if (tree != NULL && tree->node_type == PT_EXPR
-      && (tree->info.expr.op == PT_NEXT_VALUE || tree->info.expr.op == PT_CURRENT_VALUE))
+      && (tree->info.expr.op == PT_NEXT_VALUE || tree->info.expr.op == PT_CURRENT_VALUE
+	  || tree->info.expr.op == PT_CURRENT_VALUE_BY_OID))
     {
       *continue_walk = PT_CONTINUE_WALK;
       return tree;
