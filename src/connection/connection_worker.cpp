@@ -48,6 +48,7 @@
 #include "error_manager.h"
 #include "log_manager.h"
 #include "fault_injection.h"
+#include "perf_monitor.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -600,6 +601,15 @@ namespace cubconn::connection
       {
 	/* owner may have changed since the claim; eager_drain () needs no worker state */
 	status = owner->eager_drain (ctx, entry, recv_stats, count_out, more_data);
+	perfmon_add_stat (entry, PSTAT_NET_NUM_EAGER_RECEIVE_REQUESTS, count_out);
+	if (more_data)
+	  {
+	    perfmon_inc_stat (entry, PSTAT_NET_NUM_EAGER_RECEIVE_BUDGET_STOPS);
+	  }
+      }
+    else if (n == 0)
+      {
+	perfmon_inc_stat (entry, PSTAT_NET_NUM_EAGER_RECEIVE_TIMEOUTS);
       }
     else if (n > 0 || (n < 0 && errno != EINTR))
       {
