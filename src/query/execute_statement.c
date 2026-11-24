@@ -68,6 +68,7 @@
 #include "object_print.h"
 #include "json_builder.h"
 #include "jsp_cl.h"
+#include "pl_struct_compile.hpp"
 #include "optimizer.h"
 #include "memory_alloc.h"
 #include "object_domain.h"
@@ -6265,19 +6266,14 @@ static void get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type
 			       PT_NODE * statement);
 static char *append_block_text (PARSER_CONTEXT * parser, char *text, const char *tail);
 static char *append_block_name (PARSER_CONTEXT * parser, char *text, const char *name);
-static const char *skip_block_comment (const char *text);
-static const char *skip_block_string (const char *text);
-static const char *skip_block_delimited_id (const char *text);
-static const char *skip_block_blanks_and_comments (const char *text);
-static const char *find_block_name (const char *block, const char *from, const char *name, const char **after);
-static int scan_block_fields (const char *block, const char *name, const TR_BLOCK_COLUMN * columns, int n_columns,
-			      bool * reads, bool * reads_field, bool * assigned);
-static bool block_declares_record (const char *block, const char *name);
 static char *make_block_procedure_sql (PARSER_CONTEXT * parser, const char *quoted_name, const char *block,
 				       const char **names, int n_names, TR_BLOCK_COLUMN * columns, int n_columns,
 				       const bool * reads);
 static char *make_block_call_arguments (PARSER_CONTEXT * parser, const char **names, int n_names,
 					TR_BLOCK_COLUMN * columns, int n_columns, const bool * reads);
+static bool block_reads_column (const std::vector < cubpl::plcsql_correlation_use > &uses, const char *name,
+				const char *column);
+static int report_block_procedure_error (PARSER_CONTEXT * parser, const char *trigger_name, int error);
 static int create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_name, const char *block,
 					   DB_TRIGGER_EVENT event, DB_TRIGGER_TIME action_time, DB_OBJECT * class_,
 					   char *sp_name, int sp_name_size, const char **call_source);
@@ -7324,365 +7320,6 @@ append_block_name (PARSER_CONTEXT * parser, char *text, const char *name)
   return append_block_text (parser, text, "]");
 }
 
-/* a character of a PL/CSQL identifier. It is a letter, a digit, an underscore or a multibyte one */
-#define IS_BLOCK_ID_CHAR(c) (char_isalnum (c) || (c) == '_' || ((unsigned char) (c)) >= 0x80)
-/* the opening delimiter of a delimited PL/CSQL identifier, and the closing one that goes with it */
-#define IS_BLOCK_ID_DELIMITER(c) ((c) == '[' || (c) == '"' || (c) == '`')
-#define IS_BLOCK_ID_DELIMITER_CLOSE(c) ((c) == '[' ? ']' : (c))
-
-/*
- * skip_block_comment() - Skips a comment of PL/CSQL at the start of a text.
- *   return: the end of the comment, or the text itself when it does not start with a comment
- *   text(in): PL/CSQL text
- */
-static const char *
-skip_block_comment (const char *text)
-{
-  const char *end;
-
-  if ((text[0] == '-' && text[1] == '-') || (text[0] == '/' && text[1] == '/'))
-    {
-      end = strpbrk (text, "\r\n");
-      return (end != NULL) ? end : text + strlen (text);
-    }
-
-  if (text[0] == '/' && text[1] == '*')
-    {
-      end = strstr (text + 2, "*/");
-      return (end != NULL) ? end + 2 : text + strlen (text);
-    }
-
-  return text;
-}
-
-/*
- * skip_block_string() - Skips a string literal of PL/CSQL at the start of a text.
- *   return: the end of the string, or the text itself when it does not start with a string
- *   text(in): PL/CSQL text
- *
- * Note:
- *    Two quotes in a row are a quote inside the string.
- */
-static const char *
-skip_block_string (const char *text)
-{
-  if (*text != '\'')
-    {
-      return text;
-    }
-
-  for (text++; *text != '\0'; text++)
-    {
-      if (*text == '\'')
-	{
-	  if (text[1] != '\'')
-	    {
-	      return text + 1;
-	    }
-	  text++;
-	}
-    }
-
-  return text;
-}
-
-/*
- * skip_block_delimited_id() - Finds the end of a delimited identifier of PL/CSQL.
- *   return: the closing delimiter, or NULL when the identifier is not closed
- *   text(in): PL/CSQL text that starts with the opening delimiter of [x], "x" or `x`
- *
- * Note:
- *    Two closing delimiters in a row are a delimiter inside "x" and `x`.
- *    The closing delimiter itself is returned, not the text after it, as the scan steps past it.
- */
-static const char *
-skip_block_delimited_id (const char *text)
-{
-  char close = IS_BLOCK_ID_DELIMITER_CLOSE (*text);
-
-  for (text++; *text != '\0'; text++)
-    {
-      if (*text == close)
-	{
-	  if (close == ']' || text[1] != close)
-	    {
-	      return text;
-	    }
-	  text++;
-	}
-    }
-
-  return NULL;
-}
-
-/*
- * skip_block_blanks_and_comments() - Skips the blanks and the comments of PL/CSQL at the start
- *                                    of a text.
- *   return: the first token of the text, or its end
- *   text(in): PL/CSQL text
- */
-static const char *
-skip_block_blanks_and_comments (const char *text)
-{
-  const char *next;
-
-  while (true)
-    {
-      while (char_isspace (*text))
-	{
-	  text++;
-	}
-
-      next = skip_block_comment (text);
-      if (next == text)
-	{
-	  return text;
-	}
-      text = next;
-    }
-}
-
-/*
- * find_block_name() - Finds the next place a PL/CSQL block has a name as a token of its own.
- *   return: the start of the name, or NULL when the rest of the block does not have it
- *   block(in): PL/CSQL block text
- *   from(in): place in the block the scan starts from
- *   name(in): name to find
- *   after(out): the text after the name
- *
- * Note:
- *    The scan is lexical.
- *    Comments and string literals are skipped as the lexer of PL/CSQL takes them.
- *    The name may be delimited, as [x], "x" or `x`.
- *    A delimited identifier is one token, so a comment mark inside it starts no comment.
- *    A name after a dot is part of a longer name, such as a table with an owner.
- */
-static const char *
-find_block_name (const char *block, const char *from, const char *name, const char **after)
-{
-  const char *p, *next;
-  size_t name_len = strlen (name);
-
-  for (p = from; *p != '\0'; p++)
-    {
-      next = skip_block_comment (p);
-      if (next == p)
-	{
-	  next = skip_block_string (p);
-	}
-      if (next != p)
-	{
-	  if (*next == '\0')
-	    {
-	      break;
-	    }
-	  /* the loop steps to the character after the comment or the string */
-	  p = next - 1;
-	  continue;
-	}
-
-      if (IS_BLOCK_ID_DELIMITER (*p))
-	{
-	  /* [name], "name" or `name`. A delimited identifier that is not the name is passed */
-	  next = skip_block_delimited_id (p);
-	  if (next == NULL)
-	    {
-	      break;
-	    }
-	  if ((size_t) (next - p - 1) == name_len && strncasecmp (p + 1, name, name_len) == 0
-	      && (p == block || (!IS_BLOCK_ID_CHAR (p[-1]) && p[-1] != '.')))
-	    {
-	      *after = next + 1;
-	      return p;
-	    }
-	  p = next;
-	}
-      else if (strncasecmp (p, name, name_len) == 0 && !IS_BLOCK_ID_CHAR (p[name_len])
-	       && (p == block || (!IS_BLOCK_ID_CHAR (p[-1]) && p[-1] != '.')))
-	{
-	  *after = p + name_len;
-	  return p;
-	}
-    }
-
-  return NULL;
-}
-
-/*
- * scan_block_fields() - Finds the columns a PL/CSQL block reads through a correlation name,
- *                       as name.column, in one pass over the block.
- *   return: number of the columns the block reads
- *   block(in): PL/CSQL block text
- *   name(in): correlation name
- *   columns(in): columns of the class, with their names in lower case as the class keeps them
- *   n_columns(in): number of the columns
- *   reads(out): for each column, whether the block reads it
- *   reads_field(out): whether the block has a name.field at all, a column or not
- *   assigned(out): whether the block assigns a value to a name.field, as name.field := ...
- *
- * Note:
- *    The scan is lexical, as find_block_name does it.
- *    PL/CSQL reads a field of a record only as name.field.
- *    The field may be delimited as the name may.
- */
-static int
-scan_block_fields (const char *block, const char *name, const TR_BLOCK_COLUMN * columns, int n_columns, bool * reads,
-		   bool * reads_field, bool * assigned)
-{
-  const char *p, *after, *token, *next, *end;
-  size_t token_len;
-  int n_reads = 0;
-  int i;
-
-  *reads_field = false;
-  *assigned = false;
-  for (i = 0; i < n_columns; i++)
-    {
-      reads[i] = false;
-    }
-
-  for (p = block; (p = find_block_name (block, p, name, &after)) != NULL; p = after)
-    {
-      next = skip_block_blanks_and_comments (after);
-      if (*next != '.')
-	{
-	  continue;
-	}
-      token = skip_block_blanks_and_comments (next + 1);
-
-      if (IS_BLOCK_ID_DELIMITER (*token))
-	{
-	  next = skip_block_delimited_id (token);
-	  if (next == NULL)
-	    {
-	      break;
-	    }
-	  token++;
-	  token_len = next - token;
-	  end = next + 1;
-	}
-      else
-	{
-	  for (token_len = 0; IS_BLOCK_ID_CHAR (token[token_len]); token_len++)
-	    ;
-	  end = token + token_len;
-	}
-      if (token_len == 0)
-	{
-	  continue;
-	}
-
-      *reads_field = true;
-
-      end = skip_block_blanks_and_comments (end);
-      if (end[0] == ':' && end[1] == '=')
-	{
-	  *assigned = true;
-	}
-
-      for (i = 0; i < n_columns; i++)
-	{
-	  if (intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) token, (unsigned char *) columns[i].name,
-					      (int) token_len, (int) strlen (columns[i].name)) == 0)
-	    {
-	      if (!reads[i])
-		{
-		  reads[i] = true;
-		  n_reads++;
-		}
-	      break;
-	    }
-	}
-    }
-
-  return n_reads;
-}
-
-/*
- * block_declares_record() - Tells whether a PL/CSQL block declares a record of its own with
- *                           the name of a correlation name, as name cursor%ROWTYPE or FOR name IN.
- *   return: true when the block declares the record
- *   block(in): PL/CSQL block text
- *   name(in): correlation name
- *
- * Note:
- *    The scan is lexical, as find_block_name does it.
- *    The record hides the correlation name.
- *    So name.field := ... in the block may change the record.
- *    The scope of the record is not followed.
- *    A record of an inner block lets an outer block assign as well.
- *    Only blanks are passed between FOR and the name.
- */
-static bool
-block_declares_record (const char *block, const char *name)
-{
-  const char *p, *token, *next;
-  int n_type_names;
-
-  for (p = block; (p = find_block_name (block, p, name, &token)) != NULL; p = token)
-    {
-      next = skip_block_blanks_and_comments (token);
-
-      /* FOR name IN ... LOOP */
-      if (strncasecmp (next, "IN", 2) == 0 && !IS_BLOCK_ID_CHAR (next[2]))
-	{
-	  const char *prev = p;
-
-	  while (prev > block && char_isspace (prev[-1]))
-	    {
-	      prev--;
-	    }
-	  if (prev - block >= 3 && strncasecmp (prev - 3, "FOR", 3) == 0
-	      && (prev - block == 3 || !IS_BLOCK_ID_CHAR (prev[-4])))
-	    {
-	      return true;
-	    }
-	}
-
-      /* the names of the type follow, as cursor or [owner].[table] */
-      for (n_type_names = 0;; n_type_names++)
-	{
-	  if (IS_BLOCK_ID_DELIMITER (*next))
-	    {
-	      next = skip_block_delimited_id (next);
-	      if (next == NULL)
-		{
-		  return false;
-		}
-	      next++;
-	    }
-	  else if (IS_BLOCK_ID_CHAR (*next))
-	    {
-	      while (IS_BLOCK_ID_CHAR (*next))
-		{
-		  next++;
-		}
-	    }
-	  else
-	    {
-	      break;
-	    }
-
-	  next = skip_block_blanks_and_comments (next);
-	  if (*next == '.')
-	    {
-	      next = skip_block_blanks_and_comments (next + 1);
-	    }
-	}
-
-      if (n_type_names > 0 && *next == '%')
-	{
-	  next = skip_block_blanks_and_comments (next + 1);
-	  if (strncasecmp (next, "ROWTYPE", 7) == 0 && !IS_BLOCK_ID_CHAR (next[7]))
-	    {
-	      return true;
-	    }
-	}
-    }
-
-  return false;
-}
-
 /*
  * make_block_procedure_sql() - Makes the statement that creates the internal procedure of
  *                              a PL/CSQL block action.
@@ -7691,15 +7328,18 @@ block_declares_record (const char *block, const char *name)
  *   quoted_name(in): name of the procedure with its owner, quoted
  *   block(in): PL/CSQL block text
  *   names(in): correlation names the block reads
+ *              or all of them, to check the block
  *   n_names(in): number of the names, 0 when the block reads none
  *   columns(in): columns of the class the names can carry
  *   n_columns(in): number of the columns
  *   reads(in): for each name and column, whether the block reads it, name by name
+ *              or NULL, to check the block
  *
  * Note:
  *    The text keeps the shape of its stored code.
  *    So an error of the owner change is at the same line.
  *    Line 2 has the declarations, BEGIN and the assignments. The block starts at line 3.
+ *    The statement to check the block has the same layout, with all the columns.
  *    JSP_TRIGGER_BLOCK_LINE_OFFSET counts the two lines. Change it with this layout.
  *    A correlation name is a record of a cursor that selects a NULL of each column type.
  *    So the procedure reads no table and needs no privilege on the class.
@@ -7720,7 +7360,7 @@ make_block_procedure_sql (PARSER_CONTEXT * parser, const char *quoted_name, cons
 
   /* [__trsp_obj__c1] integer, [__trsp_obj__c2] character varying, [__trsp_new__c1] integer, ... */
   first = true;
-  for (i = 0; i < n_names; i++)
+  for (i = 0; i < n_names && reads != NULL; i++)
     {
       for (j = 0; j < n_columns; j++)
 	{
@@ -7757,7 +7397,7 @@ make_block_procedure_sql (PARSER_CONTEXT * parser, const char *quoted_name, cons
       first = true;
       for (j = 0; j < n_columns; j++)
 	{
-	  if (!reads[i * n_columns + j])
+	  if (reads != NULL && !reads[i * n_columns + j])
 	    {
 	      continue;
 	    }
@@ -7786,7 +7426,7 @@ make_block_procedure_sql (PARSER_CONTEXT * parser, const char *quoted_name, cons
   sql = append_block_text (parser, sql, "BEGIN ");
 
   /* obj.[c1] := [__trsp_obj__c1]; obj.[c2] := [__trsp_obj__c2]; new.[c1] := ... */
-  for (i = 0; i < n_names; i++)
+  for (i = 0; i < n_names && reads != NULL; i++)
     {
       for (j = 0; j < n_columns; j++)
 	{
@@ -7855,6 +7495,70 @@ make_block_call_arguments (PARSER_CONTEXT * parser, const char **names, int n_na
 }
 
 /*
+ * block_reads_column() - Tells whether a PL/CSQL block action reads a column through
+ *                        a correlation name.
+ *   return: true if it does
+ *   uses(in): the fields of the correlation names that the compiler found the block reads
+ *   name(in): correlation name, obj, new or old
+ *   column(in): name of a column of the class
+ *
+ * Note:
+ *    The compiler gives the names in upper case, so they are compared as identifiers.
+ */
+static bool
+block_reads_column (const std::vector < cubpl::plcsql_correlation_use > &uses, const char *name, const char *column)
+{
+  size_t i;
+
+  for (i = 0; i < uses.size (); i++)
+    {
+      if (intl_identifier_casecmp (uses[i].name.c_str (), name) == 0
+	  && intl_identifier_casecmp (uses[i].field.c_str (), column) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * report_block_procedure_error() - Reports an error of the internal procedure of
+ *                                  a PL/CSQL block action as an error of the trigger.
+ *   return: Error code
+ *   parser(in): Parse context of the create trigger statement
+ *   trigger_name(in): name of the trigger being created
+ *   error(in): error of the check or of the creation of the procedure
+ */
+static int
+report_block_procedure_error (PARSER_CONTEXT * parser, const char *trigger_name, int error)
+{
+  char *compile_msg;
+
+  if (error == ER_SP_COMPILE_ERROR)
+    {
+      /* report it as a compile error of the action, as for an action that is a statement */
+      compile_msg = pt_append_string (parser, NULL, er_msg ());
+      if (compile_msg == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      error = ER_TR_ACTION_COMPILE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, trigger_name, compile_msg);
+    }
+  else if (error == ER_SP_TOO_MANY_ARG_COUNT)
+    {
+      /* each column read is a parameter. The error names the procedure, so the message is new */
+      error = ER_TR_ACTION_COMPILE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, trigger_name,
+	      "Too many columns are read through the correlation names.");
+    }
+
+  return error;
+}
+
+/*
  * create_trigger_block_procedure() - Makes the internal procedure that runs a PL/CSQL block action of a trigger.
  *   return: Error code
  *   parser(in): Parse context of the create trigger statement
@@ -7868,14 +7572,14 @@ make_block_call_arguments (PARSER_CONTEXT * parser, const char **names, int n_na
  *   call_source(out): action source that calls the procedure
  *
  * Note:
- *    The procedure belongs to the trigger owner and its name has a random part,
- *    so it does not depend on the trigger name. The call names the owner because
- *    it is compiled when the trigger is created, possibly by another user.
+ *    The procedure belongs to the trigger owner. Its name has a random part, not the trigger name.
+ *    The call names the owner. Another user may create the trigger, and the call is compiled then.
  *    The block is a statement of the procedure body, as the user wrote it.
  *
- *    A correlation name the block reads, obj, new or old, is a record declared before the block.
- *    The call passes the columns the block reads as the parameters of the procedure.
- *    The record is a copy, so a block that assigns a value to its field is refused.
+ *    The compiler first checks the block with each correlation name declared with all the columns.
+ *    It returns the fields the block reads. Only the names read are declared before the block.
+ *    Each is a record, and the call passes the columns read as the parameters of the procedure.
+ *    A record is a copy of the row, so the compiler refuses an assignment to its field.
  */
 static int
 create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_name, const char *block,
@@ -7889,6 +7593,7 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
   DB_VALUE uuid;
   char quoted_name[DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 8] = { '\0' };
   const char *candidates[2] = { NULL, NULL };
+  int n_candidates = 0;
   const char *names[2] = { NULL, NULL };
   int n_names = 0;
   TR_BLOCK_COLUMN *columns = NULL;
@@ -7896,13 +7601,13 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
   bool *reads = NULL;
   bool *row;
   int n_reads;
-  bool reads_field, assigned, declares_record;
+  std::vector < cubpl::plcsql_correlation_use > uses;
+  char *check_sql;
   char *create_sql;
   char *arguments;
   char *call_buf = NULL;
   char *call;
-  char *compile_msg;
-  int i;
+  int i, j;
   int error = NO_ERROR;
 
   *call_source = NULL;
@@ -7959,7 +7664,15 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
     {
       tr_get_reference_names (event, action_time, &candidates[0], &candidates[1]);
     }
-  if (candidates[0] != NULL || candidates[1] != NULL)
+  /* the names the action can refer to are moved to the front */
+  for (i = 0; i < 2; i++)
+    {
+      if (candidates[i] != NULL)
+	{
+	  candidates[n_candidates++] = candidates[i];
+	}
+    }
+  if (n_candidates > 0)
     {
       /* the class is fetched again there. do_create_trigger fetched it to check the partition */
       error = tr_get_block_action_columns (class_, &columns, &n_columns);
@@ -7967,7 +7680,25 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
 	{
 	  return error;
 	}
+
+      /* the compiler checks the block and returns the fields of the names it reads */
+      check_sql = make_block_procedure_sql (parser, quoted_name, block, candidates, n_candidates, columns, n_columns,
+					    NULL);
+      if (check_sql == NULL)
+	{
+	  free_and_init (columns);
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+
+      error = jsp_check_trigger_block (check_sql, owner, downcase_owner_name, candidates, n_candidates, uses);
+      if (error != NO_ERROR)
+	{
+	  free_and_init (columns);
+	  return report_block_procedure_error (parser, trigger_name, error);
+	}
     }
+
   if (n_columns > 0)
     {
       reads = (bool *) malloc (sizeof (bool) * 2 * n_columns);
@@ -7981,41 +7712,16 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
 
   /*
    * A name the block does not read is dropped. The call passes the columns the block reads.
-   * A name the block reads with no such column is still declared, with the first column.
-   * It is not when the block declares a record with the name, as the field may be of that record.
-   * When the class has no column, it is declared with a field of no column.
-   * The compiler then reports the field, as it does for a column of a type it cannot take.
    * The row of a name that is dropped is written again for the next name.
    */
-  for (i = 0; i < 2; i++)
+  for (i = 0; i < n_candidates; i++)
     {
-      if (candidates[i] == NULL)
-	{
-	  continue;
-	}
-
       row = (n_columns > 0) ? reads + n_names * n_columns : NULL;
-      n_reads = scan_block_fields (block, candidates[i], columns, n_columns, row, &reads_field, &assigned);
-
-      declares_record = block_declares_record (block, candidates[i]);
-      if (assigned && !declares_record)
+      n_reads = 0;
+      for (j = 0; j < n_columns; j++)
 	{
-	  /* the record is a copy of the row, so the value would be lost with no error */
-	  free_and_init (columns);
-	  free_and_init (reads);
-	  error = ER_TR_ACTION_COMPILE;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, trigger_name,
-		  "A value cannot be assigned to a correlation name. Correlation names are read only.");
-	  return error;
-	}
-
-      if (n_reads == 0 && reads_field && !declares_record)
-	{
-	  if (n_columns > 0)
-	    {
-	      row[0] = true;
-	    }
-	  n_reads = 1;
+	  row[j] = block_reads_column (uses, candidates[i], columns[j].name);
+	  n_reads += row[j] ? 1 : 0;
 	}
       if (n_reads > 0)
 	{
@@ -8048,30 +7754,9 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
     }
 
   error = jsp_create_system_generated_procedure (create_sql);
-  if (error == ER_SP_COMPILE_ERROR)
+  if (error != NO_ERROR)
     {
-      /* report it as a compile error of the action, as for an action that is a statement */
-      compile_msg = pt_append_string (parser, NULL, er_msg ());
-      if (compile_msg == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  return error;
-	}
-      error = ER_TR_ACTION_COMPILE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, trigger_name, compile_msg);
-      return error;
-    }
-  else if (error == ER_SP_TOO_MANY_ARG_COUNT)
-    {
-      /* each column read is a parameter. The error names the procedure, so the message is new */
-      error = ER_TR_ACTION_COMPILE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, trigger_name,
-	      "Too many columns are read through the correlation names.");
-      return error;
-    }
-  else if (error != NO_ERROR)
-    {
-      return error;
+      return report_block_procedure_error (parser, trigger_name, error);
     }
 
   *call_source = call;
