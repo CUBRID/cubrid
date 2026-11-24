@@ -1472,56 +1472,82 @@ namespace parallel_scan
 	  (void) drain_slot_oids (thread_ref, stop);
 	};
 
-	const std::uint32_t parts_of_partition = m_input_handler->bitmap ().parts_of_partition ();
+	scan_bitmap_marks &marks = m_input_handler->bitmap ();
+	const std::uint32_t parts_of_partition = marks.parts_of_partition ();
 	std::uint32_t part;
+	/* the pages a worker's loaded table has on offer, a chunk at a time, until none is left */
+	auto read_chunks = [&] (scan_bitmap_worker *from) -> bool
+	{
+	  scan_bitmap_entry chunk[SCAN_BITMAP_CHUNK];
+	  VPID ahead[2 * SCAN_BITMAP_CHUNK];
+	  int n_ahead;
+	  int n;
+	  bool any = false;
 
-	while (!stop && m_input_handler->bitmap ().take_partition (&part))
+	  while (!stop && (n = marks.take_chunk (from, chunk, ahead, &n_ahead)) > 0)
+	    {
+	      any = true;
+	      if (interrupted ())
+		{
+		  stop = true;
+		  break;
+		}
+	      for (int k = 0; k < n_ahead; k += SCAN_BITMAP_CHUNK)
+		{
+		  (void) pgbuf_read_ahead (&thread_ref, &ahead[k], MIN (SCAN_BITMAP_CHUNK, n_ahead - k));
+		}
+	      for (int i = 0; i < n && !stop; i++)
+		{
+		  VPID vpid;
+
+		  marks.page_vpid (chunk[i].page, &vpid);
+		  heap_pages++;
+		  read_page (vpid, chunk[i].w, -1);
+		}
+	    }
+	  return any;
+	};
+
+	marks.enter_partitions ();
+	while (!stop && marks.take_partition (&part))
 	  {
 	    for (std::uint32_t sub = 0; sub < parts_of_partition && !stop; sub++)
 	      {
 		if (counted ([&] ()
 		{
-		  return m_input_handler->bitmap ().load (&thread_ref, worker, part, sub);
+		  return marks.load (&thread_ref, worker, part, sub);
 		  }) != NO_ERROR)
 		{
 		  raise ();
 		  break;
 		}
+		(void) read_chunks (worker);
+	      }
+	  }
+	marks.leave_partitions ();
 
-		const scan_bitmap_table &table = worker->heap_tbl;
-		const std::vector<std::uint32_t> &order = worker->order;
+	/* no partition is left: the pages the other workers' tables still have on offer. A key range whose rows lie
+	 * together in the heap marks one partition only, and its pages are shared here. */
+	while (!stop)
+	  {
+	    bool any = false;
 
-		for (size_t i = 0; i < order.size () && !stop; i++)
+	    for (int i = 0; i < marks.workers () && !stop; i++)
+	      {
+		any = read_chunks (marks.worker_at (i)) || any;
+	      }
+	    if (!any)
+	      {
+		if (!marks.loaders_left ())
 		  {
-		    VPID vpid;
-
-		    if ((i & (DISK_SECTOR_NPAGES - 1)) == 0)
-		      {
-			/* the pages after the ones read next are told to the OS, wherever they lie: a read then does
-			 * not wait for a hint just given. The part's first pages are told with them. */
-			VPID vpids[DISK_SECTOR_NPAGES];
-			const size_t end = MIN (i + 2 * DISK_SECTOR_NPAGES, order.size ());
-
-			if (interrupted ())
-			  {
-			    stop = true;
-			    break;
-			  }
-			for (size_t k = i == 0 ? 0 : i + DISK_SECTOR_NPAGES; k < end;)
-			  {
-			    int count = 0;
-
-			    for (; k < end && count < DISK_SECTOR_NPAGES; k++)
-			      {
-				m_input_handler->bitmap ().page_vpid (table.e[order[k]].page, &vpids[count++]);
-			      }
-			    (void) pgbuf_read_ahead (&thread_ref, vpids, count);
-			  }
-		      }
-		    m_input_handler->bitmap ().page_vpid (table.e[order[i]].page, &vpid);
-		    heap_pages++;
-		    read_page (vpid, table.e[order[i]].w, -1);
+		    break;
 		  }
+		if (interrupted ())
+		  {
+		    stop = true;
+		    break;
+		  }
+		thread_sleep (0.2);
 	      }
 	  }
 

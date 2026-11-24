@@ -52,6 +52,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <vector>
 
 // forward definitions
@@ -920,6 +921,7 @@ extern void scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp
 constexpr int SCAN_BITMAP_WORDS = 10;       /* slot bits of a page entry: 640 */
 constexpr int SCAN_BITMAP_BATCH = 4096;     /* records gathered before they are written */
 constexpr std::uint32_t SCAN_BITMAP_MAX_PARTITIONS = 256;
+constexpr int SCAN_BITMAP_CHUNK = DISK_SECTOR_NPAGES;	/* pages of a loaded part a worker takes at a time */
 
 struct scan_bitmap_record
 {
@@ -1009,7 +1011,11 @@ struct scan_bitmap_worker
   scan_bitmap_table heap_tbl;  /* heap step: the partition, or the part of it, being read */
   scan_bitmap_writer sub;      /* heap step: the parts of a partition wider than a table */
   std::vector<std::uint32_t> order;       /* heap step: heap_tbl's entries by page */
-  scan_bitmap_worker () : switched (false), over (nullptr), over_closed (false), scans_over (false) {}
+  std::mutex share_mutex;	/* heap step: heap_tbl and order while other workers take pages of them, and: */
+  size_t share_next;		/* the place in order of the next page nobody took */
+  size_t share_n;		/* the pages on offer; 0 while the table is loaded again */
+  scan_bitmap_worker () : switched (false), over (nullptr), over_closed (false), scans_over (false), share_next (0),
+    share_n (0) {}
 };
 
 
@@ -1023,9 +1029,11 @@ struct scan_bitmap_worker
  * every other mark leaves as a 16-byte record, written batch by batch to that partition's chain of pages in the
  * worker's temp file. A slot beyond an entry's width goes to the worker's list file instead.
  *
- * A worker of the heap step takes a partition, ORs every worker's entries and records of it into its own table and
- * reads the pages in order. A heap too large for 256 partitions gets partitions wider than a table: the worker
- * divides such a partition once more into its own temp file.
+ * A worker of the heap step takes a partition that got a mark, ORs every worker's entries and records of it into
+ * its own table and puts the table's pages on offer, a chunk at a time, in page order: it takes them itself, and a
+ * worker that finds no partition left takes them too. So the rows of a key range that lie together in the heap, in
+ * one partition, are still looked up by every worker. A heap too large for 256 partitions gets partitions wider
+ * than a table: the worker divides such a partition once more into its own temp file.
  *
  * Written by the thread that calls init () before the workers start, except a worker's own scan_bitmap_worker (read by
  * every worker once all index steps are over), the counters, and the merged list (the worker that took it). */
@@ -1052,12 +1060,42 @@ class scan_bitmap_marks
     int mark (THREAD_ENTRY *thread_p, scan_bitmap_worker *w, const OID *oid, int *sector_hint);
     /* ... the worker's index step is over: its last batch is written */
     int end_marks (THREAD_ENTRY *thread_p, scan_bitmap_worker *w);
-    /* heap step: the next partition nobody took; false: none left */
+    /* heap step: the next partition with a mark that nobody took; false: none left */
     bool take_partition (std::uint32_t *part)
     {
-      *part = m_bm_next_part.fetch_add (1, std::memory_order_relaxed);
+      do
+	{
+	  *part = m_bm_next_part.fetch_add (1, std::memory_order_relaxed);
+	}
+      while (*part < m_bm_nparts && !has_marks (*part));
       return *part < m_bm_nparts;
     }
+    /* heap step of several workers: one starts taking partitions, and has taken its last */
+    void enter_partitions ()
+    {
+      m_bm_loaders.fetch_add (1, std::memory_order_relaxed);
+    }
+    void leave_partitions ()
+    {
+      m_bm_loaders.fetch_sub (1, std::memory_order_release);
+    }
+    /* ... a worker may still put pages on offer */
+    bool loaders_left () const
+    {
+      return m_bm_loaders.load (std::memory_order_acquire) > 0;
+    }
+    int workers () const
+    {
+      return m_bm_nworkers;
+    }
+    scan_bitmap_worker *worker_at (int i)
+    {
+      return &m_bm_workers[i];
+    }
+    /* ... the next chunk of the pages `from` has on offer, copied: the table may be loaded again once this returns.
+     * ahead: the pages to tell the OS, those of the chunk after it (and its own when it is the first).
+     * return: entries copied, 0 when nothing is on offer */
+    int take_chunk (scan_bitmap_worker *from, scan_bitmap_entry *chunk, VPID *ahead, int *n_ahead);
     std::uint32_t parts_of_partition () const
     {
       return m_bm_nsub;
@@ -1098,6 +1136,8 @@ class scan_bitmap_marks
       wr.where.push_back (chain);
       return (int) wr.batch.size () >= SCAN_BITMAP_BATCH ? write (thread_p, wr) : NO_ERROR;
     }
+    /* any worker recorded a page of the partition */
+    bool has_marks (std::uint32_t part) const;
     /* the batch goes to the temp pages of its chains */
     int write (THREAD_ENTRY *thread_p, scan_bitmap_writer &wr);
     template <typename F>
@@ -1113,6 +1153,7 @@ class scan_bitmap_marks
     int m_bm_nworkers = 0;
     std::atomic<int> m_bm_claim { 0 };
     std::atomic<std::uint32_t> m_bm_next_part { 0 };
+    std::atomic<int> m_bm_loaders { 0 };	/* workers that may still load a partition */
     std::atomic<bool> m_bm_over_taken { false };
     QFILE_LIST_ID *m_bm_over_list = nullptr;	/* one of the workers' lists, holding them all */
     QFILE_LIST_SCAN_ID m_bm_over_scan;

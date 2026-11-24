@@ -7586,6 +7586,12 @@ scan_bitmap_marks::load (THREAD_ENTRY *thread_p, scan_bitmap_worker *w, std::uin
     return NO_ERROR;
   };
 
+  {
+    /* nothing of the table is on offer while it is loaded: a worker that copies a chunk holds the mutex */
+    std::lock_guard<std::mutex> guard (w->share_mutex);
+
+    w->share_next = w->share_n = 0;
+  }
   if (table.e == nullptr)
     {
       error_code = table.init (m_bm_cap, m_bm_buckets);
@@ -7658,7 +7664,55 @@ scan_bitmap_marks::load (THREAD_ENTRY *thread_p, scan_bitmap_worker *w, std::uin
   {
     return table.e[x].page < table.e[y].page;
   });
+  {
+    std::lock_guard<std::mutex> guard (w->share_mutex);
+
+    w->share_n = w->order.size ();
+  }
   return NO_ERROR;
+}
+
+bool
+scan_bitmap_marks::has_marks (std::uint32_t part) const
+{
+  for (int i = 0; i < m_bm_nworkers; i++)
+    {
+      const scan_bitmap_worker &from = m_bm_workers[i];
+
+      if ((!from.tbl_start.empty () && from.tbl_start[part] < from.tbl_start[part + 1])
+	  || (part < from.rec.chain.size () && !VPID_ISNULL (&from.rec.chain[part].first)))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+int
+scan_bitmap_marks::take_chunk (scan_bitmap_worker *from, scan_bitmap_entry *chunk, VPID *ahead, int *n_ahead)
+{
+  std::lock_guard<std::mutex> guard (from->share_mutex);
+  const size_t at = from->share_next;
+  const size_t n = from->share_n;
+  int count = 0;
+
+  *n_ahead = 0;
+  if (at >= n)
+    {
+      return 0;
+    }
+  for (; count < SCAN_BITMAP_CHUNK && at + count < n; count++)
+    {
+      chunk[count] = from->heap_tbl.e[from->order[at + count]];
+    }
+  from->share_next = at + count;
+  /* the pages after the ones read next are told to the OS, wherever they lie: a read then does not wait for a
+   * hint just given. The table's first pages are told with them. */
+  for (size_t k = at == 0 ? 0 : at + SCAN_BITMAP_CHUNK; k < MIN (at + 2 * SCAN_BITMAP_CHUNK, n); k++)
+    {
+      page_vpid (from->heap_tbl.e[from->order[k]].page, &ahead[(*n_ahead)++]);
+    }
+  return count;
 }
 
 bool
