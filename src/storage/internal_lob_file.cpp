@@ -1135,10 +1135,15 @@ internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, const INTERNA
       return internal_lob_set_generic_error ();
     }
 
-  /* One ordinary OOS chain: the OOS delete checks the head's identity, then walks and removes every chunk. */
+  /* One ordinary OOS chain. In a user transaction it is reclaimed when the transaction commits (reclaim intent). */
   if (at_commit)
     {
-      return oos_delete_at_commit (thread_p, lob_vfid, internal_lob_chain_ref (locator), outcome_out);
+      std::vector<oos_chain_ref> refs (1, internal_lob_chain_ref (locator));
+      if (outcome_out != NULL)
+	{
+	  *outcome_out = OOS_DELETE_RECLAIMED;
+	}
+      return oos_log_reclaim_intent (thread_p, lob_vfid, oid_Null_oid, 0, "internal lob", refs);
     }
   return oos_delete (thread_p, lob_vfid, internal_lob_chain_ref (locator), NULL, outcome_out);
 }

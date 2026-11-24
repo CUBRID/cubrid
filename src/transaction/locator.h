@@ -121,7 +121,8 @@ typedef enum
   LC_FLUSH_UPDATE_PRUNE,
   LC_FLUSH_UPDATE_PRUNE_VERIFY,
   LC_FETCH_VERIFY_CHN,
-  LC_FLUSH_INSERT_INTERNAL_LOB
+  LC_FLUSH_INSERT_INTERNAL_LOB,
+  LC_FLUSH_REUSE_OOS
 } LC_COPYAREA_OPERATION;
 
 /* LC_FLUSH_INSERT_OOS is included on purpose: xlocator_repl_force handles an OOS item like an insert (it has no
@@ -133,6 +134,11 @@ typedef enum
 
 #define LC_IS_FLUSH_INSERT_OOS(operation) \
   (operation == LC_FLUSH_INSERT_OOS || operation == LC_FLUSH_INSERT_INTERNAL_LOB)
+
+/* A replicated OOS item belongs to the heap row that follows it in the same force area: a new chain
+ * (LC_IS_FLUSH_INSERT_OOS) or a chain the master's UPDATE reused, which carries no record (LC_FLUSH_REUSE_OOS). */
+#define LC_IS_FLUSH_OOS_ITEM(operation) \
+  (LC_IS_FLUSH_INSERT_OOS (operation) || (operation) == LC_FLUSH_REUSE_OOS)
 
 #define LC_IS_FLUSH_UPDATE(operation) \
   (operation == LC_FLUSH_UPDATE || operation == LC_FLUSH_UPDATE_PRUNE \

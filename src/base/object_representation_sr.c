@@ -2486,19 +2486,24 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->is_autoincrement = (attribute_flags & SM_ATTFLAG_AUTO_INCREMENT) ? 1 : 0;
       att->is_notnull = (attribute_flags & SM_ATTFLAG_NON_NULL) ? 1 : 0;
       att->is_invisible = (attribute_flags & SM_ATTFLAG_INVISIBLE_COLUMN) ? 1 : 0;
-      assert ((attribute_flags & (SM_ATTFLAG_OOS_PREFER_INLINE | SM_ATTFLAG_OOS_FORCE_OUTLINE))
-	      != (SM_ATTFLAG_OOS_PREFER_INLINE | SM_ATTFLAG_OOS_FORCE_OUTLINE));
-      if (attribute_flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
+      switch (attribute_flags & SM_ATTFLAG_OOS_STORAGE_MASK)
 	{
+	case SM_ATTFLAG_OOS_FORCE_OUTLINE:
 	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE;
-	}
-      else if (attribute_flags & SM_ATTFLAG_OOS_PREFER_INLINE)
-	{
+	  break;
+
+	case SM_ATTFLAG_OOS_PREFER_INLINE:
 	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_PREFER_INLINE;
-	}
-      else
-	{
+	  break;
+
+	case SM_ATTFLAG_OOS_FORCE_INLINE:
+	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_FORCE_INLINE;
+	  break;
+
+	default:
+	  assert ((attribute_flags & SM_ATTFLAG_OOS_STORAGE_MASK) == 0);
 	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_DEFAULT;
+	  break;
 	}
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);

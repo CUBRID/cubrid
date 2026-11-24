@@ -351,7 +351,7 @@ extern int es_posix_copy_file (const char *src_path, const char *metaname, char 
 extern int es_posix_rename_file (const char *src_path, const char *metaname, char *new_path);
 extern off_t es_posix_get_file_size (const char *path);
 
-extern int locator_upgrade_instances_domain (OID * class_oid, int attribute_id);
+extern int locator_upgrade_instances_domain (OID * class_oid, int attribute_id, bool check_only);
 extern int boot_get_server_locales (LANG_COLL_COMPAT ** server_collations, LANG_LOCALE_COMPAT ** server_locales,
 				    int *server_coll_cnt, int *server_locales_cnt);
 extern int boot_get_server_timezone_checksum (char *timezone_checksum);
@@ -374,6 +374,10 @@ extern int csession_get_prepared_statement (const char *name, XASL_ID * xasl_id,
 extern int csession_delete_prepared_statement (const char *name);
 
 extern int clogin_user (const char *username);
+extern int cau_challenge (const char *user_name, int *scheme, char *nonce, int nonce_size, INT64 * issued_at, char *tag,
+			  int tag_size, char *salt, int salt_size, char *stored_name, int stored_name_size);
+extern int cau_response (const char *user_name, const char *nonce, INT64 issued_at, const char *tag,
+			 const char *answer);
 
 extern int csession_set_session_variables (DB_VALUE * variables, const int count);
 extern int csession_get_variable (DB_VALUE * name, DB_VALUE * value);

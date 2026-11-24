@@ -213,6 +213,56 @@ heap_oos_begin_finalize_publication (THREAD_ENTRY *thread_p)
   return S_SUCCESS;
 }
 
+/*
+ * heap_oos_publish_reused_in_order () - Publish, among the chains the record's finalization inserted, a reused entry
+ *   for each column whose stub the record reuses, in attribute order: the order the replica's fixup consumes them in
+ *   (CBRD-27230)
+ *   start(in): the first entry the finalization published; the entries before it (internal LOB chains the
+ *		preparation published) are kept as they are
+ *   reused(in): per OOS column of the record in attribute order, true when the column reuses its stub
+ *   attrids(in): the attribute id of each of those columns
+ *
+ * Note: The insert published each new chain in attribute order, a multi-chunk chain as a boundary entry and then the
+ *	 chain. Each entry keeps its attribute pairing for the replication log.
+ */
+static void
+heap_oos_publish_reused_in_order (THREAD_ENTRY *thread_p, std::size_t start, const std::vector<bool> &reused,
+				  const std::vector<int> &attrids)
+{
+  std::vector<cubthread::entry::oos_published_ref> inserted (thread_p->oos_oids.begin () + start,
+      thread_p->oos_oids.end ());
+  std::vector<int> inserted_attrids (inserted.size (), NULL_ATTRID);
+  std::size_t next = 0;
+
+  if (thread_p->oos_tracking_is_paired ())
+    {
+      std::copy (thread_p->oos_attrids.begin () + start, thread_p->oos_attrids.end (), inserted_attrids.begin ());
+    }
+
+  thread_p->oos_oids.resize (start);
+  thread_p->oos_attrids.resize (start);
+  thread_p->oos_is_internal_lob.resize (start);
+  thread_p->oos_oids.reserve (start + inserted.size () + reused.size ());
+  for (std::size_t column = 0; column < reused.size (); column++)
+    {
+      if (reused[column])
+	{
+	  thread_p->oos_oids.push_back ({ oid_Null_oid, NULL_LSA, true });
+	  thread_p->pair_oos_oids (thread_p->oos_oids.size (), attrids[column], false);
+	  continue;
+	}
+      if (next < inserted.size () && OID_ISNULL (&inserted[next].oid))
+	{
+	  thread_p->oos_oids.push_back (inserted[next]);
+	  thread_p->pair_oos_oids (thread_p->oos_oids.size (), inserted_attrids[next++], false);
+	}
+      assert (next < inserted.size ());
+      thread_p->oos_oids.push_back (inserted[next]);
+      thread_p->pair_oos_oids (thread_p->oos_oids.size (), inserted_attrids[next++], false);
+    }
+  assert (next == inserted.size ());
+}
+
 int
 heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record,
 			  heap_pending_record *pending)
@@ -236,6 +286,8 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
       pending->finish (false);
       return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
     }
+  /* the entries the finalization publishes start here, after the internal LOB chains the preparation published */
+  const std::size_t publish_start = thread_p->oos_oids.size ();
   if (!heap_recdes_contains_oos (record))
     {
       pending->record ().set_record_length (record->length);
@@ -259,11 +311,15 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
   };
   std::vector<pending_value> values;
   std::vector<oos_insert_request> requests;
+  std::vector<bool> reused;
+  std::vector<int> reused_attrids;	/* attribute id of each entry of reused */
   int error = NO_ERROR;
   try
     {
       values.reserve (repr->n_variable);
       requests.reserve (repr->n_variable);
+      reused.reserve (repr->n_variable);
+      reused_attrids.reserve (repr->n_variable);
       for (int i = 0; i < repr->n_attributes; ++i)
 	{
 	  OR_ATTRIBUTE &attr = repr->attributes[i];
@@ -296,10 +352,19 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	    }
 	  if (ref.m_kind != heap_oos_value_ref::kind::memory)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	      error = ER_GENERIC_ERROR;
-	      break;
+	      /* a stub the UPDATE reused names a chain of the OOS file of the class it was copied in */
+	      if (!pending->reuses_stubs_of (*destination))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		  error = ER_GENERIC_ERROR;
+		  break;
+		}
+	      reused.push_back (true);
+	      reused_attrids.push_back (attr.id);
+	      continue;
 	    }
+	  reused.push_back (false);
+	  reused_attrids.push_back (attr.id);
 	  values.push_back ({ stub, oos_buffer (const_cast<char *> (ref.m_value.memory), ref.length ()), {}, attr.id });
 	}
       /* A record whose out-of-row columns are all Internal LOBs retains nothing: skip the OOS file lookup,
@@ -343,6 +408,10 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	      or_put_oid (&buf, &value.result.head_oid);
 	      or_put_bigint (&buf, (DB_BIGINT) value.payload.size ());
 	      or_put_bigint (&buf, oos_pack_identity_stamp (value.result.identity_stamp));
+	    }
+	  if (values.size () != reused.size ())
+	    {
+	      heap_oos_publish_reused_in_order (thread_p, publish_start, reused, reused_attrids);
 	    }
 	  pending->record ().set_record_length (record->length);
 	}
@@ -388,8 +457,10 @@ static std::atomic<int> heap_Oos_test_last_skipped_cleanup_outcome { -1 };
 static std::atomic<int> heap_Oos_test_last_skipped_cleanup_count { 0 };
 #endif
 
-static void heap_oos_diagnose_skipped_cleanup (const HEAP_OPERATION_CONTEXT *context, const char *op_ctx,
-    const oos_chain_ref &first_ref, oos_delete_outcome first_outcome, int skipped_count);
+static int heap_oos_collect_dropped_refs (HEAP_OPERATION_CONTEXT *context, const RECDES *old_recdes,
+    const RECDES *new_recdes, const char *op_ctx, OOS_REF_VECTOR &dropped_out, OOS_REF_VECTOR &dropped_lob_out);
+static int heap_oos_resolve_vfid (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, const char *op_ctx,
+				  VFID *oos_vfid_out);
 
 /*
  * heap_oos_parse_vot () - Walk the source VOT and collect each entry (including flag bits).
@@ -1187,79 +1258,40 @@ heap_oos_test_disarm_fail_before_vfid_lookup ()
 #endif
 
 /*
- * heap_oos_delete_unreferenced () - Eagerly delete the OOS records referenced by old_recdes and
- *   not referenced by new_recdes. new_recdes == NULL means none are referenced anymore (DELETE):
- *   every OOS OID of old_recdes is deleted unconditionally, which is safe because OOS OIDs are
- *   freshly allocated per heap record and never shared across rows. With a non-NULL new_recdes
- *   (UPDATE), OIDs present in both images (same physical OOS referenced before and after) are
- *   preserved.
+ * heap_oos_collect_dropped_refs () - List the OOS value chains old_recdes references and new_recdes does
+ *   not. new_recdes == NULL means none are referenced anymore (DELETE). An UPDATE copies the inline stub
+ *   of each OOS attribute it does not assign, so the new image may name a chain of the old one; such a
+ *   chain is kept, and only a chain the new image does not name is dropped.
  *
- * Called from the non-MVCC (!is_mvcc_op) branches of heap delete/update. For REC_RELOCATION rows
- * the caller passes the forward (REC_NEWHOME) record as old_recdes, because the actual data (and
- * OOS attributes) live on the forward page; the home slot holds only an 8-byte forwarding OID.
+ * For REC_RELOCATION rows the caller passes the forward (REC_NEWHOME) record as old_recdes, because the
+ * actual data (and OOS attributes) live on the forward page; the home slot holds only an 8-byte
+ * forwarding OID.
  *
- * MVCC mode keeps the old OOS alive for concurrent readers and lets vacuum reclaim it later;
- * SA_MODE has no readers and no vacuum, so deletion happens here or not at all. Despite the
- * historical "SA_MODE" tag in the diagnostics, the !is_mvcc_op gate also fires for SERVER_MODE
- * operations on MVCC-disabled classes (catalog tables), so this code can execute server-side too.
- * Caller MUST abort the transaction on error so oos_delete's per-chunk undo records replay any
- * partial deletes during rollback; otherwise the surviving recdes would reference already-deleted
- * OOS chunks. An internal LOB chain is deleted at commit instead (internal_lob_delete at_commit):
- * its file never reuses a slot, so the undo re-insert of a chunk fails once later inserts of the
- * transaction took the page's space.
+ * A failed OID extraction indicates real corruption or an allocation failure — log and propagate.
  *
- * Strict failure handling: the OOS header flag is set by the record transformer and read via
- * heap_recdes_contains_oos, so a missing OOS file or a failed OID extraction at this point
- * indicates real corruption — log and propagate. A failed OOS file lookup (I/O, interrupt) is an
- * operational error and is propagated as the error it set.
- *
- * Skipped targets (CBRD-26950): oos_delete skips a reference whose head page is deallocated or no
- * longer an OOS page, whose head slot is empty, or whose head chunk carries another identity stamp,
- * because the chain the reference described is gone. Vacuum expects that on a block retry and stays
- * quiet. Here the old record was the chain's only reference and nothing has been retried, so a skip
- * is unexpected: the DML still completes (accepted policy), but the skips are reported through
- * heap_oos_diagnose_skipped_cleanup as a notification that leaves the error stack clean. A
- * stamp-matching non-head target and operational failures remain errors.
- *
- * The report is one notification per call, naming how many of the record's chains were skipped and
- * describing the first, rather than one per chain: the caller holds a write latch on the heap page
- * across this function and each notification is a synchronous flushed write to the server error log,
- * so a record with many OOS-backed attributes must not turn into many latch-held writes. A call that
- * fails part way reports nothing, because its DML is about to be rolled back.
- *
- * Empty-page reclaim (oos_reclaim_empty_pages) must NOT be wired here: this runs inside a live
- * user transaction whose abort replays the per-chunk undo, and undo cannot re-insert chunks
- * into a deallocated page. Pages emptied here stay allocated.
- *
- * op_ctx (in): short operation tag for diagnostics, e.g. "update home", "delete relocation".
+ * dropped_out(out): the dropped ordinary OOS chain references
+ * dropped_lob_out(out): the dropped internal LOB chain references
  */
-int
-heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
-			      const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx)
+static int
+heap_oos_collect_dropped_refs (HEAP_OPERATION_CONTEXT *context, const RECDES *old_recdes, const RECDES *new_recdes,
+			       const char *op_ctx, OOS_REF_VECTOR &dropped_out, OOS_REF_VECTOR &dropped_lob_out)
 {
-  HEAP_OOS_REFERENCE_VECTOR old_oos_references;
+  HEAP_OOS_REFERENCE_VECTOR old_oos_refs;
   OOS_REF_VECTOR new_oos_refs;
-  VFID oos_vfid;
-  VFID internal_lob_vfid;
   int error_code;
 
-  VFID_SET_NULL (&oos_vfid);
-  VFID_SET_NULL (&internal_lob_vfid);
-
-  error_code = heap_recdes_get_oos_references (thread_p, old_recdes, old_oos_references);
+  dropped_out.clear ();
+  dropped_lob_out.clear ();
+  error_code = heap_recdes_get_oos_references (NULL, old_recdes, old_oos_refs);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       er_log_debug (ARG_FILE_LINE,
-		    "SA_MODE eager OOS cleanup (%s): heap_recdes_get_oos_references(old) failed"
+		    "OOS cleanup (%s): heap_recdes_get_oos_refs(old) failed"
 		    " (hfid=%d|%d, oid=%d|%d|%d, old_rec_len=%d).",
 		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
 		    context->oid.volid, context->oid.pageid, context->oid.slotid, old_recdes->length);
       return error_code;
-    }
-  if (old_oos_references.empty ())
-    {
-      return NO_ERROR;
     }
 
   if (new_recdes != NULL)
@@ -1271,7 +1303,7 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
 	{
 	  ASSERT_ERROR ();
 	  er_log_debug (ARG_FILE_LINE,
-			"SA_MODE eager OOS cleanup (%s): heap_recdes_get_oos_refs(new) failed"
+			"OOS cleanup (%s): heap_recdes_get_oos_refs(new) failed"
 			" (hfid=%d|%d, oid=%d|%d|%d, new_rec_len=%d).",
 			op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
 			context->oid.volid, context->oid.pageid, context->oid.slotid, new_recdes->length);
@@ -1279,131 +1311,186 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
 	}
     }
 
-  int skipped_count = 0;
-  oos_chain_ref first_skipped_ref = old_oos_references[0].ref;
-  oos_delete_outcome first_skipped_outcome = OOS_DELETE_OUTCOME_UNKNOWN;
-
-  for (const HEAP_OOS_REFERENCE &old_reference : old_oos_references)
+  try
     {
-      const oos_chain_ref &old_ref = old_reference.ref;
-      if (oos_refs_contain_head_oid (new_oos_refs, &old_ref.head_oid))
+      for (const HEAP_OOS_REFERENCE &old_reference : old_oos_refs)
 	{
-	  /* The new image still names this address; keep the chain. */
-	  continue;
-	}
-
-      /* [리뷰] 비MVCC(SA·카탈로그) 경로만 옛 체인을 즉시 지운다(LOB 체인은 커밋 때). MVCC 경로의 회수는 vacuum 몫이다.
-       * 스텁 kind로 LOB 파일과 OOS 파일을 가리고, 각 VFID는 처음 필요할 때 한 번만 찾는다.
-       * 중간 실패 시 호출자가 abort해 부분 삭제를 undo로 되돌려야 한다. */
-      /* A stale reference (page gone, slot empty, stamp mismatch) is skipped rather than failed, so the
-       * DML completes; the skips are diagnosed after the loop because, unlike a vacuum retry, they are
-       * unexpected here (CBRD-26950). A stamp-matching non-head reference and operational failures are
-       * errors. */
-      oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
-      if (TP_IS_LOB_TYPE (old_reference.type))
-	{
-	  INTERNAL_LOB_LOCATOR locator = { old_ref.head_oid, old_ref.identity_stamp, 0 };
-	  if (VFID_ISNULL (&internal_lob_vfid)
-	      && !heap_internal_lob_find_vfid (thread_p, &context->hfid, &internal_lob_vfid, false))
+	  const oos_chain_ref &old_ref = old_reference.ref;
+	  if (!oos_refs_contain_head_oid (new_oos_refs, &old_ref.head_oid))
 	    {
-	      error_code = er_errid ();
-	      if (error_code == NO_ERROR)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-		  error_code = ER_GENERIC_ERROR;
-		}
-	      return error_code;
+	      /* an internal LOB chain lives in the heap's internal LOB file */
+	      (TP_IS_LOB_TYPE (old_reference.type) ? dropped_lob_out : dropped_out).push_back (old_ref);
 	    }
-	  if (internal_lob_decode_disk_length (locator, old_reference.disk_length) != NO_ERROR)
+#if !defined (NDEBUG)
+	  else
 	    {
-	      return ER_FAILED;
-	    }
-	  error_code = internal_lob_delete (thread_p, internal_lob_vfid, locator, true, &outcome);
-	}
-      else
-	{
-	  if (VFID_ISNULL (&oos_vfid))
-	    {
-	      if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
+	      /* A kept chain is a byte copy of the old stub; another stamp at the same head OID would be a
+	       * stub that names a reused slot. */
+	      for (const oos_chain_ref &new_ref : new_oos_refs)
 		{
-		  /* A false return is a failure to read the heap header (I/O, interrupt), never "no OOS file";
-		   * it is an operational error with its own code, not a skip and not corruption. */
-		  ASSERT_ERROR_AND_SET (error_code);
-		  er_log_debug (ARG_FILE_LINE,
-				"SA_MODE eager OOS cleanup (%s): OOS file lookup failed for hfid %d|%d"
-				" (oid=%d|%d|%d).", op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
-				context->oid.volid, context->oid.pageid, context->oid.slotid);
-		  return error_code;
-		}
-	      if (VFID_ISNULL (&oos_vfid))
-		{
-		  er_log_debug (ARG_FILE_LINE,
-				"SA_MODE eager OOS cleanup (%s): OOS flag set but no OOS VFID found for hfid %d|%d"
-				" (oid=%d|%d|%d).",
-				op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
-				context->oid.volid, context->oid.pageid, context->oid.slotid);
-		  assert_release (false);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
-		  return ER_HEAP_OOS_CORRUPTED_RECORD;
+		  assert (!OID_EQ (&new_ref.head_oid, &old_ref.head_oid)
+			  || LSA_EQ (&new_ref.identity_stamp, &old_ref.identity_stamp));
 		}
 	    }
-	  error_code = oos_delete (thread_p, oos_vfid, old_ref, NULL, &outcome);
-	}
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  er_log_debug (ARG_FILE_LINE,
-			"SA_MODE eager OOS cleanup (%s): delete(type=%d, oid=%d|%d|%d) failed"
-			" (hfid=%d|%d, heap_oid=%d|%d|%d).",
-			op_ctx, old_reference.type, OID_AS_ARGS (&old_ref.head_oid),
-			VFID_AS_ARGS (&context->hfid.vfid),
-			context->oid.volid, context->oid.pageid, context->oid.slotid);
-	  return error_code;
-	}
-      if (outcome != OOS_DELETE_RECLAIMED)
-	{
-	  if (skipped_count == 0)
-	    {
-	      first_skipped_ref = old_ref;
-	      first_skipped_outcome = outcome;
-	    }
-	  skipped_count++;
+#endif
 	}
     }
-
-  if (skipped_count > 0)
+  catch (std::bad_alloc &)
     {
-      heap_oos_diagnose_skipped_cleanup (context, op_ctx, first_skipped_ref, first_skipped_outcome,
-					 skipped_count);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      old_oos_refs.size () * sizeof (oos_chain_ref));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * heap_oos_resolve_vfid () - Find the heap's OOS file for an eager reclaim intent. The OOS header flag is set by
+ *   the record transformer and read via heap_recdes_contains_oos, so a missing OOS file indicates real corruption;
+ *   a failed lookup (I/O, interrupt) is an operational error and is propagated as the error it set.
+ */
+static int
+heap_oos_resolve_vfid (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, const char *op_ctx, VFID *oos_vfid_out)
+{
+  int error_code = NO_ERROR;
+  if (!heap_oos_find_vfid (thread_p, &context->hfid, oos_vfid_out, false))
+    {
+      /* A false return is a failure to read the heap header (I/O, interrupt), never "no OOS file";
+       * it is an operational error with its own code, not a skip and not corruption. */
+      ASSERT_ERROR_AND_SET (error_code);
+      er_log_debug (ARG_FILE_LINE,
+		    "OOS cleanup (%s): OOS file lookup failed for hfid %d|%d (oid=%d|%d|%d).",
+		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid);
+      return error_code;
+    }
+  if (VFID_ISNULL (oos_vfid_out))
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "OOS cleanup (%s): OOS flag set but no OOS VFID found for hfid %d|%d"
+		    " (oid=%d|%d|%d).",
+		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid);
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
 
   return NO_ERROR;
 }
 
 /*
+ * heap_oos_delete_unreferenced () - Record, as a postpone of the current unit, the reclaim of the OOS
+ *   value chains old_recdes references and new_recdes does not (ADR-0008). The chains are deleted when
+ *   the unit commits; an abort discards the intent and the restored record finds its chains intact.
+ *
+ * Called from the non-MVCC (!is_mvcc_op) branches of heap delete/update. MVCC mode keeps the old OOS
+ * alive for concurrent readers and records an UPDATE's dropped chains with heap_oos_log_update_drop;
+ * vacuum reclaims them later. SA_MODE has no readers and no vacuum, so the commit reclaims them.
+ * Despite the historical "SA_MODE" tag in the diagnostics, the !is_mvcc_op gate also fires for
+ * SERVER_MODE operations on MVCC-disabled classes (catalog tables), so this code can execute
+ * server-side too.
+ *
+ * Skipped targets (CBRD-26950): the reclaim skips a reference whose head page is deallocated or no
+ * longer an OOS page, whose head slot is empty, or whose head chunk carries another identity stamp,
+ * because the chain the reference described is gone. Here the old record was the chain's only
+ * reference, so a skip is unexpected: the intent asks the reclaim to report skips once, as a
+ * notification that leaves the error stack clean (heap_oos_diagnose_skipped_cleanup).
+ *
+ * Empty-page reclaim (oos_reclaim_empty_pages) is not wired here; the pages the commit empties enter
+ * the file's emptied-page set, and the next growth returns them.
+ *
+ * op_ctx (in): short operation tag for diagnostics, e.g. "update home", "delete relocation".
+ */
+int
+heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
+			      const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx)
+{
+  OOS_REF_VECTOR dropped_refs;
+  OOS_REF_VECTOR dropped_lob_refs;
+  VFID oos_vfid = VFID_INITIALIZER;
+  int error_code =
+	  heap_oos_collect_dropped_refs (context, old_recdes, new_recdes, op_ctx, dropped_refs, dropped_lob_refs);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  if (!dropped_refs.empty ())
+    {
+      error_code = heap_oos_resolve_vfid (thread_p, context, op_ctx, &oos_vfid);
+      if (error_code == NO_ERROR)
+	{
+	  error_code = oos_log_reclaim_intent (thread_p, oos_vfid, context->oid, OOS_RECLAIM_DIAGNOSE_SKIPS, op_ctx,
+					       dropped_refs);
+	}
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  if (!dropped_lob_refs.empty ())
+    {
+      VFID lob_vfid = VFID_INITIALIZER;
+      if (!heap_internal_lob_find_vfid (thread_p, &context->hfid, &lob_vfid, false) || VFID_ISNULL (&lob_vfid))
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      error_code = oos_log_reclaim_intent (thread_p, lob_vfid, context->oid, OOS_RECLAIM_DIAGNOSE_SKIPS, op_ctx,
+					   dropped_lob_refs);
+    }
+  return error_code;
+}
+
+/*
+ * heap_oos_log_update_drop () - Record the OOS value chains an MVCC UPDATE dropped: those old_recdes
+ *   references and new_recdes does not (A', ADR-0008). Once the UPDATE's transaction commits, a postpone
+ *   hands them to vacuum under the UPDATE's MVCCID; a statement, savepoint or transaction rollback
+ *   discards the record and the chains stay with the restored version. Undo images are never a deletion
+ *   source.
+ *
+ * old_recdes (in): the record before the update; the forward REC_NEWHOME record of a relocated row
+ * new_recdes (in): the record after the update
+ */
+int
+heap_oos_log_update_drop (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, const RECDES *old_recdes,
+			  const RECDES *new_recdes)
+{
+  OOS_REF_VECTOR dropped_refs;
+  OOS_REF_VECTOR dropped_lob_refs;
+  int error_code =
+	  heap_oos_collect_dropped_refs (context, old_recdes, new_recdes, "mvcc update", dropped_refs, dropped_lob_refs);
+  if (error_code != NO_ERROR || dropped_refs.empty ())
+    {
+      return error_code;
+    }
+  /* The caller holds heap data pages; the OOS file is resolved by vacuum, not here. */
+  return oos_log_update_drop_intent (thread_p, context->hfid, dropped_refs);
+}
+
+/*
  * heap_oos_diagnose_skipped_cleanup () - Report the OOS value chains one eager cleanup could not
  *   reclaim because their targets were gone or reused.
- *   context(in): heap operation whose old record held the references
- *   op_ctx(in): short operation tag, e.g. "delete home"
+ *   owner_oid(in): heap record whose old image held the references
+ *   op_ctx(in): short operation tag, e.g. "delete home", carried by the reclaim intent
  *   first_ref(in): the first skipped chain reference, the one the message describes
  *   first_outcome(in): why oos_delete skipped that one (never OOS_DELETE_RECLAIMED)
  *   skipped_count(in): how many of the record's chains were skipped, at least one
  *
  * The report is a notification: it is written to the server error log and does not become the current
- * error, so the DML that continues past it still reports success (accepted policy, CBRD-26950). Note
- * that oos_delete already clears the error stack in each skip branch, so a notification here has no
- * earlier error to preserve.
+ * error, so the DML or commit that continues past it still reports success (accepted policy,
+ * CBRD-26950). Note that oos_delete already clears the error stack in each skip branch, so a
+ * notification here has no earlier error to preserve.
  */
-static void
-heap_oos_diagnose_skipped_cleanup (const HEAP_OPERATION_CONTEXT *context, const char *op_ctx,
-				   const oos_chain_ref &first_ref, oos_delete_outcome first_outcome,
-				   int skipped_count)
+void
+heap_oos_diagnose_skipped_cleanup (const OID &owner_oid, const char *op_ctx, const oos_chain_ref &first_ref,
+				   oos_delete_outcome first_outcome, int skipped_count)
 {
   assert (first_outcome != OOS_DELETE_RECLAIMED && first_outcome != OOS_DELETE_OUTCOME_UNKNOWN);
   assert (skipped_count > 0);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED, 9, op_ctx,
-	  OID_AS_ARGS (&context->oid), OID_AS_ARGS (&first_ref.head_oid),
+	  OID_AS_ARGS (&owner_oid), OID_AS_ARGS (&first_ref.head_oid),
 	  oos_delete_outcome_string (first_outcome), skipped_count);
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)

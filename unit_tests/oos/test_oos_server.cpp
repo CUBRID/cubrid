@@ -47,7 +47,8 @@ oos_debug_counters bridge_oos_debug_counters_get ();
 void bridge_heap_attrinfo_fail_after_oos_publication_reset_once ();
 void bridge_heap_attrinfo_disarm_publication_reset_failure ();
 SCAN_CODE bridge_heap_attrinfo_insert_to_oos (THREAD_ENTRY *thread_p, const OID *class_oid);
-int bridge_locator_fixup_oos_oids_in_recdes (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recdes);
+int bridge_locator_fixup_oos_oids_in_recdes (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recdes,
+    RECDES *old_recdes);
 
 static std::string make_filled_payload (int size, char ch);
 static void clear_oos_insert_publication_state_for_test ();
@@ -219,6 +220,43 @@ read_replicated_heap_oos_length (RECDES &recdes, int n_variables, int index)
   INT64 length = 0;
   OR_GET_BIGINT (recdes.data + header_size + vot_bytes + index * OR_OOS_INLINE_SIZE + OR_OID_SIZE, &length);
   return length;
+}
+
+static char *
+replicated_heap_oos_stub (RECDES &recdes, int n_variables, int index)
+{
+  const int header_size = OR_MVCC_REP_SIZE + OR_CHN_SIZE;
+  const int vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (n_variables, OR_SHORT_SIZE);
+  return recdes.data + header_size + vot_bytes + index * OR_OOS_INLINE_SIZE;
+}
+
+/* A previous version of the row as this replica stores it: its own head OIDs and stamps, in the class's current
+ * representation, which the fixup reads to find a reused column. */
+static int
+build_replica_previous_version (const OID &class_oid, const std::vector<OID> &replica_oids,
+				const std::vector<LOG_LSA> &replica_stamps, RECDES &recdes)
+{
+  HEAP_CACHE_ATTRINFO attr_info;
+  int error = heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  const int repr_id = attr_info.last_classrepr->id;
+  const int n_variables = attr_info.last_classrepr->n_variable;
+  heap_attrinfo_end (thread_p, &attr_info);
+
+  error = build_replicated_heap_recdes (class_oid, replica_oids, recdes);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  for (std::size_t i = 0; i < replica_stamps.size (); i++)
+    {
+      INT64 packed = oos_pack_identity_stamp (replica_stamps[i]);
+      OR_PUT_BIGINT (replicated_heap_oos_stub (recdes, n_variables, (int) i) + OR_OID_SIZE + OR_BIGINT_SIZE, &packed);
+    }
+  return or_set_rep_id (&recdes, repr_id);
 }
 
 /* The published pair must name a chunk that really carries that stamp (CBRD-26950). */
@@ -698,7 +736,7 @@ TEST (OosServerTest, ReplicaOosItemsAccumulateAndFixupConsumesInOrder)
     recdes_free_data_area (&heap_recdes);
   });
 
-  ASSERT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &heap_recdes), NO_ERROR);
+  ASSERT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &heap_recdes, nullptr), NO_ERROR);
   const int n_variables = get_class_variable_count (class_oid);
   ASSERT_GE (n_variables, 2);
   const OID fixed_oid1 = read_replicated_heap_oos_oid (heap_recdes, n_variables, 0);
@@ -745,7 +783,7 @@ TEST (OosServerTest, ReplicaFixupRejectsTruncatedStub)
 
   /* cut the record short so the stub no longer fits; the fixup must reject rather than write past it */
   recdes.length -= OR_BIGINT_SIZE;
-  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes), ER_HA_GENERIC_ERROR);
+  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes, nullptr), ER_HA_GENERIC_ERROR);
   EXPECT_EQ (er_errid (), ER_HA_GENERIC_ERROR);
   er_clear ();
 }
@@ -774,7 +812,7 @@ TEST (OosServerTest, ReplicaFixupRejectsShortFieldBeforeAnotherAttribute)
   const std::string before (recdes.data, recdes.length);
   thread_p->oos_oids = { { make_test_oid (1, 765440, 40), LOG_LSA (12, 34) } };
 
-  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes), ER_HA_GENERIC_ERROR);
+  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes, nullptr), ER_HA_GENERIC_ERROR);
   EXPECT_EQ (std::string (next_attribute, 8), sentinel);
   /* nothing is written before the field is rejected */
   EXPECT_EQ (std::string (recdes.data, recdes.length), before);
@@ -943,7 +981,7 @@ TEST (OosServerTest, ReplicaFixupRejectsInsufficientOids)
     recdes_free_data_area (&recdes);
   });
 
-  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes), ER_HA_GENERIC_ERROR);
+  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes, nullptr), ER_HA_GENERIC_ERROR);
   EXPECT_EQ (er_errid (), ER_HA_GENERIC_ERROR);
   er_clear ();
 }
@@ -964,9 +1002,141 @@ TEST (OosServerTest, ReplicaFixupRejectsExtraOids)
     recdes_free_data_area (&recdes);
   });
 
-  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes), ER_HA_GENERIC_ERROR);
+  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes, nullptr), ER_HA_GENERIC_ERROR);
   EXPECT_EQ (er_errid (), ER_HA_GENERIC_ERROR);
   er_clear ();
+}
+
+/* An UPDATE that reused an OOS column replicates a marker in the column's place (CBRD-27230). The replica writes
+ * the stub of its own previous version there, not the master's, and a fresh chain's pair everywhere else. */
+TEST (OosServerTest, ReplicaFixupTakesReusedStubFromPreviousVersion)
+{
+  const OID class_oid = find_db_user_class_oid ();
+  ASSERT_FALSE (OID_ISNULL (&class_oid));
+  const int n_variables = get_class_variable_count (class_oid);
+  ASSERT_GE (n_variables, 2);
+
+  const std::vector<OID> replica_oids = { make_test_oid (1, 765450, 50), make_test_oid (1, 765451, 51) };
+  const std::vector<LOG_LSA> replica_stamps = { LOG_LSA (765450, 10), LOG_LSA (765451, 11) };
+  RECDES old_recdes = RECDES_INITIALIZER;
+  ASSERT_EQ (build_replica_previous_version (class_oid, replica_oids, replica_stamps, old_recdes), NO_ERROR);
+  RECDES recdes = RECDES_INITIALIZER;
+  ASSERT_EQ (build_replicated_heap_recdes (class_oid, { make_test_oid (2, 765452, 52), make_test_oid (2, 765453, 53) },
+	     recdes), NO_ERROR);
+  scope_exit free_recdes ([&] () noexcept
+  {
+    recdes_free_data_area (&old_recdes);
+    recdes_free_data_area (&recdes);
+    thread_p->oos_oids.clear ();
+  });
+
+  const OID new_chain_oid = make_test_oid (1, 765454, 54);
+  const LOG_LSA new_chain_stamp (765454, 12);
+  thread_p->oos_oids = { { new_chain_oid, new_chain_stamp }, { oid_Null_oid, NULL_LSA, true } };
+
+  ASSERT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes, &old_recdes), NO_ERROR);
+
+  const OID fixed_oid = read_replicated_heap_oos_oid (recdes, n_variables, 0);
+  const LOG_LSA fixed_stamp = read_replicated_heap_oos_identity_stamp (recdes, n_variables, 0);
+  EXPECT_TRUE (OID_EQ (&fixed_oid, &new_chain_oid));
+  EXPECT_TRUE (LSA_EQ (&fixed_stamp, &new_chain_stamp));
+  EXPECT_EQ (std::string (replicated_heap_oos_stub (recdes, n_variables, 1), OR_OOS_INLINE_SIZE),
+	     std::string (replicated_heap_oos_stub (old_recdes, n_variables, 1), OR_OOS_INLINE_SIZE))
+      << "the reused column must carry every byte of the replica's own stub";
+}
+
+/* A replica that cannot name the reused chain itself has diverged from the master: the apply stops and the master's
+ * stub, which names no chain here, is never written. */
+TEST (OosServerTest, ReplicaFixupRejectsReusedColumnTheReplicaCannotName)
+{
+  const OID class_oid = find_db_user_class_oid ();
+  ASSERT_FALSE (OID_ISNULL (&class_oid));
+  const int n_variables = get_class_variable_count (class_oid);
+  ASSERT_GE (n_variables, 1);
+
+  RECDES same_length = RECDES_INITIALIZER;
+  RECDES other_length = RECDES_INITIALIZER;
+  RECDES no_stub = RECDES_INITIALIZER;
+  RECDES recdes = RECDES_INITIALIZER;
+  ASSERT_EQ (build_replica_previous_version (class_oid, { make_test_oid (1, 765460, 60) }, { LOG_LSA (765460, 20) },
+	     same_length), NO_ERROR);
+  ASSERT_EQ (build_replica_previous_version (class_oid, { make_test_oid (1, 765461, 61) }, { LOG_LSA (765461, 21) },
+	     other_length), NO_ERROR);
+  ASSERT_EQ (build_replica_previous_version (class_oid, {}, {}, no_stub), NO_ERROR);
+  ASSERT_EQ (build_replicated_heap_recdes (class_oid, { make_test_oid (2, 765462, 62) }, recdes), NO_ERROR);
+  scope_exit free_recdes ([&] () noexcept
+  {
+    recdes_free_data_area (&same_length);
+    recdes_free_data_area (&other_length);
+    recdes_free_data_area (&no_stub);
+    recdes_free_data_area (&recdes);
+    thread_p->oos_oids.clear ();
+  });
+  const INT64 shorter = read_replicated_heap_oos_length (other_length, n_variables, 0) - 1;
+  OR_PUT_BIGINT (replicated_heap_oos_stub (other_length, n_variables, 0) + OR_OID_SIZE, &shorter);
+
+  const std::string master_record (recdes.data, recdes.length);
+  RECDES *previous_versions[] = { nullptr, &other_length, &no_stub };
+  for (RECDES *previous : previous_versions)
+    {
+      thread_p->oos_oids = { { oid_Null_oid, NULL_LSA, true } };
+      EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes, previous),
+		 ER_HA_GENERIC_ERROR);
+      EXPECT_EQ (er_errid (), ER_HA_GENERIC_ERROR);
+      EXPECT_EQ (std::string (recdes.data, recdes.length), master_record);
+      er_clear ();
+    }
+
+  /* the same record is accepted from a previous version that names a chain of the master's length */
+  thread_p->oos_oids = { { oid_Null_oid, NULL_LSA, true } };
+  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes, &same_length), NO_ERROR);
+}
+
+/* The force-area contract keeps a reused-chain marker with its heap row, as it does an OOS insert. */
+TEST (OosServerTest, ReplicaReusedOosMarkerWithoutItsRowFailsTheForce)
+{
+  const OID class_oid = find_db_user_class_oid ();
+  const int original_depth = get_current_tdes ()->topops.last;
+  scope_exit cleanup ([&] () noexcept
+  {
+    while (get_current_tdes ()->topops.last > original_depth)
+      {
+	log_sysop_abort (thread_p);
+      }
+    clear_oos_insert_publication_state_for_test ();
+    er_clear ();
+  });
+
+  LC_COPYAREA *area = locator_allocate_copy_area_by_length (512 + sizeof (LC_COPYAREA_MANYOBJS)
+		      + sizeof (LC_COPYAREA_ONEOBJ));
+  LC_COPYAREA *reply = locator_allocate_copy_area_by_length (DB_PAGESIZE);
+  ASSERT_NE (area, nullptr);
+  ASSERT_NE (reply, nullptr);
+  scope_exit free_areas ([&] () noexcept
+  {
+    locator_free_copy_area (area);
+    locator_free_copy_area (reply);
+  });
+
+  DB_VALUE key;
+  db_make_int (&key, 1);
+  LC_COPYAREA_MANYOBJS *many = LC_MANYOBJS_PTR_IN_COPYAREA (area);
+  memset (many, 0, sizeof (*many));
+  many->num_objs = 1;
+  LC_COPYAREA_ONEOBJ *marker = LC_START_ONEOBJ_PTR_IN_COPYAREA (many);
+  memset (marker, 0, sizeof (*marker));
+  char *end = or_pack_mem_value (area->mem, &key, nullptr);
+  marker->operation = LC_FLUSH_REUSE_OOS;
+  marker->class_oid = class_oid;
+  marker->offset = 0;
+  marker->length = end - area->mem;
+  memset (LC_MANYOBJS_PTR_IN_COPYAREA (reply), 0, sizeof (LC_COPYAREA_MANYOBJS));
+
+  const int error = xlocator_repl_force (thread_p, area, &reply);
+  EXPECT_NE (error, NO_ERROR);
+  EXPECT_NE (error, ER_LC_PARTIALLY_FAILED_TO_FLUSH);
+  EXPECT_EQ (get_current_tdes ()->topops.last, original_depth);
+  EXPECT_TRUE (thread_p->oos_oids.empty ());
 }
 
 TEST (OosServerTest, ReplicaScalarPublicationAllocationFailureInvalidatesAccumulator)

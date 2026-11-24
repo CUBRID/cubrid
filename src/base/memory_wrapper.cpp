@@ -45,8 +45,8 @@ wrapped_operator_new (size_t size, size_t alignment)
 {
   void *p = NULL;
 
-  /* the allocations of mmon_add_stat () itself are not tracked, so that it is not entered again */
-  if (!mmon_is_memory_monitor_enabled () || mmon_in_add_stat)
+  /* the monitor's own allocations are not tracked, which also keeps mmon_add_stat () from being entered again */
+  if (!mmon_is_memory_monitor_enabled () || mmon_untracked)
     {
       if (alignment == 0)
 	{

@@ -217,7 +217,7 @@ namespace parallel_scan
 		      }
 		  }
 		bool iscan_oid_order = m_scan_id->s.isid.iscan_oid_order;
-		err_code = scan_open_index_scan (&thread_ref, m_scan_id, false, false, S_SELECT,
+		err_code = scan_open_index_scan (&thread_ref, m_scan_id, false, false, false, S_SELECT,
 						 m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
 						 m_xasl->val_list, m_vd, spec->indexptr, &m_cls_oid, &m_hfid,
 						 cls->cls_regu_list_key, spec->where_key,
@@ -235,12 +235,21 @@ namespace parallel_scan
 		  {
 		    return err_code;
 		  }
+		/* the leaf walker drains every key's OIDs through the scan's OID buffer, covering or not */
+		err_code = scan_index_alloc_oid_buffer (&m_scan_id->s.isid);
+		if (err_code != NO_ERROR)
+		  {
+		    return err_code;
+		  }
+		/* the scan's workers share the query's read-ahead, each its first window at least */
+		m_scan_id->s.isid.ahead_limit = MAX (SCAN_INDEX_READ_AHEAD_INITIAL,
+						     SCAN_INDEX_READ_AHEAD_DISTANCE / m_input_handler->get_parallelism ());
 		/* scan_start_scan initializes scan caches and attr info required by slot_iterator_index for leaf page processing. */
 		err_code = scan_start_scan (&thread_ref, m_scan_id);
 	      }
 	    else
 	      {
-		scan_open_heap_scan (&thread_ref, m_scan_id, false, false, S_SELECT,
+		scan_open_heap_scan (&thread_ref, m_scan_id, false, false, false, S_SELECT,
 				     m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
 				     m_xasl->val_list, m_vd, &m_cls_oid, &m_hfid,
 				     cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
@@ -348,7 +357,7 @@ namespace parallel_scan
 		      {
 		      case ACCESS_METHOD_SEQUENTIAL:
 		      {
-			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false, false,
+			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false, false, false,
 							S_SELECT, fixed_scan, specp->s_id.grouped,
 							specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
 							&scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
@@ -369,7 +378,7 @@ namespace parallel_scan
 			bool iscan_oid_order = specp->s_id.s.isid.iscan_oid_order;
 			specp->indexptr->btid = scan_info.btid;
 			err_code =
-				scan_open_index_scan (&thread_ref, &specp->s_id, false, false,
+				scan_open_index_scan (&thread_ref, &specp->s_id, false, false, false,
 						      S_SELECT, fixed_scan, specp->s_id.grouped,
 						      specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
 						      specp->indexptr, &scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_key,
@@ -596,8 +605,8 @@ namespace parallel_scan
 	  }
 	/* this clone's compiled programs are still alive here (qexec_clear_xasl () below frees them) */
 	m_trace_handler->add_expr_compile_dump (m_xasl, m_scan_id);
-	m_trace_handler->add_trace (m_scan_fixes.fetches, m_scan_fixes.ioreads, m_scan_fixes.fetch_time, m_scan_id,
-				    elapsed_time);
+	m_trace_handler->add_trace (m_scan_fixes.fetches, m_scan_fixes.ioreads, m_scan_fixes.fetch_time,
+				    m_scan_fixes.oos_reads, m_scan_id, elapsed_time);
       }
     if (m_handlers_initialized)
       {
@@ -714,7 +723,8 @@ namespace parallel_scan
   {
     return { perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
 	     perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
-	     perfmon_get_from_statistic (&thread_ref, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) };
+	     perfmon_get_from_statistic (&thread_ref, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
+	     thread_ref.oos_read_stats };
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
@@ -724,6 +734,7 @@ namespace parallel_scan
     m_scan_fixes.fetches += now.fetches - since.fetches;
     m_scan_fixes.ioreads += now.ioreads - since.ioreads;
     m_scan_fixes.fetch_time += now.fetch_time - since.fetch_time;
+    scan_add_oos_read_stats (&m_scan_fixes.oos_reads, &since.oos_reads, &now.oos_reads);
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>

@@ -282,18 +282,22 @@ TEST_F (OosWorkspaceTest, StandaloneLoaderStoresOos)
   check ("t_load", "v=X'" + payload + "'", 1, 1);
 }
 
-TEST_F (OosWorkspaceTest, LoaderRejectsOosBigoneButKeepsOrdinaryBigone)
+TEST_F (OosWorkspaceTest, LoaderRejectsEveryBigoneUserRecord)
 {
   sql ("CREATE TABLE t_guard(a BIT(140000), b BIT VARYING); "
        "CREATE TABLE t_plain(a BIT(140000)); COMMIT;\n");
   load ("%class t_guard (a b)\nB'1' X'" + payload + "'\n", {}, "maximum record size");
-  const auto output = sql ("SELECT CASE WHEN COUNT(*)=0 THEN 'VALUE_OK' ELSE 'VALUE_BAD' END AS verdict "
-			   "FROM t_guard;\nSHOW HEAP OOS OF t_guard;\n");
-  EXPECT_NE (output.find ("'VALUE_OK'"), std::string::npos) << output;
-  EXPECT_EQ (output.find ("'VALUE_BAD'"), std::string::npos) << output;
-  expect_chunks (output, {0});
-  load ("%class t_plain (a)\nB'1'\n");
-  check ("t_plain", "a=CAST(B'1' AS BIT(140000))", 1, 0);
+  load ("%class t_plain (a)\nB'1'\n", {}, "maximum record size");
+  for (const std::string table :
+       {"t_guard", "t_plain"
+       })
+    {
+      const auto output = sql ("SELECT CASE WHEN COUNT(*)=0 THEN 'VALUE_OK' ELSE 'VALUE_BAD' END AS verdict "
+			       "FROM " + table + ";\nSHOW HEAP OOS OF " + table + ";\n");
+      EXPECT_NE (output.find ("'VALUE_OK'"), std::string::npos) << output;
+      EXPECT_EQ (output.find ("'VALUE_BAD'"), std::string::npos) << output;
+      expect_chunks (output, {0});
+    }
 }
 
 TEST_F (OosWorkspaceTest, WorkspaceInsertUsesReservedOid)
@@ -330,7 +334,9 @@ TEST_F (OosWorkspaceTest, WorkspaceUpdateRollbackCommitAndDelete)
   sql ("CREATE TRIGGER refs_update BEFORE UPDATE ON t_refs EXECUTE PRINT 'workspace update'; COMMIT;\n");
   const auto output = sql ("UPDATE t_refs SET v=X'" + replacement + "';\nSELECT COUNT(*) FROM t_refs;\n"
 			   "SHOW HEAP OOS OF t_refs;\nROLLBACK;\nSHOW HEAP OOS OF t_refs;\n");
-  expect_chunks (output, {2, 2});
+  /* Inside the transaction the replaced chains wait for its commit (ADR-0008), so the old and new chains
+   * coexist; the rollback discards the reclaim intents and the new chains, leaving the original two. */
+  expect_chunks (output, {4, 2});
   check ("t_refs", "peer.id=3-id AND v=X'" + payload + "'", 2, 2);
   sql ("UPDATE t_refs SET v=X'" + replacement + "'; COMMIT;\n");
   check ("t_refs", "peer.id=3-id AND v=X'" + replacement + "'", 2, 2);

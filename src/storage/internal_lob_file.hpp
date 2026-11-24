@@ -167,7 +167,8 @@ extern int internal_lob_read_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LO
 extern int internal_lob_read_skip (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, DB_BIGINT count);
 extern int internal_lob_read_pull (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, oos_buffer dest, int &nread);
 extern int xinternal_lob_upload_release (THREAD_ENTRY *thread_p, INT64 token);
-/* at_commit: oos_delete_at_commit (a delete inside a user transaction) instead of oos_delete (vacuum).
+/* at_commit: a delete inside a user transaction, reclaimed when it commits (oos_log_reclaim_intent);
+ * otherwise oos_delete, which only a unit that already committed the decision may call.
  * outcome_out (optional): what the delete did with the chain, see oos_delete_outcome. */
 extern int internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, const INTERNAL_LOB_LOCATOR &locator,
 				bool at_commit, oos_delete_outcome *outcome_out = NULL);

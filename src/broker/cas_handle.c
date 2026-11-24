@@ -305,7 +305,9 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 	  || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
 	  || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY
 	  || srv_handle->schema_type == CCI_SCH_ATTR_WITH_SYNONYM || srv_handle->schema_type == CCI_SCH_SCHEMAS
-	  || srv_handle->schema_type == CCI_SCH_CURRENT_SCHEMA)
+	  || srv_handle->schema_type == CCI_SCH_CURRENT_SCHEMA || srv_handle->schema_type == CCI_SCH_PROCEDURES
+	  || srv_handle->schema_type == CCI_SCH_PROCEDURE_COLUMNS || srv_handle->schema_type == CCI_SCH_FUNCTIONS
+	  || srv_handle->schema_type == CCI_SCH_FUNCTION_COLUMNS)
 	{
 	  hm_qresult_end (srv_handle, FALSE);
 	}
@@ -554,6 +556,8 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 {
   FREE_MEM (srv_handle->sql_stmt);
   FREE_MEM (srv_handle->qr_app_sql);
+  FREE_MEM (srv_handle->cgw_schema_info);	/* gateway schema_info rows; always NULL outside the gateway */
+  FREE_MEM (srv_handle->cgw_schema_class_name);
   if (!is_cgw_mode)
     {
       hm_prepare_call_info_free (srv_handle->prepare_call_info);
@@ -570,6 +574,10 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 	case CCI_SCH_ATTR_WITH_SYNONYM:
 	case CCI_SCH_SCHEMAS:
 	case CCI_SCH_CURRENT_SCHEMA:
+	case CCI_SCH_PROCEDURES:
+	case CCI_SCH_PROCEDURE_COLUMNS:
+	case CCI_SCH_FUNCTIONS:
+	case CCI_SCH_FUNCTION_COLUMNS:
 	  hm_qresult_end (srv_handle, TRUE);
 	  hm_session_free (srv_handle);
 	  break;

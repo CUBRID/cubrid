@@ -129,6 +129,17 @@ struct event_stat
   int trace_log_flush_time;
 };
 
+/* What OOS value reads (oos_read, oos_read_many) cost: their page fixes, the reads those fixes made and the time
+ * spent in them.  A thread counts its own while it traces; a scan's trace takes the difference across its own
+ * window, so a scan's figures are a part of its fetch, ioread and time. */
+typedef struct oos_read_stats OOS_READ_STATS;
+struct oos_read_stats
+{
+  struct timeval elapsed;
+  UINT64 fetches;
+  UINT64 ioreads;
+};
+
 typedef std::thread::id thread_id_t;
 
 // FIXME - move these enum to cubthread::entry
@@ -302,6 +313,7 @@ namespace cubthread
       int trace_format;
       bool on_trace;
       bool clear_trace;
+      OOS_READ_STATS oos_read_stats;	/* only while on_trace; never reset, read as differences */
       bool trace_plan_detail;	/* XASL_TRACE_PLAN_DETAIL: the trace shows the compiled expression programs */
 
       /* for lock free structures */
@@ -343,13 +355,15 @@ namespace cubthread
        * OOS OID plus the identity stamp the chain was created with (CBRD-26950). The HA applier's
        * stub fixup rewrites both fields of each OOS inline stub from these pairs, so the slave's
        * stubs carry the stamps the slave itself issued and never depend on reading OOS storage. A
-       * NULL OID with a NULL stamp is the multi-chunk replication boundary marker. The layout
-       * mirrors oos_chain_ref (oos_file.hpp) but is kept separate so this header does not depend on
-       * storage headers. */
+       * NULL OID with a NULL stamp is the multi-chunk replication boundary marker. A reused entry names
+       * no chain: an UPDATE reused that column's stub, and the replica takes the stub of its own previous
+       * version (CBRD-27230). The layout mirrors oos_chain_ref (oos_file.hpp) but is kept separate so
+       * this header does not depend on storage headers. */
       struct oos_published_ref
       {
 	OID oid;
 	LOG_LSA identity_stamp;
+	bool reused = false;
       };
       std::vector<oos_published_ref> oos_oids;
       /* paired 1:1 with oos_oids for replication: each OID's attribute id and whether it is an internal LOB node */

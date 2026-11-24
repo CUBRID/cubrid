@@ -111,7 +111,6 @@ typedef struct tde_mk_file_item
    || (rcvindex) == RVHF_MVCC_INSERT \
    || (rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME \
    || (rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM \
-   || (rcvindex) == RVHF_DELETE_NEWHOME_NOTIFY_VACUUM \
    || (rcvindex) == RVHF_INSERT_NEWHOME \
    || (rcvindex) == RVHF_MVCC_REDISTRIBUTE \
    || (rcvindex) == RVHF_MVCC_UPDATE_OVERFLOW \
@@ -129,6 +128,12 @@ typedef struct tde_mk_file_item
    || (rcvindex) == RVBT_RECORD_MODIFY_UNDOREDO \
    || (rcvindex) == RVBT_RECORD_MODIFY_NO_UNDO \
    || (rcvindex) == RVBT_RECORD_MODIFY_COMPENSATE \
+   || (rcvindex) == RVBT_MVCC_DELETE_OBJECT \
+   || (rcvindex) == RVBT_MARK_DELETED \
+   || (rcvindex) == RVBT_DELETE_OBJECT_POSTPONE \
+   || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM \
+   || (rcvindex) == RVVAC_HEAP_RECORD_VACUUM \
+   || (rcvindex) == RVPGBUF_NEW_PAGE \
    || (rcvindex) == RVREPL_DATA_INSERT \
    || (rcvindex) == RVREPL_DATA_UPDATE \
    || (rcvindex) == RVREPL_DATA_DELETE \
@@ -140,8 +145,8 @@ typedef struct tde_mk_file_item
    || (rcvindex) == RVOOS_DELETE \
    || (rcvindex) == RVREPL_OOS_INSERT \
    || (rcvindex) == RVREPL_INTERNAL_LOB_INSERT \
-   || (rcvindex) == RVREPL_OOS_DELETE \
-   || (rcvindex) == RVREPL_DUMMY_OOS_RECORD)
+   || (rcvindex) == RVREPL_DUMMY_OOS_RECORD \
+   || (rcvindex) == RVREPL_OOS_REUSE)
 
 #define tde_er_log(...) if (prm_get_bool_value (PRM_ID_ER_LOG_TDE)) _er_log_debug (ARG_FILE_LINE, "TDE: " __VA_ARGS__)
 

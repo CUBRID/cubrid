@@ -679,6 +679,7 @@ static int file_table_append_full_sector_page (THREAD_ENTRY * thread_p, PAGE_PTR
 static int file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VSID * vsid);
 STATIC_INLINE int file_table_collect_ftab_pages (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, bool collect_numerable,
 						 FILE_FTAB_COLLECTOR * collector_out) __attribute__ ((ALWAYS_INLINE));
+static int file_table_pages_to_buffer (THREAD_ENTRY * thread_p, const VPID * vpid_first, int max_pages);
 static int file_extdata_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop,
 					    void *args);
 STATIC_INLINE bool file_table_collector_has_page (FILE_FTAB_COLLECTOR * collector, VPID * vpid)
@@ -3036,7 +3037,7 @@ file_type_to_string (FILE_TYPE fstruct_type)
     case FILE_TEMP:
       return "TEMPORARILY";
     case FILE_OOS:
-      return "OUT_OF_LINE_OVERFLOW_STORAGE";
+      return "OOS";
     case FILE_INTERNAL_LOB:
       return "INTERNAL_LOB";
     case FILE_UNKNOWN_TYPE:
@@ -3489,7 +3490,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
       goto exit;
     }
 
-  memset (page_fhead, 0, DB_PAGESIZE);
+  pgbuf_init_new_page (thread_p, page_fhead, TDE_ALGORITHM_NONE, is_temp);
   pgbuf_set_page_ptype (thread_p, page_fhead, PAGE_FTAB);
   fhead = (FILE_HEADER *) page_fhead;
 
@@ -3713,8 +3714,8 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit;
 	    }
+	  pgbuf_init_new_page (thread_p, page_ftab, TDE_ALGORITHM_NONE, is_temp);
 	  pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
-	  memset (page_ftab, 0, DB_PAGESIZE);
 	  extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
 	  file_extdata_init (sizeof (FILE_PARTIAL_SECTOR), DB_PAGESIZE, extdata_part_ftab);
 
@@ -4077,6 +4078,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   assert (vfid != NULL && !VFID_ISNULL (vfid));
 
   vsid_collector.vsids = NULL;
+  ftab_collector.partsect_ftab = NULL;
 
   if (is_temp)
     {
@@ -4093,8 +4095,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 	  goto exit;
 	}
     }
-
-  ftab_collector.partsect_ftab = NULL;
 
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -4850,7 +4850,7 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
        * note that maybe we can do without really deallocating. a page type update would be enough. this is however the
        * safest way to do it, even though not optimal. the case will not affect performance in any benchmark or
        * production scenario anyway. */
-      pgbuf_dealloc_page (thread_p, page_part_ftab_first);
+      pgbuf_dealloc_page (thread_p, page_part_ftab_first, PGBUF_DEALLOC_KEEP_CONTENTS);
       page_part_ftab_first = NULL;
 
       if (alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR)
@@ -4958,6 +4958,7 @@ file_table_append_full_sector_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
+  pgbuf_init_new_page (thread_p, page_ftab, TDE_ALGORITHM_NONE, FILE_IS_TEMPORARY (fhead));
   pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
 
   /* init new table extensible data */
@@ -5452,16 +5453,6 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
-      error_code = f_init (thread_p, page_alloc, f_init_args);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  pgbuf_unfix (thread_p, page_alloc);
-	  goto exit;
-	}
-
-      assert (pgbuf_get_page_ptype (thread_p, page_alloc) != PAGE_UNKNOWN);
-
       tde_algo = file_get_tde_algorithm_internal (fhead);
 
 #if !defined (NDEBUG)
@@ -5477,7 +5468,17 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
       }
 #endif /* NDEBUG */
 
-      pgbuf_set_tde_algorithm (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
+      /* before f_init, so that recovery inits the page the same way and f_init already writes an encrypted page */
+      pgbuf_init_new_page (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
+      error_code = f_init (thread_p, page_alloc, f_init_args);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix (thread_p, page_alloc);
+	  goto exit;
+	}
+
+      assert (pgbuf_get_page_ptype (thread_p, page_alloc) != PAGE_UNKNOWN);
 
       if (page_out != NULL)
 	{
@@ -6426,7 +6427,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 	      return error_code;
 	    }
 
-	  pgbuf_dealloc_page (thread_p, page_dealloc);
+	  pgbuf_dealloc_page (thread_p, page_dealloc, PGBUF_DEALLOC_KEEP_CONTENTS);
 	  perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_PAGE_DEALLOCS);
 	}
 
@@ -6501,6 +6502,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit;
 	    }
+	  pgbuf_init_new_page (thread_p, page_ftab, TDE_ALGORITHM_NONE, FILE_IS_TEMPORARY (fhead));
 	  pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
 
 	  /* init new extensible data and add new partial sector */
@@ -6544,7 +6546,10 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
       goto exit;
     }
 
-  pgbuf_dealloc_page (thread_p, page_dealloc);
+  /* the deallocation of a user page is final (see file_dealloc); a table page comes back to life if the system
+   * operation is rolled back */
+  pgbuf_dealloc_page (thread_p, page_dealloc,
+		      alloc_type == FILE_ALLOC_USER_PAGE ? PGBUF_DEALLOC_CLEAR_CONTENTS : PGBUF_DEALLOC_KEEP_CONTENTS);
   perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_PAGE_DEALLOCS);
 
   /* done */
@@ -8004,6 +8009,7 @@ file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPI
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
+      pgbuf_init_new_page (thread_p, page_ftab, TDE_ALGORITHM_NONE, FILE_IS_TEMPORARY (fhead));
       page_extdata = page_ftab;
       pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
 
@@ -12669,6 +12675,48 @@ file_extdata_collect_data_sectors_full (THREAD_ENTRY * thread_p, const void *ite
 }
 
 /*
+ * file_table_pages_to_buffer () - read a file table's pages into the page buffer, holding no latch between them
+ *   return: error code (a page that is no table page any more ends the walk without an error)
+ *   vpid_first(in): the first page after the file header of a table's chain; may be NULL
+ *   max_pages(in): the file's table pages (bounds a walk that follows a link read without the header latch)
+ *
+ * Note: file_get_all_data_sectors () reads the same pages again under the file header latch, which stops every
+ *	 allocation and deallocation in the file; read here first, they are in the buffer then and the latch is
+ *	 held for no disk read.  Without the header latch the chain may change under the walk, so nothing read here
+ *	 is used.
+ */
+static int
+file_table_pages_to_buffer (THREAD_ENTRY * thread_p, const VPID * vpid_first, int max_pages)
+{
+  VPID vpid = *vpid_first;
+  PAGE_PTR page;
+
+  while (!VPID_ISNULL (&vpid) && max_pages-- > 0)
+    {
+      page = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (page == NULL)
+	{
+	  int error_code = er_errid ();
+
+	  if (error_code == NO_ERROR || error_code == ER_PB_BAD_PAGEID)
+	    {
+	      er_clear ();
+	      return NO_ERROR;
+	    }
+	  return error_code;
+	}
+      if (pgbuf_get_page_ptype (thread_p, page) != PAGE_FTAB)
+	{
+	  pgbuf_unfix (thread_p, page);
+	  return NO_ERROR;
+	}
+      vpid = ((FILE_EXTENSIBLE_DATA *) page)->vpid_next;
+      pgbuf_unfix (thread_p, page);
+    }
+  return NO_ERROR;
+}
+
+/*
  * file_get_all_data_sectors () - collect all data sectors
  *
  * return        : NO_ERROR or error code
@@ -12684,8 +12732,13 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
   FILE_HEADER *fhead = NULL;
   FILE_EXTENSIBLE_DATA *extdata_ftab = NULL;
   FILE_FTAB_COLLECTOR ftab_collector;
-  int i, j;
+  int i;
   int error_code = NO_ERROR;
+
+  /* every failure return leaves the collector empty, so a caller may free it whatever it held before */
+  collector_out->npages = 0;
+  collector_out->nsects = 0;
+  collector_out->partsect_ftab = NULL;
 
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
@@ -12696,8 +12749,40 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  collector_out->npages = 0;
-  collector_out->nsects = 0;
+  if (!FILE_IS_TEMPORARY (fhead))
+    {
+      VPID vpid_part_next, vpid_full_next;
+      int n_page_ftab = fhead->n_page_ftab;
+
+      FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
+      vpid_part_next = extdata_ftab->vpid_next;
+      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
+      vpid_full_next = extdata_ftab->vpid_next;
+      if (!VPID_ISNULL (&vpid_part_next) || !VPID_ISNULL (&vpid_full_next))
+	{
+	  /* the tables have pages of their own: bring them into the buffer before the header latch is held over
+	   * them, so that an allocation in this file does not wait for their disk reads */
+	  pgbuf_unfix_and_init (thread_p, page_fhead);
+	  error_code = file_table_pages_to_buffer (thread_p, &vpid_part_next, n_page_ftab);
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = file_table_pages_to_buffer (thread_p, &vpid_full_next, n_page_ftab);
+	    }
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_fhead == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
+	  fhead = (FILE_HEADER *) page_fhead;
+	}
+    }
+
   collector_out->partsect_ftab =
     (FILE_PARTIAL_SECTOR *) db_private_alloc (thread_p, fhead->n_sector_total * sizeof (FILE_PARTIAL_SECTOR));
 
@@ -12760,29 +12845,24 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
 	}
     }
 
-  for (i = 0; i < ftab_collector.nsects; i++)
+  /* the header latch stops every allocation in this file; the table pages leave the list after it is released */
+  pgbuf_unfix (thread_p, page_fhead);
+
+  /* VSID is the first member of FILE_PARTIAL_SECTOR, and a sector holds one entry in each collector */
+  qsort (ftab_collector.partsect_ftab, ftab_collector.nsects, sizeof (FILE_PARTIAL_SECTOR), disk_compare_vsids);
+  for (i = 0; i < collector_out->nsects; i++)
     {
-      FILE_PARTIAL_SECTOR *ftab_sec = &ftab_collector.partsect_ftab[i];
-      FILE_PARTIAL_SECTOR *data_sec;
-      for (j = 0; j < collector_out->nsects; j++)
+      FILE_PARTIAL_SECTOR *data_sec = &collector_out->partsect_ftab[i];
+      FILE_PARTIAL_SECTOR *ftab_sec =
+	(FILE_PARTIAL_SECTOR *) bsearch (&data_sec->vsid, ftab_collector.partsect_ftab, ftab_collector.nsects,
+					 sizeof (FILE_PARTIAL_SECTOR), disk_compare_vsids);
+      if (ftab_sec != NULL)
 	{
-	  data_sec = &collector_out->partsect_ftab[j];
-	  if (VSID_EQ (&ftab_sec->vsid, &data_sec->vsid))
-	    {
-	      data_sec->page_bitmap &= ~ftab_sec->page_bitmap;
-	      break;
-	    }
+	  data_sec->page_bitmap &= ~ftab_sec->page_bitmap;
 	}
     }
 
-  pgbuf_unfix (thread_p, page_fhead);
   db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      db_private_free_and_init (thread_p, collector_out->partsect_ftab);
-      return ER_FAILED;
-    }
 
   return NO_ERROR;
 }

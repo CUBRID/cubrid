@@ -9,7 +9,7 @@ volume extension, `VFID` lifecycle, sector reservation, file page allocation, or
 |------|------|
 | `disk_manager.c/h` | Volume formatting, volume extension, sector reservation maps, volume header checks |
 | `file_manager.c/h` | Logical file table, `VFID` lifecycle, file page allocation/deallocation |
-| `extendible_hash.c/h` | Persistent extendible hash files used internally |
+| `extendible_hash.c/h` | Permanent and temporary internal extendible hash files |
 | `ftab_set.cpp/hpp` | Helper set for file-table operations |
 
 ## Layering
@@ -22,7 +22,9 @@ disk_manager: volumes and sectors
 ```
 
 Use the highest layer that matches the task. Subsystems should usually allocate through `file_alloc*()` and deallocate
-through `file_dealloc()`, not reserve sectors directly.
+through `file_dealloc()`, not reserve sectors directly. Permanent `file_alloc()` requires a page initializer that
+establishes page type and recovery state. The allocator manages the atomic allocation and applies the file TDE algorithm.
+See `file_alloc()` and `file_init_page_type()` in [file_manager.c](../file_manager.c).
 
 ## File Types
 
@@ -51,6 +53,22 @@ If you add or reinterpret a file type, audit allocation, recovery, checkdb, dump
 | Mapping | `file_map_pages()`, `file_get_num_user_pages()`, `file_get_sticky_first_page()` |
 | TDE metadata | `file_get_tde_algorithm()`, `file_apply_tde_algorithm()`, `file_rv_set_tde_algorithm()` |
 
+## File lifetime and deallocation
+
+- `file_postpone_destroy()` schedules permanent-file destruction for commit. `file_destroy()` destroys immediately and
+  requires the correct temporary flag; preserve the caller's transaction or error-cleanup protocol.
+- For permanent files, `file_destroy()` flushes the header and resident file-table pages with WAL, then discards buffered
+  pages before releasing sectors. Preserve exclusive access and vacuum-drop coordination so no thread can fix those
+  pages during destruction.
+- `file_temp_retire()` can cache a temporary file and reuse its `VFID`. Preserved temporary files use
+  `file_temp_retire_preserved()`.
+- `file_dealloc()` postpones permanent-page deallocation. Its temporary `FILE_TEMP` path skips individual physical
+  deallocation. Numerable files also mark the user-page entry deleted. `file_rv_dealloc_internal()` performs physical
+  deallocation during undo or postpone.
+- A sticky first page provides a stable header/root and must not be individually deallocated.
+
+These paths are implemented in [file_manager.c](../file_manager.c). File lifetime and file type both affect cleanup.
+
 ## Descriptors
 
 Logical file descriptors are packed into `FILE_DESCRIPTORS`, currently sized by `FILE_DESCRIPTORS_SIZE`.
@@ -64,8 +82,10 @@ The comment in `file_manager.h` is important: changing descriptor size is a disk
 
 ## Extendible Hash
 
-`extendible_hash.c` provides persistent hash files through `EHID`. It allocates directory and bucket pages through the
-file manager and logs updates through recovery functions declared in `extendible_hash.h`.
+`extendible_hash.c` supports permanent and temporary hash files through `EHID`. `xehash_create()` allocates separate
+directory and bucket files through the file manager; only permanent changes use recovery logging. Creation expects
+string or object keys. See [extendible_hash.c](../extendible_hash.c) and the declarations in
+[extendible_hash.h](../extendible_hash.h).
 
 Start at:
 
@@ -78,7 +98,5 @@ Start at:
 ## Gotchas
 
 - Sector reservation and file allocation are separate concepts. A reserved sector is not automatically a file page.
-- Temporary files have different lifetime paths (`file_temp_*`) from permanent files.
-- Sticky first pages are used by callers that need a stable header/root page. Preserve that invariant.
 - File deallocation interacts with page-buffer deallocation and recovery. Do not just drop file-table entries.
 - Space accounting bugs often require checking both disk maps and file-table partial-sector state.
