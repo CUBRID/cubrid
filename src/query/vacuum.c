@@ -534,7 +534,7 @@ struct vacuum_heap_helper
   PGSLOTID slots[MAX_SLOTS_IN_PAGE];	/* Slot ID's. */
   MVCC_SATISFIES_VACUUM_RESULT results[MAX_SLOTS_IN_PAGE];	/* Vacuum check results. */
 
-  OID forward_link;		/* REC_BIGONE, REC_RELOCATION forward links. (buffer for forward_recdes) */
+  HEAP_FWD_RECORD_AREA forward_area;	/* REC_BIGONE, REC_RELOCATION forwarding record (buffer for forward_recdes) */
   RECDES forward_recdes;	/* Record descriptor to read forward links. */
 
   int n_bulk_vacuumed;		/* Number of vacuumed objects to be logged in bulk mode. */
@@ -2083,18 +2083,18 @@ retry_prepare:
       assert (!HFID_IS_NULL (&helper->hfid));
 
       /* Get forward OID. */
-      helper->forward_recdes.data = (char *) &helper->forward_link;
-      helper->forward_recdes.area_size = sizeof (helper->forward_link);
+      helper->forward_recdes.data = helper->forward_area.data;
+      helper->forward_recdes.area_size = sizeof (helper->forward_area.data);
       if (spage_get_record (thread_p, helper->home_page, helper->crt_slotid, &helper->forward_recdes, COPY) !=
 	  S_SUCCESS)
 	{
 	  assert_release (false);
 	  return ER_FAILED;
 	}
-      COPY_OID (&helper->forward_oid, &helper->forward_link);
+      heap_fwd_record_get_oid (&helper->forward_recdes, &helper->forward_oid);
 
       /* Get forward page. */
-      VPID_GET_FROM_OID (&forward_vpid, &helper->forward_link);
+      VPID_GET_FROM_OID (&forward_vpid, &helper->forward_oid);
       if (helper->forward_page != NULL)
 	{
 	  VPID crt_fwd_vpid = VPID_INITIALIZER;
@@ -2242,8 +2242,8 @@ retry_prepare:
       assert (helper->home_page != NULL);
 
       /* Get forward OID. */
-      helper->forward_recdes.data = (char *) &helper->forward_link;
-      helper->forward_recdes.area_size = sizeof (helper->forward_link);
+      helper->forward_recdes.data = helper->forward_area.data;
+      helper->forward_recdes.area_size = sizeof (helper->forward_area.data);
       if (spage_get_record (thread_p, helper->home_page, helper->crt_slotid, &helper->forward_recdes, COPY) !=
 	  S_SUCCESS)
 	{
@@ -2251,10 +2251,10 @@ retry_prepare:
 	  return ER_FAILED;
 	}
 
-      COPY_OID (&helper->forward_oid, &helper->forward_link);
+      heap_fwd_record_get_oid (&helper->forward_recdes, &helper->forward_oid);
 
       /* Fix first overflow page (forward_page). */
-      VPID_GET_FROM_OID (&forward_vpid, &helper->forward_link);
+      VPID_GET_FROM_OID (&forward_vpid, &helper->forward_oid);
       helper->forward_page =
 	pgbuf_fix (thread_p, &forward_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (helper->forward_page == NULL)
