@@ -7410,7 +7410,7 @@ lock_check_transient_marks (const LK_TRAN_LOCK * tran_lock, int ended)
  *   thread_p(in): thread entry
  *
  * Note: walks the hold list instead of looking each object up.  A counted entry was inserted at the head or moved
- *	there when counted, so the walk ends once transient_total is met: it costs the entries this scope touched,
+ *	there when counted, so the walk ends once the scope's total is met: it costs the entries this scope touched,
  *	not all the transaction holds.  No hold_mutex: only this thread runs for the transaction here.
  */
 static void
