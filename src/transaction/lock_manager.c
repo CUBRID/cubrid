@@ -285,7 +285,10 @@ typedef enum
 #define MSGCAT_LK_RES_DESC_CLASS                48
 #define MSGCAT_LK_RES_DESC_INSTANCE             49
 #define MSGCAT_LK_RES_DESC_TRANSACTION          50
-#define MSGCAT_LK_LASTONE                       51
+#define MSGCAT_LK_RES_DESC_TRANSACTION_ROW      51
+#define MSGCAT_LK_RES_TRANSACTION_TYPE          52
+#define MSGCAT_LK_RES_WAIT_FOR_ROW              53
+#define MSGCAT_LK_LASTONE                       54
 
 #if defined(SERVER_MODE)
 
@@ -483,6 +486,11 @@ struct lk_tran_lock
 
   LK_ENTRY *waiting;		/* waiting lock entry */
 
+  /* the row our self-lock wait is about (lock_wait_transaction_mvccid ()), under hold_mutex: wait_target is set while
+   * wait_target_mvccid, the owner's MVCCID, is not MVCCID_NULL */
+  MVCCID wait_target_mvccid;
+  LK_WAIT_TARGET wait_target;
+
   lk_tran_deferred_wake deferred_wake;
 
   /* non two phase lock list */
@@ -653,7 +661,16 @@ static void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
 static LK_ENTRY *lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
 static void lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr);
 static const char *lock_res_desc_format (int msgnum);
-static bool lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *desc, size_t desc_size);
+static bool lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, const LK_WAIT_TARGET * target,
+				    char *desc, size_t desc_size);
+static void lock_describe_instance (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, char *desc,
+				    size_t desc_size);
+static void lock_set_wait_target (int tran_index, MVCCID mvccid, const LK_WAIT_TARGET * target);
+static bool lock_get_wait_target_locked (const LK_TRAN_LOCK * tran_lock, const LK_ENTRY * wait_entry,
+					 LK_WAIT_TARGET * target);
+static bool lock_get_wait_target (const LK_ENTRY * wait_entry, LK_WAIT_TARGET * target);
+static MVCCID lock_get_row_wait_owner (int tran_index, const OID * oid);
+static int lock_add_row_wait_owner (MVCCID * owners, int nowners, int tran_index, const OID * oid);
 static void lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
 static void lock_set_error_for_aborted (LK_ENTRY * entry_ptr);
 static void lock_set_tran_abort_reason (int tran_index, TRAN_ABORT_REASON abort_reason);
@@ -714,7 +731,11 @@ static void lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_f
 					   int log_num_entries, LK_ENTRY ** log_entries);
 static void lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
 static void lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * wait_entry);
-static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
+static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry,
+				      const LK_WAIT_TARGET * target);
+static void lock_event_log_table_name (THREAD_ENTRY * thread_p, FILE * log_fp, const OID * class_oid);
+static void lock_event_log_self_lock_owner (THREAD_ENTRY * thread_p, FILE * log_fp, MVCCID mvccid, const OID * oid,
+					    const OID * class_oid, int waiter_tran_index);
 static void lock_event_set_tran_wait_entry (int tran_index, LK_ENTRY * entry);
 static void lock_event_set_xasl_id_to_entry (int tran_index, LK_ENTRY * entry);
 static LK_RES_KEY lock_create_search_key (const OID * oid, const OID * class_oid);
@@ -2230,6 +2251,7 @@ lock_res_desc_format (int msgnum)
  *
  *   thread_p(in):
  *   res_ptr(in): the resource being waited on
+ *   target(in): for a transaction self-lock, the row the wait is about, or NULL
  *   desc(out): buffer receiving the phrase, e.g. "instance 1|641|1 of class dba.t"
  *   desc_size(in): size of desc in bytes
  *
@@ -2239,24 +2261,38 @@ lock_res_desc_format (int msgnum)
  *	 a MSGCAT_SET_LOCK phrase and a case here. The phrases sit in the catalog so locales can reorder them.
  */
 static bool
-lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *desc, size_t desc_size)
+lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, const LK_WAIT_TARGET * target, char *desc,
+			size_t desc_size)
 {
   const OID *oid = &res_ptr->key.oid;
   const OID *name_oid = NULL;	/* OID to resolve a class name from; NULL when the kind carries no class */
   char *classname = NULL;
   bool is_classname_alloced = false;
-  bool is_instance = false;
   OID real_class_oid;
   OID *oid_rr;
+  char tran_desc[LK_RES_DESC_MAX], row_desc[LK_RES_DESC_MAX];
 
   assert (res_ptr != NULL && desc != NULL && desc_size > 0);
 
   switch (res_ptr->key.type)
     {
     case LOCK_RESOURCE_TRANSACTION:
-      /* The resource is the inserter's MVCCID; key.oid would be those same bytes reinterpreted (LK_RES_KEY). */
-      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_TRANSACTION),
+      /* The resource is the writer's MVCCID; key.oid would be those same bytes reinterpreted (LK_RES_KEY). */
+      if (target == NULL)
+	{
+	  snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_TRANSACTION),
+		    (unsigned long long) res_ptr->key.mvccid);
+	  return true;
+	}
+      snprintf (tran_desc, sizeof (tran_desc), lock_res_desc_format (MSGCAT_LK_RES_DESC_TRANSACTION),
 		(unsigned long long) res_ptr->key.mvccid);
+      lock_describe_instance (thread_p, &target->oid, &target->class_oid, row_desc, sizeof (row_desc));
+      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_TRANSACTION_ROW), tran_desc,
+		lock_to_lockmode_string (target->mode), row_desc);
+      return true;
+
+    case LOCK_RESOURCE_INSTANCE:
+      lock_describe_instance (thread_p, oid, &res_ptr->key.class_oid, desc, desc_size);
       return true;
 
     case LOCK_RESOURCE_ROOT_CLASS:
@@ -2270,11 +2306,6 @@ lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *d
 	{
 	  name_oid = oid;
 	}
-      break;
-
-    case LOCK_RESOURCE_INSTANCE:
-      name_oid = &res_ptr->key.class_oid;
-      is_instance = true;
       break;
 
     default:
@@ -2304,11 +2335,6 @@ lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *d
       snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_OBJECT), oid->volid, oid->pageid,
 		oid->slotid);
     }
-  else if (is_instance)
-    {
-      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_INSTANCE), oid->volid, oid->pageid,
-		oid->slotid, classname);
-    }
   else
     {
       snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_CLASS), classname);
@@ -2320,6 +2346,140 @@ lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *d
     }
 
   return true;
+}
+
+/*
+ * lock_describe_instance - Render a row as the instance phrase, or as the object phrase when its class name is not
+ *			    known
+ */
+static void
+lock_describe_instance (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, char *desc, size_t desc_size)
+{
+  char *classname = NULL;
+  OID real_class_oid;
+
+  if (!OID_ISTEMP (class_oid))
+    {
+      if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (class_oid))
+	{
+	  OID_GET_REAL_CLASS_OF_DIR_OID (class_oid, &real_class_oid);
+	}
+      else
+	{
+	  COPY_OID (&real_class_oid, class_oid);
+	}
+      if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
+	{
+	  /* ignore: the object phrase names it by OID instead */
+	  er_clear ();
+	}
+    }
+
+  if (classname == NULL)
+    {
+      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_OBJECT), oid->volid, oid->pageid,
+		oid->slotid);
+      return;
+    }
+  snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_INSTANCE), oid->volid, oid->pageid,
+	    oid->slotid, classname);
+  free_and_init (classname);
+}
+
+/*
+ * lock_set_wait_target - Note the row our self-lock wait on mvccid's owner is about, or forget it (MVCCID_NULL)
+ */
+static void
+lock_set_wait_target (int tran_index, MVCCID mvccid, const LK_WAIT_TARGET * target)
+{
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
+
+  pthread_mutex_lock (&tran_lock->hold_mutex);
+  /* one self-lock wait per transaction at a time: parallel query workers wait on no row */
+  assert (target == NULL || tran_lock->wait_target_mvccid == MVCCID_NULL);
+  if (target != NULL)
+    {
+      tran_lock->wait_target = *target;
+    }
+  tran_lock->wait_target_mvccid = mvccid;
+  pthread_mutex_unlock (&tran_lock->hold_mutex);
+}
+
+/*
+ * lock_get_wait_target_locked - The row a self-lock wait is about, with tran_lock->hold_mutex held
+ *
+ * return: true and *target when wait_entry is a self-lock request of a wait that noted its row
+ */
+static bool
+lock_get_wait_target_locked (const LK_TRAN_LOCK * tran_lock, const LK_ENTRY * wait_entry, LK_WAIT_TARGET * target)
+{
+  if (wait_entry->res_head->key.type != LOCK_RESOURCE_TRANSACTION || tran_lock->wait_target_mvccid == MVCCID_NULL
+      || tran_lock->wait_target_mvccid != wait_entry->res_head->key.mvccid)
+    {
+      return false;
+    }
+  *target = tran_lock->wait_target;
+  return true;
+}
+
+/*
+ * lock_get_wait_target - lock_get_wait_target_locked () for a caller that does not hold the transaction's hold_mutex
+ *
+ * Note: a resource mutex may be held; hold_mutex comes after it, as when a lock is granted.
+ */
+static bool
+lock_get_wait_target (const LK_ENTRY * wait_entry, LK_WAIT_TARGET * target)
+{
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[wait_entry->tran_index];
+  bool found;
+
+  pthread_mutex_lock (&tran_lock->hold_mutex);
+  found = lock_get_wait_target_locked (tran_lock, wait_entry, target);
+  pthread_mutex_unlock (&tran_lock->hold_mutex);
+  return found;
+}
+
+/*
+ * lock_get_row_wait_owner - The owner's MVCCID a transaction waits on for the row oid, or MVCCID_NULL
+ *
+ * Note: the first writer that reaches a stamped row holds the row's lock while it waits on the owner's self-lock, so
+ *	 the writers behind it wait on the row and see only it; this names the owner behind it.
+ */
+static MVCCID
+lock_get_row_wait_owner (int tran_index, const OID * oid)
+{
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  MVCCID owner_mvccid = MVCCID_NULL;
+
+  pthread_mutex_lock (&tran_lock->hold_mutex);
+  if (tran_lock->wait_target_mvccid != MVCCID_NULL && OID_EQ (&tran_lock->wait_target.oid, oid))
+    {
+      owner_mvccid = tran_lock->wait_target_mvccid;
+    }
+  pthread_mutex_unlock (&tran_lock->hold_mutex);
+  return owner_mvccid;
+}
+
+/*
+ * lock_add_row_wait_owner - Add to owners[] the owner tran_index waits on for the row oid, once
+ *
+ * return: the new count
+ */
+static int
+lock_add_row_wait_owner (MVCCID * owners, int nowners, int tran_index, const OID * oid)
+{
+  MVCCID owner_mvccid = lock_get_row_wait_owner (tran_index, oid);
+  int i;
+
+  for (i = 0; i < nowners && owners[i] != owner_mvccid; i++)
+    {
+      ;
+    }
+  if (owner_mvccid != MVCCID_NULL && i == nowners)
+    {
+      owners[nowners++] = owner_mvccid;
+    }
+  return nowners;
 }
 
 /*
@@ -2352,6 +2512,9 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   bool free_mutex_flag = false;
   bool isdeadlock_timeout = false;
   int compat1, compat2;
+  MVCCID owners[DEFAULT_WAIT_USERS];	/* the owners some holders of the row wait on for it */
+  int nowners = 0, owner, j;
+  LK_WAIT_TARGET target;
 
   /* Find the users that transaction is waiting for */
   waitfor_client_users = waitfor_client_users_default;
@@ -2379,6 +2542,10 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	{
 	  EXPAND_WAIT_FOR_ARRAY_IF_NEEDED ();
 	  wait_for[nwaits++] = entry->tran_index;
+	  if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE && nowners < DEFAULT_WAIT_USERS)
+	    {
+	      nowners = lock_add_row_wait_owner (owners, nowners, entry->tran_index, &res_ptr->key.oid);
+	    }
 	}
     }
 
@@ -2400,6 +2567,21 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 
   pthread_mutex_unlock (&res_ptr->res_mutex);
   free_mutex_flag = false;
+
+  /* a holder waiting on an owner for this row: name the owner too, as the owner's row lock did */
+  for (i = 0; i < nowners; i++)
+    {
+      owner = lock_find_self_lock_owner (thread_p, owners[i]);
+      for (j = 0; j < nwaits && wait_for[j] != owner; j++)
+	{
+	  ;
+	}
+      if (owner != NULL_TRAN_INDEX && owner != entry_ptr->tran_index && j == nwaits)
+	{
+	  EXPAND_WAIT_FOR_ARRAY_IF_NEEDED ();
+	  wait_for[nwaits++] = owner;
+	}
+    }
 
   if (nwaits == 0 || (waitfor_client_users = (char *) malloc (unit_size * nwaits)) == NULL)
     {
@@ -2441,7 +2623,9 @@ set_error:
       isdeadlock_timeout = true;
     }
 
-  if (lock_describe_resource (thread_p, entry_ptr->res_head, resource_desc, sizeof (resource_desc)))
+  if (lock_describe_resource (thread_p, entry_ptr->res_head,
+			      lock_get_wait_target (entry_ptr, &target) ? &target : NULL, resource_desc,
+			      sizeof (resource_desc)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 7,
@@ -6168,6 +6352,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   OID *oid_rr = NULL;
   HEAP_SCANCACHE scan_cache;
   OID real_class_oid;
+  LK_WAIT_TARGET target;
+  char row_desc[LK_RES_DESC_MAX];
 
   memset (time_val, 0, sizeof (time_val));
 
@@ -6296,7 +6482,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	}
       break;
     case LOCK_RESOURCE_TRANSACTION:
-      fprintf (outfp, "  Transaction self-lock (inserter MVCCID = %llu)\n", (unsigned long long) res_ptr->key.mvccid);
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_TRANSACTION_TYPE),
+	       (unsigned long long) res_ptr->key.mvccid);
       break;
     default:
       fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_UNKNOWN_TYPE));
@@ -6429,6 +6616,12 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_WAITER_ENTRY),
 		   "", entry_ptr->tran_index, lock_to_lockmode_string (entry_ptr->blocked_mode), "", time_val, "",
 		   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
+	  if (lock_get_wait_target (entry_ptr, &target))
+	    {
+	      lock_describe_instance (thread_p, &target.oid, &target.class_oid, row_desc, sizeof (row_desc));
+	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_WAIT_FOR_ROW), "",
+		       row_desc, lock_to_lockmode_string (target.mode));
+	    }
 	  entry_ptr = entry_ptr->next;
 	}
     }
@@ -7676,8 +7869,8 @@ lock_recheck_add_waited (THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int w
 #endif /* SERVER_MODE */
 
 /*
- * lock_wait_transaction_mvccid - Wait until the transaction a stamp named ends, or until what the caller saw may be
- *				  gone
+ * lock_wait_transaction_mvccid_loop - Wait until the transaction mvccid names ends, or until what the caller saw may
+ *				       be gone
  *
  * return: LK_GRANTED once it ended; LK_NOTGRANTED_DUE_RECHECK to read again; another LK_NOTGRANTED_* on failure,
  *	   with held->lost set when the row was handed to the owner and not had back
@@ -7689,14 +7882,10 @@ lock_recheck_add_waited (THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int w
  *	 handed it (lock_hand_row_to_owner ()). Waits on one owner in one request share one lock timeout, or an owner
  *	 rolling back again and again would keep the waiter from ever timing out.
  */
-int
-lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen, LK_HELD_ROW * held)
+#if defined (SERVER_MODE)
+static int
+lock_wait_transaction_mvccid_loop (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, LK_HELD_ROW * held)
 {
-#if !defined (SERVER_MODE)
-  return LK_GRANTED;
-#else /* !SERVER_MODE */
-  MVCCID mvccid = seen->owner;
-  UINT64 wake_gen = seen->wake_gen;	/* a recheck that waits again reads it anew */
   LOG_TDES *tdes;
   const OID *held_row = (held != NULL) ? held->oid : NULL;
   UINT64 packed_held = (held_row != NULL) ? lock_pack_row_oid (held_row) : 0;
@@ -7705,9 +7894,6 @@ lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * see
   LK_RECHECK_DECISION decision;
   LK_HAND_RESULT hand;
   int owner_tran_index = NULL_TRAN_INDEX;
-
-  /* logtb_wait_for_tran_end_on_row (), the only caller, resolves a NULL one */
-  assert (thread_p != NULL);
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   trid = (tdes != NULL) ? tdes->trid : NULL_TRANID;
@@ -7746,6 +7932,36 @@ lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * see
   while (decision == LK_RECHECK_REWAIT);
 
   return LK_NOTGRANTED_DUE_RECHECK;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * lock_wait_transaction_mvccid - Wait until the transaction a stamp named ends, or until what the caller saw may be
+ *				  gone; lock_wait_transaction_mvccid_loop () with the row the wait is about noted for the
+ *				  lock wait diagnostics
+ *
+ *   seen(in): the owner the caller's stamp named, the wake generation read with that stamp, and the row it was on
+ *   held(in/out): the row the caller holds X while it waits, or NULL
+ *
+ * Note: the timeout message, the event log, lockdb and tranlist read the row while the wait lasts
+ *	 (lock_get_wait_target ()).
+ */
+int
+lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen, LK_HELD_ROW * held)
+{
+#if !defined (SERVER_MODE)
+  return LK_GRANTED;
+#else /* !SERVER_MODE */
+  int tran_index, granted;
+
+  /* logtb_wait_for_tran_end_on_row (), the only caller, resolves a NULL one */
+  assert (thread_p != NULL);
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  lock_set_wait_target (tran_index, seen->owner, &seen->target);
+  granted = lock_wait_transaction_mvccid_loop (thread_p, seen->owner, seen->wake_gen, held);
+  lock_set_wait_target (tran_index, MVCCID_NULL, NULL);
+  return granted;
 #endif /* !SERVER_MODE */
 }
 
@@ -11230,6 +11446,8 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
   int buf_size, n, remained_size;
   bool is_valid = false;	/* validation check */
   char *buf, *p;
+  MVCCID owners[DEFAULT_WAIT_USERS];	/* the owners some holders of the row wait on for it */
+  int nowners = 0, owner, i;
 
   if (res == NULL)
     {
@@ -11294,6 +11512,10 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
       if (holder->tran_index != waiter_index)
 	{
 	  holder_number++;
+	  if (res->key.type == LOCK_RESOURCE_INSTANCE && nowners < DEFAULT_WAIT_USERS)
+	    {
+	      nowners = lock_add_row_wait_owner (owners, nowners, holder->tran_index, &res->key.oid);
+	    }
 	}
       holder = holder->next;
     }
@@ -11304,7 +11526,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
       return NO_ERROR;
     }
 
-  buf_size = holder_number * HOLDER_ENTRY_LENGTH + 1;
+  buf_size = (holder_number + nowners) * HOLDER_ENTRY_LENGTH + 1;
   buf = (char *) malloc (sizeof (char) * buf_size);
 
   if (buf == NULL)
@@ -11346,9 +11568,22 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
       holder = holder->next;
     }
 
-  *out_buf = buf;
-
   pthread_mutex_unlock (&res->res_mutex);
+
+  /* a holder waiting on an owner for this row: name the owner too, as the owner's row lock did */
+  for (i = 0; i < nowners; i++)
+    {
+      owner = lock_find_self_lock_owner (thread_p, owners[i]);
+      if (owner != NULL_TRAN_INDEX && owner != waiter_index)
+	{
+	  n = snprintf (p, remained_size, ", %d", owner);
+	  remained_size -= n;
+	  p += n;
+	  assert_release (remained_size >= 0);
+	}
+    }
+
+  *out_buf = buf;
 
   return NO_ERROR;
 #endif
@@ -11407,6 +11642,7 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
   int rv, i, indent = 2;
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry;
+  LK_WAIT_TARGET target;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -11424,7 +11660,7 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
 	       lock_to_lockmode_string (entry->granted_mode));
 
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
-      lock_event_log_lock_info (thread_p, log_fp, entry);
+      lock_event_log_lock_info (thread_p, log_fp, entry, NULL);
 
       event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
       event_log_bind_values (thread_p, log_fp, tran_index, entry->bind_index_in_tran);
@@ -11448,7 +11684,8 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
 
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
-      lock_event_log_lock_info (thread_p, log_fp, entry);
+      lock_event_log_lock_info (thread_p, log_fp, entry,
+				lock_get_wait_target_locked (tran_lock, entry, &target) ? &target : NULL);
 
       event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
       event_log_bind_values (thread_p, log_fp, tran_index, entry->bind_index_in_tran);
@@ -11483,6 +11720,8 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
   LK_TRAN_LOCK *tran_lock;
   const char *lock_name;
   LK_ENTRY *entry;
+  LK_WAIT_TARGET target;
+  bool has_target;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
   assert (log_num_entries && !(log_num_entries % 2));
@@ -11492,7 +11731,14 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
     {
       entry = log_entries[i];
 
-      /* holder and waiter are printed alternately */
+      /* holder and waiter are printed alternately; both lines show the row the waiter's wait is about. Read before
+       * the holder's hold_mutex: the waiter's is another one. */
+      has_target = lock_get_wait_target (log_entries[i | 1], &target);
+      if (has_target && !(i % 2))
+	{
+	  target.mode = NULL_LOCK;
+	}
+
       fprintf (log_fp, i % 2 ? "\nwait:\n" : "hold:\n");
 
       tran_lock = &lk_Gl.tran_lock_table[entry->tran_index];
@@ -11515,7 +11761,7 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
 	  fprintf (log_fp, "|waiting for lock conversion to %s", lock_name);
 	}
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
-      lock_event_log_lock_info (thread_p, log_fp, entry);
+      lock_event_log_lock_info (thread_p, log_fp, entry, has_target ? &target : NULL);
 
       event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
       event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
@@ -11546,6 +11792,7 @@ static void
 lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry)
 {
   int indent = 2;
+  LK_WAIT_TARGET target;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -11556,7 +11803,7 @@ lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * 
 
   fprintf (log_fp, "%*clock: %*s", indent, ' ', LOCK_MODE_STR_MAX_LENGTH,
 	   lock_to_lockmode_string (entry->blocked_mode));
-  lock_event_log_lock_info (thread_p, log_fp, entry);
+  lock_event_log_lock_info (thread_p, log_fp, entry, lock_get_wait_target (entry, &target) ? &target : NULL);
 
   event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
   event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
@@ -11583,13 +11830,43 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
   LOCK_COMPATIBILITY compat1, compat2;
   int rv, indent = 2;
   bool is_other_waiter = false;
+  LK_WAIT_TARGET wait_target, target;
+  bool has_wait_target;
+  MVCCID owners[DEFAULT_WAIT_USERS];	/* the owners some holders of the row wait on for it */
+  int nowners = 0, i;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
+  has_wait_target = lock_get_wait_target (wait_entry, &wait_target);
+  if (has_wait_target)
+    {
+      wait_target.mode = NULL_LOCK;
+    }
+
   res_ptr = wait_entry->res_head;
-  rv = pthread_mutex_lock (&res_ptr->res_mutex);
+  if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE)
+    {
+      rv = pthread_mutex_lock (&res_ptr->res_mutex);
+      for (entry = res_ptr->holder; entry != NULL && nowners < DEFAULT_WAIT_USERS; entry = entry->next)
+	{
+	  if (entry != wait_entry && lock_compat (entry->granted_mode, wait_entry->blocked_mode) == LOCK_COMPAT_NO)
+	    {
+	      nowners = lock_add_row_wait_owner (owners, nowners, entry->tran_index, &res_ptr->key.oid);
+	    }
+	}
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+    }
 
   fprintf (log_fp, "blocker:\n");
+
+  /* the owners first, as when the owner's row lock was the blocker; each takes its self-lock's mutex, not ours */
+  for (i = 0; i < nowners; i++)
+    {
+      lock_event_log_self_lock_owner (thread_p, log_fp, owners[i], &res_ptr->key.oid, &res_ptr->key.class_oid,
+				      wait_entry->tran_index);
+    }
+
+  rv = pthread_mutex_lock (&res_ptr->res_mutex);
 
   for (entry = res_ptr->holder; entry != NULL; entry = entry->next)
     {
@@ -11609,7 +11886,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
 	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
-	  lock_event_log_lock_info (thread_p, log_fp, entry);
+	  lock_event_log_lock_info (thread_p, log_fp, entry, has_wait_target ? &wait_target : NULL);
 
 	  event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
 	  event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
@@ -11645,7 +11922,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
 	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
-	  lock_event_log_lock_info (thread_p, log_fp, entry);
+	  lock_event_log_lock_info (thread_p, log_fp, entry, lock_get_wait_target (entry, &target) ? &target : NULL);
 
 	  event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
 	  event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
@@ -11665,9 +11942,10 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
  *   thread_p(in):
  *   log_fp(in):
  *   entry(in):
+ *   target(in): for a transaction self-lock, the row the wait is about (no wanted mode on a holder's line), or NULL
  */
 static void
-lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry)
+lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry, const LK_WAIT_TARGET * target)
 {
   LK_RES *res_ptr;
   char *classname;
@@ -11679,8 +11957,18 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 
   if (res_ptr->key.type == LOCK_RESOURCE_TRANSACTION)
     {
-      /* transaction self-lock: no OID, print MVCCID only */
-      fprintf (log_fp, " (transaction self-lock, mvccid=%llu)\n", (unsigned long long) res_ptr->key.mvccid);
+      /* transaction self-lock: no OID of its own; the row the wait is about when it is known */
+      fprintf (log_fp, " (transaction self-lock, mvccid=%llu", (unsigned long long) res_ptr->key.mvccid);
+      if (target != NULL)
+	{
+	  fprintf (log_fp, ", oid=%d|%d|%d", target->oid.volid, target->oid.pageid, target->oid.slotid);
+	  lock_event_log_table_name (thread_p, log_fp, &target->class_oid);
+	  if (target->mode != NULL_LOCK)
+	    {
+	      fprintf (log_fp, ", wanted=%s", lock_to_lockmode_string (target->mode));
+	    }
+	}
+      fprintf (log_fp, ")\n");
       return;
     }
 
@@ -11726,30 +12014,7 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
       break;
 
     case LOCK_RESOURCE_INSTANCE:
-      if (!OID_ISTEMP (&res_ptr->key.class_oid))
-	{
-	  OID real_class_oid;
-
-	  if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&res_ptr->key.class_oid))
-	    {
-	      OID_GET_REAL_CLASS_OF_DIR_OID (&res_ptr->key.class_oid, &real_class_oid);
-	    }
-	  else
-	    {
-	      COPY_OID (&real_class_oid, &res_ptr->key.class_oid);
-	    }
-
-	  /* never propagate an error to get class name and keep the existing error if any. */
-	  er_stack_push ();
-	  (void) heap_get_class_name (thread_p, &real_class_oid, &classname);
-	  er_stack_pop ();
-
-	  if (classname != NULL)
-	    {
-	      fprintf (log_fp, ", table=%s", classname);
-	      free_and_init (classname);
-	    }
-	}
+      lock_event_log_table_name (thread_p, log_fp, &res_ptr->key.class_oid);
       break;
 
     default:
@@ -11757,6 +12022,89 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
     }
 
   fprintf (log_fp, ")\n");
+}
+
+/*
+ * lock_event_log_self_lock_owner - dump the holder of mvccid's self-lock as a blocker of a wait on the row oid,
+ *				    unless the holder is the waiter itself
+ *
+ * Note: call with no resource mutex held; this one takes the self-lock's.
+ */
+static void
+lock_event_log_self_lock_owner (THREAD_ENTRY * thread_p, FILE * log_fp, MVCCID mvccid, const OID * oid,
+				const OID * class_oid, int waiter_tran_index)
+{
+  LK_RES_KEY search_key = lock_create_mvccid_search_key (mvccid);
+  LK_RES *res_ptr;
+  LK_ENTRY *entry;
+  LK_WAIT_TARGET target;
+  int indent = 2;
+
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      return;
+    }
+  for (entry = res_ptr->holder; entry != NULL && entry->granted_mode != X_LOCK; entry = entry->next)
+    {
+      ;
+    }
+  if (entry != NULL && entry->tran_index != waiter_tran_index)
+    {
+      COPY_OID (&target.oid, oid);
+      COPY_OID (&target.class_oid, class_oid);
+      target.mode = NULL_LOCK;
+
+      event_log_print_client_info (entry->tran_index, indent);
+      fprintf (log_fp, "%*clock: %*s", indent, ' ', LOCK_MODE_STR_MAX_LENGTH,
+	       lock_to_lockmode_string (entry->granted_mode));
+
+      SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
+
+      lock_event_log_lock_info (thread_p, log_fp, entry, &target);
+
+      event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
+      event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
+
+      CLEAR_EMULATE_THREAD (thread_p);
+
+      fprintf (log_fp, "\n");
+    }
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+}
+
+/*
+ * lock_event_log_table_name - print ", table=<name>" for an instance's class, nothing when the name is not known
+ */
+static void
+lock_event_log_table_name (THREAD_ENTRY * thread_p, FILE * log_fp, const OID * class_oid)
+{
+  OID real_class_oid;
+  char *classname = NULL;
+
+  if (OID_ISTEMP (class_oid))
+    {
+      return;
+    }
+  if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (class_oid))
+    {
+      OID_GET_REAL_CLASS_OF_DIR_OID (class_oid, &real_class_oid);
+    }
+  else
+    {
+      COPY_OID (&real_class_oid, class_oid);
+    }
+
+  /* never propagate an error to get class name and keep the existing error if any. */
+  er_stack_push ();
+  (void) heap_get_class_name (thread_p, &real_class_oid, &classname);
+  er_stack_pop ();
+
+  if (classname != NULL)
+    {
+      fprintf (log_fp, ", table=%s", classname);
+      free_and_init (classname);
+    }
 }
 
 /*

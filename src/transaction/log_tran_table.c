@@ -4408,7 +4408,8 @@ logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
  *		   (lock_wait_transaction_mvccid ()). An error if the lock failed, or if it was granted while that
  *		   transaction is still active -- waiting again cannot help.
  * thread_p (in) : Thread entry.
- * seen (in)	 : the in-progress transaction to wait out (seen->owner), and the wake generation read with its stamp.
+ * seen (in)	 : the in-progress transaction to wait out (seen->owner), the wake generation read with its stamp, and
+ *		   the row the stamp was on, for the lock wait diagnostics.
  *
  * Note: call with no page latch held.
  */
