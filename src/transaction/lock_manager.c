@@ -403,6 +403,20 @@ struct lk_transient_overlap
   int taker;			/* the depth of the scope that took the entry over */
 };
 
+/* a transaction's statement-scoped row lock counts: written by its own thread only, reset when it ends */
+typedef struct lk_tran_transient LK_TRAN_TRANSIENT;
+struct lk_tran_transient
+{
+  int scope;			/* depth of the statement scopes now open, so nesting is visible */
+  int total;			/* the current scope's counted requests, never below its entries' sum; ends walks */
+  int *outer_total;		/* the outer scopes' totals; depth d keeps its outer one at d - 2 */
+  int outer_size;
+  int uncounted_from;		/* the depth from which nothing is counted, for want of memory; else 0 */
+  LK_TRANSIENT_OVERLAP *overlap;	/* in the order of the takers' depths */
+  int overlap_count;
+  int overlap_size;
+};
+
 // *INDENT-OFF*
 /*
  * the wake of a transaction's self-lock waiters that an undo deferred (lock_deferred_wake_mark ()), and the row the
@@ -474,17 +488,11 @@ struct lk_tran_lock
   LK_ENTRY *lk_entry_pool;	/* local pool of lock entries which can be used with no synchronization. */
   int lk_entry_pool_count;	/* Current count of lock entries in local pool. */
   int inst_hold_count;		/* # of entries in inst_hold_list */
-  int transient_scope;		/* statements now taking transient row locks, so nesting is visible */
-  int transient_total;		/* the current scope's counted requests, never below its entries' sum; ends walks */
-  int *outer_transient_total;	/* the outer scopes' totals; depth d keeps its outer one at d - 2 */
-  int outer_transient_size;
-  int uncounted_scope;		/* the depth from which nothing is counted, for want of memory; else 0 */
-  LK_TRANSIENT_OVERLAP *transient_overlap;	/* in the order of the takers' depths */
-  int transient_overlap_count;
-  int transient_overlap_size;
+  int class_hold_count;		/* # of entries in class_hold_list */
+
+  LK_TRAN_TRANSIENT transient;
   int escalated_count;		/* class entries with escalated_from set; both written by the main thread only */
   bool reclaimed_only_transient;	/* the last reclaim of instance locks took only this statement's requests */
-  int class_hold_count;		/* # of entries in class_hold_list */
 
   LK_ENTRY *waiting;		/* waiting lock entry */
 
@@ -673,9 +681,9 @@ static int lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, cons
 				  int cond_flag, bool mark_transient, bool ahead_of_waiters);
 static bool lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LOCK * tran_lock);
 static void lock_reset_transient_state (LK_TRAN_LOCK * tran_lock);
-static int lock_current_transient_scope (const LK_TRAN_LOCK * tran_lock);
-static void lock_count_transient (LK_TRAN_LOCK * tran_lock, LK_ENTRY * entry_ptr);
-static void lock_end_transient_count (LK_TRAN_LOCK * tran_lock, LK_ENTRY * entry_ptr, int scope);
+static int lock_current_transient_scope (const LK_TRAN_TRANSIENT * transient);
+static void lock_count_transient (LK_TRAN_TRANSIENT * transient, LK_ENTRY * entry_ptr);
+static void lock_end_transient_count (LK_TRAN_TRANSIENT * transient, LK_ENTRY * entry_ptr, int scope);
 static void lock_check_transient_marks (const LK_TRAN_LOCK * tran_lock, int ended);
 static void lock_release_transient_object_locks (THREAD_ENTRY * thread_p);
 static void lock_forget_transient_object_locks (THREAD_ENTRY * thread_p);
@@ -1286,17 +1294,17 @@ lock_get_hash_value (const OID * oid, int htsize)
 static void
 lock_reset_transient_state (LK_TRAN_LOCK * tran_lock)
 {
-  tran_lock->transient_scope = 0;
-  tran_lock->transient_total = 0;
-  tran_lock->uncounted_scope = 0;
+  tran_lock->transient.scope = 0;
+  tran_lock->transient.total = 0;
+  tran_lock->transient.uncounted_from = 0;
   tran_lock->escalated_count = 0;
   /* the outer totals are indexed by depth, so a transaction ending inside a scope leaves nothing to pop; overlaps
    * are rare, so their memory does not outlive the transaction */
-  tran_lock->transient_overlap_count = 0;
-  if (tran_lock->transient_overlap != NULL)
+  tran_lock->transient.overlap_count = 0;
+  if (tran_lock->transient.overlap != NULL)
     {
-      free_and_init (tran_lock->transient_overlap);
-      tran_lock->transient_overlap_size = 0;
+      free_and_init (tran_lock->transient.overlap);
+      tran_lock->transient.overlap_size = 0;
     }
 }
 
@@ -3632,7 +3640,7 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
       /* 2. release original class lock only one time in order to maintain original class lock count */
       lock_internal_perform_unlock_object (thread_p, class_entry, false, true);
 
-      if (tran_lock->transient_scope > 0 && tran_lock->reclaimed_only_transient
+      if (tran_lock->transient.scope > 0 && tran_lock->reclaimed_only_transient
 	  && class_entry->escalated_from == NULL_LOCK && thread_get_main_thread (thread_p) == thread_p)
 	{
 	  /* written after the raise: as a class grant escalated_from does not cover, the raise would withdraw it.  A raise
@@ -6556,13 +6564,13 @@ lock_finalize_tran_lock_table (void)
 	  tran_lock = &lk_Gl.tran_lock_table[i];
 	  pthread_mutex_destroy (&tran_lock->hold_mutex);
 	  pthread_mutex_destroy (&tran_lock->non2pl_mutex);
-	  if (tran_lock->outer_transient_total != NULL)
+	  if (tran_lock->transient.outer_total != NULL)
 	    {
-	      free_and_init (tran_lock->outer_transient_total);
+	      free_and_init (tran_lock->transient.outer_total);
 	    }
-	  if (tran_lock->transient_overlap != NULL)
+	  if (tran_lock->transient.overlap != NULL)
 	    {
-	      free_and_init (tran_lock->transient_overlap);
+	      free_and_init (tran_lock->transient.overlap);
 	    }
 	  while (tran_lock->lk_entry_pool != NULL)
 	    {
@@ -7019,8 +7027,8 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
 	  && inst_entry->transient_count < inst_entry->count)
 	{
 	  /* a nested scope's request is X: lock_end_transient_count () relies on it */
-	  assert (lk_Gl.tran_lock_table[tran_index].transient_scope <= 1 || lock == X_LOCK);
-	  lock_count_transient (&lk_Gl.tran_lock_table[tran_index], inst_entry);
+	  assert (lk_Gl.tran_lock_table[tran_index].transient.scope <= 1 || lock == X_LOCK);
+	  lock_count_transient (&lk_Gl.tran_lock_table[tran_index].transient, inst_entry);
 	}
       goto end;
     }
@@ -7113,28 +7121,28 @@ lock_transient_scope_start (THREAD_ENTRY * thread_p)
   return true;
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
-  int scope = ++tran_lock->transient_scope;
+  int scope = ++tran_lock->transient.scope;
   int *grown;
   int size;
 
-  if (scope == 1 || tran_lock->uncounted_scope != 0)
+  if (scope == 1 || tran_lock->transient.uncounted_from != 0)
     {
       return scope == 1;
     }
-  if (scope - 1 > tran_lock->outer_transient_size)
+  if (scope - 1 > tran_lock->transient.outer_size)
     {
-      size = MAX (8, 2 * tran_lock->outer_transient_size);
-      grown = (int *) realloc (tran_lock->outer_transient_total, size * sizeof (int));
+      size = MAX (8, 2 * tran_lock->transient.outer_size);
+      grown = (int *) realloc (tran_lock->transient.outer_total, size * sizeof (int));
       if (grown == NULL)
 	{
-	  tran_lock->uncounted_scope = scope;
+	  tran_lock->transient.uncounted_from = scope;
 	  return false;
 	}
-      tran_lock->outer_transient_total = grown;
-      tran_lock->outer_transient_size = size;
+      tran_lock->transient.outer_total = grown;
+      tran_lock->transient.outer_size = size;
     }
-  tran_lock->outer_transient_total[scope - 2] = tran_lock->transient_total;
-  tran_lock->transient_total = 0;
+  tran_lock->transient.outer_total[scope - 2] = tran_lock->transient.total;
+  tran_lock->transient.total = 0;
   return false;
 #endif /* !SERVER_MODE */
 }
@@ -7154,7 +7162,7 @@ lock_transient_scope_is_outermost (THREAD_ENTRY * thread_p)
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
 
-  return tran_lock->transient_scope == 1;
+  return tran_lock->transient.scope == 1;
 #endif /* !SERVER_MODE */
 }
 
@@ -7171,17 +7179,17 @@ lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release)
   return;
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
-  int scope = tran_lock->transient_scope;
+  int scope = tran_lock->transient.scope;
 
   assert (scope > 0);
-  if (tran_lock->uncounted_scope != 0 && scope >= tran_lock->uncounted_scope)
+  if (tran_lock->transient.uncounted_from != 0 && scope >= tran_lock->transient.uncounted_from)
     {
       /* it counted nothing and set no total aside */
-      if (scope == tran_lock->uncounted_scope)
+      if (scope == tran_lock->transient.uncounted_from)
 	{
-	  tran_lock->uncounted_scope = 0;
+	  tran_lock->transient.uncounted_from = 0;
 	}
-      tran_lock->transient_scope--;
+      tran_lock->transient.scope--;
       return;
     }
 
@@ -7197,18 +7205,18 @@ lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release)
   if (scope > 1)
     {
       /* left by entries a reclaim for a class X lock freed, whose rows that class lock covers */
-      while (tran_lock->transient_overlap_count > 0
-	     && tran_lock->transient_overlap[tran_lock->transient_overlap_count - 1].taker == scope)
+      while (tran_lock->transient.overlap_count > 0
+	     && tran_lock->transient.overlap[tran_lock->transient.overlap_count - 1].taker == scope)
 	{
-	  tran_lock->transient_overlap_count--;
+	  tran_lock->transient.overlap_count--;
 	}
-      tran_lock->transient_total = tran_lock->outer_transient_total[scope - 2];
-      tran_lock->transient_scope--;
+      tran_lock->transient.total = tran_lock->transient.outer_total[scope - 2];
+      tran_lock->transient.scope--;
       lock_check_transient_marks (tran_lock, scope);
       return;
     }
   /* a transaction ended inside the scope leaves it at 0 (lock_unlock_all ()), and this is still the outermost end */
-  tran_lock->transient_scope = 0;
+  tran_lock->transient.scope = 0;
   lock_check_transient_marks (tran_lock, 1);
   lock_end_escalated_class_lock (thread_p, release);
 #endif /* !SERVER_MODE */
@@ -7236,7 +7244,7 @@ lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OI
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
-  scope = lock_current_transient_scope (tran_lock);
+  scope = lock_current_transient_scope (&tran_lock->transient);
   entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
   if (entry_ptr == NULL || entry_ptr->transient_scope != scope)
     {
@@ -7250,11 +7258,11 @@ lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OI
   entry_ptr->transient_count--;
   if (entry_ptr->transient_count == 0)
     {
-      lock_end_transient_count (tran_lock, entry_ptr, scope);
+      lock_end_transient_count (&tran_lock->transient, entry_ptr, scope);
     }
-  if (tran_lock->transient_total > 0)
+  if (tran_lock->transient.total > 0)
     {
-      tran_lock->transient_total--;
+      tran_lock->transient.total--;
     }
   lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
 #endif /* !SERVER_MODE */
@@ -7264,18 +7272,18 @@ lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OI
 /*
  * lock_current_transient_scope () - The scope a request now made counts toward; out of any scope, the outermost
  *   return: the depth, at least 1
- *   tran_lock(in): the transaction's lock list
+ *   transient(in): the transaction's statement-scoped counts
  */
 static int
-lock_current_transient_scope (const LK_TRAN_LOCK * tran_lock)
+lock_current_transient_scope (const LK_TRAN_TRANSIENT * transient)
 {
-  return MAX (tran_lock->transient_scope, 1);
+  return MAX (transient->scope, 1);
 }
 
 /*
  * lock_count_transient () - Count a granted row request toward the current scope
  *   return: void
- *   tran_lock(in/out): the transaction's lock list
+ *   transient(in/out): the transaction's statement-scoped counts
  *   entry_ptr(in/out): the row's entry, its count already raised by the request
  *
  * Note: counted, not flagged: a repeated request only raises count, and the scope end gives back exactly what was
@@ -7283,20 +7291,20 @@ lock_current_transient_scope (const LK_TRAN_LOCK * tran_lock)
  *	 until it ends; with no memory for it, the request stays to commit.
  */
 static void
-lock_count_transient (LK_TRAN_LOCK * tran_lock, LK_ENTRY * entry_ptr)
+lock_count_transient (LK_TRAN_TRANSIENT * transient, LK_ENTRY * entry_ptr)
 {
-  int scope = lock_current_transient_scope (tran_lock);
+  int scope = lock_current_transient_scope (transient);
   LK_TRANSIENT_OVERLAP *grown, *overlap;
   int size;
 
-  if (tran_lock->uncounted_scope != 0 && scope >= tran_lock->uncounted_scope)
+  if (transient->uncounted_from != 0 && scope >= transient->uncounted_from)
     {
       return;
     }
   if (entry_ptr->transient_scope == scope)
     {
       entry_ptr->transient_count++;
-      tran_lock->transient_total++;
+      transient->total++;
       return;
     }
 
@@ -7304,18 +7312,18 @@ lock_count_transient (LK_TRAN_LOCK * tran_lock, LK_ENTRY * entry_ptr)
   assert (entry_ptr->transient_scope < scope);
   if (entry_ptr->transient_scope > 0 && entry_ptr->transient_scope < scope)
     {
-      if (tran_lock->transient_overlap_count == tran_lock->transient_overlap_size)
+      if (transient->overlap_count == transient->overlap_size)
 	{
-	  size = MAX (8, 2 * tran_lock->transient_overlap_size);
-	  grown = (LK_TRANSIENT_OVERLAP *) realloc (tran_lock->transient_overlap, size * sizeof (LK_TRANSIENT_OVERLAP));
+	  size = MAX (8, 2 * transient->overlap_size);
+	  grown = (LK_TRANSIENT_OVERLAP *) realloc (transient->overlap, size * sizeof (LK_TRANSIENT_OVERLAP));
 	  if (grown == NULL)
 	    {
 	      return;
 	    }
-	  tran_lock->transient_overlap = grown;
-	  tran_lock->transient_overlap_size = size;
+	  transient->overlap = grown;
+	  transient->overlap_size = size;
 	}
-      overlap = &tran_lock->transient_overlap[tran_lock->transient_overlap_count++];
+      overlap = &transient->overlap[transient->overlap_count++];
       overlap->oid = entry_ptr->res_head->key.oid;
       overlap->scope = entry_ptr->transient_scope;
       overlap->count = entry_ptr->transient_count;
@@ -7328,14 +7336,14 @@ lock_count_transient (LK_TRAN_LOCK * tran_lock, LK_ENTRY * entry_ptr)
     }
   entry_ptr->transient_scope = scope;
   entry_ptr->transient_count = 1;
-  tran_lock->transient_total++;
+  transient->total++;
 }
 
 /*
  * lock_end_transient_count () - The current scope counts nothing more on an entry: drop its mark, and put back the
  *				 outer scope's count it set aside if it took the entry over
  *   return: void
- *   tran_lock(in/out): the transaction's lock list
+ *   transient(in/out): the transaction's statement-scoped counts
  *   entry_ptr(in/out): the entry, still holding the scope's requests
  *   scope(in): the current scope
  *
@@ -7343,10 +7351,10 @@ lock_count_transient (LK_TRAN_LOCK * tran_lock, LK_ENTRY * entry_ptr)
  *	 X lock can free it, and that class lock grants any later request on the row without an entry.
  */
 static void
-lock_end_transient_count (LK_TRAN_LOCK * tran_lock, LK_ENTRY * entry_ptr, int scope)
+lock_end_transient_count (LK_TRAN_TRANSIENT * transient, LK_ENTRY * entry_ptr, int scope)
 {
-  LK_TRANSIENT_OVERLAP *overlap = tran_lock->transient_overlap;
-  int i, last = tran_lock->transient_overlap_count - 1;
+  LK_TRANSIENT_OVERLAP *overlap = transient->overlap;
+  int i, last = transient->overlap_count - 1;
 
   entry_ptr->transient_count = 0;
   entry_ptr->transient_scope = 0;
@@ -7358,7 +7366,7 @@ lock_end_transient_count (LK_TRAN_LOCK * tran_lock, LK_ENTRY * entry_ptr, int sc
 	  entry_ptr->transient_scope = overlap[i].scope;
 	  entry_ptr->transient_count = overlap[i].count;
 	  overlap[i] = overlap[last];
-	  tran_lock->transient_overlap_count--;
+	  transient->overlap_count--;
 	  return;
 	}
     }
@@ -7379,11 +7387,11 @@ lock_check_transient_marks (const LK_TRAN_LOCK * tran_lock, int ended)
 {
 #if !defined (NDEBUG)
   const LK_ENTRY *entry_ptr;
-  int scope = lock_current_transient_scope (tran_lock);
+  int scope = lock_current_transient_scope (&tran_lock->transient);
   int sum = 0;
 
-  assert (tran_lock->transient_overlap_count == 0
-	  || tran_lock->transient_overlap[tran_lock->transient_overlap_count - 1].taker < ended);
+  assert (tran_lock->transient.overlap_count == 0
+	  || tran_lock->transient.overlap[tran_lock->transient.overlap_count - 1].taker < ended);
   for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL; entry_ptr = entry_ptr->tran_next)
     {
       assert (entry_ptr->transient_scope < ended);
@@ -7392,7 +7400,7 @@ lock_check_transient_marks (const LK_TRAN_LOCK * tran_lock, int ended)
 	  sum += entry_ptr->transient_count;
 	}
     }
-  assert (sum <= tran_lock->transient_total);
+  assert (sum <= tran_lock->transient.total);
 #endif /* !NDEBUG */
 }
 
@@ -7414,13 +7422,13 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
-  scope = lock_current_transient_scope (tran_lock);
+  scope = lock_current_transient_scope (&tran_lock->transient);
 
   /* no request of ours is queued but not asleep (lock_ask_row_handoff ()): its grant would add to the hold list this
    * walks without hold_mutex */
   assert (tran_lock->deferred_wake.asked_row () == 0);
 
-  left = tran_lock->transient_total;
+  left = tran_lock->transient.total;
   for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL && left > 0; entry_ptr = next_ptr)
     {
       /* the entry may be gone once its last request is given back, so take the link first */
@@ -7433,7 +7441,7 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
 	  /* each counted request raised count; outrunning it would free the entry under the releases still to come */
 	  assert (n <= entry_ptr->count);
 	  n = MIN (n, entry_ptr->count);
-	  lock_end_transient_count (tran_lock, entry_ptr, scope);
+	  lock_end_transient_count (&tran_lock->transient, entry_ptr, scope);
 	  for (i = 0; i < n; i++)
 	    {
 	      /* give back exactly what this scope took; a request it did not take stays */
@@ -7443,7 +7451,7 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
     }
 
   /* an entry the escalation reclaimed took its count with it, so the total can only be high */
-  tran_lock->transient_total = 0;
+  tran_lock->transient.total = 0;
 }
 
 /*
@@ -7463,18 +7471,18 @@ lock_forget_transient_object_locks (THREAD_ENTRY * thread_p)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
-  scope = lock_current_transient_scope (tran_lock);
+  scope = lock_current_transient_scope (&tran_lock->transient);
 
-  left = tran_lock->transient_total;
+  left = tran_lock->transient.total;
   for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL && left > 0; entry_ptr = entry_ptr->tran_next)
     {
       if (entry_ptr->transient_scope == scope)
 	{
 	  left -= entry_ptr->transient_count;
-	  lock_end_transient_count (tran_lock, entry_ptr, scope);
+	  lock_end_transient_count (&tran_lock->transient, entry_ptr, scope);
 	}
     }
-  tran_lock->transient_total = 0;
+  tran_lock->transient.total = 0;
 }
 #endif /* SERVER_MODE */
 
@@ -8127,7 +8135,7 @@ lock_find_row_handoff_owner (LK_RES * res_ptr, int tran_index, int owner_tran_in
       return NULL;
     }
   assert (holder->transient_scope
-	  == (transient ? lock_current_transient_scope (&lk_Gl.tran_lock_table[tran_index]) : 0));
+	  == (transient ? lock_current_transient_scope (&lk_Gl.tran_lock_table[tran_index].transient) : 0));
 
   for (owner = res_ptr->waiter; owner != NULL && owner->tran_index != owner_tran_index; owner = owner->next)
     {
@@ -8173,9 +8181,9 @@ lock_remove_row_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * mi
     {
       mine->transient_count = 0;
       mine->transient_scope = 0;
-      if (tran_lock->transient_total > 0)
+      if (tran_lock->transient.total > 0)
 	{
-	  tran_lock->transient_total--;
+	  tran_lock->transient.total--;
 	}
     }
   (void) lock_delete_from_tran_hold_list (mine, tran_index);
@@ -8320,9 +8328,9 @@ lock_wait_handed_row_back (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY *
       lock_increment_class_granules (class_entry);
       if (transient)
 	{
-	  entry_ptr->transient_scope = lock_current_transient_scope (&lk_Gl.tran_lock_table[tran_index]);
+	  entry_ptr->transient_scope = lock_current_transient_scope (&lk_Gl.tran_lock_table[tran_index].transient);
 	  entry_ptr->transient_count = 1;
-	  lk_Gl.tran_lock_table[tran_index].transient_total++;
+	  lk_Gl.tran_lock_table[tran_index].transient.total++;
 	}
       lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
       return LK_HANDED_REGAINED;
