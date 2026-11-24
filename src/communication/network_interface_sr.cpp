@@ -5553,7 +5553,7 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int error = NO_ERROR;
   COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0, false, false, false, SHA1_HASH_INITIALIZER };
-  XASL_STREAM stream = { NULL, NULL, NULL, 0 };
+  XASL_STREAM stream = { NULL, NULL, NULL, 0, NULL };
   bool was_recompile_xasl = false;
   bool force_recompile = false;
   char *buffer = NULL;

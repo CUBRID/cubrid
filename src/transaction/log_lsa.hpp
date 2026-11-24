@@ -77,6 +77,7 @@ struct log_lsa_atomic
 {
     inline log_lsa_atomic () = default;
     inline explicit log_lsa_atomic (const log_lsa &lsa);
+    log_lsa_atomic (const log_lsa_atomic &) = default;
     log_lsa_atomic &operator= (const log_lsa_atomic &) = delete;
 
     inline log_lsa load () const;

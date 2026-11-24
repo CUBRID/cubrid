@@ -24,7 +24,14 @@
 #define _STRING_REGEX_HPP_
 
 #include <regex>
+/* re2.h turns -Wmissing-field-initializers off for GCC without restoring it; keep that inside the header */
+#if !defined(__clang__) && defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
 #include "re2/re2.h"
+#if !defined(__clang__) && defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #include "error_manager.h"
 #include "intl_support.h"
