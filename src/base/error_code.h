@@ -1814,9 +1814,9 @@
 
 #define ER_VACUUM_OOS_LOOKUP_DEFERRED               -1402
 
-#define ER_TM_FAILED_STMT_NOT_UNDONE                -1403
+#define ER_TM_FAILED_STMT_NOT_UNDONE                -1425
 
-#define ER_LAST_ERROR                               -1404
+#define ER_LAST_ERROR                               -1426
 
 
 /*

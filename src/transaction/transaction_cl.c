@@ -119,7 +119,7 @@ static CUB_THREAD_LOCAL int tm_libcas_depth = 0;
 static CUB_THREAD_LOCAL DB_NAMELIST *user_savepoint_list = NULL;
 
 static int tran_add_savepoint (const char *savept_name);
-static void tran_free_list_upto_savepoint (const char *savept_name);
+static bool tran_free_list_upto_savepoint (const char *savept_name);
 
 /*
  * tran_cache_tran_settings - Cache transaction settings
@@ -1116,14 +1116,14 @@ tran_count_user_savepoints (void)
 /*
  * tran_free_list_upto_savepoint -
  *
- * return:
+ * return: true if the savepoint is a user savepoint, false for a system savepoint
  *
  *   savept_name(in):
  *
  * NOTE:frees the latest savepoints from the list up to, but not including, the
  * given savepoint.  Called during rollback to savepoint command.
  */
-static void
+static bool
 tran_free_list_upto_savepoint (const char *savept_name)
 {
   DB_NAMELIST *sp, *temp;
@@ -1159,6 +1159,8 @@ tran_free_list_upto_savepoint (const char *savept_name)
 	}
       user_savepoint_list = sp;
     }
+
+  return found;
 }
 
 /*
@@ -1264,6 +1266,7 @@ int
 tran_abort_upto_user_savepoint (const char *savepoint_name)
 {
   int error_code;
+  bool is_user_savepoint;
 
   error_code = tran_internal_abort_upto_savepoint (savepoint_name, USER_SAVEPOINT, false);
   if (error_code != NO_ERROR)
@@ -1274,12 +1277,14 @@ tran_abort_upto_user_savepoint (const char *savepoint_name)
     }
 
   /* delete client's local copy of savepoint names back to here */
-  tran_free_list_upto_savepoint (savepoint_name);
+  is_user_savepoint = tran_free_list_upto_savepoint (savepoint_name);
 
-  if (tm_Tran_rollback_required_by != NO_ERROR && tran_count_user_savepoints () <= tm_Tran_rollback_required_savepoints)
+  if (tm_Tran_rollback_required_by != NO_ERROR && is_user_savepoint
+      && tran_count_user_savepoints () <= tm_Tran_rollback_required_savepoints)
     {
       /* the savepoint was there when the statement failed, so its changes are undone. A savepoint taken after the
-       * failure, also one of the same name, leaves more savepoints than that. */
+       * failure, also one of the same name, leaves more savepoints than that. A system savepoint for the atomicity of
+       * a statement is not in the list and may be taken after the failure, so the refusal is kept for it. */
       er_log_debug (ARG_FILE_LINE, "the changes of a statement failed with error %d are rolled back to savepoint %s\n",
 		    tm_Tran_rollback_required_by, savepoint_name);
       tm_Tran_rollback_required_by = NO_ERROR;
