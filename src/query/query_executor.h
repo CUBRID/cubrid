@@ -88,14 +88,12 @@ struct val_descr
 };				/* Value Descriptor */
 
 // XASL_STATE
-struct qexec_shared_view_table;
 typedef struct xasl_state XASL_STATE;
 struct xasl_state
 {
   VAL_DESCR vd;			/* Value Descriptor */
   QUERY_ID query_id;		/* Query associated with XASL */
   int qp_xasl_line;		/* Error line */
-  struct qexec_shared_view_table *shared_views;	/* the XASL of each shared view group of the query */
 };
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,

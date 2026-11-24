@@ -597,7 +597,6 @@ struct cte_proc_node
 #define XASL_NO_MEMOIZE		(0x1 << 27)	/* the optimizer found that memoizing this NL inner would not pay off */
 #define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc comes after a NL semi/anti inner in the scan chain */
 #define XASL_PASS_THROUGH_WRAPPER	(0x1 << 29)	/* this proc takes over the list file its list scan would read, built by its last aptr (a hash join), as its own result when the join wrote this proc's out list (has_pass_through) */
-#define XASL_SHARED_VIEW_REP		(0x1 << 30)	/* other references of its view scan the result of this proc */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
