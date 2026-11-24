@@ -4115,14 +4115,12 @@ end:
 }
 
 /*
- * qdata_load_agg_hentry_from_list () - load key/value pair from list file
- *   returns: error code or NO_ERROR
- *   thread_p(in): thread
- *   list_scan_id(in): list scan
- *   key(out): group key
- *   value(out): accumulators
- *   key_dom(in): key domains
- *   acc_dom(in): accumulator domains
+ * qdata_agg_hentry_tuple_hash () - the key's hash a partial entry carries as its first column (a spilled partition's
+ *                                  layout, qdata_save_agg_hentry_to_list () with key_hash)
+ *   returns: the hash
+ *   tuple(in): the entry
+ *   hdr_size(in): the list's tuple header size
+ *   type_cnt(in): the list's column count
  */
 unsigned int
 qdata_agg_hentry_tuple_hash (QFILE_TUPLE tuple, int hdr_size, int type_cnt)
@@ -4138,6 +4136,17 @@ qdata_agg_hentry_tuple_hash (QFILE_TUPLE tuple, int hdr_size, int type_cnt)
   return (unsigned int) db_get_int (&v);
 }
 
+/*
+ * qdata_load_agg_hkey_from_tuple () - load the group key of a partial entry
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): thread
+ *   tuple(in): the entry
+ *   hdr_size(in): the list's tuple header size
+ *   type_cnt(in): the list's column count
+ *   key(out): group key
+ *   key_dom(in): key domains
+ *   copy(in): the values are copied, or point into the tuple
+ */
 int
 qdata_load_agg_hkey_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size, int type_cnt,
 				aggregate_hash_key *key, tp_domain **key_dom, bool copy)
@@ -4168,6 +4177,16 @@ qdata_load_agg_hkey_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, i
   return NO_ERROR;
 }
 
+/*
+ * qdata_load_agg_hentry_from_list () - load key/value pair from list file
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): thread
+ *   list_scan_id(in): list scan
+ *   key(out): group key
+ *   value(out): accumulators
+ *   key_dom(in): key domains
+ *   acc_dom(in): accumulator domains
+ */
 SCAN_CODE
 qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_list_scan_id *list_scan_id,
 				 aggregate_hash_key *key, aggregate_hash_value *value, tp_domain **key_dom,

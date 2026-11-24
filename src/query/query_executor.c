@@ -5313,6 +5313,37 @@ qexec_gby_spill_open (THREAD_ENTRY * thread_p, QFILE_LIST_ID ** list, QFILE_TUPL
   return *list;
 }
 
+/* the entries of a partition's list *after linked after those of *first (both closed, *after then owned by *first),
+ * or *after taking the place of an empty *first */
+static int
+qexec_gby_spill_link (THREAD_ENTRY * thread_p, QFILE_LIST_ID ** first, QFILE_LIST_ID ** after)
+{
+  if (*after == NULL)
+    {
+      return NO_ERROR;
+    }
+  qfile_close_list (thread_p, *first);
+  qfile_close_list (thread_p, *after);
+  if ((*after)->tuple_cnt == 0)
+    {
+      qexec_gby_merge_free_list (thread_p, after);
+      return NO_ERROR;
+    }
+  if ((*first)->tuple_cnt == 0)
+    {
+      qexec_gby_merge_free_list (thread_p, first);
+      *first = *after;
+      *after = NULL;
+      return NO_ERROR;
+    }
+  if (qfile_connect_list (thread_p, *first, *after) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  *after = NULL;
+  return NO_ERROR;
+}
+
 /* a group the table lets go, into its partition's lists as qdata_save_agg_htable_to_list () writes it */
 static int
 qexec_gby_spill_group (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * ctx, QFILE_LIST_ID * groupby_list,
@@ -9171,44 +9202,59 @@ fold:
        * the unsorted and the partial lists: they join the partitions, every partition's lists open for them */
       bool leftovers = (list_id->tuple_cnt > 0 || partials->tuple_cnt > 0);
 
-      for (p = 0; p < n_parts; p++)
+      if (!leftovers)
 	{
-	  row_parts[p] = spill->rows[p];
-	  part_parts[p] = spill->partials[p];
-	  spill->rows[p] = spill->partials[p] = NULL;
-	  if (!leftovers && row_parts[p] == NULL && part_parts[p] == NULL)
+	  for (p = 0; p < n_parts; p++)
 	    {
-	      continue;		/* nothing went to this partition */
-	    }
-	  if ((row_parts[p] == NULL
-	       && qexec_gby_spill_open (thread_p, &row_parts[p], &list_id->type_list, list_id, false,
-					&spill->n_spilled) == NULL)
-	      || (part_parts[p] == NULL
-		  && qexec_gby_spill_open (thread_p, &part_parts[p], &spill->part_type, partials, true,
-					   &spill->n_spilled) == NULL))
-	    {
-	      rc = ER_FAILED;
-	    }
-	}
-      spill->n_spilled = 0;	/* the partitions are the merge's now */
-      for (p = 0; p < n_parts && rc == NO_ERROR && leftovers; p++)
-	{
-	  /* the lists the leftovers join are appended to again */
-	  if (qfile_reopen_list_as_append_mode (thread_p, row_parts[p]) != NO_ERROR
-	      || qfile_reopen_list_as_append_mode (thread_p, part_parts[p]) != NO_ERROR)
-	    {
-	      rc = ER_FAILED;
+	      row_parts[p] = spill->rows[p];
+	      part_parts[p] = spill->partials[p];
+	      spill->rows[p] = spill->partials[p] = NULL;
+	      if ((row_parts[p] != NULL || part_parts[p] != NULL)
+		  && ((row_parts[p] == NULL
+		       && qexec_gby_spill_open (thread_p, &row_parts[p], &list_id->type_list, list_id, false,
+						&spill->n_spilled) == NULL)
+		      || (part_parts[p] == NULL
+			  && qexec_gby_spill_open (thread_p, &part_parts[p], &spill->part_type, partials, true,
+						   &spill->n_spilled) == NULL)))
+		{
+		  rc = ER_FAILED;
+		}
 	    }
 	}
-      if (rc == NO_ERROR && leftovers)
+      else
 	{
-	  rc = qexec_gby_merge_split_list (thread_p, &reader, list_id, false, 1, n_parts, row_parts);
+	  /* the leftovers were evicted before the partitions' entries: they go first, so that a group's first tuple
+	   * is the one develop's sort finds first (its unsorted list in eviction order).  They are split into new
+	   * lists, and the partitions' own lists are linked after them, not copied (qfile_connect_list ()) */
+	  for (p = 0; p < n_parts && rc == NO_ERROR; p++)
+	    {
+	      if (qexec_gby_spill_open (thread_p, &row_parts[p], &list_id->type_list, list_id, false,
+					&spill->n_spilled) == NULL
+		  || qexec_gby_spill_open (thread_p, &part_parts[p], &spill->part_type, partials, true,
+					   &spill->n_spilled) == NULL)
+		{
+		  rc = ER_FAILED;
+		}
+	    }
+	  if (rc == NO_ERROR)
+	    {
+	      rc = qexec_gby_merge_split_list (thread_p, &reader, list_id, false, 1, n_parts, row_parts);
+	    }
 	  if (rc == NO_ERROR)
 	    {
 	      /* the partial list's entries without the hash the partitions' carry */
 	      rc = qexec_gby_spill_hash_partials (thread_p, &reader, partials, n_parts, part_parts);
 	    }
+	  for (p = 0; p < n_parts && rc == NO_ERROR; p++)
+	    {
+	      rc = qexec_gby_spill_link (thread_p, &row_parts[p], &spill->rows[p]);
+	      if (rc == NO_ERROR)
+		{
+		  rc = qexec_gby_spill_link (thread_p, &part_parts[p], &spill->partials[p]);
+		}
+	    }
 	}
+      spill->n_spilled = 0;	/* the partitions are the merge's now */
       if (rc != NO_ERROR)
 	{
 	  goto end;

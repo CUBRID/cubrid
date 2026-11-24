@@ -29381,15 +29381,6 @@ pt_generate_ctes_and_derived_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 }
 
 /*
- * parser_generate_xasl_pre () - builds xasl for query nodes,
- *                     and remembers uncorrelated queries
- *   return:
- *   parser(in):
- *   node(in):
- *   arg(in):
- *   continue_walk(in):
- */
-/*
  * pt_mark_gby_order_free_pre () - mark the query of a set predicate: the order of its GROUP BY's groups cannot reach
  *				   the result (CBRD-28181, XASL_G_ORDER_FREE_SET)
  *   return: node
@@ -29480,6 +29471,15 @@ pt_orderby_has_group_keys (PARSER_CONTEXT * parser, PT_NODE * select_node)
   return true;
 }
 
+/*
+ * parser_generate_xasl_pre () - builds xasl for query nodes,
+ *                     and remembers uncorrelated queries
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
 static PT_NODE *
 parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
