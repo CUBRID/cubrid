@@ -9502,7 +9502,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
 	  row_topop_active = false;
 	}
-      else if (!LC_IS_FLUSH_OOS_ITEM (obj->operation))
+      else if (obj->operation == LC_FLUSH_INSERT_INTERNAL_LOB || !LC_IS_FLUSH_OOS_ITEM (obj->operation))
 	{
 	  /* an internal LOB chunk is not held for the row: its chain may span force calls (OOS_REPL_LOB_CHAIN) */
 	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
