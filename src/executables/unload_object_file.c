@@ -77,6 +77,9 @@ int g_fd_handles[UNLOAD_MAX_OUTPUT_FILES] = {
   INVALID_FILE_NO, INVALID_FILE_NO, INVALID_FILE_NO, INVALID_FILE_NO
 };
 
+/* the names of the object files, for the message of a failed write */
+char g_fd_names[UNLOAD_MAX_OUTPUT_FILES][PATH_MAX];
+
 int g_noutput_files = 0;
 bool g_write_all_files = false;
 bool g_multi_thread_mode = false;
@@ -1790,29 +1793,18 @@ write_object_file (TEXT_BUFFER_BLK * head, int file_idx)
 {
   TEXT_BUFFER_BLK *tp;
   int error = NO_ERROR;
-  int _errno;
   int first = (file_idx < 0) ? 0 : file_idx;
   int last = (file_idx < 0) ? g_noutput_files - 1 : file_idx;
   int i;
 
   TIMER_BEGIN ((g_sampling_records >= 0), &wi_write_file[first]);
-  for (tp = head; tp && tp->count > 0; tp = head)
+  /* every block is given back, also after a failed write; nothing more is written then */
+  for (tp = head; tp != NULL; tp = head)
     {
       head = tp->next;
-      /* write to disk */
-      for (i = first; i <= last && error == NO_ERROR; i++)
+      for (i = first; i <= last && error == NO_ERROR && tp->count > 0; i++)
 	{
-	  if (tp->count != write (g_fd_handles[i], tp->buffer, tp->count))
-	    {
-#if defined(WINDOWS)
-	      _errno = _doserrno;
-#else
-	      _errno = errno;
-#endif
-	      // TODDO: EAGAIN, EINTR ?
-	      assert (_errno == EINTR || _errno == EBADF);
-	      error = ER_IO_WRITE;
-	    }
+	  error = write_object_file_bytes (i, tp->buffer, tp->count);
 	}
 
       c_text_buf_mgr.release_text_buffer (tp);
@@ -1820,6 +1812,42 @@ write_object_file (TEXT_BUFFER_BLK * head, int file_idx)
   TIMER_END ((g_sampling_records >= 0), &wi_write_file[first]);
 
   return error;
+}
+
+/*
+ * write_object_file_bytes - write bytes to an object file
+ *    return: NO_ERROR, or ER_IO_WRITE after telling which file and why
+ *    file_idx(in): the object file
+ *    buf(in): the bytes
+ *    len(in): how many
+ *
+ * Note: a write can take part of the bytes, and one a signal breaks off is tried again. It runs in the writer threads
+ *       as well as in the main thread.
+ */
+int
+write_object_file_bytes (int file_idx, const char *buf, int len)
+{
+  while (len > 0)
+    {
+      int nbytes = (int) write (g_fd_handles[file_idx], buf, len);
+
+      if (nbytes < 0)
+	{
+	  if (errno == EINTR)
+	    {
+	      continue;
+	    }
+
+	  fprintf (stderr, "\n%s: %s.\n", g_fd_names[file_idx], strerror (errno));
+	  fflush (stderr);
+	  return ER_IO_WRITE;
+	}
+
+      buf += nbytes;
+      len -= nbytes;
+    }
+
+  return NO_ERROR;
 }
 
 #if !defined(WINDOWS)

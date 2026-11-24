@@ -122,6 +122,7 @@ typedef struct _unloaddb_thread_param
 extern bool init_queue_n_list_for_object_file (int q_size, int blk_size);
 
 extern int flushing_write_blk_queue (int file_idx);
+extern int write_object_file_bytes (int file_idx, const char *buf, int len);
 
 extern int desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value);
 extern int desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value);
@@ -139,6 +140,7 @@ extern int g_io_buffer_size;
 /* the object files of --output-files: a writer thread each, numbered from 0 */
 #define UNLOAD_MAX_OUTPUT_FILES (16)
 extern int g_fd_handles[UNLOAD_MAX_OUTPUT_FILES];
+extern char g_fd_names[UNLOAD_MAX_OUTPUT_FILES][PATH_MAX];
 extern int g_noutput_files;
 extern bool g_write_all_files;
 extern bool g_multi_thread_mode;

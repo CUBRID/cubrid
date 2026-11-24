@@ -1937,6 +1937,11 @@ unload_writer_thread (void *param)
   int file_idx = (int) (intptr_t) param;
   int thr_ret = NO_ERROR;
   int ret;
+  cuberr::context * er_context_p;
+
+  /* er_set () of what the thread calls needs an error context of the thread, as in unload_extractor_thread () */
+  er_context_p = new cuberr::context ();
+  er_context_p->register_thread_local ();
 
   while (writer_thread_proc_terminate == false)
     {
@@ -1971,6 +1976,10 @@ unload_writer_thread (void *param)
     {
       error_occurred = true;
     }
+
+  er_context_p->deregister_thread_local ();
+  delete er_context_p;
+  er_context_p = NULL;
 
 #if defined(WINDOWS)
   pthread_exit ((THREAD_RET_T) thr_ret);
@@ -2496,9 +2505,9 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
       pthread_mutex_destroy (&unld_cls_info.mtx);
     }
 
-  if (data_format != OBJECT_FORMAT_TEXT)
+  if (data_format != OBJECT_FORMAT_TEXT && error == NO_ERROR && !error_occurred)
     {
-      /* end of records marker followed by the new line which closes the section */
+      /* end of records marker followed by the new line which closes the section, unless the section failed */
       const BIN_REC_SIZE_TYPE end_of_records = BIN_END_OF_RECORDS;
       char section_end[sizeof (end_of_records) + 1];
 
@@ -2507,12 +2516,9 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 
       for (i = 0; i < nfiles; i++)
 	{
-	  if (write (g_fd_handles[i], section_end, sizeof (section_end)) != (ssize_t) sizeof (section_end))
+	  if (write_object_file_bytes (i, section_end, (int) sizeof (section_end)) != NO_ERROR && error == NO_ERROR)
 	    {
-	      if (error == NO_ERROR)
-		{
-		  error = ER_IO_WRITE;
-		}
+	      error = ER_IO_WRITE;
 	    }
 	}
     }
@@ -3322,6 +3328,7 @@ open_object_file (extract_context & ctxt, const char *output_dirname, const char
 	  snprintf (out_fname, PATH_MAX - 1, "%s/%s%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX, file_no);
 	}
 
+      snprintf (g_fd_names[i], sizeof (g_fd_names[i]), "%s", out_fname);
       g_fd_handles[i] = open (out_fname, O_WRONLY | O_CREAT | O_TRUNC, CREAT_OBJECT_FILE_PERM);
       if (g_fd_handles[i] == INVALID_FILE_NO)
 	{
