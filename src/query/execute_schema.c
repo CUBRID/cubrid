@@ -11944,7 +11944,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   new_default = default_value;
 
   /* without a DEFAULT / ON UPDATE clause the old expression is kept: it must fit the new type as in CREATE */
-  if (attr_chg_prop->name_space == ID_ATTRIBUTE
+  if (attr_chg_prop->name_space == ID_ATTRIBUTE && attr_chg_prop->new_name_space == ID_ATTRIBUTE
       && !is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_UNCHANGED)
       && (attribute->info.attr_def.data_default == NULL || attribute->info.attr_def.on_update == DB_DEFAULT_NONE))
     {
@@ -14673,7 +14673,6 @@ do_check_kept_default_expr (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, P
   error = get_att_default_from_def (parser, attribute, &value_p, NULL);
   attribute->info.attr_def.data_default = NULL;
   pr_clear_value (&value);
-  parser_free_tree (parser, data_default);
 
   return error;
 }
