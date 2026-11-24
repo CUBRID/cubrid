@@ -9537,6 +9537,7 @@ pt_apply_difference (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.query.into_list, arg);
   PT_APPLY_WALK (parser, p->info.query.order_by, arg);
   PT_APPLY_WALK (parser, p->info.query.orderby_for, arg);
+  PT_APPLY_WALK (parser, p->info.query.limit, arg);
   return p;
 }
 
@@ -14100,6 +14101,7 @@ pt_apply_intersection (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.query.into_list, arg);
   PT_APPLY_WALK (parser, p->info.query.order_by, arg);
   PT_APPLY_WALK (parser, p->info.query.orderby_for, arg);
+  PT_APPLY_WALK (parser, p->info.query.limit, arg);
   return p;
 }
 
