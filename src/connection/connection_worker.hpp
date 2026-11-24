@@ -123,7 +123,6 @@ namespace cubconn::connection
 	TAKEOVER_CLIENT,
 	SHUTDOWN_CLIENT, /* lazy queue */
 	RELEASE_PACKET,
-	RECV_RECHECK, /* an eager receiver handed the socket back: receive from it again */
 
 	TYPE_COUNT
       };
@@ -252,9 +251,6 @@ namespace cubconn::connection
       /* true while an eventfd notification is pending or being handled */
       std::atomic<bool> m_notified;
 
-      /* true while a connection close drains the IMMEDIATE queue in has_remaining_tasks () */
-      bool m_closing_drain;
-
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
       /* consumption must happen from only one thread.	    */
@@ -335,7 +331,6 @@ namespace cubconn::connection
       bool forward_message_to_successor (queue_type type, message &item, context *ctx);
 
       void handle_message_queue_release_packet (message &item);
-      void handle_message_queue_recv_recheck (message &item);
 
       void handle_message_queue_new_client (message &item);
       void handle_message_queue_handoff_client (message &item);
@@ -376,16 +371,17 @@ namespace cubconn::connection
       result handle_reception (context *ctx, bool in_exhausted);
 
       /* worker: claim the socket before receiving from it */
-      bool claim_reading (context *ctx, bool from_edge);
+      bool claim_reading (context *ctx);
       void release_reading (context *ctx);
-      result receive_if_free (context *ctx, bool in_exhausted, bool from_edge);
+      result receive_if_free (context *ctx, bool in_exhausted);
 
       /* eager receiver: claim, drain and release the socket, in eager_poll_and_receive () */
       static context *eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&owner_out, SOCKET &fd_out);
       result eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
       void eager_abort (context *ctx);
       void eager_flush_counted_to_pool (context *ctx);
-      static bool eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx, SOCKET fd, bool hand_back);
+      static void eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx);
+      static uint32_t eager_epoll_flags (context *ctx, bool with_epollin);
 
       /* --------------------------------------------------------------------------- */
       /* transmission								     */

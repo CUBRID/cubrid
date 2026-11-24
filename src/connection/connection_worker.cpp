@@ -572,7 +572,7 @@ namespace cubconn::connection
     SOCKET fd;
     result status;
     int n;
-    bool more_data, hand_back;
+    bool more_data;
 
     count_out = 0;
     ctx_out = nullptr;
@@ -593,24 +593,21 @@ namespace cubconn::connection
     /* STEP 3. Receive what came in, or leave an error to the worker. */
     status = result::Ok;
     more_data = false;
-    hand_back = false;
 
     if (n > 0 && (po.revents & POLLIN) != 0)
       {
 	/* owner may have changed since the claim; eager_drain () needs no worker state */
 	status = owner->eager_drain (ctx, entry, count_out, more_data);
-	hand_back = (status != result::Ok) || more_data;
       }
     else if (n > 0 || (n < 0 && errno != EINTR))
       {
 	/* POLLERR, POLLHUP, POLLNVAL or a failed poll: leave the close to the worker */
 	status = result::Error;
-	hand_back = true;
       }
 
     /* STEP 4. Give the socket back. m_eager_running is lowered now,
      * or in eager_finish () once the caller has run what was received. */
-    hand_back = eager_release (conn, entry, ctx, fd, hand_back);
+    eager_release (conn, entry, ctx);
     if (count_out == 0)
       {
 	ctx->m_recv.m_eager_running.fetch_sub (1, std::memory_order_release);
@@ -620,7 +617,7 @@ namespace cubconn::connection
 	ctx_out = ctx;
       }
 
-    return !hand_back && status == result::Ok && count_out > 0;
+    return status == result::Ok && !more_data && count_out > 0;
   }
 
   /* lower m_eager_running; ctx is passed in because a failed takeover clears conn.context */
@@ -639,8 +636,7 @@ namespace cubconn::connection
     m_stop (false),
     m_entry (nullptr),
     m_index (index),
-    m_notified (false),
-    m_closing_drain (false)
+    m_notified (false)
   {
     std::size_t i;
 
@@ -987,14 +983,11 @@ namespace cubconn::connection
 
   bool worker::has_remaining_tasks (context *ctx)
   {
-    bool has_pending_transmission, save_closing_drain;
+    bool has_pending_transmission;
     int r;
 
     /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
-    save_closing_drain = m_closing_drain;	/* save */
-    m_closing_drain = true;
     this->handle_message_queue_by_index (queue_type::IMMEDIATE);
-    m_closing_drain = save_closing_drain;	/* restore */
 
     r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
     assert (r == NO_ERROR);
@@ -1712,70 +1705,6 @@ retry:
     return !fi_test_once (m_entry, fi_code) && m_events.add_descriptor (item.ctx->m_conn->fd, flags, item.ctx);
   }
 
-  /* Receive again from a socket an eager receiver handed back.
-   *   1. Look up the context under cmutex; discard the message when the connection has none.
-   *   2. Discard a message meant for an older context, or forward it to the connection's new worker.
-   *   3. Put the message back when nested; the next queue pass serves it outside both cases.
-   *   4. Receive from the socket, unless the eager receiver holds it again. */
-  void worker::handle_message_queue_recv_recheck (message &item)
-  {
-    context *ctx;
-    css_conn_entry *conn;
-    result status;
-    int r;
-    bool held_by_outer_handler;
-
-    assert (item.conn);
-
-    /* STEP 1. Look up the context under cmutex; discard the message when the connection has none. */
-    r = rmutex_lock (m_entry, &item.conn->cmutex);
-    assert (r == NO_ERROR);
-
-    ctx = reinterpret_cast<context *> (item.conn->context);
-    if (ctx == nullptr)
-      {
-	r = rmutex_unlock (m_entry, &item.conn->cmutex);
-	assert (r == NO_ERROR);
-	return;
-      }
-
-    /* STEP 2. Discard a message meant for an older context, or forward it to the connection's new worker. */
-    conn = item.conn;
-    if (!this->validate_message_generation (item, ctx)
-	|| this->forward_message_to_successor (queue_type::IMMEDIATE, item, ctx))
-      {
-	r = rmutex_unlock (m_entry, &conn->cmutex);
-	assert (r == NO_ERROR);
-	return;
-      }
-
-    /* STEP 3. Put the message back when nested; the next queue pass serves it outside both cases.
-     * Under cmutex (handle_message_queue_handoff_client ()), handle_reception () would take rmutex
-     * while a transaction thread holding rmutex waits for cmutex in css_request_release_packet ().
-     * Under a close (has_remaining_tasks ()), a nested close would clear the m_entry client info
-     * the outer close needs to release its transaction. */
-    held_by_outer_handler = (conn->cmutex.lock_cnt > 1) || m_closing_drain;
-    r = rmutex_unlock (m_entry, &conn->cmutex);
-    assert (r == NO_ERROR);
-    if (held_by_outer_handler)
-      {
-	if (!this->enqueue_and_notify (queue_type::IMMEDIATE, std::move (item)))
-	  {
-	    assert_release (false);
-	  }
-	return;
-      }
-
-    /* STEP 4. Receive from the socket, unless the eager receiver holds it again.
-     * Not from_edge: this message is the handover itself. */
-    status = this->receive_if_free (ctx, false, false);
-    if (status == result::Error)
-      {
-	/* a message handler does not end the worker; the connection's next event or close handles it */
-	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_recv_recheck: handle_reception failed\n");
-      }
-  }
-
   /* closes a connection moved in whose registration failed; called with its cmutex held, which it releases */
   void worker::close_failed_takeover (context *ctx)
   {
@@ -2108,8 +2037,7 @@ respond:
 	/* HANDOFF_CLIENT  */ { &worker::handle_message_queue_handoff_client,	statistics::worker::MQ_HANDOFF_CLIENT },
 	/* TAKEOVER_CLIENT */ { &worker::handle_message_queue_takeover_client,	statistics::worker::MQ_TAKEOVER_CLIENT },
 	/* SHUTDOWN_CLIENT */ { &worker::handle_message_queue_shutdown_client,	statistics::worker::MQ_SHUTDOWN_CLIENT },
-	/* RELEASE_PACKET  */ { &worker::handle_message_queue_release_packet,	statistics::worker::MQ_RELEASE_PACKET },
-	/* RECV_RECHECK    */ { &worker::handle_message_queue_recv_recheck,	statistics::worker::MQ_RECV_RECHECK }
+	/* RELEASE_PACKET  */ { &worker::handle_message_queue_release_packet,	statistics::worker::MQ_RELEASE_PACKET }
       }
     };
     message request;
@@ -2117,7 +2045,7 @@ respond:
 
     static_assert (static_cast<int> (message_type::START) == 0, "message_type must start at 0");
     static_assert (static_cast<int> (message_type::TYPE_COUNT) == handler.size (), "handler table size must match");
-    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 10, "this must be modified");
+    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 9, "this must be modified");
 
     i = 0;
     size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);
@@ -2579,10 +2507,8 @@ respond:
   /* Take this connection's socket for the worker.
    *   1. Skip the claim with the window 0; no transaction thread takes the socket then.
    *   2. Under cmutex, set m_recv_busy when the socket is free.
-   *   3. When it is busy and from_edge is set, record the dropped edge in m_missed_edge
-   *      so the eager receiver rechecks on release.
    * Returns whether the worker may receive. */
-  bool worker::claim_reading (context *ctx, bool from_edge)
+  bool worker::claim_reading (context *ctx)
   {
     bool claimed;
     int r;
@@ -2601,12 +2527,6 @@ respond:
       {
 	ctx->m_recv.m_recv_busy.store (true, std::memory_order_relaxed);
       }
-    else if (from_edge)
-      {
-	/* STEP 3. When it is busy and from_edge is set, record the dropped edge in m_missed_edge
-	 * so the eager receiver rechecks on release. */
-	ctx->m_recv.m_missed_edge = true;
-      }
     r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
     assert (r == NO_ERROR);
 
@@ -2618,12 +2538,12 @@ respond:
     ctx->m_recv.m_recv_busy.store (false, std::memory_order_release);
   }
 
-  /* Pending when the eager receiver holds the socket; it rechecks on release */
-  result worker::receive_if_free (context *ctx, bool in_exhausted, bool from_edge)
+  /* Pending when the eager receiver holds the socket; an edge dropped here comes back when it releases */
+  result worker::receive_if_free (context *ctx, bool in_exhausted)
   {
     result status;
 
-    if (!this->claim_reading (ctx, from_edge))
+    if (!this->claim_reading (ctx))
       {
 	return result::Pending;
       }
@@ -2633,7 +2553,8 @@ respond:
     return status;
   }
 
-  /* a granted claim raises m_eager_running; the close relies on the CONN_OPEN check under cmutex */
+  /* A granted claim raises m_eager_running; the close relies on the CONN_OPEN check under cmutex.
+   * It also takes EPOLLIN out of the worker's set, so that an arrival wakes this thread and not the worker. */
   context *worker::eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&owner_out, SOCKET &fd_out)
   {
     context *ctx;
@@ -2650,11 +2571,16 @@ respond:
       {
 	ctx = nullptr;
       }
+    else if (ctx->m_epoll_registered
+	     && !owner_out->m_events.modify_descriptor (conn.fd, eager_epoll_flags (ctx, false), ctx))
+      {
+	/* EPOLLIN is still in the worker's set: leave the socket to the worker */
+	ctx = nullptr;
+      }
     else
       {
 	ctx->m_recv.m_recv_busy.store (true, std::memory_order_relaxed);
 	ctx->m_recv.m_eager_running.fetch_add (1, std::memory_order_relaxed);
-	ctx->m_recv.m_missed_edge = false;
 	fd_out = conn.fd;
       }
     r = rmutex_unlock (entry, &conn.cmutex);
@@ -2774,55 +2700,49 @@ respond:
     ctx->m_recv.m_eager_counted = 0;
   }
 
-  /* Give the socket taken by eager_claim () back.
-   *   1. Clear m_recv_busy under cmutex; when the lock fails, clear it anyway and stop waiting.
-   *   2. When the worker dropped an edge meanwhile, hand the socket back if data is still there.
-   *   3. When handing back, send the worker a RECV_RECHECK.
-   * Returns true when the caller must stop waiting. */
-  bool worker::eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx, SOCKET fd, bool hand_back)
+  /* Give the socket taken by eager_claim () back. Putting EPOLLIN back with EPOLL_CTL_MOD makes the kernel check
+   * the socket again, so data this thread left, or data whose edge the worker dropped meanwhile, wakes the worker. */
+  void worker::eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx)
   {
-    struct pollfd po;
+    bool rearmed;
     int r;
 
-    /* STEP 1. Clear m_recv_busy under cmutex; when the lock fails, clear it anyway and stop waiting. */
     if (rmutex_lock (entry, &conn.cmutex) != NO_ERROR)
       {
-	/* a dropped edge cannot be handed back without the lock; the worker's next wake recovers it */
 	ctx->m_recv.m_recv_busy.store (false, std::memory_order_release);
-	return true;
+	/* EPOLLIN cannot be put back without the lock, so the worker would never see this socket again */
+	css_request_shutdown_conn (&conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
+	return;
       }
     ctx->m_recv.m_recv_busy.store (false, std::memory_order_release);
 
-    /* STEP 2. When the worker dropped an edge meanwhile, hand the socket back if data is still there. */
-    if (!hand_back && ctx->m_recv.m_missed_edge)
-      {
-	/* the dropped edge is usually data this thread already drained */
-	po.fd = fd;
-	po.events = POLLIN;
-	po.revents = 0;
-	hand_back = (poll (&po, 1, 0) != 0);
-      }
-
-    /* STEP 3. When handing back, send the worker a RECV_RECHECK. */
-    if (hand_back && conn.worker != nullptr && conn.context == ctx)
-      {
-	message request;
-
-	request.type = message_type::RECV_RECHECK;
-	request.conn = &conn;
-	request.ctx = ctx;
-	request.id = ctx->m_id;
-	if (!conn.worker->enqueue_and_notify (queue_type::IMMEDIATE, std::move (request)))
-	  {
-	    assert_release (false);
-	  }
-      }
-
-    ctx->m_recv.m_missed_edge = false;
+    /* a context in handoff is not registered; the takeover's EPOLL_CTL_ADD checks the socket the same way */
+    rearmed = (!ctx->m_epoll_registered || conn.worker == nullptr || conn.context != ctx
+	       || conn.worker->m_events.modify_descriptor (conn.fd, eager_epoll_flags (ctx, true), ctx));
     r = rmutex_unlock (entry, &conn.cmutex);
     assert (r == NO_ERROR);
 
-    return hand_back;
+    if (!rearmed)
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->eager_release: modify_descriptor failed, fd = %d\n", conn.fd);
+	css_request_shutdown_conn (&conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
+      }
+  }
+
+  /* the worker's epoll flags for a registered connection, with or without EPOLLIN; caller holds cmutex */
+  uint32_t worker::eager_epoll_flags (context *ctx, bool with_epollin)
+  {
+    uint32_t flags = EPOLLET | EPOLLRDHUP;
+
+    if (with_epollin)
+      {
+	flags |= EPOLLIN;
+      }
+    if (!ctx->m_send.m_transmitter.empty ())
+      {
+	flags |= EPOLLOUT;
+      }
+    return flags;
   }
 
   result worker::handle_transmission (context *ctx, bool in_exhausted)
@@ -2962,7 +2882,7 @@ respond:
 	    er_log_conn (__FILE__, __LINE__,
 			 "connection::worker->handle_exhausted: try to receive from fd = %d\n", ctx->m_conn->fd);
 
-	    status = this->receive_if_free (ctx, true, true);
+	    status = this->receive_if_free (ctx, true);
 	    if (status == result::ClosedConnection || status == result::PeerReset)
 	      {
 		it = m_exhausted.erase (it);
@@ -3129,7 +3049,6 @@ respond:
 	      case message_type::SHUTDOWN:
 	      case message_type::HANDOFF_CLIENT:
 	      case message_type::RELEASE_PACKET:
-	      case message_type::RECV_RECHECK:
 	      case message_type::TYPE_COUNT:
 		break;
 	      }
@@ -3194,7 +3113,7 @@ respond:
 		    eventfds[1] = true;
 		    continue;
 		  }
-		status = this->receive_if_free (ctx, false, true);
+		status = this->receive_if_free (ctx, false);
 		if (status == result::ClosedConnection || status == result::PeerReset)
 		  {
 		    continue;

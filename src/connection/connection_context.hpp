@@ -179,9 +179,6 @@ namespace cubconn::connection
       /* true while the worker or the eager receiver receives; set under cmutex, cleared without it */
       std::atomic<bool> m_recv_busy { false };
 
-      /* true when the worker dropped an EPOLLIN edge while the eager receiver held the socket; under cmutex */
-      bool m_missed_edge { false };
-
       /* eager receivers that have not yet run what they received; raised under cmutex, lowered without it */
       std::atomic<int> m_eager_running { 0 };
 
