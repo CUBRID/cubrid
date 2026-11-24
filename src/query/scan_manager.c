@@ -2107,6 +2107,9 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
       /* make DB_VALUE key values from KEY_VALS key ranges */
       for (i = 0; i < key_cnt; i++)
 	{
+	  /* a pass that stopped before its last key's end still holds the keys, and a multi-column key owns a buffer */
+	  pr_clear_value (&key_vals[i].key1);
+	  pr_clear_value (&key_vals[i].key2);
 	  /* initialize DB_VALUE first for error case */
 	  key_vals[i].range = NA_NA;
 	  db_make_null (&key_vals[i].key1);
@@ -2153,9 +2156,10 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
        * desc. */
       if ((indx_infop->range_type == R_KEYLIST || indx_infop->range_type == R_RANGELIST)
 	  && ((indx_infop->orderby_desc && indx_infop->orderby_skip)
-	      || (indx_infop->groupby_desc && indx_infop->groupby_skip)))
+	      || (indx_infop->groupby_desc && indx_infop->groupby_skip) || iscan_id->min_max_only_desc_pass))
 	{
-	  /* in both cases we should reverse the key lists if we have a reverse order by or group by which is skipped */
+	  /* reverse the key lists if we have a reverse order by or group by which is skipped, or a pass of a min/max only
+	   * scan that takes MAX */
 	  check_key_vals (key_vals, key_cnt, reverse_key_list, indx_infop->key_ranges_compares);
 	}
 
@@ -2609,9 +2613,9 @@ exit_on_error:
  * scan_clear_index_key_vals () - release the search keys a pass of the index scan left on it
  *   isidp (in/out): index scan
  *
- * The pass that reads the last key's end clears them and moves curr_keyno past key_cnt (scan_get_index_oidset ());
- * a pass that stopped before that (the inner of a NL semi/anti join at its first match, a block that has its rows)
- * still holds them, and a multi-column key owns a buffer: the next pass makes the keys afresh, so they go here.
+ * The pass that reads the last key's end clears them (scan_get_index_oidset ()); a pass that stopped before its last
+ * key's end still holds the keys, and a multi-column key owns a buffer. The next pass releases them when it makes the
+ * keys afresh, and the end of the scan, which no pass follows, releases them here. Clearing a cleared key does nothing.
  */
 static void
 scan_clear_index_key_vals (INDX_SCAN_ID * isidp)
@@ -2619,14 +2623,11 @@ scan_clear_index_key_vals (INDX_SCAN_ID * isidp)
   KEY_VAL_RANGE *key_vals;
   int i;
 
-  if (isidp->curr_keyno >= 0 && isidp->curr_keyno < isidp->key_cnt)
+  key_vals = isidp->key_vals;
+  for (i = 0; i < isidp->key_cnt; i++)
     {
-      key_vals = isidp->key_vals;
-      for (i = 0; i < isidp->key_cnt; i++)
-	{
-	  pr_clear_value (&key_vals[i].key1);
-	  pr_clear_value (&key_vals[i].key2);
-	}
+      pr_clear_value (&key_vals[i].key1);
+      pr_clear_value (&key_vals[i].key2);
     }
 }
 
@@ -3252,6 +3253,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     }
 
   isidp->iscan_oid_order = iscan_oid_order;
+  isidp->min_max_only_desc_pass = false;
   isidp->ahead_next = INT_MAX;
   isidp->ahead_distance = 0;
   isidp->ahead_limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
@@ -3291,6 +3293,8 @@ exit_on_error:
     {
       isidp->key_vals = NULL;
     }
+  /* the scan stays S_OPENED, so scan_end_scan () may still walk key_vals up to key_cnt */
+  isidp->key_cnt = 0;
   if (isidp->bt_attr_ids)
     {
       db_private_free_and_init (thread_p, isidp->bt_attr_ids);
@@ -3455,8 +3459,8 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
 
   if (*started)
     {
-      /* scan_end_scan () without ending the caches, which move to the partition below */
-      scan_clear_index_key_vals (isidp);
+      /* scan_end_scan () without ending the caches, which move to the partition below, and without releasing the keys,
+       * which the next pass releases when it makes the keys afresh */
       btree_scan_clear_key (BTS);
       (void) scan_init_iss (isidp);
 
@@ -4696,8 +4700,6 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	{
 	  INDX_COV *indx_cov_p;
 
-	  /* the keys of a pass that stopped before its last key's end (CBRD-28203) */
-	  scan_clear_index_key_vals (&s_id->s.isid);
 	  s_id->s.isid.curr_oidno = -1;
 	  s_id->s.isid.curr_keyno = -1;
 	  s_id->position = S_BEFORE;

@@ -406,6 +406,8 @@ struct indx_scan_id
   int key_cnt;			/* number of valid ranges */
   bool iscan_oid_order;		/* index_scan_oid_order flag */
   bool need_count_only;		/* get count only, no OIDs are copied */
+  bool min_max_only_desc_pass;	/* a pass of a min/max only scan that reads the MIN/MAX aggregates' column descending:
+				 * it takes MAX from its first row, so it reads the key ranges from the last */
   bool caches_inited;		/* are the caches initialized?? */
   bool scancache_inited;
   /* TODO: Can we use these instead of BTS pointers to limits? */
@@ -466,6 +468,7 @@ struct parallel_index_scan_id
   int key_cnt;			/* number of valid ranges */
   bool iscan_oid_order;		/* index_scan_oid_order flag */
   bool need_count_only;		/* get count only, no OIDs are copied */
+  bool min_max_only_desc_pass;	/* mirror of INDX_SCAN_ID::min_max_only_desc_pass */
   bool caches_inited;		/* are the caches initialized?? */
   bool scancache_inited;
   DB_BIGINT key_limit_lower;	/* lower key limit */
