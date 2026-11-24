@@ -60,6 +60,7 @@
 #include "schema_system_catalog_constants.h"
 #include "execute_statement.h"
 #include "network_interface_cl.h"
+#include "sp_context_rules.hpp"
 
 #include "dbtype.h"
 
@@ -840,9 +841,17 @@ make_template (MOP object, MOP classobj, bool is_read_only)
    */
   if (object != NULL && object != classobj)
     {
+      bool was_dirty = WS_ISDIRTY (object);
+
       if (au_fetch_instance (object, &obj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION, AU_UPDATE))
 	{
 	  return NULL;
+	}
+
+      /* applying the template marks the row dirty; until then, a flush need not write the row again */
+      if (!was_dirty && base_object == NULL && !object->is_vid)
+	{
+	  ws_clean (object);
 	}
 
       /*
@@ -1907,6 +1916,13 @@ create_template_object (OBJ_TEMPLATE * template_ptr)
 
   class_ = template_ptr->class_;
 
+  if (sp_In_sql_depth > 0
+      && sp_check_object_write ((class_->class_type != SM_VCLASS_CT) ? template_ptr->classobj :
+				template_ptr->base_classobj) != NO_ERROR)
+    {
+      return NULL;
+    }
+
   /*
    * NOTE: garbage collection can occur in either the call to locator_add_instance
    * or vid_add_virtual_instance (which calls locator_add_instance).  The object
@@ -2499,9 +2515,19 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	    }
 	  else
 	    {
+	      bool was_dirty = WS_ISDIRTY (OBT_BASE_OBJECT (template_ptr));
+	      bool cleaned = false;
+
 	      /* lock the object first, then evaluate the triggers */
 	      if (!(error = access_object (template_ptr, &object, &mobj)))
 		{
+		  /* the row is not changed yet: a flush in a BEFORE trigger need not write it */
+		  if (!was_dirty && template_ptr->base_object == NULL && !object->is_vid
+		      && !template_ptr->is_class_update)
+		    {
+		      ws_clean (object);
+		      cleaned = true;
+		    }
 		  if ((error = tr_before_object (trstate, object, temp)))
 		    {
 		      trstate = NULL;
@@ -2509,9 +2535,11 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		}
 
 	      /* in some cases, the object has been decached in before trigger. we need fetch it again. */
-	      if (error == NO_ERROR && object->decached)
+	      /* a cleaned row is fetched again too, to mark it dirty before it changes */
+	      if (error == NO_ERROR && (object->decached || (cleaned && !WS_IS_DELETED (object))))
 		{
 		  error = au_fetch_instance_force (object, &mobj, AU_FETCH_UPDATE, LC_FETCH_MVCC_VERSION);
+		  object->pruning_type = template_ptr->pruning_type;
 		  if (error != NO_ERROR)
 		    {
 		      if (trstate != NULL)

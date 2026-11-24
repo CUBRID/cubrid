@@ -917,6 +917,17 @@ name (const EXPR_PRED * pred) \
   return (get (v1) op get (v2)) ? V_TRUE : V_FALSE; \
 }
 
+/* a DOUBLE leaf: cond on a and b, the two values, in the order of the type (expr_double_eq (), expr_double_lt ()) */
+#define EXPR_PRED_DOUBLE_LEAF(name, cond) \
+static DB_LOGICAL \
+name (const EXPR_PRED * pred) \
+{ \
+  EXPR_PRED_CMP_PROLOGUE (v1, v2); \
+  const double a = db_get_double (v1); \
+  const double b = db_get_double (v2); \
+  return (cond) ? V_TRUE : V_FALSE; \
+}
+
 /* *INDENT-OFF* */
 EXPR_PRED_CMP_LEAF (expr_pred_int_eq, db_get_int, ==)
 EXPR_PRED_CMP_LEAF (expr_pred_int_ne, db_get_int, !=)
@@ -930,12 +941,12 @@ EXPR_PRED_CMP_LEAF (expr_pred_bigint_lt, db_get_bigint, <)
 EXPR_PRED_CMP_LEAF (expr_pred_bigint_le, db_get_bigint, <=)
 EXPR_PRED_CMP_LEAF (expr_pred_bigint_gt, db_get_bigint, >)
 EXPR_PRED_CMP_LEAF (expr_pred_bigint_ge, db_get_bigint, >=)
-EXPR_PRED_CMP_LEAF (expr_pred_double_eq, db_get_double, ==)
-EXPR_PRED_CMP_LEAF (expr_pred_double_ne, db_get_double, !=)
-EXPR_PRED_CMP_LEAF (expr_pred_double_lt, db_get_double, <)
-EXPR_PRED_CMP_LEAF (expr_pred_double_le, db_get_double, <=)
-EXPR_PRED_CMP_LEAF (expr_pred_double_gt, db_get_double, >)
-EXPR_PRED_CMP_LEAF (expr_pred_double_ge, db_get_double, >=)
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_eq, expr_double_eq (a, b))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_ne, !expr_double_eq (a, b))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_lt, expr_double_lt (a, b))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_le, !expr_double_lt (b, a))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_gt, expr_double_lt (b, a))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_ge, !expr_double_lt (a, b))
 /* a DATE is one unsigned int (mr_cmpval_date () orders it the same way) */
 #define EXPR_GET_DATE(v) (*db_get_date (v))
 EXPR_PRED_CMP_LEAF (expr_pred_date_eq, EXPR_GET_DATE, ==)
@@ -1115,7 +1126,7 @@ expr_pred_eval (const EXPR_PRED * pred)
 	    result = (db_get_bigint (v1) == db_get_bigint (v2)) ? DB_EQ : DB_NE;
 	    break;
 	  case DB_TYPE_DOUBLE:
-	    result = (db_get_double (v1) == db_get_double (v2)) ? DB_EQ : DB_NE;
+	    result = expr_double_eq (db_get_double (v1), db_get_double (v2)) ? DB_EQ : DB_NE;
 	    break;
 	  default:
 	    result = expr_pred_compare (pred, v1, v2, 1, &comparable);
@@ -1578,6 +1589,9 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     {
       return ER_FAILED;		/* the interpreter's error exit: the body set the error */
     }
+
+  /* an operator such as ABS returns its fixed operand without conversion */
+  numeric_db_value_to_float_domain (a.arithptr->value, a.domain);
   *step->out_cell = a.arithptr->value;
   return NO_ERROR;
 }
@@ -4329,8 +4343,8 @@ int
 expr_pred_or_raw_leaves (const void *or_src, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap, int *n_disj,
 			 int disj_cap)
 {
-  const PRED_EXPR *disj[16];
-  const PRED_EXPR *terms[32];
+  const PRED_EXPR *disj[PRED_OR_RAW_MAX_DISJUNCTS];
+  const PRED_EXPR *terms[PRED_OR_RAW_MAX_LEAVES];
   int nd, d, i, nt, n = 0;
 
   if (or_src == NULL || ((const PRED_EXPR *) or_src)->type != T_PRED
@@ -5313,6 +5327,11 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
     {
       /* CBRD-27583: a node that raises its rule's error (operand types the operator rejects) has no kernel; the
        * interpreter raises it */
+      return -1;
+    }
+  if (REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_LIMIT_SUM))
+    {
+      /* the offset + count of a LIMIT rewrite gives the maximum on an overflow, which only the interpreter does */
       return -1;
     }
   if (expr_arith_side_effect (regu->value.arithptr->opcode))
@@ -8876,7 +8895,10 @@ expr_scan_pred_image_unpack (const char *image, int size, const PRED_EXPR * pr)
     {
       root = expr_image_get_pred (&r, prog != NULL ? prog->n_cells : 0, prog != NULL ? prog->n_steps : 0, 0);
     }
-  n_share = expr_image_get_range (&r, 0, prog != NULL ? prog->n_cells : 0);
+  /* the registry has an entry per shareable node (expr_scan_pred_share_build ()), and two nodes of one expression that
+   * the build gave one cell (CSE: the operand and the WHEN of CASE x WHEN x ...) are two entries of that cell, so the
+   * count may exceed the program's cells; the writer bounds it by the nodes it registers (CBRD-28049) */
+  n_share = expr_image_get_range (&r, 0, prog != NULL ? EXPR_MAX_STEPS : 0);
   if (root != NULL && n_share > 0 && !r.failed)
     {
       root->share = (struct expr_share *) malloc (sizeof (struct expr_share) * n_share);

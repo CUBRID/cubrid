@@ -491,6 +491,10 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_SHA1_PLANS];
   req_p->processing_function = sqmgr_drop_query_plans_by_sha1;
 
+  req_p = &net_Requests[NET_SERVER_QM_QUERY_GET_STMT_INFO];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sqmgr_get_xasl_stmt_info;
+
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_CLONES];
   req_p->processing_function = sqmgr_drop_query_clones;
 
@@ -796,6 +800,13 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_CDC_AUTH_RESPONSE];
   req_p->processing_function = scdc_auth_response;
+
+  /* a client proves its password with these two before logging in or switching users */
+  req_p = &net_Requests[NET_SERVER_AU_CHALLENGE];
+  req_p->processing_function = sau_challenge;
+
+  req_p = &net_Requests[NET_SERVER_AU_RESPONSE];
+  req_p->processing_function = sau_response;
 
   /* flashback : DBA-only, checked first thing in each handler with
    * log_extract_check_authorization (), the function CDC uses too */

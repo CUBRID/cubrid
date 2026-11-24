@@ -836,6 +836,8 @@ static void numeric_init_digits4_ascii_helper (void);
 static inline uint32_t numeric_get_digits4_ascii (uint32_t val);
 static int float_numeric_find_first_nz_idx_msb (const uint64_t * word_buf, int calc_words);
 static int float_numeric_get_decimal_digit (const uint64_t * word_buf, int calc_words);
+static int numeric_digits_u128 (uint128_t coefficient);
+static int numeric_words_get_precision_digits (const uint64_t * word_buf) __attribute__ ((noinline));
 static int numeric_compare_pos (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2);
 static void numeric_shift_byte (DB_C_NUMERIC arg, int numbytes, DB_C_NUMERIC answer, int length);
 static bool numeric_is_zero (DB_C_NUMERIC arg);
@@ -1609,7 +1611,7 @@ float_numeric_mul_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, 
 
   numeric_words_to_bytes (result_word, calc_words, result_buf);
 
-  return float_numeric_get_decimal_digit (result_word, calc_words);
+  return numeric_digits_u128 (((uint128_t) result_word[1] << 64) | result_word[2]);
 }
 
 /*
@@ -1748,7 +1750,7 @@ float_numeric_mod_fast (uint64_t dividend_val, uint64_t divisor_val,
    */
   uint64_t result_word[NUMERIC_AS_WORDS] = { 0, 0, remainder };
 
-  int result_prec = float_numeric_get_decimal_digit (result_word, NUMERIC_AS_WORDS);
+  int result_prec = numeric_digits_u128 (remainder);
   if (*result_sign && result_prec == 1 && result_word[NUMERIC_AS_WORDS - 1] == 0)
     {
       /* Prevent -0; zero is always treated as positive. */
@@ -3413,8 +3415,8 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   numeric_bytes_to_words (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE, dbv2_word, NUMERIC_AS_WORDS,
 			  NUMERIC_AS_WORD_BYTES);
 
-  prec1 = float_numeric_get_decimal_digit (dbv1_word, NUMERIC_AS_WORDS);
-  prec2 = float_numeric_get_decimal_digit (dbv2_word, NUMERIC_AS_WORDS);
+  prec1 = numeric_words_get_precision_digits (dbv1_word);
+  prec2 = numeric_words_get_precision_digits (dbv2_word);
 
   /* 2) determine common sign of the result */
   result_sign = numeric_is_negative (dbv1) ^ numeric_is_negative (dbv2);
@@ -3894,8 +3896,8 @@ numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer, const bool is_value_ne
  *   answer(out)     : Pointer to the resulting DB_BIGINT
  *   is_value_negative(in): Sign of the input value
  *
- * Note: Performs scale adjustment (division by 10^scale and rounding) and 
- *       converts the resulting value into a signed 64-bit integer.
+ * Note: Performs scale adjustment (division by 10^scale and rounding, or for a negative scale multiplication by
+ *       10^-scale) and converts the resulting value into a signed 64-bit integer.
  *       If the value exceeds the 64-bit BIGINT range, ER_IT_DATA_OVERFLOW 
  *       is returned.
  */
@@ -3917,25 +3919,41 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
   work_buf[1] = NUMERIC_BSWAP64 (work_buf[1]);
   work_buf[2] = NUMERIC_BSWAP64 (work_buf[2]);
 
-  /* 2. perform scale adjustment if scale > 0 (divide by 10^scale) */
   if (scale > 0)
     {
+      /* 2-1. divide by 10^scale */
       rounding_digit = float_numeric_div_normalize (work_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES, scale);
-
-      /* 3. round up if the fractional remainder is >= 5 */
       if (rounding_digit >= ROUND_HALF_UP_DIGIT)
 	{
 	  float_numeric_increment (work_buf, NUMERIC_AS_WORDS, 1);
 	}
     }
+  else if (scale < 0 && work_buf[0] == 0 && work_buf[1] == 0 && work_buf[2] != 0)
+    {
+      /* 2-2. multiply by 10^-scale, a coefficient >= 2^64 is left to step 3 */
+      int exponent = -scale;
+      uint128_t product;
 
-  /* 4. check if the value fits within 64 bits (upper words must be zero) */
+      if (exponent > 18)
+	{
+	  return ER_IT_DATA_OVERFLOW;
+	}
+
+      product = (uint128_t) work_buf[2] * _gv_mul_normalize_pow10_lookup[exponent - 1];
+      if ((product >> 64) != 0)
+	{
+	  return ER_IT_DATA_OVERFLOW;
+	}
+      work_buf[2] = (uint64_t) product;
+    }
+
+  /* 3. check if the value fits within 64 bits (upper words must be zero) */
   if (work_buf[0] != 0 || work_buf[1] != 0)
     {
       return ER_IT_DATA_OVERFLOW;
     }
 
-  /* 5. BIGINT range check considering the sign
+  /* 4. BIGINT range check considering the sign
    *    positive range: [0, 2^63 - 1] (0x7FFFFFFFFFFFFFFF)
    *    negative range: [0, 2^63] (0x8000000000000000)
    */
@@ -3945,7 +3963,7 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
       return ER_IT_DATA_OVERFLOW;
     }
 
-  /* 6. form final signed BIGINT result
+  /* 5. form final signed BIGINT result
    *    INT64_MIN (magnitude == 0x8000000000000000) is a special case:
    *    negating (DB_BIGINT)INT64_MIN is signed-overflow UB in C.
    *    Since the stored value is already the absolute magnitude,
@@ -4295,7 +4313,7 @@ float_numeric_normalize_for_sort (DB_C_NUMERIC num, int scale, uint8_t * mantiss
       return 0;
     }
 
-  digits = float_numeric_get_decimal_digit (word_buf, NUMERIC_AS_WORDS);
+  digits = numeric_words_get_precision_digits (word_buf);
 
   /* multiply by 10 up to DB_MAX_NUMERIC_PRECISION(40) digits, so 10^39 <= M < 10^40 */
   if (digits < DB_MAX_NUMERIC_PRECISION)
@@ -4877,23 +4895,23 @@ numeric_make_from_u128 (DB_VALUE * result, uint128_t coefficient, int precision,
  *
  * Note: Gives what db_round_dbval () and db_trunc_dbval () build on the decimal string: the
  *       scale - place lowest coefficient digits become zero, ROUND adds one unit at that place
- *       when the first dropped digit is 5 or more, the precision and scale of the value are
- *       kept, and a negative place count past the scale returns the value itself. Taken only
- *       for coefficients below 2^128 and a scale of 0 or more, where the result cannot reach
+ *       when the first dropped digit is 5 or more, the scale of the value is kept with the digits
+ *       of the result as its precision, and a negative place count past the scale returns the
+ *       value itself. Taken only for coefficients below 2^128 and a scale of 0 or more, where the result cannot reach
  *       the 41 digits the string code rescales.
  */
 bool
 numeric_db_value_round_to_place (const DB_VALUE * value, DB_BIGINT place, bool half_up, DB_VALUE * result)
 {
   NUMERIC_AGG_EXPR_VAL v;
-  int precision, scale;
+  int scale;
   uint128_t coefficient;
 
   if (!numeric_word_from_dbv (value, &v) || v.scale < 0)
     {
       return false;
     }
-  db_get_numeric_precision_and_scale (value, &precision, &scale, NULL);
+  scale = v.scale;
 
   /* zero the cleared lowest digits; the comparisons avoid overflow for any place */
   if (place > scale)
@@ -4920,7 +4938,7 @@ numeric_db_value_round_to_place (const DB_VALUE * value, DB_BIGINT place, bool h
 	}
     }
 
-  numeric_make_from_u128 (result, coefficient, precision, scale, v.is_negative);
+  numeric_make_from_u128 (result, coefficient, numeric_digits_u128 (coefficient), scale, v.is_negative);
   return true;
 }
 
@@ -4933,47 +4951,32 @@ numeric_db_value_round_to_place (const DB_VALUE * value, DB_BIGINT place, bool h
  *
  * Note: Gives what db_floor_dbval () and db_ceil_dbval () build on the decimal string: the
  *       fraction digits become zero and the scale is kept; moving away from zero adds one at
- *       the units digit, and when that carry runs past the 10^(precision - 1) digit the
- *       precision becomes the carried digit's position + 1 (at most 40). Taken only for
+ *       the units digit, and the precision is the digits of the result. Taken only for
  *       coefficients below 2^128 and a scale from 1 to 38.
  */
 bool
 numeric_db_value_floor_ceil (const DB_VALUE * value, bool is_floor, DB_VALUE * result)
 {
   NUMERIC_AGG_EXPR_VAL v;
-  int precision, scale;
-  uint128_t unit, integral, coefficient;
+  int scale;
+  uint128_t unit, coefficient;
 
   if (!numeric_word_from_dbv (value, &v) || v.scale <= 0 || v.scale > NUMERIC_AGG_EXPR_POW10_MAX_EXP)
     {
       return false;
     }
-  db_get_numeric_precision_and_scale (value, &precision, &scale, NULL);
+  scale = v.scale;
 
   unit = _gv_numeric_agg_expr_pow10_u128[scale];
-  integral = v.coefficient / unit;
-  coefficient = integral * unit;
+  coefficient = v.coefficient / unit * unit;
 
-  if (coefficient != v.coefficient && v.is_negative == is_floor)
+  if (coefficient != v.coefficient && v.is_negative == is_floor
+      && __builtin_add_overflow (coefficient, unit, &coefficient))
     {
-      /* the carry stops at the first integral digit below 9 */
-      int carried = scale;
-
-      for (; integral % 10 == 9; integral /= 10)
-	{
-	  carried++;
-	}
-      if (__builtin_add_overflow (coefficient, unit, &coefficient))
-	{
-	  return false;
-	}
-      if (carried >= precision)
-	{
-	  precision = MIN (carried + 1, DB_MAX_NUMERIC_PRECISION);
-	}
+      return false;
     }
 
-  numeric_make_from_u128 (result, coefficient, precision, scale, v.is_negative);
+  numeric_make_from_u128 (result, coefficient, numeric_digits_u128 (coefficient), scale, v.is_negative);
   return true;
 }
 
@@ -5646,10 +5649,11 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
   switch (get_fp_value_type (adouble))
     {
     case FP_VALUE_TYPE_INFINITE:
-      return ER_IT_DATA_OVERFLOW;
     case FP_VALUE_TYPE_NAN:
+      /* neither has a NUMERIC value: a NaN overflows as an infinity does, and as a NaN converted to an integer type
+       * does */
+      return ER_IT_DATA_OVERFLOW;
     case FP_VALUE_TYPE_ZERO:
-      /* currently CUBRID returns 0 for a NaN converted to NUMERIC (??) */
       *scale = dst_scale;
       *prec = dst_scale ? dst_scale : 1;
 
@@ -6422,7 +6426,7 @@ numeric_coerce_num_to_num (const DB_VALUE * src_value, int src_prec, int src_sca
   if (round_up)
     {
       /* scan the actual buffer to accurately check for precision changes after rounding (e.g., 9.9 -> 10.0). */
-      final_prec = float_numeric_get_decimal_digit (result_word, NUMERIC_AS_WORDS);
+      final_prec = numeric_words_get_precision_digits (result_word);
       if (final_prec > dest_prec)
 	{
 	  ret = ER_IT_DATA_OVERFLOW;
@@ -7134,7 +7138,10 @@ numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS
       bool src_is_float_numeric = false;
       db_get_numeric_precision_and_scale (src, &precision, &scale, &src_is_float_numeric);
 
-      if (!src_is_float_numeric && precision == (unsigned char) DB_HJOIN_NUMERIC_PRECISION_DEFERRED)
+      /* a fixed value converted to a float one takes its digits as its precision */
+      if (!src_is_float_numeric
+	  && (precision == (unsigned char) DB_HJOIN_NUMERIC_PRECISION_DEFERRED
+	      || desired_precision == DB_DEFAULT_NUMERIC_PRECISION))
 	{
 	  precision = numeric_get_precision_digits (db_locate_numeric (src));
 	}
@@ -7146,7 +7153,7 @@ numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS
     {
       int anint = db_get_enum_short (src);
       numeric_coerce_int_to_num (anint, num, &num_is_negative);
-      precision = 5;
+      precision = get_significant_digit (anint);
       scale = 0;
     }
   else
@@ -7761,10 +7768,54 @@ numeric_db_value_is_zero (const DB_VALUE * arg)
     }
 }
 
+/*
+ * numeric_words_get_precision_digits () - the digits of a NUMERIC value in NUMERIC_AS_WORDS words
+ *   return: digit count (1 for zero)
+ *   word_buf(in): the value in NUMERIC_AS_WORDS words
+ *
+ * Note: Keep its declaration noinline. Inlined into each caller, it grows the library code and shifts its layout,
+ *       which slowed unrelated queries when measured.
+ */
+static int
+numeric_words_get_precision_digits (const uint64_t * word_buf)
+{
+  /* below 2^128: count the digits in 128 bits */
+  if (word_buf[0] == 0)
+    {
+      return numeric_digits_u128 (((uint128_t) word_buf[1] << 64) | word_buf[2]);
+    }
+  return float_numeric_get_decimal_digit (word_buf, NUMERIC_AS_WORDS);
+}
+
 int
 numeric_get_precision_digits (uint8_t * calc_buf)
 {
   uint64_t word_buf[NUMERIC_AS_WORDS] = { 0 };
   numeric_bytes_to_words (calc_buf, DB_NUMERIC_BUF_SIZE, word_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES);
-  return float_numeric_get_decimal_digit (word_buf, NUMERIC_AS_WORDS);
+  return numeric_words_get_precision_digits (word_buf);
+}
+
+/*
+ * numeric_db_value_fixed_to_float_domain () - a fixed NUMERIC value made the float one of the same value, when the
+ *                                             domain it is declared in is a float NUMERIC
+ *   return: void
+ *   value(in/out): a fixed NUMERIC value that is not NULL
+ *   domain(in): the domain the value is declared in
+ */
+void
+numeric_db_value_fixed_to_float_domain (DB_VALUE * value, const DB_DOMAIN * domain)
+{
+  assert (!DB_IS_NULL (value) && DB_VALUE_TYPE (value) == DB_TYPE_NUMERIC
+	  && value->domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION);
+
+  if (domain == NULL || TP_DOMAIN_TYPE (domain) != DB_TYPE_NUMERIC || domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      return;
+    }
+
+  /* the coefficient stays as it is: its digits and scale move into the header */
+  value->data.num.header.precision = numeric_get_precision_digits (db_locate_numeric (value));
+  value->data.num.header.scale = value->domain.numeric_info.scale;
+  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
+  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 }

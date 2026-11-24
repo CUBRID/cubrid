@@ -1294,9 +1294,9 @@ parser_free_parser (PARSER_CONTEXT * parser)
       free_and_init (parser->host_var_bind_domains);
     }
 
-  if (parser->static_sql_host_var_end)
+  if (parser->static_sql_host_vars)
     {
-      free_and_init (parser->static_sql_host_var_end);
+      free_and_init (parser->static_sql_host_vars);
     }
 
   /* INTO labels of a static SQL which have not been taken by the caller (e.g. on a compile error) */

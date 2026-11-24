@@ -472,6 +472,16 @@ struct ldr_context
 static bool skip_current_class = false;
 static bool skip_current_instance = false;
 
+/*
+ * What the syntax-checking walk counts. A row of a valid class answers for its own errors
+ * and counts once. A class that cannot take rows - unknown, or none given - refuses every
+ * row of it but says so once, so it counts once: on its %class line when that line says
+ * it (ldr_count_invalid_class ()), or else on the first row that finds the context
+ * invalid. The rest of the class does not count.
+ */
+static bool ldr_row_started_valid = false;
+static bool ldr_invalid_class_counted = false;
+
 extern bool locator_Dont_check_foreign_key;	/* from locator_sr.h */
 
 /*
@@ -695,6 +705,10 @@ static void clist_final (void);
 static int is_internal_class (DB_OBJECT *class_);
 static void ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
 static void ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
+static void ldr_act_binary_value (LDR_CONTEXT *context, cubload::binary_row_reader &reader,
+				  const cubload::binary_column &col);
+static void ldr_report_binary_error (LDR_CONTEXT *context, int error);
+static const LDR_STORE_SPEC *ldr_binary_store_slot (LDR_ATTDESC *attdesc, const DB_VALUE *val);
 static void ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
 static int ldr_mismatch (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_ignore (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
@@ -708,6 +722,7 @@ static int ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len,
 static int ldr_null_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_null_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_sink_class_object (LDR_CONTEXT *context, SM_ATTRIBUTE *att, DB_VALUE *val);
+static int ldr_sink_instance (LDR_CONTEXT *context, LDR_ATTDESC *attdesc, DB_VALUE *val, bool direct, bool bound_bit);
 static void ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
 static int ldr_sys_user_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_sys_class_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
@@ -761,6 +776,7 @@ static int add_argument (LDR_CONTEXT *context);
 static void invalid_class_id_error (LDR_CONTEXT *context, int id);
 static int ldr_init_loader (LDR_CONTEXT *context);
 static void ldr_abort (void);
+static void ldr_count_invalid_class (LDR_CONTEXT *context);
 static void ldr_process_object_ref (object_ref_type *ref, int type, bool is_element);
 static int ldr_act_add_class_all_attrs (const char *class_name);
 static int ldr_json_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
@@ -969,6 +985,7 @@ error_exit:
     ldr_clear_ctor_values (ldr_Current_context);
 
     CHECK_SKIP ();
+    ldr_row_started_valid = ldr_Current_context->valid;
     if (ldr_Current_context->valid)
       {
 
@@ -1009,6 +1026,76 @@ error_exit:
       }
 
     process_values (cons, false);
+  }
+
+  /*
+   * sa_object_loader::process_binary_line - load one row of a binary section
+   *    row(in): the row, as the scanner took it out of the object file
+   * Note:
+   *    The counterpart of process_line (). A row that does not follow the layout of a binary
+   *    section stops where the layout was lost, nothing behind that point can be read.
+   */
+  void
+  sa_object_loader::process_binary_line (const string_type *row)
+  {
+    cubload::binary_row_reader reader (row->val, row->size, ldr_Driver->get_scanner ().get_format_version ());
+
+    CHECK_SKIP ();
+
+    if (er_errid () != NO_ERROR)
+      {
+	display_error (0);
+	CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
+	ldr_abort ();
+	return;
+      }
+
+    if (reader.has_more () && ldr_Current_context->num_attrs == 0)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+	if (ldr_Current_context->valid)
+	  {
+	    display_error (0);
+	  }
+	CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
+	ldr_abort ();
+	return;
+      }
+
+    if (ldr_Current_context->act_mode == LDR_ACT_METH)
+      {
+	/* unloaddb never writes a binary section for a %class line with a constructor */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_INVALID_STATE, 0);
+	display_error (0);
+	CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
+	ldr_abort ();
+	return;
+      }
+
+    /* a column that breaks the layout ends the row, ldr_act_binary_value () reports one inside a collection */
+    while (reader.has_more () && ldr_Current_context->valid)
+      {
+	cubload::binary_column col;
+
+	if (reader.next (col) != NO_ERROR)
+	  {
+	    ldr_report_binary_error (ldr_Current_context, ER_LDR_CORRUPTED_BINARY_RECORD);
+	    break;
+	  }
+
+	ldr_act_binary_value (ldr_Current_context, reader, col);
+      }
+
+    if (reader.is_corrupted ())
+      {
+	/*
+	 * The row was reported where its layout was lost, and what is left of it cannot be read.
+	 * Do not let finish_line () report the attributes it never reached as missing on top of
+	 * that: the row is one failure, and with --error-control-file ignoring it, that second
+	 * error would still fail the load.
+	 */
+	ldr_Current_context->next_attr = ldr_Current_context->num_attrs;
+      }
   }
 
   /*
@@ -1175,6 +1262,31 @@ error_exit:
 error_exit:
     if (ldr_Current_context->err_count || (err != NO_ERROR))
       {
+	if (ldr_Current_context->validation_only)
+	  {
+	    /*
+	     * The syntax-checking walk does not stop at a refused row: ldr_abort () has no jump
+	     * buffer to leave the parse through until the loading walk registers one. Count the
+	     * row, so ldr_sa_load () does not go on to load a file it has just refused, and clear
+	     * the error the row has already reported. Left set, process_line () takes it for an
+	     * error raised outside the rows, prints it again for every row after this one and
+	     * checks none of them.
+	     *
+	     * The count is per row, not per message: a row with two bad values prints both
+	     * and counts 1. The rows of a class that cannot take rows count once between
+	     * them, as the error is said once; see ldr_invalid_class_counted. What else goes
+	     * into the count is listed at ldr_increment_err_total ().
+	     */
+	    if (ldr_row_started_valid || !ldr_invalid_class_counted)
+	      {
+		ldr_increment_err_total ();
+	      }
+	    if (!ldr_Current_context->valid)
+	      {
+		ldr_invalid_class_counted = true;
+	      }
+	    er_clear ();
+	  }
 	ldr_abort ();
       }
     ldr_Current_context->instance_started = 0;
@@ -1183,9 +1295,17 @@ error_exit:
 } // namespace cubload
 
 /*
- * ldr_increment_err_total - increment err_total count of the given context
+ * ldr_increment_err_total - increment err_total count of the current context
  *    return: void
- *    context(out): context
+ * Note:
+ *    err_total is the N of "N errors detected." It counts what was refused, not the
+ *    messages printed for it:
+ *      - a row the syntax-checking walk refused counts 1, however many of its values
+ *        were wrong and however many lines were printed for them;
+ *      - a class that cannot take rows counts 1 on its %class line, and its rows do
+ *        not count again (ldr_count_invalid_class, ldr_invalid_class_counted);
+ *      - a syntax error of the data file counts 1 (error_handler::log_error_message).
+ *    An error ignored through --error-control-file is not counted.
  */
 void
 ldr_increment_err_total ()
@@ -2142,11 +2262,24 @@ ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 
   RETURN_IF_NOT_VALID (context);
 
+  /*
+   * A value past the last attribute. Say it for the first such value of the row only - the
+   * ones after it, and the trailing brace of a collection that overflowed, are the same
+   * overflow - and leave the context valid. Marking the context invalid here ignored the
+   * rest of the class, not the rest of the row: start_line () does not reset an invalid
+   * context, so a validation walk reported nothing for the rows after this one, and a row
+   * skipped through --error-control-file took every row after it in the class along.
+   * finish_line () refuses the row; nothing below reads attrs[next_attr] for it, and the
+   * instance reference setters, which run before this for an @class|id value, check
+   * ldr_ref_slot_exists () because next_attr may by then be past the last descriptor.
+   */
   if (context->next_attr >= context->num_attrs)
     {
-      context->valid = false;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
-      CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+      if (context->next_attr == context->num_attrs && (type != LDR_COLLECTION || str != NULL))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
+	  CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+	}
       goto error_exit;
     }
 
@@ -2254,6 +2387,25 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 
   db_make_null (&tempval);
 
+  /*
+   * An element of a collection that came past the last attribute. ldr_act_attr () said
+   * so for the leading brace and left the context valid, so the elements behind it get
+   * here on both walks. The loading walk drops them below, having no slot to put them
+   * in; the validation walk must drop them too, before checking them. Otherwise it says
+   * more about a row that is refused anyway, and counts what the loading walk never
+   * sees: with the overflow ignored through --error-control-file, a bad date or a
+   * nested set inside it refused the whole file instead of skipping the row.
+   *
+   * LDR_ACT_ATTR only, which is every line of the validation walk but a %constructor
+   * one: ldr_act_restrict_attributes () sets LDR_ACT_CLASS_ATTR on the loading walk
+   * only. A %constructor line is bounded by num_attrs + arg_count, and on the loading
+   * walk a class attribute line's elements are dropped by the test below.
+   */
+  if (context->act_mode == LDR_ACT_ATTR && context->next_attr >= context->num_attrs)
+    {
+      goto error_exit;
+    }
+
   if (context->validation_only)
     {
       switch (type)
@@ -2263,9 +2415,13 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 	 * to the element setter
 	 */
 	case LDR_COLLECTION:
-	  err = ER_LDR_NESTED_SET;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	  display_error (0);
+	  /*
+	   * Through the filter, as the loading walk refuses it. finish_line () counts a refused
+	   * row of this walk, and a count stops the load, so an error --error-control-file
+	   * ignores must not be counted here: the loading walk skips only this row for it.
+	   */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NESTED_SET, 0);
+	  CHECK_ERR (err, ER_LDR_NESTED_SET);
 	  break;
 	/* Check validity of date/time/timestamp string during validation */
 	case LDR_TIME:
@@ -2339,6 +2495,245 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 error_exit:
   /* The element was cloned into the collection, so release whatever the conversion and the cast allocated. */
   db_value_clear (&tempval);
+  ldr_increment_err_count (context, (err != NO_ERROR));
+}
+
+/*
+ * ldr_skip_binary_elements - step over the elements of a collection column
+ *    return: NO_ERROR, or ER_LDR_CORRUPTED_BINARY_RECORD
+ *    reader(in/out): the row, positioned after col
+ *    col(in): the column, nothing is done unless it is a collection
+ * Note:
+ *    The elements of a collection follow it as columns of their own, so a collection that is not
+ *    converted still has to be read through to reach the next attribute.
+ */
+static int
+ldr_skip_binary_elements (cubload::binary_row_reader &reader, const cubload::binary_column &col)
+{
+  int count = 0;
+  cubload::binary_column elem;
+
+  if (!TP_IS_SET_TYPE (col.type))
+    {
+      return NO_ERROR;
+    }
+
+  /* how many element columns follow is not known, so the row cannot be read any further */
+  if (col.size != sizeof (count))
+    {
+      return reader.set_corrupted_at (col.offset);
+    }
+
+  memcpy (&count, col.data, sizeof (count));
+  if (count < 0)
+    {
+      return reader.set_corrupted_at (col.offset);
+    }
+
+  for (int i = 0; i < count; i++)
+    {
+      if (reader.next (elem) != NO_ERROR)
+	{
+	  return ER_LDR_CORRUPTED_BINARY_RECORD;
+	}
+
+      /* unloaddb does not write nested collections, and the elements of this one would be left unread */
+      if (TP_IS_SET_TYPE (elem.type))
+	{
+	  return reader.set_corrupted_at (elem.offset);
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * ldr_report_binary_error - report an error of a binary section row that belongs to no attribute
+ *    return: void
+ *    context(in/out): current context
+ *    error(in): the error, already set
+ */
+static void
+ldr_report_binary_error (LDR_CONTEXT *context, int error)
+{
+  int err = NO_ERROR;
+
+  CHECK_ERR (err, error);
+
+error_exit:
+  ldr_increment_err_count (context, (err != NO_ERROR));
+}
+
+/*
+ * ldr_binary_store_slot - the store slot a value of a binary section row is written through
+ *    return: the slot, or NULL to store the value through the object template
+ *    attdesc(in): descriptor of the attribute being set
+ *    val(in): the value, already in the attribute's domain (binary_to_db_value ())
+ * Note:
+ *    A value of the text form is written the way ldr_act_add_attr () set up the slot of its token:
+ *    straight into the instance image (setmem) for the token that names the attribute's own type,
+ *    through the object template (obj_desc_set ()) otherwise. A binary value carries no token, but
+ *    it reaches the attribute in the attribute's domain, which is what the token of that domain
+ *    makes of it. So it takes the slot of that token and is written the same way. A domain no
+ *    token names directly, NUMERIC or BIT for instance, keeps the template, as it does in the text
+ *    form.
+ */
+static const LDR_STORE_SPEC *
+ldr_binary_store_slot (LDR_ATTDESC *attdesc, const DB_VALUE *val)
+{
+  DB_TYPE dom_type = TP_DOMAIN_TYPE (attdesc->att->domain);
+  data_type token;
+
+  if (db_value_type (val) != dom_type)
+    {
+      return NULL;
+    }
+
+  switch (dom_type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+      token = LDR_INT;
+      break;
+    case DB_TYPE_FLOAT:
+      token = LDR_FLOAT;
+      break;
+    case DB_TYPE_DOUBLE:
+      token = LDR_DOUBLE;
+      break;
+    case DB_TYPE_DATE:
+      token = LDR_DATE;
+      break;
+    case DB_TYPE_TIME:
+      token = LDR_TIME;
+      break;
+    case DB_TYPE_TIMESTAMP:
+      token = LDR_TIMESTAMP;
+      break;
+    case DB_TYPE_TIMESTAMPLTZ:
+      token = LDR_TIMESTAMPLTZ;
+      break;
+    case DB_TYPE_TIMESTAMPTZ:
+      token = LDR_TIMESTAMPTZ;
+      break;
+    case DB_TYPE_DATETIME:
+      token = LDR_DATETIME;
+      break;
+    case DB_TYPE_DATETIMELTZ:
+      token = LDR_DATETIMELTZ;
+      break;
+    case DB_TYPE_DATETIMETZ:
+      token = LDR_DATETIMETZ;
+      break;
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      token = LDR_STR;
+      break;
+    case DB_TYPE_MONETARY:
+      token = LDR_MONETARY;
+      break;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      token = LDR_ELO_EXT;
+      break;
+    default:
+      return NULL;
+    }
+
+  const LDR_STORE_SPEC *slot = &attdesc->store[token];
+  if (slot->handler != NULL || !slot->direct)
+    {
+      return NULL;
+    }
+
+  return slot;
+}
+
+/*
+ * ldr_act_binary_value - store one column of a binary section row
+ *    return: void
+ *    context(in/out): current context
+ *    reader(in/out): the row, positioned after col. A collection reads its elements from it
+ *    col(in): the column
+ * Note:
+ *    The counterpart of ldr_act_attr () for a row unloaddb --data-format wrote. The value is
+ *    built by binary_to_db_value (), which the server side uses as well, and handed to the sink
+ *    a collection goes to on a text line, see ldr_collection_db_collection ().
+ */
+static void
+ldr_act_binary_value (LDR_CONTEXT *context, cubload::binary_row_reader &reader, const cubload::binary_column &col)
+{
+  LDR_ATTDESC *attdesc;
+  DB_VALUE val;
+  int err = NO_ERROR;
+  int conv_err;
+
+  db_make_null (&val);
+
+  if (context->next_attr >= context->num_attrs)
+    {
+      context->valid = false;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
+      CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+      goto error_exit;
+    }
+
+  if (context->validation_only)
+    {
+      /* there are no attribute descriptors to convert with, see ldr_act_add_attr () */
+      CHECK_ERR (err, ldr_skip_binary_elements (reader, col));
+      goto error_exit;
+    }
+
+  attdesc = &context->attrs[context->next_attr];
+
+  conv_err = cubload::binary_to_db_value (reader, col, attdesc->conv_att, attdesc->collection_domain, &val);
+  if (conv_err == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
+    {
+      /* name the class as well, see ldr_convert_value () */
+      char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
+
+      snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", context->class_name, attdesc->att->header.name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, conv_err, 1, class_attr);
+    }
+
+  ENSURE_ERR_SET (conv_err);
+  CHECK_ERR (err, conv_err);
+
+  if (conv_err != NO_ERROR)
+    {
+      /* --error-control-file ignores the error and the instance is skipped, there is no value to store */
+      goto error_exit;
+    }
+
+  if (context->attr_type != LDR_ATTRIBUTE_ANY)
+    {
+      CHECK_ERR (err, ldr_sink_class_object (context, attdesc->att, &val));
+    }
+  else if (DB_IS_NULL (&val))
+    {
+      /* what a NULL token of the text form does, see ldr_act_add_attr () */
+      CHECK_ERR (err, ldr_null_db_generic (context, NULL, 0, attdesc));
+    }
+  else
+    {
+      const LDR_STORE_SPEC *slot = ldr_binary_store_slot (attdesc, &val);
+
+      if (slot != NULL)
+	{
+	  CHECK_ERR (err, ldr_sink_instance (context, attdesc, &val, slot->direct, slot->bound_bit));
+	}
+      else
+	{
+	  CHECK_ERR (err, ldr_generic (context, &val));
+	}
+    }
+
+error_exit:
+  /* a collection is not freed by this, it was handed to the object, see ldr_collection_db_collection () */
+  db_value_clear (&val);
+  context->next_attr += 1;
   ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
@@ -2918,12 +3313,21 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
 
   CHECK_VALIDATION_ONLY (context);
 
+  /*
+   * A value past the last attribute, said once per line and leaving the context valid, as
+   * ldr_act_attr () does and for the same reason: an invalid context is not reset by
+   * start_line (), so with the overflow ignored through --error-control-file every
+   * following line of the block was dropped without a word. Only the loading walk gets
+   * here; the validation walk reads a class attribute line through ldr_act_attr (), see
+   * ldr_act_restrict_attributes (). No descriptor is left to read; ldr_act_meth () explains.
+   */
   if (context->next_attr >= context->num_attrs)
     {
-      context->valid = false;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
-      CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
-      /* No descriptor left to read; ldr_act_meth () explains. */
+      if (context->next_attr == context->num_attrs && (type != LDR_COLLECTION || str != NULL))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
+	  CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+	}
       goto error_exit;
     }
 
@@ -4737,6 +5141,29 @@ error_exit:
 }
 
 /*
+ * ldr_count_invalid_class - count a class that cannot take rows, where it is reported
+ *    return: void
+ *    context(in): current context
+ * Note:
+ *    The syntax-checking walk only. The class is said to be wrong once, on its %class
+ *    line, so it counts once there, and its rows do not count again; see
+ *    ldr_invalid_class_counted. The error the lookup left is cleared too: it has been
+ *    said, and left set, process_line () says it a second time on the first row.
+ */
+static void
+ldr_count_invalid_class (LDR_CONTEXT *context)
+{
+  if (!context->validation_only)
+    {
+      return;
+    }
+
+  ldr_increment_err_total ();
+  ldr_invalid_class_counted = true;
+  er_clear ();
+}
+
+/*
  * ldr_act_init_context -
  *    return:
  *    context():
@@ -4752,6 +5179,9 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
   CHECK_SKIP ();
 
   er_clear ();
+
+  /* A new class: its rows have not been counted yet. */
+  ldr_invalid_class_counted = false;
 
   err = ldr_finish_context (context);
   if (err != NO_ERROR)
@@ -4785,6 +5215,7 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 						     LOADDB_MSG_EXCEED_MAX_USER_LEN),
 				     DB_MAX_USER_LENGTH - 1);
 	      CHECK_CONTEXT_VALIDITY (context, true);
+	      ldr_count_invalid_class (context);
 	      ldr_abort ();
 	      goto error_exit;
 	    }
@@ -4800,6 +5231,7 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 						 LOADDB_MSG_EXCEED_MAX_LEN),
 				 DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
 	  CHECK_CONTEXT_VALIDITY (context, true);
+	  ldr_count_invalid_class (context);
 	  ldr_abort ();
 	  goto error_exit;
 	}
@@ -4810,7 +5242,13 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 	  display_error_line (0);
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNKNOWN_CLASS),
 		   class_name);
+	  if (context->validation_only && er_errid () != NO_ERROR && er_errid () != ER_LC_UNKNOWN_CLASSNAME)
+	    {
+	      /* The lookup failed for a reason of its own; the message above does not say it. */
+	      display_error (0);
+	    }
 	  CHECK_CONTEXT_VALIDITY (context, true);
+	  ldr_count_invalid_class (context);
 	  ldr_abort ();
 	  goto error_exit;
 	}
@@ -5929,6 +6367,24 @@ invalid_class_id_error (LDR_CONTEXT *context, int id)
 }
 
 /*
+ * ldr_ref_slot_exists - Whether attrs[next_attr] is there for an instance reference.
+ *    return: true if next_attr names an allocated descriptor
+ *    context(in): context
+ * Note:
+ *    attrs holds exactly num_attrs + arg_count descriptors. A reference that comes
+ *    after the last one belongs to a row with too many values: next_attr has run past
+ *    the end, and keeps running for each further value because an overflow no longer
+ *    invalidates the context. The reference is resolved before ldr_act_attr () sees the
+ *    value, so the setters below must not reach for the slot. ldr_act_attr () reports
+ *    the overflow and finish_line () refuses the row.
+ */
+static bool
+ldr_ref_slot_exists (const LDR_CONTEXT *context)
+{
+  return context->next_attr < context->num_attrs + context->arg_count;
+}
+
+/*
  * ldr_act_set_ref_class - Find the class that is about to be used in an
  * instance reference.
  *    return: void
@@ -5943,7 +6399,7 @@ ldr_act_set_ref_class (LDR_CONTEXT *context, char *name)
   CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
 
-  if (!context->validation_only)
+  if (!context->validation_only && ldr_ref_slot_exists (context))
     {
       mop = db_find_class (name);
       if (mop != NULL)
@@ -5970,7 +6426,7 @@ ldr_act_set_instance_id (LDR_CONTEXT *context, int id)
   CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
 
-  if (!context->validation_only)
+  if (!context->validation_only && ldr_ref_slot_exists (context))
     {
       if (context->attrs[context->next_attr].ref_class != NULL)
 	{
@@ -6001,7 +6457,7 @@ ldr_act_set_ref_class_id (LDR_CONTEXT *context, int id)
   CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
 
-  if (!context->validation_only)
+  if (!context->validation_only && ldr_ref_slot_exists (context))
     {
       class_ = ldr_get_class_from_id (id);
       if (class_ != NULL)
@@ -6020,7 +6476,7 @@ ldr_act_get_ref_class (LDR_CONTEXT *context)
 {
   RETURN_IF_NOT_VALID_WITH (context, NULL);
 
-  if (!context->validation_only)
+  if (!context->validation_only && ldr_ref_slot_exists (context))
     {
       return context->attrs[context->next_attr].ref_class;
     }
@@ -6300,7 +6756,12 @@ ldr_sa_load (load_args *args, int *status, volatile bool *interrupted)
   int ldr_init_ret = NO_ERROR;
   int client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;
 
-  std::ifstream object_file (args->object_file);
+  /*
+   * Opened in binary mode, as the insert pass below and split () in load_common.cpp open it. A binary
+   * section holds raw bytes, which a text mode stream on Windows changes ("\r\n" into "\n", and 0x1A
+   * taken as the end of the file), and the scanner reads "\r\n" as a new line by itself.
+   */
+  std::ifstream object_file (args->object_file, std::fstream::in | std::fstream::binary);
 
   ldr_init_driver ();
 
