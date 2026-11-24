@@ -7568,13 +7568,14 @@ tp_value_auto_cast_with_precision_check_converter (const DB_VALUE * src, DB_VALU
     }
 #endif
 
-  if (TP_IS_DISCRETE_NUMBER_TYPE (src->domain.general_info.type))
+  if (TP_IS_DISCRETE_NUMBER_TYPE (src->domain.general_info.type) && desired_domain->type->id == DB_TYPE_NUMERIC
+      && desired_domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
     {
       /* the integer digits of NUMERIC(p, s) are p - s, a scale above the precision leaves only 0 */
       const int int_digits = MAX (desired_domain->precision - desired_domain->scale, 0);
 
       /* if the numeric's integer digits are 19 or more, then it can get the bigint enough */
-      if (desired_domain->type->id == DB_TYPE_NUMERIC && int_digits < DB_BIGINT_PRECISION)
+      if (int_digits < DB_BIGINT_PRECISION)
 	{
 	  INT64 bigint;
 
