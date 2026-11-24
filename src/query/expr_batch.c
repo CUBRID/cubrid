@@ -2101,8 +2101,8 @@ eb_build_filter_interpreted (EB_BUILD * b)
     {
       if (info[i].or_src != NULL)
 	{
-	  EXPR_RAW_LEAF_INFO sub[32];
-	  int len[16], nd;
+	  EXPR_RAW_LEAF_INFO sub[PRED_OR_RAW_MAX_LEAVES];
+	  int len[PRED_OR_RAW_MAX_DISJUNCTS], nd;
 
 	  nd = expr_pred_or_raw_leaves (info[i].or_src, b->in->vd, sub, (int) DIM (sub), len, (int) DIM (len));
 	  if (nd < 0)
@@ -2168,8 +2168,8 @@ eb_build_filter (EB_BUILD * b)
 	}
       else
 	{
-	  EXPR_RAW_LEAF_INFO sub[32];
-	  int len[16], nd;
+	  EXPR_RAW_LEAF_INFO sub[PRED_OR_RAW_MAX_LEAVES];
+	  int len[PRED_OR_RAW_MAX_DISJUNCTS], nd;
 
 	  nd = expr_scan_pred_kid_or_leaves (b->in->scan_pred_compiled, i, b->in->vd, sub, (int) DIM (sub), len,
 					     (int) DIM (len));
