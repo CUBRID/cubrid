@@ -92,6 +92,7 @@ struct ws_repl_obj
   RECDES *recdes;
   char *packed_prior_value;	/* _db_serial write-back: the value it replaced, or NULL */
   int packed_prior_value_length;
+  bool serial_issue;		/* a _db_serial write that issued values */
 };
 
 typedef struct ws_repl_list WS_REPL_LIST;
@@ -696,7 +697,8 @@ public:
 
   int ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
 			       const char *rk_metadata, int rk_metadata_length, RECDES * recdes, int operation,
-			       bool has_index, char *packed_prior_value, int packed_prior_value_length);
+			       bool has_index, char *packed_prior_value, int packed_prior_value_length,
+			       bool serial_issue);
   void ws_init_repl_objs (void);
   void ws_clear_all_repl_objs (void);
   void ws_free_repl_obj (WS_REPL_OBJ * obj);

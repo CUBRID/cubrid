@@ -1816,13 +1816,20 @@
 
 #define ER_LDR_CORRUPTED_BINARY_RECORD              -1403
 
-#define ER_HA_REPLICATION_KEY_REQUIRED                      -1404
-#define ER_HA_REPLICATION_OPTION_CHANGE_NOT_ALLOWED         -1405
-#define ER_HA_FK_CONSTRAINT_VIOLATION                       -1406
-#define ER_HA_REPLICATION_CONSTRAINT_VIOLATION              -1407
-#define ER_HA_REPLICATION_CONSTRAINT_VIOLATION_IN_SUBCLASS  -1408
+#define ER_BT_LOAD_NO_LOGGING_DURING_BACKUP         -1404
 
-#define ER_LAST_ERROR                               -1409
+#define ER_SP_TCL_DDL_IN_QUERY                      -1405
+#define ER_SP_TCL_DDL_IN_TRIGGER                    -1406
+#define ER_SP_DML_IN_QUERY                          -1407
+#define ER_SP_TABLE_REFERENCED                      -1408
+
+#define ER_HA_REPLICATION_KEY_REQUIRED                      -1409
+#define ER_HA_REPLICATION_OPTION_CHANGE_NOT_ALLOWED         -1410
+#define ER_HA_FK_CONSTRAINT_VIOLATION                       -1411
+#define ER_HA_REPLICATION_CONSTRAINT_VIOLATION              -1412
+#define ER_HA_REPLICATION_CONSTRAINT_VIOLATION_IN_SUBCLASS  -1413
+
+#define ER_LAST_ERROR                               -1414
 
 /*
  * CAUTION!

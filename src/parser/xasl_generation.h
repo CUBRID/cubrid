@@ -106,6 +106,7 @@ struct symbol_info
   DB_VALUE **reserved_values;	/* db_values array used for reserved attributes */
   PT_FUNC_INDEX_COVER *func_idx_cover_list;	/* function index expressions to route to their result attribute */
   PT_FUNC_INDEX_COVER *func_idx_routed_list;	/* covered scans of the query whose output is routed */
+  bool heap_scan_filter;	/* translating the data filter of a heap scan (pt_to_pred_expr_factor_dnf ()) */
 };
 
 typedef struct aggregate_info AGGREGATE_INFO;
@@ -192,6 +193,7 @@ extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_n
 				     PT_NODE * using_index, PT_NODE * order_by, PT_NODE * orderby_for,
 				     int server_op, SCAN_OPERATION_TYPE scan_op_type);
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
+extern int pt_add_write_class_oids (XASL_NODE * xasl, const OID * class_oids, int count);
 extern PRED_EXPR_WITH_CONTEXT *pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * filter_pred, PT_NODE * spec);
 extern XASL_NODE *pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
 extern XASL_NODE *pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
