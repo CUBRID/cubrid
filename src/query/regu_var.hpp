@@ -233,6 +233,10 @@ const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may re
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
 const int REGU_VARIABLE_KEY_LIMIT_ARITH = 0x4000;	/* T_SUB/T_LEAST/T_GREATEST the optimizer builds for a key limit;
 							 * key_limit_eval () computes these nodes on their operands */
+const int REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE = 0x8000;	/* the N - 1 of rownum < N, >= N and = N:
+							 * key_limit_eval () reads it as ceil (N) - 1 */
+const int REGU_VARIABLE_LIMIT_SUM = 0x10000;	/* the T_ADD of the offset + count a LIMIT rewrite builds: an overflow
+						 * gives the BIGINT maximum, or minimum when negative (fetch_limit_sum_ovf ()) */
 
 /* CBRD-27583: REGU_VARIABLE.conv_mode - the converter (a DOMAIN_CONVERT_MODE, the ENUM name converter or the CHAR
  * prefix converter) and what a failed conversion gives */
@@ -331,6 +335,7 @@ inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
 inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
 inline bool regu_is_variable_pos (const regu_variable_node *regu);
 inline bool is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var);
+inline bool fetch_opcode_caches (OPERATOR_TYPE opcode);
 inline TP_DOMAIN *regu_produced_domain (const regu_variable_node *regu);
 inline bool arith_decides_arith (const arith_list_node *arith);
 inline const DOMAIN_ARITH *arith_decided_arith (const arith_list_node *arith);
@@ -393,6 +398,49 @@ is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var)
     }
 
   return false;
+}
+
+/* whether an arithmetic node over constant operands keeps its value for the rest of the execution by its operator
+ * alone (fetch.c's fetch_arith_caches () adds the predicate): not an operator whose value changes without its operands
+ * (a serial, a variable, a random number, a statistic, another tuple of the CONNECT BY list), and not the branch
+ * operators CASE, DECODE, IF and PREDICATE, whose predicate the fetch does not analyze.  The expression compiler
+ * computes a generic step once per execution by the same rule (expr_compile_generic ()), on the server and at XASL
+ * generation */
+bool
+fetch_opcode_caches (OPERATOR_TYPE opcode)
+{
+  switch (opcode)
+    {
+    case T_INCR:
+    case T_DECR:
+    case T_CURRENT_VALUE:
+    case T_CURRENT_VALUE_BY_OID:
+    case T_NEXT_VALUE:
+    case T_CASE:
+    case T_DECODE:
+    case T_IF:
+    case T_PREDICATE:
+    case T_ROW_COUNT:
+    case T_LAST_INSERT_ID:
+    case T_EVALUATE_VARIABLE:
+    case T_DEFINE_VARIABLE:
+    case T_RAND:
+    case T_RANDOM:
+    case T_DRAND:
+    case T_DRANDOM:
+    case T_SYS_GUID:
+    case T_UUID:
+    case T_EXEC_STATS:
+    case T_TRACE_STATS:
+    case T_SLEEP:
+    case T_PRIOR:
+    case T_QPRIOR:
+    case T_CONNECT_BY_ROOT:
+    case T_SYS_CONNECT_BY_PATH:
+      return false;
+    default:
+      return true;
+    }
 }
 
 /* CBRD-27583: the domain a regu's own evaluation produces its value in; domain is the one it delivers to its consumer,

@@ -538,10 +538,14 @@ struct trace_json_t;
         } while (0)
 
 #define PT_IS_DBLINK_DML_QUERY(n) \
-	((n->node_type == PT_INSERT && n->info.insert.spec->info.spec.remote_server_name) \
-        || (n->node_type == PT_DELETE && n->info.delete_.spec->info.spec.remote_server_name) \
-        || (n->node_type == PT_UPDATE && n->info.update.spec->info.spec.remote_server_name) \
-        || (n->node_type == PT_MERGE && n->info.merge.into->info.spec.remote_server_name))
+	((n->node_type == PT_INSERT && n->info.insert.spec != NULL \
+	  && n->info.insert.spec->info.spec.remote_server_name) \
+        || (n->node_type == PT_DELETE && n->info.delete_.spec != NULL \
+	    && n->info.delete_.spec->info.spec.remote_server_name) \
+        || (n->node_type == PT_UPDATE && n->info.update.spec != NULL \
+	    && n->info.update.spec->info.spec.remote_server_name) \
+        || (n->node_type == PT_MERGE && n->info.merge.into != NULL \
+	    && n->info.merge.into->info.spec.remote_server_name))
 
 #define PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION(n) \
 	((n->info.dot.arg1->node_type == PT_NAME) \
@@ -2449,7 +2453,9 @@ struct pt_expr_info
 
 #define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the expression resulted from a GROUP BY ... LIMIT
 						 * statement */
-#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_auto_parameterize() */
+#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_auto_parameterize(). set on the
+						 * copy qo_reduce_equality_terms() adds for a derived constant column,
+						 * which is not copied again */
 #define PT_EXPR_INFO_CAST_WRAP 	131072	/* 0x20000, CAST is wrapped by compiling */
 #define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
 #define PT_EXPR_INFO_SP_NUMERIC 524288	/* 0x80000, CAST as NUMERIC for SP */
@@ -2474,6 +2480,8 @@ struct pt_expr_info
 						 * derived restrictions from; not a source again */
 #define PT_EXPR_INFO_OR_DERIVED_COLUMN 268435456	/* 0x10000000, an OR-derived key range on one column;
 							 * paired with its origin on its own node */
+#define PT_EXPR_INFO_LIMIT_SUM 536870912	/* 0x20000000, the offset + count a LIMIT rewrite builds: an overflow gives
+						 * the BIGINT maximum (REGU_VARIABLE_LIMIT_SUM) */
   int flag;			/* flags */
 /* the largest OR factor pt_cnf_where () keeps whole and qo_extract_or_restrictions () derives from */
 #define PT_CNF_KEEP_MAX_DISJUNCTS 8
@@ -3505,6 +3513,8 @@ struct pt_execute_info
   int do_cache;			/* query uses result cache */
   int column_count;		/* select list column count */
   int oids_included;		/* OIDs included in select list */
+  int is_click_counter;		/* INCR/DECR (click counter) */
+  int is_method_on_target;	/* method call with a target (ON or the first argument) */
 };
 
 struct pt_stored_proc_param_info
@@ -3978,6 +3988,10 @@ struct parser_node
 					 * Set in do_prepare_select () -- the driver-neutral prepare path --
 					 * because the SQL-level PREPARE/EXECUTE consumer of that header flag
 					 * is not reached by CCI/JDBC prepared statements. */
+    unsigned has_sp_call:1;	/* the semantic check found a stored procedure call in this query, and the root of a
+				 * view cache or a statement also gets it from a view under it or from the
+				 * statement it is made from, which mq_mark_sp_call () and the stored procedure
+				 * checks read */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
@@ -4263,6 +4277,14 @@ struct parser_context
 					 * the values' format classes and ELT indexes */
     unsigned needs_bound_hostvar:1;	/* set to 1 when the compile failed because a host variable has no value yet
 					 * (UPDATE OBJECT ?, m () ON ?, TABLE (?)); see db_statement_needs_bound_values () */
+    unsigned view_has_sp_call:1;	/* the current mq_translate () expanded a view that calls a stored procedure,
+					 * and mq_translate () sets has_sp_call and cannot_prepare on the statement at
+					 * its end; while a view cache is built, has_sp_call on the view's root */
+    unsigned regu_has_sp_call:1;	/* a stored procedure regu variable was generated since
+					 * db_compile_statement_local () cleared it, so pt_add_read_class_oids () adds
+					 * the classes the statement reads to its XASL header. A parser compiled
+					 * elsewhere, such as that of a trigger action, keeps it, which only adds
+					 * classes to an XASL that pushes no frame */
   } flag;
 };
 

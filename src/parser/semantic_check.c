@@ -1174,6 +1174,17 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
   if (arg1->node_type == PT_EXPR && arg1->info.expr.op == PT_CAST)
     {
       /* arg1 is a cast, so arg1.type_enum is not yet set; pull type from expression's cast type */
+      if (arg1->info.expr.cast_type == NULL)
+	{
+	  /* arg1 is a COLLATE modifier whose type could not be resolved (e.g. COLLATE on a non-string value).
+	   * Type checking does not stop at that error inside a collection constructor or an IN list, so the outer
+	   * CAST still comes here; the error is already set. */
+	  if (!pt_has_error (parser))
+	    {
+	      PT_INTERNAL_ERROR (parser, "null cast type");
+	    }
+	  return false;
+	}
       arg_type = arg1->info.expr.cast_type->type_enum;
     }
   else
@@ -11614,6 +11625,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (node->info.method_call.call_or_expr == PT_IS_MTHD_EXPR)
 	{
 	  pt_check_method (parser, node);
+	  if (top_node != NULL)
+	    {
+	      /* a statement that calls a procedure in an expression; a view whose query does carries this up to the
+	       * statements that read it */
+	      top_node->flag.has_sp_call = 1;
+	    }
 	}
       else if (node->info.method_call.call_or_expr == PT_IS_CALL_STMT)
 	{
@@ -12831,6 +12848,10 @@ pt_bind_remote_dml_subq (PARSER_CONTEXT * parser, PT_NODE * subq, SEMANTIC_CHK_I
 	}
     }
 
+  if (subq != NULL && subq->flag.has_sp_call && saved_top != NULL)
+    {
+      saved_top->flag.has_sp_call = 1;
+    }
   sc_info_ptr->top_node = saved_top;
 
   return pt_has_error (parser) ? NULL : subq;
