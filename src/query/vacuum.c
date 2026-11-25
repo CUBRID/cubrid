@@ -667,6 +667,8 @@ struct vacuum_dropped_files_rcv_data
 };
 
 bool vacuum_Is_booted = false;
+/* Log block being appended when vacuum booted (after recovery): the blocks up to it may hold log of earlier runs. */
+static VACUUM_LOG_BLOCKID vacuum_Boot_blockid = VACUUM_NULL_LOG_BLOCKID;
 #if defined (SERVER_MODE)
 class ovfp_threshold_mgr g_ovfp_threshold_mgr;
 #endif
@@ -1301,7 +1303,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
   vacuum_Master.prefetch_first_pageid = NULL_PAGEID;
   vacuum_Master.prefetch_last_pageid = NULL_PAGEID;
   vacuum_Master.allocated_resources = false;
-  vacuum_Master.is_job_rerun = false;
+  vacuum_Master.may_meet_swap_leftover = false;
   vacuum_Master.idx = -1;
 #if defined (SERVER_MODE)
   g_ovfp_threshold_mgr.init ();
@@ -1322,7 +1324,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       vacuum_Workers[i].prefetch_first_pageid = NULL_PAGEID;
       vacuum_Workers[i].prefetch_last_pageid = NULL_PAGEID;
       vacuum_Workers[i].allocated_resources = false;
-      vacuum_Workers[i].is_job_rerun = false;
+      vacuum_Workers[i].may_meet_swap_leftover = false;
       vacuum_Workers[i].idx = i;
     }
 
@@ -1357,6 +1359,8 @@ vacuum_boot (THREAD_ENTRY * thread_p)
     {
       thread_p = thread_get_thread_entry_info ();
     }
+
+  vacuum_Boot_blockid = vacuum_get_log_blockid (log_Gl.prior_info.prior_lsa.load ().pageid);
 
   /* first things first... load vacuum data and do some recovery if required */
   error_code = vacuum_data_load_and_recover (thread_p);
@@ -3643,7 +3647,10 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
    * are usually marked in blockid, however sa_mode_partial_block can also be interrupted and will no flag is set in
    * blockid. */
   was_interrupted = data->was_interrupted () || sa_mode_partial_block;
-  worker->is_job_rerun = was_interrupted;
+  /* An earlier run of this block may have stopped between the two steps of a leaf swap: a re-run of an interrupted
+   * block, or any block logged before this boot (a stand-alone vacuum of the partial last block logs no job start,
+   * so a restart does not mark that block interrupted). */
+  worker->may_meet_swap_leftover = was_interrupted || data->get_blockid () <= vacuum_Boot_blockid;
 
   /* Follow the linked records starting with start_lsa */
   for (LSA_COPY (&log_lsa, &data->start_lsa); !LSA_ISNULL (&log_lsa) && log_lsa.pageid >= first_block_pageid;
