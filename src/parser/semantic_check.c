@@ -17460,7 +17460,7 @@ pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * s
  * Note:
  *  This call remove useless sort specs like NULL and constant expressions
  *  (e.g.: order by null, order by 1 + 5, etc), and the position of a constant
- *  in the select list (e.g.: select 7, ... over (order by 1))
+ *  or a constant expression in the select list (e.g.: select 7, ... over (order by 1))
  */
 static PT_NODE *
 pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list, PT_NODE * select_list)
@@ -17507,9 +17507,9 @@ pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list, PT_NODE 
 	}
       else if (expr->node_type == PT_VALUE && expr->type_enum == PT_TYPE_INTEGER
 	       && (col = pt_get_node_from_list (select_list, expr->info.value.data_value.i - 1)) != NULL
-	       && col->node_type == PT_VALUE)
+	       && pt_is_const_expr_node (col))
 	{
-	  /* place holder of a constant in the select list, get rid of it */
+	  /* place holder of a constant in the select list (e.g. select 7, ... or select -7, ...), get rid of it */
 	  parser_free_tree (parser, item);
 	}
       else

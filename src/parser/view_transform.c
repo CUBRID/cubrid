@@ -7342,6 +7342,13 @@ mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 
 	  /* reset IDs and recompile paths */
 	  mq_reset_ids_in_statement (parser, select_statement);
+
+	  /* the USING INDEX clause stays in the derived table, where mq_translate_local () does not look for it */
+	  if (select_statement != NULL && !pt_has_error (parser)
+	      && mq_resolve_n_check_using_index (parser, select_statement, true) == NULL)
+	    {
+	      return NULL;
+	    }
 	}
     }
 
@@ -8319,7 +8326,9 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
  * mq_resolve_n_check_using_index () - check and resolve the using index clause
  *   return: PT_NODE *
  *   parser(in): parser environment
- *   aggregate_rewrote_as_derived(in): 
+ *   aggregate_rewrote_as_derived(in): the statement was rewritten to select from a derived table, which keeps the
+ *                                     USING INDEX clause (mq_rewrite_aggregate_as_derived (),
+ *                                     mq_rewrite_order_dependent_query ())
  *   statement(in): 
  */
 static PT_NODE *
@@ -13700,8 +13709,8 @@ mq_lambda_node_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int
  *
  * NOTE: pt_check_analytic_function () replaced the sort expressions which match a select list item with the position
  * of the item, a PT_VALUE with pos_descr.pos_no set. A PT_VALUE without a position is a constant column of a view or
- * a derived table, substituted for its name, and so is the select list item of a position. A constant does not order
- * the rows, and the first would be read as a position.
+ * a derived table, substituted for its name; the select list item of a position can be one too, or a constant
+ * expression. A constant does not order the rows, and the first would be read as a position.
  */
 static PT_NODE *
 mq_remove_constant_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list, PT_NODE * select_list)
@@ -13724,7 +13733,7 @@ mq_remove_constant_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list, PT_NODE 
 	    }
 
 	  col = pt_get_node_from_list (select_list, item->info.sort_spec.pos_descr.pos_no - 1);
-	  if (col != NULL && col->node_type == PT_VALUE)
+	  if (col != NULL && pt_is_const_expr_node (col))
 	    {
 	      parser_free_tree (parser, item);
 	      continue;
