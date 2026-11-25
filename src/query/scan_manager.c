@@ -176,6 +176,7 @@ static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, b
 /* scan_regu_key_to_index_key is declared in scan_manager.h (used by parallel index scan) */
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 				  DB_BIGINT * key_limit_lower);
+static void scan_clear_index_key_vals (INDX_SCAN_ID * isidp);
 static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_OPERATION_TYPE scan_op_type, int fixed,
 			       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
 			       val_list_node * val_list, VAL_DESCR * vd);
@@ -980,7 +981,12 @@ scan_free_oid_list (BTREE_ISCAN_OID_LIST * oid_list_p)
  * scan_alloc_iscan_oid_buf_list () - Allocate or use a preallocated buffer for index scan OID list.
  *
  * return	  : Error code.
- * oid_list (out) : Output OID list with allocated buffer.
+ * oid_list (out) : Output OID list with allocated buffer, its OID count limit (max_oid_cnt) set and no OID in it.
+ *
+ * Note: a list kept for reuse has the capacity the parameter gave when it was allocated, and
+ *	 index_scan_oid_buffer_size is a server-wide parameter any session may change, so the list may be smaller than
+ *	 the parameter asks now: such a list is freed and a new one allocated.  The parameter is read once here, and the
+ *	 limit is cut to the capacity, so that a session raising it meanwhile cannot make the limit pass the buffer.
  */
 static int
 scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list)
@@ -989,6 +995,8 @@ scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list)
   int rv;
 #endif /* SERVER_MODE */
   int error_code = NO_ERROR;
+  int oid_count = ISCAN_OID_BUFFER_COUNT;
+  int capacity_needed = MAX (ISCAN_OID_BUFFER_MIN_CAPACITY / OR_OID_SIZE, oid_count);
 
   /* Assert expected argument. */
   assert (oid_list != NULL && *oid_list == NULL);
@@ -1013,10 +1021,19 @@ scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list)
 
 	  /* Reset next_list link. */
 	  (*oid_list)->next_list = NULL;
-	  return NO_ERROR;
+	  if ((*oid_list)->capacity >= capacity_needed)
+	    {
+	      goto set_limit;
+	    }
+	  /* Allocated before the parameter grew: too small for it now. */
+	  scan_free_oid_list (*oid_list);
+	  *oid_list = NULL;
 	}
-      /* Empty. */
-      pthread_mutex_unlock (&scan_Iscan_oid_buf_list_mutex);
+      else
+	{
+	  /* Empty. */
+	  pthread_mutex_unlock (&scan_Iscan_oid_buf_list_mutex);
+	}
     }
 
   /* Allocate a new OID list entry. */
@@ -1030,6 +1047,11 @@ scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list)
   assert (*oid_list != NULL);
   assert ((*oid_list)->oidp != NULL);
   assert ((*oid_list)->capacity > 0);
+
+set_limit:
+  /* The OID count limit of the scan: what the parameter asks, never past the buffer. */
+  (*oid_list)->max_oid_cnt = MIN (oid_count, (*oid_list)->capacity);
+  (*oid_list)->oid_cnt = 0;
 
   /* Success. */
   return NO_ERROR;
@@ -2605,6 +2627,31 @@ exit_on_error:
 }
 
 /*
+ * scan_clear_index_key_vals () - release the search keys a pass of the index scan left on it
+ *   isidp (in/out): index scan
+ *
+ * The pass that reads the last key's end clears them and moves curr_keyno past key_cnt (scan_get_index_oidset ());
+ * a pass that stopped before that (the inner of a NL semi/anti join at its first match, a block that has its rows)
+ * still holds them, and a multi-column key owns a buffer: the next pass makes the keys afresh, so they go here.
+ */
+static void
+scan_clear_index_key_vals (INDX_SCAN_ID * isidp)
+{
+  KEY_VAL_RANGE *key_vals;
+  int i;
+
+  if (isidp->curr_keyno >= 0 && isidp->curr_keyno < isidp->key_cnt)
+    {
+      key_vals = isidp->key_vals;
+      for (i = 0; i < isidp->key_cnt; i++)
+	{
+	  pr_clear_value (&key_vals[i].key1);
+	  pr_clear_value (&key_vals[i].key2);
+	}
+    }
+}
+
+/*
  *
  *                    SCAN MANAGEMENT ROUTINES
  *
@@ -3122,9 +3169,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       assert (isidp->oid_list->capacity > 0);
       assert (isidp->oid_list->next_list == NULL);
 
-      /* Initialize OID list. */
-      isidp->oid_list->max_oid_cnt = ISCAN_OID_BUFFER_COUNT;
-      isidp->oid_list->oid_cnt = 0;
+      /* The OID list comes with its limit set and no OID (scan_alloc_iscan_oid_buf_list ()). */
       /* Initialize current OID pointer to start of buffer. */
       isidp->curr_oidp = isidp->oid_list->oidp;
 
@@ -3377,9 +3422,8 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
   INDX_SCAN_ID *isidp = &scan_id->s.isid;
   BTREE_SCAN *BTS = &isidp->bt_scan;
   struct bts_attid_idx_info attid_idxs;
-  KEY_VAL_RANGE *key_vals;
   bool upddel_target_scan, click_counter_scan;
-  int i, error;
+  int error;
 
   assert (scan_id->type == S_INDX_SCAN);
 
@@ -3431,15 +3475,7 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
   if (*started)
     {
       /* scan_end_scan () without ending the caches, which move to the partition below */
-      if (isidp->curr_keyno >= 0 && isidp->curr_keyno < isidp->key_cnt)
-	{
-	  key_vals = isidp->key_vals;
-	  for (i = 0; i < isidp->key_cnt; i++)
-	    {
-	      pr_clear_value (&key_vals[i].key1);
-	      pr_clear_value (&key_vals[i].key2);
-	    }
-	}
+      scan_clear_index_key_vals (isidp);
       btree_scan_clear_key (BTS);
       (void) scan_init_iss (isidp);
 
@@ -4679,6 +4715,8 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	{
 	  INDX_COV *indx_cov_p;
 
+	  /* the keys of a pass that stopped before its last key's end (CBRD-28203) */
+	  scan_clear_index_key_vals (&s_id->s.isid);
 	  s_id->s.isid.curr_oidno = -1;
 	  s_id->s.isid.curr_keyno = -1;
 	  s_id->position = S_BEFORE;
@@ -4934,9 +4972,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   REGU_VALUES_SCAN_ID *rvsidp;
   SET_SCAN_ID *ssidp;
-  KEY_VAL_RANGE *key_vals;
   JSON_TABLE_SCAN_ID *jtidp;
-  int i;
 
   if (scan_id == NULL)
     {
@@ -5025,15 +5061,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  (void) heap_scancache_end (thread_p, &isidp->scan_cache);
 	}
-      if (isidp->curr_keyno >= 0 && isidp->curr_keyno < isidp->key_cnt)
-	{
-	  key_vals = isidp->key_vals;
-	  for (i = 0; i < isidp->key_cnt; i++)
-	    {
-	      pr_clear_value (&key_vals[i].key1);
-	      pr_clear_value (&key_vals[i].key2);
-	    }
-	}
+      scan_clear_index_key_vals (isidp);
       /* clear all the used keys */
       btree_scan_clear_key (&(isidp->bt_scan));
       /* clear last_key */
@@ -5460,8 +5488,7 @@ scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp)
     {
       return error_code;
     }
-  isidp->oid_list->max_oid_cnt = ISCAN_OID_BUFFER_COUNT;
-  isidp->oid_list->oid_cnt = 0;
+  /* the list comes with its limit set and no OID (scan_alloc_iscan_oid_buf_list ()) */
   isidp->curr_oidp = isidp->oid_list->oidp;
   return NO_ERROR;
 }

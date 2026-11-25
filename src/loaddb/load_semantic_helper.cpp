@@ -286,7 +286,25 @@ namespace cubload
   }
 
   string_type *
-  semantic_helper::make_string_and_copy (const char *src, size_t str_size)
+  semantic_helper::make_string_by_reserve_size (std::size_t str_size)
+  {
+    return make_string_by_size (str_size);
+  }
+
+  /*
+   * make_string_by_reference () - make a string of bytes the caller holds, without copying them
+   *   return: the string, which is not null terminated and does not free val
+   *   val(in): the bytes, which have to outlive the line the string is used in
+   *   str_size(in): number of bytes
+   */
+  string_type *
+  semantic_helper::make_string_by_reference (char *val, std::size_t str_size)
+  {
+    return make_string (val, str_size, false);
+  }
+
+  string_type *
+  semantic_helper::make_string_by_size (std::size_t str_size)
   {
     string_type *str;
 
@@ -299,6 +317,14 @@ namespace cubload
 	// +1 for string null terminator
 	str = make_string (new char[str_size + 1], str_size, true);
       }
+
+    return str;
+  }
+
+  string_type *
+  semantic_helper::make_string_and_copy (const char *src, size_t str_size)
+  {
+    string_type *str = make_string_by_size (str_size);
 
     std::memcpy (str->val, src, str_size);
     str->val[str_size] = '\0';

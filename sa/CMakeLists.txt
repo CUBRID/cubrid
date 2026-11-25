@@ -387,6 +387,7 @@ set(OBJECT_HEADERS
 
 set(SP_SOURCES
   ${SP_DIR}/jsp_cl.cpp
+  ${SP_DIR}/sp_context_rules.cpp
   ${SP_DIR}/method_invoke_group.cpp
   ${SP_DIR}/pl_connection.cpp
   ${SP_DIR}/pl_compile_handler.cpp
@@ -496,6 +497,7 @@ set(TRANSACTION_SOURCES
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
   ${TRANSACTION_DIR}/flashback.h
+  ${TRANSACTION_DIR}/lock_deferred_wake.hpp
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
   ${TRANSACTION_DIR}/log_archives.hpp

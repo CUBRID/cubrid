@@ -73,6 +73,7 @@ static int db_mod_double (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2
 static int db_mod_string (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
 static int db_mod_numeric (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
 static int db_mod_monetary (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
+static void db_make_floor_ceil_numeric (DB_VALUE * result, char *num_str, int scale);
 static double round_double (double num, double integer);
 static int move_n_days (int *monthp, int *dayp, int *yearp, const int interval);
 static int round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2);
@@ -87,6 +88,36 @@ static int db_width_bucket_calculate_numeric (double *result, const DB_VALUE * v
 static int is_str_find_all (DB_VALUE * val, bool & find_all);
 static bool is_any_arg_null (DB_VALUE * const *args, int num_args);
 static bool is_nan_number (const DB_VALUE * value);
+
+/*
+ * db_make_floor_ceil_numeric () - make the float NUMERIC result of FLOOR or CEIL from its decimal string
+ *   return: none
+ *   result(out)    : resultant db_value
+ *   num_str(in/out): the decimal digits of the result with its sign, the last scale digits zeros
+ *   scale(in)      : scale of the result
+ *
+ * Note: A carry that grew the value past 40 digits drops its last fraction digit, a zero, from the scale,
+ *       as ROUND does.
+ */
+static void
+db_make_floor_ceil_numeric (DB_VALUE * result, char *num_str, int scale)
+{
+  unsigned char num[DB_NUMERIC_BUF_SIZE];
+  bool is_value_negative = false;
+  int precision;
+
+  numeric_coerce_dec_str_to_num (num_str, num, &is_value_negative);
+  precision = numeric_get_precision_digits (num);
+  if (precision > DB_MAX_NUMERIC_PRECISION)
+    {
+      num_str[strlen (num_str) - 1] = '\0';
+      scale--;
+      numeric_coerce_dec_str_to_num (num_str, num, &is_value_negative);
+      precision = DB_MAX_NUMERIC_PRECISION;
+    }
+
+  db_make_numeric (result, num, precision, scale, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+}
 
 /*
  * db_floor_dbval () - take floor of db_value
@@ -145,17 +176,14 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
     case DB_TYPE_NUMERIC:
       {
-	int p = 0, s = 0;
-	db_get_numeric_precision_and_scale (value, &p, &s, NULL);
+	int s = db_get_numeric_scale (value, NULL);
 
 	if (s)
 	  {
-	    unsigned char num[DB_NUMERIC_BUF_SIZE];
 	    char num_str[NUMERIC_MAX_STRING_SIZE] = { '\0' };
 	    char *num_str_p;
 	    int num_str_len;
 	    bool decrement = false;
-	    bool is_value_negative = false;
 
 	    if (numeric_db_value_floor_ceil (value, true, result))
 	      {
@@ -187,9 +215,6 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 	      {
 		/* To decrement a negative value, the absolute value (the digits) actually has to be incremented. */
 
-		char *num_str_digits = num_str + num_str_len - p;
-		bool carry = true;
-
 		num_str_p = num_str + num_str_len - s;
 		while (*num_str_p == '9')
 		  {
@@ -204,17 +229,6 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 		else
 		  {
 		    (*num_str_p)++;
-		    carry = false;
-		  }
-
-		if (carry || num_str_p <= num_str_digits)
-		  {
-		    p = strlen (num_str_p);
-
-		    if (p > DB_MAX_NUMERIC_PRECISION)
-		      {
-			p = DB_MAX_NUMERIC_PRECISION;
-		      }
 		  }
 
 		if (num_str[0])
@@ -226,21 +240,19 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 		    num_str_p = num_str + 1;
 		  }
 
-		numeric_coerce_dec_str_to_num (num_str_p, num, &is_value_negative);
-		db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+		db_make_floor_ceil_numeric (result, num_str_p, s);
 	      }
 	    else
 	      {
 		/* given numeric is positive or already rounded */
-		numeric_coerce_dec_str_to_num (num_str + 1, num, &is_value_negative);
-		db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+		db_make_floor_ceil_numeric (result, num_str + 1, s);
 	      }
 	  }
 	else
 	  {
 	    /* given numeric number is already of integral type */
-	    db_make_numeric (result, db_get_numeric (value), p, 0, DB_NUMERIC_BUF_SIZE,
-			     DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value), true);
+	    db_make_numeric (result, db_get_numeric (value), numeric_get_precision_digits (db_locate_numeric (value)),
+			     0, DB_NUMERIC_BUF_SIZE, DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value), true);
 	  }
 
 	break;
@@ -319,8 +331,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
     case DB_TYPE_NUMERIC:
       {
-	int p = 0, s = 0;
-	db_get_numeric_precision_and_scale (value, &p, &s, NULL);
+	int s = db_get_numeric_scale (value, NULL);
 
 	if (s)
 	  {
@@ -328,7 +339,6 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 	    char *num_str_p;
 	    int num_str_len = 0;
 	    bool increment = false;
-	    bool is_value_negative = false;
 
 	    if (numeric_db_value_floor_ceil (value, false, result))
 	      {
@@ -363,18 +373,13 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 
 	    if (increment)
 	      {
-		unsigned char num[DB_NUMERIC_BUF_SIZE];
 		if (num_str[1] == '-')
 		  {
 		    /* CEIL(-3.1) is -3.0, as opposed to CEIL(+3.1) which is 4 */
-		    numeric_coerce_dec_str_to_num (num_str + 1, num, &is_value_negative);
-		    db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+		    db_make_floor_ceil_numeric (result, num_str + 1, s);
 		  }
 		else
 		  {
-		    bool carry = true;
-		    char *num_str_digits = num_str + 1 + num_str_len - p;
-
 		    /* position num_str_p one digit in front of the decimal point */
 		    num_str_p = num_str;
 		    num_str_p += num_str_len - s;
@@ -387,43 +392,30 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 		    if (*num_str_p)
 		      {
 			(*num_str_p)++;
-			carry = false;
-		      }
-
-		    if (carry || num_str_p < num_str_digits)
-		      {
-			if (carry)
-			  {
-			    *num_str_p = '1';
-			  }
-
-			p = strlen (num_str_p);
-
-			if (p > DB_MAX_NUMERIC_PRECISION)
-			  {
-			    p = DB_MAX_NUMERIC_PRECISION;
-			  }
+			num_str_p = num_str + 1;
 		      }
 		    else
 		      {
-			num_str_p = num_str + 1;
+			/* the carry ran past every digit: the 1 goes in front of them */
+			*num_str_p = '1';
 		      }
 
-		    numeric_coerce_dec_str_to_num (num_str_p, num, &is_value_negative);
-		    db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+		    db_make_floor_ceil_numeric (result, num_str_p, s);
 		  }
 	      }
 	    else
 	      {
 		/* the given numeric value is already an integer */
-		db_make_numeric (result, db_locate_numeric (value), p, s, DB_NUMERIC_BUF_SIZE,
+		db_make_numeric (result, db_locate_numeric (value),
+				 numeric_get_precision_digits (db_locate_numeric (value)), s, DB_NUMERIC_BUF_SIZE,
 				 DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value), true);
 	      }
 	  }
 	else
 	  {
 	    /* the given numeric value has a scale of 0 */
-	    db_make_numeric (result, db_locate_numeric (value), p, 0, DB_NUMERIC_BUF_SIZE,
+	    db_make_numeric (result, db_locate_numeric (value),
+			     numeric_get_precision_digits (db_locate_numeric (value)), 0, DB_NUMERIC_BUF_SIZE,
 			     DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value), true);
 	  }
 
@@ -584,7 +576,7 @@ db_sign_dbval (DB_VALUE * result, DB_VALUE * value)
 
 /*
  * db_abs_dbval () - take absolute value of db_value
- *   return: NO_ERROR
+ *   return: NO_ERROR or error code (ER_IT_DATA_OVERFLOW for the minimum of SMALLINT, INTEGER and BIGINT)
  *   result(out) : resultant db_value
  *   value(in)   : input db_value
  */
@@ -609,16 +601,28 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
     {
     case DB_TYPE_SHORT:
       stmp = db_get_short (value);
+      if (stmp == DB_INT16_MIN)
+	{
+	  goto overflow;
+	}
       stmp = abs (stmp);
       db_make_short (result, stmp);
       break;
     case DB_TYPE_INTEGER:
       itmp = db_get_int (value);
+      if (itmp == DB_INT32_MIN)
+	{
+	  goto overflow;
+	}
       itmp = abs (itmp);
       db_make_int (result, itmp);
       break;
     case DB_TYPE_BIGINT:
       bitmp = db_get_bigint (value);
+      if (bitmp == DB_BIGINT_MIN)
+	{
+	  goto overflow;
+	}
       bitmp = llabs (bitmp);
       db_make_bigint (result, bitmp);
       break;
@@ -674,6 +678,18 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
     }
 
   return er_status;
+
+overflow:
+  /* the result keeps the type of the value, and the absolute value of the type's minimum is one past its maximum:
+   * abs () hands the minimum of SMALLINT back unchanged and is undefined for INTEGER and BIGINT, so it is an
+   * overflow as for a CAST */
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (res_type));
+  return ER_IT_DATA_OVERFLOW;
 }
 
 /*
@@ -2372,7 +2388,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   bool overflow;
   char *ptr, *end;
   int need_round = 0;
-  int p, s;
+  int s;
   DB_VALUE cast_value, cast_format;
   int er_status = NO_ERROR;
   TP_DOMAIN *domain = NULL;
@@ -2593,7 +2609,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       memset (num_string, 0, sizeof (num_string));
       numeric_coerce_num_to_dec_str (value1, num_string);
 
-      db_get_numeric_precision_and_scale (value1, &p, &s, NULL);
+      s = db_get_numeric_scale (value1, NULL);
       end = num_string + strlen (num_string);
       ptr = end - s + bi2;
 
@@ -2647,7 +2663,6 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 			  assert (length == DB_MAX_NUMERIC_PRECISION + 1 && end[-1] == '0');
 
 			  s--;
-			  p = DB_MAX_NUMERIC_PRECISION;
 
 			  end--;
 			  *end = '\0';
@@ -2676,7 +2691,8 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       numeric_coerce_dec_str_to_num (num_string, num, &is_value_negative);
-      db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+      db_make_numeric (result, num, numeric_get_precision_digits (num), s, DB_NUMERIC_BUF_SIZE, is_value_negative,
+		       true);
       break;
     case DB_TYPE_MONETARY:
       d1 = (db_get_monetary (value1))->amount;
@@ -3671,7 +3687,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	unsigned char num[DB_NUMERIC_BUF_SIZE];
 	char num_string[NUMERIC_MAX_STRING_SIZE];
 	char *ptr, *end;
-	int p, s;
+	int s;
 	bool is_value_negative = false;
 
 	if (numeric_db_value_round_to_place (value1, bi2, false, result))
@@ -3682,7 +3698,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	memset (num_string, 0, sizeof (num_string));
 	numeric_coerce_num_to_dec_str (value1, num_string);
 
-	db_get_numeric_precision_and_scale (value1, &p, &s, NULL);
+	s = db_get_numeric_scale (value1, NULL);
 	end = num_string + strlen (num_string);
 	ptr = end - s + bi2;
 
@@ -3705,7 +3721,8 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	      }
 	  }
 	numeric_coerce_dec_str_to_num (num_string, num, &is_value_negative);
-	db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+	db_make_numeric (result, num, numeric_get_precision_digits (num), s, DB_NUMERIC_BUF_SIZE, is_value_negative,
+			 true);
       }
       break;
     case DB_TYPE_MONETARY:

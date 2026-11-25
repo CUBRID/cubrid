@@ -32,6 +32,9 @@
 #include <FlexLexer.h>
 #endif
 #include <istream>
+#include <utility>
+
+#include "load_common.hpp"
 
 namespace cubload
 {
@@ -43,16 +46,70 @@ namespace cubload
 	: yyFlexLexer ()
 	, m_semantic_helper (semantic_helper)
 	, m_error_handler (error_handler)
+	, m_data_format (OBJECT_FORMAT_TEXT)
+	, m_format_version (BIN_FORMAT_VERSION)
+	, m_format_arg_count (0)
+	, m_block (NULL)
+	, m_block_size (0)
+	, m_block_capacity (0)
+	, m_block_stored (NULL)
+	, m_block_stored_capacity (0)
+	, m_block_pos (0)
+	, m_block_rows_left (0)
+	, m_input (NULL)
+	, m_input_end (-1)
       {
 	//
       };
 
-      ~scanner () override = default;
+      ~scanner () override;
+
+      scanner (const scanner &) = delete;
+      scanner &operator= (const scanner &) = delete;
+
+      /*
+       * Scan the stream given, and remember where it ends so that a binary record or block is checked against the
+       * bytes left in the input before its memory is allocated, see binary_input_has (). The stream an object file
+       * comes in, a file in SA mode and a batch on the server, can be told; one which cannot be leaves the end
+       * unknown, and the check off.
+       */
+      void set_input (std::istream &in)
+      {
+	std::streampos pos;
+	std::streampos end;
+
+	switch_streams (&in);
+	m_input = &in;
+	m_input_end = -1;
+
+	pos = in.tellg ();
+	if (pos == std::streampos (-1))
+	  {
+	    /* a failed stream, leave it as it is: scanning it ends at once as it did before */
+	    return;
+	  }
+	in.seekg (0, std::ios::end);
+	end = in.tellg ();
+	in.clear ();
+	in.seekg (pos);
+	if (end != std::streampos (-1) && in)
+	  {
+	    m_input_end = end;
+	  }
+	in.clear ();
+      }
 
       void set_lineno (int line_offset)
       {
 	yylineno = line_offset;
       }
+
+      /*
+       * Drop the rows of a compressed block not handed over yet, see read_binary_block (). A batch ends on a block
+       * boundary, so there are none left when its parse completes; they would be left over from a parse that stopped
+       * early, and must not leak into the next batch.
+       */
+      void clear_binary_block ();
 
       /* Keep the base class yylex () overload visible; the one below only adds a new overload. */
       using yyFlexLexer::yylex;
@@ -62,6 +119,23 @@ namespace cubload
        * See load_lexer.l file for method declaration
        */
       virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc);
+
+
+      /* The function is defined in load_lexer.l
+       * because it requires access to yyFlexLexer member variables such as yy_start.
+       */
+      void set_ldr_data_format (int data_format, int format_version, int bit_platform, int endian);
+
+      OBJECT_DATA_FORMAT get_ldr_data_format () const
+      {
+	return m_data_format;
+      }
+
+      /* format version of the binary section being scanned, see BIN_FORMAT_VERSION */
+      int get_format_version () const
+      {
+	return m_format_version;
+      }
 
       /*
        * Lexer error function
@@ -81,8 +155,89 @@ namespace cubload
       }
 
     private:
+      /*
+       * Report a binary section, or the "%format" command line in front of it, that cannot be read.
+       *
+       * The load has to fail in both modes, and the two count a failure differently:
+       *   - SA mode reads the object file twice, a syntax check pass and then the load, and goes on to
+       *     the load only when the first pass counted no error (ldr_sa_load ()). on_failure_with_line ()
+       *     counts a failed row there, not an error, so the load would run and end as a success. The
+       *     failure is reported as an error instead, the way a syntax error is.
+       *   - On the server on_failure_with_line () fails the session, and it counts one failed row:
+       *     on_error_with_line () followed by on_syntax_failure (), as LexerError () does, would count
+       *     two for the one failure.
+       */
+      template<typename... Args>
+      void fail_binary_section (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
+      {
+#if defined (SA_MODE)
+	m_error_handler.on_error_with_line (msg_id, std::forward<Args> (args)...);
+#else
+	m_error_handler.on_failure_with_line (msg_id, std::forward<Args> (args)...);
+#endif
+      }
+
+      /* fail_binary_section () at the line given, see on_failure_with_line (int lineno, ...) */
+      template<typename... Args>
+      void fail_binary_section_at (int lineno, MSGCAT_LOADDB_MSG msg_id, Args &&... args)
+      {
+#if defined (SA_MODE)
+	m_error_handler.on_error_with_line (lineno, msg_id, std::forward<Args> (args)...);
+#else
+	m_error_handler.on_failure_with_line (lineno, msg_id, std::forward<Args> (args)...);
+#endif
+      }
+
+      /*
+       * Copy raw bytes of a binary section out of the scanner input.
+       * See load_lexer.l file for method definition
+       */
+      std::size_t read_binary (char *buf, std::size_t len);
+
+      /*
+       * Tell whether the input has len bytes left, so that a size field broken into a size beyond the end of the
+       * input is reported as a truncated section before the memory for it is allocated.
+       * See load_lexer.l file for method definition
+       */
+      bool binary_input_has (std::size_t len);
+
+      /*
+       * Read a block of a compressed section into m_block and check the rows in it, and hand over the next of those
+       * rows. See BIN_BLOCK_HEADER_SIZE, and load_lexer.l for the method definitions.
+       */
+      bool read_binary_block (BIN_BLOCK_SIZE_TYPE stored_size);
+      static bool reserve_block_buffer (char *&buf, std::size_t &capacity, std::size_t size);
+      void next_block_row (parser::semantic_type *yylval);
+
       semantic_helper &m_semantic_helper;
       error_handler &m_error_handler;
+      OBJECT_DATA_FORMAT m_data_format;
+      int m_format_version;
+
+      /*
+       * Number of arguments of the "%format" command line scanned so far, see the FORMAT_ARG rules in
+       * load_lexer.l. The command takes exactly FORMAT_ARG_COUNT of them.
+       */
+      static const int FORMAT_ARG_COUNT = 4;
+      int m_format_arg_count;
+
+      /*
+       * The block of a compressed section being handed over row by row: its raw bytes, and its stored bytes while
+       * they are decompressed. Every yylex () call hands over the next row as long as some are left, see the top of
+       * the rules in load_lexer.l.
+       */
+      static const std::size_t BLOCK_BUFFER_KEEP_SIZE = 16 * 1024 * 1024;
+      char *m_block;
+      std::size_t m_block_size;
+      std::size_t m_block_capacity;
+      char *m_block_stored;
+      std::size_t m_block_stored_capacity;
+      std::size_t m_block_pos;
+      BIN_BLOCK_SIZE_TYPE m_block_rows_left;
+
+      /* the stream being scanned and the position of its end, -1 when it cannot be told, see set_input () */
+      std::istream *m_input;
+      std::streampos m_input_end;
   };
 
 } // namespace cubload

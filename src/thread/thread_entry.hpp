@@ -28,6 +28,7 @@
 #endif // not SERVER_MODE and not SA_MODE
 
 #include "error_context.hpp"
+#include "lock_deferred_wake.hpp"
 #include "lockfree_transaction_def.hpp"
 #include "log_lsa.hpp"      // for LOG_LSA (oos_published_ref)
 #include "porting.h"        // for pthread_mutex_t, drand48_data
@@ -64,6 +65,8 @@ struct vacuum_worker;
 struct xasl_unpack_info;
 // from page_buffer.h
 struct pgbuf_holder_anchor;
+
+struct serial_repl_apply;
 
 // forward resource trackers
 namespace cubbase
@@ -289,6 +292,7 @@ namespace cubthread
       INT64 lockwait_stime;		/* time in milliseconds */
       int lockwait_msecs;		/* time in milliseconds */
       int lockwait_state;
+      lk_thread_deferred_wake deferred_wake;
       void *query_entry;
       entry *tran_next_wait;
       entry *worker_thrd_list;	/* worker thread on job queue */
@@ -323,6 +327,7 @@ namespace cubthread
       bool no_supplemental_log;
       bool trigger_involved;
       bool serial_restart;	/* the object being forced restarts a serial; see LC_FLAG_SERIAL_RESTART */
+      struct serial_repl_apply *serial_repl_apply;	/* the log applier's _db_serial row image being forced, or NULL */
       bool is_cdc_daemon;
 
       /* support multi-process unloaddb

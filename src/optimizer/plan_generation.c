@@ -513,14 +513,19 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
   rght_elen = bitset_cardinality (rght_exprs);
   rght_nlen = pt_length_of_list (rght_list) - rght_elen;
 
-  nlen = ls_merge->ls_pos_cnt = left_nlen + rght_nlen;
-  ls_merge->ls_outer_inner_list = (int *) pt_alloc_packing_buf (nlen * sizeof (int));
+  nlen = left_nlen + rght_nlen;
+
+  /* When the keys are expressions on both sides and no column of the two is read above the join, there is no column
+   * to project. Project the first column of the outer list, the value of its first key expression, so that each
+   * joined row is still a row of the result: an array of no element cannot be allocated (pt_alloc_packing_buf ()). */
+  ls_merge->ls_pos_cnt = (nlen > 0) ? nlen : 1;
+  ls_merge->ls_outer_inner_list = (int *) pt_alloc_packing_buf (ls_merge->ls_pos_cnt * sizeof (int));
   if (ls_merge->ls_outer_inner_list == NULL)
     {
       goto exit_on_error;
     }
 
-  ls_merge->ls_pos_list = (int *) pt_alloc_packing_buf (nlen * sizeof (int));
+  ls_merge->ls_pos_list = (int *) pt_alloc_packing_buf (ls_merge->ls_pos_cnt * sizeof (int));
   if (ls_merge->ls_pos_list == NULL)
     {
       goto exit_on_error;
@@ -540,6 +545,13 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
     {
       ls_merge->ls_outer_inner_list[left_nlen + i] = QFILE_INNER_LIST;
       ls_merge->ls_pos_list[left_nlen + i] = i + rght_elen;
+    }
+
+  if (nlen == 0)
+    {
+      assert (left_elen > 0);
+      ls_merge->ls_outer_inner_list[0] = QFILE_OUTER_LIST;
+      ls_merge->ls_pos_list[0] = 0;
     }
 
   /* make outer_spec_list, outer_val_list, inner_spec_list, and inner_val_list */
@@ -1782,9 +1794,11 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
       limit_infop = qo_get_key_limit_from_ordbynum (parser, plan, xasl, false);
       if (limit_infop)
 	{
+	  /* a data filter drops rows after the keys are counted, so it keeps the limit in the sort
+	   * (where a < 2999 order by id limit 3 would read 3 keys and drop some of them) */
 	  if ((qo_is_iscan (subplan) || qo_is_iscan_from_orderby (subplan))
 	      && (subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE
-		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE))
+		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE) && xasl->spec_list->where_pred == NULL)
 	    {
 	      assert (xasl->instnum_pred == NULL);
 	      assert (xasl->ordbynum_pred != NULL);
@@ -2904,7 +2918,8 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		  if (qo_is_index_covering_scan (inner) || qo_plan_multi_range_opt (inner))
 		    {
 		      /* Coverage indexes and indexes using multi range optimization are certified to include segments
-		       * from inner node */
+		       * from inner node. A term that reads no segment of it (an ON term of the preserved side or of no
+		       * table) goes to the key filter too, which evaluates it without the key (eval_key_filter ()). */
 		      bitset_add (&(inner->plan_un.scan.kf_terms), i);
 		      bitset_difference (&predset, &(inner->plan_un.scan.kf_terms));
 		    }
@@ -2956,7 +2971,13 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	   * by scan_handle_single_scan. It might lead to making a wrong result.
 	   */
 	  scan = gen_inner (env, inner, &predset, &new_subqueries, inner_scans, fetches, xasl->parallelism);
-	  if (scan)
+	  if (scan == NULL)
+	    {
+	      /* the inner could not be generated: fail the plan rather than join the outer rows with nothing */
+	      xasl = NULL;
+	      break;
+	    }
+	  else
 	    {
 	      if (IS_OUTER_JOIN_TYPE (join_type))
 		{
@@ -3605,21 +3626,34 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 
     case QO_PLANTYPE_FOLLOW:
 #if 1
-      /*
-       * We have to take care of any sargs that have been passed down
-       * from above.  Go ahead and destructively union them into this
-       * plan's sarg set: no one will ever look at the plan again
-       * anyway.
-       */
-      bitset_union (&(plan->sarged_terms), predset);
-      fetch = make_fetch_proc (env, plan);
-      fetch = add_fetch_proc (env, fetch, fetches);
-      fetch = add_subqueries (env, fetch, &new_subqueries);
-      /*
-       * Now proceed on with inner generation, passing the augmented
-       * list of fetch procs.
-       */
-      scan = gen_inner (env, plan->plan_un.follow.head, &EMPTY_SET, &EMPTY_SET, inner_scans, fetch, parallelism);
+      {
+	BITSET head_terms;
+	BITSET_ITERATOR bi;
+	QO_TERM *term;
+	int i, tail_idx;
+
+	/* the scan under the fetch decides an outer join match; it takes the terms that do not read the fetched object */
+	bitset_init (&head_terms, env);
+	tail_idx = QO_NODE_IDX (QO_TERM_TAIL (plan->plan_un.follow.path));
+	for (i = bitset_iterate (predset, &bi); i != -1; i = bitset_next_member (&bi))
+	  {
+	    term = QO_ENV_TERM (env, i);
+	    if (!BITSET_MEMBER (QO_TERM_NODES (term), tail_idx) && bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	      {
+		bitset_add (&head_terms, i);
+	      }
+	    else
+	      {
+		bitset_add (&(plan->sarged_terms), i);
+	      }
+	  }
+
+	fetch = make_fetch_proc (env, plan);
+	fetch = add_fetch_proc (env, fetch, fetches);
+	fetch = add_subqueries (env, fetch, &new_subqueries);
+	scan = gen_inner (env, plan->plan_un.follow.head, &head_terms, &EMPTY_SET, inner_scans, fetch, parallelism);
+	bitset_delset (&head_terms);
+      }
       break;
 #else
       /* Fall through */
@@ -3639,6 +3673,16 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
       namelist = make_namelist_from_projected_segs (env, plan);
       listfile = make_buildlist_proc (env, namelist, parallelism);
       listfile = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, listfile, NULL);
+      if (listfile == NULL)
+	{
+	  /* the plan of the temporary list failed: report it, a scan of no list would read as an inner with no row */
+	  if (namelist)
+	    {
+	      parser_free_tree (env->parser, namelist);
+	    }
+	  scan = NULL;
+	  break;
+	}
       scan = make_scan_proc (env);
       scan = init_list_scan_proc (env, scan, listfile, namelist, predset, NULL);
       if (namelist)
@@ -4775,6 +4819,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
+      /* key_limit_eval () reads this N - 1 from its N, as ceil (N) - 1 (2.4 gives 2), instead of subtracting 1 */
+      REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       *upper = regu_ptr_list_add_regu (rhs, *upper);
@@ -4798,6 +4844,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
+      /* read as ceil (N) - 1 (see R_EQ) */
+      REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *upper = regu_ptr_list_add_regu (regu_low, *upper);
       break;
@@ -4816,6 +4864,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
+      /* read as ceil (N) - 1 (see R_EQ) */
+      REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       break;

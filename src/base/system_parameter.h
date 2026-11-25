@@ -582,9 +582,14 @@ enum param_id
   PRM_ID_ROW_SNAPSHOT_MAX_ROWS,
 
   PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL,
+  PRM_ID_ALLOW_LOGIN_METHOD_ON_BROKER,
+
+  PRM_ID_MVCC_REEVALUATE_AT_FORCE,
+
+  PRM_ID_INDEX_BUILD_PARALLEL_LEAF,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL
+  PRM_LAST_ID = PRM_ID_INDEX_BUILD_PARALLEL_LEAF
 };
 typedef enum param_id PARAM_ID;
 
@@ -865,6 +870,8 @@ extern "C"
   extern int sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int length);
   extern int sysprm_set_error (SYSPRM_ERR rc, const char *data);
   extern int sysprm_get_session_parameters_count (void);
+  /* in the client library only (CS_MODE); for a broker */
+  extern int sysprm_get_cached_session_param_int (PARAM_ID prm_id, int default_value);
 
 #if defined (WINDOWS)
   /* FIXME!!! Segmentation fault when using inline function on Window. Temporarily, disable inline functions on Window. */

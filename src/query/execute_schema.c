@@ -71,7 +71,6 @@
 #define UNIQUE_SAVEPOINT_ADD_ATTR_MTHD "aDDaTTRmTHD"
 #define UNIQUE_SAVEPOINT_CREATE_ENTITY "cREATEeNTITY"
 #define UNIQUE_SAVEPOINT_DROP_ENTITY "dROPeNTITY"
-#define UNIQUE_SAVEPOINT_REPLACE_VIEW "rEPlACE"
 #define UNIQUE_SAVEPOINT_RENAME "rENAME"
 #define UNIQUE_SAVEPOINT_MULTIPLE_ALTER "mULTIPLEaLTER"
 #define UNIQUE_SAVEPOINT_TRUNCATE "tRUnCATE"
@@ -9989,6 +9988,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *tbl_opt_encrypt, *encrypt_node;
   const char *comment_str = NULL;
   MOP super_class = NULL;
+  MOP replaced_view = NULL;
   int tde_algo_opt = -1;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
@@ -10169,32 +10169,32 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       do_rollback_on_error = true;
 
-      if (node->info.create_entity.or_replace && db_find_class (class_name))
+      if (node->info.create_entity.or_replace)
 	{
-	  /* drop existing view */
-	  if (do_is_partitioned_subclass (NULL, class_name, NULL))
+	  replaced_view = db_find_class (class_name);
+	}
+
+      if (replaced_view != NULL)
+	{
+	  if (db_is_vclass (replaced_view) <= 0)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_PARTITION_REQUEST, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_NOT_A_VIRTUAL_CLASS, 1, class_name);
 	      error = er_errid ();
 	      goto error_exit;
 	    }
 
-	  error = drop_class_name (class_name, false);
-	  if (error != NO_ERROR)
+	  /* Define the existing view again in place instead of dropping it and creating it again. The view keeps its
+	   * OID, and so the privileges granted on it, which refer to the OID. */
+	  ctemplate = dbt_edit_class (replaced_view);
+	  if (ctemplate != NULL)
 	    {
-	      goto error_exit;
-	    }
-
-	  /* Quick fix: create a savepoint to mark deleted transient state. */
-	  /* NOTE: Without this savepoint, creating view will completely replace deleted classname. */
-	  error = tran_system_savepoint (UNIQUE_SAVEPOINT_REPLACE_VIEW);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
+	      smt_reset_vclass_definition (ctemplate);
 	    }
 	}
-
-      ctemplate = dbt_create_vclass (class_name);
+      else
+	{
+	  ctemplate = dbt_create_vclass (class_name);
+	}
       break;
 
     default:
@@ -10258,6 +10258,32 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   switch (node->info.create_entity.entity_type)
     {
     case PT_VCLASS:
+      if (replaced_view != NULL)
+	{
+	  /* the check option and the comment of the replaced view are not kept */
+	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_WITHCHECKOPTION, 0);
+	  if (error == NO_ERROR)
+	    {
+	      error = sm_set_class_flag (class_obj, SM_CLASSFLAG_LOCALCHECKOPTION, 0);
+	    }
+	  if (error == NO_ERROR && node->info.create_entity.vclass_comment == NULL)
+	    {
+	      error = sm_set_class_comment (class_obj, NULL);
+	    }
+	  if (error == NO_ERROR)
+	    {
+	      /* A view has no instances, so the old representations that the new definition appended are not needed.
+	       * Remove them, as the builder of the system vclasses does, so that they do not pile up in the class
+	       * record each time the view is replaced. */
+	      error = sm_destroy_representations (class_obj);
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	  do_flush_class_mop = true;
+	}
+
       if (node->info.create_entity.with_check_option == PT_CASCADED)
 	{
 	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_WITHCHECKOPTION, 1);
@@ -10265,6 +10291,10 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       else if (node->info.create_entity.with_check_option == PT_LOCAL)
 	{
 	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_LOCALCHECKOPTION, 1);
+	}
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
 	}
 
       comment_node = node->info.create_entity.vclass_comment;
@@ -12104,6 +12134,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
       AU_SAVE_AND_DISABLE (save);
 
+      /* before the delete takes the row's X lock, as in do_drop_serial () */
+      (void) serial_decache (&serial_obj_id);
       error = obj_delete (found_att->auto_increment);
 
       AU_RESTORE (save);

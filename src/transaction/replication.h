@@ -114,6 +114,8 @@ extern int repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, cons
 			    LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_type);
 extern int repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_oidp, DB_VALUE * key_dbvalue,
 					      DB_VALUE * prior_dbvalue);
+extern int repl_log_insert_serial_issue (THREAD_ENTRY * thread_p, const OID * serial_class_oidp,
+					 const OID * serial_oidp, DB_VALUE * key_dbvalue);
 extern int repl_log_insert_oos (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid,
 				LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_type, int attrid);
 extern int repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info);

@@ -201,6 +201,7 @@ struct date_conversion_error;
 typedef TP_DOMAIN_STATUS (*TP_VALUE_CONVERTER) (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
 						struct date_conversion_error *);
 
+
 /*
  * TP_MATCH
  *    This is used to describe the amount of "tolerance" to be exhibited by
@@ -511,6 +512,8 @@ extern "C"
 
   extern TP_DOMAIN_STATUS tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
   extern int tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
+  extern TP_DOMAIN_STATUS tp_value_to_row_bound (const DB_VALUE * value, bool exclusive, DB_TYPE source_type,
+						 TP_VALUE_CONVERTER converter, DB_BIGINT * row_bound);
 
   extern TP_DOMAIN_STATUS tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 					 bool implicit_coercion);

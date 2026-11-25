@@ -493,6 +493,8 @@ extern int pgbuf_rv_init_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 /* what pgbuf_dealloc_page does with the contents; also the offset of its RVPGBUF_DEALLOC record */
 #define PGBUF_DEALLOC_KEEP_CONTENTS	0	/* the page may come back to life with its contents */
 #define PGBUF_DEALLOC_CLEAR_CONTENTS	1	/* the deallocation is final: clear the body and the tde bits */
+#define PGBUF_DEALLOC_SAVE_CONTENTS	2	/* the same system operation reuses the page at once: log the body, so that
+						 * the page comes back to life with it */
 
 extern void pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc, int contents);
 extern int pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

@@ -289,6 +289,7 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  *   rcvindex(in): recovery index (INSERT or DELETE or UPDATE)
  *   key_dbvalue(in): Primary Key value
  *   prior_dbvalue(in): NULL, or the value packed after the key (see LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC)
+ *   serial_issue(in): mark a _db_serial write that issues values (see LOG_REPL_SERIAL_ISSUE_MAGIC)
  *   oos_attrid(in): NULL_ATTRID, or the target attribute packed after the key of an OOS record
  *                   (see REPL_OOS_METADATA_MAGIC)
  *
@@ -297,7 +298,7 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 static int
 repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
 			  LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info,
-			  DB_VALUE * prior_dbvalue, int oos_attrid)
+			  DB_VALUE * prior_dbvalue, bool serial_issue, int oos_attrid)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -309,7 +310,7 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
   bool is_oos_repl = REPL_IS_OOS_RCVINDEX (rcvindex);
 
   assert (!is_oos_repl || oos_attrid != NULL_ATTRID);
-  assert (!is_oos_repl || prior_dbvalue == NULL);
+  assert (!is_oos_repl || (prior_dbvalue == NULL && !serial_issue));
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -408,6 +409,10 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 	  /* int-alignment slack, marker, packed_prior_value_size, value */
 	  repl_rec->length += INT_ALIGNMENT + OR_INT_SIZE + OR_INT_SIZE + OR_VALUE_ALIGNED_SIZE (prior_dbvalue);
 	}
+      else if (serial_issue)
+	{
+	  repl_rec->length += INT_ALIGNMENT + OR_INT_SIZE + OR_INT_SIZE;
+	}
       if (is_oos_repl)
 	{
 	  repl_rec->length += 2 * OR_INT_SIZE;	/* metadata magic and target attrid */
@@ -453,6 +458,12 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 	  ptr += OR_INT_SIZE;
 	  ptr = or_pack_mem_value (ptr, prior_dbvalue, &packed_prior_len);
 	  or_pack_int (ptr_to_packed_prior_value_size, packed_prior_len);
+	}
+      else if (serial_issue)
+	{
+	  ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
+	  ptr = or_pack_int (ptr, LOG_REPL_SERIAL_ISSUE_MAGIC);
+	  ptr = or_pack_int (ptr, 0);
 	}
     }
   else
@@ -572,7 +583,7 @@ repl_log_insert_oos (THREAD_ENTRY * thread_p, const OID * class_oid, const OID *
     }
 
   return repl_log_insert_internal (thread_p, class_oid, inst_oid, LOG_REPLICATION_DATA, rcvindex, key_dbvalue,
-				   repl_info, NULL, attrid);
+				   repl_info, NULL, false, attrid);
 }
 
 /*
@@ -591,7 +602,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info)
 {
   return repl_log_insert_internal (thread_p, class_oid, inst_oid, log_type, rcvindex, key_dbvalue, repl_info, NULL,
-				   NULL_ATTRID);
+				   false, NULL_ATTRID);
 }
 
 /*
@@ -622,7 +633,7 @@ repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_o
   tdes->suppress_replication = 0;
 
   error = repl_log_insert_internal (thread_p, oid_Serial_class_oid, serial_oidp, LOG_REPLICATION_DATA,
-				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, prior_dbvalue,
+				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, prior_dbvalue, false,
 				    NULL_ATTRID);
   if (error == NO_ERROR)
     {
@@ -631,6 +642,33 @@ repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_o
 
   tdes->suppress_replication = save_suppress;
 
+  return error;
+}
+
+/*
+ * repl_log_insert_serial_issue - insert the replication info of a _db_serial write that issues values
+ *
+ * return: NO_ERROR or error code
+ *
+ *   serial_class_oidp(in): OID of _db_serial
+ *   serial_oidp(in): OID of the serial
+ *   key_dbvalue(in): name of the serial
+ *
+ * NOTE: the mark tells the peer to take only current_val and started from the row (see LOG_REPL_SERIAL_ISSUE_MAGIC)
+ */
+int
+repl_log_insert_serial_issue (THREAD_ENTRY * thread_p, const OID * serial_class_oidp, const OID * serial_oidp,
+			      DB_VALUE * key_dbvalue)
+{
+  int error;
+
+  error = repl_log_insert_internal (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA,
+				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, NULL, true,
+				    NULL_ATTRID);
+  if (error == NO_ERROR)
+    {
+      error = repl_add_update_lsa (thread_p, serial_oidp);
+    }
   return error;
 }
 

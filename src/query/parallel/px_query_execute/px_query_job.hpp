@@ -23,6 +23,8 @@
 #ifndef _PX_QUERY_JOB_HPP_
 #define _PX_QUERY_JOB_HPP_
 
+#include <atomic>
+#include <cstdint>
 #include <mutex>
 #include <condition_variable>
 #include <sys/stat.h>
@@ -35,42 +37,86 @@ struct xasl_node;
 
 namespace parallel_query_execute
 {
-  class join_context
+  /* one per statement, owned by the root executor: a thread that finds no job to run sleeps here.
+   * Every push, the end of an executor's last job and the end of the workers move the epoch and wake
+   * all sleepers; a sleeper reads the epoch before its last look at the queue and its count, so a wake
+   * that comes after that look is never missed. */
+  class wake_event
   {
     private:
       std::mutex m_mutex;
       std::condition_variable m_cv;
-      int m_running_jobs;
+      std::uint64_t m_epoch;
+      std::atomic<bool> m_stopped;
     public:
-      join_context()
+      wake_event()
 	:m_mutex (),
 	 m_cv (),
-	 m_running_jobs (0)
+	 m_epoch (0),
+	 m_stopped (false)
       {}
-      ~join_context() = default;
-      inline void add_running_jobs()
+      ~wake_event() = default;
+      inline std::uint64_t get_epoch()
       {
 	std::lock_guard<std::mutex> lock (m_mutex);
-	m_running_jobs++;
+	return m_epoch;
+      }
+      inline void wake_all()
+      {
+	std::lock_guard<std::mutex> lock (m_mutex);
+	m_epoch++;
+	m_cv.notify_all();
+      }
+      /* the root's run_jobs () ended: the workers stop; the queue still takes jobs of later executors */
+      inline void stop_workers()
+      {
+	std::lock_guard<std::mutex> lock (m_mutex);
+	m_stopped.store (true, std::memory_order_release);
+	m_epoch++;
+	m_cv.notify_all();
+      }
+      inline bool is_workers_stopped() const
+      {
+	return m_stopped.load (std::memory_order_acquire);
+      }
+      inline void wait (std::uint64_t seen_epoch)
+      {
+	std::unique_lock<std::mutex> lock (m_mutex);
+	m_cv.wait (lock, [this, seen_epoch] { return m_epoch != seen_epoch; });
+      }
+  };
+
+  class join_context
+  {
+    private:
+      std::atomic<int> m_running_jobs;
+      wake_event *m_wake_event_p;
+    public:
+      join_context()
+	:m_running_jobs (0),
+	 m_wake_event_p (nullptr)
+      {}
+      ~join_context() = default;
+      inline void set_wake_event (wake_event *wake_event_p)
+      {
+	m_wake_event_p = wake_event_p;
+      }
+      inline void add_running_jobs()
+      {
+	m_running_jobs.fetch_add (1, std::memory_order_relaxed);
       }
       inline void sub_running_jobs()
       {
-	std::lock_guard<std::mutex> lock (m_mutex);
-	m_running_jobs--;
-	if (m_running_jobs == 0)
+	/* read before the decrement: once the count is 0 the owner may return from run_jobs () and delete this */
+	wake_event *wake_event_p = m_wake_event_p;
+	if (m_running_jobs.fetch_sub (1, std::memory_order_acq_rel) == 1)
 	  {
-	    m_cv.notify_one();
+	    wake_event_p->wake_all();
 	  }
       }
-      inline int get_running_jobs()
+      inline int get_running_jobs() const
       {
-	std::lock_guard<std::mutex> lock (m_mutex);
-	return m_running_jobs;
-      }
-      inline void join_jobs()
-      {
-	std::unique_lock<std::mutex> lock (m_mutex);
-	m_cv.wait (lock, [this] { return m_running_jobs == 0; });
+	return m_running_jobs.load (std::memory_order_acquire);
       }
   };
 
