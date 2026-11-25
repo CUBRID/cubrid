@@ -50,6 +50,7 @@ namespace
   std::atomic<int> restart_calls;
   std::atomic<int> shutdown_calls;
   std::atomic<int> shutdown_requests;
+  std::atomic<int> shutdown_error;	/* the error given with the last stop request */
   std::atomic<unsigned> fail_mask;	/* bit i: db_restart_sub of sub-client index i fails */
   int blocked_from;		/* db_restart_sub of this index and above waits for release_restart */
 
@@ -63,6 +64,7 @@ namespace
     restart_calls = 0;
     shutdown_calls = 0;
     shutdown_requests = 0;
+    shutdown_error = NO_ERROR;
     fail_mask = fail;
     blocked_from = block_from;
     block_released = false;
@@ -101,8 +103,9 @@ namespace
   }
 
   void
-  request_shutdown ()
+  request_shutdown (int error)
   {
+    shutdown_error = error;
     shutdown_requests++;
   }
 
@@ -165,6 +168,15 @@ namespace
     result->error = NO_ERROR;
   }
 
+  /* the second task applied fails with a flush error, as when the slave server went away */
+  std::atomic<int> applied_tasks;
+
+  void
+  run_task_fail_second (LA_APPLY_WORKER_CONTEXT *, LA_TASK *, int, unsigned long long *, LA_RESULT *result)
+  {
+    result->error = (++applied_tasks == 2) ? ER_LC_PARTIALLY_FAILED_TO_FLUSH : NO_ERROR;
+  }
+
   int
   commit_batch_count (LA_APPLY_WORKER_CONTEXT *, int task_count, unsigned long long, LA_STATS *)
   {
@@ -187,12 +199,12 @@ namespace
 
   /* start one worker that applies with the stubs above and keeps a batch open for up to 10 s */
   void
-  start_batch_worker (LA_WORKER *workers)
+  start_batch_worker (LA_WORKER *workers, LA_WORKER_RUN_TASK_FUNC run_task = run_task_ok)
   {
     LA_WORKER_CONFIG config = test_config ();
     int live[1], live_count;
 
-    config.run_task = run_task_ok;
+    config.run_task = run_task;
     config.commit_batch = commit_batch_count;
     config.keep_batch_open = keep_batch_open_flag;
     config.tasks_parked = tasks_parked_flag;
@@ -337,6 +349,8 @@ TEST_CASE ("when no worker can start the applier is told to stop", "[log_applier
 
   REQUIRE (shutdown_calls == 3);
   REQUIRE (shutdown_requests == 1);
+  /* the stop carries the error of the last worker that could not start */
+  REQUIRE (shutdown_error != NO_ERROR);
 }
 
 TEST_CASE ("a stop while workers are still opening their sub-clients waits for them and closes every one",
@@ -439,6 +453,36 @@ TEST_CASE ("a worker whose queue never runs dry commits soon after a task is par
   feeding = false;
   feeder.join ();
   stop_batch_worker (workers);
+}
+
+TEST_CASE ("a worker that fails a task tells the applier to stop with that error", "[log_applier_worker]")
+{
+  LA_WORKER workers[1] = {};
+
+  reset_stubs (0, 1000);
+  reset_batch_stubs ();
+  applied_tasks = 0;
+  start_batch_worker (workers, run_task_fail_second);
+
+  for (int t = 0; t < 3; t++)
+    {
+      LA_TASK task = test_task (t, test_lsa (t + 1), test_null_lsa ());
+      REQUIRE (la_task_queue_push (&task, 0) == NO_ERROR);
+    }
+
+  for (int i = 0; i < 200 && shutdown_requests == 0; i++)
+    {
+      std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
+
+  /* the applier gets the worker's own error, so it can return it and decide whether to connect again */
+  REQUIRE (shutdown_requests == 1);
+  REQUIRE (shutdown_error == ER_LC_PARTIALLY_FAILED_TO_FLUSH);
+  REQUIRE (commits == 0);
+
+  stop_batch_worker (workers);
+  /* a worker leaving because the queues shut down is not a failure: no second request */
+  REQUIRE (shutdown_requests == 1);
 }
 
 TEST_CASE ("the per-worker task limit follows ha_apply_max_mem_size and the worker count", "[log_applier_worker]")

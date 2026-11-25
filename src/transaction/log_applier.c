@@ -516,6 +516,11 @@ static thread_local bool la_oos_pending_flush = false;
 static thread_local int la_oos_unpaired_count = 0;
 
 static bool la_applier_need_shutdown = false;
+/* A worker stopped the applier after an error of its own. That stop does not count as a forced shutdown
+ * (la_force_shutdown): the worker's error decides, as an error of the serial applier does, whether applylogdb
+ * connects again. la_Worker_exit_error keeps the first such error so la_apply_log_file can return it. */
+static bool la_applier_stop_by_worker = false;
+static volatile int la_Worker_exit_error = NO_ERROR;
 static thread_local LA_PINNED_PAGE_BUFFER *la_Pinned_page_buffers = NULL;
 static thread_local int la_Pinned_page_buffer_count = 0;
 static thread_local int la_Pinned_page_buffer_capacity = 0;
@@ -752,9 +757,10 @@ static void la_coordinator_discard_task (void *context, LA_TASK * task);
 static void la_coordinator_retire_entry (void *context, LA_INFLIGHT_ENTRY * entry, const LOG_LSA * frontier);
 static int la_coordinator_store_progress (void *context);
 static bool la_coordinator_shutdown_requested (void *context);
+static bool la_worker_shutdown_requested (void);
 
 /* Worker callbacks and helpers for applying one task. */
-static void la_request_shutdown (void);
+static void la_request_shutdown (int error);
 static void la_stat_note_class (LA_STATS * stats, const char *class_name);
 static void la_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
 				  unsigned long long *worker_applied_item_count, LA_RESULT * result);
@@ -803,8 +809,27 @@ la_shutdown_by_signal (int ignore)
   la_applier_shutdown_by_signal = true;
 }
 
+/*
+ * la_force_shutdown() - whether applylogdb was told to stop, so it must not connect again after an error
+ *
+ * Note: a stop a worker asked for after its own error is left out; see la_applier_stop_by_worker.
+ */
 bool
 la_force_shutdown (void)
+{
+  if (la_applier_shutdown_by_signal)
+    {
+      return true;
+    }
+
+  return (la_applier_need_shutdown && !la_applier_stop_by_worker) ? true : false;
+}
+
+/*
+ * la_worker_shutdown_requested() - whether the workers must stop, for any reason including another worker's error
+ */
+static bool
+la_worker_shutdown_requested (void)
 {
   return (la_applier_need_shutdown || la_applier_shutdown_by_signal) ? true : false;
 }
@@ -1367,7 +1392,7 @@ la_start_apply_workers (void)
   config.commit_batch = la_worker_commit_batch;
   config.abort_batch = la_worker_abort_batch;
   config.request_shutdown = la_request_shutdown;
-  config.shutdown_requested = la_force_shutdown;
+  config.shutdown_requested = la_worker_shutdown_requested;
   config.end_context = la_worker_end_context;
   config.keep_batch_open = la_coordinator_keep_batch_open;
   config.tasks_parked = la_coordinator_tasks_parked;
@@ -1415,10 +1440,14 @@ la_worker_end_context (LA_APPLY_WORKER_CONTEXT * context)
 
 /*
  * la_request_shutdown() - stop the applier; handed to the workers so they can ask without seeing the flag
+ *
+ *   error(in): the error that stopped the worker; only the first one is kept
  */
 static void
-la_request_shutdown (void)
+la_request_shutdown (int error)
 {
+  (void) ATOMIC_CAS_32 (&la_Worker_exit_error, NO_ERROR, error);
+  la_applier_stop_by_worker = true;
   la_applier_need_shutdown = true;
 }
 
@@ -11987,6 +12016,7 @@ int
 la_apply_log_file (const char *database_name, const char *log_path, const int max_mem_size)
 {
   int error = NO_ERROR;
+  int exit_error = NO_ERROR;
   LOG_HEADER final_log_hdr;
   LA_CACHE_BUFFER *log_buf = NULL;
   LOG_PAGE *pg_ptr;
@@ -12009,6 +12039,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   assert (log_path != NULL);
 
   la_applier_need_shutdown = false;
+  la_applier_stop_by_worker = false;
+  la_Worker_exit_error = NO_ERROR;
 
   /* signal processing */
 #if defined(WINDOWS)
@@ -12713,20 +12745,34 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	}
       la_release_pinned_page_buffers (NULL);
 
+      /* the error the middle loop left with is the cause of the stop: the collection below must not replace it */
+      exit_error = error;
       error = la_coordinator_collect_and_retire ();
       if (error != NO_ERROR)
 	{
 	  la_coordinator_exit ("final_collect_and_retire", error);
-	  if (ER_IS_SERVER_DOWN_ERROR (error) || LA_IS_FLUSH_ERROR (error))
+	  if (exit_error == NO_ERROR && (ER_IS_SERVER_DOWN_ERROR (error) || LA_IS_FLUSH_ERROR (error)))
 	    {
 	      la_shutdown ();
 	      return error;
 	    }
+	  if (exit_error == NO_ERROR)
+	    {
+	      exit_error = error;
+	    }
 	  la_applier_need_shutdown = true;
-	  break;
 	}
+      /* a pass that ends without stopping starts the next one clean */
+      error = la_applier_need_shutdown ? exit_error : NO_ERROR;
     }
   while (la_applier_need_shutdown == false);
+
+  /* stopped by a worker's error and by nothing before it: return that error, so applylogdb does not exit with
+   * success and util_cs connects again when it is a server or flush error */
+  if (error == NO_ERROR)
+    {
+      error = la_Worker_exit_error;
+    }
 
   if (la_Info.reinit_copylog == false)
     {

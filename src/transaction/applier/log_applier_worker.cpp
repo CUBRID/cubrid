@@ -424,7 +424,7 @@ la_worker_main (void *arg)
   if (error != NO_ERROR)
     {
       exit_reason = "apply_failed";
-      la_Worker_config.request_shutdown ();
+      la_Worker_config.request_shutdown (error);
     }
 
 end:
@@ -807,7 +807,7 @@ la_worker_startup_failed (const LA_WORKER *worker, const char *reason, int error
 
   if (remaining <= 0)
     {
-      la_Worker_config.request_shutdown ();
+      la_Worker_config.request_shutdown (error);
     }
 }
 

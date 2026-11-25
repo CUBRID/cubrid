@@ -116,8 +116,9 @@ typedef int (*LA_WORKER_COMMIT_BATCH_FUNC) (LA_APPLY_WORKER_CONTEXT *context, in
 /* Rolls back the worker's open slave transaction; owned by log_applier.c. */
 typedef void (*LA_WORKER_ABORT_BATCH_FUNC) (LA_APPLY_WORKER_CONTEXT *context);
 
-/* Tells the applier to stop: no worker is left, or a worker hit an error it cannot continue after. */
-typedef void (*LA_WORKER_REQUEST_SHUTDOWN_FUNC) (void);
+/* Tells the applier to stop: no worker is left, or a worker hit an error it cannot continue after. error is that
+ * error; the applier returns the first one it is given when nothing else stopped it first. */
+typedef void (*LA_WORKER_REQUEST_SHUTDOWN_FUNC) (int error);
 
 /* Tells whether the applier is stopping, so a worker-module wait can give up; owned by log_applier.c. */
 typedef bool (*LA_WORKER_SHUTDOWN_REQUESTED_FUNC) (void);
