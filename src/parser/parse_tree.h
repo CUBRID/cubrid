@@ -2481,6 +2481,8 @@ struct pt_expr_info
 							 * paired with its origin on its own node */
 #define PT_EXPR_INFO_LIMIT_SUM 536870912	/* 0x20000000, the offset + count a LIMIT rewrite builds: an overflow gives
 						 * the BIGINT maximum (REGU_VARIABLE_LIMIT_SUM) */
+#define PT_EXPR_INFO_FILTER_TERM 1073741824	/* 0x40000000, an AND or OR on the AND/OR spine of a search condition
+						 * (WHERE, ON, HAVING, ...), where UNKNOWN rejects the row as FALSE does */
   int flag;			/* flags */
 /* the largest OR factor pt_cnf_where () keeps whole and qo_extract_or_restrictions () derives from */
 #define PT_CNF_KEEP_MAX_DISJUNCTS 8

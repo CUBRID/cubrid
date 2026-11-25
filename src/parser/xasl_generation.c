@@ -2197,7 +2197,15 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	  if (arg1 && arg2)
 	    {
 	      arg1->type_enum = PT_TYPE_INTEGER;
-	      if (node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i != 0)
+	      data_type = DB_TYPE_INTEGER;
+	      if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_NULL)
+		{
+		  /* a predicate folded to NULL, as one an equality substitution made constant under IS, NOT, XOR or
+		   * CAST: NULL = 1 is UNKNOWN there, where 0 = 1 (FALSE) is not the same as at the top of a filter */
+		  arg1->type_enum = PT_TYPE_NULL;
+		  data_type = DB_TYPE_NULL;
+		}
+	      else if (node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i != 0)
 		{
 		  arg1->info.value.data_value.i = 1;
 		}
@@ -2207,7 +2215,6 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		}
 	      arg2->type_enum = PT_TYPE_INTEGER;
 	      arg2->info.value.data_value.i = 1;
-	      data_type = DB_TYPE_INTEGER;
 
 	      regu_var1 = pt_to_regu_variable (parser, arg1, UNBOX_AS_VALUE);
 	      regu_var2 = pt_to_regu_variable (parser, arg2, UNBOX_AS_VALUE);

@@ -26085,7 +26085,10 @@ pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 {
    if (node)
      {
-        if (node->type_enum != PT_TYPE_LOGICAL)
+        /* a NULL is UNKNOWN; type checking keeps a NULL operand of AND, OR, ... outside a search condition, and a
+         * stored definition (view, trigger condition, filter index) prints it so */
+        if (node->type_enum != PT_TYPE_LOGICAL
+            && !(node->node_type == PT_VALUE && node->type_enum == PT_TYPE_NULL))
           {
              PT_ERROR (parser, node, "operand must be logical expression.");
           }

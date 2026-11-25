@@ -21978,7 +21978,8 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
        * the key filter can be applied to the current key value.
        */
       *is_key_filter_satisfied = true;
-      if (bts->key_filter && bts->key_filter->scan_pred->regu_list)
+      /* test the predicate, not the key columns it reads: a key filter can read none (eval_key_filter ()) */
+      if (bts->key_filter && bts->key_filter->scan_pred->pred_expr)
 	{
 	  if (bts->is_cur_key_compressed)
 	    {
@@ -31719,9 +31720,19 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       if (!bts->is_key_partially_processed)
 	{
 	  /* If no objects have been processed this iteration, don't count. If already processed more than soft limit,
-	   * don't count. If currently process + key's leaf and first overflow count exceed soft limit, stop iteration
-	   * before processing key. */
-	  if (bts->n_oids_read_last_iteration > 0 && BTS_IS_SOFT_CAPACITY_ENOUGH (bts, bts->n_oids_read_last_iteration))
+	   * stop iteration before processing key: a key that did not fit the soft limit was read up to the hard limit
+	   * (from its overflow pages), and the keys after it must not be added unchecked -- with a soft limit below the
+	   * buffer's capacity (a small index_scan_oid_buffer_size, or a reused buffer larger than it asks), they would
+	   * fill the buffer past its capacity. If currently process + key's leaf and first overflow count exceed soft
+	   * limit, stop iteration before processing key. */
+	  if (bts->n_oids_read_last_iteration > 0
+	      && !BTS_IS_SOFT_CAPACITY_ENOUGH (bts, bts->n_oids_read_last_iteration))
+	    {
+	      /* Stop this iteration and resume with an empty buffer, from this key. */
+	      bts->end_one_iteration = true;
+	      return NO_ERROR;
+	    }
+	  if (bts->n_oids_read_last_iteration > 0)
 	    {
 	      /* Count the objects. */
 	      if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
