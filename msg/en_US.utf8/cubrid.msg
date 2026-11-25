@@ -1504,7 +1504,6 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1390 The secret of session %1$u does not match.
 1391 Cannot end or keep session %1$u because it is not attached to this connection.
-
 1392 A connection used transaction index %1$d, but the server assigned it index %2$d. The assigned index was used instead.
 
 1393 Altering system generated stored procedure is not allowed.
@@ -1527,7 +1526,18 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1402 Vacuum could not find the OOS file of heap file %1$d|%2$d (error %3$d). Object %4$d|%5$d|%6$d and the rest of that heap file in the current log block are left for a later run of the block.
 
-1403 Last Error
+1403 The binary section of the object file is corrupted or truncated at offset %1$lld.
+
+1404 Index %1$s is built with logging because an online backup is in progress; --no-logging-index is not applied to it.
+
+1405 Cannot perform %1$s inside a query or DML statement.
+1406 Cannot perform %1$s in a trigger.
+1407 Cannot perform a DML operation inside a query.
+1408 The stored procedure cannot modify table "%1$s" because the statement references it.
+
+1409 Replacing system generated stored procedure is not allowed.
+
+1410 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -2230,6 +2240,9 @@ $set 14 MSGCAT_SET_LOCK
 48 class %1$s
 49 instance %1$d|%2$d|%3$d of class %4$s
 50 transaction MVCCID %1$llu
+51 %1$s (%2$s on %3$s)
+52 Object type: Transaction lock (MVCCID = %1$llu).\n
+53 \t%1$13s Wait_for_row = %2$s, Wanted_mode = %3$s\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n

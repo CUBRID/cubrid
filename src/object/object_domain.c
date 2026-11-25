@@ -42,6 +42,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "numeric_opfunc.h"
+#include "arithmetic.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "mprec.h"
@@ -2048,6 +2049,45 @@ tp_free_sub_client_domains (void)
 #endif /* CS_MODE && MULTI_CONN_TO_A_SERVER */
 
 /*
+ * tp_domain_coll_flags_match - CBRD-28066: whether two domains a match found alike also carry the same collation
+ *   flags, in themselves and in their element domains, nested included: a flag left to the values (ENFORCE, LEAVE)
+ *   is part of what a domain means, and a cached collection domain must not hand one plan's undecided elements to
+ *   another's decided ones, or the other way round
+ *    return: true when the flags match
+ *    dom1(in): a domain
+ *    dom2(in): a domain alike
+ * Note: element domains are paired in list order; a pair of another type is no match, so elements of an unordered
+ *   collection alike in another order only miss the cache entry, and are never taken for a domain whose flags differ.
+ */
+static bool
+tp_domain_coll_flags_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2)
+{
+  const TP_DOMAIN *d1, *d2;
+
+  if (dom1 == dom2)
+    {
+      return true;
+    }
+  if (dom1 == NULL || dom2 == NULL)
+    {
+      return false;
+    }
+  if (TP_DOMAIN_TYPE (dom1) != TP_DOMAIN_TYPE (dom2)
+      || (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (dom1)) && dom1->collation_flag != dom2->collation_flag))
+    {
+      return false;
+    }
+  for (d1 = dom1->setdomain, d2 = dom2->setdomain; d1 != NULL && d2 != NULL; d1 = d1->next, d2 = d2->next)
+    {
+      if (!tp_domain_coll_flags_match (d1, d2))
+	{
+	  return false;
+	}
+    }
+  return d1 == NULL && d2 == NULL;
+}
+
+/*
  * tp_is_domain_cached - find matching domain from domain list
  *    return: matched domain
  *    dlist(in): domain list
@@ -2218,8 +2258,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 			match = tp_domain_match (domain->setdomain, transient->setdomain, exact);
 
 			if (match && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient))
-			    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (transient->setdomain))
-			    && domain->setdomain->collation_flag != transient->setdomain->collation_flag)
+			    && !tp_domain_coll_flags_match (domain->setdomain, transient->setdomain))
 			  {
 			    match = 0;
 			  }
@@ -2234,8 +2273,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 			  {
 			    if (!tp_domain_match (d1, d2, exact)
 				|| (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient))
-				    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d2))
-				    && d1->collation_flag != d2->collation_flag))
+				    && !tp_domain_coll_flags_match (d1, d2)))
 			      {
 				match = 0;
 				break;	/* immediately exit for loop */
@@ -2964,7 +3002,9 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 	      /* handle the simple single domain case quickly */
 	      if (dsize == 1)
 		{
-		  if (tp_domain_match (dom->setdomain, setdomain, TP_EXACT_MATCH))
+		  /* CBRD-28066: the element's collation flag too, as tp_is_domain_cached () */
+		  if (tp_domain_match (dom->setdomain, setdomain, TP_EXACT_MATCH)
+		      && (!TP_IS_SET_TYPE (type) || tp_domain_coll_flags_match (dom->setdomain, setdomain)))
 		    {
 		      break;
 		    }
@@ -2984,7 +3024,8 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 
 			  for (i = 0; i < dsize; i++)
 			    {
-			      match = tp_domain_match (d1, d2, TP_EXACT_MATCH);
+			      match = tp_domain_match (d1, d2, TP_EXACT_MATCH)
+				&& (!TP_IS_SET_TYPE (type) || tp_domain_coll_flags_match (d1, d2));
 			      if (match == 0)
 				{
 				  break;
@@ -3011,7 +3052,8 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 			{
 			  for (d2 = setdomain; d2 != NULL; d2 = d2->next)
 			    {
-			      if (!d2->is_visited && tp_domain_match (d1, d2, TP_EXACT_MATCH))
+			      if (!d2->is_visited && tp_domain_match (d1, d2, TP_EXACT_MATCH)
+				  && tp_domain_coll_flags_match (d1, d2))
 				{
 				  break;
 				}
@@ -5577,6 +5619,97 @@ TP_DOMAIN_STATUS
 tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   return tp_value_cast (src, dest, desired_domain, true);
+}
+
+/*
+ * tp_row_bound_of_bigint () - a value coerced into BIGINT, saturated by its sign
+ *    return: DOMAIN_COMPATIBLE, or the coercion's failure (DOMAIN_OVERFLOW when the value is neither above nor
+ *            below 0, as NaN is)
+ *    value(in): the value
+ *    source_type(in), converter(in): as tp_value_to_row_bound ()
+ *    row_bound(out): the coerced value, or DB_BIGINT_MAX or -1 beyond BIGINT
+ *    saturated(out): true when the value was beyond BIGINT
+ */
+static TP_DOMAIN_STATUS
+tp_row_bound_of_bigint (const DB_VALUE * value, DB_TYPE source_type, TP_VALUE_CONVERTER converter,
+			DB_BIGINT * row_bound, bool * saturated)
+{
+  DB_VALUE bigint_value, zero_value;
+  TP_DOMAIN_STATUS coerce_status;
+  DB_VALUE_COMPARE_RESULT compare_result;
+
+  *saturated = false;
+  db_make_null (&bigint_value);
+  coerce_status = tp_value_coerce_with_converter (value, &bigint_value, &tp_Bigint_domain, source_type, converter);
+  if (coerce_status == DOMAIN_COMPATIBLE && !DB_IS_NULL (&bigint_value))
+    {
+      *row_bound = db_get_bigint (&bigint_value);
+      pr_clear_value (&bigint_value);
+      return DOMAIN_COMPATIBLE;
+    }
+
+  pr_clear_value (&bigint_value);
+  if (coerce_status != DOMAIN_OVERFLOW)
+    {
+      return (coerce_status != DOMAIN_COMPATIBLE) ? coerce_status : DOMAIN_INCOMPATIBLE;
+    }
+
+  db_make_int (&zero_value, 0);
+  compare_result = tp_value_compare (value, &zero_value, 1, 0);
+  if (compare_result != DB_GT && compare_result != DB_LT)
+    {
+      return DOMAIN_OVERFLOW;
+    }
+
+  *row_bound = (compare_result == DB_GT) ? DB_BIGINT_MAX : -1;
+  *saturated = true;
+  return DOMAIN_COMPATIBLE;
+}
+
+/*
+ * tp_value_to_row_bound () - the last row number that a comparison of a row number with value keeps
+ *    return: DOMAIN_COMPATIBLE, DOMAIN_OVERFLOW when value is a number neither above nor below 0 (NaN), or a
+ *            failure status (the coercion's, or DOMAIN_INCOMPATIBLE) when value is not a number
+ *    value(in): value compared with a row number (ROWNUM, INST_NUM, ORDERBY_NUM, GROUPBY_NUM), not NULL
+ *    exclusive(in): the comparison has no equal (rownum < value, rownum >= value)
+ *    source_type(in): the type of value the plan compiled, DB_TYPE_NULL when the caller has none
+ *    converter(in): the converter of source_type into BIGINT the unpack found, or NULL
+ *    row_bound(out): the integer bound
+ *
+ * Note: The coercion into BIGINT rounds, so the rounded value is compared with value and stepped down once when
+ *       the comparison does not keep it. The bound keeps the rows the comparison keeps:
+ *         exclusive false (rownum <= value, rownum > value) : floor (value)      2.4 -> 2, 2.5 -> 2, 2 -> 2
+ *         exclusive true  (rownum < value, rownum >= value) : ceil (value) - 1   2.4 -> 2, 2.5 -> 2, 2 -> 1
+ *       Beyond BIGINT the bound is DB_BIGINT_MAX or -1 by the sign.
+ */
+TP_DOMAIN_STATUS
+tp_value_to_row_bound (const DB_VALUE * value, bool exclusive, DB_TYPE source_type, TP_VALUE_CONVERTER converter,
+		       DB_BIGINT * row_bound)
+{
+  DB_VALUE rounded_value;
+  TP_DOMAIN_STATUS status;
+  DB_VALUE_COMPARE_RESULT compare_result;
+  bool saturated;
+
+  assert (value != NULL && !DB_IS_NULL (value) && row_bound != NULL);
+
+  status = tp_row_bound_of_bigint (value, source_type, converter, row_bound, &saturated);
+  if (status != DOMAIN_COMPATIBLE || saturated)
+    {
+      return status;
+    }
+
+  db_make_bigint (&rounded_value, *row_bound);
+  compare_result = tp_value_compare (&rounded_value, (DB_VALUE *) value, 1, 0);
+  if (compare_result == DB_UNK)
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  if ((compare_result == DB_GT || (exclusive && compare_result == DB_EQ)) && *row_bound > DB_BIGINT_MIN)
+    {
+      (*row_bound)--;
+    }
+  return DOMAIN_COMPATIBLE;
 }
 
 /*

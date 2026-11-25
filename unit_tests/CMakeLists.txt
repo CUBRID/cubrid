@@ -41,10 +41,12 @@ option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
 option (UNIT_TEST_OOS "Unit testing: oos")
+option (UNIT_TEST_LOG_RECOVERY "Unit testing: log recovery (no-logging index judgment)")
 option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output")
 option (UNIT_TEST_STREAM_SESSION "Unit testing: byte-stream transport consumer registry")
 option (UNIT_TEST_RADIX_SORT "Unit testing: radix run sorter")
 option (UNIT_TEST_SCOPE_EXIT "Unit testing: scope_exit guard")
+option (UNIT_TEST_BTREE_SORT_MERGE "Unit testing: merge run sorter")
 
 message("  unit_tests/...")
 
@@ -122,6 +124,10 @@ if (UNIT_TESTS OR UNIT_TEST_OOS)
   message("    oos")
   add_subdirectory(oos)
 endif(UNIT_TESTS OR UNIT_TEST_OOS)
+if (UNIT_TESTS OR UNIT_TEST_LOG_RECOVERY)
+  message("    log_recovery")
+  add_subdirectory(log_recovery)
+endif(UNIT_TESTS OR UNIT_TEST_LOG_RECOVERY)
 
 if (UNIT_TESTS OR UNIT_TEST_JSON_BUILDER)
   message("    json_builder")
@@ -141,6 +147,11 @@ if (UNIT_TESTS OR UNIT_TEST_SCOPE_EXIT)
   message("    scope_exit")
   add_subdirectory(scope_exit)
 endif(UNIT_TESTS OR UNIT_TEST_SCOPE_EXIT)
+
+if (UNIT_TESTS OR UNIT_TEST_BTREE_SORT_MERGE)
+  message("    btree_sort_merge")
+  add_subdirectory(btree_sort_merge)
+endif(UNIT_TESTS OR UNIT_TEST_BTREE_SORT_MERGE)
 
 #[[
 TODO compilation fails
