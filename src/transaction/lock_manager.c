@@ -227,7 +227,8 @@ typedef enum
   LOCK_RESUMED_ABORTED,		/* Thread has been resumed, however it must be aborted because of a deadlock */
   LOCK_RESUMED_ABORTED_FIRST,	/* in case of the first aborted thread */
   LOCK_RESUMED_ABORTED_OTHER,	/* in case of other aborted threads */
-  LOCK_RESUMED_INTERRUPT
+  LOCK_RESUMED_INTERRUPT,
+  LOCK_RESUMED_RECHECK		/* Thread has been resumed without the lock: read what it waited on again */
 } LOCK_WAIT_STATE;
 
 /*
@@ -284,7 +285,10 @@ typedef enum
 #define MSGCAT_LK_RES_DESC_CLASS                48
 #define MSGCAT_LK_RES_DESC_INSTANCE             49
 #define MSGCAT_LK_RES_DESC_TRANSACTION          50
-#define MSGCAT_LK_LASTONE                       51
+#define MSGCAT_LK_RES_DESC_TRANSACTION_ROW      51
+#define MSGCAT_LK_RES_TRANSACTION_TYPE          52
+#define MSGCAT_LK_RES_WAIT_FOR_ROW              53
+#define MSGCAT_LK_LASTONE                       54
 
 #if defined(SERVER_MODE)
 
@@ -341,6 +345,35 @@ struct lk_deadlock_victim
   LK_ENTRY **log_entries;	/* entries that cause deadlock */
 };
 
+/* a cycle cut at a transaction whose wake is deferred, and the wake to send it */
+typedef struct lk_deadlock_wake LK_DEADLOCK_WAKE;
+struct lk_deadlock_wake
+{
+  int tran_index;
+  TRANID trid;
+  MVCCID mvccid;
+  UINT64 epoch;
+};
+
+#define LK_MAX_DEADLOCK_WAKES 64
+
+/* what a self-lock wait does after a recheck (lock_recheck_decide ()) */
+typedef enum
+{
+  LK_RECHECK_READ,		/* read the stamp again */
+  LK_RECHECK_REWAIT,		/* the owner's wake is deferred: wait again */
+  LK_RECHECK_HAND		/* the owner asks for the row we hold: hand it over */
+} LK_RECHECK_DECISION;
+
+/* how a hand-off ended (lock_hand_row_to_owner ()) */
+typedef enum
+{
+  LK_NOT_HANDED,		/* read the row again */
+  LK_NOT_HANDED_STALE,		/* the owner no longer asks for the row: look at its wake again */
+  LK_HANDED_REGAINED,		/* the row is ours again */
+  LK_HANDED_LOST		/* timeout or interrupt while waiting to have it back */
+} LK_HAND_RESULT;
+
 /*
  * Lock Entry Block Structure
  */
@@ -363,13 +396,86 @@ struct lk_res_block
   int count;			/* # of entries in lock res block */
 };
 
-/* a transient request of a statement nested in another, kept apart from the outer statement's counts */
-typedef struct lk_nested_transient LK_NESTED_TRANSIENT;
-struct lk_nested_transient
+/* an outer scope's count on an entry an inner scope took over, put back when that inner scope ends */
+typedef struct lk_transient_overlap LK_TRANSIENT_OVERLAP;
+struct lk_transient_overlap
 {
   OID oid;
-  int scope;			/* the transient_scope depth that took it */
+  int scope;			/* the outer scope's depth */
+  int count;			/* its transient_count */
+  int taker;			/* the depth of the scope that took the entry over */
 };
+
+/* a transaction's statement-scoped row lock counts: written by its own thread only, reset when it ends */
+typedef struct lk_tran_transient LK_TRAN_TRANSIENT;
+struct lk_tran_transient
+{
+  int scope;			/* depth of the statement scopes now open, so nesting is visible */
+  int total;			/* the current scope's counted requests, never below its entries' sum; ends walks */
+  int *outer_total;		/* the outer scopes' totals; depth d keeps its outer one at d - 2 */
+  int outer_size;
+  int uncounted_from;		/* the depth from which nothing is counted, for want of memory; else 0 */
+  LK_TRANSIENT_OVERLAP *overlap;	/* in the order of the takers' depths */
+  int overlap_count;
+  int overlap_size;
+};
+
+// *INDENT-OFF*
+/*
+ * the wake of a transaction's self-lock waiters that an undo deferred (lock_deferred_wake_mark ()), and the row the
+ * transaction asks to be handed meanwhile (lock_ask_row_handoff ()); other transactions read both
+ *
+ * Note: no constructor, so the memset of the lock table zeroes it.
+ */
+class lk_tran_deferred_wake
+{
+  public:
+    /* the epoch of the undo whose wake is due, or 0 */
+    UINT64 due_epoch () const
+    {
+      return __atomic_load_n (&m_epoch, __ATOMIC_ACQUIRE);
+    }
+
+    /* an undo of ours is done; only our own thread marks */
+    void mark ()
+    {
+      __atomic_store_n (&m_epoch, ++m_last_epoch, __ATOMIC_RELEASE);
+    }
+
+    /* clear the wake if epoch is still the one due: whether it was */
+    bool take (UINT64 epoch)
+    {
+      UINT64 expected = epoch;
+
+      return epoch != 0 && __atomic_compare_exchange_n (&m_epoch, &expected, (UINT64) 0, false, __ATOMIC_SEQ_CST,
+							__ATOMIC_RELAXED);
+    }
+
+    /* the transaction ends: nothing is due and no row is asked for */
+    void clear ()
+    {
+      __atomic_store_n (&m_epoch, (UINT64) 0, __ATOMIC_RELAXED);
+      ask_row (0);
+    }
+
+    /* packed OID of the row we ask to be handed while the wake is deferred, or 0 */
+    UINT64 asked_row () const
+    {
+      return __atomic_load_n (&m_asked_row, __ATOMIC_RELAXED);
+    }
+
+    void ask_row (UINT64 packed_row)
+    {
+      __atomic_store_n (&m_asked_row, packed_row, __ATOMIC_RELAXED);
+    }
+
+  private:
+    UINT64 m_epoch;
+    UINT64 m_last_epoch;	/* never reset: an epoch cleared and taken again would let a late take of the old wake
+				 * drop the new one */
+    UINT64 m_asked_row;
+};
+// *INDENT-ON*
 
 /*
  * Transaction Lock Entry Structure
@@ -385,16 +491,20 @@ struct lk_tran_lock
   LK_ENTRY *lk_entry_pool;	/* local pool of lock entries which can be used with no synchronization. */
   int lk_entry_pool_count;	/* Current count of lock entries in local pool. */
   int inst_hold_count;		/* # of entries in inst_hold_list */
-  int transient_scope;		/* statements now taking transient row locks, so nesting is visible */
-  int transient_total;		/* counted requests outstanding, never below the entries' sum: the walk stops on it */
-  LK_NESTED_TRANSIENT *nested_transient;	/* each scope's above its outer scopes', so a scope's are the last */
-  int nested_transient_count;
-  int nested_transient_size;
-  int escalated_count;		/* class entries with escalated_from set; both written by the main thread only */
-  bool reclaimed_only_transient;	/* the last reclaim of instance locks took only this statement's requests */
   int class_hold_count;		/* # of entries in class_hold_list */
 
+  LK_TRAN_TRANSIENT transient;
+  int escalated_count;		/* class entries with escalated_from set; both written by the main thread only */
+  bool reclaimed_only_transient;	/* the last reclaim of instance locks took only this statement's requests */
+
   LK_ENTRY *waiting;		/* waiting lock entry */
+
+  /* the row our self-lock wait is about (lock_wait_transaction_mvccid ()), under hold_mutex: wait_target is set while
+   * wait_target_mvccid, the owner's MVCCID, is not MVCCID_NULL */
+  MVCCID wait_target_mvccid;
+  LK_WAIT_TARGET wait_target;
+
+  lk_tran_deferred_wake deferred_wake;
 
   /* non two phase lock list */
   pthread_mutex_t non2pl_mutex;	/* mutex for non2pl_list */
@@ -452,6 +562,8 @@ struct lk_global_data
   LK_WFG_EDGE *TWFG_edge;	/* transaction WFG edge */
   LK_WFG_EDGE *TWFG_edge_storage;	/* reusable WFG edge storage */
   LK_DEADLOCK_VICTIM *victims;	/* deadlock victims selected in current detection */
+  LK_DEADLOCK_WAKE deadlock_wakes[LK_MAX_DEADLOCK_WAKES];	/* wakes sent instead of victims */
+  int n_deadlock_wakes;
   int max_TWFG_edge;
   int TWFG_free_edge_idx;
   int global_edge_seq_num;
@@ -460,6 +572,7 @@ struct lk_global_data
   short no_victim_case_count;
   // *INDENT-OFF*
   std::atomic_int deadlock_and_timeout_detector;
+  alignas (64) std::atomic<UINT64> tran_wake_generation;	/* bumped by every wake; not on the detector's line */
   // *INDENT-ON*
 
   // *INDENT-OFF*
@@ -475,11 +588,14 @@ struct lk_global_data
     , TWFG_edge (NULL)
     , TWFG_edge_storage (NULL)
     , victims (NULL)
+    , deadlock_wakes {}
+    , n_deadlock_wakes (0)
     , max_TWFG_edge (0)
     , TWFG_free_edge_idx (0)
     , global_edge_seq_num (0)
     , no_victim_case_count (0)
     , deadlock_and_timeout_detector { 0 }
+    , tran_wake_generation { 0 }
   {
   }
   // *INDENT-ON*
@@ -558,7 +674,16 @@ static void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
 static LK_ENTRY *lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
 static void lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr);
 static const char *lock_res_desc_format (int msgnum);
-static bool lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *desc, size_t desc_size);
+static bool lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, const LK_WAIT_TARGET * target,
+				    char *desc, size_t desc_size);
+static void lock_describe_instance (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, char *desc,
+				    size_t desc_size);
+static void lock_set_wait_target (int tran_index, MVCCID mvccid, const LK_WAIT_TARGET * target);
+static bool lock_get_wait_target_locked (const LK_TRAN_LOCK * tran_lock, const LK_ENTRY * wait_entry,
+					 LK_WAIT_TARGET * target);
+static bool lock_get_wait_target (const LK_ENTRY * wait_entry, LK_WAIT_TARGET * target);
+static MVCCID lock_get_row_wait_owner (int tran_index, const OID * oid);
+static int lock_add_row_wait_owner (MVCCID * owners, int nowners, int tran_index, const OID * oid);
 static void lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
 static void lock_set_error_for_aborted (LK_ENTRY * entry_ptr);
 static void lock_set_tran_abort_reason (int tran_index, TRAN_ABORT_REASON abort_reason);
@@ -573,9 +698,12 @@ static int lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, cons
 				  int cond_flag, bool mark_transient, bool ahead_of_waiters);
 static bool lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LOCK * tran_lock);
 static void lock_reset_transient_state (LK_TRAN_LOCK * tran_lock);
-static void lock_count_nested_transient (LK_TRAN_LOCK * tran_lock, const OID * oid);
-static bool lock_uncount_nested_transient (LK_TRAN_LOCK * tran_lock, const OID * oid);
-static void lock_end_nested_transient (THREAD_ENTRY * thread_p, LK_TRAN_LOCK * tran_lock, bool release);
+static int lock_current_transient_scope (const LK_TRAN_TRANSIENT * transient);
+static void lock_count_transient (LK_TRAN_TRANSIENT * transient, LK_ENTRY * entry_ptr);
+static void lock_end_transient_count (LK_TRAN_TRANSIENT * transient, LK_ENTRY * entry_ptr, int scope);
+static void lock_check_transient_marks (const LK_TRAN_LOCK * tran_lock, int ended);
+static void lock_release_transient_object_locks (THREAD_ENTRY * thread_p);
+static void lock_forget_transient_object_locks (THREAD_ENTRY * thread_p);
 static void lock_end_escalated_class_lock (THREAD_ENTRY * thread_p, bool lower);
 static void lock_withdraw_escalation_record (THREAD_ENTRY * thread_p, LK_TRAN_LOCK * tran_lock, LK_ENTRY * class_entry);
 static bool lock_grant_row_by_class_lock (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY * class_entry,
@@ -619,13 +747,45 @@ static void lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_f
 					   int log_num_entries, LK_ENTRY ** log_entries);
 static void lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
 static void lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * wait_entry);
-static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
+static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry,
+				      const LK_WAIT_TARGET * target);
+static void lock_event_log_table_name (THREAD_ENTRY * thread_p, FILE * log_fp, const OID * class_oid);
+static void lock_event_log_self_lock_owner (THREAD_ENTRY * thread_p, FILE * log_fp, MVCCID mvccid, const OID * oid,
+					    const OID * class_oid, int waiter_tran_index);
 static void lock_event_set_tran_wait_entry (int tran_index, LK_ENTRY * entry);
 static void lock_event_set_xasl_id_to_entry (int tran_index, LK_ENTRY * entry);
 static LK_RES_KEY lock_create_search_key (const OID * oid, const OID * class_oid);
 static LK_RES_KEY lock_create_mvccid_search_key (MVCCID mvccid);
 #if defined (SERVER_MODE)
 static bool lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
+static bool lock_entry_is_prequeued (const LK_ENTRY * entry_ptr);
+static bool lock_entry_is_asleep (const LK_ENTRY * entry_ptr);
+static void lock_recompute_total_waiters_mode (LK_RES * res_ptr);
+static void lock_grant_waiting_entry (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * prev, LK_ENTRY * entry_ptr);
+static bool lock_ask_row_handoff (THREAD_ENTRY * thread_p, int tran_index, LK_RES * res_ptr, LK_ENTRY * entry_ptr,
+				  bool conversion, bool * asked);
+static bool lock_resolve_cycle_by_wake (int s, int t);
+static void lock_send_deadlock_wakes (THREAD_ENTRY * thread_p);
+static int lock_transaction_mvccid_with_wait (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int wait_msecs);
+static INT64 lock_monotonic_msecs (void);
+static int lock_find_self_lock_owner (THREAD_ENTRY * thread_p, MVCCID mvccid);
+static int lock_recheck_wait_left (const THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int wait_msecs,
+				   INT64 * waited_msecs);
+static void lock_recheck_add_waited (THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int wait_msecs,
+				     INT64 waited_msecs, INT64 start_msecs);
+static LK_RECHECK_DECISION lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_row,
+						UINT64 * wake_gen, int *owner_tran_index);
+static bool lock_deferred_wake_send (THREAD_ENTRY * thread_p, int tran_index, MVCCID mvccid, UINT64 epoch);
+static void lock_wake_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 packed_row);
+static UINT64 lock_pack_row_oid (const OID * oid);
+static LK_ENTRY *lock_find_row_handoff_owner (LK_RES * res_ptr, int tran_index, int owner_tran_index,
+					      MVCCID owner_mvccid, bool transient, LK_ENTRY ** mine, bool * stale);
+static void lock_remove_row_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * mine, int tran_index,
+				    bool transient);
+static LK_HAND_RESULT lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
+					      int owner_tran_index, MVCCID owner_mvccid, bool transient);
+static LK_HAND_RESULT lock_wait_handed_row_back (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * entry_ptr,
+						 LK_ENTRY * class_entry, MVCCID owner_mvccid, bool transient);
 #endif /* SERVER_MODE */
 
 static LK_ENTRY *lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
@@ -815,6 +975,7 @@ lock_uninit_entry (void *entry)
   entry_ptr->tran_index = -1;
   entry_ptr->thrd_entry = NULL;
   entry_ptr->transient_count = 0;
+  entry_ptr->transient_scope = 0;
   entry_ptr->escalated_from = NULL_LOCK;
 
   return NO_ERROR;
@@ -1011,6 +1172,7 @@ lock_initialize_entry (LK_ENTRY * entry_ptr)
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->transient_count = 0;
+  entry_ptr->transient_scope = 0;
   entry_ptr->escalated_from = NULL_LOCK;
   entry_ptr->shared_requested = false;
   entry_ptr->bind_index_in_tran = -1;
@@ -1033,6 +1195,7 @@ lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index, LK_RES *
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->transient_count = 0;
+  entry_ptr->transient_scope = 0;
   entry_ptr->escalated_from = NULL_LOCK;
   entry_ptr->shared_requested = (lock == S_LOCK);
 
@@ -1056,6 +1219,7 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p,
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->transient_count = 0;
+  entry_ptr->transient_scope = 0;
   entry_ptr->escalated_from = NULL_LOCK;
   entry_ptr->shared_requested = (lock == S_LOCK);
 
@@ -1078,6 +1242,7 @@ lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * 
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->transient_count = 0;
+  entry_ptr->transient_scope = 0;
   entry_ptr->escalated_from = NULL_LOCK;
   entry_ptr->shared_requested = false;
 }
@@ -1150,10 +1315,18 @@ lock_get_hash_value (const OID * oid, int htsize)
 static void
 lock_reset_transient_state (LK_TRAN_LOCK * tran_lock)
 {
-  tran_lock->transient_scope = 0;
-  tran_lock->transient_total = 0;
-  tran_lock->nested_transient_count = 0;
+  tran_lock->transient.scope = 0;
+  tran_lock->transient.total = 0;
+  tran_lock->transient.uncounted_from = 0;
   tran_lock->escalated_count = 0;
+  /* the outer totals are indexed by depth, so a transaction ending inside a scope leaves nothing to pop; overlaps
+   * are rare, so their memory does not outlive the transaction */
+  tran_lock->transient.overlap_count = 0;
+  if (tran_lock->transient.overlap != NULL)
+    {
+      free_and_init (tran_lock->transient.overlap);
+      tran_lock->transient.overlap_size = 0;
+    }
 }
 
 /*
@@ -2107,6 +2280,7 @@ lock_res_desc_format (int msgnum)
  *
  *   thread_p(in):
  *   res_ptr(in): the resource being waited on
+ *   target(in): for a transaction self-lock, the row the wait is about, or NULL
  *   desc(out): buffer receiving the phrase, e.g. "instance 1|641|1 of class dba.t"
  *   desc_size(in): size of desc in bytes
  *
@@ -2116,24 +2290,38 @@ lock_res_desc_format (int msgnum)
  *	 a MSGCAT_SET_LOCK phrase and a case here. The phrases sit in the catalog so locales can reorder them.
  */
 static bool
-lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *desc, size_t desc_size)
+lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, const LK_WAIT_TARGET * target, char *desc,
+			size_t desc_size)
 {
   const OID *oid = &res_ptr->key.oid;
   const OID *name_oid = NULL;	/* OID to resolve a class name from; NULL when the kind carries no class */
   char *classname = NULL;
   bool is_classname_alloced = false;
-  bool is_instance = false;
   OID real_class_oid;
   OID *oid_rr;
+  char tran_desc[LK_RES_DESC_MAX], row_desc[LK_RES_DESC_MAX];
 
   assert (res_ptr != NULL && desc != NULL && desc_size > 0);
 
   switch (res_ptr->key.type)
     {
     case LOCK_RESOURCE_TRANSACTION:
-      /* The resource is the inserter's MVCCID; key.oid would be those same bytes reinterpreted (LK_RES_KEY). */
-      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_TRANSACTION),
+      /* The resource is the writer's MVCCID; key.oid would be those same bytes reinterpreted (LK_RES_KEY). */
+      if (target == NULL)
+	{
+	  snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_TRANSACTION),
+		    (unsigned long long) res_ptr->key.mvccid);
+	  return true;
+	}
+      snprintf (tran_desc, sizeof (tran_desc), lock_res_desc_format (MSGCAT_LK_RES_DESC_TRANSACTION),
 		(unsigned long long) res_ptr->key.mvccid);
+      lock_describe_instance (thread_p, &target->oid, &target->class_oid, row_desc, sizeof (row_desc));
+      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_TRANSACTION_ROW), tran_desc,
+		lock_to_lockmode_string (target->mode), row_desc);
+      return true;
+
+    case LOCK_RESOURCE_INSTANCE:
+      lock_describe_instance (thread_p, oid, &res_ptr->key.class_oid, desc, desc_size);
       return true;
 
     case LOCK_RESOURCE_ROOT_CLASS:
@@ -2147,11 +2335,6 @@ lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *d
 	{
 	  name_oid = oid;
 	}
-      break;
-
-    case LOCK_RESOURCE_INSTANCE:
-      name_oid = &res_ptr->key.class_oid;
-      is_instance = true;
       break;
 
     default:
@@ -2181,11 +2364,6 @@ lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *d
       snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_OBJECT), oid->volid, oid->pageid,
 		oid->slotid);
     }
-  else if (is_instance)
-    {
-      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_INSTANCE), oid->volid, oid->pageid,
-		oid->slotid, classname);
-    }
   else
     {
       snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_CLASS), classname);
@@ -2197,6 +2375,140 @@ lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *d
     }
 
   return true;
+}
+
+/*
+ * lock_describe_instance - Render a row as the instance phrase, or as the object phrase when its class name is not
+ *			    known
+ */
+static void
+lock_describe_instance (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, char *desc, size_t desc_size)
+{
+  char *classname = NULL;
+  OID real_class_oid;
+
+  if (!OID_ISTEMP (class_oid))
+    {
+      if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (class_oid))
+	{
+	  OID_GET_REAL_CLASS_OF_DIR_OID (class_oid, &real_class_oid);
+	}
+      else
+	{
+	  COPY_OID (&real_class_oid, class_oid);
+	}
+      if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
+	{
+	  /* ignore: the object phrase names it by OID instead */
+	  er_clear ();
+	}
+    }
+
+  if (classname == NULL)
+    {
+      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_OBJECT), oid->volid, oid->pageid,
+		oid->slotid);
+      return;
+    }
+  snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_INSTANCE), oid->volid, oid->pageid,
+	    oid->slotid, classname);
+  free_and_init (classname);
+}
+
+/*
+ * lock_set_wait_target - Note the row our self-lock wait on mvccid's owner is about, or forget it (MVCCID_NULL)
+ */
+static void
+lock_set_wait_target (int tran_index, MVCCID mvccid, const LK_WAIT_TARGET * target)
+{
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
+
+  pthread_mutex_lock (&tran_lock->hold_mutex);
+  /* one self-lock wait per transaction at a time: parallel query workers wait on no row */
+  assert (target == NULL || tran_lock->wait_target_mvccid == MVCCID_NULL);
+  if (target != NULL)
+    {
+      tran_lock->wait_target = *target;
+    }
+  tran_lock->wait_target_mvccid = mvccid;
+  pthread_mutex_unlock (&tran_lock->hold_mutex);
+}
+
+/*
+ * lock_get_wait_target_locked - The row a self-lock wait is about, with tran_lock->hold_mutex held
+ *
+ * return: true and *target when wait_entry is a self-lock request of a wait that noted its row
+ */
+static bool
+lock_get_wait_target_locked (const LK_TRAN_LOCK * tran_lock, const LK_ENTRY * wait_entry, LK_WAIT_TARGET * target)
+{
+  if (wait_entry->res_head->key.type != LOCK_RESOURCE_TRANSACTION || tran_lock->wait_target_mvccid == MVCCID_NULL
+      || tran_lock->wait_target_mvccid != wait_entry->res_head->key.mvccid)
+    {
+      return false;
+    }
+  *target = tran_lock->wait_target;
+  return true;
+}
+
+/*
+ * lock_get_wait_target - lock_get_wait_target_locked () for a caller that does not hold the transaction's hold_mutex
+ *
+ * Note: a resource mutex may be held; hold_mutex comes after it, as when a lock is granted.
+ */
+static bool
+lock_get_wait_target (const LK_ENTRY * wait_entry, LK_WAIT_TARGET * target)
+{
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[wait_entry->tran_index];
+  bool found;
+
+  pthread_mutex_lock (&tran_lock->hold_mutex);
+  found = lock_get_wait_target_locked (tran_lock, wait_entry, target);
+  pthread_mutex_unlock (&tran_lock->hold_mutex);
+  return found;
+}
+
+/*
+ * lock_get_row_wait_owner - The owner's MVCCID a transaction waits on for the row oid, or MVCCID_NULL
+ *
+ * Note: the first writer that reaches a stamped row holds the row's lock while it waits on the owner's self-lock, so
+ *	 the writers behind it wait on the row and see only it; this names the owner behind it.
+ */
+static MVCCID
+lock_get_row_wait_owner (int tran_index, const OID * oid)
+{
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  MVCCID owner_mvccid = MVCCID_NULL;
+
+  pthread_mutex_lock (&tran_lock->hold_mutex);
+  if (tran_lock->wait_target_mvccid != MVCCID_NULL && OID_EQ (&tran_lock->wait_target.oid, oid))
+    {
+      owner_mvccid = tran_lock->wait_target_mvccid;
+    }
+  pthread_mutex_unlock (&tran_lock->hold_mutex);
+  return owner_mvccid;
+}
+
+/*
+ * lock_add_row_wait_owner - Add to owners[] the owner tran_index waits on for the row oid, once
+ *
+ * return: the new count
+ */
+static int
+lock_add_row_wait_owner (MVCCID * owners, int nowners, int tran_index, const OID * oid)
+{
+  MVCCID owner_mvccid = lock_get_row_wait_owner (tran_index, oid);
+  int i;
+
+  for (i = 0; i < nowners && owners[i] != owner_mvccid; i++)
+    {
+      ;
+    }
+  if (owner_mvccid != MVCCID_NULL && i == nowners)
+    {
+      owners[nowners++] = owner_mvccid;
+    }
+  return nowners;
 }
 
 /*
@@ -2229,6 +2541,9 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   bool free_mutex_flag = false;
   bool isdeadlock_timeout = false;
   int compat1, compat2;
+  MVCCID owners[DEFAULT_WAIT_USERS];	/* the owners some holders of the row wait on for it */
+  int nowners = 0, owner, j;
+  LK_WAIT_TARGET target;
 
   /* Find the users that transaction is waiting for */
   waitfor_client_users = waitfor_client_users_default;
@@ -2256,6 +2571,10 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	{
 	  EXPAND_WAIT_FOR_ARRAY_IF_NEEDED ();
 	  wait_for[nwaits++] = entry->tran_index;
+	  if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE && nowners < DEFAULT_WAIT_USERS)
+	    {
+	      nowners = lock_add_row_wait_owner (owners, nowners, entry->tran_index, &res_ptr->key.oid);
+	    }
 	}
     }
 
@@ -2277,6 +2596,21 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 
   pthread_mutex_unlock (&res_ptr->res_mutex);
   free_mutex_flag = false;
+
+  /* a holder waiting on an owner for this row: name the owner too, as the owner's row lock did */
+  for (i = 0; i < nowners; i++)
+    {
+      owner = lock_find_self_lock_owner (thread_p, owners[i]);
+      for (j = 0; j < nwaits && wait_for[j] != owner; j++)
+	{
+	  ;
+	}
+      if (owner != NULL_TRAN_INDEX && owner != entry_ptr->tran_index && j == nwaits)
+	{
+	  EXPAND_WAIT_FOR_ARRAY_IF_NEEDED ();
+	  wait_for[nwaits++] = owner;
+	}
+    }
 
   if (nwaits == 0 || (waitfor_client_users = (char *) malloc (unit_size * nwaits)) == NULL)
     {
@@ -2318,7 +2652,9 @@ set_error:
       isdeadlock_timeout = true;
     }
 
-  if (lock_describe_resource (thread_p, entry_ptr->res_head, resource_desc, sizeof (resource_desc)))
+  if (lock_describe_resource (thread_p, entry_ptr->res_head,
+			      lock_get_wait_target (entry_ptr, &target) ? &target : NULL, resource_desc,
+			      sizeof (resource_desc)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	      ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 7,
@@ -2413,6 +2749,9 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   assert (lock_is_safe_lock_with_page (thread_p, entry_ptr) || !pgbuf_has_perm_pages_fixed (thread_p));
 
   /* The caller is holding the thread entry mutex */
+
+  /* a thread asleep with its entry flagged as queued would be granted without a resume */
+  assert (entry_ptr->thrd_entry->deferred_wake.prequeued == NULL);
 
   if (lk_Gl.config.verbose_mode)
     {
@@ -2569,6 +2908,9 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
     case LOCK_RESUMED_INTERRUPT:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return LOCK_RESUMED_INTERRUPT;
+
+    case LOCK_RESUMED_RECHECK:
+      return LOCK_RESUMED_RECHECK;
 
     case LOCK_SUSPENDED:
     default:
@@ -2916,6 +3258,13 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	  break;		/* stop the granting */
 	}
 
+      /* an entry queued but not asleep yet is granted by its own thread (lock_ask_row_handoff ()): stop as at an
+       * incompatible one */
+      if (lock_entry_is_prequeued (waiter))
+	{
+	  break;
+	}
+
       /* compatible: grant it */
       /* hold the thread entry mutex */
       thread_lock_entry (waiter->thrd_entry);
@@ -3157,6 +3506,66 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
       res_ptr->total_waiters_mode = mode;
     }
 
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_entry_is_prequeued - the entry waits, but its thread has not gone to sleep on it yet (lock_ask_row_handoff ())
+ */
+static bool
+lock_entry_is_prequeued (const LK_ENTRY * entry_ptr)
+{
+  return entry_ptr->thrd_entry != NULL && entry_ptr->thrd_entry->deferred_wake.prequeued == entry_ptr;
+}
+
+/*
+ * lock_entry_is_asleep - the entry's thread sleeps on it; call holding the thread entry mutex
+ */
+static bool
+lock_entry_is_asleep (const LK_ENTRY * entry_ptr)
+{
+  return LK_IS_LOCKWAIT_THREAD (entry_ptr->thrd_entry) && entry_ptr->thrd_entry->lockwait == (void *) entry_ptr;
+}
+
+/*
+ * lock_recompute_total_waiters_mode - total_waiters_mode of the waiters as they are now
+ */
+static void
+lock_recompute_total_waiters_mode (LK_RES * res_ptr)
+{
+  LK_ENTRY *e;
+
+  res_ptr->total_waiters_mode = NULL_LOCK;
+  for (e = res_ptr->waiter; e != NULL; e = e->next)
+    {
+      res_ptr->total_waiters_mode = lock_conv (e->blocked_mode, res_ptr->total_waiters_mode);
+    }
+}
+
+/*
+ * lock_grant_waiting_entry - grant a waiting entry (prev is the one before it, or NULL) as the common grant paths do;
+ *			      the caller resumes its thread if it sleeps on it
+ */
+static void
+lock_grant_waiting_entry (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * prev, LK_ENTRY * entry_ptr)
+{
+  if (prev == NULL)
+    {
+      res_ptr->waiter = entry_ptr->next;
+    }
+  else
+    {
+      prev->next = entry_ptr->next;
+    }
+  entry_ptr->granted_mode = entry_ptr->blocked_mode;
+  entry_ptr->blocked_mode = NULL_LOCK;
+  lock_position_holder_entry (res_ptr, entry_ptr);
+  res_ptr->total_holders_mode = lock_conv (entry_ptr->granted_mode, res_ptr->total_holders_mode);
+  lock_recompute_total_waiters_mode (res_ptr);
+  lock_insert_into_tran_hold_list (entry_ptr, LOG_FIND_THREAD_TRAN_INDEX (entry_ptr->thrd_entry));
+  lock_update_non2pl_list (thread_p, res_ptr, entry_ptr->tran_index, entry_ptr->granted_mode);
+  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
 }
 #endif /* SERVER_MODE */
 
@@ -3415,7 +3824,7 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
       /* 2. release original class lock only one time in order to maintain original class lock count */
       lock_internal_perform_unlock_object (thread_p, class_entry, false, true);
 
-      if (tran_lock->transient_scope > 0 && tran_lock->reclaimed_only_transient
+      if (tran_lock->transient.scope > 0 && tran_lock->reclaimed_only_transient
 	  && class_entry->escalated_from == NULL_LOCK && thread_get_main_thread (thread_p) == thread_p)
 	{
 	  /* written after the raise: as a class grant escalated_from does not cover, the raise would withdraw it.  A raise
@@ -3672,6 +4081,72 @@ lock_join_existing_wait_train (THREAD_ENTRY * thrd_entry, int tran_index, LK_ENT
 }
 
 /*
+ * lock_ask_row_handoff - the owner must wait for a row while its wake is deferred: ask the waiters holding the row to
+ *			  hand it over
+ *
+ * return: true if granted meanwhile (the resource mutex is released); false to sleep as usual (still held)
+ *   conversion(in): a holder converting is not handed the row; the deadlock detector's wake resolves its cycle
+ *   asked(out): set once the row is asked for (deferred_wake.ask_row ()), for the caller to clear when the request ends
+ *
+ * Note: until the owner sleeps its entry is flagged queued: the common grant stops at it, and the waiter holding the
+ *	 row grants it (lock_hand_row_to_owner ()). lockwait_stime 0 keeps our edges from the deadlock detector.
+ */
+static bool
+lock_ask_row_handoff (THREAD_ENTRY * thread_p, int tran_index, LK_RES * res_ptr, LK_ENTRY * entry_ptr, bool conversion,
+		      bool * asked)
+{
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  LOG_TDES *tdes;
+  LK_ENTRY *e, *prev;
+  UINT64 packed_row;
+  bool granted;
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL || tran_lock->deferred_wake.due_epoch () == 0 || conversion)
+    {
+      return false;
+    }
+  assert (entry_ptr->thrd_entry == thread_p && thread_p->deferred_wake.prequeued == NULL);
+  /* one thread of a transaction takes row locks (parallel query workers do not) */
+  assert (tran_lock->deferred_wake.asked_row () == 0);
+
+  thread_p->deferred_wake.prequeued = entry_ptr;
+  thread_p->lockwait_stime = 0;
+  packed_row = lock_pack_row_oid (&res_ptr->key.oid);
+  tran_lock->deferred_wake.ask_row (packed_row);
+  *asked = true;
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+
+  lock_wake_mvccid_waiters (thread_p, tdes->mvccinfo.id, packed_row);
+
+  pthread_mutex_lock (&res_ptr->res_mutex);
+  thread_p->deferred_wake.prequeued = NULL;
+  if (entry_ptr->blocked_mode != NULL_LOCK)
+    {
+      /* not handed: grant it where the common grant would have granted a sleeping waiter */
+      for (prev = NULL, e = res_ptr->waiter; e != entry_ptr; prev = e, e = e->next)
+	{
+	  if (lock_compat (e->blocked_mode, res_ptr->total_holders_mode) == LOCK_COMPAT_NO)
+	    {
+	      break;
+	    }
+	}
+      if (e == entry_ptr && lock_compat (entry_ptr->blocked_mode, res_ptr->total_holders_mode) == LOCK_COMPAT_YES)
+	{
+	  lock_grant_waiting_entry (thread_p, res_ptr, prev, entry_ptr);
+	  /* a release that stopped at our entry did not reach the waiters behind it */
+	  (void) lock_grant_blocked_waiter (thread_p, res_ptr);
+	}
+    }
+  granted = (entry_ptr->blocked_mode == NULL_LOCK);
+  if (granted)
+    {
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+    }
+  return granted;
+}
+
+/*
  * lock_internal_perform_lock_object - Performs actual object lock operation
  *
  * return: one of following values
@@ -3721,6 +4196,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time;
   LK_PERFORM_STATE state = LK_S_FIND_RESOURCE;
+  bool handoff_asked = false;
 
 #if defined(ENABLE_SYSTEMTAP)
   const OID *class_oid_for_marker_p;
@@ -4018,6 +4494,16 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	      break;
 	    }
 
+	  if (res_ptr->key.type == LOCK_RESOURCE_TRANSACTION && lock == S_LOCK
+	      && thrd_entry->deferred_wake.wake_gen != lk_Gl.tran_wake_generation.load ())
+	    {
+	      /* a wake went out after the caller read the stamp, before we joined the waiters */
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      ret_val = LK_NOTGRANTED_DUE_RECHECK;
+	      state = LK_S_DONE;
+	      break;
+	    }
+
 	  /* check if another thread is waiting for the same resource */
 	  wait_entry_ptr = lock_find_my_waiter_entry (res_ptr, tran_index);
 
@@ -4247,6 +4733,15 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 
 	case LK_S_SUSPENDED:
 
+	  if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE
+	      && lock_ask_row_handoff (thread_p, tran_index, res_ptr, entry_ptr, lock_conversion, &handoff_asked))
+	    {
+	      /* handed the row before going to sleep */
+	      is_res_mutex_locked = false;
+	      state = LK_S_POST_GRANT;
+	      break;
+	    }
+
 	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_LOCK_OBJECT))
 	    {
 	      tsc_getticks (&start_tick);
@@ -4271,6 +4766,15 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	      lock_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
 	      perfmon_lk_waited_time_on_objects (thread_p, lock, lock_wait_time);
+	    }
+
+	  if (ret_val == LOCK_RESUMED_RECHECK)
+	    {
+	      /* the waker took the entry off the waiters (lock_wake_mvccid_waiters ()): only free it */
+	      lock_free_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list, entry_ptr);
+	      ret_val = LK_NOTGRANTED_DUE_RECHECK;
+	      state = LK_S_DONE;
+	      break;
 	    }
 
 	  if (ret_val != LOCK_RESUMED)
@@ -4361,6 +4865,12 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_LOCK_ACQUIRE_END (oid_for_marker_p, class_oid_for_marker_p, lock, ret_val != LK_GRANTED);
 #endif /* ENABLE_SYSTEMTAP */
+
+  if (handoff_asked)
+    {
+      /* however the request ended, it no longer waits on that row */
+      lk_Gl.tran_lock_table[tran_index].deferred_wake.ask_row (0);
+    }
 
   if (entry_ptr != NULL && ret_val == LK_GRANTED)
     {
@@ -4951,9 +5461,10 @@ lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index, const OID *
 	{
 	  if (curr->granted_mode <= lock || lock == X_LOCK)
 	    {
-	      if (curr->transient_count < curr->count)
+	      if (curr->transient_scope != 1 || curr->transient_count < curr->count)
 		{
-		  /* an earlier statement's request: once reclaimed only the class lock protects it */
+		  /* an earlier statement's request, or a nested one's that may stay: once reclaimed only the class lock
+		   * protects it */
 		  tran_lock->reclaimed_only_transient = false;
 		}
 	      /* found : the same class_oid and interesting lock mode --> unlock it. */
@@ -5257,6 +5768,72 @@ lock_add_WFG_edge (int from_tran_index, int to_tran_index, int holder_flag, INT6
 
 #if defined(SERVER_MODE)
 /*
+ * lock_resolve_cycle_by_wake - cut a cycle at its transactions whose wake is deferred, instead of choosing a victim
+ *
+ * Note: the wakes go out after the search (lock_send_deadlock_wakes ()). Past LK_MAX_DEADLOCK_WAKES a cycle is cut
+ *	 with no wake; the next detection finds it again.
+ */
+static bool
+lock_resolve_cycle_by_wake (int s, int t)
+{
+  LK_WFG_NODE *TWFG_node = lk_Gl.TWFG_node;
+  LK_DEADLOCK_WAKE *wake;
+  LOG_TDES *tdes;
+  UINT64 epoch;
+  bool found = false;
+  int v, k;
+
+  for (v = s;; v = TWFG_node[v].ancestor)
+    {
+      tdes = LOG_FIND_TDES (v);
+      epoch = (tdes != NULL) ? lk_Gl.tran_lock_table[v].deferred_wake.due_epoch () : 0;
+      if (epoch != 0)
+	{
+	  found = true;
+	  for (k = 0; k < lk_Gl.n_deadlock_wakes && lk_Gl.deadlock_wakes[k].tran_index != v; k++)
+	    {
+	      ;
+	    }
+	  if (k == lk_Gl.n_deadlock_wakes && k < LK_MAX_DEADLOCK_WAKES)
+	    {
+	      wake = &lk_Gl.deadlock_wakes[lk_Gl.n_deadlock_wakes++];
+	      wake->tran_index = v;
+	      wake->trid = tdes->trid;
+	      wake->mvccid = tdes->mvccinfo.id;
+	      wake->epoch = epoch;
+	    }
+	  /* as for a victim: the search does not find this cycle again */
+	  TWFG_node[v].current = -1;
+	}
+      if (v == t)
+	{
+	  break;
+	}
+    }
+  return found;
+}
+
+/*
+ * lock_send_deadlock_wakes - send the wakes lock_resolve_cycle_by_wake () recorded to the transactions still there
+ */
+static void
+lock_send_deadlock_wakes (THREAD_ENTRY * thread_p)
+{
+  LK_DEADLOCK_WAKE *wake;
+  int k;
+
+  for (k = 0; k < lk_Gl.n_deadlock_wakes; k++)
+    {
+      wake = &lk_Gl.deadlock_wakes[k];
+      if (logtb_find_tranid (wake->tran_index) == wake->trid)
+	{
+	  (void) lock_deferred_wake_send (thread_p, wake->tran_index, wake->mvccid, wake->epoch);
+	}
+    }
+  lk_Gl.n_deadlock_wakes = 0;
+}
+
+/*
  * lock_select_deadlock_victim -
  *
  * return:
@@ -5378,7 +5955,8 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
       v = u;
     }
 
-  if (false_dd_cycle == true)
+  /* a false cycle, or one a deferred wake resolves instead of a victim */
+  if (false_dd_cycle == true || lock_resolve_cycle_by_wake (s, t))
     {				/* clear deadlock cycle */
       for (v = s; v != t;)
 	{
@@ -5804,6 +6382,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   OID *oid_rr = NULL;
   HEAP_SCANCACHE scan_cache;
   OID real_class_oid;
+  LK_WAIT_TARGET target;
+  char row_desc[LK_RES_DESC_MAX];
 
   memset (time_val, 0, sizeof (time_val));
 
@@ -5932,7 +6512,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	}
       break;
     case LOCK_RESOURCE_TRANSACTION:
-      fprintf (outfp, "  Transaction self-lock (inserter MVCCID = %llu)\n", (unsigned long long) res_ptr->key.mvccid);
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_TRANSACTION_TYPE),
+	       (unsigned long long) res_ptr->key.mvccid);
       break;
     default:
       fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_UNKNOWN_TYPE));
@@ -6065,6 +6646,12 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_WAITER_ENTRY),
 		   "", entry_ptr->tran_index, lock_to_lockmode_string (entry_ptr->blocked_mode), "", time_val, "",
 		   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
+	  if (lock_get_wait_target (entry_ptr, &target))
+	    {
+	      lock_describe_instance (thread_p, &target.oid, &target.class_oid, row_desc, sizeof (row_desc));
+	      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_WAIT_FOR_ROW), "",
+		       row_desc, lock_to_lockmode_string (target.mode));
+	    }
 	  entry_ptr = entry_ptr->next;
 	}
     }
@@ -6170,9 +6757,13 @@ lock_finalize_tran_lock_table (void)
 	  tran_lock = &lk_Gl.tran_lock_table[i];
 	  pthread_mutex_destroy (&tran_lock->hold_mutex);
 	  pthread_mutex_destroy (&tran_lock->non2pl_mutex);
-	  if (tran_lock->nested_transient != NULL)
+	  if (tran_lock->transient.outer_total != NULL)
 	    {
-	      free_and_init (tran_lock->nested_transient);
+	      free_and_init (tran_lock->transient.outer_total);
+	    }
+	  if (tran_lock->transient.overlap != NULL)
+	    {
+	      free_and_init (tran_lock->transient.overlap);
 	    }
 	  while (tran_lock->lk_entry_pool != NULL)
 	    {
@@ -6606,6 +7197,11 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
 	}
 
       /* case 3 : resource type is LOCK_RESOURCE_INSTANCE */
+      if (lock > S_LOCK)
+	{
+	  /* not S: compiling a statement reads its statistics under an S row lock (NET_SERVER_QST_GET_STATISTICS) */
+	  lock_deferred_wake_on_row_write (thread_p);
+	}
       /* a transient request needs no class lock after its statement: it is given back, or its row carries our stamp */
       if (lock_grant_row_by_class_lock (thread_p, tran_index, class_entry, old_class_lock, lock, !mark_transient))
 	{			/* already granted on the class level */
@@ -6619,26 +7215,13 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (oid, class_oid), lock,
 					   wait_msecs, &inst_entry, class_entry, ahead_of_waiters, !mark_transient);
+      /* never past count -- a request an earlier statement took is not this statement's to give back */
       if (mark_transient && granted == LK_GRANTED && inst_entry != NULL
 	  && inst_entry->transient_count < inst_entry->count)
 	{
-	  if (lk_Gl.tran_lock_table[tran_index].transient_scope > 1)
-	    {
-	      /* kept by OID: only an escalation to a class X frees an X entry, and that class lock covers any later
-	       * request on the object, so no other request can own an entry of the same OID by the scope end */
-	      assert (lock == X_LOCK);
-	      lock_count_nested_transient (&lk_Gl.tran_lock_table[tran_index], oid);
-	      goto end;
-	    }
-	  /* counted, not flagged: a repeated request only raises count, and the release gives back exactly what was
-	   * taken.  Never past count -- a request an earlier statement took is not this statement's to give back. */
-	  if (inst_entry->transient_count == 0 && inst_entry->count > 1)
-	    {
-	      /* an entry held before this request: the statement-end walk starts at the head */
-	      lock_move_to_head_of_tran_hold_list (inst_entry);
-	    }
-	  inst_entry->transient_count++;
-	  lk_Gl.tran_lock_table[tran_index].transient_total++;
+	  /* a nested scope's request is X: lock_end_transient_count () relies on it */
+	  assert (lk_Gl.tran_lock_table[tran_index].transient.scope <= 1 || lock == X_LOCK);
+	  lock_count_transient (&lk_Gl.tran_lock_table[tran_index].transient, inst_entry);
 	}
       goto end;
     }
@@ -6720,8 +7303,9 @@ lock_object_ahead_of_waiters (THREAD_ENTRY * thread_p, const OID * oid, const OI
  *   return: true when this is the outermost such statement
  *   thread_p(in): thread entry
  *
- * Note: the counts live on the transaction and are the outermost statement's.  A statement nested in it that takes
- *	transient locks has them kept apart, and its own scope end gives back or keeps only those.
+ * Note: each scope counts its requests on the entries it touches, and its end gives back or keeps only those; the
+ *	outer scope's total waits aside meanwhile.  With no memory to set it aside, this scope and the ones inside it
+ *	count nothing and their requests stay to commit.
  */
 bool
 lock_transient_scope_start (THREAD_ENTRY * thread_p)
@@ -6730,8 +7314,29 @@ lock_transient_scope_start (THREAD_ENTRY * thread_p)
   return true;
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
+  int scope = ++tran_lock->transient.scope;
+  int *grown;
+  int size;
 
-  return (++tran_lock->transient_scope) == 1;
+  if (scope == 1 || tran_lock->transient.uncounted_from != 0)
+    {
+      return scope == 1;
+    }
+  if (scope - 1 > tran_lock->transient.outer_size)
+    {
+      size = MAX (8, 2 * tran_lock->transient.outer_size);
+      grown = (int *) realloc (tran_lock->transient.outer_total, size * sizeof (int));
+      if (grown == NULL)
+	{
+	  tran_lock->transient.uncounted_from = scope;
+	  return false;
+	}
+      tran_lock->transient.outer_total = grown;
+      tran_lock->transient.outer_size = size;
+    }
+  tran_lock->transient.outer_total[scope - 2] = tran_lock->transient.total;
+  tran_lock->transient.total = 0;
+  return false;
 #endif /* !SERVER_MODE */
 }
 
@@ -6750,7 +7355,7 @@ lock_transient_scope_is_outermost (THREAD_ENTRY * thread_p)
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
 
-  return tran_lock->transient_scope == 1;
+  return tran_lock->transient.scope == 1;
 #endif /* !SERVER_MODE */
 }
 
@@ -6767,18 +7372,19 @@ lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release)
   return;
 #else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
+  int scope = tran_lock->transient.scope;
 
-  assert (tran_lock->transient_scope > 0);
-  if (tran_lock->transient_scope > 1)
+  assert (scope > 0);
+  if (tran_lock->transient.uncounted_from != 0 && scope >= tran_lock->transient.uncounted_from)
     {
-      /* an outer statement is still running and the counts are its to give back; this one ends only its own */
-      lock_end_nested_transient (thread_p, tran_lock, release);
-      tran_lock->transient_scope--;
+      /* it counted nothing and set no total aside */
+      if (scope == tran_lock->transient.uncounted_from)
+	{
+	  tran_lock->transient.uncounted_from = 0;
+	}
+      tran_lock->transient.scope--;
       return;
     }
-  tran_lock->transient_scope = 0;
-  assert (tran_lock->nested_transient_count == 0);
-  tran_lock->nested_transient_count = 0;
 
   if (release)
     {
@@ -6788,6 +7394,23 @@ lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release)
     {
       lock_forget_transient_object_locks (thread_p);
     }
+
+  if (scope > 1)
+    {
+      /* left by entries a reclaim for a class X lock freed, whose rows that class lock covers */
+      while (tran_lock->transient.overlap_count > 0
+	     && tran_lock->transient.overlap[tran_lock->transient.overlap_count - 1].taker == scope)
+	{
+	  tran_lock->transient.overlap_count--;
+	}
+      tran_lock->transient.total = tran_lock->transient.outer_total[scope - 2];
+      tran_lock->transient.scope--;
+      lock_check_transient_marks (tran_lock, scope);
+      return;
+    }
+  /* a transaction ended inside the scope leaves it at 0 (lock_unlock_all ()), and this is still the outermost end */
+  tran_lock->transient.scope = 0;
+  lock_check_transient_marks (tran_lock, 1);
   lock_end_escalated_class_lock (thread_p, release);
 #endif /* !SERVER_MODE */
 }
@@ -6809,205 +7432,250 @@ lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OI
   return;
 #else /* !SERVER_MODE */
   LK_ENTRY *entry_ptr;
-  int tran_index;
+  LK_TRAN_LOCK *tran_lock;
+  int tran_index, scope;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (lk_Gl.tran_lock_table[tran_index].transient_scope > 1)
-    {
-      if (lock_uncount_nested_transient (&lk_Gl.tran_lock_table[tran_index], oid))
-	{
-	  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
-	  if (entry_ptr != NULL)
-	    {
-	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
-	    }
-	}
-      return;
-    }
-
+  tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  scope = lock_current_transient_scope (&tran_lock->transient);
   entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
-  if (entry_ptr == NULL || entry_ptr->transient_count == 0)
+  if (entry_ptr == NULL || entry_ptr->transient_scope != scope)
     {
       /* nothing was counted: a class lock already held covered the request, and what the entry holds belongs to
-       * an earlier statement */
+       * an outer or earlier statement */
       return;
     }
 
   assert (!OID_IS_ROOTOID (oid) && (class_oid == NULL || !OID_IS_ROOTOID (class_oid)));
+  assert (entry_ptr->transient_count > 0);
   entry_ptr->transient_count--;
-  if (lk_Gl.tran_lock_table[tran_index].transient_total > 0)
+  if (entry_ptr->transient_count == 0)
     {
-      lk_Gl.tran_lock_table[tran_index].transient_total--;
+      lock_end_transient_count (&tran_lock->transient, entry_ptr, scope);
+    }
+  if (tran_lock->transient.total > 0)
+    {
+      tran_lock->transient.total--;
     }
   lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
 #endif /* !SERVER_MODE */
 }
 
+#if defined (SERVER_MODE)
 /*
- * lock_release_transient_object_locks () - Give up the instance lock requests counted transient
+ * lock_current_transient_scope () - The scope a request now made counts toward; out of any scope, the outermost
+ *   return: the depth, at least 1
+ *   transient(in): the transaction's statement-scoped counts
+ */
+static int
+lock_current_transient_scope (const LK_TRAN_TRANSIENT * transient)
+{
+  return MAX (transient->scope, 1);
+}
+
+/*
+ * lock_count_transient () - Count a granted row request toward the current scope
+ *   return: void
+ *   transient(in/out): the transaction's statement-scoped counts
+ *   entry_ptr(in/out): the row's entry, its count already raised by the request
+ *
+ * Note: counted, not flagged: a repeated request only raises count, and the scope end gives back exactly what was
+ *	 taken.  An entry carries one scope's count, so a scope taking over an outer scope's entry sets that count aside
+ *	 until it ends; with no memory for it, the request stays to commit.
+ */
+static void
+lock_count_transient (LK_TRAN_TRANSIENT * transient, LK_ENTRY * entry_ptr)
+{
+  int scope = lock_current_transient_scope (transient);
+  LK_TRANSIENT_OVERLAP *grown, *overlap;
+  int size;
+
+  if (transient->uncounted_from != 0 && scope >= transient->uncounted_from)
+    {
+      return;
+    }
+  if (entry_ptr->transient_scope == scope)
+    {
+      entry_ptr->transient_count++;
+      transient->total++;
+      return;
+    }
+
+  /* scopes end inner first, so no entry keeps the count of one that ended */
+  assert (entry_ptr->transient_scope < scope);
+  if (entry_ptr->transient_scope > 0 && entry_ptr->transient_scope < scope)
+    {
+      if (transient->overlap_count == transient->overlap_size)
+	{
+	  size = MAX (8, 2 * transient->overlap_size);
+	  grown = (LK_TRANSIENT_OVERLAP *) realloc (transient->overlap, size * sizeof (LK_TRANSIENT_OVERLAP));
+	  if (grown == NULL)
+	    {
+	      return;
+	    }
+	  transient->overlap = grown;
+	  transient->overlap_size = size;
+	}
+      overlap = &transient->overlap[transient->overlap_count++];
+      overlap->oid = entry_ptr->res_head->key.oid;
+      overlap->scope = entry_ptr->transient_scope;
+      overlap->count = entry_ptr->transient_count;
+      overlap->taker = scope;
+    }
+  if (entry_ptr->count > 1)
+    {
+      /* an entry held before this request: the scope-end walk starts at the head */
+      lock_move_to_head_of_tran_hold_list (entry_ptr);
+    }
+  entry_ptr->transient_scope = scope;
+  entry_ptr->transient_count = 1;
+  transient->total++;
+}
+
+/*
+ * lock_end_transient_count () - The current scope counts nothing more on an entry: drop its mark, and put back the
+ *				 outer scope's count it set aside if it took the entry over
+ *   return: void
+ *   transient(in/out): the transaction's statement-scoped counts
+ *   entry_ptr(in/out): the entry, still holding the scope's requests
+ *   scope(in): the current scope
+ *
+ * Note: matched by OID.  Such an entry holds the outer requests and this scope's X one, so only a reclaim for a class
+ *	 X lock can free it, and that class lock grants any later request on the row without an entry.
+ */
+static void
+lock_end_transient_count (LK_TRAN_TRANSIENT * transient, LK_ENTRY * entry_ptr, int scope)
+{
+  LK_TRANSIENT_OVERLAP *overlap = transient->overlap;
+  int i, last = transient->overlap_count - 1;
+
+  entry_ptr->transient_count = 0;
+  entry_ptr->transient_scope = 0;
+  /* only this scope's records, on top: a scope that took nothing over stops at once */
+  for (i = last; i >= 0 && overlap[i].taker == scope; i--)
+    {
+      if (OID_EQ (&overlap[i].oid, &entry_ptr->res_head->key.oid))
+	{
+	  entry_ptr->transient_scope = overlap[i].scope;
+	  entry_ptr->transient_count = overlap[i].count;
+	  overlap[i] = overlap[last];
+	  transient->overlap_count--;
+	  return;
+	}
+    }
+}
+
+/*
+ * lock_check_transient_marks () - Debug check after a scope ends: no entry keeps a count of it or of a scope inside it,
+ *				   and the scope returned to counts no more than its total
+ *   return: void
+ *   tran_lock(in): the transaction's lock list
+ *   ended(in): the depth that ended
+ *
+ * Note: walks the whole hold list, which the scope-end walks avoid; a mark they leave would give back requests later
+ *	 that its scope did not take.
+ */
+static void
+lock_check_transient_marks (const LK_TRAN_LOCK * tran_lock, int ended)
+{
+#if !defined (NDEBUG)
+  const LK_ENTRY *entry_ptr;
+  int scope = lock_current_transient_scope (&tran_lock->transient);
+  int sum = 0;
+
+  assert (tran_lock->transient.overlap_count == 0
+	  || tran_lock->transient.overlap[tran_lock->transient.overlap_count - 1].taker < ended);
+  for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL; entry_ptr = entry_ptr->tran_next)
+    {
+      assert (entry_ptr->transient_scope < ended);
+      if (entry_ptr->transient_scope == scope)
+	{
+	  sum += entry_ptr->transient_count;
+	}
+    }
+  assert (sum <= tran_lock->transient.total);
+#endif /* !NDEBUG */
+}
+
+/*
+ * lock_release_transient_object_locks () - Give up the instance lock requests the current scope counted
  *   return: void
  *   thread_p(in): thread entry
  *
  * Note: walks the hold list instead of looking each object up.  A counted entry was inserted at the head or moved
- *	there when counted, so the walk ends once transient_total is met: it costs the entries this statement touched,
+ *	there when counted, so the walk ends once the scope's total is met: it costs the entries this scope touched,
  *	not all the transaction holds.  No hold_mutex: only this thread runs for the transaction here.
  */
-void
+static void
 lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
 {
-#if !defined (SERVER_MODE)
-  return;
-#else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr, *next_ptr;
-  int tran_index, i, n, left;
+  int tran_index, i, n, left, scope;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  scope = lock_current_transient_scope (&tran_lock->transient);
 
-  left = tran_lock->transient_total;
+  /* no request of ours is queued but not asleep (lock_ask_row_handoff ()): its grant would add to the hold list this
+   * walks without hold_mutex */
+  assert (tran_lock->deferred_wake.asked_row () == 0);
+
+  left = tran_lock->transient.total;
   for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL && left > 0; entry_ptr = next_ptr)
     {
       /* the entry may be gone once its last request is given back, so take the link first */
       next_ptr = entry_ptr->tran_next;
 
       n = entry_ptr->transient_count;
-      if (n > 0)
+      if (n > 0 && entry_ptr->transient_scope == scope)
 	{
 	  left -= n;
 	  /* each counted request raised count; outrunning it would free the entry under the releases still to come */
 	  assert (n <= entry_ptr->count);
 	  n = MIN (n, entry_ptr->count);
-	  entry_ptr->transient_count = 0;
+	  lock_end_transient_count (&tran_lock->transient, entry_ptr, scope);
 	  for (i = 0; i < n; i++)
 	    {
-	      /* give back exactly what this statement took; a request it did not take stays */
+	      /* give back exactly what this scope took; a request it did not take stays */
 	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
 	    }
 	}
     }
 
   /* an entry the escalation reclaimed took its count with it, so the total can only be high */
-  tran_lock->transient_total = 0;
-#endif /* !SERVER_MODE */
+  tran_lock->transient.total = 0;
 }
 
 /*
- * lock_forget_transient_object_locks () - Drop the transient counts without releasing anything
+ * lock_forget_transient_object_locks () - Drop the current scope's transient counts without releasing anything
  *   return: void
  *   thread_p(in): thread entry
  *
- * Note: a failed statement keeps its locks to commit, but its counts must go, or the next statement to release
- *	would give back requests it never took.
+ * Note: for a scope whose locks stay to commit (an increment that stays with the transaction, or its transaction is
+ *	being aborted): its counts must go, or the next scope to release would give back requests it never took.
  */
-void
+static void
 lock_forget_transient_object_locks (THREAD_ENTRY * thread_p)
 {
-#if !defined (SERVER_MODE)
-  return;
-#else /* !SERVER_MODE */
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry_ptr;
-  int tran_index, left;
+  int tran_index, left, scope;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  scope = lock_current_transient_scope (&tran_lock->transient);
 
-  left = tran_lock->transient_total;
+  left = tran_lock->transient.total;
   for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL && left > 0; entry_ptr = entry_ptr->tran_next)
     {
-      left -= entry_ptr->transient_count;
-      entry_ptr->transient_count = 0;
-    }
-  tran_lock->transient_total = 0;
-#endif /* !SERVER_MODE */
-}
-
-#if defined (SERVER_MODE)
-/*
- * lock_count_nested_transient () - Count a transient request of a statement nested in another as its own
- *   return: void
- *   tran_lock(in/out): the transaction's lock list
- *   oid(in): the object
- *
- * Note: without memory the request is not counted and stays to commit.
- */
-static void
-lock_count_nested_transient (LK_TRAN_LOCK * tran_lock, const OID * oid)
-{
-  LK_NESTED_TRANSIENT *grown;
-  int size;
-
-  if (tran_lock->nested_transient_count == tran_lock->nested_transient_size)
-    {
-      size = MAX (16, 2 * tran_lock->nested_transient_size);
-      grown = (LK_NESTED_TRANSIENT *) realloc (tran_lock->nested_transient, size * sizeof (LK_NESTED_TRANSIENT));
-      if (grown == NULL)
+      if (entry_ptr->transient_scope == scope)
 	{
-	  return;
-	}
-      tran_lock->nested_transient = grown;
-      tran_lock->nested_transient_size = size;
-    }
-  tran_lock->nested_transient[tran_lock->nested_transient_count].oid = *oid;
-  tran_lock->nested_transient[tran_lock->nested_transient_count].scope = tran_lock->transient_scope;
-  tran_lock->nested_transient_count++;
-}
-
-/*
- * lock_uncount_nested_transient () - Drop one request the current nested scope counted on the object
- *   return: whether there was one
- *   tran_lock(in/out): the transaction's lock list
- *   oid(in): the object
- */
-static bool
-lock_uncount_nested_transient (LK_TRAN_LOCK * tran_lock, const OID * oid)
-{
-  LK_NESTED_TRANSIENT *nested = tran_lock->nested_transient;
-  int last = tran_lock->nested_transient_count - 1;
-  int i;
-
-  for (i = last; i >= 0 && nested[i].scope >= tran_lock->transient_scope; i--)
-    {
-      if (OID_EQ (&nested[i].oid, oid))
-	{
-	  nested[i] = nested[last];
-	  tran_lock->nested_transient_count--;
-	  return true;
+	  left -= entry_ptr->transient_count;
+	  lock_end_transient_count (&tran_lock->transient, entry_ptr, scope);
 	}
     }
-  return false;
-}
-
-/*
- * lock_end_nested_transient () - Give back, or keep to commit, the requests the current nested scope counted
- *   return: void
- *   thread_p(in): thread entry
- *   tran_lock(in/out): the transaction's lock list
- *   release(in): give the requests back, rather than only forgetting them
- */
-static void
-lock_end_nested_transient (THREAD_ENTRY * thread_p, LK_TRAN_LOCK * tran_lock, bool release)
-{
-  LK_NESTED_TRANSIENT *nested = tran_lock->nested_transient;
-  LK_ENTRY *entry_ptr;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  while (tran_lock->nested_transient_count > 0
-	 && nested[tran_lock->nested_transient_count - 1].scope >= tran_lock->transient_scope)
-    {
-      tran_lock->nested_transient_count--;
-      if (release)
-	{
-	  /* gone when an escalation reclaimed the class's instance locks */
-	  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, &nested[tran_lock->nested_transient_count].oid,
-						 false);
-	  if (entry_ptr != NULL)
-	    {
-	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
-	    }
-	}
-    }
+  tran_lock->transient.total = 0;
 }
 #endif /* SERVER_MODE */
 
@@ -7022,8 +7690,7 @@ lock_end_nested_transient (THREAD_ENTRY * thread_p, LK_TRAN_LOCK * tran_lock, bo
  *     LK_NOTGRANTED_DUE_ERROR
  *
  *   mvccid(in): the MVCCID identifying the transaction to lock on (the inserter's MVCCID)
- *   lock(in): requested lock mode (X_LOCK for the inserter's own self-lock,
- *             S_LOCK for a waiter that wants to block until the inserter ends)
+ *   lock(in): X_LOCK, the transaction's own self-lock; a waiter uses lock_wait_transaction_mvccid ()
  *   cond_flag(in): LK_COND_LOCK / LK_UNCOND_LOCK
  *
  * NOTE: released at end-of-transaction; re-locking the same MVCCID is idempotent (one entry per tran).
@@ -7034,9 +7701,19 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
 #if !defined (SERVER_MODE)
   return LK_GRANTED;
 #else /* !SERVER_MODE */
-  int tran_index;
-  int wait_msecs;
-  int granted;
+  /* an S request is a wait: it reads the wake generation lock_wait_transaction_mvccid () sets */
+  assert (lock != S_LOCK);
+  return lock_transaction_mvccid_with_wait (thread_p, mvccid, lock,
+					    (cond_flag == LK_COND_LOCK) ? LK_FORCE_ZERO_WAIT
+					    : logtb_find_current_wait_msecs (thread_p));
+#endif /* !SERVER_MODE */
+}
+
+#if defined (SERVER_MODE)
+/* lock_transaction_mvccid () with the lock timeout given (LK_FORCE_ZERO_WAIT for a conditional request) */
+static int
+lock_transaction_mvccid_with_wait (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int wait_msecs)
+{
   LK_ENTRY *tran_entry = NULL;
 
   /* callers pre-filter via logtb_get_current_mvccid / logtb_is_active_other_mvccid, so a non-normal
@@ -7053,22 +7730,12 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
       return LK_GRANTED;
     }
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (cond_flag == LK_COND_LOCK)
-    {
-      wait_msecs = LK_FORCE_ZERO_WAIT;
-    }
-  else
-    {
-      wait_msecs = logtb_find_current_wait_msecs (thread_p);
-    }
-
   /* A TRANSACTION-typed key (keyed by the inserter's MVCCID) never aliases a real class/instance. */
-  granted = lock_internal_perform_lock_object (thread_p, tran_index, lock_create_mvccid_search_key (mvccid), lock,
-					       wait_msecs, &tran_entry, NULL);
-  return granted;
-#endif /* !SERVER_MODE */
+  return lock_internal_perform_lock_object (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p),
+					    lock_create_mvccid_search_key (mvccid), lock, wait_msecs, &tran_entry,
+					    NULL);
 }
+#endif /* SERVER_MODE */
 
 /*
  * lock_unlock_transaction_mvccid - Release a transaction self-lock acquired with
@@ -7240,6 +7907,655 @@ lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOC
   return (lock_conv (lock, granted_lock_mode) == granted_lock_mode) ? 1 : 0;
 #endif /* !SERVER_MODE */
 }
+
+/*
+ * lock_get_tran_wake_generation - the count of wakes sent to self-lock waiters so far
+ *
+ * Note: a waiter reads it where no undo can yet have removed the stamp it will wait on -- under the latch it saw the
+ *	 stamp with, or before it reads the stamp -- and passes it with the owner (LK_STAMP_SEEN) to
+ *	 lock_wait_transaction_mvccid (). A wake cannot reach a waiter that has not joined the waiters yet; its bump
+ *	 sends that waiter back to read.
+ */
+UINT64
+lock_get_tran_wake_generation (void)
+{
+#if !defined (SERVER_MODE)
+  return 0;
+#else /* !SERVER_MODE */
+  return lk_Gl.tran_wake_generation.load ();
+#endif /* !SERVER_MODE */
+}
+
+#if defined (SERVER_MODE)
+static INT64
+lock_monotonic_msecs (void)
+{
+  struct timespec ts;
+
+  clock_gettime (CLOCK_MONOTONIC, &ts);
+  return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
+}
+
+/*
+ * lock_recheck_wait_left - the lock timeout left for a wait on mvccid's owner: the waits a recheck cut short in this
+ *			    request, by this transaction with this timeout, count toward it (*waited_msecs)
+ */
+static int
+lock_recheck_wait_left (const THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int wait_msecs, INT64 * waited_msecs)
+{
+  const lk_thread_deferred_wake::recheck_record & rec = thread_p->deferred_wake.request.recheck;
+
+  *waited_msecs = 0;
+  if (wait_msecs > 0 && rec.mvccid == mvccid && rec.trid == trid && rec.wait_msecs == wait_msecs)
+    {
+      *waited_msecs = rec.waited_msecs;
+    }
+  return (*waited_msecs > 0) ? (int) MAX (wait_msecs - *waited_msecs, 0) : wait_msecs;
+}
+
+/*
+ * lock_recheck_add_waited - a wait on mvccid's owner since start_msecs is over: with waited_msecs before it, that is
+ *			     how long this request has waited on the owner, for lock_recheck_wait_left ()
+ */
+static void
+lock_recheck_add_waited (THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int wait_msecs, INT64 waited_msecs,
+			 INT64 start_msecs)
+{
+  lk_thread_deferred_wake::recheck_record & rec = thread_p->deferred_wake.request.recheck;
+
+  rec.mvccid = mvccid;
+  rec.trid = trid;
+  rec.wait_msecs = wait_msecs;
+  rec.waited_msecs = waited_msecs + lock_monotonic_msecs () - start_msecs;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * lock_wait_transaction_mvccid_loop - Wait until the transaction mvccid names ends, or until what the caller saw may
+ *				       be gone
+ *
+ * return: LK_GRANTED once it ended; LK_NOTGRANTED_DUE_RECHECK to read again; another LK_NOTGRANTED_* on failure,
+ *	   with held->lost set when the row was handed to the owner and not had back
+ *
+ *   seen(in): the owner the caller's stamp named, and the wake generation read with that stamp
+ *   held(in/out): the row the caller holds X while it waits, or NULL
+ *
+ * Note: while the owner's wake is deferred, a recheck waits again, and an owner that comes back to the held row is
+ *	 handed it (lock_hand_row_to_owner ()). Waits on one owner in one request share one lock timeout, or an owner
+ *	 rolling back again and again would keep the waiter from ever timing out.
+ */
+#if defined (SERVER_MODE)
+static int
+lock_wait_transaction_mvccid_loop (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, LK_HELD_ROW * held)
+{
+  LOG_TDES *tdes;
+  const OID *held_row = (held != NULL) ? held->oid : NULL;
+  UINT64 packed_held = (held_row != NULL) ? lock_pack_row_oid (held_row) : 0;
+  INT64 start_msecs, waited_msecs;
+  int trid, wait_msecs, wait_left, granted;
+  LK_RECHECK_DECISION decision;
+  LK_HAND_RESULT hand;
+  int owner_tran_index = NULL_TRAN_INDEX;
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  trid = (tdes != NULL) ? tdes->trid : NULL_TRANID;
+  wait_msecs = logtb_find_current_wait_msecs (thread_p);
+  do
+    {
+      wait_left = lock_recheck_wait_left (thread_p, mvccid, trid, wait_msecs, &waited_msecs);
+      thread_p->deferred_wake.request.recheck.mvccid = MVCCID_NULL;
+
+      start_msecs = lock_monotonic_msecs ();
+      thread_p->deferred_wake.wake_gen = wake_gen;
+      __atomic_store_n (&thread_p->deferred_wake.held_row, packed_held, __ATOMIC_RELAXED);
+      granted = lock_transaction_mvccid_with_wait (thread_p, mvccid, S_LOCK, wait_left);
+      __atomic_store_n (&thread_p->deferred_wake.held_row, (UINT64) 0, __ATOMIC_RELAXED);
+      if (granted != LK_NOTGRANTED_DUE_RECHECK)
+	{
+	  return granted;
+	}
+      lock_recheck_add_waited (thread_p, mvccid, trid, wait_msecs, waited_msecs, start_msecs);
+
+      decision = lock_recheck_decide (thread_p, mvccid, held_row, &wake_gen, &owner_tran_index);
+      if (decision == LK_RECHECK_HAND)
+	{
+	  hand =
+	    lock_hand_row_to_owner (thread_p, held->oid, held->class_oid, owner_tran_index, mvccid, held->transient);
+	  if (hand == LK_HANDED_LOST)
+	    {
+	      held->lost = true;
+	      return LK_NOTGRANTED_DUE_ERROR;
+	    }
+	  /* the owner no longer asks for the row: wait again while its wake is deferred */
+	  decision = (hand == LK_NOT_HANDED_STALE)
+	    ? lock_recheck_decide (thread_p, mvccid, NULL, &wake_gen, &owner_tran_index) : LK_RECHECK_READ;
+	}
+    }
+  while (decision == LK_RECHECK_REWAIT);
+
+  return LK_NOTGRANTED_DUE_RECHECK;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * lock_wait_transaction_mvccid - Wait until the transaction a stamp named ends, or until what the caller saw may be
+ *				  gone; lock_wait_transaction_mvccid_loop () with the row the wait is about noted for the
+ *				  lock wait diagnostics
+ *
+ *   seen(in): the owner the caller's stamp named, the wake generation read with that stamp, and the row it was on
+ *   held(in/out): the row the caller holds X while it waits, or NULL
+ *
+ * Note: the timeout message, the event log, lockdb and tranlist read the row while the wait lasts
+ *	 (lock_get_wait_target ()).
+ */
+int
+lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen, LK_HELD_ROW * held)
+{
+#if !defined (SERVER_MODE)
+  return LK_GRANTED;
+#else /* !SERVER_MODE */
+  int tran_index, granted;
+
+  /* logtb_wait_for_tran_end_on_row (), the only caller, resolves a NULL one */
+  assert (thread_p != NULL);
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  lock_set_wait_target (tran_index, seen->owner, &seen->target);
+  granted = lock_wait_transaction_mvccid_loop (thread_p, seen->owner, seen->wake_gen, held);
+  lock_set_wait_target (tran_index, MVCCID_NULL, NULL);
+  return granted;
+#endif /* !SERVER_MODE */
+}
+
+#if defined (SERVER_MODE)
+/*
+ * lock_find_self_lock_owner - the transaction that holds the self-lock of mvccid X, or NULL_TRAN_INDEX
+ *
+ * Note: takes and releases the self-lock's resource mutex; call holding no other resource mutex.
+ */
+static int
+lock_find_self_lock_owner (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  LK_RES_KEY search_key = lock_create_mvccid_search_key (mvccid);
+  LK_RES *res_ptr;
+  LK_ENTRY *entry_ptr;
+  int owner = NULL_TRAN_INDEX;
+
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      return NULL_TRAN_INDEX;
+    }
+  for (entry_ptr = res_ptr->holder; entry_ptr != NULL; entry_ptr = entry_ptr->next)
+    {
+      if (entry_ptr->granted_mode == X_LOCK)
+	{
+	  owner = entry_ptr->tran_index;
+	  break;
+	}
+    }
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  return owner;
+}
+
+/*
+ * lock_recheck_decide - a self-lock wait came back to read again: LK_RECHECK_READ, LK_RECHECK_REWAIT while the
+ *			 owner's wake is deferred (with *wake_gen), or LK_RECHECK_HAND when it asks for held_row
+ *
+ * Note: the generation is read before the owner's asked row and epoch; a wake writes those before its bump.
+ */
+static LK_RECHECK_DECISION
+lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_row, UINT64 * wake_gen,
+		     int *owner_tran_index)
+{
+  UINT64 gen, packed_held, asked_row, epoch;
+  LOG_TDES *tdes;
+  int owner;
+
+  gen = lk_Gl.tran_wake_generation.load ();
+
+  owner = lock_find_self_lock_owner (thread_p, mvccid);
+  tdes = (owner != NULL_TRAN_INDEX) ? LOG_FIND_TDES (owner) : NULL;
+  if (tdes == NULL || tdes->mvccinfo.id != mvccid)
+    {
+      return LK_RECHECK_READ;
+    }
+  asked_row = lk_Gl.tran_lock_table[owner].deferred_wake.asked_row ();
+  epoch = lk_Gl.tran_lock_table[owner].deferred_wake.due_epoch ();
+
+  packed_held = (held_row != NULL) ? lock_pack_row_oid (held_row) : 0;
+  if (packed_held != 0 && asked_row == packed_held)
+    {
+      *owner_tran_index = owner;
+      return LK_RECHECK_HAND;
+    }
+  if (epoch != 0)
+    {
+      *wake_gen = gen;
+      return LK_RECHECK_REWAIT;
+    }
+  return LK_RECHECK_READ;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * lock_reset_request_state - a request starts or ends: its waits do not go on with an earlier request's, and no
+ *			      deferred wake is due at its end yet
+ */
+void
+lock_reset_request_state (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  thread_p->deferred_wake.request = lk_thread_deferred_wake::request_state ();
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_deferred_wake_mark - an undo of ours is done: the waiters on our self-lock are woken at the end of our next
+ *			      request that writes a row
+ */
+void
+lock_deferred_wake_mark (THREAD_ENTRY * thread_p, int tran_index)
+{
+#if defined (SERVER_MODE)
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+  if (tdes == NULL || !MVCCID_IS_NORMAL (tdes->mvccinfo.id))
+    {
+      return;
+    }
+  lk_Gl.tran_lock_table[tran_index].deferred_wake.mark ();
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_deferred_wake_clear - the transaction ends, also by COMMIT WORK RETAIN LOCK: no deferred wake is due
+ */
+void
+lock_deferred_wake_clear (THREAD_ENTRY * thread_p, int tran_index)
+{
+#if defined (SERVER_MODE)
+  lk_Gl.tran_lock_table[tran_index].deferred_wake.clear ();
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_deferred_wake_on_row_write - the request writes a row (asks for a row write lock, or inserts): the wake due
+ *				      now goes out at its end
+ */
+void
+lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  LOG_TDES *tdes;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (thread_p->deferred_wake.request.epoch_seen != 0)
+    {
+      return;
+    }
+  tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  if (tdes == NULL)
+    {
+      return;
+    }
+  thread_p->deferred_wake.request.epoch_seen = lk_Gl.tran_lock_table[tdes->tran_index].deferred_wake.due_epoch ();
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_deferred_wake_on_request_end - send the wake that was due at a row write of the request
+ *
+ * Note: the reply is already sent, so the next request of the transaction may be running: only the epoch seen is
+ *	 cleared, never a newer undo's.
+ */
+void
+lock_deferred_wake_on_request_end (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  UINT64 epoch = thread_p->deferred_wake.request.epoch_seen;
+  LOG_TDES *tdes;
+
+  if (epoch == 0)
+    {
+      return;
+    }
+  thread_p->deferred_wake.request.epoch_seen = 0;
+  tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  if (tdes != NULL)
+    {
+      (void) lock_deferred_wake_send (thread_p, tdes->tran_index, tdes->mvccinfo.id, epoch);
+    }
+#endif /* SERVER_MODE */
+}
+
+#if defined (SERVER_MODE)
+/*
+ * lock_deferred_wake_send - clear the deferred wake if its epoch is still the one seen, then wake
+ *
+ * return: whether it was still due
+ */
+static bool
+lock_deferred_wake_send (THREAD_ENTRY * thread_p, int tran_index, MVCCID mvccid, UINT64 epoch)
+{
+  if (!lk_Gl.tran_lock_table[tran_index].deferred_wake.take (epoch))
+    {
+      return false;
+    }
+  lock_wake_mvccid_waiters (thread_p, mvccid, 0);
+  return true;
+}
+
+/*
+ * lock_wake_mvccid_waiters - wake, without granting, the waiters on the self-lock keyed by mvccid
+ *
+ *   packed_row(in): 0 wakes all of them; otherwise only those holding that row X (deferred_wake.held_row)
+ *
+ * Note: the generation bump publishes what the caller wrote for the woken (the cleared epoch, the asked row). A woken
+ *	 entry leaves the waiters here, as at a grant, so the deadlock detector sees no wait that is over.
+ */
+static void
+lock_wake_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 packed_row)
+{
+  LK_RES_KEY search_key;
+  LK_RES *res_ptr;
+  LK_ENTRY *waiter, *prev, *next;
+  LOCK waiters_mode;
+
+  if (!MVCCID_IS_NORMAL (mvccid))
+    {
+      return;
+    }
+
+  lk_Gl.tran_wake_generation++;
+
+  search_key = lock_create_mvccid_search_key (mvccid);
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      return;
+    }
+  /* find() leaves the resource mutex locked. */
+  assert (res_ptr->key.type == LOCK_RESOURCE_TRANSACTION && res_ptr->key.mvccid == mvccid);
+
+  prev = NULL;
+  waiters_mode = NULL_LOCK;
+  for (waiter = res_ptr->waiter; waiter != NULL; waiter = next)
+    {
+      next = waiter->next;
+      thread_lock_entry (waiter->thrd_entry);
+      if (lock_entry_is_asleep (waiter)
+	  && (packed_row == 0
+	      || __atomic_load_n (&waiter->thrd_entry->deferred_wake.held_row, __ATOMIC_RELAXED) == packed_row))
+	{
+	  /* edges the deadlock detector collected before the wake must not meet one collected after it */
+	  lk_Gl.TWFG_node[waiter->tran_index].thrd_wait_stime = 0;
+	  if (prev == NULL)
+	    {
+	      res_ptr->waiter = next;
+	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
+	  waiter->next = NULL;
+	  lock_resume (waiter, LOCK_RESUMED_RECHECK);
+	  continue;
+	}
+      else
+	{
+	  thread_unlock_entry (waiter->thrd_entry);
+	}
+      waiters_mode = lock_conv (waiter->blocked_mode, waiters_mode);
+      prev = waiter;
+    }
+  res_ptr->total_waiters_mode = waiters_mode;
+
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+}
+
+/* a row's OID in one word, for the asked row and the held row of deferred_wake */
+static UINT64
+lock_pack_row_oid (const OID * oid)
+{
+  return ((UINT64) (UINT32) oid->pageid << 32) | ((UINT64) (UINT16) oid->slotid << 16) | (UINT64) (UINT16) oid->volid;
+}
+
+/*
+ * lock_find_row_handoff_owner - the owner's entry if we can hand it the row: we are the row's only holder, with the one
+ *				 request this call's lock took, and the owner waits on it with a request our mode blocks
+ *
+ * return: the owner's entry, or NULL; *stale is set when the owner no longer waits on the row
+ *
+ * Note: while its entry waits on the row the owner cannot end, so its descriptor holds still.
+ */
+static LK_ENTRY *
+lock_find_row_handoff_owner (LK_RES * res_ptr, int tran_index, int owner_tran_index, MVCCID owner_mvccid,
+			     bool transient, LK_ENTRY ** mine, bool * stale)
+{
+  LK_ENTRY *holder, *owner;
+  LOG_TDES *owner_tdes;
+
+  *stale = false;
+  for (holder = res_ptr->holder; holder != NULL && holder->tran_index != tran_index; holder = holder->next)
+    {
+      ;
+    }
+  *mine = holder;
+  if (holder == NULL || holder->count != 1 || holder->blocked_mode != NULL_LOCK
+      || holder->transient_count != (transient ? 1 : 0) || res_ptr->holder != holder || holder->next != NULL)
+    {
+      return NULL;
+    }
+  assert (holder->transient_scope
+	  == (transient ? lock_current_transient_scope (&lk_Gl.tran_lock_table[tran_index].transient) : 0));
+
+  for (owner = res_ptr->waiter; owner != NULL && owner->tran_index != owner_tran_index; owner = owner->next)
+    {
+      ;
+    }
+  owner_tdes = LOG_FIND_TDES (owner_tran_index);
+  if (owner == NULL || owner->thrd_entry == NULL || owner_tdes == NULL || owner_tdes->mvccinfo.id != owner_mvccid)
+    {
+      /* gone, or another transaction took the owner's slot */
+      *stale = true;
+      return NULL;
+    }
+  if (lock_compat (holder->granted_mode, owner->blocked_mode) != LOCK_COMPAT_NO)
+    {
+      return NULL;
+    }
+  return owner;
+}
+
+/*
+ * lock_remove_row_holder - our holder entry, with its only request, leaves the row as the statement end would give it
+ *			    back, without non2pl
+ */
+static void
+lock_remove_row_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * mine, int tran_index, bool transient)
+{
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  LK_ENTRY *e, *prev;
+
+  for (prev = NULL, e = res_ptr->holder; e != mine; prev = e, e = e->next)
+    {
+      ;
+    }
+  if (prev == NULL)
+    {
+      res_ptr->holder = mine->next;
+    }
+  else
+    {
+      prev->next = mine->next;
+    }
+  if (transient)
+    {
+      mine->transient_count = 0;
+      mine->transient_scope = 0;
+      if (tran_lock->transient.total > 0)
+	{
+	  tran_lock->transient.total--;
+	}
+    }
+  (void) lock_delete_from_tran_hold_list (mine, tran_index);
+  lock_decrement_class_granules (mine->class_entry);
+  lock_free_entry (tran_index, thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT), &lk_Gl.obj_free_entry_list,
+		   mine);
+}
+
+/*
+ * lock_hand_row_to_owner - a waiter back from a recheck hands the row it holds to the owner asking for it, and waits
+ *			    again right behind the owner (lock_wait_handed_row_back ())
+ *
+ * return: LK_NOT_HANDED (read the row again), LK_NOT_HANDED_STALE (the owner no longer asks: look at its wake
+ *	   again), LK_HANDED_REGAINED (the row is ours again) or LK_HANDED_LOST (timeout or interrupt)
+ *   transient(in): whether this call's request was counted transient
+ *
+ * Note: the hand-over is one step under the row's resource mutex and the owner's thread mutex, so the owner cannot
+ *	 time out in between and no writer queued behind us gets the row.
+ */
+static LK_HAND_RESULT
+lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, int owner_tran_index,
+			MVCCID owner_mvccid, bool transient)
+{
+  LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LK_RES_KEY search_key;
+  LK_RES *res_ptr;
+  LK_ENTRY *mine, *owner, *e, *prev, *entry_ptr = NULL;
+  LK_ENTRY *class_entry;
+  LOCK mode;
+  bool stale;
+
+  assert (thread_p->deferred_wake.prequeued == NULL);
+
+  search_key = lock_create_search_key (oid, class_oid);
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      return LK_NOT_HANDED;
+    }
+  assert (res_ptr->key.type == LOCK_RESOURCE_INSTANCE);
+
+  owner = lock_find_row_handoff_owner (res_ptr, tran_index, owner_tran_index, owner_mvccid, transient, &mine, &stale);
+  if (owner != NULL)
+    {
+      entry_ptr = lock_get_new_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list);
+      if (entry_ptr == NULL)
+	{
+	  owner = NULL;
+	}
+    }
+  if (owner != NULL)
+    {
+      thread_lock_entry (owner->thrd_entry);
+      if (!lock_entry_is_prequeued (owner) && !lock_entry_is_asleep (owner))
+	{
+	  /* the owner has just timed out or been interrupted, and takes its entry away */
+	  thread_unlock_entry (owner->thrd_entry);
+	  lock_free_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list, entry_ptr);
+	  owner = NULL;
+	  stale = true;
+	}
+    }
+  if (owner == NULL)
+    {
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+      return stale ? LK_NOT_HANDED_STALE : LK_NOT_HANDED;
+    }
+
+  for (prev = NULL, e = res_ptr->waiter; e != owner; prev = e, e = e->next)
+    {
+      ;
+    }
+  lock_grant_waiting_entry (thread_p, res_ptr, prev, owner);
+  mode = mine->granted_mode;
+  class_entry = mine->class_entry;
+  lock_remove_row_holder (thread_p, res_ptr, mine, tran_index, transient);
+  /* we were the only holder */
+  res_ptr->total_holders_mode = owner->granted_mode;
+  if (lock_entry_is_prequeued (owner))
+    {
+      /* queued and not asleep yet: it sees the grant when it takes the resource mutex again */
+      thread_unlock_entry (owner->thrd_entry);
+    }
+  else
+    {
+      lock_resume (owner, LOCK_RESUMED);
+    }
+
+  /* our new entry, ahead of the writers queued behind us */
+  lock_initialize_entry_as_blocked (entry_ptr, thread_p, tran_index, res_ptr, mode);
+  entry_ptr->next = res_ptr->waiter;
+  res_ptr->waiter = entry_ptr;
+  lock_recompute_total_waiters_mode (res_ptr);
+
+  return lock_wait_handed_row_back (thread_p, res_ptr, entry_ptr, class_entry, owner_mvccid, transient);
+}
+
+/*
+ * lock_wait_handed_row_back - wait, first among the row's waiters, to have back the row lock_hand_row_to_owner ()
+ *			       handed over; on the grant, finish the request as LK_S_POST_GRANT does for a new one
+ *
+ * return: LK_HANDED_REGAINED, or LK_HANDED_LOST (timeout or interrupt)
+ *   res_ptr(in): the row's resource; its mutex is held, and released here
+ *   entry_ptr(in): our new entry, first among the waiters
+ *   class_entry(in): the class entry of the request handed over
+ *   owner_mvccid(in): the owner we handed the row to; the wait counts toward the timeout of waits on it
+ *   transient(in): whether the request handed over was counted transient
+ */
+static LK_HAND_RESULT
+lock_wait_handed_row_back (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * entry_ptr, LK_ENTRY * class_entry,
+			   MVCCID owner_mvccid, bool transient)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  TRANID trid = (tdes != NULL) ? tdes->trid : NULL_TRANID;
+  int wait_msecs, wait_left, ret;
+  INT64 waited_msecs, start_msecs;
+
+  wait_msecs = logtb_find_current_wait_msecs (thread_p);
+  wait_left = lock_recheck_wait_left (thread_p, owner_mvccid, trid, wait_msecs, &waited_msecs);
+  if (wait_left == 0)
+    {
+      /* no time left: time out at once, as a zero wait does */
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+      (void) lock_set_error_for_timeout (thread_p, entry_ptr);
+      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
+      return LK_HANDED_LOST;
+    }
+
+  start_msecs = lock_monotonic_msecs ();
+  thread_lock_entry (thread_p);
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  ret = lock_suspend (thread_p, entry_ptr, wait_left);
+  /* the wait counts toward the timeout of the next wait on the owner */
+  lock_recheck_add_waited (thread_p, owner_mvccid, trid, wait_msecs, waited_msecs, start_msecs);
+
+  if (ret == LOCK_RESUMED)
+    {
+      /* as LK_S_POST_GRANT for a new request; the grant put the entry in our hold list */
+      entry_ptr->class_entry = class_entry;
+      lock_increment_class_granules (class_entry);
+      if (transient)
+	{
+	  entry_ptr->transient_scope = lock_current_transient_scope (&lk_Gl.tran_lock_table[tran_index].transient);
+	  entry_ptr->transient_count = 1;
+	  lk_Gl.tran_lock_table[tran_index].transient.total++;
+	}
+      lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
+      return LK_HANDED_REGAINED;
+    }
+
+  lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
+  return LK_HANDED_LOST;
+}
+#endif /* SERVER_MODE */
 
 /*
  * lock_has_xlock_or_self_lock () - Debug precondition for an in-place update: does the current
@@ -8006,6 +9322,9 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
 
   /* the transaction is over, so no statement of it is inside a transient scope any more */
   lock_reset_transient_state (tran_lock);
+
+  /* releasing the self-lock grants its waiters; a deferred wake is no longer due */
+  lock_deferred_wake_clear (thread_p, tran_index);
 
   /* remove all instance locks */
   entry_ptr = tran_lock->inst_hold_list;
@@ -8975,8 +10294,17 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
       /* holding resource mutex */
       if (res_ptr->holder == NULL)
 	{
-	  if (res_ptr->waiter == NULL)
+	  for (hi = res_ptr->waiter; hi != NULL; hi = hi->next)
 	    {
+	      if (lock_entry_is_prequeued (hi))
+		{
+		  break;
+		}
+	    }
+	  if (res_ptr->waiter == NULL || hi != NULL)
+	    {
+	      /* no waiter; or the last holder left while an owner queued here is not asleep yet: it grants itself
+	       * (lock_ask_row_handoff ()) */
 	      continue;
 	    }
 	  else
@@ -9235,6 +10563,8 @@ final_:
 	  (void) lock_wakeup_deadlock_victim_aborted (lk_Gl.victims[k].tran_index);
 	}
     }
+  /* the cycles lock_resolve_cycle_by_wake () took: the deferred wakes */
+  lock_send_deadlock_wakes (thread_p);
 
   /* deallocate memory space used for deadlock detection */
   if (lk_Gl.TWFG_edge != lk_Gl.TWFG_edge_storage)
@@ -10222,6 +11552,8 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
   int buf_size, n, remained_size;
   bool is_valid = false;	/* validation check */
   char *buf, *p;
+  MVCCID owners[DEFAULT_WAIT_USERS];	/* the owners some holders of the row wait on for it */
+  int nowners = 0, owner, i;
 
   if (res == NULL)
     {
@@ -10286,6 +11618,10 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
       if (holder->tran_index != waiter_index)
 	{
 	  holder_number++;
+	  if (res->key.type == LOCK_RESOURCE_INSTANCE && nowners < DEFAULT_WAIT_USERS)
+	    {
+	      nowners = lock_add_row_wait_owner (owners, nowners, holder->tran_index, &res->key.oid);
+	    }
 	}
       holder = holder->next;
     }
@@ -10296,7 +11632,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
       return NO_ERROR;
     }
 
-  buf_size = holder_number * HOLDER_ENTRY_LENGTH + 1;
+  buf_size = (holder_number + nowners) * HOLDER_ENTRY_LENGTH + 1;
   buf = (char *) malloc (sizeof (char) * buf_size);
 
   if (buf == NULL)
@@ -10338,9 +11674,22 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
       holder = holder->next;
     }
 
-  *out_buf = buf;
-
   pthread_mutex_unlock (&res->res_mutex);
+
+  /* a holder waiting on an owner for this row: name the owner too, as the owner's row lock did */
+  for (i = 0; i < nowners; i++)
+    {
+      owner = lock_find_self_lock_owner (thread_p, owners[i]);
+      if (owner != NULL_TRAN_INDEX && owner != waiter_index)
+	{
+	  n = snprintf (p, remained_size, ", %d", owner);
+	  remained_size -= n;
+	  p += n;
+	  assert_release (remained_size >= 0);
+	}
+    }
+
+  *out_buf = buf;
 
   return NO_ERROR;
 #endif
@@ -10373,6 +11722,8 @@ lock_wait_state_to_string (int state)
       return "RESUMED_ABORTED_OTHER";
     case LOCK_RESUMED_INTERRUPT:
       return "RESUMED_INTERRUPT";
+    case LOCK_RESUMED_RECHECK:
+      return "RESUMED_RECHECK";
     }
   return "UNKNOWN";
 }
@@ -10397,6 +11748,7 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
   int rv, i, indent = 2;
   LK_TRAN_LOCK *tran_lock;
   LK_ENTRY *entry;
+  LK_WAIT_TARGET target;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -10414,7 +11766,7 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
 	       lock_to_lockmode_string (entry->granted_mode));
 
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
-      lock_event_log_lock_info (thread_p, log_fp, entry);
+      lock_event_log_lock_info (thread_p, log_fp, entry, NULL);
 
       event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
       event_log_bind_values (thread_p, log_fp, tran_index, entry->bind_index_in_tran);
@@ -10438,7 +11790,8 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
 
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
-      lock_event_log_lock_info (thread_p, log_fp, entry);
+      lock_event_log_lock_info (thread_p, log_fp, entry,
+				lock_get_wait_target_locked (tran_lock, entry, &target) ? &target : NULL);
 
       event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
       event_log_bind_values (thread_p, log_fp, tran_index, entry->bind_index_in_tran);
@@ -10473,6 +11826,8 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
   LK_TRAN_LOCK *tran_lock;
   const char *lock_name;
   LK_ENTRY *entry;
+  LK_WAIT_TARGET target;
+  bool has_target;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
   assert (log_num_entries && !(log_num_entries % 2));
@@ -10482,7 +11837,14 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
     {
       entry = log_entries[i];
 
-      /* holder and waiter are printed alternately */
+      /* holder and waiter are printed alternately; both lines show the row the waiter's wait is about. Read before
+       * the holder's hold_mutex: the waiter's is another one. */
+      has_target = lock_get_wait_target (log_entries[i | 1], &target);
+      if (has_target && !(i % 2))
+	{
+	  target.mode = NULL_LOCK;
+	}
+
       fprintf (log_fp, i % 2 ? "\nwait:\n" : "hold:\n");
 
       tran_lock = &lk_Gl.tran_lock_table[entry->tran_index];
@@ -10505,7 +11867,7 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
 	  fprintf (log_fp, "|waiting for lock conversion to %s", lock_name);
 	}
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
-      lock_event_log_lock_info (thread_p, log_fp, entry);
+      lock_event_log_lock_info (thread_p, log_fp, entry, has_target ? &target : NULL);
 
       event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
       event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
@@ -10536,6 +11898,7 @@ static void
 lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry)
 {
   int indent = 2;
+  LK_WAIT_TARGET target;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
@@ -10546,7 +11909,7 @@ lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * 
 
   fprintf (log_fp, "%*clock: %*s", indent, ' ', LOCK_MODE_STR_MAX_LENGTH,
 	   lock_to_lockmode_string (entry->blocked_mode));
-  lock_event_log_lock_info (thread_p, log_fp, entry);
+  lock_event_log_lock_info (thread_p, log_fp, entry, lock_get_wait_target (entry, &target) ? &target : NULL);
 
   event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
   event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
@@ -10573,13 +11936,43 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
   LOCK_COMPATIBILITY compat1, compat2;
   int rv, indent = 2;
   bool is_other_waiter = false;
+  LK_WAIT_TARGET wait_target, target;
+  bool has_wait_target;
+  MVCCID owners[DEFAULT_WAIT_USERS];	/* the owners some holders of the row wait on for it */
+  int nowners = 0, i;
 
   assert (csect_check_own (thread_p, CSECT_EVENT_LOG_FILE) == 1);
 
+  has_wait_target = lock_get_wait_target (wait_entry, &wait_target);
+  if (has_wait_target)
+    {
+      wait_target.mode = NULL_LOCK;
+    }
+
   res_ptr = wait_entry->res_head;
-  rv = pthread_mutex_lock (&res_ptr->res_mutex);
+  if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE)
+    {
+      rv = pthread_mutex_lock (&res_ptr->res_mutex);
+      for (entry = res_ptr->holder; entry != NULL && nowners < DEFAULT_WAIT_USERS; entry = entry->next)
+	{
+	  if (entry != wait_entry && lock_compat (entry->granted_mode, wait_entry->blocked_mode) == LOCK_COMPAT_NO)
+	    {
+	      nowners = lock_add_row_wait_owner (owners, nowners, entry->tran_index, &res_ptr->key.oid);
+	    }
+	}
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+    }
 
   fprintf (log_fp, "blocker:\n");
+
+  /* the owners first, as when the owner's row lock was the blocker; each takes its self-lock's mutex, not ours */
+  for (i = 0; i < nowners; i++)
+    {
+      lock_event_log_self_lock_owner (thread_p, log_fp, owners[i], &res_ptr->key.oid, &res_ptr->key.class_oid,
+				      wait_entry->tran_index);
+    }
+
+  rv = pthread_mutex_lock (&res_ptr->res_mutex);
 
   for (entry = res_ptr->holder; entry != NULL; entry = entry->next)
     {
@@ -10599,7 +11992,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
 	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
-	  lock_event_log_lock_info (thread_p, log_fp, entry);
+	  lock_event_log_lock_info (thread_p, log_fp, entry, has_wait_target ? &wait_target : NULL);
 
 	  event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
 	  event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
@@ -10635,7 +12028,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
 	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
-	  lock_event_log_lock_info (thread_p, log_fp, entry);
+	  lock_event_log_lock_info (thread_p, log_fp, entry, lock_get_wait_target (entry, &target) ? &target : NULL);
 
 	  event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
 	  event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
@@ -10655,9 +12048,10 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
  *   thread_p(in):
  *   log_fp(in):
  *   entry(in):
+ *   target(in): for a transaction self-lock, the row the wait is about (no wanted mode on a holder's line), or NULL
  */
 static void
-lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry)
+lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry, const LK_WAIT_TARGET * target)
 {
   LK_RES *res_ptr;
   char *classname;
@@ -10669,8 +12063,18 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 
   if (res_ptr->key.type == LOCK_RESOURCE_TRANSACTION)
     {
-      /* transaction self-lock: no OID, print MVCCID only */
-      fprintf (log_fp, " (transaction self-lock, mvccid=%llu)\n", (unsigned long long) res_ptr->key.mvccid);
+      /* transaction self-lock: no OID of its own; the row the wait is about when it is known */
+      fprintf (log_fp, " (transaction self-lock, mvccid=%llu", (unsigned long long) res_ptr->key.mvccid);
+      if (target != NULL)
+	{
+	  fprintf (log_fp, ", oid=%d|%d|%d", target->oid.volid, target->oid.pageid, target->oid.slotid);
+	  lock_event_log_table_name (thread_p, log_fp, &target->class_oid);
+	  if (target->mode != NULL_LOCK)
+	    {
+	      fprintf (log_fp, ", wanted=%s", lock_to_lockmode_string (target->mode));
+	    }
+	}
+      fprintf (log_fp, ")\n");
       return;
     }
 
@@ -10716,30 +12120,7 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
       break;
 
     case LOCK_RESOURCE_INSTANCE:
-      if (!OID_ISTEMP (&res_ptr->key.class_oid))
-	{
-	  OID real_class_oid;
-
-	  if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&res_ptr->key.class_oid))
-	    {
-	      OID_GET_REAL_CLASS_OF_DIR_OID (&res_ptr->key.class_oid, &real_class_oid);
-	    }
-	  else
-	    {
-	      COPY_OID (&real_class_oid, &res_ptr->key.class_oid);
-	    }
-
-	  /* never propagate an error to get class name and keep the existing error if any. */
-	  er_stack_push ();
-	  (void) heap_get_class_name (thread_p, &real_class_oid, &classname);
-	  er_stack_pop ();
-
-	  if (classname != NULL)
-	    {
-	      fprintf (log_fp, ", table=%s", classname);
-	      free_and_init (classname);
-	    }
-	}
+      lock_event_log_table_name (thread_p, log_fp, &res_ptr->key.class_oid);
       break;
 
     default:
@@ -10747,6 +12128,89 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
     }
 
   fprintf (log_fp, ")\n");
+}
+
+/*
+ * lock_event_log_self_lock_owner - dump the holder of mvccid's self-lock as a blocker of a wait on the row oid,
+ *				    unless the holder is the waiter itself
+ *
+ * Note: call with no resource mutex held; this one takes the self-lock's.
+ */
+static void
+lock_event_log_self_lock_owner (THREAD_ENTRY * thread_p, FILE * log_fp, MVCCID mvccid, const OID * oid,
+				const OID * class_oid, int waiter_tran_index)
+{
+  LK_RES_KEY search_key = lock_create_mvccid_search_key (mvccid);
+  LK_RES *res_ptr;
+  LK_ENTRY *entry;
+  LK_WAIT_TARGET target;
+  int indent = 2;
+
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      return;
+    }
+  for (entry = res_ptr->holder; entry != NULL && entry->granted_mode != X_LOCK; entry = entry->next)
+    {
+      ;
+    }
+  if (entry != NULL && entry->tran_index != waiter_tran_index)
+    {
+      COPY_OID (&target.oid, oid);
+      COPY_OID (&target.class_oid, class_oid);
+      target.mode = NULL_LOCK;
+
+      event_log_print_client_info (entry->tran_index, indent);
+      fprintf (log_fp, "%*clock: %*s", indent, ' ', LOCK_MODE_STR_MAX_LENGTH,
+	       lock_to_lockmode_string (entry->granted_mode));
+
+      SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
+
+      lock_event_log_lock_info (thread_p, log_fp, entry, &target);
+
+      event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
+      event_log_bind_values (thread_p, log_fp, entry->tran_index, entry->bind_index_in_tran);
+
+      CLEAR_EMULATE_THREAD (thread_p);
+
+      fprintf (log_fp, "\n");
+    }
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+}
+
+/*
+ * lock_event_log_table_name - print ", table=<name>" for an instance's class, nothing when the name is not known
+ */
+static void
+lock_event_log_table_name (THREAD_ENTRY * thread_p, FILE * log_fp, const OID * class_oid)
+{
+  OID real_class_oid;
+  char *classname = NULL;
+
+  if (OID_ISTEMP (class_oid))
+    {
+      return;
+    }
+  if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (class_oid))
+    {
+      OID_GET_REAL_CLASS_OF_DIR_OID (class_oid, &real_class_oid);
+    }
+  else
+    {
+      COPY_OID (&real_class_oid, class_oid);
+    }
+
+  /* never propagate an error to get class name and keep the existing error if any. */
+  er_stack_push ();
+  (void) heap_get_class_name (thread_p, &real_class_oid, &classname);
+  er_stack_pop ();
+
+  if (classname != NULL)
+    {
+      fprintf (log_fp, ", table=%s", classname);
+      free_and_init (classname);
+    }
 }
 
 /*
