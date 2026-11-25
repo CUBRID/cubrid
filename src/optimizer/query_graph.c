@@ -440,44 +440,6 @@ qo_split_and_terms (PARSER_CONTEXT * parser, PT_NODE * list)
 }
 
 /*
- * qo_range_join_to_eq () - turn a key range of one '=' on another column back into '='
- *   return: void
- *   parser(in):
- *   list(in/out): a WHERE or an ON condition, as a CNF list
- *
- * Note: the rewrites do not make a RANGE of a lone '=' term (qo_convert_to_range ()), but a disjunct of an OR is
- *	 made one, and the constant folding of the XASL preparation may drop the other disjuncts:
- *	 (3 = 2 or w2.c range (x.c =)) leaves w2.c range (x.c =). The planner takes it for an equi-join term
- *	 (QO_TERM_EQUAL_OP), while the hash keys of a hash join or of a hash list scan are made from the operands of
- *	 '=' only. A bound that is a constant is left as it is: a key range on one column, not a join term.
- */
-static void
-qo_range_join_to_eq (PARSER_CONTEXT * parser, PT_NODE * list)
-{
-  PT_NODE *term, *range;
-
-  for (term = list; term != NULL; term = term->next)
-    {
-      if (!PT_IS_EXPR_NODE_WITH_OPERATOR (term, PT_RANGE) || term->or_next != NULL)
-	{
-	  continue;
-	}
-
-      range = term->info.expr.arg2;
-      if (range == NULL || range->or_next != NULL || !PT_IS_EXPR_NODE_WITH_OPERATOR (range, PT_BETWEEN_EQ_NA)
-	  || range->info.expr.arg1 == NULL || PT_IS_CONST (range->info.expr.arg1))
-	{
-	  continue;
-	}
-
-      term->info.expr.op = PT_EQ;
-      term->info.expr.arg2 = range->info.expr.arg1;
-      range->info.expr.arg1 = NULL;
-      parser_free_tree (parser, range);
-    }
-}
-
-/*
  * qo_optimize_query () - optimize a single select statement, skip nested
  *			  selects since embedded selects are optimized first
  *   return: void
@@ -508,13 +470,11 @@ qo_optimize_query (PARSER_CONTEXT * parser, PT_NODE * tree)
     }
 
   tree->info.query.q.select.where = qo_split_and_terms (parser, tree->info.query.q.select.where);
-  qo_range_join_to_eq (parser, tree->info.query.q.select.where);
   for (spec = tree->info.query.q.select.from; spec != NULL; spec = spec->next)
     {
       if (spec->node_type == PT_SPEC)
 	{
 	  spec->info.spec.on_cond = qo_split_and_terms (parser, spec->info.spec.on_cond);
-	  qo_range_join_to_eq (parser, spec->info.spec.on_cond);
 	}
     }
 
