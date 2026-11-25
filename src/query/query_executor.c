@@ -547,6 +547,7 @@ struct qexec_settle_state
   private_vector<int> rows;		/* per row of the list, see qexec_settle_row () */
   private_vector<DB_VALUE> values;	/* the assignments the wait pass computed again */
   private_vector<OID> marked_rows;	/* the rows whose keys the write pass will delete-mark */
+  size_t n_writes = 0;			/* how many rows the write pass writes */
   size_t next = 0;			/* the write pass's position in rows */
   bool started = false;
 
@@ -976,6 +977,7 @@ static int qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl, DB_VALUE ** l
 static void qexec_reset_pseudocolumns_val_pointers (DB_VALUE * level_valp, DB_VALUE * isleaf_valp,
 						    DB_VALUE * iscycle_valp, DB_VALUE * parent_pos_valp);
 static int qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p);
+static bool qexec_version_predates_lookup (THREAD_ENTRY * thread_p, const OID * class_oid, MVCC_REC_HEADER * header);
 static BTREE_SEARCH qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 					       SCAN_OPERATION_TYPE op_type, OID * class_oid, bool is_global_index,
 					       OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache);
@@ -1023,6 +1025,7 @@ static void qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_
 static bool qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p,
 						   UPDDEL_CLASS_INFO_INTERNAL * internal_class, const OID * class_oid);
 static bool qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p);
+static bool qexec_statement_error_releases_locks (THREAD_ENTRY * thread_p);
 static bool qexec_spec_is_for_update (THREAD_ENTRY * thread_p, const ACCESS_SPEC_TYPE * spec);
 static bool qexec_is_value_error (int error);
 static bool qexec_defer_update_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
@@ -4523,11 +4526,8 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 static int
 qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, int *limit_ptr)
 {
-  DB_VALUE *dbvalp = NULL;
-  DB_VALUE limit_value;
-  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_INTEGER);
-  DB_TYPE orig_type;
-  int error = NO_ERROR;
+  DB_BIGINT row_limit = 0;
+  bool is_null = false;
 
   if (limit_ptr == NULL)
     {
@@ -4543,57 +4543,31 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       return NO_ERROR;
     }
 
-  if (fetch_peek_dbval (thread_p, xasl->orderby_limit, &xasl_state->vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR)
+  /* orderby_limit is built as a key limit, so it is read as one: orderby_num () < 2.4 keeps 2 rows, by the unpack's
+   * converter */
+  if (fetch_key_limits (thread_p, NULL, NULL, xasl->orderby_limit, xasl->orderby_limit_conv, &xasl_state->vd, NULL,
+			&row_limit, &is_null) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
-
-  if (orig_type != DB_TYPE_INTEGER)
+  if (is_null)
     {
-      TP_DOMAIN_STATUS dom_status;
-
-      /* into a value of its own: the limit is a bind value other readers share; by the converter the unpack found for
-       * the limit's domain */
-      const DB_TYPE planned =
-	xasl->orderby_limit->domain != NULL ? TP_DOMAIN_TYPE (xasl->orderby_limit->domain) : DB_TYPE_NULL;
-      /* a bind type signature's plan: the value has its regu's type, so the converter's lookup for another type is not
-       * reached */
-      assert (DB_IS_NULL (dbvalp) || orig_type == planned);
-      db_make_null (&limit_value);
-      dom_status = tp_value_coerce_with_converter (dbvalp, &limit_value, domainp, planned, xasl->orderby_limit_conv);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  if (dom_status == DOMAIN_OVERFLOW)
-	    {
-	      /* The limit is too bog to fit an integer. However, since this limit is used to keep the sort run flushes
-	       * small (for instance only keep the first 10 elements of each run if ORDER BY LIMIT 10 is specified),
-	       * there is no conceivable way this limit would be useful if it is larger than 2.147 billion: such a
-	       * large run is infeasible anyway. So if it does not fit into an integer, discard it. */
-	      return NO_ERROR;
-	    }
-	  else
-	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp, domainp);
-	      return error;
-	    }
-	}
-      dbvalp = &limit_value;
-
-      if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_INTEGER)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	  return ER_FAILED;
-	}
+      /* the predicate matches no row, so no limit is needed to find that out */
+      return NO_ERROR;
     }
 
-  *limit_ptr = db_get_int (dbvalp);
-  if (*limit_ptr < 0)
+  if (row_limit > INT_MAX)
     {
-      /* If the limit is below 0, set it to 0 and still return success. */
-      *limit_ptr = 0;
+      /* The limit is too big to fit an integer. However, since this limit is used to keep the sort run flushes
+       * small (for instance only keep the first 10 elements of each run if ORDER BY LIMIT 10 is specified),
+       * there is no conceivable way this limit would be useful if it is larger than 2.147 billion: such a
+       * large run is infeasible anyway. So if it does not fit into an integer, discard it. */
+      return NO_ERROR;
     }
+
+  /* If the limit is below 0, set it to 0 and still return success. */
+  *limit_ptr = (row_limit < 0) ? 0 : (int) row_limit;
 
   return NO_ERROR;
 }
@@ -18566,6 +18540,11 @@ scan_targets:
 	}
       wait_pass = false;
       base_lock_policy = LOCATOR_LOCK_AT_SELECT;
+      /* the rows written, not those of the list, decide how unique keys are checked, as when the select locks them */
+      if (settle.n_writes <= 1)
+	{
+	  op_type = SINGLE_ROW_UPDATE;
+	}
       /* the write pass */
       goto scan_targets;
     }
@@ -18594,7 +18573,8 @@ scan_targets:
 
   assert (settle.next == settle.rows.size ());
 
-  /* Later writers wait on our MVCCID self-lock, so the row locks can end here unless our stamp can go before commit */
+  /* Later writers wait on our MVCCID self-lock, so the row locks can end here, under a savepoint too: a rollback to
+   * it sends those writers back to read (lock_deferred_wake_mark ()). */
   lock_transient_scope_end (thread_p, locator_statement_ends_row_locks (thread_p, STMT_ROW_CHANGE_UNCOMMITTED));
 
   qexec_close_scan (thread_p, specp);
@@ -18656,9 +18636,6 @@ scan_targets:
   return NO_ERROR;
 
 exit_on_error:
-  /* failed: the rows keep their locks to commit; drop the counts so no later statement gives them back */
-  lock_transient_scope_end (thread_p, false);
-
   if (scan_open)
     {
       qexec_end_scan (thread_p, specp);
@@ -18690,6 +18667,8 @@ exit_on_error:
     {
       xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
     }
+  /* after the undo, so the rows carry no stamp of this statement */
+  lock_transient_scope_end (thread_p, qexec_statement_error_releases_locks (thread_p));
 
   if (internal_classes)
     {
@@ -19358,9 +19337,6 @@ scan_targets:
   return NO_ERROR;
 
 exit_on_error:
-  /* failed: the rows keep their locks to commit; drop the counts so no later statement gives them back */
-  lock_transient_scope_end (thread_p, false);
-
   if (scan_open)
     {
       qexec_end_scan (thread_p, specp);
@@ -19393,6 +19369,8 @@ exit_on_error:
     {
       xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
     }
+  /* as in qexec_execute_update (): after the undo */
+  lock_transient_scope_end (thread_p, qexec_statement_error_releases_locks (thread_p));
 
   return ER_FAILED;
 }
@@ -19408,6 +19386,8 @@ exit_on_error:
  *	 A delete-marked key and the children its actions lock make other writers wait on the statement. Locking row
  *	 by row, it would wait on the writer of a later row holding them, so it settles every row and waits out the
  *	 children's writers first. A single row holds nothing while it waits and stays on the force path.
+ *	 Also started when an UPDATE assigns an attribute of a unique index: the rows it writes, not those the select
+ *	 found, decide whether its keys are checked row by row.
  */
 // *INDENT-OFF*
 qexec_settle_state::qexec_settle_state (THREAD_ENTRY *thread_p)
@@ -19443,12 +19423,18 @@ qexec_settle_state::start (LOCATOR_LOCK_POLICY base_lock_policy, UPDDEL_CLASS_IN
     }
   error = locator_start_referenced_key (thread_p, &lock_info->class_oid, upd_cls != NULL ? upd_cls->att_id : NULL,
 					upd_cls != NULL ? upd_cls->num_attrs : 0, &key);
-  if (error != NO_ERROR || key.pk_i < 0)
+  started = (key.pk_i >= 0);
+  if (error == NO_ERROR && !started && upd_cls != NULL && upd_cls->has_uniques)
     {
+      error = locator_assigns_unique_key (thread_p, &lock_info->class_oid, upd_cls->att_id, upd_cls->num_attrs,
+					  &started);
+    }
+  if (error != NO_ERROR || !started)
+    {
+      started = false;
       locator_end_referenced_key (thread_p, &key);
       return error;
     }
-  started = true;
   rows.reserve (tuple_cnt);
   return NO_ERROR;
 }
@@ -19475,7 +19461,7 @@ qexec_settle_row (THREAD_ENTRY * thread_p, QEXEC_SETTLE_STATE * settle, UPDDEL_C
   RECDES recdes = RECDES_INITIALIZER;
   OID locked_class_oid;
   SCAN_CODE scan;
-  bool marked = true;
+  bool marked = (settle->key.pk_i >= 0);
   int i, error;
 
   settle->rows.push_back (-1);
@@ -19510,7 +19496,7 @@ qexec_settle_row (THREAD_ENTRY * thread_p, QEXEC_SETTLE_STATE * settle, UPDDEL_C
       return NO_ERROR;
     }
 
-  if (upd_cls != NULL)
+  if (upd_cls != NULL && marked)
     {
       error = locator_key_changes (thread_p, &settle->key, oid, &recdes, &internal_class->attr_info, &marked);
       if (error != NO_ERROR)
@@ -19524,6 +19510,7 @@ qexec_settle_row (THREAD_ENTRY * thread_p, QEXEC_SETTLE_STATE * settle, UPDDEL_C
     }
 
   settle->rows.back () = 0;
+  settle->n_writes++;
   if (upd_cls != NULL && upddel->recomputed)
     {
       for (i = 0; i < upd_cls->num_attrs; i++)
@@ -19716,6 +19703,34 @@ qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p, DEL_LOB_INFO ** del_lo
 
 
 /*
+ * qexec_version_predates_lookup () - Whether the settled version was committed before the snapshot the unique key
+ *				       lookup took, so that the key entry the lookup found is this version's
+ *   header(in): the settled last version's MVCC header
+ *
+ * Note: the lookup returns no entry another live transaction is writing, and a committed key change delete-marks the
+ *	 old key's entry, so the live entry naming a version committed before the lookup carries that version's key.
+ *	 The snapshot also keeps vacuum from clearing a later writer's MVCCID, so a cleared insert MVCCID is an old one.
+ */
+static bool
+qexec_version_predates_lookup (THREAD_ENTRY * thread_p, const OID * class_oid, MVCC_REC_HEADER * header)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  /* nothing between the lookup and here takes a snapshot, so a valid one predates the lookup; never take one here */
+  if (tdes == NULL || !tdes->mvccinfo.snapshot.valid || mvcc_is_mvcc_disabled_class (class_oid)
+      || MVCC_IS_HEADER_DELID_VALID (header))
+    {
+      return false;
+    }
+  /* our own version is visible to us however late we made it */
+  if (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (header) && MVCC_IS_REC_INSERTED_BY_ME (thread_p, header))
+    {
+      return false;
+    }
+  return mvcc_satisfies_snapshot (thread_p, header, &tdes->mvccinfo.snapshot) == SNAPSHOT_SATISFIED;
+}
+
+/*
  * qexec_settle_on_duplicate () - Lock the row a unique key was found to name, and make sure the key still names it
  *   return: BTREE_KEY_FOUND with *oid locked and settled, BTREE_KEY_NOTFOUND once the key names no row, or
  *	     BTREE_ERROR_OCCURRED as the lookup reports it
@@ -19724,7 +19739,8 @@ qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p, DEL_LOB_INFO ** del_lo
  *
  * Note: the lookup takes no lock: one taken from the key entry cannot see the row's owner and would queue this
  *	 transaction behind a waiter parked on this transaction's stamp.  The owner can still move the row past our X,
- *	 and the row can be deleted before we lock it, so the key is asked again until it names the row we settled on.
+ *	 and the row can be deleted before we lock it, so the key is asked again until it names the row we settled on,
+ *	 unless the settled version predates the lookup.
  */
 static BTREE_SEARCH
 qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, SCAN_OPERATION_TYPE op_type,
@@ -19732,8 +19748,10 @@ qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 			   HEAP_SCANCACHE * scan_cache)
 {
   OID settled_oid;
+  MVCC_REC_HEADER header = MVCC_REC_HEADER_INITIALIZER;
   SCAN_CODE scan;
   BTREE_SEARCH r;
+  bool predates;
 
   /* the lookup below can wait on the key's writer, so no heap page may stay fixed across it */
   assert (scan_cache == NULL || !scan_cache->cache_last_fix_page);
@@ -19741,7 +19759,8 @@ qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
   do
     {
       scan = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY, NULL_CHN,
-					  LOG_WARNING_IF_DELETED, false, true, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+					  LOG_WARNING_IF_DELETED, false, true, HEAP_RECDES_DONT_CONSUME_RAW_BYTES,
+					  &header);
       if (scan == S_DOESNT_EXIST)
 	{
 	  er_clear ();
@@ -19752,7 +19771,17 @@ qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 	  return BTREE_ERROR_OCCURRED;
 	}
 
+      predates = (scan == S_SUCCESS && qexec_version_predates_lookup (thread_p, class_oid, &header));
+#if defined (NDEBUG)
+      if (predates)
+	{
+	  return BTREE_KEY_FOUND;
+	}
+#endif /* NDEBUG */
+
       r = xbtree_find_unique_unlocked (thread_p, btid, op_type, key, class_oid, &settled_oid, is_global_index);
+      /* debug asks the key anyway: a version check that let a moved row through fails here */
+      assert (!predates || r == BTREE_ERROR_OCCURRED || (r == BTREE_KEY_FOUND && OID_EQ (&settled_oid, oid)));
       if (scan == S_SUCCESS)
 	{
 	  if (r == BTREE_KEY_FOUND && OID_EQ (&settled_oid, oid))
@@ -22835,6 +22864,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
   bool sysop_started = false;
   bool joins_transaction = false;	/* a target is a row the transaction has already changed */
+  LOG_LSA sysop_start_lsa = LSA_INITIALIZER;
 
   // *INDENT-OFF*
   struct incr_info
@@ -23069,6 +23099,12 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       logtb_get_new_subtransaction_mvccid (thread_p, &tdes->mvccinfo);
       subtransaction_started = true;
     }
+  else
+    {
+      tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      assert (tdes != NULL);
+      LSA_COPY (&sysop_start_lsa, &tdes->tail_lsa);
+    }
 
   for (selupd = list; selupd; selupd = selupd->next)
     {
@@ -23161,7 +23197,15 @@ exit_on_error:
 
   if (sysop_started)
     {
-      log_sysop_abort (thread_p);
+      if (joins_transaction)
+	{
+	  /* the increments carry the transaction's MVCCID: their undo may erase heap stamps */
+	  log_sysop_abort_and_defer_wake (thread_p, &sysop_start_lsa);
+	}
+      else
+	{
+	  log_sysop_abort (thread_p);
+	}
       sysop_started = false;
     }
 
@@ -30242,8 +30286,12 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 	}
       if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_SCAN_STOP)
 	{
-	  /* reset grbynum_val for next use */
-	  db_make_bigint (gbstate->grbynum_val, 0);
+	  /* reset grbynum_val for next use, but not when the peek-ahead stops on a group that is still output.
+	   * The output row reads groupby_num () from grbynum_val. */
+	  if (ev_res != V_TRUE)
+	    {
+	      db_make_bigint (gbstate->grbynum_val, 0);
+	    }
 	  /* setting SORT_PUT_STOP will make 'sr_in_sort()' stop processing; the caller, 'qexec_gby_put_next()',
 	   * returns 'gbstate->state' */
 	  gbstate->state = SORT_PUT_STOP;
@@ -37330,6 +37378,23 @@ qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * qexec_statement_error_releases_locks () - Whether a failed DELETE or UPDATE gives back the row locks it counted
+ *   return: true unless the transaction is being aborted as a whole, whose abort gives everything back, or the
+ *	     statement keeps its row locks anyway (locator_statement_ends_row_locks ())
+ *
+ * Note: called after the statement's system operation was aborted. A deadlock victim that loses only its statement
+ *	 (lock timeout not infinite) is not aborted as a whole and gives its row locks back too.
+ */
+static bool
+qexec_statement_error_releases_locks (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  return (tdes != NULL && tdes->tran_abort_reason == TRAN_NORMAL
+	  && locator_statement_ends_row_locks (thread_p, STMT_ROW_CHANGE_UNCOMMITTED));
+}
+
+/*
  * qexec_spec_is_for_update () - Does the scan of this spec lock its rows at select, as FOR UPDATE does?
  *   return: true for a FOR UPDATE spec, and for a DML target left to the force-phase reevaluation when that does not
  *	     run: above READ COMMITTED, where the force phase reports a serialization conflict for a row changed after
@@ -38132,8 +38197,13 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
       return NO_ERROR;
     }
 
-  assert (DB_VALUE_TYPE (&ubound_val) == DB_TYPE_INTEGER);
-  ubound = db_get_int (&ubound_val);
+  /* a BIGINT row bound. More rows than an int holds are too many for a top-n */
+  assert (DB_VALUE_TYPE (&ubound_val) == DB_TYPE_BIGINT);
+  if (db_get_bigint (&ubound_val) > INT_MAX)
+    {
+      return NO_ERROR;
+    }
+  ubound = (int) db_get_bigint (&ubound_val);
 
   if (ubound == 0)
     {
@@ -38682,8 +38752,8 @@ qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count)
  * thread_p	   : thread entry
  * pred (in)	   : orderby_num predicate
  * vd (in)	   : value descriptor
- * ubound (in/out) : upper bound, an INTEGER (CBRD-27583)
- * unbounded (out) : CBRD-27583: set by a bound INTEGER cannot hold, which leaves no top-N bound
+ * ubound (in/out) : upper bound, a BIGINT row bound (CBRD-27583), NULL when the predicate gives none
+ * unbounded (out) : CBRD-27583: set by a bound that is not a number of rows, which leaves no top-N bound
  */
 static int
 qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL_DESCR * vd, DB_VALUE * ubound,
@@ -38693,6 +38763,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
   REGU_VARIABLE *rhs;
   REL_OP op;
   DB_VALUE *val;
+  DB_BIGINT row_bound;
   DB_VALUE left_bound, right_bound;
 
   assert_release (pred != NULL);
@@ -38722,10 +38793,10 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  goto cleanup;
 	}
 
-      /* an AND keeps the larger bound and a NULL one is the lowest, as the total order compare of the two bounds had
-       * it; each term's conversion into INTEGER is monotonic, so the larger INTEGER is the larger bound's */
+      /* both bounds are BIGINT row bounds. An AND keeps the larger one, which stays correct since the predicate
+       * filters the rows the top-n kept. A NULL bound counts as the lowest */
       if (DB_IS_NULL (&right_bound)
-	  || (!DB_IS_NULL (&left_bound) && db_get_int (&left_bound) > db_get_int (&right_bound)))
+	  || (!DB_IS_NULL (&left_bound) && db_get_bigint (&left_bound) > db_get_bigint (&right_bound)))
 	{
 	  error = pr_clone_value (&left_bound, ubound);
 	}
@@ -38752,43 +38823,29 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  goto error_return;
 	}
 
-      if (op == R_LT)
+      if (DB_IS_NULL (val))
 	{
-	  /* add 1 so we can use R_LE, after the subtraction's operand coercion the compiler decided for the bound's
-	   * type - a string as DOUBLE */
-	  DB_VALUE one_val;
-	  db_make_int (&one_val, 1);
-	  assert (DB_IS_NULL (val) || DB_VALUE_DOMAIN_TYPE (val) == TP_DOMAIN_TYPE (rhs->domain));
-	  const DOMAIN_OPERAND_COERCION *operand_coercion = pred->pe.m_eval_term.et.et_comp.bound_coercion;
-	  assert (operand_coercion != NULL);
-	  error =
-	    qdata_coerce_arith_operands (T_SUB, operand_coercion->conv, operand_coercion->operand_domain,
-					 &operand_coercion->arith, val, &one_val, ubound, rhs->domain,
-					 operand_coercion->result);
-	}
-      else
-	{
-	  error = pr_clone_value (val, ubound);
+	  /* a NULL bound matches no row */
+	  goto cleanup;
 	}
 
-      if (error != NO_ERROR)
+      /* converted by the unpack's conversion. A value that is not a number gives no bound here */
+      const COMP_EVAL_TERM *term = &pred->pe.m_eval_term.et.et_comp;
+      const DOMAIN_BOUND_CONVERSION *conversion = term->bound_conversion;
+      /* VARIABLE: the plan leaves the type to the value, as it does for a string bound whose collation it does not
+       * fix */
+      assert (conversion != NULL
+	      && (conversion->source == DB_TYPE_VARIABLE || conversion->source == DB_VALUE_DOMAIN_TYPE (val)));
+      if (tp_value_to_row_bound (val, op == R_LT, conversion != NULL ? conversion->source : DB_TYPE_NULL,
+				 conversion != NULL ? conversion->conv : NULL, &row_bound) != DOMAIN_COMPATIBLE)
 	{
-	  goto error_return;
+	  er_clear ();
+	  *unbounded = true;
+	  goto cleanup;
 	}
 
-      if (!DB_IS_NULL (ubound) && DB_VALUE_TYPE (ubound) != DB_TYPE_INTEGER)
-	{
-	  /* by the conversion the unpack found for the term's bound */
-	  const DOMAIN_BOUND_CONVERSION *conversion = pred->pe.m_eval_term.et.et_comp.bound_conversion;
-	  assert (conversion != NULL && conversion->source == DB_VALUE_DOMAIN_TYPE (ubound));
-	  const DB_TYPE source = conversion != NULL ? conversion->source : DB_TYPE_NULL;
-	  if (tp_value_coerce_with_converter (ubound, ubound, &tp_Integer_domain, source,
-					      conversion != NULL ? conversion->conv : NULL) != DOMAIN_COMPATIBLE)
-	    {
-	      pr_clear_value (ubound);
-	      *unbounded = true;
-	    }
-	}
+      /* a negative bound keeps no row: 0 makes qexec_setup_topn_proc () skip the top-n */
+      db_make_bigint (ubound, (row_bound < 0) ? 0 : row_bound);
       goto cleanup;
     }
 

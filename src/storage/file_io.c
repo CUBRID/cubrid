@@ -207,7 +207,8 @@
   (((off_t)(pagesize)) * ((off_t)(npages)))
 
 #define FILEIO_BACKUP_NO_ZIP_HEADER_VERSION        1
-#define FILEIO_BACKUP_CURRENT_HEADER_VERSION       2
+#define FILEIO_BACKUP_LOG_END_HEADER_VERSION       3	/* start_log_end_lsa is present */
+#define FILEIO_BACKUP_CURRENT_HEADER_VERSION       3
 #define FILEIO_CHECK_FOR_INTERRUPT_INTERVAL       100
 
 /* the most bytes of formatted pages that a restore writes at once to the pages that no backup level holds */
@@ -6911,6 +6912,7 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   session_p->bkup.bkuphdr->level = level;
   session_p->bkup.bkuphdr->bkup_iosize = session_p->bkup.iosize;
   session_p->bkup.bkuphdr->bk_hdr_version = FILEIO_BACKUP_CURRENT_HEADER_VERSION;
+  LSA_SET_NULL (&session_p->bkup.bkuphdr->start_log_end_lsa);
   session_p->bkup.bkuphdr->start_time = 0;
   session_p->bkup.bkuphdr->end_time = -1;
   memset (session_p->bkup.bkuphdr->db_prec_bkvolname, 0, sizeof (session_p->bkup.bkuphdr->db_prec_bkvolname));
@@ -9343,6 +9345,12 @@ fileio_read_restore_header (FILEIO_BACKUP_SESSION * session_p)
       backup_header_p->bkpagesize = backup_header_p->db_iopagesize;
       backup_header_p->zip_method = FILEIO_ZIP_NONE_METHOD;
       backup_header_p->zip_level = FILEIO_ZIP_NONE_LEVEL;
+    }
+
+  if (backup_header_p->bk_hdr_version < FILEIO_BACKUP_LOG_END_HEADER_VERSION)
+    {
+      /* the field did not exist; the bytes there are whatever followed the old struct in the header page */
+      LSA_SET_NULL (&backup_header_p->start_log_end_lsa);
     }
 
   if (to_read_nbytes > 0)
@@ -12110,22 +12118,22 @@ fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bo
 }
 
 bool
-fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
+fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page, PGLENGTH page_size)
 {
   char *ref_page;
   bool is_formatted = false;
 
-  ref_page = (char *) malloc (IO_PAGESIZE);
+  ref_page = (char *) malloc (page_size);
   if (ref_page == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, IO_PAGESIZE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) page_size);
       return false;
     }
 
-  memset ((char *) ref_page, 0, IO_PAGESIZE);
-  (void) fileio_initialize_res (thread_p, (FILEIO_PAGE *) ref_page, IO_PAGESIZE);
+  memset ((char *) ref_page, 0, page_size);
+  (void) fileio_initialize_res (thread_p, (FILEIO_PAGE *) ref_page, page_size);
 
-  if (memcmp (io_page, ref_page, IO_PAGESIZE) == 0)
+  if (memcmp (io_page, ref_page, page_size) == 0)
     {
       is_formatted = true;
     }
