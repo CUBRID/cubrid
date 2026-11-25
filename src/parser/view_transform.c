@@ -17426,7 +17426,7 @@ mq_share_narrow_cols (PARSER_CONTEXT * parser, PT_NODE * select, PT_NODE * spec,
   for (attr = spec->info.spec.as_attr_list, col = list; attr != NULL && col != NULL; attr = attr->next, col = col->next)
     {
       if (attr->node_type != PT_NAME || pt_str_compare (attr->info.name.original, col->info.name.original,
-							   CASE_INSENSITIVE) != 0)
+							CASE_INSENSITIVE) != 0)
 	{
 	  break;
 	}
@@ -17469,8 +17469,7 @@ mq_share_kept_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
   bool *failed = (bool *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
-  if (node->node_type != PT_SPEC || (group = node->info.spec.share_group) == NULL
-      || node->info.spec.share_cols == NULL)
+  if (node->node_type != PT_SPEC || (group = node->info.spec.share_group) == NULL || node->info.spec.share_cols == NULL)
     {
       return node;
     }
