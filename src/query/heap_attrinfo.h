@@ -34,7 +34,7 @@ typedef enum
   HEAP_READ_ATTRVALUE,
   HEAP_WRITTEN_ATTRVALUE,
   HEAP_UNINIT_ATTRVALUE,
-  HEAP_WRITTEN_LOB_ATTRVALUE,
+  HEAP_WRITTEN_LOBFILE_ATTRVALUE,
   HEAP_LAZY_ATTRVALUE		/* deferred: no dbvalue yet; read on demand from attr_info->lazy_recdes
 				 * by heap_attrvalue_peek_lazy () */
 } HEAP_ATTRVALUE_STATE;

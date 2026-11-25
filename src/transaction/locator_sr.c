@@ -5983,7 +5983,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   HEAP_SCANCACHE scan_cache;
   HFID hfid;
   bool is_upd_scan_init;
-  bool lob_exist;
+  bool lobfile_exist;
   int error_code = NO_ERROR;
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_CACHE_ATTRINFO fk_attr_info;
@@ -6117,7 +6117,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	    }
 
 	  is_upd_scan_init = false;
-	  lob_exist = false;
+	  lobfile_exist = false;
 	  n_buffered = 0;
 	  n_restart = 0;
 

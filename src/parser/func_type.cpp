@@ -834,6 +834,27 @@ namespace func_type
       case F_CLASS_OF: //move it to the beginning of pt_eval_function_type() ... not without complicating the code
 	m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
 	return false; //no need to continue with generic code
+      case PT_GROUP_CONCAT: //ToDo: try without this!
+      {
+	auto arg1 = m_node->info.function.arg_list;
+	if (arg1 != NULL)
+	  {
+	    auto arg2 = arg1->next;
+	    if (arg2 != NULL)
+	      {
+		if (PT_IS_LOB_FAMILY_TYPE (arg1->type_enum) || PT_IS_LOB_FAMILY_TYPE (arg2->type_enum))
+		  {
+		    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+				  fcode_get_lowercase_name (PT_GROUP_CONCAT), pt_show_type_enum (arg1->type_enum),
+				  pt_show_type_enum (arg2->type_enum));
+		    m_node->type_enum = PT_TYPE_VARCHAR;
+		    return false;
+		  }
+	      }
+	  }
+	break;
+      }
+
       default:
 	;
       }

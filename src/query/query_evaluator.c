@@ -245,8 +245,8 @@ eval_element_as_held (const DB_VALUE * element)
       return db_get_string (element) != NULL;
     case DB_TYPE_OBJECT:
       return db_get_object (element) != NULL;
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_ELO:
       return db_get_elo (element) != NULL;
     default:

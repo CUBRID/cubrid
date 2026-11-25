@@ -847,7 +847,7 @@ static SCAN_CODE heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p,
 static SCAN_CODE heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							   OR_BUF * buf, char **ptr_varvals,
 							   heap_oos_column_plan * oos_plan, int index, int offset_size,
-							   int header_size, int lob_create_flag);
+							   int header_size, int lobfile_create_flag);
 static SCAN_CODE heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							 OR_BUF * buf, int offset_size, bool is_mvcc_class,
 							 bool is_update, bool has_oos);
@@ -856,13 +856,13 @@ static SCAN_CODE heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p
 static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
 							  std::vector<heap_oos_column_plan> * oos_plan,
 							  std::set<int> * incremented_attrids, int offset_size, int header_size,
-							  size_t mvcc_extra, int lob_create_flag, size_t * record_size);
+							  size_t mvcc_extra, int lobfile_create_flag, size_t * record_size);
 // *INDENT-ON*
 
 /* *INDENT-OFF* */
 static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							   RECDES * old_recdes, record_descriptor * new_recdes,
-							   int lob_create_flag, heap_pending_record * pending =
+							   int lobfile_create_flag, heap_pending_record * pending =
 							   nullptr, bool reuse_oos_stubs = false);
 /* *INDENT-ON* */
 
@@ -12040,8 +12040,8 @@ heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, 
   raw->data = layout->var_table + this_off;
   switch (TP_DOMAIN_TYPE (attrepr->domain))
     {
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
@@ -14542,8 +14542,8 @@ heap_oos_find_vfid_nowait (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oo
 }
 
 static SCAN_CODE
-heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value, OID class_oid, int lob_create_flag,
-				 RECDES * recdes)
+heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value, OID class_oid,
+				 int lobfile_create_flag, RECDES * recdes)
 {
   DB_VALUE *dbvalue;
   const PR_TYPE *pr_type;
@@ -14563,10 +14563,10 @@ heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value
 
   assert (dbvalue != NULL && !db_value_is_null (dbvalue));
 
-  if (lob_create_flag == LOB_FLAG_INCLUDE_LOB && value->state == HEAP_WRITTEN_ATTRVALUE
-      && (pr_type->id == DB_TYPE_BLOB || pr_type->id == DB_TYPE_CLOB))
+  if (lobfile_create_flag == LOB_FLAG_INCLUDE_LOBFILE && value->state == HEAP_WRITTEN_ATTRVALUE
+      && (pr_type->id == DB_TYPE_BFILE || pr_type->id == DB_TYPE_CFILE))
     {
-      assert (db_value_type (dbvalue) == DB_TYPE_BLOB || db_value_type (dbvalue) == DB_TYPE_CLOB);
+      assert (db_value_type (dbvalue) == DB_TYPE_BFILE || db_value_type (dbvalue) == DB_TYPE_CFILE);
 
       elo_p = db_get_elo (dbvalue);
 
@@ -14599,10 +14599,10 @@ heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value
       free_and_init (elo_p->meta_data);
       elo_p->meta_data = save_meta_data;
 
-      /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
+      /* The purpose of HEAP_WRITTEN_LOBFILE_ATTRVALUE is to avoid reenter this branch. In the first pass,
        * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
        * elo again. Otherwize it will generate 2 copies. */
-      value->state = HEAP_WRITTEN_LOB_ATTRVALUE;
+      value->state = HEAP_WRITTEN_LOBFILE_ATTRVALUE;
 
       if (rv < 0)
 	{
@@ -14636,12 +14636,12 @@ heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value
 
 static SCAN_CODE
 heap_attrinfo_serialize_oos_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, int index,
-				   int lob_create_flag, RECDES * payload)
+				   int lobfile_create_flag, RECDES * payload)
 {
   assert (attr_info->values != NULL && !db_value_is_null (&attr_info->values[index].dbvalue));
   assert (!attr_info->values[index].last_attrepr->is_fixed);
 
-  if (heap_attrinfo_dbvalue_to_recdes (thread_p, &attr_info->values[index], attr_info->class_oid, lob_create_flag,
+  if (heap_attrinfo_dbvalue_to_recdes (thread_p, &attr_info->values[index], attr_info->class_oid, lobfile_create_flag,
 				       payload) != S_SUCCESS)
     {
       return S_ERROR;
@@ -14659,7 +14659,7 @@ heap_attrinfo_serialize_oos_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO 
 
 static SCAN_CODE
 heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-					   int lob_create_flag,
+					   int lobfile_create_flag,
 					   std::vector < heap_oos_column_plan > *oos_plan,
 					   std::vector < RECDES > *payloads,
 					   std::vector < oos_insert_request > *requests)
@@ -14676,7 +14676,7 @@ heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_A
 	  continue;
 	}
 
-      if (heap_attrinfo_serialize_oos_value (thread_p, attr_info, i, lob_create_flag, &payload) != S_SUCCESS)
+      if (heap_attrinfo_serialize_oos_value (thread_p, attr_info, i, lobfile_create_flag, &payload) != S_SUCCESS)
 	{
 	  free_and_init (payload.data);
 	  return S_ERROR;
@@ -14721,7 +14721,7 @@ static std::atomic<bool> heap_Test_fail_after_oos_publication_reset { false };
  */
 /* *INDENT-OFF* */
 static SCAN_CODE
-heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, int lob_create_flag,
+heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, int lobfile_create_flag,
 			     std::vector<heap_oos_column_plan> * oos_plan)
 /* *INDENT-ON* */
 
@@ -14756,7 +14756,7 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
     return S_ERROR;
   }
 
-  if (heap_attrinfo_prepare_oos_insert_requests (thread_p, attr_info, lob_create_flag, oos_plan, &payloads,
+  if (heap_attrinfo_prepare_oos_insert_requests (thread_p, attr_info, lobfile_create_flag, oos_plan, &payloads,
 						 &requests) != S_SUCCESS)
     {
       goto cleanup;
@@ -14806,7 +14806,7 @@ heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_
   try
     {
       status = heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, record,
-                    copy_lobs ? LOB_FLAG_INCLUDE_LOB : LOB_FLAG_EXCLUDE_LOB, pending, reuse_oos_stubs);
+                    copy_lobs ? LOB_FLAG_INCLUDE_LOBFILE : LOB_FLAG_EXCLUDE_LOBFILE, pending, reuse_oos_stubs);
     }
   catch (const std::bad_alloc &)
     {
@@ -15096,14 +15096,14 @@ heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
  *   index(in): column index
  *   offset_size(in): byte size of variable offset
  *   header_size(in): header size
- *   lob_create_flag(in): log flag
+ *   lobfile_create_flag(in): log flag
  *
  * Note: Transform the object represented by attr_info to disk format
  */
 static SCAN_CODE
 heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
 					  char **ptr_varvals, heap_oos_column_plan * oos_plan, int index,
-					  int offset_size, int header_size, int lob_create_flag)
+					  int offset_size, int header_size, int lobfile_create_flag)
 {
   HEAP_ATTRVALUE *value;
   DB_VALUE *dbvalue;
@@ -15194,10 +15194,10 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       /* to variable value array for the next element.        */
       buf->ptr = *ptr_varvals;
 
-      if (lob_create_flag == LOB_FLAG_INCLUDE_LOB && value->state == HEAP_WRITTEN_ATTRVALUE
-	  && (pr_type->id == DB_TYPE_BLOB || pr_type->id == DB_TYPE_CLOB))
+      if (lobfile_create_flag == LOB_FLAG_INCLUDE_LOBFILE && value->state == HEAP_WRITTEN_ATTRVALUE
+	  && (pr_type->id == DB_TYPE_BFILE || pr_type->id == DB_TYPE_CFILE))
 	{
-	  assert (db_value_type (dbvalue) == DB_TYPE_BLOB || db_value_type (dbvalue) == DB_TYPE_CLOB);
+	  assert (db_value_type (dbvalue) == DB_TYPE_BFILE || db_value_type (dbvalue) == DB_TYPE_CFILE);
 
 	  elo_p = db_get_elo (dbvalue);
 
@@ -15233,10 +15233,10 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  free_and_init (elo_p->meta_data);
 	  elo_p->meta_data = save_meta_data;
 
-	  /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
+	  /* The purpose of HEAP_WRITTEN_LOBFILE_ATTRVALUE is to avoid reenter this branch. In the first pass,
 	   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
 	   * elo again. Otherwize it will generate 2 copies. */
-	  value->state = HEAP_WRITTEN_LOB_ATTRVALUE;
+	  value->state = HEAP_WRITTEN_LOBFILE_ATTRVALUE;
 
 	  if (rv < 0)
 	    {
@@ -15286,7 +15286,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
  *   offset_size(in): byte size of variable offset
  *   header_size(in): header size
  *   mvcc_extra(in): mvcc extra space
- *   lob_create_flag(in): lob flag
+ *   lobfile_create_flag(in): lob flag
  *   record_size(out): record size
  *
  * Note: Transform the object represented by attr_info to disk format
@@ -15297,7 +15297,7 @@ static SCAN_CODE
 heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
 					 std::vector<heap_oos_column_plan> * oos_plan,
 					 std::set<int> * incremented_attrids, int offset_size, int header_size,
-					 size_t mvcc_extra, int lob_create_flag, size_t * record_size)
+					 size_t mvcc_extra, int lobfile_create_flag, size_t * record_size)
 // *INDENT-ON*
 {
   char *bitmap_bound, *ptr_varvals;
@@ -15328,7 +15328,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 
 	  status =
 	    heap_attrinfo_transform_variable_to_disk (thread_p, attr_info, buf, &ptr_varvals, plan, i, offset_size,
-						      header_size, lob_create_flag);
+						      header_size, lobfile_create_flag);
 	}
       if (status != S_SUCCESS)
 	{
@@ -15384,7 +15384,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
  */
 static SCAN_CODE
 heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-					  RECDES * old_recdes, record_descriptor * new_recdes, int lob_create_flag,
+					  RECDES * old_recdes, record_descriptor * new_recdes, int lobfile_create_flag,
 					  heap_pending_record * pending, bool reuse_oos_stubs)
 {
   OR_BUF buf;
@@ -15477,7 +15477,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
                   continue;
                 }
               RECDES payload = { 0, 0, REC_HOME, nullptr };
-              status = heap_attrinfo_serialize_oos_value (thread_p, attr_info, i, lob_create_flag, &payload);
+              status = heap_attrinfo_serialize_oos_value (thread_p, attr_info, i, lobfile_create_flag, &payload);
               if (status == S_SUCCESS
                   && pending->retain (oos_buffer (payload.data, payload.length), oos_plan[i].pending_index) == NO_ERROR)
                 {
@@ -15492,7 +15492,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
         }
       else
         {
-          status = heap_attrinfo_insert_to_oos (thread_p, attr_info, lob_create_flag, &oos_plan);
+          status = heap_attrinfo_insert_to_oos (thread_p, attr_info, lobfile_create_flag, &oos_plan);
         }
       /* *INDENT-ON* */
       if (status != S_SUCCESS)
@@ -15523,7 +15523,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       /* build columns */
       status =
 	heap_attrinfo_transform_columns_to_disk (thread_p, attr_info, &buf, &oos_plan, &incremented_attrids,
-						 offset_size, header_size, mvcc_extra, lob_create_flag, &record_size);
+						 offset_size, header_size, mvcc_extra, lobfile_create_flag,
+						 &record_size);
       if (status == S_DOESNT_FIT)
 	{
 	  inline_size_after_oos += DB_PAGESIZE;
@@ -31043,6 +31044,6 @@ bridge_heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, const OID * class_o
 
   COPY_OID (&attr_info.class_oid, class_oid);
   attr_info.num_values = 0;
-  return heap_attrinfo_insert_to_oos (thread_p, &attr_info, LOB_FLAG_INCLUDE_LOB, &oos_plan);
+  return heap_attrinfo_insert_to_oos (thread_p, &attr_info, LOB_FLAG_INCLUDE_LOBFILE, &oos_plan);
 }
 #endif /* CUBRID_UNIT_TEST_ENABLED */
