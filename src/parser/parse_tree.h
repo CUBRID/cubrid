@@ -2452,7 +2452,9 @@ struct pt_expr_info
 
 #define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the expression resulted from a GROUP BY ... LIMIT
 						 * statement */
-#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_auto_parameterize() */
+#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_auto_parameterize(). set on the
+						 * copy qo_reduce_equality_terms() adds for a derived constant column,
+						 * which is not copied again */
 #define PT_EXPR_INFO_CAST_WRAP 	131072	/* 0x20000, CAST is wrapped by compiling */
 #define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
 #define PT_EXPR_INFO_SP_NUMERIC 524288	/* 0x80000, CAST as NUMERIC for SP */
@@ -2479,6 +2481,8 @@ struct pt_expr_info
 							 * paired with its origin on its own node */
 #define PT_EXPR_INFO_LIMIT_SUM 536870912	/* 0x20000000, the offset + count a LIMIT rewrite builds: an overflow gives
 						 * the BIGINT maximum (REGU_VARIABLE_LIMIT_SUM) */
+#define PT_EXPR_INFO_FILTER_TERM 1073741824	/* 0x40000000, an AND or OR on the AND/OR spine of a search condition
+						 * (WHERE, ON, HAVING, ...), where UNKNOWN rejects the row as FALSE does */
   int flag;			/* flags */
 /* the largest OR factor pt_cnf_where () keeps whole and qo_extract_or_restrictions () derives from */
 #define PT_CNF_KEEP_MAX_DISJUNCTS 8
