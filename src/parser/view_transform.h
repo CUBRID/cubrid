@@ -66,6 +66,8 @@ extern PT_NODE *mq_lambda (PARSER_CONTEXT * parser, PT_NODE * tree_with_names, P
 
 extern bool mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec);
 
+extern bool pt_has_non_deterministic_expr (PARSER_CONTEXT * parser, PT_NODE * term);
+
 extern bool mq_is_updatable (DB_OBJECT * vclass_object);
 extern bool mq_is_updatable_strict (DB_OBJECT * vclass_object);
 

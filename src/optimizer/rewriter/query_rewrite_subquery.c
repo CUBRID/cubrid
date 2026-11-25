@@ -1058,6 +1058,12 @@ qo_get_eq_term_column (PARSER_CONTEXT * parser, PT_NODE * cnf, PT_NODE * spec)
       return NULL;
     }
 
+  /* nor give another value on each evaluation, such as random (): two rows of the spec could then each match */
+  if (pt_has_non_deterministic_expr (parser, other))
+    {
+      return NULL;
+    }
+
   return mine;
 }
 

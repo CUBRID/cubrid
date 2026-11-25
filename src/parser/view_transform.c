@@ -257,7 +257,6 @@ static PT_NODE *mq_class_meth_corr_subq_pre (PARSER_CONTEXT * parser, PT_NODE * 
 					     int *continue_walk);
 static bool mq_has_class_methods_corr_subqueries (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-static bool pt_has_non_deterministic_expr (PARSER_CONTEXT * parser, PT_NODE * term);
 static PT_NODE *mq_check_partition_key_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *mq_find_spec_ref_or_coll_modifier_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						       int *continue_walk);
@@ -4042,7 +4041,7 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
  *   parser(in):
  *   term(in):
  */
-static bool
+bool
 pt_has_non_deterministic_expr (PARSER_CONTEXT * parser, PT_NODE * term)
 {
   CHECK_PUSHABLE_INFO cpi;
