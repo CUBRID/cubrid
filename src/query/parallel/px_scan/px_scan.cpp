@@ -1850,7 +1850,7 @@ namespace parallel_scan
     if (unlikely (!m_task_started))
       {
 	/* an uncorrelated list subquery of an IN or NOT IN term: execute it and build its hash here, so the workers
-	 * share both (hash_lookup_share) in place of executing it and building a hash each */
+	 * share both (hash_lookup_bind_clone) in place of executing it and building a hash each */
 	for (XASL_NODE *xptr = m_xasl; xptr != nullptr; xptr = xptr->scan_ptr)
 	  {
 	    for (XASL_NODE *subq = xptr->aptr_list; subq != nullptr; subq = subq->next)

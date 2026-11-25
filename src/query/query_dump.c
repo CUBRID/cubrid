@@ -41,14 +41,12 @@
 #include "xasl_predicate.hpp"
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "expr_compile.h"
+#include "query_hash_lookup.hpp"
 #include "query_opfunc.h"
 #endif
 #include "subquery_cache.h"
 #include "query_hash_join.h"
 #include "memoize.hpp"
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#include "query_hash_lookup.hpp"
-#endif /* SERVER_MODE || SA_MODE */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -2901,6 +2899,13 @@ qdump_print_xasl (xasl_node * xasl_p)
 	{
 	  XASL_CLEAR_FLAG (xasl_p, XASL_OUTPUT_READS_SCAN);
 	  fprintf (foutput, "%sXASL_OUTPUT_READS_SCAN", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
+      if (XASL_IS_FLAGED (xasl_p, XASL_NO_HASH_LOOKUP))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NO_HASH_LOOKUP);
+	  fprintf (foutput, "%sXASL_NO_HASH_LOOKUP", (nflag ? "|" : ""));
 	  nflag++;
 	}
 

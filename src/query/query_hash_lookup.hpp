@@ -47,16 +47,6 @@ struct hash_lookup_stats
   int method;			/* the tables' HASH_METHOD (query_hash_scan.h) */
 };
 
-extern const HASH_LOOKUP_STATS *hash_lookup_get_stats (const HASH_LOOKUP *hash);
-extern void hash_lookup_merge_stats (xasl_node *dst, const xasl_node *src);
-
-/* the hash's lifetime: a lookup creates it (hash_lookup_get), the subquery's XASL frees it */
-extern void hash_lookup_destroy (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
-extern void hash_lookup_release_tree (THREAD_ENTRY *thread_p, xasl_node *xasl);
-
-/* a PX scan worker's clone of the subquery: the leader's table */
-extern int hash_lookup_share (THREAD_ENTRY *thread_p, xasl_node *subquery, const xasl_node *leader);
-
 /* each lookup: the hash, built by the first lookup of the list */
 extern int hash_lookup_get (THREAD_ENTRY *thread_p, xasl_node *subquery, qfile_list_id *list_id,
 			    const DOMAIN_COMPARE *compare, HASH_LOOKUP **hash);
@@ -66,5 +56,16 @@ extern bool hash_lookup_start (HASH_LOOKUP *hash, const DB_VALUE *item);
 extern bool hash_lookup_has_null (const HASH_LOOKUP *hash);
 extern SCAN_CODE hash_lookup_next (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash, DB_VALUE **value);
 extern void hash_lookup_end (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
+
+/* a PX scan worker's clone of the subquery: the leader's table, lent and given back */
+extern int hash_lookup_bind_clone (THREAD_ENTRY *thread_p, xasl_node *clone, const xasl_node *orig);
+extern void hash_lookup_unbind_clone (xasl_node *clone);
+
+/* the hash's lifetime: a lookup creates it (hash_lookup_get), the subquery's XASL frees it */
+extern void hash_lookup_release (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
+extern void hash_lookup_destroy (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
+
+extern const HASH_LOOKUP_STATS *hash_lookup_get_stats (const HASH_LOOKUP *hash);
+extern void hash_lookup_merge_stats (xasl_node *dst, const xasl_node *src);
 
 #endif /* _QUERY_HASH_LOOKUP_HPP_ */

@@ -89,9 +89,9 @@
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
 #include "query_hash_join.h"
+#include "query_hash_lookup.hpp"
 #include "memoize.hpp"
 #include "memory_private_allocator.hpp"
-#include "query_hash_lookup.hpp"
 #include "ftab_set.hpp"
 
 #if SERVER_MODE && !WINDOWS
@@ -3369,6 +3369,12 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
        * (qexec_execute_mainblock ()), in its private heap: released here, as qexec_clear_xasl () does */
       hjoin_rtf_release (thread_p, xasl);
       hjoin_prehash_release (thread_p, &xasl->proc.hashjoin.prehash);
+    }
+  if (xasl->hash_lookup != NULL)
+    {
+      /* before qexec_clear_xasl_head () clears the list the hash is over, as qexec_clear_xasl () does. The hash stays
+       * with its stats for the trace, and qexec_clear_xasl () frees it */
+      hash_lookup_release (thread_p, xasl->hash_lookup);
     }
   qexec_clear_xasl_head (thread_p, xasl);
 
@@ -8377,10 +8383,8 @@ qexec_gby_aggs_follow_row_order (AGGREGATE_TYPE * agg_list)
  * qexec_gby_merge_part_of ()), and where the group order does not reach the result it writes them out without the
  * sort that brings equal keys together.  A JSON key hashes its text while its comparison takes a scalar's value
  * (true as 'true', -0.0 as 0.0: mr_cmpval_json ()); a string of a collation with expansions hashes the weights its
- * comparison skips when its codeset is not the collation's ('cafe' and 'café' of an accent-insensitive one:
- * mht_get_hash_number (), lang_mht2str_utf8_exp ()), and a key's domain does not tell its values' codeset; and keys
- * without compiled comparisons compare by their values' own types: those keys, and every key of a collation with
- * expansions, keep the sort, as in develop.
+ * comparison skips ('cafe' and 'café' of an accent-insensitive one: lang_mht2str_utf8_exp ()); and keys without
+ * compiled comparisons compare by their values' own types: those keys keep the sort, as in develop.
  */
 static bool
 qexec_gby_keys_hash_as_compared (const BUILDLIST_PROC_NODE * proc)

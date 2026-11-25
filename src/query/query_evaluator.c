@@ -77,6 +77,7 @@ static DB_LOGICAL eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SE
 static int eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
 static DB_LOGICAL eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
 				       REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd);
+static bool eval_is_hash_candidate (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id);
 static DB_LOGICAL eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
 					 REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd,
 					 XASL_NODE * subquery);
@@ -966,7 +967,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
     {
       return V_ERROR;
     }
-  /* PX scan workers read the leader's list too (hash_lookup_share): read latches, as PX list scans take */
+  /* PX scan workers read the leader's list too (hash_lookup_bind_clone): read latches, as PX list scans take */
   s_id.is_read_only = true;
 
   pr_type = list_id->type_list.domp[0]->type;
@@ -1012,23 +1013,22 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 }
 
 /*
- * eval_is_hash_candidate () - the subquery's list may get a hash for its R_EQ lookups; hash_lookup_comparable then
- *			       checks the comparison's types and collation. A correlated subquery executes again for
- *			       each outer row, so its list is seldom looked up twice, and NO_HASH_LOOKUP turns the hash
- *			       off. A PX hash join worker evaluates no term with a subquery (plan_generation.c keeps it
- *			       out of the join's predicates)
+ * eval_is_hash_candidate () - the subquery's list may get a hash for its R_EQ lookups (hash_lookup_get decides by the
+ *			       comparison). A correlated subquery executes again for each outer row, so its list is
+ *			       seldom looked up twice. A PX hash join worker evaluates no term with a subquery
+ *			       (plan_generation.c keeps it out of the join's predicates).
  */
 static bool
 eval_is_hash_candidate (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id)
 {
-  return subquery != NULL && XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL)
-    && !XASL_IS_FLAGED (subquery, XASL_NO_HASH_LOOKUP) && list_id->type_list.type_cnt == 1;
+  return XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL) && !XASL_IS_FLAGED (subquery, XASL_NO_HASH_LOOKUP)
+    && list_id->type_list.type_cnt == 1;
 }
 
 /*
  * eval_hash_lookup_prepare () - executes an uncorrelated list subquery an IN or NOT IN term looks up, and builds its
  *				 hash, before the scans that look it up open: a PX scan's workers then share both
- *				 (hash_lookup_share) in place of executing the subquery and building a hash each
+ *				 (hash_lookup_bind_clone) in place of executing the subquery and building a hash each
  *   return: error code
  *   subquery(in): the subquery; hash_lookup_term is its term
  *   vd(in): the value descriptor of the main block that evaluates the term
@@ -1055,7 +1055,7 @@ eval_hash_lookup_prepare (THREAD_ENTRY * thread_p, XASL_NODE * subquery, val_des
   if (CHECK_REGU_VARIABLE_XASL_STATUS (et_alsm->elemset) != XASL_SUCCESS)
     {
       assert_release_error (er_errid () != NO_ERROR);
-      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+      return er_errid ();
     }
   list_id = et_alsm->elemset->value.srlist_id->list_id;
   if (list_id->tuple_cnt == 0 || !eval_is_hash_candidate (subquery, list_id))
@@ -1063,6 +1063,7 @@ eval_hash_lookup_prepare (THREAD_ENTRY * thread_p, XASL_NODE * subquery, val_des
       return NO_ERROR;
     }
   eval_resolved_elements (et_alsm, &elements);
+  /* the hash is the subquery's: the lookups get it themselves */
   return hash_lookup_get (thread_p, subquery, list_id, elements.all, &hash);
 }
 
@@ -1128,6 +1129,7 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
  *   rel_operator(in): relational comparison operator
  *   compare(in): the comparison of the item with the list's column resolved for this execution
  *   vd(in): value descriptor of the term's execution
+ *   subquery(in): the subquery whose list list_id is (eval_some_list_lookup)
  *
  * Note: This routine tries to determine whether a specific relation
  *              as determined by the relational operator rel_operator holds between

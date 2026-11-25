@@ -2240,6 +2240,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   /* initialize query_in_progress flag */
   xasl->query_in_progress = false;
+
   /* before the children: a term the node's unpack reaches registers itself here (stx_build_alsm_eval_term) */
   xasl->hash_lookup = NULL;
   xasl->hash_lookup_term = NULL;
@@ -5847,7 +5848,7 @@ stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * a
       else
 	{
 	  /* a second term reads the list (or NO_HASH_LOOKUP is set already): a PX scan worker would read the
-	   * leader's list through one term only (hash_lookup_share), so the terms read the list as they did before
+	   * leader's list through one term only (hash_lookup_bind_clone), so the terms read the list as they did before
 	   * the hash */
 	  subquery->hash_lookup_term = NULL;
 	  XASL_SET_FLAG (subquery, XASL_NO_HASH_LOOKUP);

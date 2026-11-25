@@ -38,9 +38,9 @@
 #include "object_primitive.h"
 #include "query_aggregate.hpp"
 #include "query_hash_join.h"
+#include "query_hash_lookup.hpp"
 #include "query_opfunc.h"
 #include "scope_exit.hpp"
-#include "query_hash_lookup.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -128,20 +128,17 @@ namespace parallel_scan
 	m_xasl->rtf_applied = true;
       }
 
+    err_code = bind_lookup_lists (thread_ref);
+    if (err_code != NO_ERROR)
+      {
+	return err_code;
+      }
+
     /* inject precomputed scalar values into the clone so predicate eval reads them instead of re-executing per worker; precomp_owner_regu aliases the clone's predicate operand (serialization preserves source-pointer aliasing); aptr_list only (correlated dptr_list never injected); one back-pointer serves all operands (same single_tuple->valp->val slot) via slot write + status=XASL_SUCCESS. */
     for (xasl_node *cnode = m_xasl; cnode != nullptr; cnode = cnode->scan_ptr)
       {
 	for (xasl_node *clone_subq = cnode->aptr_list; clone_subq != nullptr; clone_subq = clone_subq->next)
 	  {
-	    if (clone_subq->hash_lookup_term != nullptr)
-	      {
-		err_code = share_lookup_list (thread_ref, clone_subq);
-		if (err_code != NO_ERROR)
-		  {
-		    return err_code;
-		  }
-		continue;
-	      }
 	    REGU_VARIABLE *regu = clone_subq->precomp_owner_regu;
 	    if (regu == nullptr)
 	      {
@@ -677,8 +674,7 @@ namespace parallel_scan
     if (m_xasl != nullptr)
       {
 	hjoin_rtf_unbind_clone (m_xasl, m_orig_xasl);
-	/* before the clear: it would destroy the leader's lists */
-	return_lookup_lists ();
+	unbind_lookup_lists ();
       }
     if (!m_uses_xasl_clone)
       {
@@ -747,54 +743,6 @@ namespace parallel_scan
     m_scan_fixes.ioreads += now.ioreads - since.ioreads;
     m_scan_fixes.fetch_time += now.fetch_time - since.fetch_time;
     scan_add_oos_read_stats (&m_scan_fixes.oos_reads, &since.oos_reads, &now.oos_reads);
-  }
-
-  /* the clone's subquery reads the leader's list through the leader's hash (eval_hash_lookup_prepare) in place of
-   * executing the subquery and building a hash itself; the clone keeps its own list for return_lookup_lists */
-  template <RESULT_TYPE result_type, SCAN_TYPE ST>
-  int task<result_type, ST>::share_lookup_list (cubthread::entry &thread_ref, xasl_node *clone_subq)
-  {
-    xasl_node *leader = m_pre_execution_info->find_lookup_list (clone_subq->header.id);
-    QFILE_SORTED_LIST_ID *srlist_id = clone_subq->hash_lookup_term->elemset->value.srlist_id;
-
-    /* the term reads the subquery's own list (pt_make_regu_subquery), which return_lookup_lists gives back */
-    assert (srlist_id->list_id == clone_subq->list_id);
-    if (leader == nullptr)
-      {
-	/* the clone executes the subquery as the term reads it */
-	return NO_ERROR;
-      }
-    int err_code = hash_lookup_share (&thread_ref, clone_subq, leader);
-    if (err_code != NO_ERROR)
-      {
-	return err_code;
-      }
-    srlist_id->list_id = leader->list_id;
-    /* mark executed so EXECUTE_REGU_VARIABLE_XASL's status guard skips re-execution. */
-    clone_subq->status = XASL_SUCCESS;
-    return NO_ERROR;
-  }
-
-  /* the terms read the clone's own lists again: the clone goes back to the XASL cache, and its clear destroys them */
-  template <RESULT_TYPE result_type, SCAN_TYPE ST>
-  void task<result_type, ST>::return_lookup_lists ()
-  {
-    for (xasl_node *cnode = m_xasl; cnode != nullptr; cnode = cnode->scan_ptr)
-      {
-	for (xasl_node *clone_subq = cnode->aptr_list; clone_subq != nullptr; clone_subq = clone_subq->next)
-	  {
-	    xasl_node *leader = m_pre_execution_info->find_lookup_list (clone_subq->header.id);
-	    if (clone_subq->hash_lookup_term == nullptr || leader == nullptr)
-	      {
-		continue;
-	      }
-	    QFILE_SORTED_LIST_ID *srlist_id = clone_subq->hash_lookup_term->elemset->value.srlist_id;
-	    if (srlist_id->list_id == leader->list_id)
-	      {
-		srlist_id->list_id = clone_subq->list_id;
-	      }
-	  }
-      }
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
@@ -869,6 +817,66 @@ namespace parallel_scan
       }
     m_vd = &m_xasl_state->vd;
     return NO_ERROR;
+  }
+
+  /* the clone's list subqueries of IN or NOT IN terms read the leader's lists through the leader's hashes
+   * (eval_hash_lookup_prepare) in place of executing the subqueries and building hashes themselves */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  int task<result_type, ST>::bind_lookup_lists (cubthread::entry &thread_ref)
+  {
+    for (xasl_node *cnode = m_xasl; cnode != nullptr; cnode = cnode->scan_ptr)
+      {
+	for (xasl_node *clone_subq = cnode->aptr_list; clone_subq != nullptr; clone_subq = clone_subq->next)
+	  {
+	    if (clone_subq->hash_lookup_term == nullptr)
+	      {
+		continue;
+	      }
+	    xasl_node *orig_subq = xasl_find_by_id (m_orig_xasl, clone_subq->header.id);
+	    if (orig_subq == nullptr || orig_subq->status != XASL_SUCCESS)
+	      {
+		/* the leader did not execute it: the clone executes it as the term reads it */
+		continue;
+	      }
+	    QFILE_SORTED_LIST_ID *srlist_id = clone_subq->hash_lookup_term->elemset->value.srlist_id;
+	    /* the term reads the subquery's own list (pt_make_regu_subquery), which unbind_lookup_lists gives back */
+	    assert (srlist_id->list_id == clone_subq->list_id);
+	    int err_code = hash_lookup_bind_clone (&thread_ref, clone_subq, orig_subq);
+	    if (err_code != NO_ERROR)
+	      {
+		return err_code;
+	      }
+	    srlist_id->list_id = orig_subq->list_id;
+	    /* mark executed so EXECUTE_REGU_VARIABLE_XASL's status guard skips re-execution */
+	    clone_subq->status = XASL_SUCCESS;
+	  }
+      }
+    return NO_ERROR;
+  }
+
+  /* the clone's terms read their own lists again and its hashes drop the leader's tables, before the clone goes back
+   * to the XASL cache: a later execution of the clone fills its own lists */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::unbind_lookup_lists ()
+  {
+    for (xasl_node *cnode = m_xasl; cnode != nullptr; cnode = cnode->scan_ptr)
+      {
+	for (xasl_node *clone_subq = cnode->aptr_list; clone_subq != nullptr; clone_subq = clone_subq->next)
+	  {
+	    if (clone_subq->hash_lookup_term == nullptr)
+	      {
+		continue;
+	      }
+	    QFILE_SORTED_LIST_ID *srlist_id = clone_subq->hash_lookup_term->elemset->value.srlist_id;
+	    if (srlist_id->list_id == clone_subq->list_id)
+	      {
+		/* not bound */
+		continue;
+	      }
+	    hash_lookup_unbind_clone (clone_subq);
+	    srlist_id->list_id = clone_subq->list_id;
+	  }
+      }
   }
 
   /* Shared OID-drain helper: leaf-path + late-joiner. Returns S_END on completion, S_ERROR with stop=true on terminal failure. */
