@@ -180,8 +180,9 @@ static int boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID
 
 static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION delete_action);
 static VOLID boot_get_temp_volid_from_name (const char *file_name, const char *db_name);
+static VOLID boot_get_temp_volid_left_by_crash (const char *temp_path, const char *db_name);
 static void boot_remove_temp_volume_file (THREAD_ENTRY * thread_p, const char *temp_path, const char *db_name,
-					  VOLID volid);
+					  VOLID volid, INT64 db_creation, VOLID crash_left_volid);
 static int boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_addmore_vols);
 static int boot_find_rest_volumes (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args, VOLID volid,
 				   int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel, void *args),
@@ -1050,32 +1051,82 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
 }
 
 /*
- * boot_remove_temp_volume_file () - remove the file of a temporary volume if it exists and is not a permanent volume
+ * boot_get_temp_volid_left_by_crash () - get the lowest volume identifier from which a temporary volume file without
+ *                                        a header is taken as one left by this database
+ *
+ * return : volume identifier; LOG_MAX_DBVOLID + 1 if there is no such file
+ *
+ *   temp_path(in): directory of temporary volumes
+ *   db_name(in): database name
+ *
+ * Note: Temporary volumes are given identifiers from LOG_MAX_DBVOLID down. The volumes boot_Db_parm knows start at
+ *       temp_last_volid, and the volumes added after boot_Db_parm reached the disk follow right below it, while a
+ *       volume being formatted when the server crashed may have no header. Only these names are the ones the server
+ *       removed without reading the header before CBRD-26086.
+ */
+static VOLID
+boot_get_temp_volid_left_by_crash (const char *temp_path, const char *db_name)
+{
+  char temp_vol_fullname[PATH_MAX];
+  VOLID volid;
+
+  volid = (boot_Db_parm->temp_last_volid == NULL_VOLID) ? LOG_MAX_DBVOLID + 1 : boot_Db_parm->temp_last_volid;
+  while (volid - 1 > boot_Db_parm->last_volid)
+    {
+      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, db_name, volid - 1);
+      if (!fileio_is_volume_exist (temp_vol_fullname))
+	{
+	  break;
+	}
+      volid--;
+    }
+
+  return volid;
+}
+
+/*
+ * boot_remove_temp_volume_file () - remove the file of a temporary volume if it is one of this database
  *
  *   temp_path(in): directory of temporary volumes
  *   db_name(in): database name
  *   volid(in): temporary volume identifier
+ *   db_creation(in): creation time of this database
+ *   crash_left_volid(in): lowest identifier from which a file without a header is removed
+ *                         (boot_get_temp_volid_left_by_crash)
+ *
+ * Note: A file is removed if its header is a temporary volume header of this database. A file without a header is
+ *       removed only from crash_left_volid up: elsewhere it may be a volume of another database named like a
+ *       temporary volume of this database (e.g. the primary volume of "createdb demo_t100" next to "demo") that is
+ *       being formatted, since a volume gets its header after it is formatted and the format takes no file lock.
  */
 static void
-boot_remove_temp_volume_file (THREAD_ENTRY * thread_p, const char *temp_path, const char *db_name, VOLID volid)
+boot_remove_temp_volume_file (THREAD_ENTRY * thread_p, const char *temp_path, const char *db_name, VOLID volid,
+			      INT64 db_creation, VOLID crash_left_volid)
 {
   char temp_vol_fullname[PATH_MAX];
   struct stat stat_buffer;
   bool is_permanent;
+  bool is_own_temporary;
 
   fileio_make_volume_temp_name (temp_vol_fullname, temp_path, db_name, volid);
-  if (stat (temp_vol_fullname, &stat_buffer) != 0 || !S_ISREG (stat_buffer.st_mode))
+  if (lstat (temp_vol_fullname, &stat_buffer) != 0 || !S_ISREG (stat_buffer.st_mode))
     {
       return;
     }
-  if (disk_is_permanent_volume_file (thread_p, temp_vol_fullname, &is_permanent) != NO_ERROR)
+  if (disk_read_volume_file_type (thread_p, temp_vol_fullname, db_creation, &is_permanent, &is_own_temporary) !=
+      NO_ERROR)
     {
-      /* the type is unknown or another process holds the file; leave it (the reason is logged) */
+      /* the file cannot be checked safely; leave it (the reason is logged) */
       return;
     }
   if (is_permanent)
     {
       /* a permanent volume named like a temporary volume (addvoldb -n, or another database) */
+      return;
+    }
+  if (!is_own_temporary && volid < crash_left_volid)
+    {
+      /* not shown to be a temporary volume of this database; it may be another database's volume being formatted */
       return;
     }
 
@@ -1096,10 +1147,10 @@ boot_remove_temp_volume_file (THREAD_ENTRY * thread_p, const char *temp_path, co
  * Note: A temporary volume is added and removed without logging, and boot_Db_parm counts them only in memory; the
  *       count reaches the disk only along with other changes of boot_Db_parm. So after a crash the count on disk
  *       does not tell which temporary volumes exist. Every file in the temporary volume directory that is named as
- *       a temporary volume of this database is removed, except a permanent volume that was given such a name, a file
- *       whose type cannot be told (it cannot be opened or read, or another process locks it) and a file that is not
- *       a regular file. If the directory cannot be listed, every name a temporary volume can have is looked up
- *       instead.
+ *       a temporary volume of this database is checked, and it is removed if its header shows a temporary volume of
+ *       this database, or if it has no header and its name follows the temporary volumes boot_Db_parm knows
+ *       (boot_remove_temp_volume_file). If the directory cannot be listed, every name a temporary volume can have is
+ *       looked up instead.
  *       At restart, a volume beyond the temporary volumes known by boot_Db_parm is notified as unknown.
  */
 static void
@@ -1111,6 +1162,9 @@ boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
   DIR *dir_p;
   struct dirent *entry;
   VOLID volid;
+  VOLID crash_left_volid;
+  INT64 db_creation;
+  LOG_LSA chkpt_lsa;
 
   temp_path = prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
   if (temp_path == NULL || temp_path[0] == '\0')
@@ -1118,6 +1172,11 @@ boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
       temp_path = fileio_get_directory_path (dir_buf, boot_Db_full_name);
     }
   db_name = fileio_get_base_file_name (boot_Db_full_name);
+
+  /* a temporary volume header has the creation time of its database (disk_format) */
+  (void) log_get_db_start_parameters (&db_creation, &chkpt_lsa);
+  /* found before any file is removed, since removing breaks the run of names it looks for */
+  crash_left_volid = boot_get_temp_volid_left_by_crash (temp_path, db_name);
 
   /* a database in the root directory has an empty directory path */
   dir_p = opendir (temp_path[0] != '\0' ? temp_path : "/");
@@ -1135,7 +1194,7 @@ boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
 			   temp_path[0] != '\0' ? temp_path : "/");
       for (volid = LOG_MAX_DBVOLID; volid > boot_Db_parm->last_volid; volid--)
 	{
-	  boot_remove_temp_volume_file (thread_p, temp_path, db_name, volid);
+	  boot_remove_temp_volume_file (thread_p, temp_path, db_name, volid, db_creation, crash_left_volid);
 	}
       return;
     }
@@ -1151,7 +1210,7 @@ boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
       volid = boot_get_temp_volid_from_name (entry->d_name, db_name);
       if (volid != NULL_VOLID)
 	{
-	  boot_remove_temp_volume_file (thread_p, temp_path, db_name, volid);
+	  boot_remove_temp_volume_file (thread_p, temp_path, db_name, volid, db_creation, crash_left_volid);
 	}
     }
 
@@ -1162,7 +1221,7 @@ boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
 			   temp_path[0] != '\0' ? temp_path : "/");
       for (volid = LOG_MAX_DBVOLID; volid > boot_Db_parm->last_volid; volid--)
 	{
-	  boot_remove_temp_volume_file (thread_p, temp_path, db_name, volid);
+	  boot_remove_temp_volume_file (thread_p, temp_path, db_name, volid, db_creation, crash_left_volid);
 	}
     }
 
