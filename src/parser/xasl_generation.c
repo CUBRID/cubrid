@@ -194,6 +194,7 @@ static PRED_EXPR *pt_make_pred_term_like (const REGU_VARIABLE * arg1, const REGU
 static PRED_EXPR *pt_make_pred_term_rlike (REGU_VARIABLE * arg1, REGU_VARIABLE * arg2, REGU_VARIABLE * case_sensitive);
 static PRED_EXPR *pt_make_pred_term_is (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, const BOOL_OP bop);
 static PRED_EXPR *pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *argp);
+static PRED_EXPR *pt_to_pred_expr_factor_dnf (PARSER_CONTEXT * parser, PT_NODE * factor, int *argp);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int hhhhmmss (const DB_TIME * time, char *buf, int buflen);
@@ -381,11 +382,25 @@ typedef struct corr_info
   UINTPTR id;
 } CORR_INFO;
 
+typedef struct pt_collected_class_oids PT_COLLECTED_CLASS_OIDS;
+struct pt_collected_class_oids
+{
+  OID *subinsert_class_oids;
+  int num_subinsert_class_oids;
+  OID *click_counter_class_oids;
+  int num_click_counter_class_oids;
+};
+
 FILE *query_Plan_dump_fp = NULL;
 char *query_Plan_dump_filename = NULL;
 bool query_Plan_dump_fp_open = false;
 
 static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, 0 };
+
+static OID *pt_Subinsert_class_oids = NULL;
+static int pt_Num_subinsert_class_oids = 0;
+static OID *pt_Click_counter_class_oids = NULL;
+static int pt_Num_click_counter_class_oids = 0;
 
 static const int OID_LIST_GROWTH = 10;
 
@@ -477,6 +492,17 @@ static XASL_NODE *pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 static XASL_NODE *pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * query_list);
 static bool pt_xasl_spec_has_dblink (XASL_NODE * xasl);
+static int pt_append_class_oids (OID ** oid_list, int *n_oid_list, const OID * class_oids, int count);
+static bool pt_oid_array_contains (const OID * oid_list, int n_oid_list, const OID * oid);
+static void pt_reset_subinsert_class_oids (void);
+static void pt_push_collected_class_oids (PT_COLLECTED_CLASS_OIDS * outer);
+static void pt_pop_collected_class_oids (const PT_COLLECTED_CLASS_OIDS * outer);
+static int pt_add_subinsert_class_oids (const OID * class_oids, int count);
+static PT_NODE *pt_add_spec_read_class_oids (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static int pt_add_read_class_oids (PARSER_CONTEXT * parser, PT_NODE * statement, XASL_NODE * xasl);
+static int pt_move_subinsert_class_oids (XASL_NODE * xasl);
+static int pt_add_click_counter_class_oids (XASL_NODE * top_xasl, XASL_NODE * xasl);
+static int pt_add_for_update_class_oids (XASL_NODE * xasl, PT_NODE * select);
 static PT_NODE *parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, OID ** oid_listp,
 					   int **lock_listp, int **tcard_listp, int *nump, int *sizep,
@@ -2171,7 +2197,15 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	  if (arg1 && arg2)
 	    {
 	      arg1->type_enum = PT_TYPE_INTEGER;
-	      if (node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i != 0)
+	      data_type = DB_TYPE_INTEGER;
+	      if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_NULL)
+		{
+		  /* a predicate folded to NULL, as one an equality substitution made constant under IS, NOT, XOR or
+		   * CAST: NULL = 1 is UNKNOWN there, where 0 = 1 (FALSE) is not the same as at the top of a filter */
+		  arg1->type_enum = PT_TYPE_NULL;
+		  data_type = DB_TYPE_NULL;
+		}
+	      else if (node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i != 0)
 		{
 		  arg1->info.value.data_value.i = 1;
 		}
@@ -2181,7 +2215,6 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		}
 	      arg2->type_enum = PT_TYPE_INTEGER;
 	      arg2->info.value.data_value.i = 1;
-	      data_type = DB_TYPE_INTEGER;
 
 	      regu_var1 = pt_to_regu_variable (parser, arg1, UNBOX_AS_VALUE);
 	      regu_var2 = pt_to_regu_variable (parser, arg2, UNBOX_AS_VALUE);
@@ -2247,7 +2280,25 @@ pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *arg
 	}
 
 
-      dnf_pred = NULL;
+      dnf_pred = pt_to_pred_expr_factor_dnf (parser, cnf_node, argp);
+      if (dnf_pred != NULL)
+	{
+	  /* set information for inst_num() scan type, as for the OR of the factor below */
+	  *argp |= PT_PRED_ARG_INSTNUM_CONTINUE;
+	  *argp |= PT_PRED_ARG_GRBYNUM_CONTINUE;
+	  *argp |= PT_PRED_ARG_ORDBYNUM_CONTINUE;
+	  parser_walk_tree (parser, cnf_node, NULL, NULL, pt_numbering_set_continue_post, argp);
+	  cnf_pred = (cnf_pred) ? pt_make_pred_expr_pred (dnf_pred, cnf_pred, B_AND) : dnf_pred;
+	  if (cnf_pred == NULL)
+	    {
+	      goto error;
+	    }
+	  continue;
+	}
+      if (pt_has_error (parser))
+	{
+	  goto error;
+	}
 
       num_dnf = 0;
       for (dnf_node = cnf_node; dnf_node; dnf_node = dnf_node->or_next)
@@ -2296,6 +2347,462 @@ pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *arg
 error:
   PT_INTERNAL_ERROR (parser, "predicate");
   return NULL;
+}
+
+/* the disjunctive normal form pt_to_pred_expr_factor_dnf () builds a factor in, as an array of disjuncts */
+#define PT_FACTOR_DNF_MAX_DISJUNCTS PRED_OR_RAW_MAX_DISJUNCTS
+#define PT_FACTOR_DNF_MAX_CONJUNCTS PRED_OR_RAW_MAX_LEAVES
+typedef struct pt_factor_dnf_term PT_FACTOR_DNF_TERM;
+struct pt_factor_dnf_term
+{
+  int n;
+  PT_NODE *leaf[PT_FACTOR_DNF_MAX_CONJUNCTS];
+};
+
+/* bookkeeping for pt_factor_dnf_is_unsafe () */
+typedef struct pt_factor_dnf_check PT_FACTOR_DNF_CHECK;
+struct pt_factor_dnf_check
+{
+  UINTPTR spec_id;		/* the spec the columns of the factor belong to, 0 before the first */
+  bool unsafe;
+};
+
+/*
+ * pt_factor_dnf_is_unsafe () - a predicate that must not be evaluated more often than written, or that reads the
+ *				columns of a second spec
+ */
+static PT_NODE *
+pt_factor_dnf_is_unsafe (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_FACTOR_DNF_CHECK *check = (PT_FACTOR_DNF_CHECK *) arg;
+  bool *unsafe = &check->unsafe;
+
+  if (PT_IS_QUERY (node) || node->node_type == PT_METHOD_CALL)
+    {
+      *unsafe = true;
+    }
+  else if (node->node_type == PT_NAME && node->info.name.meta_class != PT_PARAMETER)
+    {
+      /* the page path the form is for reads the columns of the scanned spec against constants; a factor that
+       * also reads a bound outer spec, as a nested-loop inner or a correlated subquery does, keeps its form */
+      if (check->spec_id == 0)
+	{
+	  check->spec_id = node->info.name.spec_id;
+	}
+      else if (check->spec_id != node->info.name.spec_id)
+	{
+	  *unsafe = true;
+	}
+    }
+  else if (node->node_type == PT_EXPR)
+    {
+      switch (node->info.expr.op)
+	{
+	case PT_RAND:
+	case PT_RANDOM:
+	case PT_DRAND:
+	case PT_DRANDOM:
+	case PT_SYS_GUID:
+	case PT_CURRENT_VALUE:
+	case PT_NEXT_VALUE:
+	case PT_INST_NUM:
+	case PT_ROWNUM:
+	case PT_ORDERBY_NUM:
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	  *unsafe = true;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  if (*unsafe)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_factor_dnf_operand_is_raw () - a constant a column of the type compares with without converting the column
+ */
+static bool
+pt_factor_dnf_operand_is_raw (PT_NODE * operand, PT_TYPE_ENUM col_type)
+{
+  if (operand == NULL || (operand->node_type != PT_VALUE && operand->node_type != PT_HOST_VAR))
+    {
+      return false;
+    }
+  return ((PT_IS_NUMERIC_TYPE (col_type) && PT_IS_NUMERIC_TYPE (operand->type_enum))
+	  || (PT_IS_CHAR_STRING_TYPE (col_type) && PT_IS_CHAR_STRING_TYPE (operand->type_enum)));
+}
+
+/*
+ * pt_factor_dnf_leaf_is_raw () - a leaf the page path filters by (expr_pred_term_raw_info ()): a column compared with
+ *				  a constant of its kind, or a column in a list of such constants
+ *
+ * Note: such a leaf cannot fail for a row, so evaluating it where the written order would have skipped it -- the
+ *	 guard of (b = 0 or 10 / b > 1) and a = 1 is lost once the OR is distributed -- returns no new error.
+ */
+static bool
+pt_factor_dnf_leaf_is_raw (PT_NODE * leaf)
+{
+  PT_NODE *col, *other, *elem;
+
+  if (leaf == NULL || leaf->node_type != PT_EXPR || leaf->or_next != NULL)
+    {
+      return false;
+    }
+
+  col = leaf->info.expr.arg1;
+  other = leaf->info.expr.arg2;
+  switch (leaf->info.expr.op)
+    {
+    case PT_EQ:
+    case PT_NE:
+    case PT_GT:
+    case PT_GE:
+    case PT_LT:
+    case PT_LE:
+      if (other != NULL && other->node_type == PT_NAME)
+	{
+	  col = leaf->info.expr.arg2;
+	  other = leaf->info.expr.arg1;
+	}
+      return (col != NULL && col->node_type == PT_NAME && col->info.name.meta_class != PT_PARAMETER
+	      && pt_factor_dnf_operand_is_raw (other, col->type_enum));
+
+    case PT_IS_IN:
+      if (col == NULL || col->node_type != PT_NAME || col->info.name.meta_class == PT_PARAMETER || other == NULL)
+	{
+	  return false;
+	}
+      if (other->node_type == PT_VALUE && PT_IS_COLLECTION_TYPE (other->type_enum))
+	{
+	  elem = other->info.value.data_value.set;
+	}
+      else if (other->node_type == PT_FUNCTION && other->info.function.function_type == F_SEQUENCE)
+	{
+	  elem = other->info.function.arg_list;
+	}
+      else
+	{
+	  return false;
+	}
+      for (; elem != NULL; elem = elem->next)
+	{
+	  if (!pt_factor_dnf_operand_is_raw (elem, col->type_enum))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+static int pt_factor_dnf_list (PT_NODE * list, PT_FACTOR_DNF_TERM * out, int max);
+
+/*
+ * pt_factor_dnf_and () - the disjuncts of the conjunction of two disjunctive normal forms
+ *   return: n1 * n2, written to out, or -1 when there would be more than max of them or a disjunct would have more than
+ *	     PT_FACTOR_DNF_MAX_CONJUNCTS conjuncts
+ */
+static int
+pt_factor_dnf_and (const PT_FACTOR_DNF_TERM * lhs, int n1, const PT_FACTOR_DNF_TERM * rhs, int n2,
+		   PT_FACTOR_DNF_TERM * out, int max)
+{
+  int i, j, k;
+
+  if (n1 * n2 > max)
+    {
+      return -1;
+    }
+  for (i = 0; i < n1; i++)
+    {
+      for (j = 0; j < n2; j++)
+	{
+	  if (lhs[i].n + rhs[j].n > PT_FACTOR_DNF_MAX_CONJUNCTS)
+	    {
+	      return -1;
+	    }
+	  k = i * n2 + j;
+	  memcpy (out[k].leaf, lhs[i].leaf, lhs[i].n * sizeof (PT_NODE *));
+	  memcpy (out[k].leaf + lhs[i].n, rhs[j].leaf, rhs[j].n * sizeof (PT_NODE *));
+	  out[k].n = lhs[i].n + rhs[j].n;
+	}
+    }
+  return n1 * n2;
+}
+
+/*
+ * pt_factor_dnf_node () - the disjuncts of the disjunctive normal form of one node, its next and or_next aside
+ *   return: the number of disjuncts written to out, or -1 (pt_factor_dnf_and ())
+ *   node(in): an AND/OR tree, whose operands are read as pt_to_pred_expr () reads them: CNF lists, next for AND and
+ *	       or_next for OR; its leaves are not copied
+ *   out(out): max disjuncts
+ *   max(in):
+ */
+static int
+pt_factor_dnf_node (PT_NODE * node, PT_FACTOR_DNF_TERM * out, int max)
+{
+  PT_FACTOR_DNF_TERM *lhs, *rhs;
+  int n1, n2, n = -1;
+
+  if (max <= 0)
+    {
+      return -1;
+    }
+
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_OR))
+    {
+      n1 = pt_factor_dnf_list (node->info.expr.arg1, out, max);
+      if (n1 < 0)
+	{
+	  return -1;
+	}
+      n2 = pt_factor_dnf_list (node->info.expr.arg2, out + n1, max - n1);
+      return (n2 < 0) ? -1 : n1 + n2;
+    }
+
+  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_AND))
+    {
+      out[0].n = 1;
+      out[0].leaf[0] = node;
+      return 1;
+    }
+
+  lhs = (PT_FACTOR_DNF_TERM *) malloc (2 * PT_FACTOR_DNF_MAX_DISJUNCTS * sizeof (PT_FACTOR_DNF_TERM));
+  if (lhs == NULL)
+    {
+      return -1;
+    }
+  rhs = lhs + PT_FACTOR_DNF_MAX_DISJUNCTS;
+
+  n1 = pt_factor_dnf_list (node->info.expr.arg1, lhs, PT_FACTOR_DNF_MAX_DISJUNCTS);
+  n2 = (n1 < 0) ? -1 : pt_factor_dnf_list (node->info.expr.arg2, rhs, PT_FACTOR_DNF_MAX_DISJUNCTS);
+  if (n2 >= 0)
+    {
+      n = pt_factor_dnf_and (lhs, n1, rhs, n2, out, max);
+    }
+
+  free_and_init (lhs);
+  return n;
+}
+
+/*
+ * pt_factor_dnf_list () - the disjuncts of the disjunctive normal form of a CNF list: an AND over next of ORs over
+ *			   or_next of nodes
+ *   return: the number of disjuncts written to out, or -1 (pt_factor_dnf_and ())
+ *   list(in):
+ *   out(out): max disjuncts
+ *   max(in):
+ */
+static int
+pt_factor_dnf_list (PT_NODE * list, PT_FACTOR_DNF_TERM * out, int max)
+{
+  PT_FACTOR_DNF_TERM *acc, *term;
+  PT_NODE *cnf, *dnf;
+  int n_acc = 0, n_term, n, k;
+
+  if (list == NULL || max <= 0)
+    {
+      return -1;
+    }
+
+  acc = (PT_FACTOR_DNF_TERM *) malloc (2 * PT_FACTOR_DNF_MAX_DISJUNCTS * sizeof (PT_FACTOR_DNF_TERM));
+  if (acc == NULL)
+    {
+      return -1;
+    }
+  term = acc + PT_FACTOR_DNF_MAX_DISJUNCTS;
+
+  for (cnf = list; cnf != NULL; cnf = cnf->next)
+    {
+      /* one element of the AND: the OR of its or_next chain */
+      n_term = 0;
+      for (dnf = cnf; dnf != NULL; dnf = dnf->or_next)
+	{
+	  n = pt_factor_dnf_node (dnf, term + n_term, PT_FACTOR_DNF_MAX_DISJUNCTS - n_term);
+	  if (n < 0)
+	    {
+	      n_acc = -1;
+	      goto end;
+	    }
+	  n_term += n;
+	}
+
+      if (cnf == list)
+	{
+	  memcpy (acc, term, n_term * sizeof (PT_FACTOR_DNF_TERM));
+	  n_acc = n_term;
+	}
+      else
+	{
+	  /* out holds the conjunction while acc and term are both read */
+	  n_acc = pt_factor_dnf_and (acc, n_acc, term, n_term, out, max);
+	  if (n_acc < 0)
+	    {
+	      goto end;
+	    }
+	  memcpy (acc, out, n_acc * sizeof (PT_FACTOR_DNF_TERM));
+	}
+      if (n_acc > max)
+	{
+	  n_acc = -1;
+	  goto end;
+	}
+    }
+
+  for (k = 0; k < n_acc; k++)
+    {
+      out[k] = acc[k];
+    }
+
+end:
+  free_and_init (acc);
+  return n_acc;
+}
+
+static int pt_factor_dnf_top_list (PT_NODE * list);
+
+/*
+ * pt_factor_dnf_top () - the number of disjuncts of a node as written: its ORs, not distributed over its ANDs
+ */
+static int
+pt_factor_dnf_top (PT_NODE * node)
+{
+  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_OR))
+    {
+      return 1;
+    }
+  return pt_factor_dnf_top_list (node->info.expr.arg1) + pt_factor_dnf_top_list (node->info.expr.arg2);
+}
+
+/*
+ * pt_factor_dnf_top_list () - pt_factor_dnf_top () of a CNF list: one disjunct when it is an AND
+ */
+static int
+pt_factor_dnf_top_list (PT_NODE * list)
+{
+  PT_NODE *dnf;
+  int n = 0;
+
+  if (list == NULL || list->next != NULL)
+    {
+      return 1;
+    }
+  for (dnf = list; dnf != NULL; dnf = dnf->or_next)
+    {
+      n += pt_factor_dnf_top (dnf);
+    }
+  return n;
+}
+
+/*
+ * pt_to_pred_expr_factor_dnf () - the predicate of a factor pt_cnf () kept whole, in disjunctive normal form
+ *   return: the predicate, or NULL when the factor is evaluated as it is written
+ *   parser(in):
+ *   factor(in): a CNF term, an OR tree
+ *   argp(in/out):
+ *
+ * Note: a factor (A and B) or C is two levels deep, as is every clause pt_cnf () distributes into, and a scan
+ *	 runs such a filter over a page of rows at once (expr_pred_or_raw_leaves ()).  A disjunct holding a further
+ *	 OR, (A and (B or D)) or C, leaves that path, and the filter is evaluated row by row, several times slower than
+ *	 the clauses it used to be distributed into.  Evaluate (A and B) or (A and D) or C instead: AND distributes
+ *	 over OR in the three-valued logic as well, so the result is the same.  An operand is read as
+ *	 pt_to_pred_expr () reads it, a CNF list: the restrictions qo_extract_or_restrictions () derives hold or_next
+ *	 chains under their ORs.  The form is taken only where the page path takes it: the data filter of a heap
+ *	 scan, not an index scan, a join or a list scan, which evaluate it row by row and would only repeat the
+ *	 common conjuncts; a factor over the columns of one spec; within the bounds of the path
+ *	 (PRED_OR_RAW_MAX_DISJUNCTS, PRED_OR_RAW_MAX_LEAVES); and every leaf a column compared with a constant
+ *	 (pt_factor_dnf_leaf_is_raw ()).  Such a leaf cannot fail, so evaluating it where the order as written would
+ *	 have skipped it, as a disjunct guarding the next one does, returns no error the written factor would not.
+ */
+static PRED_EXPR *
+pt_to_pred_expr_factor_dnf (PARSER_CONTEXT * parser, PT_NODE * factor, int *argp)
+{
+  PT_FACTOR_DNF_TERM *dnf;
+  PRED_EXPR *pred = NULL, *conj, *leaf;
+  PT_NODE *save_next;
+  PT_FACTOR_DNF_CHECK check = { 0, false };
+  int n, top, d, i, leaves;
+
+  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (factor, PT_OR) || factor->or_next != NULL || parser->symbols == NULL
+      || !parser->symbols->heap_scan_filter)
+    {
+      return NULL;
+    }
+
+  save_next = factor->next;
+  factor->next = NULL;
+  (void) parser_walk_tree (parser, factor, pt_factor_dnf_is_unsafe, &check, NULL, NULL);
+  factor->next = save_next;
+  if (check.unsafe)
+    {
+      return NULL;
+    }
+
+  dnf = (PT_FACTOR_DNF_TERM *) malloc (PT_FACTOR_DNF_MAX_DISJUNCTS * sizeof (PT_FACTOR_DNF_TERM));
+  if (dnf == NULL)
+    {
+      return NULL;
+    }
+
+  n = pt_factor_dnf_node (factor, dnf, PT_FACTOR_DNF_MAX_DISJUNCTS);
+  top = (n > 0) ? pt_factor_dnf_top (factor) : 0;
+  if (n <= 0 || n == top)
+    {
+      free_and_init (dnf);
+      return NULL;
+    }
+
+  /* the form is for the page path alone: every leaf one it filters by, and no more of them than it takes */
+  leaves = 0;
+  for (d = 0; d < n; d++)
+    {
+      leaves += dnf[d].n;
+      for (i = 0; i < dnf[d].n; i++)
+	{
+	  if (!pt_factor_dnf_leaf_is_raw (dnf[d].leaf[i]))
+	    {
+	      free_and_init (dnf);
+	      return NULL;
+	    }
+	}
+    }
+  if (leaves > PRED_OR_RAW_MAX_LEAVES)
+    {
+      free_and_init (dnf);
+      return NULL;
+    }
+
+  /* right-linear chains, as pt_to_pred_expr_with_arg () builds them */
+  for (d = n - 1; d >= 0; d--)
+    {
+      conj = NULL;
+      for (i = dnf[d].n - 1; i >= 0; i--)
+	{
+	  leaf = pt_to_pred_expr_local_with_arg (parser, dnf[d].leaf[i], argp);
+	  conj = (conj == NULL) ? leaf : pt_make_pred_expr_pred (leaf, conj, B_AND);
+	  if (leaf == NULL || conj == NULL)
+	    {
+	      free_and_init (dnf);
+	      return NULL;
+	    }
+	}
+      pred = (pred == NULL) ? conj : pt_make_pred_expr_pred (conj, pred, B_OR);
+      if (pred == NULL)
+	{
+	  break;
+	}
+    }
+
+  free_and_init (dnf);
+  return pred;
 }
 
 /*
@@ -3768,6 +4275,7 @@ pt_symbol_info_alloc (void)
       symbols->query_node = NULL;
       symbols->func_idx_cover_list = NULL;
       symbols->func_idx_routed_list = NULL;
+      symbols->heap_scan_filter = false;
     }
 
   return symbols;
@@ -6868,6 +7376,22 @@ pt_note_cte_null_reader (PARSER_CONTEXT * parser, const PT_NODE * spec, int pos,
   pt_Cte_null_readers = reader;
 }
 
+/* CBRD-28066: whether a domain and each of its element domains, nested included, fix the type and the collation of
+ * their values - what the plan's load check asks of them (stx_domain_is_decided) */
+static bool
+pt_domain_is_decided (const TP_DOMAIN * domain)
+{
+  for (; domain != NULL; domain = domain->next)
+    {
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE || domain->collation_flag != TP_DOMAIN_COLL_NORMAL
+	  || !pt_domain_is_decided (domain->setdomain))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
 /* CBRD-27583: a string domain whose collation type checking left to the values (LEAVE), in the collation decided
  * (collation); NULL for a domain that has its collation, or a decided one without */
 static TP_DOMAIN *
@@ -6906,6 +7430,12 @@ pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
       || (TP_DOMAIN_TYPE (producer) == DB_TYPE_NULL && TP_DOMAIN_COLLATION_FLAG (parse_tree) != TP_DOMAIN_COLL_NORMAL)
       || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != DB_TYPE_NULL
 	  && TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree)))
+    {
+      return producer;
+    }
+  /* CBRD-28066: so does a collection whose elements type checking left to the values (pt_add_type_to_set) */
+  if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (parse_tree)) && TP_DOMAIN_TYPE (producer) == TP_DOMAIN_TYPE (parse_tree)
+      && !pt_domain_is_decided (parse_tree) && pt_domain_is_decided (producer))
     {
       return producer;
     }
@@ -8981,6 +9511,7 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   regu->type = TYPE_SP;
+  parser->flag.regu_has_sp_call = 1;
 
   if (node->type_enum != PT_TYPE_NUMERIC)
     {
@@ -9173,6 +9704,135 @@ pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
   return NO_ERROR;
 }
 
+/*
+ * pt_decide_collection_domain () - CBRD-28066: a collection constructor (SET{}, an IN list, = ANY {}, a row value)
+ *   whose element domains type checking left to the values - an ENFORCE cast around a bind, a LEAVE default,
+ *   copied from the elements' data types (pt_add_type_to_set) - lists the domains of its operands instead, which
+ *   XASL generation has decided by now (pt_decide_function_collation and its siblings; a nested constructor is made
+ *   before the one it is an operand of), leaving out one alike an earlier one. A table function (SET, MULTISET or
+ *   LIST of a subquery) takes the values of every output column of its one operand (qdata_convert_table_to_set), so
+ *   its operands are those columns. When an operand is one whose type the value decides - a MAYBE one, as ? or
+ *   - ?, which type checking leaves out of the list - or is undecided, the constructor lists no element domain, so
+ *   that each value is stored with its own: a list without that operand's type stores its value without a domain
+ *   and reads it in another's (SET{?, 1} with 2.5 read the value as an INTEGER). Otherwise a decided domain stays as
+ *   it is.
+ *   return: NO_ERROR, ER_FAILED when a domain cannot be made
+ *   parser(in): parser context
+ *   function(in): the constructor's parse tree node
+ *   regu(in/out): the constructor's regu variable
+ */
+static int
+pt_decide_collection_domain (PARSER_CONTEXT * parser, const PT_NODE * function, REGU_VARIABLE * regu)
+{
+  if (regu == NULL || regu->type != TYPE_FUNC || regu->domain == NULL || regu->value.funcp == NULL
+      || !TP_IS_SET_TYPE (TP_DOMAIN_TYPE (regu->domain)))
+    {
+      return NO_ERROR;
+    }
+
+  const FUNC_CODE code = regu->value.funcp->ftype;
+  const bool table = (code == F_TABLE_SET || code == F_TABLE_MULTISET || code == F_TABLE_SEQUENCE);
+  const XASL_NODE *subquery = NULL;
+  int n_columns = 0;
+  if (table)
+    {
+      const REGU_VARIABLE_LIST op = regu->value.funcp->operand;
+      PT_NODE *query = function != NULL ? function->info.function.arg_list : NULL;
+      subquery = op != NULL && op->next == NULL ? op->value.xasl : NULL;
+      if (subquery == NULL || query == NULL || !PT_IS_QUERY_NODE_TYPE (query->node_type))
+	{
+	  return NO_ERROR;
+	}
+      n_columns = pt_length_of_select_list (pt_get_select_list (parser, query), EXCLUDE_HIDDEN_COLUMNS);
+    }
+
+  const bool was_decided = pt_domain_is_decided (regu->domain);
+  bool undecided = false;
+  if (function != NULL)
+    {
+      const PT_NODE *arg = function->info.function.arg_list;
+      for (arg = table ? pt_get_select_list (parser, (PT_NODE *) arg) : arg; arg != NULL && !undecided; arg = arg->next)
+	{
+	  undecided = (arg->type_enum == PT_TYPE_MAYBE);
+	}
+    }
+  TP_DOMAIN *elements = NULL, *last = NULL;
+  REGU_VARIABLE_LIST op = table ? NULL : regu->value.funcp->operand;
+  for (int pos = 0; !undecided && (table ? pos < n_columns : op != NULL); pos++, op = op != NULL ? op->next : NULL)
+    {
+      const TP_DOMAIN *domain = table ? domain_list_column_of (subquery, pos) : op->value.domain;
+      if (domain == NULL || domain->next != NULL || !pt_domain_is_decided (domain))
+	{
+	  undecided = true;
+	  break;
+	}
+      if (was_decided)
+	{
+	  continue;
+	}
+      const TP_DOMAIN *e = elements;
+      for (; e != NULL && !tp_domain_match (e, domain, TP_EXACT_MATCH); e = e->next)
+	;
+      if (e != NULL)
+	{
+	  continue;
+	}
+      /* a list of its own: a cached domain is shared and must not be linked */
+      TP_DOMAIN *copy = tp_domain_copy (domain, false);
+      if (copy == NULL)
+	{
+	  goto error;
+	}
+      if (last == NULL)
+	{
+	  elements = copy;
+	}
+      else
+	{
+	  last->next = copy;
+	}
+      last = copy;
+    }
+
+  if (undecided)
+    {
+      while (elements != NULL)
+	{
+	  TP_DOMAIN *next = elements->next;
+	  tp_domain_free (elements);
+	  elements = next;
+	}
+      if (regu->domain->setdomain == NULL)
+	{
+	  return NO_ERROR;
+	}
+    }
+  else if (was_decided)
+    {
+      return NO_ERROR;
+    }
+
+  {
+    TP_DOMAIN *decided = tp_domain_construct (TP_DOMAIN_TYPE (regu->domain), NULL, 0, 0, elements);
+    if (decided == NULL)
+      {
+	goto error;
+      }
+    decided->is_desc = regu->domain->is_desc;
+    regu->domain = tp_domain_cache (decided);
+  }
+  return NO_ERROR;
+
+error:
+  while (elements != NULL)
+    {
+      TP_DOMAIN *next = elements->next;
+      tp_domain_free (elements);
+      elements = next;
+    }
+  return ER_FAILED;
+}
+
 static REGU_VARIABLE *
 pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 {
@@ -9313,6 +9973,11 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	    {
 	      return NULL;
 	    }
+	  if (TP_IS_SET_TYPE (result_type) && pt_decide_collection_domain (parser, function, regu) != NO_ERROR)
+	    {
+	      PT_INTERNAL_ERROR (parser, "collection domain");
+	      return NULL;
+	    }
 	  if (DB_TYPE_VOBJ == pt_node_to_db_type (function) && function->info.function.function_type != F_VID)
 	    {
 	      regu = pt_make_vid (parser, function->data_type, regu);
@@ -9387,9 +10052,8 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
       else
 	{
 	  /* CBRD-27583: a list a type checking left variable, or whose collation it left to an enforced or bound one,
-	   * reads as its first column, as a single tuple does */
-	  if (regu->domain != NULL && (TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE
-				       || TP_DOMAIN_COLLATION_FLAG (regu->domain) != TP_DOMAIN_COLL_NORMAL))
+	   * reads as its first column, as a single tuple does; CBRD-28066: so does a collection whose elements it left */
+	  if (regu->domain != NULL && !pt_domain_is_decided (regu->domain))
 	    {
 	      regu->domain = pt_reader_domain (regu->domain, domain_list_column_of (xasl, 0));
 	    }
@@ -9411,6 +10075,276 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 }
 
 /*
+ * pt_append_class_oids () - append classes to an OID array
+ *   return: NO_ERROR or ER_FAILED
+ *   oid_list(in/out): the array
+ *   n_oid_list(in/out): the size of the array
+ *   class_oids(in): the classes
+ *   count(in): the number of class_oids
+ */
+static int
+pt_append_class_oids (OID ** oid_list, int *n_oid_list, const OID * class_oids, int count)
+{
+  OID *oid_list_new;
+
+  if (count <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  oid_list_new = regu_oid_array_alloc (*n_oid_list + count);
+  if (oid_list_new == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (*n_oid_list > 0)
+    {
+      memcpy (oid_list_new, *oid_list, sizeof (OID) * *n_oid_list);
+    }
+  memcpy (oid_list_new + *n_oid_list, class_oids, sizeof (OID) * count);
+
+  *oid_list = oid_list_new;
+  *n_oid_list += count;
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_add_for_update_class_oids () - add the classes a SELECT ... FOR UPDATE locks for write to the classes its XASL
+ *				     writes
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in/out): the XASL of the query
+ *   select(in): the query
+ */
+static int
+pt_add_for_update_class_oids (XASL_NODE * xasl, PT_NODE * select)
+{
+  for (PT_NODE * spec = select->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE) == 0)
+	{
+	  continue;
+	}
+
+      for (PT_NODE * name = spec->info.spec.flat_entity_list; name != NULL; name = name->next)
+	{
+	  if (name->info.name.db_object != NULL
+	      && pt_add_write_class_oids (xasl, WS_OID (name->info.name.db_object), 1) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  xasl->stmt_flags |= XASL_STMT_FOR_UPDATE;
+  return NO_ERROR;
+}
+
+/*
+ * pt_add_write_class_oids () - add classes the statement of an XASL writes without an IX lock on them
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in/out): the XASL of the statement
+ *   class_oids(in): the classes
+ *   count(in): the number of class_oids
+ */
+int
+pt_add_write_class_oids (XASL_NODE * xasl, const OID * class_oids, int count)
+{
+  return pt_append_class_oids (&xasl->write_class_oid_list, &xasl->n_write_oid_list, class_oids, count);
+}
+
+/*
+ * pt_reset_subinsert_class_oids () - forget the classes the nested inserts of the INSERT or MERGE being generated
+ *				       write
+ *   return: none
+ */
+static void
+pt_reset_subinsert_class_oids (void)
+{
+  pt_Subinsert_class_oids = NULL;
+  pt_Num_subinsert_class_oids = 0;
+}
+
+/*
+ * pt_push_collected_class_oids () - set aside the classes collected for the XASL being generated and start empty, for
+ *				      an XASL generated inside it
+ *   return: none
+ *   outer(out): the classes set aside
+ */
+static void
+pt_push_collected_class_oids (PT_COLLECTED_CLASS_OIDS * outer)
+{
+  outer->subinsert_class_oids = pt_Subinsert_class_oids;
+  outer->num_subinsert_class_oids = pt_Num_subinsert_class_oids;
+  outer->click_counter_class_oids = pt_Click_counter_class_oids;
+  outer->num_click_counter_class_oids = pt_Num_click_counter_class_oids;
+  pt_reset_subinsert_class_oids ();
+  pt_Click_counter_class_oids = NULL;
+  pt_Num_click_counter_class_oids = 0;
+}
+
+/*
+ * pt_pop_collected_class_oids () - bring back the classes set aside by pt_push_collected_class_oids ()
+ *   return: none
+ *   outer(in): the classes set aside
+ */
+static void
+pt_pop_collected_class_oids (const PT_COLLECTED_CLASS_OIDS * outer)
+{
+  pt_Subinsert_class_oids = outer->subinsert_class_oids;
+  pt_Num_subinsert_class_oids = outer->num_subinsert_class_oids;
+  pt_Click_counter_class_oids = outer->click_counter_class_oids;
+  pt_Num_click_counter_class_oids = outer->num_click_counter_class_oids;
+}
+
+/*
+ * pt_add_subinsert_class_oids () - note classes a nested insert writes, for the INSERT or MERGE that contains it
+ *   return: NO_ERROR or ER_FAILED
+ *   class_oids(in): the classes
+ *   count(in): the number of classes
+ */
+static int
+pt_add_subinsert_class_oids (const OID * class_oids, int count)
+{
+  return pt_append_class_oids (&pt_Subinsert_class_oids, &pt_Num_subinsert_class_oids, class_oids, count);
+}
+
+/*
+ * pt_move_subinsert_class_oids () - add the classes the nested inserts write to the classes an XASL writes
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in/out): the XASL of the INSERT or MERGE that contains them
+ */
+static int
+pt_move_subinsert_class_oids (XASL_NODE * xasl)
+{
+  int error;
+
+  error = pt_add_write_class_oids (xasl, pt_Subinsert_class_oids, pt_Num_subinsert_class_oids);
+  pt_reset_subinsert_class_oids ();
+
+  return error;
+}
+
+/*
+ * pt_add_click_counter_class_oids () - add the classes the click counters of a query write to the classes its top XASL
+ *					writes, except a partitioned class, which pt_Click_counter_class_oids holds
+ *   return: NO_ERROR or ER_FAILED
+ *   top_xasl(in/out): the top XASL of the query
+ *   xasl(in): the XASL whose click counters are added, the operands of a set operation included
+ */
+static int
+pt_add_click_counter_class_oids (XASL_NODE * top_xasl, XASL_NODE * xasl)
+{
+  int error;
+
+  if (xasl == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  for (SELUPD_LIST * selupd = xasl->selected_upd_list; selupd != NULL; selupd = selupd->next)
+    {
+      if (!OID_ISNULL (&selupd->class_oid))
+	{
+	  error = pt_add_write_class_oids (top_xasl, &selupd->class_oid, 1);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+      top_xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+    }
+
+  if (xasl->type == UNION_PROC || xasl->type == DIFFERENCE_PROC || xasl->type == INTERSECTION_PROC)
+    {
+      error = pt_add_click_counter_class_oids (top_xasl, xasl->proc.union_.left);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      return pt_add_click_counter_class_oids (top_xasl, xasl->proc.union_.right);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_oid_array_contains () - whether an OID array holds an OID
+ *   return: true when it does
+ *   oid_list(in): the array
+ *   n_oid_list(in): the number of OIDs in it
+ *   oid(in): the OID
+ */
+static bool
+pt_oid_array_contains (const OID * oid_list, int n_oid_list, const OID * oid)
+{
+  for (int i = 0; i < n_oid_list; i++)
+    {
+      if (OID_EQ (&oid_list[i], oid))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+static PT_NODE *
+pt_add_spec_read_class_oids (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  XASL_NODE *xasl = (XASL_NODE *) arg;
+
+  if (*continue_walk == PT_STOP_WALK || node->node_type != PT_SPEC)
+    {
+      return node;
+    }
+
+  for (PT_NODE * flat = node->info.spec.flat_entity_list; flat != NULL; flat = flat->next)
+    {
+      OID *oid = ((flat->node_type == PT_NAME && flat->info.name.db_object != NULL)
+		  ? ws_identifier (flat->info.name.db_object) : NULL);
+
+      if (oid == NULL || pt_oid_array_contains (xasl->class_oid_list, xasl->n_oid_list, oid)
+	  || pt_oid_array_contains (xasl->read_class_oid_list, xasl->n_read_oid_list, oid))
+	{
+	  continue;
+	}
+
+      if (pt_append_class_oids (&xasl->read_class_oid_list, &xasl->n_read_oid_list, oid, 1) != NO_ERROR)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_add_read_class_oids () - add classes the statement reads that the class_oid_list of its XASL misses, such as
+ *			       the classes of a path expression or of an ON DUPLICATE KEY UPDATE subquery, when a stored
+ *			       procedure was called in the XASL generated (regu_has_sp_call)
+ *   return: NO_ERROR or ER_FAILED
+ *   parser(in): parser context
+ *   statement(in): the statement
+ *   xasl(in/out): the XASL of the statement
+ */
+static int
+pt_add_read_class_oids (PARSER_CONTEXT * parser, PT_NODE * statement, XASL_NODE * xasl)
+{
+  if (!parser->flag.regu_has_sp_call)
+    {
+      return NO_ERROR;
+    }
+
+  (void) parser_walk_tree (parser, statement, pt_add_spec_read_class_oids, xasl, NULL, NULL);
+
+  return pt_has_error (parser) ? ER_FAILED : NO_ERROR;
+}
+
+/*
  * pt_make_regu_insert () - Creates a regu variable that executes an insert
  *			    statement and stored the OID of inserted object.
  *
@@ -9423,6 +10357,7 @@ pt_make_regu_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   XASL_NODE *xasl = NULL;
   REGU_VARIABLE *regu = NULL;
+  PT_COLLECTED_CLASS_OIDS outer;
 
   if (statement == NULL || statement->node_type != PT_INSERT)
     {
@@ -9431,8 +10366,16 @@ pt_make_regu_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* Generate xasl for insert statement */
+  pt_push_collected_class_oids (&outer);
   xasl = pt_to_insert_xasl (parser, statement);
+  pt_pop_collected_class_oids (&outer);
   if (xasl == NULL)
+    {
+      return NULL;
+    }
+
+  if (pt_add_subinsert_class_oids (&xasl->proc.insert.class_oid, 1) != NO_ERROR
+      || pt_add_subinsert_class_oids (xasl->write_class_oid_list, xasl->n_write_oid_list) != NO_ERROR)
     {
       return NULL;
     }
@@ -11049,6 +11992,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		{
 		case PT_PLUS:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_ADD, domain);
+		  /* only the offset + count a LIMIT rewrite builds gives the maximum on an overflow */
+		  if (regu != NULL && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_LIMIT_SUM))
+		    {
+		      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_LIMIT_SUM);
+		    }
 		  break;
 
 		case PT_MINUS:
@@ -16134,7 +17082,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      symbols->cache_attrinfo = cache_pred;
 	      symbols->reserved_values = db_values_array_p;
 
+	      /* a heap scan filters a page of rows at once (pt_to_pred_expr_factor_dnf ()) */
+	      symbols->heap_scan_filter = (access_method == ACCESS_METHOD_SEQUENTIAL);
 	      where = pt_to_pred_expr (parser, where_part);
+	      symbols->heap_scan_filter = false;
 
 	      if (scan_type == TARGET_CLASS_ATTR)
 		{
@@ -17819,6 +18770,11 @@ pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST regulis
 	   * not set class oid and hfid */
 	  OID_SET_NULL (&node->class_oid);
 	  HFID_SET_NULL (&node->class_hfid);
+	  if (pt_append_class_oids (&pt_Click_counter_class_oids, &pt_Num_click_counter_class_oids, oid_ptr, 1) !=
+	      NO_ERROR)
+	    {
+	      return NULL;
+	    }
 	}
       else
 	{
@@ -24122,7 +25078,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   HFID_SET_NULL (&insert->class_hfid);
   insert->vals = NULL;
 
-  if (!pt_finish_remote_dml_xasl (xasl))
+  if (!pt_finish_remote_dml_xasl (xasl) || pt_add_read_class_oids (parser, statement, xasl) != NO_ERROR)
     {
       return NULL;
     }
@@ -24317,7 +25273,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  if (!pt_finish_remote_dml_xasl (xasl))
+  if (!pt_finish_remote_dml_xasl (xasl) || pt_add_read_class_oids (parser, statement, xasl) != NO_ERROR)
     {
       return NULL;
     }
@@ -24533,7 +25489,7 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  if (!pt_finish_remote_dml_xasl (xasl))
+  if (!pt_finish_remote_dml_xasl (xasl) || pt_add_read_class_oids (parser, statement, xasl) != NO_ERROR)
     {
       return NULL;
     }
@@ -24568,6 +25524,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   float hint_wait_secs;
 
   assert (parser != NULL && statement != NULL);
+
+  pt_reset_subinsert_class_oids ();
 
   if (statement->info.insert.odku_assignments != NULL || statement->info.insert.do_replace)
     {
@@ -25004,6 +25962,15 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (xasl)
     {
       xasl->query_alias = statement->alias_print;
+      if (statement->info.insert.odku_assignments != NULL || statement->info.insert.do_replace)
+	{
+	  xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+	}
+      if (pt_move_subinsert_class_oids (xasl) != NO_ERROR
+	  || pt_add_read_class_oids (parser, statement, xasl) != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
 #if !defined(NDEBUG)
@@ -27128,6 +28095,12 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (xasl)
     {
       xasl->query_alias = statement->alias_print;
+      xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+      error = pt_add_read_class_oids (parser, statement, xasl);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
     }
 
   if (statement->info.delete_.limit)
@@ -27991,6 +28964,12 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
     }
 
   xasl->query_alias = statement->alias_print;
+  xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+  error = pt_add_read_class_oids (parser, statement, xasl);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
 
   if (statement->info.update.limit)
     {
@@ -28444,6 +29423,8 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   XASL_NODE *xasl = NULL;
   PT_NODE *next;
   bool is_system_generated_stmt;
+  PT_COLLECTED_CLASS_OIDS outer;
+  bool class_oids_failed = false;
 
   assert (parser != NULL && node != NULL);
 
@@ -28462,6 +29443,8 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       return NULL;
     }
+
+  pt_push_collected_class_oids (&outer);
 
   switch (node->node_type)
     {
@@ -28585,6 +29568,28 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       xasl->query_alias = node->alias_print;
       XASL_SET_FLAG (xasl, XASL_TOP_MOST_XASL);
       pt_mark_union_children_backward (xasl);
+
+      if (node->node_type == PT_SELECT
+	  && (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_IS_UPD_DEL_QUERY)
+	      || (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_IS_MERGE_QUERY)
+		  && node->info.query.upd_del_class_cnt > 0)))
+	{
+	  xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+	}
+      if (pt_add_click_counter_class_oids (xasl, xasl) != NO_ERROR
+	  || pt_add_write_class_oids (xasl, pt_Click_counter_class_oids, pt_Num_click_counter_class_oids) != NO_ERROR
+	  || (node->node_type == PT_SELECT && PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_FOR_UPDATE)
+	      && pt_add_for_update_class_oids (xasl, node) != NO_ERROR)
+	  || pt_add_read_class_oids (parser, node, xasl) != NO_ERROR)
+	{
+	  class_oids_failed = true;
+	}
+    }
+
+  pt_pop_collected_class_oids (&outer);
+  if (class_oids_failed)
+    {
+      return NULL;
     }
 
   if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))
@@ -32252,6 +33257,8 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
       return pt_to_xasl_for_dblink (parser, statement->info.merge.into);
     }
 
+  pt_reset_subinsert_class_oids ();
+
   xasl = regu_xasl_node_alloc (MERGE_PROC);
   if (xasl == NULL)
     {
@@ -32290,6 +33297,14 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
   xasl->proc.merge.insert_xasl = insert_xasl;
   xasl->proc.merge.has_delete = statement->info.merge.update.has_delete;
   xasl->query_alias = statement->alias_print;
+  if (update_xasl != NULL)
+    {
+      xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+    }
+  if (pt_move_subinsert_class_oids (xasl) != NO_ERROR)
+    {
+      return NULL;
+    }
 
   if ((oid = ws_identifier (db_get_user ())) != NULL)
     {
@@ -32330,6 +33345,11 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
 
   /* set TDE flag */
   XASL_SET_FLAG (xasl, xptr->flag & XASL_INCLUDES_TDE_CLASS);
+
+  if (pt_add_read_class_oids (parser, statement, xasl) != NO_ERROR)
+    {
+      return NULL;
+    }
 
   scan_check_parallel_scan_possible (xasl);
 

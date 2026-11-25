@@ -1134,6 +1134,8 @@ static int pgbuf_initialize_page_monitor (void);
 static int pgbuf_initialize_thrd_holder (void);
 STATIC_INLINE PGBUF_HOLDER *pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void pgbuf_clear_page_contents (PAGE_PTR pgptr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_rv_dealloc_restore_contents (PAGE_PTR pgptr, const LOG_RCV * rcv)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE PGBUF_HOLDER *pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
@@ -7874,7 +7876,7 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
   if (bufptr->next_wait_thrd == NULL)
     {
       /* The thread entry has been already removed from the BCB waiting queue by another thread. */
-      return NO_ERROR;
+      goto end;
     }
 
   /* case 2 : first waiting thread != thrd_entry */
@@ -7891,7 +7893,7 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
 	    }
 	  prev_thrd_entry = prev_thrd_entry->next_wait_thrd;
 	}
-      return NO_ERROR;
+      goto end;
     }
 
   /* case 3 : first waiting thread == thrd_entry */
@@ -7939,6 +7941,17 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
 
       /* wake up the thread */
       pgbuf_wakeup (curr_thrd_entry);
+    }
+
+end:
+  /* The thread that gave up is off the queue. When no blocked reader or writer is left, clear waiter_exists as
+   * pgbuf_wakeup_reader_writer () does: a stale bit makes pgbuf_latch_bcb_upon_fix () block every later READ
+   * request from a non-holder on a READ-latched page, and keeps the lock-free READ path off, until the last holder
+   * unlatches. The BCB mutex taken at the top of this function is still held here, and every waiter_exists
+   * transition is made under it. */
+  if (!pgbuf_is_exist_blocked_reader_writer (bufptr))
+    {
+      set_waiter_exists (&bufptr->atomic_latch, false);
     }
 
   return NO_ERROR;
@@ -16214,7 +16227,9 @@ pgbuf_rv_init_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * thread_p (in) : thread entry
  * page (in)     : page to deallocate
  * contents (in) : PGBUF_DEALLOC_CLEAR_CONTENTS when the deallocation is final, PGBUF_DEALLOC_KEEP_CONTENTS when the
- *                 page may come back to life with its contents (see pgbuf_clear_page_contents)
+ *                 page may come back to life with its contents (see pgbuf_clear_page_contents),
+ *                 PGBUF_DEALLOC_SAVE_CONTENTS when the same system operation reuses the page at once: the new contents
+ *                 replace the old ones before the deallocation can be undone, so the old ones are logged with it
  */
 void
 pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc, int contents)
@@ -16224,6 +16239,9 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc, int contents
   FILEIO_PAGE_RESERVED *prv;
   PGBUF_DEALLOC_UNDO_DATA udata;
   char undo_data[8];		// pageid(4) + volid(2) + pyte(1) + pflag(1)
+  LOG_DATA_ADDR addr;
+  LOG_CRUMB undo_crumbs[2];
+  int num_undo_crumbs = 1;
   int holder_status;
 
   /* how it works: page is "deallocated" by resetting its type to PAGE_UNKNOWN. also prepare bcb for victimization.
@@ -16243,11 +16261,24 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc, int contents
   udata.ptype = prv->ptype;
   udata.pflag = prv->pflag;
 
-  assert (contents == PGBUF_DEALLOC_KEEP_CONTENTS || contents == PGBUF_DEALLOC_CLEAR_CONTENTS);
+  assert (contents == PGBUF_DEALLOC_KEEP_CONTENTS || contents == PGBUF_DEALLOC_CLEAR_CONTENTS
+	  || contents == PGBUF_DEALLOC_SAVE_CONTENTS);
+
+  undo_crumbs[0].length = sizeof (udata);
+  undo_crumbs[0].data = &udata;
+  if (contents == PGBUF_DEALLOC_SAVE_CONTENTS)
+    {
+      /* the body follows the undo data, and the undo puts it back (see pgbuf_rv_dealloc_restore_contents) */
+      undo_crumbs[1].length = DB_PAGESIZE;
+      undo_crumbs[1].data = page_dealloc;
+      num_undo_crumbs = 2;
+    }
 
   /* the record offset says what is done with the contents, so that redo does the same */
-  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, page_dealloc, (PGLENGTH) contents, sizeof (udata), 0,
-			     &udata, NULL);
+  addr.vfid = NULL;
+  addr.pgptr = page_dealloc;
+  addr.offset = (PGLENGTH) contents;
+  log_append_undoredo_crumbs (thread_p, RVPGBUF_DEALLOC, &addr, num_undo_crumbs, 0, undo_crumbs, NULL);
 
   if (contents == PGBUF_DEALLOC_CLEAR_CONTENTS)
     {
@@ -16292,6 +16323,28 @@ pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * pgbuf_rv_dealloc_restore_contents () - put back the body of a page deallocated with PGBUF_DEALLOC_SAVE_CONTENTS
+ *
+ * return     : void
+ * pgptr (in) : page being brought back to life
+ * rcv (in)   : recovery data of the deallocation or of its compensation
+ *
+ * Note: the body follows the undo data of the deallocation. other deallocations log no body, and the page keeps the
+ *       contents it has.
+ */
+STATIC_INLINE void
+pgbuf_rv_dealloc_restore_contents (PAGE_PTR pgptr, const LOG_RCV * rcv)
+{
+  if (rcv->length == (int) sizeof (PGBUF_DEALLOC_UNDO_DATA))
+    {
+      return;
+    }
+
+  assert (rcv->length == (int) sizeof (PGBUF_DEALLOC_UNDO_DATA) + DB_PAGESIZE);
+  memcpy (pgptr, rcv->data + sizeof (PGBUF_DEALLOC_UNDO_DATA), DB_PAGESIZE);
+}
+
+/*
  * pgbuf_rv_dealloc_undo () - undo page deallocation. the page is validated by setting its page type back.
  *
  * return        : error code
@@ -16312,7 +16365,6 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   vpid.pageid = udata->pageid;
   vpid.volid = udata->volid;
 
-  assert (rcv->length == sizeof (PGBUF_DEALLOC_UNDO_DATA));
   assert (udata->ptype > PAGE_UNKNOWN && udata->ptype <= PAGE_LAST);
 
   /* fix deallocated page */
@@ -16327,6 +16379,7 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   CAST_PGPTR_TO_IOPGPTR (iopage, page_deallocated);
   iopage->prv.pflag = udata->pflag;
+  pgbuf_rv_dealloc_restore_contents (page_deallocated, rcv);
 
 #if !defined(NDEBUG)
   if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
@@ -16336,9 +16389,9 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     }
 #endif /* !NDEBUG */
 
+  /* with the saved body, if any, so that the redo of the compensation puts it back too */
   log_append_compensate_with_undo_nxlsa (thread_p, RVPGBUF_COMPENSATE_DEALLOC, &vpid, 0, page_deallocated,
-					 sizeof (PGBUF_DEALLOC_UNDO_DATA), udata, LOG_FIND_CURRENT_TDES (thread_p),
-					 &rcv->reference_lsa);
+					 rcv->length, rcv->data, LOG_FIND_CURRENT_TDES (thread_p), &rcv->reference_lsa);
   pgbuf_set_dirty_and_free (thread_p, page_deallocated);
   return NO_ERROR;
 }
@@ -16359,13 +16412,13 @@ pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   FILEIO_PAGE *iopage;
 
   assert (rcv->pgptr != NULL);
-  assert (rcv->length == sizeof (PGBUF_DEALLOC_UNDO_DATA));
   assert (udata->ptype > PAGE_UNKNOWN && udata->ptype <= PAGE_LAST);
 
   CAST_PGPTR_TO_IOPGPTR (iopage, rcv->pgptr);
 
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, (PAGE_TYPE) udata->ptype);
   iopage->prv.pflag = udata->pflag;
+  pgbuf_rv_dealloc_restore_contents (rcv->pgptr, rcv);
 
 #if !defined(NDEBUG)
   if (iopage->prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
