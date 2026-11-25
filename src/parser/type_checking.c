@@ -2461,6 +2461,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
     case PT_STRCAT:
       num = 0;
+      /* the same concatenation as CONCAT of two arguments */
+      sig.prop.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* two overloads */
 
