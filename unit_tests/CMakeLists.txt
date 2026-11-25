@@ -47,6 +47,7 @@ option (UNIT_TEST_LOG_WRITESET "Unit testing: writeset collection and global com
 option (UNIT_TEST_LOG_APPLIER "Unit testing: log applier in-flight list, gate, pending list and queues")
 option (UNIT_TEST_STREAM_SESSION "Unit testing: byte-stream transport consumer registry")
 option (UNIT_TEST_RADIX_SORT "Unit testing: radix run sorter")
+option (UNIT_TEST_SCOPE_EXIT "Unit testing: scope_exit guard")
 option (UNIT_TEST_BTREE_SORT_MERGE "Unit testing: merge run sorter")
 
 message("  unit_tests/...")
@@ -153,6 +154,11 @@ if (UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
   message("    radix_sort")
   add_subdirectory(radix_sort)
 endif(UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
+
+if (UNIT_TESTS OR UNIT_TEST_SCOPE_EXIT)
+  message("    scope_exit")
+  add_subdirectory(scope_exit)
+endif(UNIT_TESTS OR UNIT_TEST_SCOPE_EXIT)
 
 if (UNIT_TESTS OR UNIT_TEST_BTREE_SORT_MERGE)
   message("    btree_sort_merge")

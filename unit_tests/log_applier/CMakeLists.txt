@@ -45,10 +45,10 @@ set (TEST_LOG_APPLIER_SRC
   )
 
 # The worker test drives the sub-client session of each worker (db_restart_sub, db_shutdown_sub), which only
-# the multi-connection client has; the single-connection build runs every task alone and is not tested here.
-if(MULTI_CONN_TO_A_SERVER)
-  list(APPEND TEST_LOG_APPLIER_SRC test_log_applier_worker.cpp)
-endif(MULTI_CONN_TO_A_SERVER)
+# the multi-connection client has. applylogdb loads libcubridcs_mc, so the test is built the same way: with
+# MULTI_CONN_TO_A_SERVER and linked to cubridcs_mc. The single-connection build runs every task alone and is not
+# tested here.
+list(APPEND TEST_LOG_APPLIER_SRC test_log_applier_worker.cpp)
 
 SET_SOURCE_FILES_PROPERTIES(
   ${TEST_LOG_APPLIER_SRC}
@@ -61,6 +61,7 @@ add_executable(test_log_applier
 
 target_compile_definitions(test_log_applier PRIVATE
   CS_MODE
+  MULTI_CONN_TO_A_SERVER
   ${COMMON_DEFS}
   )
 
@@ -73,7 +74,7 @@ target_link_libraries(test_log_applier PRIVATE
   )
 if(UNIX)
   target_link_libraries(test_log_applier PRIVATE
-    cubridcs
+    cubridcs_mc
     ${CMAKE_THREAD_LIBS_INIT}
     )
 else()

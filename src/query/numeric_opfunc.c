@@ -3896,8 +3896,8 @@ numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer, const bool is_value_ne
  *   answer(out)     : Pointer to the resulting DB_BIGINT
  *   is_value_negative(in): Sign of the input value
  *
- * Note: Performs scale adjustment (division by 10^scale and rounding) and 
- *       converts the resulting value into a signed 64-bit integer.
+ * Note: Performs scale adjustment (division by 10^scale and rounding, or for a negative scale multiplication by
+ *       10^-scale) and converts the resulting value into a signed 64-bit integer.
  *       If the value exceeds the 64-bit BIGINT range, ER_IT_DATA_OVERFLOW 
  *       is returned.
  */
@@ -3919,25 +3919,41 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
   work_buf[1] = NUMERIC_BSWAP64 (work_buf[1]);
   work_buf[2] = NUMERIC_BSWAP64 (work_buf[2]);
 
-  /* 2. perform scale adjustment if scale > 0 (divide by 10^scale) */
   if (scale > 0)
     {
+      /* 2-1. divide by 10^scale */
       rounding_digit = float_numeric_div_normalize (work_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES, scale);
-
-      /* 3. round up if the fractional remainder is >= 5 */
       if (rounding_digit >= ROUND_HALF_UP_DIGIT)
 	{
 	  float_numeric_increment (work_buf, NUMERIC_AS_WORDS, 1);
 	}
     }
+  else if (scale < 0 && work_buf[0] == 0 && work_buf[1] == 0 && work_buf[2] != 0)
+    {
+      /* 2-2. multiply by 10^-scale, a coefficient >= 2^64 is left to step 3 */
+      int exponent = -scale;
+      uint128_t product;
 
-  /* 4. check if the value fits within 64 bits (upper words must be zero) */
+      if (exponent > 18)
+	{
+	  return ER_IT_DATA_OVERFLOW;
+	}
+
+      product = (uint128_t) work_buf[2] * _gv_mul_normalize_pow10_lookup[exponent - 1];
+      if ((product >> 64) != 0)
+	{
+	  return ER_IT_DATA_OVERFLOW;
+	}
+      work_buf[2] = (uint64_t) product;
+    }
+
+  /* 3. check if the value fits within 64 bits (upper words must be zero) */
   if (work_buf[0] != 0 || work_buf[1] != 0)
     {
       return ER_IT_DATA_OVERFLOW;
     }
 
-  /* 5. BIGINT range check considering the sign
+  /* 4. BIGINT range check considering the sign
    *    positive range: [0, 2^63 - 1] (0x7FFFFFFFFFFFFFFF)
    *    negative range: [0, 2^63] (0x8000000000000000)
    */
@@ -3947,7 +3963,7 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
       return ER_IT_DATA_OVERFLOW;
     }
 
-  /* 6. form final signed BIGINT result
+  /* 5. form final signed BIGINT result
    *    INT64_MIN (magnitude == 0x8000000000000000) is a special case:
    *    negating (DB_BIGINT)INT64_MIN is signed-overflow UB in C.
    *    Since the stored value is already the absolute magnitude,
@@ -5625,9 +5641,6 @@ int
 numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale, bool is_float,
 			      bool * is_value_negative)
 {
-  char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, NUMERIC_MAX_STRING_SIZE)];
-  int i = 0;
-
   assert (is_value_negative);
 
   switch (get_fp_value_type (adouble))
@@ -5638,16 +5651,11 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
        * does */
       return ER_IT_DATA_OVERFLOW;
     case FP_VALUE_TYPE_ZERO:
+      /* a zero has one digit at any scale */
+      numeric_zero (num, DB_NUMERIC_BUF_SIZE);
+      *is_value_negative = false;
+      *prec = 1;
       *scale = dst_scale;
-      *prec = dst_scale ? dst_scale : 1;
-
-      while (i < *prec)
-	{
-	  numeric_str[i++] = '0';
-	}
-      numeric_str[i] = '\0';
-
-      numeric_coerce_dec_str_to_num (numeric_str, num, is_value_negative);
       return NO_ERROR;
     default:
       /* compare against pow(10, DB_MAX_NUMERIC_PRECISION) to check for overflow/underflow before actual conversion */
@@ -5661,16 +5669,10 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 	    {
 	      /* the floating-point number underflows any possible CUBRID NUMERIC domain type, so just return 0 with no
 	       * other conversion */
+	      numeric_zero (num, DB_NUMERIC_BUF_SIZE);
+	      *is_value_negative = false;
+	      *prec = 1;
 	      *scale = dst_scale;
-	      *prec = dst_scale ? dst_scale : 1;
-
-	      while (i < *prec)
-		{
-		  numeric_str[i++] = '0';
-		}
-	      numeric_str[i] = '\0';
-
-	      numeric_coerce_dec_str_to_num ("0", num, is_value_negative);
 	      return NO_ERROR;
 	    }
 	  else
@@ -7114,7 +7116,6 @@ numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS
 
       numeric_coerce_bigint_to_num (bigint, num, &num_is_negative);
       precision = get_significant_digit (bigint);
-      desired_precision = MAX (desired_precision, precision);
       scale = 0;
     }
   else if constexpr (SRC == DB_TYPE_NUMERIC)

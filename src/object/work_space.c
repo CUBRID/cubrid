@@ -5599,13 +5599,14 @@ ws_repl::ws_discard_last_repl_objs (int count)
  *  has_index(in):
  *  packed_prior_value(in): NULL, or the value a _db_serial write-back replaced
  *  packed_prior_value_length(in):
+ *  serial_issue(in): a _db_serial write that issued values
  *
  *    return:
  */
 int
 ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
 				  RECDES * recdes, int operation, bool has_index, char *packed_prior_value,
-				  int packed_prior_value_length)
+				  int packed_prior_value_length, bool serial_issue)
 {
   WS_REPL_OBJ *repl_obj = NULL;
 
@@ -5631,6 +5632,7 @@ ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int 
     }
   memcpy (repl_obj->packed_pkey_value, packed_pkey_value, packed_pkey_value_length);
 
+  repl_obj->serial_issue = serial_issue;
   repl_obj->packed_prior_value = NULL;
   repl_obj->packed_prior_value_length = 0;
   if (packed_prior_value != NULL)

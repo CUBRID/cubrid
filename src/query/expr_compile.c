@@ -132,9 +132,10 @@ struct expr_pred
   DB_VALUE **arg3p;		/* LIKE escape, when present */
   REL_OP rel_op;
   DB_TYPE fast_type;		/* direct-compare type, or DB_TYPE_UNKNOWN -> the term's decided comparison */
-  /* comp leaves: the comparison the unpack decided for the term (COMP_EVAL_TERM.compare), which a leaf that is not a
-   * direct compare makes as eval_value_rel_cmp () does; NULL for a term left to its values and for a pinned literal
-   * (both sides are then of the left side's type) */
+  /* comp leaves: the comparison the unpack decided for the term (COMP_EVAL_TERM.compare), set on the server by
+   * expr_pred_bind (); a leaf that is not a direct compare makes it as eval_value_rel_cmp () does, a pinned literal
+   * compares in its target domain, and a pinned host variable is converted by its conv[1] into target[1] once per
+   * execution (expr_pred_pin_hostvar ()); NULL for a term left to its values */
   const DOMAIN_COMPARE *compare;
 
   /* scan-filter leaves (EXPR_PRED_COMP_FETCH): the operands are fetched per row through
@@ -159,6 +160,14 @@ struct expr_pred
    * (expr_scan_pred_build ()); the row compares same-typed values directly */
   bool rhs_pinned;
   DB_VALUE pinned_rhs;
+  /* a host variable right side (an auto-parameterized literal) pinned the same way: its value comes with each
+   * execution, so the build only marks it, and the execution's bound value is converted into pinned_rhs once per
+   * execution (expr_pred_pin_hostvar ()); pin_stamp is the query id of the execution whose value it holds */
+  bool rhs_pin_hostvar;
+  bool pin_stamp_valid;
+  unsigned long long pin_stamp;
+  /* the tree's root only: whether a leaf pins a host variable -- 0 not yet known, 1 no, 2 yes */
+  signed char pin_hostvar_any;
   EXPR_PROG *prog;		/* the tree's root only: the operand program it owns */
 
   /* the tree's root only: the compiled arithmetic nodes whose values a consumer of the
@@ -1491,6 +1500,27 @@ expr_k_fetch (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
+/* Copy a value into a step's own slot, failing when the copy fails.  pr_clone_value () drops the error of the type's
+ * setval (the allocation of a string's copy) and answers NO_ERROR with the slot left NULL -- a value the step would
+ * publish, and a step that computes once per execution would keep, where the interpreter, which reads the node's
+ * value in place, copies nothing and cannot fail. */
+static int
+expr_slot_clone (const DB_VALUE * src, DB_VALUE * slot)
+{
+  const PR_TYPE *type = (src != NULL && !DB_IS_NULL (src)) ? pr_type_from_id (DB_VALUE_DOMAIN_TYPE (src)) : NULL;
+
+  if (type == NULL)
+    {
+      return pr_clone_value (src, slot);	/* a NULL keeps its domain: nothing to allocate */
+    }
+  if (type->setval (slot, src, true) != NO_ERROR)
+    {
+      pr_clear_value (slot);
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
 /* A COLLATE-flagged arithmetic node (REGU_VARIABLE_APPLY_COLLATION): the interpreted path does not cast the value but
  * re-labels its codeset and collation with the node's domain (fetch_peek_dbval_slow ()'s epilogue).  The step clones
  * the node's value into its own slot before the relabel: the producing step's slot may serve another reader through
@@ -1501,7 +1531,7 @@ expr_k_relabel (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   const TP_DOMAIN *collate = regu_produced_domain (step->regu);
 
   pr_clear_value (step->out);
-  if (pr_clone_value (*step->arg1p, step->out) != NO_ERROR)
+  if (expr_slot_clone (*step->arg1p, step->out) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1541,7 +1571,15 @@ expr_k_nested_prog (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
  * the interpreter runs around the same body (fetch_arith_node_resolve): the node's domains, its slot cleared.  The
  * result is the node's own slot (arithptr->value), published by pointer like a leaf fetch -- the body
  * writes there and the interpreter's consumers read there, so nothing is copied.  T_INCR/T_DECR publish their left
- * operand itself (FETCH_ARITH_RAW_LEFT), outside the epilogue, as the interpreter does. */
+ * operand itself (FETCH_ARITH_RAW_LEFT), outside the epilogue, as the interpreter does.
+ *
+ * A step that owns a slot (expr_compile_generic ()) computes once per execution, as the interpreter keeps such a node
+ * (FETCH_ALL_CONST): on the first row of an execution that reaches it, it copies the value into the slot its cell was
+ * wired to, and on the later rows it returns at once -- clearing the mark of a '?' check, which skips the same operands
+ * on every row of the execution.  It copies because the node's slot is the interpreter's: an interpreted evaluation of
+ * the same node rewrites it, and a clear of the XASL node empties it (qexec_clear_arith_list () -- at the end of the
+ * execution, and at the start of every run of a BUILD_SCHEMA_PROC's iterations), while a step that returns at once
+ * reads nothing again.  The slot is the program's and keeps the value until expr_prog_reset (). */
 static int
 expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
@@ -1550,6 +1588,10 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   int rc;
 
   step->skip = 0;
+  if (step->out != NULL && step->once_exec != 0 && step->once_exec == ctx->prog->n_executions)
+    {
+      return NO_ERROR;
+    }
   a.regu_var = step->regu;
   a.arithptr = step->regu->value.arithptr;
   a.vd = ctx->vd;
@@ -1582,6 +1624,7 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   expr_frames_add (ctx, -step->level);
   if (rc == FETCH_ARITH_RAW_LEFT)
     {
+      assert (step->out == NULL);	/* T_INCR, T_DECR: never once per execution (fetch_opcode_caches ()) */
       *step->out_cell = a.peek_left;
       return NO_ERROR;
     }
@@ -1592,6 +1635,16 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 
   /* an operator such as ABS returns its fixed operand without conversion */
   numeric_db_value_to_float_domain (a.arithptr->value, a.domain);
+  if (step->out != NULL)
+    {
+      pr_clear_value (step->out);
+      if (expr_slot_clone (a.arithptr->value, step->out) != NO_ERROR)
+	{
+	  return ER_FAILED;	/* the copy failed: nothing is kept for the execution */
+	}
+      step->once_exec = ctx->prog->n_executions;
+      return NO_ERROR;
+    }
   *step->out_cell = a.arithptr->value;
   return NO_ERROR;
 }
@@ -2956,6 +3009,27 @@ expr_scan_pred_build_chain (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int dep
   return pred;
 }
 
+/* The comparisons whose host variable a leaf pins (expr_scan_pred_build ()): the left side of type to, a host
+ * variable of type from that the term converts into it.  The conversion runs at execution, where the leaf can no
+ * longer fall back to the interpreter, so only one that cannot fail: a narrower number into DOUBLE, BIGINT or INTEGER,
+ * the types a leaf compares directly. */
+static bool
+expr_pin_hostvar_safe (DB_TYPE to, DB_TYPE from)
+{
+  switch (to)
+    {
+    case DB_TYPE_DOUBLE:
+      return (from == DB_TYPE_SHORT || from == DB_TYPE_INTEGER || from == DB_TYPE_BIGINT || from == DB_TYPE_FLOAT
+	      || from == DB_TYPE_NUMERIC || from == DB_TYPE_MONETARY);
+    case DB_TYPE_BIGINT:
+      return (from == DB_TYPE_SHORT || from == DB_TYPE_INTEGER);
+    case DB_TYPE_INTEGER:
+      return (from == DB_TYPE_SHORT);
+    default:
+      return false;
+    }
+}
+
 static EXPR_PRED *
 expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, int depth_limit, bool shareable)
 {
@@ -2998,7 +3072,7 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	const COMP_EVAL_TERM *et;
 	DB_TYPE t1, t2, fast_type;
 	DB_VALUE pinned;
-	bool pin_rhs = false, exact;
+	bool pin_rhs = false, pin_hostvar = false, exact;
 
 	if (pr->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
 	  {
@@ -3029,21 +3103,31 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	t1 = expr_scan_operand_type (bctx, et->lhs);
 	t2 = expr_scan_operand_type (bctx, et->rhs);
 	db_make_null (&pinned);
-	if (t1 != t2 && t1 != DB_TYPE_UNKNOWN && t2 != DB_TYPE_UNKNOWN && et->rhs->type == TYPE_DBVAL
-	    && !DB_IS_NULL (&et->rhs->value.dbval))
+	if (t1 != t2 && t1 != DB_TYPE_UNKNOWN && t2 != DB_TYPE_UNKNOWN
+	    && ((et->rhs->type == TYPE_DBVAL && !DB_IS_NULL (&et->rhs->value.dbval))
+		|| (et->rhs->type == TYPE_POS_VALUE && expr_pin_hostvar_safe (t1, t2))))
 	  {
 	    /* a literal right operand the term's comparison converts into the left side's type (CBRD-27583, the
 	     * compiler's decision) - a number into the more general number ("n * m > 1"), a string into the
 	     * date/time it is compared with ("dt >= '2024-01-01'") - is converted once, by that comparison's converter,
-	     * into the leaf's own value; the leaf then compares same-typed sides. */
+	     * into the leaf's own value; the leaf then compares same-typed sides.  A literal the statement's
+	     * auto-parameterization made a host variable ("d < 24" on a DOUBLE d) is pinned the same way, but its
+	     * value comes with each execution: the build only marks it, and the server converts the bound value with
+	     * the same converter once per execution (expr_pred_pin_hostvar ()), where the interpreter converts it on
+	     * every row (CBRD-28165). */
 	    DOMAIN_COMPARE decided;
 	    const DOMAIN_COMPARE *compare = expr_term_compare (&bctx->env, et, &decided);
 	    const bool pins = compare != NULL && compare->conv[0] == NULL && compare->conv[1] != NULL
 	      && TP_DOMAIN_TYPE (compare->target[1]) == t1
 	      && ((TP_IS_NUMERIC_TYPE (t1) && TP_IS_NUMERIC_TYPE (t2))
 		  || (TP_IS_DATE_OR_TIME_TYPE (t1) && TP_IS_CHAR_TYPE (t2)));
-	    if (pins && tp_value_convert (compare->conv[1], compare->target[1], &et->rhs->value.dbval, &pinned)
-		== DOMAIN_COMPATIBLE && DB_VALUE_DOMAIN_TYPE (&pinned) == t1)
+	    if (pins && et->rhs->type == TYPE_POS_VALUE)
+	      {
+		pin_rhs = pin_hostvar = true;
+		t2 = t1;
+	      }
+	    else if (pins && tp_value_convert (compare->conv[1], compare->target[1], &et->rhs->value.dbval, &pinned)
+		     == DOMAIN_COMPATIBLE && DB_VALUE_DOMAIN_TYPE (&pinned) == t1)
 	      {
 		pin_rhs = true;
 		t2 = t1;
@@ -3078,9 +3162,11 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	pred->fetch_src = pr;
 	if (pin_rhs)
 	  {
-	    /* the right holder points at the coerced literal for good (expr_pred_bind ()); the row never fetches it */
+	    /* the right holder points at the coerced literal for good (expr_pred_bind ()); the row never fetches it
+	     * -- for a pinned host variable that value is the execution's (NULL here, filled on the leaf's first use) */
 	    pred->rhs_pinned = true;
 	    pred->pinned_rhs = pinned;
+	    pred->rhs_pin_hostvar = pin_hostvar;
 	  }
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
@@ -3232,7 +3318,9 @@ expr_scan_pred_compile_at_generation (const PRED_EXPR * pr)
  * every shareable arithmetic node whose step owns a result slot -- that slot's address is
  * what the node's cell holds on every row (materialized once), so a consumer can wire a
  * cell of its own to it.  Pointer-select nodes (NVL, a CASE without a cast) publish a
- * different address per row and are left out. */
+ * different address per row and are left out, and so is the slot of a generic step: it holds
+ * the value of the execution (expr_compile_generic ()), which a consumer computes once on its
+ * own, and a shared value the page batch does not carry would keep the scan off the batch. */
 static void
 expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root)
 {
@@ -3263,7 +3351,8 @@ expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root)
       /* the build-time steps still carry their encoded out cell and owned-slot marker */
       for (j = 0; j < bctx->n_steps; j++)
 	{
-	  if ((intptr_t) bctx->steps[j].out_cell == cell && bctx->steps[j].out != NULL)
+	  if ((intptr_t) bctx->steps[j].out_cell == cell && bctx->steps[j].out != NULL
+	      && bctx->steps[j].kernel_id != EXPR_KID_generic)
 	    {
 	      owns_slot = true;
 	      break;
@@ -3280,6 +3369,140 @@ expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root)
 }
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+/* The execution's value of a host variable a leaf pinned (expr_scan_pred_build ()): the bound value converted by the
+ * term's decided converter into the left side's type, as eval_value_rel_cmp () converts it on every row -- here once per
+ * execution, on the leaf's first use (expr_scan_side_value ()) or before a page batch loads its constants
+ * (expr_scan_pred_prepare ()).  Another execution has another query id and may bind another value.  A NULL bound value
+ * stays NULL, which the leaf answers UNKNOWN as it does a NULL side; without a query id the value is converted on every
+ * use. */
+static int
+expr_pred_pin_hostvar (EXPR_PRED * pred, cubthread::entry * thread_p, val_descr * vd)
+{
+  const unsigned long long stamp =
+    (vd != NULL && vd->xasl_state != NULL) ? (unsigned long long) vd->xasl_state->query_id : 0;
+  DB_VALUE *bound = NULL;
+
+  if (pred->pin_stamp_valid && pred->pin_stamp == stamp)
+    {
+      return NO_ERROR;
+    }
+  pr_clear_value (&pred->pinned_rhs);
+  db_make_null (&pred->pinned_rhs);
+  if (fetch_peek_dbval (thread_p, pred->fetch_rhs, vd, NULL, NULL, NULL, &bound) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  if (bound != NULL && !DB_IS_NULL (bound))
+    {
+      const DOMAIN_COMPARE *compare = pred->compare;
+      TP_DOMAIN_STATUS status;
+
+      if (compare == NULL || compare->conv[1] == NULL)
+	{
+	  /* the build pins a host variable only when the term's decided comparison converts the right side
+	   * (expr_scan_pred_build ()), and the leaf takes the comparison of the term the server unpacked
+	   * (expr_pred_bind ()); if the two disagree, the bound value has no converter: fail the scan instead of reading
+	   * through NULL */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
+      status = tp_value_convert (compare->conv[1], compare->target[1], bound, &pred->pinned_rhs);
+      if (status != DOMAIN_COMPATIBLE || DB_VALUE_DOMAIN_TYPE (&pred->pinned_rhs) != pred->fast_type)
+	{
+	  /* expr_pin_hostvar_safe () admits only the conversions that cannot fail */
+	  assert (false);
+	  pr_clear_value (&pred->pinned_rhs);
+	  db_make_null (&pred->pinned_rhs);
+	  (void) tp_domain_status_er_set ((status == DOMAIN_COMPATIBLE) ? DOMAIN_INCOMPATIBLE : status, ARG_FILE_LINE,
+					  bound, compare->target[1]);
+	  return ER_FAILED;
+	}
+    }
+  pred->pin_stamp = stamp;
+  pred->pin_stamp_valid = (stamp != 0);
+  return NO_ERROR;
+}
+
+/* whether a leaf of the tree pins a host variable */
+static bool
+expr_pred_has_pin_hostvar (const EXPR_PRED * pred)
+{
+  int i;
+
+  if (pred == NULL)
+    {
+      return false;
+    }
+  if (pred->rhs_pin_hostvar || expr_pred_has_pin_hostvar (pred->lhs) || expr_pred_has_pin_hostvar (pred->rhs))
+    {
+      return true;
+    }
+  for (i = 0; pred->kids != NULL && i < pred->n_kids; i++)
+    {
+      if (expr_pred_has_pin_hostvar (pred->kids[i]))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* the execution's value of every host variable the tree pins (expr_pred_pin_hostvar ()) */
+static int
+expr_pred_pin_hostvars (EXPR_PRED * pred, cubthread::entry * thread_p, val_descr * vd)
+{
+  int i, error;
+
+  if (pred == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (pred->rhs_pin_hostvar)
+    {
+      error = expr_pred_pin_hostvar (pred, thread_p, vd);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  error = expr_pred_pin_hostvars (pred->lhs, thread_p, vd);
+  if (error == NO_ERROR)
+    {
+      error = expr_pred_pin_hostvars (pred->rhs, thread_p, vd);
+    }
+  for (i = 0; error == NO_ERROR && pred->kids != NULL && i < pred->n_kids; i++)
+    {
+      error = expr_pred_pin_hostvars (pred->kids[i], thread_p, vd);
+    }
+  return error;
+}
+
+/* forget the executions the tree's pinned host variables hold values of, as expr_prog_reset () forgets its prologues --
+ * the value too, so that nothing reads the last execution's before the next one converts its own */
+static void
+expr_pred_pin_reset (EXPR_PRED * pred)
+{
+  int i;
+
+  if (pred == NULL)
+    {
+      return;
+    }
+  if (pred->rhs_pin_hostvar)
+    {
+      pred->pin_stamp_valid = false;
+      pr_clear_value (&pred->pinned_rhs);
+      db_make_null (&pred->pinned_rhs);
+    }
+  expr_pred_pin_reset (pred->lhs);
+  expr_pred_pin_reset (pred->rhs);
+  for (i = 0; pred->kids != NULL && i < pred->n_kids; i++)
+    {
+      expr_pred_pin_reset (pred->kids[i]);
+    }
+}
+
 /* mirror of the eval_pred () walk over the compiled tree; fetch errors are V_ERROR and
  * a NULL side is V_UNKNOWN before the right side is even fetched, exactly as
  * eval_pred_comp0 () orders them */
@@ -3291,7 +3514,8 @@ expr_scan_side_value (EXPR_PRED * pred, bool is_rhs, EXPR_EVAL_CTX * ctx)
 {
   if (is_rhs && pred->rhs_pinned)
     {
-      return NO_ERROR;		/* the coerced literal sits in the leaf */
+      /* the coerced literal sits in the leaf; a pinned host variable is converted on its first use in the execution */
+      return pred->rhs_pin_hostvar ? expr_pred_pin_hostvar (pred, ctx->thread_p, ctx->vd) : NO_ERROR;
     }
   if (is_rhs ? pred->rhs_compiled : pred->lhs_compiled)
     {
@@ -3447,6 +3671,10 @@ expr_scan_pred_reset (void *compiled)
       if (root->prog != NULL)
 	{
 	  expr_prog_reset (root->prog);
+	}
+      if (root->pin_hostvar_any != 1)
+	{
+	  expr_pred_pin_reset (root);
 	}
     }
 }
@@ -4343,8 +4571,8 @@ int
 expr_pred_or_raw_leaves (const void *or_src, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap, int *n_disj,
 			 int disj_cap)
 {
-  const PRED_EXPR *disj[16];
-  const PRED_EXPR *terms[32];
+  const PRED_EXPR *disj[PRED_OR_RAW_MAX_DISJUNCTS];
+  const PRED_EXPR *terms[PRED_OR_RAW_MAX_LEAVES];
   int nd, d, i, nt, n = 0;
 
   if (or_src == NULL || ((const PRED_EXPR *) or_src)->type != T_PRED
@@ -4403,7 +4631,26 @@ expr_scan_pred_prepare (void *compiled, cubthread::entry * thread_p, val_descr *
   EXPR_PRED *root = (EXPR_PRED *) compiled;
   EXPR_EVAL_CTX ctx;
 
-  if (root == NULL || root->prog == NULL)
+  if (root == NULL)
+    {
+      return NO_ERROR;
+    }
+  /* a page batch loads the pinned host variables' values as its constants right after this (expr_batch.c,
+   * eb_load_leaf_constants ()): convert them for this execution first */
+  if (root->pin_hostvar_any == 0)
+    {
+      root->pin_hostvar_any = expr_pred_has_pin_hostvar (root) ? 2 : 1;
+    }
+  if (root->pin_hostvar_any == 2)
+    {
+      const int error = expr_pred_pin_hostvars (root, thread_p, vd);
+
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  if (root->prog == NULL)
     {
       return NO_ERROR;
     }
@@ -5092,10 +5339,33 @@ expr_generic_operand_spec (OPERATOR_TYPE op, const TP_DOMAIN * exec_domain)
     }
 }
 
+/* Whether an operand cell of a generic step holds one value for the whole execution: no cell, a literal, a host
+ * variable or a value computed from those alone (expr_cells_fixed_class ()), or the slot of a generic step that
+ * computes once per execution itself (the CONCAT under the bounds of "col LIKE CONCAT (?, '%')").  The producer is
+ * the step that owns the cell, not a '?' check that names it to mark the skipped operands (alias_of). */
+static bool
+expr_generic_operand_fixed (const EXPR_BUILD_CTX * bctx, int c)
+{
+  int j;
+
+  if (expr_cells_fixed_class (bctx, c, -1) != EXPR_CELL_ROW)
+    {
+      return true;
+    }
+  for (j = 0; j < bctx->n_steps; j++)
+    {
+      if ((intptr_t) bctx->steps[j].out_cell == c && bctx->steps[j].alias_of < 0)
+	{
+	  return bctx->steps[j].kernel_id == EXPR_KID_generic && bctx->steps[j].out != NULL;
+	}
+    }
+  return false;
+}
+
 /* An arithmetic node the kernel table does not cover: its operands compiled in the interpreter's fetch order, then
  * one generic step running the opcode's body (expr_k_generic).  -1 when an operand declines or the program is full:
  * the node stays interpreted.  No CSE and no hoisting: a body may be non-deterministic (RAND, SYS_*) or have a side
- * effect (INCR, DEFINE_VARIABLE).
+ * effect (INCR, DEFINE_VARIABLE).  It may compute once per execution where the interpreter does (see the end).
  *
  * A '?' rule always gets its check step, fallible right side or not (unlike the arithmetic kernels' lazy region):
  * the body sees the operands the interpreter fetched and no other -- INCR/DECR read the right operand only, and a
@@ -5109,7 +5379,7 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
   EXPR_STEP *step;
   int cell, err_code = NO_ERROR, lazy_mask = 0, lazy_start = -1, guard = 0, saved_guard = 0, cse_mark = 0, node_mark =
     0;
-  bool width_bucket = false;
+  bool width_bucket = false, tried = false;
   const char *p;
 
   if (spec == NULL)
@@ -5195,6 +5465,7 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
 	  try_step->regu = operand;
 	  try_step->aux = err_code;
 	  try_step->jump_to = bctx->n_steps;	/* the boundary after the operand's steps */
+	  tried = true;
 	}
       if (lazy_start >= 0)
 	{
@@ -5219,6 +5490,22 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
   step->fn = NULL;		/* the opcode's body, bound with the program from step->regu */
   step->aux = width_bucket ? EXPR_GENERIC_WIDTH_BUCKET : 0;
   /* a row step: expr_step_hoist () is not called, so its cell keeps the per-row class */
+  /* Once per execution where the interpreter keeps the node for the rest of the execution (fetch_peek_arith ()'s
+   * FETCH_ALL_CONST): the operator caches (fetch_opcode_caches (), no predicate), the step's cells are every operand
+   * the node has, and each holds one value for the execution -- the range bounds that "col LIKE ?" adds are computed
+   * for the first row the filter evaluates them on, not for every row.  The step keeps its place, so it runs, and
+   * fails, on the first row the interpreter would have computed the node on, under the same guard and recursion
+   * check; a '?' check over a left operand of the execution skips the same operands on every row of it.  A body that
+   * fetches its own operands (COALESCE, NVL, the CASE family, WIDTH_BUCKET's bounds) or a try step around an operand
+   * keeps the step per row.  The step owns the slot it keeps the value in. */
+  if (!tried && !width_bucket && arith->pred == NULL && fetch_opcode_caches (arith->opcode)
+      && (arith->leftptr == NULL || cells[0] >= 0) && (arith->rightptr == NULL || cells[1] >= 0)
+      && (arith->thirdptr == NULL || cells[2] >= 0) && expr_generic_operand_fixed (bctx, cells[0])
+      && expr_generic_operand_fixed (bctx, cells[1]) && expr_generic_operand_fixed (bctx, cells[2]))
+    {
+      step->out = (DB_VALUE *) 1;	/* owned slot; materialized later */
+      bctx->n_slots++;
+    }
   if (lazy_mask != 0)
     {
       /* a NULL left operand skips the right (and third) operand's steps: the check marks them unfetched on the
@@ -5327,6 +5614,11 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
     {
       /* CBRD-27583: a node that raises its rule's error (operand types the operator rejects) has no kernel; the
        * interpreter raises it */
+      return -1;
+    }
+  if (REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_LIMIT_SUM))
+    {
+      /* the offset + count of a LIMIT rewrite gives the maximum on an overflow, which only the interpreter does */
       return -1;
     }
   if (expr_arith_side_effect (regu->value.arithptr->opcode))
@@ -7763,7 +8055,8 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
       fprintf (fp, " -> c%d", (int) (step->out_cell - prog->cells));
       if (step->out != NULL)
 	{
-	  fprintf (fp, " (slot)");
+	  /* a generic step owns a slot only to compute once per execution (expr_compile_generic ()) */
+	  fprintf (fp, (step->kernel_id == EXPR_KID_generic) ? " (slot, once per execution)" : " (slot)");
 	}
       if (step->domain != NULL)
 	{
@@ -8293,8 +8586,9 @@ expr_image_put_pred (EXPR_IMAGE_WRITER * w, const EXPR_PRED * pred, const EXPR_P
   expr_image_put_int (w, pred->lhs_n);
   expr_image_put_int (w, pred->rhs_start);
   expr_image_put_int (w, pred->rhs_n);
-  expr_image_put_int (w, pred->rhs_pinned ? 1 : 0);
-  if (pred->rhs_pinned)
+  /* 1: a pinned literal and its coerced value; 2: a pinned host variable, whose value the execution brings */
+  expr_image_put_int (w, !pred->rhs_pinned ? 0 : pred->rhs_pin_hostvar ? 2 : 1);
+  if (pred->rhs_pinned && !pred->rhs_pin_hostvar)
     {
       expr_image_put_value (w, CONST_CAST (DB_VALUE *, &pred->pinned_rhs));
     }
@@ -8623,15 +8917,33 @@ expr_image_get_pred (EXPR_IMAGE_READER * r, int n_cells, int n_steps, int depth)
     {
       r->failed = true;
     }
-  if (expr_image_get_range (r, 0, 1) == 1 && !r->failed)
+  switch (expr_image_get_range (r, 0, 2))
     {
-      r->ptr = or_unpack_value (PTR_ALIGN (r->ptr, MAX_ALIGNMENT), &pred->pinned_rhs);
-      r->ptr = PTR_ALIGN (r->ptr, INT_ALIGNMENT);
+    case 1:
+      if (!r->failed)
+	{
+	  r->ptr = or_unpack_value (PTR_ALIGN (r->ptr, MAX_ALIGNMENT), &pred->pinned_rhs);
+	  r->ptr = PTR_ALIGN (r->ptr, INT_ALIGNMENT);
+	  pred->rhs_pinned = true;
+	  if (r->ptr > r->end)
+	    {
+	      r->failed = true;
+	    }
+	}
+      break;
+    case 2:
+      /* a pinned host variable: no value until an execution binds one (expr_pred_pin_hostvar ()) */
+      db_make_null (&pred->pinned_rhs);
       pred->rhs_pinned = true;
-      if (r->ptr > r->end)
+      pred->rhs_pin_hostvar = true;
+      if (pred->kind != EXPR_PRED_COMP_FETCH || pred->fetch_rhs == NULL || pred->fetch_rhs->type != TYPE_POS_VALUE
+	  || pred->rhs_compiled)
 	{
 	  r->failed = true;
 	}
+      break;
+    default:
+      break;
     }
   if (expr_image_get_range (r, 0, 1) == 1)
     {
@@ -8766,8 +9078,8 @@ expr_image_get_prog (EXPR_IMAGE_READER * r)
     {
       if (prog->steps[i].alias_of >= 0 && prog->steps[i].out != NULL)
 	{
-	  /* a step that writes another step's slot owns none (a lazy check may alias a generic step, which owns
-	   * none either: its value is the node's own) */
+	  /* a step that writes another step's slot owns none (a lazy check aliases a generic step, which owns a slot
+	   * only when it computes once per execution -- expr_compile_generic ()) */
 	  r->failed = true;
 	}
     }
@@ -8984,7 +9296,8 @@ expr_image_same_pred (const EXPR_PRED * x, const EXPR_PROG * pa, const EXPR_PRED
       || x->compare != y->compare || x->fetch_lhs != y->fetch_lhs || x->fetch_rhs != y->fetch_rhs
       || x->fetch_src != y->fetch_src || x->lhs_compiled != y->lhs_compiled || x->rhs_compiled != y->rhs_compiled
       || x->lhs_n != y->lhs_n || x->rhs_n != y->rhs_n || x->lhs_start != y->lhs_start || x->rhs_start != y->rhs_start
-      || x->rhs_pinned != y->rhs_pinned || x->n_kids != y->n_kids || (x->kids == NULL) != (y->kids == NULL))
+      || x->rhs_pinned != y->rhs_pinned || x->rhs_pin_hostvar != y->rhs_pin_hostvar || x->n_kids != y->n_kids
+      || (x->kids == NULL) != (y->kids == NULL))
     {
       return false;
     }
@@ -9005,7 +9318,8 @@ expr_image_same_pred (const EXPR_PRED * x, const EXPR_PROG * pa, const EXPR_PRED
     {
       return false;
     }
-  if (x->rhs_pinned
+  /* a pinned host variable has no value before an execution binds one */
+  if (x->rhs_pinned && !x->rhs_pin_hostvar
       && (DB_VALUE_DOMAIN_TYPE (&x->pinned_rhs) != DB_VALUE_DOMAIN_TYPE (&y->pinned_rhs)
 	  || tp_value_compare (CONST_CAST (DB_VALUE *, &x->pinned_rhs), CONST_CAST (DB_VALUE *, &y->pinned_rhs), 1,
 			       1) != DB_EQ))

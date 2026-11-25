@@ -167,10 +167,15 @@ namespace parallel_index_scan
     m_page = page;
     m_num_keys = btree_node_number_of_keys (thread_p, m_page);
 
-    /* slot_hint > m_num_keys (BTREE_KEY_BIGGER) keeps loop entry-guard false → immediate leaf-chain advance. */
+    /* slot_hint is where the walk starts in this leaf: the descent's slot (the key it found, or where the bound would
+     * go -- btree_locate_key ()) or the slot a resume gives.  Past the last key (BTREE_KEY_BIGGER) an ascending walk's
+     * loop guard is false at once and the walk moves to the next leaf; a descending walk starts at the last key, as the
+     * serial scan starts one key back when the bound is not found (btree_range_scan_start ()) -- the slot past it holds
+     * no record to read.  Inside the leaf a descending walk starts at the next bigger key, which check_key_in_range ()
+     * skips. */
     if (slot_hint != NULL_SLOTID && slot_hint >= 1)
       {
-	m_current_slot = slot_hint;
+	m_current_slot = (m_use_desc_index && slot_hint > m_num_keys) ? m_num_keys : slot_hint;
       }
     else
       {
@@ -608,8 +613,11 @@ namespace parallel_index_scan
 
 	if (spage_get_record (thread_p, m_page, *slot, &rec, PEEK) != S_SUCCESS)
 	  {
+	    /* every slot from 1 to m_num_keys of a leaf holds a record: a failed read is an error, as in the serial scan.
+	     * Skipped, it left its error set, for a later look at er_errid () to report somewhere else. */
+	    assert (false);
 	    m_use_desc_index ? (*slot)-- : (*slot)++;
-	    continue;
+	    return stop (stop_at_error (thread_p, ahead));
 	  }
 
 	/* fence keys duplicate adjacent-leaf keys; counting them double-inflates aggregate / group-by. */
