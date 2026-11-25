@@ -41,9 +41,12 @@ When adding a new source file under `src/`:
   - `os_malloc`/`os_calloc` ↔ `os_free_and_init (ptr)`
   - `parser_alloc (parser, len)` → parser-context arena lifetime (never freed manually)
   - Verify ownership and cleanup on every error and early-return path. Existing C++ RAII helpers (`src/base/scope_exit.hpp`, `src/base/mem_block.hpp`, `std::unique_ptr`, `std::lock_guard`) are used where appropriate; follow the surrounding module's conventions.
+  - `db_private_alloc` memory belongs to the allocating thread's private heap in `SERVER_MODE` (`db_private_get_heapid_from_thread ()`): free it on the same thread. Allocate any buffer that crosses threads (parallel worker ↔ requester) on the thread that frees it, or with `malloc`. In `CS_MODE`, `db_private_alloc` delegates to `db_ws_alloc`.
+  - `PEEK` results are borrowed, not owned: a peeked `RECDES` points into the fixed page (see `src/storage/docs/heap-record-pages.md`), a peeked `QFILE_TUPLE_RECORD` points into the list scan's current page with `size == 0` (`qfile_retrieve_tuple ()`), and `fetch_peek_dbval ()` returns a value the caller does not own. Never free or realloc a peeked pointer; use `COPY` / `fetch_copy_dbval ()` when the data must outlive the page fix or the next fetch.
 - **Error-code interfaces vs. throwing STL/C++ operations**:
   - Engine interfaces use negative error codes in `src/base/error_code.h` (`NO_ERROR = 0`) and report errors with `er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CODE, ...)`. Do not let C++ exceptions escape across C-style engine interfaces.
   - Prefer `.cpp` files for new STL-heavy code. Whenever calling throwing STL operations (in `.cpp` or C++-compiled `.c`), catch exceptions at or before the C-interface boundary and translate them via `er_set (...)` and an error-code return (see `src/storage/heap_file.c`, `src/optimizer/histogram/histogram_sampler_sr.cpp`, and `src/query/string_regex_std.cpp`).
+  - The error context is per thread (`cuberr::context`): an `er_set` on a worker thread is not visible to the thread answering the client. Hand errors over as `src/query/parallel/` does — the worker calls `move_top_error_message_to_this ()`, and the requester swaps it into its own context after `wait_workers ()`.
 - **Adding a new error code** (per `src/base/error_code.h`): update `src/base/error_code.h` (error definition and `ER_LAST_ERROR`), `src/compat/dbi_compat.h`, `msg/en_US.utf8/cubrid.msg`, `msg/ko_KR.utf8/cubrid.msg`, and `cubrid-cci/src/cci/base_error_code.h` when client-facing.
 
 ## Formatting, Includes, and Static Checks
@@ -67,10 +70,23 @@ When adding a new source file under `src/`:
 ## Cross-Module Impact Checks
 
 - **XASL changes**: check all four pipeline stages together — generation (`src/parser/xasl_generation.c`, `src/parser/xasl_regu_alloc.cpp`), serialization (`src/query/xasl_to_stream.c`), deserialization (`src/query/stream_to_xasl.c`, `src/xasl/xasl_unpack_info.hpp`, `src/xasl/xasl_unpack_info.cpp`), and execution/evaluation (`src/query/query_executor.c`, `src/query/scan_manager.c`, `src/query/fetch.c`, `src/query/expr_compile.c`, `src/query/query_evaluator.c`, `src/query/query_dump.c`) — along with shared node definitions in `src/xasl/` and `src/query/xasl.h`. See [src/xasl/AGENTS.md](xasl/AGENTS.md), [src/parser/AGENTS.md](parser/AGENTS.md), and [src/query/AGENTS.md](query/AGENTS.md).
+  - Stream layout is also an on-disk format: filter-index predicates (`pred_stream`) and function-index expressions (`expr_stream`) are stored in the catalog and read back with `stx_map_stream_to_filter_pred ()` / `stx_map_stream_to_func_pred ()`.
+  - XASL clones are reused across executions and sessions: `xcache_retire_clone ()` relies on `qexec_clear_xasl ()` to reset a clone, and parallel scan workers take clones from the same pool. Reset any per-execution state added to a node there.
+  - `ER_QPROC_INVALID_XASLNODE` makes the client drop its `xasl_id` and recompile (`src/compat/db_vdb.c`); do not reuse it for unrelated "cannot happen" checks.
 - **Storage & transaction changes**: verify page latches vs. transaction locks, latch ordering, WAL/LSAs, crash redo/undo recovery, MVCC visibility, and vacuum (`src/query/vacuum.c`, `src/query/vacuum_oos.cpp`) together. See [src/storage/AGENTS.md](storage/AGENTS.md) and [src/transaction/AGENTS.md](transaction/AGENTS.md).
+  - Log and disk formats: add new `LOG_RCVINDEX` entries only at the end of the enum in `src/transaction/recovery.h` (the index is written into log records), and raise `disk_compatibility_level` in `src/base/release_string.c` when an on-disk layout changes.
 - **Key coupling points** (workflow checklist, not an exhaustive include graph):
   - `src/base/` and `src/compat/` (`DB_VALUE`) underpin most targets.
   - `src/parser/` ↔ `src/optimizer/`: bidirectional compile/rewrite/planning; note `src/optimizer/histogram/` also builds in `SERVER_MODE`.
   - `src/object/`: shared schema/catalog/workspace headers used across parser, optimizer, query, xasl, method, and sp; `src/object/lob_locator.cpp` pairs with `src/storage/es.c`.
   - `src/query/` ↔ `src/storage/` ↔ `src/transaction/`: runtime and header coupling across scans, fetch, MVCC, WAL, recovery, and vacuum.
   - `src/sp/` ↔ `pl_engine/`: see [src/sp/AGENTS.md](sp/AGENTS.md) and [pl_engine/AGENTS.md](../pl_engine/AGENTS.md).
+
+## Performance-Sensitive Paths
+
+For scans, predicate evaluation, aggregation, or any per-row / per-key loop:
+
+- State a performance claim with its measurement taken on a `release` build, and never compare numbers across build modes.
+- Keep plan-fixed work out of the loop: avoid per-row re-tests of plan-time-constant conditions and unconditional out-of-line calls per row.
+- A helper split out of a hot loop in `libcubrid` can stay out of line even when marked `inline`; define it `inline __attribute__ ((ALWAYS_INLINE))` (`src/base/porting_inline.hpp`) and confirm with `nm` that its symbol is gone.
+- Worker threads accumulate statistics in their own buffer and merge once when they finish (`thread_p->m_px_stats` in `src/base/perf_monitor.h`); the shared per-transaction array is updated without atomics.
