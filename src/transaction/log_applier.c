@@ -579,7 +579,8 @@ static int la_get_range_of_archive (int arv_log_num, LOG_PAGEID * fpageid, DKNPA
 static int la_log_fetch_from_archive (LOG_PAGEID pageid, char *data);
 static int la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer);
 static int la_expand_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size);
-static LA_CACHE_BUFFER *la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAGEID pageid, int io_pagesize,
+static LA_CACHE_BUFFER *la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAGEID pageid, int *error_out,
+						 int io_pagesize,
 						 int buffer_size);
 static int la_pin_page_buffer (LA_CACHE_BUFFER * cache_buffer, LOG_PAGEID pageid);
 static void la_free_pinned_page_buffers (void);
@@ -2225,8 +2226,14 @@ error_rtn:
   return error;
 }
 
+/*
+ * la_cache_buffer_replace() - take a free cache buffer and read the page into it
+ *   return: the buffer, or NULL
+ *   error_out(out): set only when the cache could not grow; a NULL return without it means the page is not
+ *                   readable yet and the caller may wait for it
+ */
 static LA_CACHE_BUFFER *
-la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAGEID pageid, int io_pagesize, int buffer_size)
+la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAGEID pageid, int *error_out, int io_pagesize, int buffer_size)
 {
   int error = NO_ERROR;
   LA_CACHE_BUFFER *cache_buffer = NULL;
@@ -2283,6 +2290,8 @@ la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAGEID pageid, int io_pages
       error = la_expand_cache_log_buffer (cache_pb, buffer_size, SIZEOF_LA_CACHE_LOG_BUFFER (io_pagesize));
       if (error != NO_ERROR)
 	{
+	  /* every buffer is fixed and no more memory: waiting would not free one */
+	  *error_out = error;
 	  return NULL;
 	}
     }
@@ -2372,7 +2381,7 @@ la_get_page_buffer (LOG_PAGEID pageid, int *error)
   if (cache_buffer == NULL)
     {
       cache_buffer =
-	la_cache_buffer_replace (cache_pb, pageid, la_Info.act_log.db_logpagesize, la_Info.cache_buffer_size);
+	la_cache_buffer_replace (cache_pb, pageid, error, la_Info.act_log.db_logpagesize, la_Info.cache_buffer_size);
 
       if (cache_buffer == NULL || cache_buffer->logpage.hdr.logical_pageid != pageid)
 	{
@@ -2385,6 +2394,12 @@ la_get_page_buffer (LOG_PAGEID pageid, int *error)
       if (mht_put (cache_pb->hash_table, &cache_buffer->pageid, cache_buffer) == NULL)
 	{
 	  pthread_mutex_unlock (&cache_pb->mutex);
+	  /* out of memory: retrying the same page would fail again */
+	  *error = (er_errid () != NO_ERROR) ? er_errid () : ER_OUT_OF_VIRTUAL_MEMORY;
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_CACHE_BUFFER *));
+	    }
 	  return NULL;
 	}
     }

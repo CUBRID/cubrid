@@ -193,18 +193,21 @@ la_realloc_recdes_data (LA_APPLY_WORKER_CONTEXT *context, RECDES *recdes, int da
 
   if (recdes->area_size < data_size)
     {
-      if (recdes->area_size > pool->db_page_size)
-	{
-	  free_and_init (recdes->data);
-	}
+      /* allocated first, so a failure leaves the buffer as it was instead of a NULL area with the old size */
+      char *new_data = (char *) malloc (data_size);
 
-      recdes->data = (char *) malloc (data_size);
-      if (recdes->data == NULL)
+      if (new_data == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, data_size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
+      if (recdes->area_size > pool->db_page_size)
+	{
+	  free_and_init (recdes->data);
+	}
+
+      recdes->data = new_data;
       recdes->area_size = data_size;
     }
   recdes->length = 0;
