@@ -54,5 +54,6 @@ void encrypt_salt_generate (char *salt, int salt_size);
 
 bool match_password (const char *name, const char *user, const char *database);
 int au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix);
+int au_check_password_policy (const char *user_name, const char *password);
 
 #endif

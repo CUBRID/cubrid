@@ -1825,7 +1825,13 @@
 
 #define ER_SP_REPLACE_NOT_ALLOWED_SYSTEM_GENERATED  -1409
 
-#define ER_LAST_ERROR                               -1410
+#define ER_AU_PASSWORD_POLICY_COMPOSITION           -1410
+#define ER_AU_PASSWORD_POLICY_USER_NAME             -1411
+#define ER_AU_PASSWORD_POLICY_REPEATED_CHARS        -1412
+#define ER_AU_PASSWORD_POLICY_SEQUENTIAL_CHARS      -1413
+#define ER_AU_PASSWORD_POLICY_INVALID_CHAR          -1414
+
+#define ER_LAST_ERROR                               -1415
 
 /*
  * CAUTION!

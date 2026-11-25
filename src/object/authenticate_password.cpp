@@ -19,6 +19,8 @@
 /*
  * authenticate_password.cpp -
  */
+#include <cctype>
+#include <cstring>
 #include <random>
 
 #include "authenticate_password.hpp"
@@ -29,6 +31,7 @@
 #include "crypt_opfunc.h" /* crypt_sha_two () */
 #include "object_accessor.h"
 #include "schema_manager.h" /* sm_find_class */
+#include "system_parameter.h" /* PRM_ID_USE_POLICY */
 
 /*
  * Password Encoding
@@ -357,6 +360,176 @@ match_password (const char *name, const char *user, const char *database)
 }
 
 /*
+ * Password complexity policy (use_policy=yes), after the KISA guideline:
+ *   1. at least 2 of the 4 character kinds (uppercase, lowercase, digit, special) with at least 10 characters,
+ *      or at least 3 kinds with at least 8 characters;
+ *   2. not the user name and not containing it (case-insensitive);
+ *   3. no character repeated AU_PASSWORD_POLICY_MAX_REPEAT or more times in a row ("aaaa", "1111");
+ *   4. no AU_PASSWORD_POLICY_MAX_SEQUENCE or more characters that follow one another in alphabet, digit or
+ *      keyboard order, forward or backward, case-insensitive ("abcd", "1234", "qwer", "4321");
+ *   5. only the letters A-Z and a-z, the digits 0-9 and the 21 special characters of
+ *      AU_PASSWORD_POLICY_SPECIAL_CHARS; a space, a quote or a non-ASCII character is rejected.
+ */
+#define AU_PASSWORD_POLICY_MIN_LEN_2_KINDS      10
+#define AU_PASSWORD_POLICY_MIN_LEN_3_KINDS      8
+#define AU_PASSWORD_POLICY_MAX_REPEAT           4
+#define AU_PASSWORD_POLICY_MAX_SEQUENCE         4
+#define AU_PASSWORD_POLICY_SPECIAL_CHARS        "!@#$%^&*()-_=+{}:?.,~"
+
+/* lowercase rows the sequence rule looks in; each is also checked reversed */
+static const char *au_password_sequences[] =
+{
+  "abcdefghijklmnopqrstuvwxyz",
+  "01234567890",
+  "qwertyuiop",
+  "asdfghjkl",
+  "zxcvbnm",
+  "!@#$%^&*()"
+};
+
+/*
+ * au_password_has_sequence - whether len lowercase characters of str follow one another in a row of
+ *                            au_password_sequences, forward or backward
+ */
+static bool
+au_password_has_sequence (const char *str, int len)
+{
+  for (const char *row : au_password_sequences)
+    {
+      int row_len = (int) strlen (row);
+
+      for (int start = 0; start + len <= row_len; start++)
+	{
+	  bool forward = true, backward = true;
+
+	  for (int i = 0; i < len && (forward || backward); i++)
+	    {
+	      forward = forward && str[i] == row[start + i];
+	      backward = backward && str[i] == row[start + len - 1 - i];
+	    }
+	  if (forward || backward)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
+ * au_check_password_policy - check a plain text password against the complexity policy when use_policy is on
+ *   return: NO_ERROR, or the ER_AU_PASSWORD_POLICY_* error of the first rule it breaks (set with er_set);
+ *           a character outside the allowed set is reported before the other rules
+ *   user_name(in): name of the user whose password it is; NULL skips the user name rule
+ *   password(in): plain text password; NULL or empty is not checked
+ */
+int
+au_check_password_policy (const char *user_name, const char *password)
+{
+  char lower[AU_MAX_PASSWORD_BUF + 1];
+  int len, kinds, i;
+  bool has_upper = false, has_lower = false, has_digit = false, has_special = false;
+
+  if (!prm_get_bool_value (PRM_ID_USE_POLICY) || password == NULL || password[0] == '\0')
+    {
+      return NO_ERROR;
+    }
+
+  len = (int) strlen (password);
+  if (len > AU_MAX_PASSWORD_BUF)
+    {
+      /* au_set_password_internal () rejects it as too long */
+      return NO_ERROR;
+    }
+
+  for (i = 0; i < len; i++)
+    {
+      unsigned char c = (unsigned char) password[i];
+
+      if (c >= 'A' && c <= 'Z')
+	{
+	  has_upper = true;
+	}
+      else if (c >= 'a' && c <= 'z')
+	{
+	  has_lower = true;
+	}
+      else if (c >= '0' && c <= '9')
+	{
+	  has_digit = true;
+	}
+      else if (strchr (AU_PASSWORD_POLICY_SPECIAL_CHARS, c) != NULL)
+	{
+	  has_special = true;
+	}
+      else
+	{
+	  /* 5. a character outside the allowed set */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_PASSWORD_POLICY_INVALID_CHAR, 1,
+		  AU_PASSWORD_POLICY_SPECIAL_CHARS);
+	  return ER_AU_PASSWORD_POLICY_INVALID_CHAR;
+	}
+      lower[i] = (char) tolower (c);
+    }
+  lower[len] = '\0';
+
+  /* 1. character kinds and length */
+  kinds = (int) has_upper + (int) has_lower + (int) has_digit + (int) has_special;
+  if (kinds < 2 || (kinds == 2 && len < AU_PASSWORD_POLICY_MIN_LEN_2_KINDS)
+      || (kinds >= 3 && len < AU_PASSWORD_POLICY_MIN_LEN_3_KINDS))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_PASSWORD_POLICY_COMPOSITION, 0);
+      return ER_AU_PASSWORD_POLICY_COMPOSITION;
+    }
+
+  /* 2. user name */
+  if (user_name != NULL && user_name[0] != '\0')
+    {
+      int name_len = (int) strlen (user_name);
+
+      for (i = 0; i + name_len <= len; i++)
+	{
+	  if (strncasecmp (lower + i, user_name, name_len) == 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_PASSWORD_POLICY_USER_NAME, 0);
+	      return ER_AU_PASSWORD_POLICY_USER_NAME;
+	    }
+	}
+    }
+
+  /* 3. the same character repeated */
+  for (i = 0; i + AU_PASSWORD_POLICY_MAX_REPEAT <= len; i++)
+    {
+      int j = 1;
+
+      while (j < AU_PASSWORD_POLICY_MAX_REPEAT && lower[i + j] == lower[i])
+	{
+	  j++;
+	}
+      if (j == AU_PASSWORD_POLICY_MAX_REPEAT)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_PASSWORD_POLICY_REPEATED_CHARS, 1,
+		  AU_PASSWORD_POLICY_MAX_REPEAT);
+	  return ER_AU_PASSWORD_POLICY_REPEATED_CHARS;
+	}
+    }
+
+  /* 4. alphabet, digit or keyboard sequence */
+  for (i = 0; i + AU_PASSWORD_POLICY_MAX_SEQUENCE <= len; i++)
+    {
+      if (au_password_has_sequence (lower + i, AU_PASSWORD_POLICY_MAX_SEQUENCE))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_PASSWORD_POLICY_SEQUENTIAL_CHARS, 1,
+		  AU_PASSWORD_POLICY_MAX_SEQUENCE);
+	  return ER_AU_PASSWORD_POLICY_SEQUENTIAL_CHARS;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * au_set_password_internal -  Set the password string for a user.
  *                             This should be using encrypted strings.
  *   return:error code
@@ -403,6 +576,30 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 	{
 	  error = ER_AU_PASSWORD_OVERFLOW;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto end;
+	}
+    }
+
+  /* a plain text password must satisfy the complexity policy; an encoded one (unloaddb output) cannot be checked */
+  if (password != NULL && encode && prm_get_bool_value (PRM_ID_USE_POLICY))
+    {
+      DB_VALUE nm_value;
+      const char *user_name = NULL;
+
+      error = obj_get (user, "name", &nm_value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      if (DB_IS_STRING (&nm_value) && !DB_IS_NULL (&nm_value))
+	{
+	  user_name = db_get_string (&nm_value);
+	}
+
+      error = au_check_password_policy (user_name, password);
+      db_value_clear (&nm_value);
+      if (error != NO_ERROR)
+	{
 	  goto end;
 	}
     }

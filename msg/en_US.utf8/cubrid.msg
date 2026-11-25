@@ -1537,7 +1537,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1409 Replacing system generated stored procedure is not allowed.
 
-1410 Last Error
+1410 Password must combine at least 2 of uppercase letters, lowercase letters, digits and special characters with at least 10 characters, or at least 3 of them with at least 8 characters.
+1411 Password must not contain the user name.
+1412 Password must not repeat the same character %1$d or more times in a row.
+1413 Password must not contain %1$d or more consecutive characters in sequence or keyboard order (e.g. "1234", "abcd", "qwer").
+1414 Password can contain only letters A-Z and a-z, digits 0-9 and the special characters %1$s.
+
+1415 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

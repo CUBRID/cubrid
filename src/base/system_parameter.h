@@ -587,8 +587,10 @@ enum param_id
 
   PRM_ID_INDEX_BUILD_PARALLEL_LEAF,
 
+  PRM_ID_USE_POLICY,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_INDEX_BUILD_PARALLEL_LEAF
+  PRM_LAST_ID = PRM_ID_USE_POLICY
 };
 typedef enum param_id PARAM_ID;
 
