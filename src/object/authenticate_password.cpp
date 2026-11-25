@@ -363,54 +363,91 @@ match_password (const char *name, const char *user, const char *database)
  * Password complexity policy (enable_complexity_policy=yes), after the KISA guideline:
  *   1. at least 2 of the 4 character kinds (uppercase, lowercase, digit, special) with at least 10 characters,
  *      or at least 3 kinds with at least 8 characters;
- *   2. not the user name and not containing it (case-insensitive);
- *   3. no character repeated AU_PASSWORD_POLICY_MAX_REPEAT or more times in a row ("aaaa", "1111");
- *   4. no AU_PASSWORD_POLICY_MAX_SEQUENCE or more characters that follow one another in alphabet, digit or
- *      keyboard order, forward or backward, case-insensitive ("abcd", "1234", "qwer", "4321");
+ *   2. not containing the user name (case-insensitive) when the name has AU_PASSWORD_POLICY_MIN_USER_NAME_LEN or
+ *      more characters; a shorter name ("a", "u1") is part of too many passwords to tell anything, and a password
+ *      equal to it is already too short for rule 1;
+ *   3. no key repeated AU_PASSWORD_POLICY_MAX_REPEAT or more times in a row ("aaaa", "1111", "aAaA", "1!1!");
+ *   4. no AU_PASSWORD_POLICY_MAX_SEQUENCE or more keys that follow one another in alphabet, digit or keyboard
+ *      order, forward or backward ("abcd", "1234", "qwer", "4321", "QwEr", "!2#4", "90-=");
  *   5. only the letters A-Z and a-z, the digits 0-9 and the 21 special characters of
  *      AU_PASSWORD_POLICY_SPECIAL_CHARS; a space, a quote or a non-ASCII character is rejected.
+ * Rules 3 and 4 compare keys, not characters: a character and the one typed with Shift on the same key of a US
+ * keyboard ('a' and 'A', '1' and '!', '-' and '_') are the same key, so a repetition or a sequence cannot slip
+ * through by mixing them.
  */
 #define AU_PASSWORD_POLICY_MIN_LEN_2_KINDS      10
 #define AU_PASSWORD_POLICY_MIN_LEN_3_KINDS      8
 #define AU_PASSWORD_POLICY_MAX_REPEAT           4
 #define AU_PASSWORD_POLICY_MAX_SEQUENCE         4
+#define AU_PASSWORD_POLICY_MIN_USER_NAME_LEN    3
 #define AU_PASSWORD_POLICY_SPECIAL_CHARS        "!@#$%^&*()-_=+{}:?.,~"
 
-/* lowercase rows the sequence rule looks in; each is also checked reversed */
+/* the special characters typed with Shift, and the unshifted key of each */
+#define AU_PASSWORD_POLICY_SHIFTED_CHARS        "!@#$%^&*()_+{}:?~"
+#define AU_PASSWORD_POLICY_SHIFTED_KEYS         "1234567890-=[];/`"
+
+/* rows of unshifted keys the sequence rule looks in; each is also checked reversed */
 static const char *au_password_sequences[] =
 {
   "abcdefghijklmnopqrstuvwxyz",
-  "01234567890",
-  "qwertyuiop",
-  "asdfghjkl",
-  "zxcvbnm",
-  "!@#$%^&*()"
+  "0123456789",
+  "`1234567890-=",
+  "qwertyuiop[]",
+  "asdfghjkl;",
+  "zxcvbnm,./"
 };
 
 /*
- * au_password_has_sequence - whether len lowercase characters of str follow one another in a row of
+ * au_password_key - the unshifted key a password character is typed with on a US keyboard
+ *   return: the lowercase letter of a letter, the unshifted key of a shifted special character, else c itself
+ *   c(in): password character
+ */
+static char
+au_password_key (unsigned char c)
+{
+  const char *shifted;
+
+  if (c >= 'A' && c <= 'Z')
+    {
+      return (char) (c + ('a' - 'A'));
+    }
+
+  shifted = (c != '\0') ? strchr (AU_PASSWORD_POLICY_SHIFTED_CHARS, c) : NULL;
+  if (shifted != NULL)
+    {
+      return AU_PASSWORD_POLICY_SHIFTED_KEYS[shifted - AU_PASSWORD_POLICY_SHIFTED_CHARS];
+    }
+
+  return (char) c;
+}
+
+/*
+ * au_password_has_sequence - whether len keys of str follow one another in a row of
  *                            au_password_sequences, forward or backward
+ *   return: true if they do
+ *   str(in): keys to check, not NUL-terminated
+ *   len(in): number of keys; AU_PASSWORD_POLICY_MAX_SEQUENCE
  */
 static bool
 au_password_has_sequence (const char *str, int len)
 {
+  char forward[AU_PASSWORD_POLICY_MAX_SEQUENCE + 1];
+  char backward[AU_PASSWORD_POLICY_MAX_SEQUENCE + 1];
+
+  assert (len == AU_PASSWORD_POLICY_MAX_SEQUENCE);
+
+  for (int i = 0; i < len; i++)
+    {
+      forward[i] = str[i];
+      backward[i] = str[len - 1 - i];
+    }
+  forward[len] = backward[len] = '\0';
+
   for (const char *row : au_password_sequences)
     {
-      int row_len = (int) strlen (row);
-
-      for (int start = 0; start + len <= row_len; start++)
+      if (strstr (row, forward) != NULL || strstr (row, backward) != NULL)
 	{
-	  bool forward = true, backward = true;
-
-	  for (int i = 0; i < len && (forward || backward); i++)
-	    {
-	      forward = forward && str[i] == row[start + i];
-	      backward = backward && str[i] == row[start + len - 1 - i];
-	    }
-	  if (forward || backward)
-	    {
-	      return true;
-	    }
+	  return true;
 	}
     }
 
@@ -426,8 +463,8 @@ au_password_has_sequence (const char *str, int len)
 static bool
 au_password_satisfies_policy (const char *user_name, const char *password)
 {
-  char lower[AU_MAX_PASSWORD_BUF + 1];
-  int len, kinds, i;
+  char keys[AU_MAX_PASSWORD_BUF + 1];
+  int len, kinds, i, run;
   bool has_upper = false, has_lower = false, has_digit = false, has_special = false;
 
   len = (int) strlen (password);
@@ -457,9 +494,9 @@ au_password_satisfies_policy (const char *user_name, const char *password)
 	  /* 5. a character outside the allowed set */
 	  return false;
 	}
-      lower[i] = (char) tolower (c);
+      keys[i] = au_password_key (c);
     }
-  lower[len] = '\0';
+  keys[len] = '\0';
 
   /* 1. character kinds and length */
   kinds = (int) has_upper + (int) has_lower + (int) has_digit + (int) has_special;
@@ -470,38 +507,33 @@ au_password_satisfies_policy (const char *user_name, const char *password)
     }
 
   /* 2. user name */
-  if (user_name != NULL && user_name[0] != '\0')
+  if (user_name != NULL && strlen (user_name) >= AU_PASSWORD_POLICY_MIN_USER_NAME_LEN)
     {
       int name_len = (int) strlen (user_name);
 
       for (i = 0; i + name_len <= len; i++)
 	{
-	  if (strncasecmp (lower + i, user_name, name_len) == 0)
+	  if (strncasecmp (password + i, user_name, name_len) == 0)
 	    {
 	      return false;
 	    }
 	}
     }
 
-  /* 3. the same character repeated */
-  for (i = 0; i + AU_PASSWORD_POLICY_MAX_REPEAT <= len; i++)
+  /* 3. the same key repeated; run is the length of the run of one key that ends at i */
+  for (i = 1, run = 1; i < len; i++)
     {
-      int j = 1;
-
-      while (j < AU_PASSWORD_POLICY_MAX_REPEAT && lower[i + j] == lower[i])
-	{
-	  j++;
-	}
-      if (j == AU_PASSWORD_POLICY_MAX_REPEAT)
+      run = (keys[i] == keys[i - 1]) ? run + 1 : 1;
+      if (run == AU_PASSWORD_POLICY_MAX_REPEAT)
 	{
 	  return false;
 	}
     }
 
   /* 4. alphabet, digit or keyboard sequence */
-  for (i = 0; i + AU_PASSWORD_POLICY_MAX_SEQUENCE <= len; i++)
+  for (i = 0; i <= (len - AU_PASSWORD_POLICY_MAX_SEQUENCE); i++)
     {
-      if (au_password_has_sequence (lower + i, AU_PASSWORD_POLICY_MAX_SEQUENCE))
+      if (au_password_has_sequence (keys + i, AU_PASSWORD_POLICY_MAX_SEQUENCE))
 	{
 	  return false;
 	}
@@ -511,17 +543,18 @@ au_password_satisfies_policy (const char *user_name, const char *password)
 }
 
 /*
- * au_check_password_policy - check a plain text password against the complexity policy when
- *                            enable_complexity_policy is on
+ * au_check_password_policy - check a plain text password against the complexity policy
  *   return: NO_ERROR, or ER_AU_PASSWORD_NOT_ALLOWED (set with er_set) whichever rule it breaks; the error does not
  *           tell which rule, so it gives no hint for guessing a password
  *   user_name(in): name of the user whose password it is; NULL skips the user name rule
- *   password(in): plain text password; NULL or empty is not checked
+ *   password(in): plain text password, not NULL; an empty one is not checked
+ *
+ * The caller calls it only when enable_complexity_policy is on.
  */
 int
 au_check_password_policy (const char *user_name, const char *password)
 {
-  assert(prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY) && password != NULL);      
+  assert (prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY) && password != NULL);
   if (password[0] == '\0')
     {
       return NO_ERROR;
