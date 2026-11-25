@@ -3464,7 +3464,14 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 
   if (scan_predp->regu_list == NULL)
     {
-      return V_TRUE;
+      if (scan_predp->pr_eval_fnc == NULL || scan_predp->pred_expr == NULL)
+	{
+	  return V_TRUE;
+	}
+
+      /* A filter that reads no key column: an ON term of an outer join that reads only the preserved side, or no table,
+       * which gen_outer () puts on the key filter of a covering scan of the inner. It is still a filter. */
+      return (*scan_predp->pr_eval_fnc) (thread_p, scan_predp->pred_expr, filterp->val_descr, NULL /* obj_oid */ );
     }
 
   ev_res = V_TRUE;

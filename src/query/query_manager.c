@@ -46,6 +46,7 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
 #include "xasl_cache.h"
+#include "xasl_stream.hpp"
 #include "xasl_unpack_info.hpp"
 #include "dblink_scan.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -1059,6 +1060,10 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, xasl_st
 		{
 		  /* also header was requested. */
 		  qfile_load_xasl_node_header (thread_p, cache_entry_p->stream.buffer, stream->xasl_header);
+		}
+	      if (stream->buffer == NULL && stream->stmt_info != NULL && cache_entry_p->stream.buffer != NULL)
+		{
+		  xasl_stream_get_stmt_info (cache_entry_p->stream.buffer, *stream->stmt_info);
 		}
 	      xcache_unfix (thread_p, cache_entry_p);
 	      goto exit_on_end;
@@ -2202,6 +2207,39 @@ xqmgr_drop_query_clones (THREAD_ENTRY * thread_p, const char *sha1)
 }
 
 /*
+ * xqmgr_get_xasl_stmt_info () - what the cached XASL of an XASL_ID writes
+ *   return: NO_ERROR or the error set
+ *   xasl_id(in): the XASL
+ *   stmt_info(out): its stmt_flags and the classes it writes
+ *   found(out): whether the XASL cache still has the XASL
+ *
+ * Note: It looks the cache up without the recompile check of a prepare.
+ */
+int
+xqmgr_get_xasl_stmt_info (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, XASL_STMT_INFO * stmt_info, bool * found)
+{
+  XASL_CACHE_ENTRY *cache_entry_p = NULL;
+  int error_code;
+
+  *found = false;
+
+  error_code = xcache_find_sha1 (thread_p, &xasl_id->sha1, XASL_CACHE_SEARCH_GENERIC, &cache_entry_p, NULL);
+  if (error_code != NO_ERROR || cache_entry_p == NULL)
+    {
+      return error_code;
+    }
+
+  if (XASL_ID_EQ (&cache_entry_p->xasl_id, (XASL_ID *) xasl_id) && cache_entry_p->stream.buffer != NULL)
+    {
+      xasl_stream_get_stmt_info (cache_entry_p->stream.buffer, *stmt_info);
+      *found = true;
+    }
+
+  xcache_unfix (thread_p, cache_entry_p);
+  return NO_ERROR;
+}
+
+/*
  * xqmgr_dump_query_plans () - Dump the content of the XASL cache
  *   return:
  *   outfp(in)  :
@@ -2770,110 +2808,6 @@ qmgr_get_old_page_read_only (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_F
     }
 
   return page_p;
-}
-
-/*
- * qmgr_get_old_page_simple_fix () -
- *   return:
- *   vpidp(in)  :
- *   tfile_vfidp(in)    :
- */
-PAGE_PTR
-qmgr_get_old_page_simple_fix (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfile_vfid_p)
-{
-  int tran_index;
-  PAGE_PTR page_p;
-#if defined(SERVER_MODE)
-  bool dummy;
-#endif /* SERVER_MODE */
-
-  if (vpid_p->volid == NULL_VOLID && tfile_vfid_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_TEMP_FILE, 1, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-      return NULL;
-    }
-
-  if (vpid_p->volid == NULL_VOLID)
-    {
-      /* return memory buffer */
-      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-      if (vpid_p->pageid >= 0 && vpid_p->pageid <= tfile_vfid_p->membuf_last)
-	{
-	  page_p = tfile_vfid_p->membuf[vpid_p->pageid];
-
-	  /* interrupt check */
-#if defined (SERVER_MODE)
-	  if (logtb_get_check_interrupt (thread_p) == true
-	      && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index) == true)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	      page_p = NULL;
-	    }
-#endif
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_TEMP_FILE, 1, tran_index);
-	  page_p = NULL;
-	}
-    }
-  else
-    {
-      /* latchless read only fix */
-      page_p = pgbuf_simple_fix (thread_p, vpid_p, true);
-
-      if (page_p != NULL)
-	{
-#if !defined (NDEBUG)
-	  (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_QRESULT);
-#endif /* !NDEBUG */
-	}
-    }
-
-  return page_p;
-}
-
-/*
- * qmgr_free_old_page_simple_fix () -
- *   return:
- *   page_ptr(in)       :
- *   tfile_vfidp(in)    :
- */
-void
-qmgr_free_old_page_simple_fix (THREAD_ENTRY * thread_p, PAGE_PTR page_p, QMGR_TEMP_FILE * tfile_vfid_p)
-{
-  QMGR_PAGE_TYPE page_type;
-
-  if (page_p == NULL)
-    {
-      assert (0);
-      return;
-    }
-  if (tfile_vfid_p == NULL)
-    {
-      pgbuf_simple_unfix (thread_p, page_p);
-      return;
-    }
-
-  page_type = qmgr_get_page_type (page_p, tfile_vfid_p);
-  if (page_type == QMGR_UNKNOWN_PAGE)
-    {
-      assert (false);
-      return;
-    }
-
-  if (page_type == QMGR_TEMP_FILE_PAGE)
-    {
-      /* The list files came from list file cache have no tfile_vfid_p. */
-      pgbuf_simple_unfix (thread_p, page_p);
-    }
-#if defined (SERVER_MODE)
-  else
-    {
-      assert (page_type == QMGR_MEMBUF_PAGE);
-    }
-#endif
 }
 
 /*
