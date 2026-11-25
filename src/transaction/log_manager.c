@@ -65,6 +65,7 @@
 #endif /* SERVER_MODE */
 #include "log_append.hpp"
 #include "log_archives.hpp"
+#include "log_commit_batch.hpp"
 #include "log_compress.h"
 #include "log_prior_inflight.hpp"
 #include "log_record.hpp"
@@ -6258,6 +6259,10 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	      log_append_commit_log (thread_p, tdes, &commit_lsa);
 	    }
 
+#if defined (SERVER_MODE)
+	  /* the locks are released only after this flush: it cannot wait for the commit batching window */
+	  cublog::commit_batch.on_urgent_request (commit_lsa, cublog::commit_batch_urgent::TWO_PC);
+#endif /* SERVER_MODE */
 	  log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
 	}
       else
@@ -6265,6 +6270,9 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	  LOG_LSA abort_lsa;
 
 	  log_append_abort_log (thread_p, tdes, &abort_lsa);
+#if defined (SERVER_MODE)
+	  cublog::commit_batch.on_urgent_request (abort_lsa, cublog::commit_batch_urgent::TWO_PC);
+#endif /* SERVER_MODE */
 	  log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa);
 	}
 
@@ -10741,6 +10749,21 @@ log_wakeup_log_flush_daemon ()
 }
 
 /*
+ * log_wakeup_log_flush_daemon_urgent () - wakeup log flush daemon for a flush that cannot wait for the commit
+ *                                         batching window
+ *
+ *   lsa(in): the record that must reach the disk
+ */
+void
+log_wakeup_log_flush_daemon_urgent (const LOG_LSA * lsa)
+{
+#if defined (SERVER_MODE)
+  cublog::commit_batch.on_urgent_request (*lsa, cublog::commit_batch_urgent::PRIOR_LIST);
+#endif /* SERVER_MODE */
+  log_wakeup_log_flush_daemon ();
+}
+
+/*
  * log_is_log_flush_daemon_available () - check if log flush daemon is available
  */
 bool
@@ -10979,9 +11002,30 @@ log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+/*
+ * log_release_commit_waiters () - wake the waiters of logpb_flush_pages () after a flush of the log flush daemon
+ *
+ *   synced(in): the flush synced the log volume
+ *
+ * NOTE: The only broadcast of gc_cond. The commit batching window learns here, so moving the broadcast moves this
+ *       function as a whole.
+ */
+static void
+log_release_commit_waiters (bool synced)
+{
+  pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
+  cublog::commit_batch.on_broadcast (synced);
+  pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
+  log_Flush_has_been_requested = false;
+  pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
+}
+
 static void
 log_flush_execute (cubthread::entry & thread_ref)
 {
+  unsigned long sync_count;
+  bool synced;
+
   if (!BO_IS_SERVER_RESTARTED () || !log_Flush_has_been_requested)
     {
       return;
@@ -10990,16 +11034,21 @@ log_flush_execute (cubthread::entry & thread_ref)
   // refresh log trace flush time
   thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
 
+  /* before LOG_CS: waiting with it held would block every thread that flushes the log itself */
+  cublog::commit_batch.refresh ();
+  cublog::commit_batch.wait_before_drain ();
+
   LOG_CS_ENTER (&thread_ref);
+  cublog::commit_batch.on_drain ();
+  sync_count = log_Stat.total_sync_count;
   logpb_flush_pages_direct (&thread_ref);
+  /* read under LOG_CS: no other flush can sync in between */
+  synced = log_Stat.total_sync_count != sync_count;
   LOG_CS_EXIT (&thread_ref);
 
   log_Stat.gc_flush_count++;
 
-  pthread_mutex_lock (&log_Gl.group_commit_info.gc_mutex);
-  pthread_cond_broadcast (&log_Gl.group_commit_info.gc_cond);
-  log_Flush_has_been_requested = false;
-  pthread_mutex_unlock (&log_Gl.group_commit_info.gc_mutex);
+  log_release_commit_waiters (synced);
 }
 #endif /* SERVER_MODE */
 

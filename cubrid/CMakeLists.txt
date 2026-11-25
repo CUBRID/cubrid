@@ -514,6 +514,8 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
   ${TRANSACTION_DIR}/log_archives.hpp
+  ${TRANSACTION_DIR}/log_commit_batch.hpp
+  ${TRANSACTION_DIR}/log_commit_batch_policy.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
@@ -645,6 +647,7 @@ if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/variable_string.c)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
+  list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_commit_batch.cpp)
 else(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/wintcp.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)

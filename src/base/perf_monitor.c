@@ -329,6 +329,28 @@ PSTAT_METADATA pstat_Metadata[] = {
   /* previous-version reads that did not copy the page their record starts on */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_FETCHES_SKIPPED, "Num_log_page_fetches_skipped"),
 
+  /* commit batching window of the log flush daemon (log_commit_batch.hpp) */
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_COMMIT_BATCH_WAIT, "log_commit_batch_wait"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CLOSE_COUNT, "Num_log_commit_batch_close_count"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CLOSE_GAP, "Num_log_commit_batch_close_gap"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CLOSE_CAP, "Num_log_commit_batch_close_cap"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CLOSE_FLUSHED, "Num_log_commit_batch_close_flushed"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CLOSE_URGENT, "Num_log_commit_batch_close_urgent"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_SKIP_URGENT, "Num_log_commit_batch_skip_urgent"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_SKIP_SMALL, "Num_log_commit_batch_skip_small"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_SKIP_READY, "Num_log_commit_batch_skip_ready"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_SKIP_SLOW_RETURN, "Num_log_commit_batch_skip_slow_return"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_SKIP_LOW_RETURN, "Num_log_commit_batch_skip_low_return"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_SKIP_LATE, "Num_log_commit_batch_skip_late"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_URGENT_PRIOR_LIST, "Num_log_commit_batch_urgent_prior_list"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_URGENT_PAGES_FIXED, "Num_log_commit_batch_urgent_pages_fixed"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_URGENT_2PC, "Num_log_commit_batch_urgent_2pc"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CYCLES, "Num_log_commit_batch_cycles"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_RELEASED, "Num_log_commit_batch_released"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_LOG_COMMIT_BATCH_RHO, "log_commit_batch_rho"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_LOG_COMMIT_BATCH_T90, "log_commit_batch_t90"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_LOG_COMMIT_BATCH_FLUSH_TIME, "log_commit_batch_flush_time"),
+
   /* HA replication delay */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HA_REPL_DELAY, "Time_ha_replication_delay"),
 

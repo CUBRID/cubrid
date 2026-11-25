@@ -837,6 +837,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_INDEX_BUILD_PARALLEL_LEAF "index_build_parallel_leaf"
 
+#define PRM_NAME_LOG_COMMIT_BATCHING "log_commit_batching"
+#define PRM_NAME_LOG_COMMIT_BATCHING_MAX_WAIT_USECS "log_commit_batching_max_wait_in_usecs"
+
 // #endregion
 
 #define PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL "numeric_empty_string_as_null"
@@ -5803,6 +5806,31 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* commit batching window of the log flush daemon; read every cycle, so a change applies from the next one */
+  {PRM_ID_LOG_COMMIT_BATCHING,
+   PRM_NAME_LOG_COMMIT_BATCHING,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_COMMIT_BATCHING_MAX_WAIT_USECS,
+   PRM_NAME_LOG_COMMIT_BATCHING_MAX_WAIT_USECS,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 1000}},
+   {false, {.i = 1000}},
+   {false, {.i = 10000}},
+   {false, {.i = 50}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 /* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the
@@ -10429,6 +10457,9 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *call_stack_dump_activation_prm;
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
+#if defined (WINDOWS)
+  SYSPRM_PARAM *log_commit_batching_prm;
+#endif /* WINDOWS */
 #if defined (SERVER_MODE)
   SYSPRM_PARAM *max_request_worker_prm;
   SYSPRM_PARAM *max_request_concurrency_prm;
@@ -10706,6 +10737,15 @@ prm_tune_parameters (void)
     {
       tz_leap_second_support_prm->static_flag |= PRM_FOR_QRY_STRING;
     }
+
+#if defined (WINDOWS)
+  /* the commit batching window is not built on Windows (log_commit_batch.hpp) */
+  log_commit_batching_prm = GET_PRM (PRM_ID_LOG_COMMIT_BATCHING);
+  if (PRM_DEFAULT_VAL_USED (log_commit_batching_prm))
+    {
+      (void) prm_set (log_commit_batching_prm, "no", false);
+    }
+#endif /* WINDOWS */
 
   return;
 }

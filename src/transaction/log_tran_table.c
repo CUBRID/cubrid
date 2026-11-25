@@ -1753,6 +1753,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->has_deadlock_priority = false;
 
   tdes->num_log_records_written = 0;
+  tdes->commit_batch_epoch = 0;
 
   tdes->mvccinfo.init ();
 

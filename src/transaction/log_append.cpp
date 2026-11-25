@@ -77,7 +77,7 @@ static void prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
 static void prior_lsa_append_data (int length);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
-static void prior_lsa_wait_if_list_full (THREAD_ENTRY *thread_p);
+static void prior_lsa_wait_if_list_full (THREAD_ENTRY *thread_p, const LOG_LSA *start_lsa);
 static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid, bool is_explicit_mvccid);
 static char *log_append_get_data_ptr (THREAD_ENTRY *thread_p);
 static bool log_append_realloc_data_ptr (THREAD_ENTRY *thread_p, int length);
@@ -1580,7 +1580,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   if (with_lock == LOG_PRIOR_LSA_WITHOUT_LOCK)
     {
       log_Gl.prior_info.prior_lsa_mutex.unlock ();
-      prior_lsa_wait_if_list_full (thread_p);
+      prior_lsa_wait_if_list_full (thread_p, &start_lsa);
     }
 
   tdes->num_log_records_written++;
@@ -1591,10 +1591,12 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 /*
  * prior_lsa_wait_if_list_full - Let the log flush catch up when the prior list outgrows the log buffer
  *
+ *   start_lsa(in): start of the last record appended
+ *
  * Note: Called without prior_lsa_mutex, after an append.
  */
 static void
-prior_lsa_wait_if_list_full (THREAD_ENTRY *thread_p)
+prior_lsa_wait_if_list_full (THREAD_ENTRY *thread_p, const LOG_LSA *start_lsa)
 {
   if (log_Gl.prior_info.list_size >= (INT64) logpb_get_memsize ())
     {
@@ -1603,7 +1605,7 @@ prior_lsa_wait_if_list_full (THREAD_ENTRY *thread_p)
 #if defined(SERVER_MODE)
       if (!log_is_in_crash_recovery ())
 	{
-	  log_wakeup_log_flush_daemon ();
+	  log_wakeup_log_flush_daemon_urgent (start_lsa);
 
 	  thread_sleep (1);	/* 1msec */
 	}
@@ -1649,6 +1651,7 @@ void
 prior_lsa_next_record_list (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *list, log_tdes *tdes)
 {
   LOG_PRIOR_NODE *node, *next;
+  LOG_LSA start_lsa = NULL_LSA;
 
   if (list == NULL)
     {
@@ -1666,11 +1669,11 @@ prior_lsa_next_record_list (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *list, log_td
       /* the prior list links the record through next: detach it from the caller's list first */
       next = node->next;
       node->next = NULL;
-      (void) prior_lsa_next_record_internal (thread_p, node, tdes, LOG_PRIOR_LSA_WITH_LOCK);
+      start_lsa = prior_lsa_next_record_internal (thread_p, node, tdes, LOG_PRIOR_LSA_WITH_LOCK);
     }
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
-  prior_lsa_wait_if_list_full (thread_p);
+  prior_lsa_wait_if_list_full (thread_p, &start_lsa);
 }
 
 int
