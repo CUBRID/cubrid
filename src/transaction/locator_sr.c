@@ -9175,6 +9175,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   HFID prev_hfid = HFID_INITIALIZER;
   int has_index;
   bool row_topop_active = false;
+  bool row_skipped;
 
   thread_p->oos_oids.clear ();
 
@@ -9266,6 +9267,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  goto exit_on_error;
 	}
 
+      row_skipped = false;
       error_code = locator_repl_prepare_force (thread_p, obj, &old_recdes, &recdes, &key_value, force_scancache);
       if (error_code == ER_OBJ_OBJECT_NOT_FOUND && has_prior_value && oid_is_serial (&obj->class_oid))
 	{
@@ -9273,10 +9275,22 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  er_clear ();
 	  serial_repl_skip_missing_row (thread_p, &key_value, &prior_value);
 	  error_code = NO_ERROR;
+	  row_skipped = true;
 	}
       else if (error_code == NO_ERROR)
 	{
 	  has_index = LC_ONEOBJ_GET_INDEX_FLAG (obj);
+
+	  if (obj->operation != LC_FLUSH_INSERT_OOS && obj->operation != LC_FLUSH_REUSE_OOS
+	      && (LC_IS_FLUSH_INSERT (obj->operation) || LC_IS_FLUSH_UPDATE (obj->operation))
+	      && !heap_recdes_contains_oos (&recdes) && !thread_p->oos_oids.empty ())
+	    {
+	      /* OOS values were sent for a row that has none: the sender paired them with the wrong row */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		      "OOS values were sent with a replicated heap record that has no OOS column");
+	      error_code = ER_HA_GENERIC_ERROR;
+	      goto exit_on_error;
+	    }
 
 	  if (obj->operation != LC_FLUSH_INSERT_OOS
 	      && (LC_IS_FLUSH_INSERT (obj->operation) || LC_IS_FLUSH_UPDATE (obj->operation))
@@ -9331,6 +9345,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 					      has_prior_value ? &prior_value : NULL, LC_ONEOBJ_IS_SERIAL_ISSUE (obj),
 					      &rebuilt, &apply))
 		      {
+			row_skipped = true;
 			break;	/* not this node's to take; the object counts as applied */
 		      }
 		    if (apply.rebuilt)
@@ -9428,7 +9443,10 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	}
       else if (!LC_IS_FLUSH_OOS_ITEM (obj->operation))
 	{
-	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
+	  /* a serial row this node does not take counts as applied, but the OOS values sent ahead of it were inserted
+	   * in this row topop: abort it so that they do not stay behind unreferenced */
+	  (void) xtran_server_end_topop (thread_p, row_skipped ? LOG_RESULT_TOPOP_ABORT
+					 : LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
 	  row_topop_active = false;
 	}
       pr_clear_value (&key_value);
