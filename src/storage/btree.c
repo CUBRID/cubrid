@@ -31720,9 +31720,19 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       if (!bts->is_key_partially_processed)
 	{
 	  /* If no objects have been processed this iteration, don't count. If already processed more than soft limit,
-	   * don't count. If currently process + key's leaf and first overflow count exceed soft limit, stop iteration
-	   * before processing key. */
-	  if (bts->n_oids_read_last_iteration > 0 && BTS_IS_SOFT_CAPACITY_ENOUGH (bts, bts->n_oids_read_last_iteration))
+	   * stop iteration before processing key: a key that did not fit the soft limit was read up to the hard limit
+	   * (from its overflow pages), and the keys after it must not be added unchecked -- with a soft limit below the
+	   * buffer's capacity (a small index_scan_oid_buffer_size, or a reused buffer larger than it asks), they would
+	   * fill the buffer past its capacity. If currently process + key's leaf and first overflow count exceed soft
+	   * limit, stop iteration before processing key. */
+	  if (bts->n_oids_read_last_iteration > 0
+	      && !BTS_IS_SOFT_CAPACITY_ENOUGH (bts, bts->n_oids_read_last_iteration))
+	    {
+	      /* Stop this iteration and resume with an empty buffer, from this key. */
+	      bts->end_one_iteration = true;
+	      return NO_ERROR;
+	    }
+	  if (bts->n_oids_read_last_iteration > 0)
 	    {
 	      /* Count the objects. */
 	      if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))

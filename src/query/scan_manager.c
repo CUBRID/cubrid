@@ -988,7 +988,12 @@ scan_free_oid_list (BTREE_ISCAN_OID_LIST * oid_list_p)
  * scan_alloc_iscan_oid_buf_list () - Allocate or use a preallocated buffer for index scan OID list.
  *
  * return	  : Error code.
- * oid_list (out) : Output OID list with allocated buffer.
+ * oid_list (out) : Output OID list with allocated buffer, its OID count limit (max_oid_cnt) set and no OID in it.
+ *
+ * Note: a list kept for reuse has the capacity the parameter gave when it was allocated, and
+ *	 index_scan_oid_buffer_size is a server-wide parameter any session may change, so the list may be smaller than
+ *	 the parameter asks now: such a list is freed and a new one allocated.  The parameter is read once here, and the
+ *	 limit is cut to the capacity, so that a session raising it meanwhile cannot make the limit pass the buffer.
  */
 static int
 scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list)
@@ -997,6 +1002,8 @@ scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list)
   int rv;
 #endif /* SERVER_MODE */
   int error_code = NO_ERROR;
+  int oid_count = ISCAN_OID_BUFFER_COUNT;
+  int capacity_needed = MAX (ISCAN_OID_BUFFER_MIN_CAPACITY / OR_OID_SIZE, oid_count);
 
   /* Assert expected argument. */
   assert (oid_list != NULL && *oid_list == NULL);
@@ -1021,10 +1028,19 @@ scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list)
 
 	  /* Reset next_list link. */
 	  (*oid_list)->next_list = NULL;
-	  return NO_ERROR;
+	  if ((*oid_list)->capacity >= capacity_needed)
+	    {
+	      goto set_limit;
+	    }
+	  /* Allocated before the parameter grew: too small for it now. */
+	  scan_free_oid_list (*oid_list);
+	  *oid_list = NULL;
 	}
-      /* Empty. */
-      pthread_mutex_unlock (&scan_Iscan_oid_buf_list_mutex);
+      else
+	{
+	  /* Empty. */
+	  pthread_mutex_unlock (&scan_Iscan_oid_buf_list_mutex);
+	}
     }
 
   /* Allocate a new OID list entry. */
@@ -1038,6 +1054,11 @@ scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list)
   assert (*oid_list != NULL);
   assert ((*oid_list)->oidp != NULL);
   assert ((*oid_list)->capacity > 0);
+
+set_limit:
+  /* The OID count limit of the scan: what the parameter asks, never past the buffer. */
+  (*oid_list)->max_oid_cnt = MIN (oid_count, (*oid_list)->capacity);
+  (*oid_list)->oid_cnt = 0;
 
   /* Success. */
   return NO_ERROR;
@@ -3155,9 +3176,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       assert (isidp->oid_list->capacity > 0);
       assert (isidp->oid_list->next_list == NULL);
 
-      /* Initialize OID list. */
-      isidp->oid_list->max_oid_cnt = ISCAN_OID_BUFFER_COUNT;
-      isidp->oid_list->oid_cnt = 0;
+      /* The OID list comes with its limit set and no OID (scan_alloc_iscan_oid_buf_list ()). */
       /* Initialize current OID pointer to start of buffer. */
       isidp->curr_oidp = isidp->oid_list->oidp;
 
@@ -5486,8 +5505,7 @@ scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp)
     {
       return error_code;
     }
-  isidp->oid_list->max_oid_cnt = ISCAN_OID_BUFFER_COUNT;
-  isidp->oid_list->oid_cnt = 0;
+  /* the list comes with its limit set and no OID (scan_alloc_iscan_oid_buf_list ()) */
   isidp->curr_oidp = isidp->oid_list->oidp;
   return NO_ERROR;
 }
