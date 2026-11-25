@@ -4050,6 +4050,12 @@ qo_bitmap_heap_allowed (QO_PLANNER * planner)
       /* a MIN or MAX read off one end of the key range needs the key order, and stops there */
       return false;
     }
+  if (planner->P > 1)
+    {
+      /* the parts of a join with no term between them are joined by nested loops, whose inner runs once an outer
+       * row; which part comes first is not known when a part picks its plan */
+      return false;
+    }
   for (t = 0; t < (signed) planner->T; t++)
     {
       if (QO_TERM_CLASS (&planner->term[t]) == QO_TC_TOTALLY_AFTER_JOIN)
@@ -10687,6 +10693,11 @@ qo_find_best_plan_on_planvec (QO_PLANVEC * planvec, double n)
    * something useful.
    */
 
+  if (planvec->nplans == 0)
+    {
+      return NULL;
+    }
+
   best_plan = planvec->plan[0];
   fixed = best_plan->fixed_cpu_cost + best_plan->fixed_io_cost;
   variable = best_plan->variable_cpu_cost + best_plan->variable_io_cost;
@@ -11168,11 +11179,17 @@ qo_find_best_plan_on_info (QO_INFO * info, QO_EQCLASS * order, double n)
   if (order == QO_UNORDERED)
     {
       pv = &info->best_no_order;
-      if (info->planner != NULL && info->planner->bitmap_heap_pass && info->best_bitmap.nplans > 0 && pv->nplans > 0)
+      if (info->planner != NULL && info->planner->bitmap_heap_pass && info->best_bitmap.nplans > 0)
 	{
 	  /* an equal cost goes to the bitmap: its scans were made because they are the cheaper */
 	  QO_PLAN *plan = qo_find_best_plan_on_planvec (pv, n);
 	  QO_PLAN *bitmap_plan = qo_find_best_plan_on_planvec (&info->best_bitmap, n);
+
+	  if (plan == NULL)
+	    {
+	      /* every other plan of this join cost more than the best plan of the whole join and was dropped */
+	      return bitmap_plan;
+	    }
 
 	  return (!qo_plan_saves_sort (plan)
 		  && ((bitmap_plan->fixed_cpu_cost + bitmap_plan->fixed_io_cost
@@ -11189,7 +11206,15 @@ qo_find_best_plan_on_info (QO_INFO * info, QO_EQCLASS * order, double n)
 	  QO_PLAN *planp;
 
 	  planp = qo_find_best_plan_on_planvec (&info->best_no_order, n);
-	  if (info->is_distinct && planp != NULL)
+	  if (planp == NULL && info->planner != NULL && info->planner->bitmap_heap_pass)
+	    {
+	      planp = qo_find_best_plan_on_planvec (&info->best_bitmap, n);
+	    }
+	  if (planp == NULL)
+	    {
+	      return NULL;
+	    }
+	  if (info->is_distinct)
 	    {
 	      /* qo_sort_new () would skip the DISTINCT plan below it and the removal with it */
 	      assert (planp->plan_type == QO_PLANTYPE_SORT && planp->plan_un.sort.sort_type == SORT_DISTINCT);
@@ -12567,6 +12592,7 @@ qo_examine_follow (QO_INFO * info, QO_TERM * path_term, QO_INFO * head_info, BIT
 		   BITSET * pinned_subqueries)
 {
   PT_NODE *entity_spec;
+  QO_PLAN *head_plan;
   /*
    * Examine the feasibility of a follow plan implementation for this
    * edge.  Don't build follow plans if the tail of the path is an rdb
@@ -12578,9 +12604,13 @@ qo_examine_follow (QO_INFO * info, QO_TERM * path_term, QO_INFO * head_info, BIT
       return 0;
     }
 
-  return qo_check_plan_on_info (info,
-				qo_follow_new (info, qo_find_best_plan_on_info (head_info, QO_UNORDERED, 1.0),
-					       path_term, sarged_terms, pinned_subqueries));
+  head_plan = qo_find_best_plan_on_info (head_info, QO_UNORDERED, 1.0);
+  if (head_plan == NULL)
+    {
+      return 0;
+    }
+
+  return qo_check_plan_on_info (info, qo_follow_new (info, head_plan, path_term, sarged_terms, pinned_subqueries));
 
 }
 
@@ -14405,7 +14435,9 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 	      continue;		/* skip and go ahead */
 	    }
 
+	  planner->bitmap_heap_pass = true;
 	  best_plan = qo_find_best_plan_on_info (best_info, QO_UNORDERED, 1.0);
+	  planner->bitmap_heap_pass = false;
 
 	  if (best_plan == NULL)
 	    {			/* unknown error */
