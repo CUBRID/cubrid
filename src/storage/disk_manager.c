@@ -2740,6 +2740,8 @@ disk_delete_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
       ASSERT_ERROR ();
       goto error;
     }
+  /* like boot_Db_parm: the link must be on disk before the file is removed, or restart looks for the removed file */
+  (void) dwb_synchronize (thread_p, fileio_get_volume_descriptor (prev_volid), NULL);
 
   (void) FI_TEST_ARG (thread_p, FI_TEST_DISK_MANAGER_VOLUME_DELETE_BEFORE_COMMIT, &fi_exit_now, 0);
 
