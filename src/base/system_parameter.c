@@ -5403,35 +5403,25 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_CSS_MIN_CONNECTION_WORKER,
    PRM_NAME_CSS_MIN_CONNECTION_WORKER,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_OBSOLETED),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-#if defined (SERVER_MODE)
-   {false, {.i = std::max ((int) cubthread::system_core_count () / 2, 1)}},
-   {false, {.i = std::max ((int) cubthread::system_core_count () / 2, 1)}},
-   {false, {.i = (int) cubthread::system_core_count ()}},
-#else
-   {false, {.i = 2}},
-   {false, {.i = 2}},
    NULL_SYSPRM_PARAM_VALUE,
-#endif
-   {false, {.i = 1}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_CSS_AUTO_SCALING_WINDOW_SIZE,
    PRM_NAME_CSS_AUTO_SCALING_WINDOW_SIZE,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_OBSOLETED),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 4}},
-   {false, {.i = 4}},
-#if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count ()}},
-#else
    NULL_SYSPRM_PARAM_VALUE,
-#endif
-   {false, {.i = 1}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -10445,7 +10435,6 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *max_parallel_workers_prm;
   SYSPRM_PARAM *parallelism_prm;
   SYSPRM_PARAM *max_connection_workers_prm;
-  SYSPRM_PARAM *min_connection_workers_prm;
   int system_cpu_count;
   int client_limit;
   int max_value;
@@ -10528,17 +10517,11 @@ prm_tune_parameters (void)
 
       /* connection worker */
       max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
-      min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
       if (PRM_GET_INT (max_connection_workers_prm->value) > system_cpu_count)
 	{
 	  sprintf (newval, "%d", system_cpu_count);
 	  (void) prm_set (max_connection_workers_prm, newval, false);
-	}
-      if (PRM_GET_INT (min_connection_workers_prm->value) > PRM_GET_INT (max_connection_workers_prm->value))
-	{
-	  sprintf (newval, "%d", PRM_GET_INT (max_connection_workers_prm->value));
-	  (void) prm_set (min_connection_workers_prm, newval, false);
 	}
 
       /* set parallelism to system_cpu_count if it is greater than cubthread::system_core_count () */
