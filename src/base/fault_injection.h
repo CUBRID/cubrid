@@ -82,6 +82,9 @@ typedef enum
   FI_TEST_BTREE_MANAGER_RANDOM_EXIT = 300000,
   FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL = 300001,
   FI_TEST_BTREE_LOAD_NO_LOGGING_HOLD = 300002,	/* hold a registered no-logging index build before it writes pages */
+  FI_TEST_BTREE_LOAD_NO_LOGGING_GATE_WRITE_HOLD = 300003,	/* leave a page of a no-logging index build dirty, and
+								 * hold the write of it that a checkpoint starts before
+								 * the gate of the build */
 
   /* QUERY MANAGER (start number is 400000) */
 

@@ -377,6 +377,10 @@ extern int pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flus
 				   const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * smallest_lsa, int *flushed_page_cnt);
 extern int pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_and_wait_ongoing_writes (THREAD_ENTRY * thread_p, VOLID volid);
+#if !defined (NDEBUG)
+extern void pgbuf_fi_arm_write_hold (const VPID * vpid);
+extern bool pgbuf_fi_is_write_held (void);
+#endif /* !NDEBUG */
 extern int pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null (THREAD_ENTRY * thread_p, VOLID volid);
 

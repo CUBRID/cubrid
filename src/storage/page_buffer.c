@@ -36,6 +36,7 @@
 #include "memory_alloc.h"
 #include "system_parameter.h"
 #include "error_manager.h"
+#include "fault_injection.h"
 #include "file_io.h"
 #include "disk_manager.h"
 #include "lockfree_circular_queue.hpp"
@@ -874,6 +875,20 @@ struct pgbuf_victim_candidate_list
 static PGBUF_BUFFER_POOL pgbuf_Pool;	/* The buffer Pool */
 static PGBUF_BATCH_FLUSH_HELPER pgbuf_Flush_helper;
 
+#if !defined (NDEBUG)
+/* FI_TEST_BTREE_LOAD_NO_LOGGING_GATE_WRITE_HOLD: the page whose write a test holds, and the state of the hold */
+enum
+{
+  PGBUF_FI_WRITE_HOLD_NONE,
+  PGBUF_FI_WRITE_HOLD_ARMED,
+  PGBUF_FI_WRITE_HOLD_HELD
+};
+static VPID pgbuf_Fi_write_hold_vpid = VPID_INITIALIZER;
+/* *INDENT-OFF* */
+static std::atomic<int> pgbuf_Fi_write_hold_state (PGBUF_FI_WRITE_HOLD_NONE);
+/* *INDENT-ON* */
+#endif /* !NDEBUG */
+
 HFID *pgbuf_ordered_null_hfid = NULL;
 
 #if defined(CUBRID_DEBUG)
@@ -1235,6 +1250,9 @@ static void pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * b
 
 STATIC_INLINE int pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread,
 					    bool * is_bcb_locked) __attribute__ ((ALWAYS_INLINE));
+#if !defined (NDEBUG)
+static void pgbuf_fi_hold_write (THREAD_ENTRY * thread_p, const PGBUF_BCB * bufptr);
+#endif /* !NDEBUG */
 static void pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 STATIC_INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_only_fixed, bool is_set_lsa_as_null);
@@ -11827,6 +11845,9 @@ copy_unflushed_lsa:
       /* Record number of writes in statistics */
       write_mode = (dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE);
 
+#if !defined (NDEBUG)
+      pgbuf_fi_hold_write (thread_p, bufptr);
+#endif /* !NDEBUG */
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
       if (fileio_write (thread_p, fileio_get_volume_descriptor (bufptr->vpid.volid), iopage, bufptr->vpid.pageid,
 			IO_PAGESIZE, write_mode) == NULL)
@@ -11895,6 +11916,80 @@ copy_unflushed_lsa:
 
   return NO_ERROR;
 }
+
+#if !defined (NDEBUG)
+/*
+ * pgbuf_fi_arm_write_hold () - make the next write of a page without the double write buffer stop for a while, after
+ *                              the writer copied the page and before it writes the copy
+ *                              (FI_TEST_BTREE_LOAD_NO_LOGGING_GATE_WRITE_HOLD)
+ *
+ * return    : void
+ * vpid (in) : the page, or NULL to disarm a hold that no write has taken
+ */
+void
+pgbuf_fi_arm_write_hold (const VPID * vpid)
+{
+  int armed = PGBUF_FI_WRITE_HOLD_ARMED;
+  PGBUF_BCB *bufptr;
+  int i;
+
+  if (vpid == NULL)
+    {
+      (void) pgbuf_Fi_write_hold_state.compare_exchange_strong (armed, PGBUF_FI_WRITE_HOLD_NONE);
+      return;
+    }
+  pgbuf_Fi_write_hold_vpid = *vpid;
+  pgbuf_Fi_write_hold_state.store (PGBUF_FI_WRITE_HOLD_ARMED);
+
+  /* the test needs the page dirty here; log its state */
+  for (i = 0; i < pgbuf_Pool.num_buffers; i++)
+    {
+      bufptr = PGBUF_FIND_BCB_PTR (i);
+      if (VPID_EQ (&bufptr->vpid, vpid))
+	{
+	  er_log_debug (ARG_FILE_LINE, "pgbuf_fi_arm_write_hold: page %d|%d, flags 0x%x, oldest unflushed LSA "
+			"%lld|%d\n", VPID_AS_ARGS (vpid), bufptr->flags, LSA_AS_ARGS (&bufptr->oldest_unflush_lsa));
+	}
+    }
+}
+
+/*
+ * pgbuf_fi_is_write_held () - is a writer in the hold that pgbuf_fi_arm_write_hold () armed?
+ *
+ * return : true/false
+ */
+bool
+pgbuf_fi_is_write_held (void)
+{
+  return pgbuf_Fi_write_hold_state.load () == PGBUF_FI_WRITE_HOLD_HELD;
+}
+
+/*
+ * pgbuf_fi_hold_write () - stop the write of the page that pgbuf_fi_arm_write_hold () armed, for 20 seconds
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * bufptr (in)   : the BCB that the caller writes, flushing and unlocked
+ */
+static void
+pgbuf_fi_hold_write (THREAD_ENTRY * thread_p, const PGBUF_BCB * bufptr)
+{
+  int armed = PGBUF_FI_WRITE_HOLD_ARMED;
+  int hold_seconds = 20;
+
+  if (pgbuf_Fi_write_hold_state.load () != PGBUF_FI_WRITE_HOLD_ARMED
+      || !VPID_EQ (&pgbuf_Fi_write_hold_vpid, &bufptr->vpid)
+      || !pgbuf_Fi_write_hold_state.compare_exchange_strong (armed, PGBUF_FI_WRITE_HOLD_HELD))
+    {
+      return;
+    }
+
+  er_log_debug (ARG_FILE_LINE, "pgbuf_bcb_flush_with_wal: hold the write of page %d|%d\n",
+		VPID_AS_ARGS (&bufptr->vpid));
+  (void) FI_TEST_ARG (thread_p, FI_TEST_BTREE_LOAD_NO_LOGGING_GATE_WRITE_HOLD, &hold_seconds, FI_INIT_STATE);
+  pgbuf_Fi_write_hold_state.store (PGBUF_FI_WRITE_HOLD_NONE);
+}
+#endif /* !NDEBUG */
 
 /*
  * pgbuf_wake_flush_waiters () - wake up all threads waiting for flush

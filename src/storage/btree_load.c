@@ -165,6 +165,14 @@ struct load_args
 /* er_message keeps a reference to its logging flag; the provider's kept error never logs. */
 static const bool bt_load_er_message_logging = false;
 
+#if !defined (NDEBUG) && defined (SERVER_MODE)
+/* FI_TEST_BTREE_LOAD_NO_LOGGING_GATE_WRITE_HOLD: the last leaf that a no-logging build left dirty for its gate, as
+ * volid << 32 | pageid, or -1 */
+/* *INDENT-OFF* */
+static std::atomic<std::int64_t> bt_load_Fi_left_page (-1);
+/* *INDENT-ON* */
+#endif /* !NDEBUG && SERVER_MODE */
+
 typedef enum bt_load_slot_state
 {
   BT_LOAD_SLOT_IDLE = 0,
@@ -354,6 +362,8 @@ static int btree_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID 
 			   BT_LOAD_PAGE_LOG_MODE mode);
 static int bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAGE_PTR page_ptr,
 			     BT_LOAD_PAGE_LOG_MODE mode, LOG_RCVINDEX rcvindex, int offset, int length);
+static bool bt_load_fi_leave_page_dirty (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
+static void bt_load_fi_hold_write_of_left_page (THREAD_ENTRY * thread_p);
 static LOG_PRIOR_NODE *bt_load_make_log_record (THREAD_ENTRY * thread_p, LOG_RECTYPE rectype, LOG_RCVINDEX rcvindex,
 						VFID * vfid, PAGE_PTR page_ptr, int offset, int length,
 						const char *data);
@@ -1773,6 +1783,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
        * sysop region that was rolled back, and log_sysop_attach_to_outer () below hands this one
        * to the outer transaction's postpone list.
        */
+      bt_load_fi_hold_write_of_left_page (thread_p);
       if (pgbuf_flush_all_and_wait_ongoing_writes (thread_p, NULL_VOLID) != NO_ERROR)
 	{
 	  goto error;
@@ -2777,7 +2788,7 @@ bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, P
    * comes from the explicit gate in xbtree_load_index, not from this function.
    */
   pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
-  if (mode == BT_LOAD_LOG_NO_REDO && load_args->provider != NULL)
+  if (mode == BT_LOAD_LOG_NO_REDO && load_args->provider != NULL && !bt_load_fi_leave_page_dirty (thread_p, page_ptr))
     {
       /*
        * Write-through: submit the finished index page to the ordinary flush path now (write
@@ -2805,6 +2816,80 @@ bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, P
       return bt_load_provider_post_mail (load_args->provider, &vpid, node);
     }
   return NO_ERROR;
+}
+
+/*
+ * bt_load_fi_leave_page_dirty () - a test makes a no-logging build leave its finished pages dirty, instead of writing
+ *                                  them through, so that the gate must write them; the last leaf is remembered
+ *                                  (FI_TEST_BTREE_LOAD_NO_LOGGING_GATE_WRITE_HOLD)
+ *   return: true if the caller must not write the page through
+ *   page_ptr(in): the finished page
+ *
+ * Note: A page can come here more than once (a leaf first comes when it is started), so every page is left, not
+ *       only one. Only a leaf is remembered: the final copy of the root goes to the log, so recovery rebuilds it.
+ */
+static bool
+bt_load_fi_leave_page_dirty (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
+{
+#if !defined (NDEBUG) && defined (SERVER_MODE)
+  BTREE_NODE_HEADER *header;
+  VPID vpid;
+
+  if (FI_INSERTED (FI_TEST_BTREE_LOAD_NO_LOGGING_GATE_WRITE_HOLD))
+    {
+      if (pgbuf_get_page_ptype (thread_p, page_ptr) == PAGE_BTREE)
+	{
+	  header = btree_get_node_header (thread_p, page_ptr);
+	  if (header != NULL && header->node_level == 1)
+	    {
+	      pgbuf_get_vpid (page_ptr, &vpid);
+	      bt_load_Fi_left_page.store (((std::int64_t) vpid.volid << 32) | (std::uint32_t) vpid.pageid);
+	    }
+	}
+      return true;
+    }
+#endif /* !NDEBUG && SERVER_MODE */
+  return false;
+}
+
+/*
+ * bt_load_fi_hold_write_of_left_page () - before the gate, a test wakes the checkpoint and waits until the checkpoint
+ *                                         has copied the last leaf that bt_load_fi_leave_page_dirty () left and
+ *                                         stops before it writes it (FI_TEST_BTREE_LOAD_NO_LOGGING_GATE_WRITE_HOLD)
+ *   return: void
+ */
+static void
+bt_load_fi_hold_write_of_left_page (THREAD_ENTRY * thread_p)
+{
+#if !defined (NDEBUG) && defined (SERVER_MODE)
+  std::int64_t left_page = bt_load_Fi_left_page.exchange (-1);
+  VPID vpid;
+  int i;
+
+  if (left_page == -1)
+    {
+      return;
+    }
+  vpid.volid = (VOLID) (left_page >> 32);
+  vpid.pageid = (PAGEID) (left_page & 0xffffffff);
+
+  pgbuf_fi_arm_write_hold (&vpid);
+  for (i = 0; i < 600 && !pgbuf_fi_is_write_held (); i++)
+    {
+      if (i % 10 == 0)
+	{
+	  /* a checkpoint that was running when the page was armed may have passed the page */
+	  log_wakeup_checkpoint_daemon ();
+	}
+      thread_sleep (100);
+    }
+  if (!pgbuf_fi_is_write_held ())
+    {
+      pgbuf_fi_arm_write_hold (NULL);
+      er_log_debug (ARG_FILE_LINE, "btree load: no checkpoint wrote page %d|%d before the gate\n",
+		    VPID_AS_ARGS (&vpid));
+    }
+#endif /* !NDEBUG && SERVER_MODE */
 }
 
 /*
