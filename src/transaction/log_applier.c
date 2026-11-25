@@ -10755,6 +10755,7 @@ la_init (const char *log_path, const int max_mem_size)
   /* start_vsize stays 0 here; la_check_mem_size takes it once the workers have started */
   la_Info.start_time = time (NULL);
   la_stat_reset ();
+  la_wset_label_reset ();
 
   la_Info.last_time_archive_deleted = la_Info.start_time;
 

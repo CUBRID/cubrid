@@ -95,3 +95,19 @@ la_wset_label_take (int tranid, LOG_LSA *dependency_lsa)
 
   return true;
 }
+
+/*
+ * la_wset_label_reset - drop a pending label
+ *
+ * return: none
+ *
+ * Note: applylogdb can start applying again in the same process after an error (util_cs connects again);
+ *       a label the previous run read but did not consume must not reach a boundary of the new run.
+ */
+void
+la_wset_label_reset (void)
+{
+  la_Wset_label_stored = false;
+  la_Wset_label_tranid = 0;
+  LSA_SET_NULL (&la_Wset_label_dependency_lsa);
+}

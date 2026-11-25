@@ -31,5 +31,6 @@
 extern void la_wset_label_store (int tranid, const LOG_LSA *dependency_lsa);
 extern bool la_wset_label_matches (int tranid);
 extern bool la_wset_label_take (int tranid, LOG_LSA *dependency_lsa);
+extern void la_wset_label_reset (void);
 
 #endif /* _LOG_APPLIER_WSET_LABEL_HPP_ */

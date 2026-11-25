@@ -55,3 +55,17 @@ TEST_CASE ("new writeset label replaces the pending label", "[log_applier_wset_l
   REQUIRE (la_wset_label_take (11, &taken));
   REQUIRE (LSA_EQ (&taken, &second));
 }
+
+TEST_CASE ("a reset drops the pending writeset label", "[log_applier_wset_label]")
+{
+  LOG_LSA dependency_lsa = test_lsa (400, 10);
+  LOG_LSA taken;
+
+  /* a label read by a run that stopped before its boundary must not reach the next run */
+  la_wset_label_store (12, &dependency_lsa);
+  la_wset_label_reset ();
+
+  REQUIRE_FALSE (la_wset_label_matches (12));
+  REQUIRE_FALSE (la_wset_label_take (12, &taken));
+  REQUIRE (LSA_ISNULL (&taken));
+}
