@@ -31,7 +31,7 @@
 #include "crypt_opfunc.h" /* crypt_sha_two () */
 #include "object_accessor.h"
 #include "schema_manager.h" /* sm_find_class */
-#include "system_parameter.h" /* PRM_ID_USE_POLICY */
+#include "system_parameter.h" /* PRM_ID_ENABLE_COMPLEXITY_POLICY */
 
 /*
  * Password Encoding
@@ -360,7 +360,7 @@ match_password (const char *name, const char *user, const char *database)
 }
 
 /*
- * Password complexity policy (use_policy=yes), after the KISA guideline:
+ * Password complexity policy (enable_complexity_policy=yes), after the KISA guideline:
  *   1. at least 2 of the 4 character kinds (uppercase, lowercase, digit, special) with at least 10 characters,
  *      or at least 3 kinds with at least 8 characters;
  *   2. not the user name and not containing it (case-insensitive);
@@ -418,30 +418,19 @@ au_password_has_sequence (const char *str, int len)
 }
 
 /*
- * au_check_password_policy - check a plain text password against the complexity policy when use_policy is on
- *   return: NO_ERROR, or the ER_AU_PASSWORD_POLICY_* error of the first rule it breaks (set with er_set);
- *           a character outside the allowed set is reported before the other rules
+ * au_password_satisfies_policy - whether a plain text password satisfies every rule of the complexity policy
+ *   return: true if it does
  *   user_name(in): name of the user whose password it is; NULL skips the user name rule
- *   password(in): plain text password; NULL or empty is not checked
+ *   password(in): plain text password, not empty and at most AU_MAX_PASSWORD_BUF bytes
  */
-int
-au_check_password_policy (const char *user_name, const char *password)
+static bool
+au_password_satisfies_policy (const char *user_name, const char *password)
 {
   char lower[AU_MAX_PASSWORD_BUF + 1];
   int len, kinds, i;
   bool has_upper = false, has_lower = false, has_digit = false, has_special = false;
 
-  if (!prm_get_bool_value (PRM_ID_USE_POLICY) || password == NULL || password[0] == '\0')
-    {
-      return NO_ERROR;
-    }
-
   len = (int) strlen (password);
-  if (len > AU_MAX_PASSWORD_BUF)
-    {
-      /* au_set_password_internal () rejects it as too long */
-      return NO_ERROR;
-    }
 
   for (i = 0; i < len; i++)
     {
@@ -466,9 +455,7 @@ au_check_password_policy (const char *user_name, const char *password)
       else
 	{
 	  /* 5. a character outside the allowed set */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_PASSWORD_POLICY_INVALID_CHAR, 1,
-		  AU_PASSWORD_POLICY_SPECIAL_CHARS);
-	  return ER_AU_PASSWORD_POLICY_INVALID_CHAR;
+	  return false;
 	}
       lower[i] = (char) tolower (c);
     }
@@ -479,8 +466,7 @@ au_check_password_policy (const char *user_name, const char *password)
   if (kinds < 2 || (kinds == 2 && len < AU_PASSWORD_POLICY_MIN_LEN_2_KINDS)
       || (kinds >= 3 && len < AU_PASSWORD_POLICY_MIN_LEN_3_KINDS))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_PASSWORD_POLICY_COMPOSITION, 0);
-      return ER_AU_PASSWORD_POLICY_COMPOSITION;
+      return false;
     }
 
   /* 2. user name */
@@ -492,8 +478,7 @@ au_check_password_policy (const char *user_name, const char *password)
 	{
 	  if (strncasecmp (lower + i, user_name, name_len) == 0)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_PASSWORD_POLICY_USER_NAME, 0);
-	      return ER_AU_PASSWORD_POLICY_USER_NAME;
+	      return false;
 	    }
 	}
     }
@@ -509,9 +494,7 @@ au_check_password_policy (const char *user_name, const char *password)
 	}
       if (j == AU_PASSWORD_POLICY_MAX_REPEAT)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_PASSWORD_POLICY_REPEATED_CHARS, 1,
-		  AU_PASSWORD_POLICY_MAX_REPEAT);
-	  return ER_AU_PASSWORD_POLICY_REPEATED_CHARS;
+	  return false;
 	}
     }
 
@@ -520,10 +503,40 @@ au_check_password_policy (const char *user_name, const char *password)
     {
       if (au_password_has_sequence (lower + i, AU_PASSWORD_POLICY_MAX_SEQUENCE))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_PASSWORD_POLICY_SEQUENTIAL_CHARS, 1,
-		  AU_PASSWORD_POLICY_MAX_SEQUENCE);
-	  return ER_AU_PASSWORD_POLICY_SEQUENTIAL_CHARS;
+	  return false;
 	}
+    }
+
+  return true;
+}
+
+/*
+ * au_check_password_policy - check a plain text password against the complexity policy when
+ *                            enable_complexity_policy is on
+ *   return: NO_ERROR, or ER_AU_PASSWORD_NOT_ALLOWED (set with er_set) whichever rule it breaks; the error does not
+ *           tell which rule, so it gives no hint for guessing a password
+ *   user_name(in): name of the user whose password it is; NULL skips the user name rule
+ *   password(in): plain text password; NULL or empty is not checked
+ */
+int
+au_check_password_policy (const char *user_name, const char *password)
+{
+  assert(prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY) && password != NULL);      
+  if (password[0] == '\0')
+    {
+      return NO_ERROR;
+    }
+
+  if (strlen (password) > AU_MAX_PASSWORD_BUF)
+    {
+      /* au_set_password_internal () rejects it as too long */
+      return NO_ERROR;
+    }
+
+  if (!au_password_satisfies_policy (user_name, password))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_PASSWORD_NOT_ALLOWED, 0);
+      return ER_AU_PASSWORD_NOT_ALLOWED;
     }
 
   return NO_ERROR;
@@ -581,7 +594,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
     }
 
   /* a plain text password must satisfy the complexity policy; an encoded one (unloaddb output) cannot be checked */
-  if (password != NULL && encode && prm_get_bool_value (PRM_ID_USE_POLICY))
+  if (password != NULL && encode && prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY))
     {
       DB_VALUE nm_value;
       const char *user_name = NULL;

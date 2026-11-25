@@ -837,7 +837,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_INDEX_BUILD_PARALLEL_LEAF "index_build_parallel_leaf"
 
-#define PRM_NAME_USE_POLICY "use_policy"
+#define PRM_NAME_ENABLE_COMPLEXITY_POLICY "enable_complexity_policy"
 
 // #endregion
 
@@ -5808,8 +5808,8 @@ SYSPRM_PARAM prm_Def[] = {
   /* password complexity policy (CBRD-28363): on, a password given in plain text to CREATE USER / ALTER USER /
    * db_set_password must satisfy au_check_password_policy (). The client takes the server's value, so a client
    * cubrid.conf cannot turn it off; not changeable on-line. */
-  {PRM_ID_USE_POLICY,
-   PRM_NAME_USE_POLICY,
+  {PRM_ID_ENABLE_COMPLEXITY_POLICY,
+   PRM_NAME_ENABLE_COMPLEXITY_POLICY,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
