@@ -8176,11 +8176,7 @@ la_apply_update_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS
   if (class_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      if (er_errid () == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
-
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
       goto end;
     }
 
@@ -8371,11 +8367,7 @@ la_apply_oos_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LA
   if (class_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      if (er_errid () == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
-
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
       goto end;
     }
 
@@ -8587,11 +8579,7 @@ la_apply_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS
   if (class_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      if (er_errid () == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
-
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
       goto end;
     }
 
