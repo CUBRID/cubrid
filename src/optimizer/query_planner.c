@@ -12889,8 +12889,17 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	    if (join_type == NO_JOIN
 		|| (is_dummy_term && !(QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN && IS_OUTER_JOIN_TYPE (join_type))))
 	      {
-		/* the first time except dummy term;
-		 * a dummy term never replaces the outer join type of the dummy term before it */
+		/* A join term decides the join type over a dummy join term.
+		 * Between two dummy join terms an outer join type stays.
+		 *
+		 * e.g. ta  left join tb on tb.ca > tb.cb
+		 *         cross join tc
+		 *          left join td on td.ca = tb.ca and td.cb = tc.ca
+		 *
+		 *      tb has the left outer dummy join term ta-tb, as its ON clause reads tb alone,
+		 *      and the inner dummy join term tb-tc, as the ON clause of td reads tb and tc.
+		 *      When tb joins after ta and tc,
+		 *      tb-tc must not turn the left outer join of tb into an inner join. */
 		join_type = QO_TERM_JOIN_TYPE (term);
 		is_dummy_term = QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN ? true : false;
 	      }
