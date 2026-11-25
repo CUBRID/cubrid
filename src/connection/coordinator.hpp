@@ -27,11 +27,11 @@
 #include <vector>
 #include <utility>
 #include <unordered_set>
-#include <unordered_map>
 
 #include "tbb/concurrent_queue.h"
 #include "epoll.hpp"
 #include "connection_context.hpp"
+#include "placement.hpp"
 #if defined (ENABLE_CONTROLLER)
 #include "controller.hpp"
 #endif
@@ -45,25 +45,12 @@ namespace cubconn::connection
     private:
       struct worker_statistics
       {
-	/* score */
-	double m_score;
-
 	/* resource */
 	double m_core;
 	uint64_t m_last_cpu_time;
 
 	/* immediate */
-	uint32_t m_client_num;
 	uint64_t m_last_updated;
-
-	/* sum of contexts */
-	statistics::metrics<statistics::context, double> m_sum;
-
-	/* first: EWMA of the per-ms rate */
-	/* second: previous */
-	std::pair<statistics::metrics<statistics::worker, double>, statistics::metrics<statistics::worker>> m_worker;
-	std::unordered_map<uint64_t, std::pair<statistics::metrics<statistics::context, double>, statistics::metrics<statistics::context>>>
-	m_contexts;
       };
 
       enum class timer_latency : uint64_t
@@ -235,6 +222,10 @@ namespace cubconn::connection
       /* statistics */
       std::vector<worker_statistics> m_statistics;
 
+      /* placement: each worker's connections, including one in flight from or to it */
+      std::vector<placement::connections> m_contexts;
+      placement::streaks m_streaks;
+
       /* --------------------------------------------------------------------------- */
       /* utility								     */
       /* --------------------------------------------------------------------------- */
@@ -249,16 +240,6 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       /* statistics								     */
       /* --------------------------------------------------------------------------- */
-      template <typename T>
-      void statistics_EWMA (double alpha, uint64_t time_delta, statistics::metrics<T, double> &acc,
-			    statistics::metrics<T> &prev, statistics::metrics<T> &current);
-
-      std::pair<std::size_t, std::size_t> statistics_find_score_extremes ();
-
-      void statistics_update_score (std::size_t worker);
-      void statistics_update_connection (uint64_t delta,
-					 std::pair<std::size_t, statistics::metrics<statistics::worker>> &worker,
-					 std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> &contexts);
       bool statistics_update ();
 
       bool statistics_rebalancing ();
@@ -302,14 +283,6 @@ namespace cubconn::connection
       bool handle_controller ();
 #endif
   };
-
-  template <typename T>
-  void coordinator::statistics_EWMA (double alpha, uint64_t time_delta, statistics::metrics<T, double> &acc,
-				     statistics::metrics<T> &prev, statistics::metrics<T> &current)
-  {
-    acc = acc * (1 - alpha) + (current - prev) * (alpha / (time_delta * 1e-6));
-    prev = current;
-  }
 }
 
 #endif

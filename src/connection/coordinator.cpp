@@ -36,12 +36,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#define EWMA_ALPHA 0.06
-
-#define VAL_TO_SCORE(w, m, s) ((w) * static_cast<double> (s) / (m))
-#define EVAL_WORKER(mq, rmutex) (VAL_TO_SCORE (25, 3.5, (mq)) + VAL_TO_SCORE (500, 1, (rmutex)))
-#define EVAL_CONTEXT(bytes, budget) (VAL_TO_SCORE (50, 1000, (bytes)) + VAL_TO_SCORE (10, 1, (budget)))
-
 #if 0
 #define er_log_conn(...) er_log_debug (__VA_ARGS__)
 #else
@@ -59,7 +53,9 @@ namespace cubconn::connection
     m_core (core),
     m_stop (false),
     m_max_worker (max_worker),
-    m_statistics (max_worker)
+    m_statistics (max_worker),
+    m_contexts (max_worker),
+    m_streaks { 0, 0 }
   {
     std::size_t i;
 
@@ -126,16 +122,13 @@ namespace cubconn::connection
     /* connection statistics */
     for (i = 0; i < max_worker; i++)
       {
-	m_statistics[i].m_score = 0;
-
 	m_statistics[i].m_core = 0;
 	m_statistics[i].m_last_cpu_time = 0;
 
-	m_statistics[i].m_client_num = 0;
 	m_statistics[i].m_last_updated = 0;
 
 	/* this doesn't use much memory */
-	m_statistics[i].m_contexts.reserve (256);
+	m_contexts[i].reserve (256);
       }
 
     m_thread = std::thread (&coordinator::attach, this);
@@ -230,17 +223,11 @@ namespace cubconn::connection
       }
     m_migrating.insert (id);
 
-    assert (m_statistics[from].m_contexts.find (id) != m_statistics[from].m_contexts.end ());
-    assert (m_statistics[to].m_contexts.find (id) == m_statistics[to].m_contexts.end ());
+    assert (m_contexts[from].find (id) != m_contexts[from].end ());
+    assert (m_contexts[to].find (id) == m_contexts[to].end ());
 
-    auto stats = m_statistics[from].m_contexts.find (id);
-    m_statistics[to].m_contexts.emplace (
-	    stats->first,
-	    std::pair<
-	    statistics::metrics<statistics::context, double>,
-	    statistics::metrics<statistics::context>
-	    > (stats->second.first, stats->second.second)
-    );
+    auto stats = m_contexts[from].find (id);
+    m_contexts[to].emplace (stats->first, stats->second);
     /* the stats in worker[from] are removed when the worker responds. */
 
     request.type = connection::worker::message_type::HANDOFF_CLIENT;
@@ -256,89 +243,6 @@ namespace cubconn::connection
     return true;
   }
 
-  std::pair<std::size_t, std::size_t> coordinator::statistics_find_score_extremes ()
-  {
-    double max, min;
-    std::size_t i;
-
-    max = 0;
-    min = 0;
-    for (i = 1; i < m_max_worker; i++)
-      {
-	if (m_statistics[i].m_score < m_statistics[min].m_score)
-	  {
-	    min = i;
-	  }
-	else if (m_statistics[i].m_score >= m_statistics[max].m_score)
-	  {
-	    max = i;
-	  }
-      }
-
-    return { min, max };
-  }
-
-  void coordinator::statistics_update_score (std::size_t worker)
-  {
-#define EWMA_CONTEXT(key) c_ewma.get (statistics::context::key)
-#define EWMA_WORKER(key) w_ewma.get (statistics::worker::key)
-
-    statistics::metrics<statistics::context, double> &c_ewma = m_statistics[worker].m_sum;
-    statistics::metrics<statistics::worker, double> &w_ewma = m_statistics[worker].m_worker.first;
-
-    m_statistics[worker].m_score =
-	    1 * static_cast<double> (m_statistics[worker].m_client_num) / 1 +
-
-	    EVAL_WORKER (EWMA_WORKER (MQ_COMPLETED), EWMA_WORKER (BLOCKED_RMUTEX)) +
-
-	    EVAL_CONTEXT (EWMA_CONTEXT (BYTES_IN_TOTAL) + EWMA_CONTEXT (BYTES_OUT_TOTAL),
-			  EWMA_CONTEXT (RECV_BUDGET_HIT) + EWMA_CONTEXT (SEND_BUDGET_HIT));
-
-#undef EWMA_CONTEXT
-#undef EWMA_WORKER
-  }
-
-  void coordinator::statistics_update_connection (uint64_t delta,
-      std::pair<std::size_t, statistics::metrics<statistics::worker>> &worker,
-      std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> &contexts)
-  {
-    std::size_t index;
-
-    index = worker.first;
-
-    if (m_statistics[index].m_last_updated)
-      {
-	m_statistics[index].m_sum.reset ();
-
-	/* update EWMA */
-	this->statistics_EWMA (EWMA_ALPHA, delta, m_statistics[index].m_worker.first, m_statistics[index].m_worker.second,
-			       worker.second);
-	for (auto &stats : contexts)
-	  {
-	    assert (m_statistics[index].m_contexts.find (stats.first) != m_statistics[index].m_contexts.end ());
-
-	    this->statistics_EWMA (EWMA_ALPHA, delta, m_statistics[index].m_contexts[stats.first].first,
-				   m_statistics[index].m_contexts[stats.first].second, stats.second);
-	  }
-      }
-    else
-      {
-	/* the first message sets only the baseline: its counters are totals since the worker or connection started */
-	m_statistics[index].m_worker.second = worker.second;
-
-	for (auto &stats : contexts)
-	  {
-	    m_statistics[index].m_contexts[stats.first].second = stats.second;
-	  }
-      }
-
-    /* calculate the summation */
-    for (auto &stats : m_statistics[index].m_contexts)
-      {
-	m_statistics[index].m_sum += stats.second.first;
-      }
-  }
-
   bool coordinator::statistics_update ()
   {
     this->handle_message_queue ();
@@ -348,98 +252,46 @@ namespace cubconn::connection
 
   bool coordinator::statistics_rebalancing ()
   {
-#define EWMA_CONTEXT(key) c_ewma.get (statistics::context::key)
+    placement::move move;
 
-    constexpr double threshold = 0.2;
-    std::size_t min, max;
-    double diff, score, target;
-    uint64_t id;
-
-    std::tie (min, max) = statistics_find_score_extremes ();
-    diff = m_statistics[max].m_score - m_statistics[min].m_score;
-    if (diff <= m_statistics[max].m_score * threshold)
+    move = placement::rebalance (m_contexts, m_migrating, m_streaks);
+    if (move.id != 0)
       {
-	/* no need to rebalance */
-	return true;
-      }
-
-    score = -1;
-    id = 0;
-    for (auto &stats : m_statistics[max].m_contexts)
-      {
-	auto &c_ewma = stats.second.first;
-
-	target = EVAL_CONTEXT (EWMA_CONTEXT (BYTES_IN_TOTAL) + EWMA_CONTEXT (BYTES_OUT_TOTAL),
-			       EWMA_CONTEXT (RECV_BUDGET_HIT) + EWMA_CONTEXT (SEND_BUDGET_HIT));
-
-	if (target <= diff / 2 && score < target)
-	  {
-	    score = target;
-	    id = stats.first;
-	  }
-      }
-
-    if (id != 0)
-      {
-	this->transfer_connection (id, max, min);
+	this->transfer_connection (move.id, move.from, move.to);
       }
 
     return true;
-
-#undef EWMA_CONTEXT
   }
 
   void coordinator::statistics_print ()
   {
-    double bytes_in, bytes_out;
-    double mq_completed;
+    placement::load load;
     double core;
     std::size_t i;
 
-    bytes_in = 0;
-    bytes_out = 0;
-    mq_completed = 0;
     core = 0;
 
     printf ("\033[2J\033[H");
     for (i = 0; i < m_max_worker; i++)
       {
-	if (m_statistics[i].m_contexts.size () == 0)
+	if (m_contexts[i].size () == 0)
 	  {
 	    continue;
 	  }
 
-	printf ("------ worker %d (%d) ------\n", static_cast<int> (i), static_cast<int> (m_statistics[i].m_contexts.size ()));
+	printf ("------ worker %d (%d) ------\n", static_cast<int> (i), static_cast<int> (m_contexts[i].size ()));
 
 	core += m_statistics[i].m_core;
 
-	printf ("SCORE: %lf\n", m_statistics[i].m_score);
-	/*
-	printf ("LAST UPDATED: %d\n", static_cast<int> (static_cast<double> (m_statistics[i].m_last_updated) / 1e9));
-	printf ("CLIENT NUM: %d (EWMA): %lf)\n", static_cast<int> (m_statistics[i].m_client_num),
-		m_statistics[i].m_worker.first.get (statistics::worker::CLIENT_NUM));
-	printf ("CORE USAGE: %0.4lf\n", m_statistics[i].m_core);
-	printf ("MQ COMPLETED: %lf\n",
-		m_statistics[i].m_worker.first.get (statistics::worker::MQ_COMPLETED));
-	printf ("BLOCKED RMUTEX: %lf\n",
-		m_statistics[i].m_worker.first.get (statistics::worker::BLOCKED_RMUTEX));
-	printf ("RECV: %lf\n", m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL));
-	printf ("SEND: %lf\n", m_statistics[i].m_sum.get (statistics::context::BYTES_OUT_TOTAL));
-	*/
-
-	mq_completed += m_statistics[i].m_worker.first.get (statistics::worker::MQ_COMPLETED);
-	bytes_in += m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL);
-	bytes_out += m_statistics[i].m_sum.get (statistics::context::BYTES_OUT_TOTAL);
+	load = placement::measure (m_contexts[i], m_migrating);
+	printf ("ACTIVE: %0.2lf, CONNECTIONS: %d\n", static_cast<double> (load.active) / placement::SHARE_UNIT,
+		static_cast<int> (load.count));
       }
 
     printf ("------ summary ------\n");
     printf ("WORKER COUNT         : %d\n", m_max_worker);
     printf ("CORE USAGE           : %0.4lf / %d\n", core, m_max_worker);
-    printf ("CORE USAGE PER WORKER: %0.4lf\n", core / m_max_worker);
-    printf ("BYTES IN             : %lf\n", bytes_in);
-    printf ("BYTES OUT            : %lf\n\n", bytes_out);
-
-    printf ("MQ COMPLETED         : %0.4lf\n\n", mq_completed);
+    printf ("CORE USAGE PER WORKER: %0.4lf\n\n", core / m_max_worker);
   }
 
   bool coordinator::eventfd_register (int fd)
@@ -638,15 +490,11 @@ namespace cubconn::connection
 	return true;
       }
 
-    std::tie (worker, std::ignore) = statistics_find_score_extremes ();
+    worker = placement::choose_worker (m_contexts, m_migrating);
 
-    assert (m_statistics[worker].m_contexts.find (id) == m_statistics[worker].m_contexts.end ());
+    assert (m_contexts[worker].find (id) == m_contexts[worker].end ());
 
-    m_statistics[worker].m_contexts.emplace (
-	    id,
-	    std::pair<statistics::metrics<statistics::context, double>, statistics::metrics<statistics::context>> { }
-    );
-    m_statistics[worker].m_client_num++;
+    m_contexts[worker].emplace (id, placement::activity { });
 
     request.type = connection::worker::message_type::NEW_CLIENT;
     request.ctx = ctx;
@@ -659,9 +507,6 @@ namespace cubconn::connection
 	assert_release (false);
       }
 
-    /* update score */
-    this->statistics_update_score (worker);
-
     return true;
   }
 
@@ -671,12 +516,10 @@ namespace cubconn::connection
 
     for (context *ctx : item.resource)
       {
-	m_statistics[ctx->m_worker].m_client_num--;
-
 	/* remove all stats with id as m_id */
 	for (i = 0; i < m_max_worker; i++)
 	  {
-	    m_statistics[i].m_contexts.erase (ctx->m_id);
+	    m_contexts[i].erase (ctx->m_id);
 	  }
 
 	/* release the conneciton */
@@ -697,8 +540,8 @@ namespace cubconn::connection
     /* remove from in flight list */
     m_migrating.erase (item.id);
 
-    if (m_statistics[item.from].m_contexts.find (item.id) == m_statistics[item.from].m_contexts.end () &&
-	m_statistics[item.to].m_contexts.find (item.id) == m_statistics[item.to].m_contexts.end ())
+    if (m_contexts[item.from].find (item.id) == m_contexts[item.from].end () &&
+	m_contexts[item.to].find (item.id) == m_contexts[item.to].end ())
       {
 	/* this stats has already been cleard in return_to_pool routine */
 
@@ -710,19 +553,17 @@ namespace cubconn::connection
 	goto not_transferred;
       }
 
-    assert (m_statistics[item.from].m_contexts.find (item.id) != m_statistics[item.from].m_contexts.end ());
+    assert (m_contexts[item.from].find (item.id) != m_contexts[item.from].end ());
 
-    m_statistics[item.from].m_contexts.erase (item.id);
-    m_statistics[item.from].m_client_num--;
-    m_statistics[item.to].m_client_num++;
+    m_contexts[item.from].erase (item.id);
 
     return true;
 
 not_transferred:
-    assert (m_statistics[item.to].m_contexts.find (item.id) != m_statistics[item.to].m_contexts.end ());
+    assert (m_contexts[item.to].find (item.id) != m_contexts[item.to].end ());
 
     /* revert */
-    m_statistics[item.to].m_contexts.erase (item.id);
+    m_contexts[item.to].erase (item.id);
 
     return true;
   }
@@ -739,14 +580,20 @@ not_transferred:
     m_statistics[index].m_core = static_cast <double> (item.statistics.cpu_time_ns - m_statistics[index].m_last_cpu_time) /
 				 delta;
 
-    this->statistics_update_connection (delta, item.statistics.worker,
-					item.statistics.contexts);
+    for (auto &stats : item.statistics.contexts)
+      {
+	auto it = m_contexts[index].find (stats.first);
+
+	assert (it != m_contexts[index].end ());
+	if (it != m_contexts[index].end ())
+	  {
+	    placement::record_tick (it->second, stats.second.get (statistics::context::LAST_ACTIVE_NS),
+				    m_statistics[index].m_last_updated);
+	  }
+      }
 
     m_statistics[index].m_last_cpu_time = item.statistics.cpu_time_ns;
     m_statistics[index].m_last_updated = item.statistics.time_ns;
-
-    /* update score */
-    this->statistics_update_score (index);
 
     return true;
   }
