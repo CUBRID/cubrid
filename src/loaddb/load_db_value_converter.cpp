@@ -2195,8 +2195,8 @@ namespace cubload
       case DB_TYPE_JSON:
 	return to_db_json (col.data, col.size, attr, val);
 
-      case DB_TYPE_BLOB:
-      case DB_TYPE_CLOB:
+      case DB_TYPE_BFILE:
+      case DB_TYPE_CFILE:
       {
 	/* the text of ^E'...', which to_db_elo_ext () reads as a null terminated string */
 	std::string elo_text (col.data, col.size);

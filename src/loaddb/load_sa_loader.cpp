@@ -2636,8 +2636,8 @@ ldr_binary_store_slot (LDR_ATTDESC *attdesc, const DB_VALUE *val)
     case DB_TYPE_MONETARY:
       token = LDR_MONETARY;
       break;
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
       token = LDR_ELO_EXT;
       break;
     default:
