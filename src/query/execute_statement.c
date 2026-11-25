@@ -16484,6 +16484,12 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
 
+  /* CBRD-27351: settle the share groups first, so that the hash text prints the select lists the plan reads */
+  if (PT_IS_QUERY (statement))
+    {
+      (void) mq_share_settle_groups (parser, statement);
+    }
+
   PT_NODE_PRINT_TO_ALIAS (parser, statement, (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER));
 
   contextp->sql_hash_text = (char *) statement->alias_print;
