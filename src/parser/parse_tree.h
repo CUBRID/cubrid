@@ -2236,6 +2236,9 @@ struct pt_data_default_info
 					 * residual expression that survives folding; UNSET otherwise */
   PT_TYPE_ENUM expr_type;	/* type of a column DEFAULT expression before folding, what the DDL checks against
 				 * the column (a folded NULL carries no type); PT_TYPE_NONE otherwise */
+  bool is_session_variable;	/* the DEFAULT is a session variable, replaced with its value: the DDL leaves the
+				 * value to the schema manager, which fits it to the column as by CAST, as earlier
+				 * versions did */
 };
 
 /* Info for the AUTO_INCREMENT node */

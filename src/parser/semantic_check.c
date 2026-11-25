@@ -4613,6 +4613,8 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_
        * here on */
       if (column_rules)
 	{
+	  data_default->info.data_default.is_session_variable =
+	    PT_IS_EXPR_NODE_WITH_OPERATOR (default_value, PT_EVALUATE_VARIABLE);
 	  default_value = parser_walk_tree (parser, default_value, NULL, NULL, pt_bind_default_session_variable, NULL);
 	  data_default->info.data_default.default_value = default_value;
 	  if (pt_has_error (parser))

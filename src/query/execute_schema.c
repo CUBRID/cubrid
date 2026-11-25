@@ -14568,7 +14568,13 @@ get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_defau
       /* try to coerce the default value into the attribute type */
       if (!is_residual)
 	{
-	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, data_type, true);
+	  /* a session variable keeps only a number or a string (SET casts anything else to a string), so its value
+	   * is left to smt_set_attribute_default, which fits it to the column as by CAST, as earlier versions did:
+	   * a string becomes a JSON or BIT value there.  Stored as that value, it unloads as one */
+	  if (!data_default->info.data_default.is_session_variable)
+	    {
+	      error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, data_type, true);
+	    }
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_coerce_error;

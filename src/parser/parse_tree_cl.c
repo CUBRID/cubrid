@@ -9059,6 +9059,7 @@ pt_init_data_default (PT_NODE * p)
   p->info.data_default.expr_text = NULL;
   p->info.data_default.expr_volatility = PT_VOLATILITY_UNSET;
   p->info.data_default.expr_type = PT_TYPE_NONE;
+  p->info.data_default.is_session_variable = false;
   return p;
 }
 
