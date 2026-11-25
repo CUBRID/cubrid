@@ -419,6 +419,16 @@ set_tests_properties(
     ENVIRONMENT "${OOS_HEADER_HELD_ENV}"
 )
 
+# A timed-out wait in vacuum's reclaim of a committed UPDATE's dropped chain leaves the log block for a later run
+# instead of stopping the server (CBRD-28377). The cases inject the failure through a unit-test hook, so they need
+# no fault injection list.
+add_test(NAME test_oos_real_vacuum_reclaim_fault
+  COMMAND test_oos_real_vacuum_server --gtest_filter=OosRealVacuumReclaimFault.*
+)
+set_tests_properties(test_oos_real_vacuum_reclaim_fault
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
+)
+
 # test_oos_update_reuse_server updates rows of user tables, which a SERVER_MODE binary booted without a client cannot
 # create; this fixture creates them in unittestdb in standalone mode (CBRD-27230).
 add_test(NAME oos_setup_update_reuse_tables

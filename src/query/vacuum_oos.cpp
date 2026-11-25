@@ -214,20 +214,45 @@ vacuum_oos_sysop_commit_collecting_emptied_pages (THREAD_ENTRY *thread_p, VACUUM
 }
 
 /*
+ * vacuum_oos_defer_heap () - Remember a heap whose notification was left for a later run of the block.
+ *
+ * deferred_heaps (in/out) : The caller's list; may be NULL.
+ * heap_vfid (in)	   : The heap; nothing is added when it is NULL.
+ */
+static void
+vacuum_oos_defer_heap (VACUUM_OOS_DEFERRED_HEAPS *deferred_heaps, const VFID &heap_vfid)
+{
+  if (deferred_heaps == NULL || VFID_ISNULL (&heap_vfid))
+    {
+      return;
+    }
+  try
+    {
+      deferred_heaps->push_back (heap_vfid);
+    }
+  catch (const std::bad_alloc &)
+    {
+      /* Only the skip is lost: a later notification of this heap in this run tries again. */
+    }
+}
+
+/*
  * vacuum_oos_reclaim_notified_chains () - Reclaim the chains one RVOOS_NOTIFY_VACUUM record names, then
  *   return the pages it emptied to the file manager.
  *
  * return	       : NO_ERROR; ER_INTERRUPTED on shutdown (the block is processed again after restart); or, on a
- *			 vacuum worker, ER_VACUUM_OOS_LOOKUP_DEFERRED when the heap header lookup for the OOS file failed
- *			 (the block runs again later). A malformed chain is reported and skipped; any other reclaim
- *			 failure stops the server (oos_reclaim_notified_chains).
+ *			 vacuum worker, ER_VACUUM_OOS_LOOKUP_DEFERRED when the heap header lookup for the OOS file failed,
+ *			 or ER_VACUUM_OOS_RECLAIM_DEFERRED when a wait timed out or an allocation failed in the reclaim
+ *			 (the block runs again later and finishes the chains; CBRD-27933, CBRD-28377). A malformed chain is
+ *			 reported and skipped; any other reclaim failure stops the server (oos_reclaim_notified_chains).
  * thread_p (in)       : Thread entry.
  * undo_data (in)      : Undo data of the record. It may point into the worker's current log page:
  *			 oos_reclaim_notified_chains copies it before its first page fix.
  * undo_data_size (in) : Its size.
- * deferred_heaps (in/out) : Heaps whose lookup failed in this run of the block; may be NULL. A failed lookup adds
- *			     its heap, and a later notification of that heap in the same run returns NO_ERROR without
- *			     waiting for the header again; the next run of the block reclaims it.
+ * deferred_heaps (in/out) : Heaps whose notification was left for a later run in this run of the block; may be
+ *			     NULL. A failed lookup or a deferred reclaim adds its heap, and a later notification of that
+ *			     heap in the same run returns NO_ERROR without waiting again; the next run of the block
+ *			     reclaims it.
  *
  * Vacuum reaches the record only once the UPDATE's MVCCID precedes every active snapshot, so no reader can
  * still reach the chains through the old version.
@@ -239,29 +264,26 @@ vacuum_oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *undo_dat
   VFID oos_vfid = VFID_INITIALIZER;
   HFID heap_hfid = HFID_INITIALIZER;
   VACUUM_OOS_EMPTIED_PAGES emptied_pages;
+  /* Only a vacuum worker's block runs again; elsewhere a timed-out wait still stops the server. */
+  const bool is_worker = vacuum_is_thread_vacuum_worker (thread_p);
   int error_code =
 	  oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size, &oos_vfid, &heap_hfid, &emptied_pages,
-				       deferred_heaps);
+				       deferred_heaps, is_worker);
   if (error_code != NO_ERROR)
     {
-      if (error_code != ER_INTERRUPTED && vacuum_is_thread_vacuum_worker (thread_p))
+      if (error_code == ER_VACUUM_OOS_RECLAIM_DEFERRED)
+	{
+	  /* The pages the run emptied stay in the file's emptied-page set for the next growth. */
+	  vacuum_oos_defer_heap (deferred_heaps, heap_hfid.vfid);
+	}
+      else if (error_code != ER_INTERRUPTED && is_worker)
 	{
 	  /* The heap header lookup failed: run the block again later (CBRD-27933). */
 	  VPID header_vpid = { heap_hfid.hpgid, heap_hfid.vfid.volid };
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_OOS_LOOKUP_DEFERRED, 6, VFID_AS_ARGS (&heap_hfid.vfid),
 		  error_code, VPID_AS_ARGS (&header_vpid), (int) NULL_SLOTID);
 	  error_code = ER_VACUUM_OOS_LOOKUP_DEFERRED;
-	  if (deferred_heaps != NULL)
-	    {
-	      try
-		{
-		  deferred_heaps->push_back (heap_hfid.vfid);
-		}
-	      catch (const std::bad_alloc &)
-		{
-		  /* Only the skip is lost: a later notification of this heap waits for the header again. */
-		}
-	    }
+	  vacuum_oos_defer_heap (deferred_heaps, heap_hfid.vfid);
 	}
       return error_code;
     }

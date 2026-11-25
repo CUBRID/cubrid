@@ -50,8 +50,10 @@
  * real vacuum-processable MVCC log records.
  */
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <functional>
 #include <iterator>
@@ -2083,6 +2085,194 @@ TEST_F (OosRealVacuumUpdateNotify, CommittedUpdateReturnsThePageItsDroppedChainE
   }, 10)) << "the emptied page was not returned by the fast path: pages before " << before.num_user_pages
 	  << ", after " << after.num_user_pages;
   expect_value (new_oos_oid, max_chunk + 1, "the new version's chain must survive");
+}
+
+// ============================================================================
+// TC-R16: A wait that times out while vacuum reclaims a committed UPDATE's dropped chain leaves the log block for
+// a later run instead of stopping the server; any other reclaim failure still stops it (CBRD-28377)
+//
+// QA saw a vacuum worker wait 300 seconds for a free page buffer in the reclaimer, get ER_CSS_PTHREAD_COND_TIMEDOUT
+// (-1123), and stop the server (LOG FATAL ERROR). Leaving the block unfinished reruns the reclaimer, which finishes
+// the linked prefix the failure left (ADR-0008 decision 3), just as restart recovery would.
+// ============================================================================
+class OosRealVacuumReclaimFault : public OosRealVacuumUpdateNotify
+{
+  protected:
+    size_t server_log_start = 0;
+
+    /* Written by the vacuum worker through the hook, read by the test thread. */
+    static std::atomic<int> fail_stops;
+    static std::atomic<int> fail_stop_error;
+
+    static void record_fail_stop (int error)
+    {
+      fail_stops++;
+      fail_stop_error = error;
+    }
+
+    void SetUp () override
+    {
+      OosRealVacuumUpdateNotify::SetUp ();
+      server_log_start = server_log ().size ();
+      fail_stops = 0;
+      fail_stop_error = NO_ERROR;
+      /* The hook replaces the server stop, so a case that expects no stop still runs to its end if one happens. */
+      oos_test_set_reclaim_fail_stop_hook (record_fail_stop);
+    }
+
+    void TearDown () override
+    {
+      oos_test_fail_reclaim_after_chunk_deletes (-1);
+      oos_test_set_reclaim_fail_stop_hook (NULL);
+      OosRealVacuumUpdateNotify::TearDown ();
+    }
+
+    /* The server error log written since this case started. */
+    std::string server_log ()
+    {
+      std::ifstream in (er_get_msglog_filename ());
+      std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char> ());
+      return text.size () >= server_log_start ? text.substr (server_log_start) : text;
+    }
+
+    int reclaim_deferrals ()
+    {
+      return count_occurrences (server_log (), "CODE = " + std::to_string (ER_VACUUM_OOS_RECLAIM_DEFERRED) + ",");
+    }
+
+    /* The OOS OIDs of a chain's chunks, head first, read from its links. */
+    std::vector<OID> chain_chunk_oids (const OID &head)
+    {
+      std::vector<OID> oids;
+      for (OID oid = head; !OID_ISNULL (&oid) && oids.size () < 16;)
+	{
+	  oids.push_back (oid);
+	  VPID vpid = {oid.pageid, oid.volid};
+	  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_ptr == NULL)
+	    {
+	      ADD_FAILURE () << "cannot fix the page of chunk " << oids.size () - 1;
+	      break;
+	    }
+	  RECDES chunk;
+	  OOS_RECORD_HEADER header;
+	  const bool found = spage_get_record (thread_p, page_ptr, oid.slotid, &chunk, PEEK) == S_SUCCESS;
+	  if (found)
+	    {
+	      std::memcpy (&header, chunk.data, OOS_RECORD_HEADER_SIZE);
+	    }
+	  pgbuf_unfix_and_init (thread_p, page_ptr);
+	  if (!found)
+	    {
+	      ADD_FAILURE () << "chunk " << oids.size () - 1 << " is missing";
+	      break;
+	    }
+	  oid = header.next_chunk_oid;
+	}
+      return oids;
+    }
+
+    /* Waits with an unconditional latch, so a busy page is not taken for an empty one. */
+    bool chunk_present (const OID &oid)
+    {
+      bool exists = false;
+      const int error = oos_chunk_exists (thread_p, oid, &exists);
+      er_clear ();
+      return error != NO_ERROR || exists;
+    }
+
+    bool all_chunks_gone (const std::vector<OID> &chunks)
+    {
+      for (const OID &oid : chunks)
+	{
+	  if (chunk_present (oid))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+    }
+
+    /* Updates a row whose value takes three chunks, commits, arms a failure with error after the reclaimer deleted
+     * the tail chunk, and closes the UPDATE's log block. The failure leaves the head and the middle chunk, which only
+     * a rerun of the block deletes. */
+    void update_three_chunk_row_failing_after_tail (int error, std::vector<OID> &old_chunks, OID &new_oos_oid)
+    {
+      const int max_chunk = bridge_oos_get_max_chunk_size_within_page ();
+      const std::string value = test_oos_utils::make_repeated_pattern_string (2 * max_chunk + 100);
+      OID heap_oid, old_oos_oid;
+      insert_row_with_oos (value, heap_oid, old_oos_oid);
+      old_chunks = chain_chunk_oids (old_oos_oid);
+      ASSERT_EQ (old_chunks.size (), 3U) << "the value must take three chunks";
+
+      update_row_uncommitted (heap_oid, value, new_oos_oid);
+      const VACUUM_LOG_BLOCKID update_block = current_log_blockid ();
+      commit_current_tran ();
+      /* Vacuum reaches the UPDATE's notification only after the block closes. The filler inserts plain rows, so no
+       * other reclaim consumes the one-shot failure first. */
+      oos_test_fail_reclaim_after_chunk_deletes (1, error);
+      close_log_block_containing (hfid, class_oid, scan_cache, update_block);
+    }
+};
+
+std::atomic<int> OosRealVacuumReclaimFault::fail_stops { 0 };
+std::atomic<int> OosRealVacuumReclaimFault::fail_stop_error { NO_ERROR };
+
+TEST_F (OosRealVacuumReclaimFault, BufferWaitTimeoutDefersTheBlockAndTheRerunFinishesTheChain)
+{
+  std::vector<OID> old_chunks;
+  OID new_oos_oid;
+  update_three_chunk_row_failing_after_tail (ER_CSS_PTHREAD_COND_TIMEDOUT, old_chunks, new_oos_oid);
+  ASSERT_FALSE (HasFatalFailure ());
+
+  /* The failed run deleted only the tail; the head and the middle chunk go only in a rerun. */
+  const bool reclaimed = wait_for_vacuum ([this, &old_chunks] { return all_chunks_gone (old_chunks); }, 60);
+  const int deferrals = reclaim_deferrals ();
+  printf ("[CBRD-28377] -1123 in the notification reclaim: stops %d, deferrals %d, every chunk reclaimed %d\n",
+	  fail_stops.load (), deferrals, (int) reclaimed);
+  fflush (stdout);
+
+  EXPECT_EQ (fail_stops, 0) << "a wait for a free buffer that timed out stopped the server (error "
+			    << fail_stop_error << ")";
+  EXPECT_GE (deferrals, 1) << "vacuum did not leave the log block for a later run";
+  EXPECT_TRUE (reclaimed) << "the rerun did not finish the dropped chain";
+  expect_value (new_oos_oid, 2 * bridge_oos_get_max_chunk_size_within_page () + 101,
+		"the new version's chain must survive");
+}
+
+TEST_F (OosRealVacuumReclaimFault, PageLatchTimeoutDefersTheBlockAndTheRerunFinishesTheChain)
+{
+  std::vector<OID> old_chunks;
+  OID new_oos_oid;
+  /* What er_errid () holds after pgbuf_timed_sleep times out a page latch wait of a thread with an infinite wait. */
+  update_three_chunk_row_failing_after_tail (ER_LK_UNILATERALLY_ABORTED, old_chunks, new_oos_oid);
+  ASSERT_FALSE (HasFatalFailure ());
+
+  const bool reclaimed = wait_for_vacuum ([this, &old_chunks] { return all_chunks_gone (old_chunks); }, 60);
+
+  EXPECT_EQ (fail_stops, 0) << "a page latch timeout stopped the server (error " << fail_stop_error << ")";
+  EXPECT_GE (reclaim_deferrals (), 1) << "vacuum did not leave the log block for a later run";
+  EXPECT_TRUE (reclaimed) << "the rerun did not finish the dropped chain";
+  expect_value (new_oos_oid, 2 * bridge_oos_get_max_chunk_size_within_page () + 101,
+		"the new version's chain must survive");
+}
+
+TEST_F (OosRealVacuumReclaimFault, OtherReclaimFailureStillStopsTheServer)
+{
+  std::vector<OID> old_chunks;
+  OID new_oos_oid;
+  update_three_chunk_row_failing_after_tail (ER_GENERIC_ERROR, old_chunks, new_oos_oid);
+  ASSERT_FALSE (HasFatalFailure ());
+
+  const bool stopped = wait_for_vacuum ([] { return fail_stops > 0; }, 60);
+  EXPECT_TRUE (stopped) << "a reclaim failure that is not a timed-out wait must stop the server";
+  EXPECT_EQ (fail_stop_error, ER_GENERIC_ERROR);
+  EXPECT_EQ (reclaim_deferrals (), 0) << "a reclaim failure that is not a timed-out wait was deferred";
+  /* The hook returns where the server would stop. vacuum_oos_reclaim_notified_chains then takes the error for a
+   * failed OOS file lookup and leaves the block for a later run, which here stands in for the run after the
+   * restart. */
+  EXPECT_TRUE (wait_for_vacuum ([this, &old_chunks] { return all_chunks_gone (old_chunks); }, 60))
+      << "the rerun did not finish the dropped chain";
 }
 
 int
