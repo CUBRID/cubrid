@@ -10178,7 +10178,6 @@ la_change_state (void)
   int error = NO_ERROR;
   int new_state = HA_LOG_APPLIER_STATE_NA;
   char buffer[1024];
-  bool was_deferred;
 
   if (!la_Info.done_deferred
       && la_Info.last_server_state == la_Info.act_log.log_hdr->ha_server_state
@@ -10202,7 +10201,6 @@ la_change_state (void)
   la_Info.last_is_end_of_record = la_Info.is_end_of_record;
 
   /* a deferred DONE is decided again below; any other outcome drops it */
-  was_deferred = la_Info.done_deferred;
   la_Info.done_deferred = false;
 
   /* check log file status */
@@ -10213,6 +10211,9 @@ la_change_state (void)
 	  || la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_TO_BE_STANDBY
 	  || la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_TO_BE_ACTIVE)
 	{
+	  /* the master left the done state: a hold on DONE, if any, is over */
+	  la_Info.done_deferred_since = 0;
+
 	  if (la_Info.apply_state != HA_LOG_APPLIER_STATE_WORKING)
 	    {
 	      /* notify to slave db */
@@ -10227,8 +10228,10 @@ la_change_state (void)
 	       * the next pass come back here and decide again. */
 	      if (!la_coordinator_drain_complete ())
 		{
-		  /* A promotion that stalls starts here, so leave the reason in the error log once per hold. */
-		  if (!was_deferred)
+		  /* A promotion that stalls starts here, so leave the reason in the error log once per hold. A hold
+		   * lasts until DONE is reported or the master leaves the done state, even if a pass in between
+		   * ends it for a moment (more log arrived), so the line is not repeated. */
+		  if (la_Info.done_deferred_since == 0)
 		    {
 		      la_Info.done_deferred_since = time (NULL);
 		      snprintf (buffer, sizeof (buffer),
@@ -10246,11 +10249,12 @@ la_change_state (void)
 		  /* drain_complete is the contract DONE relies on: nothing parked, dispatched, or still on the ring */
 		  assert (la_pending_is_empty () && la_inflight_get_count () == 0 && la_gate_order_get_count () == 0);
 
-		  if (was_deferred)
+		  if (la_Info.done_deferred_since != 0)
 		    {
 		      snprintf (buffer, sizeof (buffer), "applylogdb reports DONE after holding it for %ld seconds",
 				(long) (time (NULL) - la_Info.done_deferred_since));
 		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
+		      la_Info.done_deferred_since = 0;
 		    }
 
 		  /* notify to slave db */
