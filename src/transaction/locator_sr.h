@@ -156,6 +156,8 @@ extern int locator_start_referenced_key (THREAD_ENTRY * thread_p, OID * class_oi
 extern void locator_end_referenced_key (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk);
 extern int locator_key_changes (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk, OID * oid, RECDES * recdes,
 				HEAP_CACHE_ATTRINFO * new_values, bool * changes);
+extern int locator_assigns_unique_key (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID * att_id, int n_att_id,
+				       bool * assigns);
 extern int locator_wait_for_child_writers (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk, const OID * oids,
 					   int n_oids, const OID * class_oid, HEAP_SCANCACHE * scan_cache,
 					   bool on_update);
@@ -173,7 +175,8 @@ extern SCAN_CODE locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID
 					      RECDES * recdes, HEAP_SCANCACHE * scan_cache, LOCK lock, int ispeeking,
 					      int old_chn, NON_EXISTENT_HANDLING non_ex_handling_type, bool transient,
 					      bool owner_bypass_ok,
-					      HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
+					      HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy,
+					      MVCC_REC_HEADER * mvcc_header);
 extern SCAN_CODE locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 							      RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 							      int ispeeking, int old_chn,
