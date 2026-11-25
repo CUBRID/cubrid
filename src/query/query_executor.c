@@ -13084,7 +13084,6 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
 	  /* the step stops at its first match: the OIDs of this one buffer are kept for their pages to be named, and
 	   * the row path reads the index again */
 	  batch->n_oids += n_oids;
-	  s_id->scan_stats.nl_batch_rows++;
 	}
       else
 	{
@@ -14389,12 +14388,15 @@ qexec_sq_batch_give_slice (QEXEC_SQ_BATCH * sq, SCAN_ID * s_id)
 static void
 qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_BATCH * batch, int pos)
 {
-  int distance, end;
+  int distance, end, hinted;
   int limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
+  UINT64 stat_unused = 0;
+  UINT64 *stat = &stat_unused;	/* the pages named are counted on the inner scan */
 
   if (inner->curr_spec != NULL && inner->curr_spec->s_id.type == S_INDX_SCAN)
     {
       limit = inner->curr_spec->s_id.s.isid.ahead_limit;
+      stat = &inner->curr_spec->s_id.scan_stats.read_ahead_pages;
     }
 
   if (qexec_nl_batch_first_only (inner))
@@ -14420,7 +14422,9 @@ qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_
 	}
       if (end > batch->ahead_next)
 	{
-	  batch->hinted += scan_index_nl_batch_read_ahead (thread_p, firsts, n);
+	  hinted = scan_index_nl_batch_read_ahead (thread_p, firsts, n);
+	  batch->hinted += hinted;
+	  *stat += hinted;
 	  batch->ahead_next = end;
 	  batch->ahead_distance = distance;
 	}
@@ -14437,8 +14441,9 @@ qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_
   batch->ahead_next = MAX (batch->ahead_next, pos);
   if (end > batch->ahead_next)
     {
-      batch->hinted += scan_index_nl_batch_read_ahead (thread_p, batch->oids + batch->ahead_next,
-						       end - batch->ahead_next);
+      hinted = scan_index_nl_batch_read_ahead (thread_p, batch->oids + batch->ahead_next, end - batch->ahead_next);
+      batch->hinted += hinted;
+      *stat += hinted;
       batch->ahead_next = end;
       batch->ahead_distance = distance;
     }

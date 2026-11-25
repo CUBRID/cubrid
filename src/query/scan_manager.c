@@ -5496,6 +5496,7 @@ scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp)
 /*
  * scan_index_read_ahead () - tell the OS which heap pages the OIDs of the OID buffer from the one being looked up on
  *                            are, a window ahead
+ *   return: pages named
  *   thread_p(in):
  *   isidp(in/out): index scan; oid_list->oidp[0, oids_count) the OIDs, curr_oidno the OID about to be looked up,
  *                  ahead_next the first OID not yet in a window (INT_MAX when every OID left was), ahead_distance
@@ -5508,7 +5509,7 @@ scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp)
  *       window (ahead_distance / 2) from ahead_next. A window holds twice the OIDs of the one before it and ends
  *       ahead_limit OIDs from the lookup at most, so no more than that many OIDs are told and not yet looked up.
  */
-void
+int
 scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, bool more)
 {
   VPID vpids[SCAN_INDEX_READ_AHEAD_DISTANCE];
@@ -5540,9 +5541,9 @@ scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, bool more)
   if (n == 0 || (n == 1 && start == curr))
     {
       /* the one page of a window that starts here is the page the lookup reads right now */
-      return;
+      return 0;
     }
-  pgbuf_read_ahead (thread_p, vpids, n);
+  return pgbuf_read_ahead (thread_p, vpids, n);
 }
 
 /*
@@ -6718,7 +6719,6 @@ scan_index_nl_batch_collect (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * o
     {
       return S_SUCCESS;
     }
-  scan_id->scan_stats.nl_batch_rows++;
   *complete = true;
 
   return S_SUCCESS;
@@ -7119,7 +7119,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  if (isidp->curr_oidno + isidp->ahead_distance / 2 >= isidp->ahead_next)
 	    {
-	      scan_index_read_ahead (thread_p, isidp, false);
+	      scan_id->scan_stats.read_ahead_pages += scan_index_read_ahead (thread_p, isidp, false);
 	    }
 
 	  lookup_status = scan_next_index_lookup_heap (thread_p, scan_id, isidp, &data_filter, isolation);
@@ -11082,6 +11082,10 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
 
     case S_INDX_SCAN:
     case S_PARALLEL_INDEX_SCAN:
+      if (scan_id->scan_stats.read_ahead_pages != 0)
+	{
+	  trace_json_object_set_new (scan, "readahead", trace_json_integer (scan_id->scan_stats.read_ahead_pages));
+	}
       trace_json_object_set_new (scan, "readkeys", trace_json_integer (scan_id->scan_stats.read_keys));
       trace_json_object_set_new (scan, "filteredkeys", trace_json_integer (scan_id->scan_stats.qualified_keys));
       trace_json_object_set_new (scan, "rows", trace_json_integer (scan_id->scan_stats.key_qualified_rows));
@@ -11113,11 +11117,6 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
       if (scan_id->scan_stats.multi_range_opt == true)
 	{
 	  trace_json_object_set_new (scan_stats, "mro", trace_json_true ());
-	}
-
-      if (scan_id->scan_stats.nl_batch_rows != 0)
-	{
-	  trace_json_object_set_new (scan_stats, "nlbatch", trace_json_integer (scan_id->scan_stats.nl_batch_rows));
 	}
 
       if (scan_id->scan_stats.index_skip_scan == true)
@@ -11331,6 +11330,10 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 
     case S_INDX_SCAN:
     case S_PARALLEL_INDEX_SCAN:
+      if (scan_id->scan_stats.read_ahead_pages != 0)
+	{
+	  fprintf (fp, ", readahead: %llu", (unsigned long long int) scan_id->scan_stats.read_ahead_pages);
+	}
       fprintf (fp, ", readkeys: %llu, filteredkeys: %llu, rows: %llu",
 	       (unsigned long long int) scan_id->scan_stats.read_keys,
 	       (unsigned long long int) scan_id->scan_stats.qualified_keys,
@@ -11354,11 +11357,6 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       if (scan_id->scan_stats.multi_range_opt == true)
 	{
 	  fprintf (fp, ", mro: true");
-	}
-
-      if (scan_id->scan_stats.nl_batch_rows != 0)
-	{
-	  fprintf (fp, ", nlbatch: %llu", (unsigned long long) scan_id->scan_stats.nl_batch_rows);
 	}
 
       if (scan_id->scan_stats.index_skip_scan == true)

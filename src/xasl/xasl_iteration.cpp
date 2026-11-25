@@ -195,7 +195,7 @@ extern "C" {
 	  dst_node->spec_list->s_id.scan_stats.qualified_keys += src_node->spec_list->s_id.scan_stats.qualified_keys;
 	  dst_node->spec_list->s_id.scan_stats.key_qualified_rows += src_node->spec_list->s_id.scan_stats.key_qualified_rows;
 	  dst_node->spec_list->s_id.scan_stats.data_qualified_rows += src_node->spec_list->s_id.scan_stats.data_qualified_rows;
-	  dst_node->spec_list->s_id.scan_stats.nl_batch_rows += src_node->spec_list->s_id.scan_stats.nl_batch_rows;
+	  dst_node->spec_list->s_id.scan_stats.read_ahead_pages += src_node->spec_list->s_id.scan_stats.read_ahead_pages;
 	  xasl_merge_bitmap_heap_stats (&dst_node->spec_list->s_id.scan_stats, &src_node->spec_list->s_id.scan_stats);
 	  dst_node->spec_list->s_id.scan_stats.index_skip_scan = dst_node->spec_list->s_id.scan_stats.index_skip_scan ? true :
 	      src_node->spec_list->s_id.scan_stats.index_skip_scan;

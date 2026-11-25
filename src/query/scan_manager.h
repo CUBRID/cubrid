@@ -651,7 +651,7 @@ struct scan_stats
   UINT64 bitmap_heap_fetches;
   UINT64 bitmap_heap_ioreads;
   UINT64 bitmap_heap_pages;	/* recorded pages it read */
-  UINT64 nl_batch_rows;		/* outer rows whose OIDs a batched nested-loop join read ahead of their lookups */
+  UINT64 read_ahead_pages;	/* heap pages named to the OS ahead of their lookups, by the scan or the batched join */
   bool multi_range_opt;
   bool index_skip_scan;
   bool loose_index_scan;
@@ -917,7 +917,7 @@ extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_add_oos_read_stats (OOS_READ_STATS * total, const OOS_READ_STATS * since, const OOS_READ_STATS * now);
-extern void scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, bool more);
+extern int scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, bool more);
 // *INDENT-OFF*
 /* bitmap heap scan: see scan_bitmap_marks */
 constexpr int SCAN_BITMAP_WORDS = 10;       /* slot bits of a page entry: 640 */
