@@ -17143,10 +17143,12 @@ mq_share_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SHARE_GROUP * 
   PT_NODE *v_attrs, *list = NULL;
 
   v_attrs = parser_copy_tree_list (parser, mq_fetch_attributes (parser, spec->info.spec.flat_entity_list));
-  for (PT_NODE * v_attr = v_attrs; v_attr != NULL; v_attr = v_attr->next)
+  /* the first attribute of object type is the oid of the view, which no member reads, as in
+   * mq_rewrite_vclass_spec_as_derived (); an attribute of object type after it is a column */
+  for (PT_NODE * v_attr = (v_attrs != NULL && v_attrs->type_enum == PT_TYPE_OBJECT) ? v_attrs->next : v_attrs;
+       v_attr != NULL; v_attr = v_attr->next)
     {
-      if (v_attr->type_enum != PT_TYPE_OBJECT
-	  && (group->all_columns || mq_share_find_name (group->attrs, v_attr) != NULL))
+      if (group->all_columns || mq_share_find_name (group->attrs, v_attr) != NULL)
 	{
 	  PT_NODE *col = parser_copy_tree (parser, v_attr);
 	  if (col == NULL)
