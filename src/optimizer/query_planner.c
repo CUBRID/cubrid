@@ -12895,11 +12895,12 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		 * e.g. ta  left join tb on tb.ca > tb.cb
 		 *         cross join tc
 		 *          left join td on td.ca = tb.ca and td.cb = tc.ca
+		 *         inner join te on te.ca = ta.ca and te.cb = tc.ca
 		 *
 		 *      tb has the left outer dummy join term ta-tb, as its ON clause reads tb alone,
 		 *      and the inner dummy join term tb-tc, as the ON clause of td reads tb and tc.
-		 *      When tb joins after ta and tc,
-		 *      tb-tc must not turn the left outer join of tb into an inner join. */
+		 *      te connects ta and tc, so tb can join after both,
+		 *      and tb-tc must not turn the left outer join of tb into an inner join. */
 		join_type = QO_TERM_JOIN_TYPE (term);
 		is_dummy_term = QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN ? true : false;
 	      }

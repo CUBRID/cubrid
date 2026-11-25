@@ -707,16 +707,14 @@ qo_optimize_helper (QO_ENV * env)
 			       pt_continue_walk, NULL);
     }
 
-  /* Add the dummy join terms after qo_classify_outerjoin_terms ().
-   * It demotes a QO_TC_JOIN term whose node an outer join null-pads to QO_TC_AFTER_JOIN or QO_TC_DURING_JOIN,
-   * and QO_IS_EDGE_TERM () is false for both, so an earlier run would count such a term as a join edge
-   * and leave out a dummy join term the graph needs.
+  /* Add the dummy join terms after qo_classify_outerjoin_terms (), which demotes a QO_TC_JOIN term whose node
+   * an outer join null-pads to QO_TC_AFTER_JOIN or QO_TC_DURING_JOIN. Neither is a join edge,
+   * so an earlier run would count the term as one and leave out a dummy join term the graph needs.
    *
-   * Add them before qo_generate_implied_join_terms (), which stops when env->Nterms runs out,
-   * while a dummy join term that finds no room goes through qo_abort ().
+   * Add them before qo_generate_implied_join_terms (), which stops when env->Nterms runs out.
+   * A dummy join term that finds no room goes through qo_abort ().
    *
-   * qo_add_cross_dummy_join_terms () checks which nodes share a partition,
-   * so it runs after qo_add_connected_dummy_join_terms () has added its terms. */
+   * Run qo_add_cross_dummy_join_terms () last, as it checks which nodes share a partition. */
   qo_add_connected_dummy_join_terms (env);
   qo_add_cross_dummy_join_terms (env);
 
@@ -849,7 +847,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
   extra_term_cap = env->nnodes * (env->nnodes - 1) / 2;
 
   /* Plus room for the dummy join terms.
-   * Each term of qo_add_connected_dummy_join_terms () joins two node sets that no join edge joins yet,
+   * Each term of qo_add_connected_dummy_join_terms () joins two nodes that the terms it added before do not connect,
    * so it adds nnodes - 1 terms at most.
    * qo_add_cross_dummy_join_terms () adds one term at most per node after the first. */
   extra_term_cap += 2 * MAX (env->nnodes - 1, 0);
@@ -2188,8 +2186,9 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
  * Behavior:
  *   - The term stands for no ON clause: location 0 keeps QO_ON_COND_TERM () false, and JOIN_INNER keeps
  *     QO_OUTER_JOIN_TERM () false.
- *   - qo_add_dummy_join_term () makes the term that carries the location, the join type and the outer dependency set
- *     of a node.
+ *   - qo_add_dummy_join_term () makes the dummy join term of an ANSI join node instead. It gives the term the location
+ *     and the join type of the node, and adds the node before it to a dependency set of an outer, semi or anti join
+ *     node.
  */
 static QO_TERM *
 qo_add_inner_dummy_join_term (QO_ENV * env, QO_NODE * head_node, QO_NODE * tail_node)
@@ -2235,7 +2234,8 @@ qo_add_inner_dummy_join_term (QO_ENV * env, QO_NODE * head_node, QO_NODE * tail_
  * Behavior:
  *   - A join edge is a term QO_IS_EDGE_TERM () accepts. The direction of the edge and the dependency sets of its
  *     nodes are not looked at.
- *   - The scan over the terms repeats until no node enters node_set.
+ *   - A term can come before the one that reaches its nodes, so the scan over the terms repeats until no node enters
+ *     node_set.
  */
 static void
 qo_get_joined_nodes (QO_ENV * env, BITSET * scope_set, int node_idx, BITSET * node_set)
@@ -2269,35 +2269,38 @@ qo_get_joined_nodes (QO_ENV * env, BITSET * scope_set, int node_idx, BITSET * no
  *   env(in): optimizer environment
  *
  * Behavior:
- *   - An outer, semi or anti join node comes after every node its ON clause reads, and so does an inner join node
- *     whose ON clause reads a node an earlier outer join null-pads.
- *   - Each dummy join term links one group of those nodes that is not connected yet to the connected ones.
+ *   - The terms are for the nodes that come after a node their ON clause reads: an outer, semi or anti join node, and
+ *     an inner join node whose ON clause reads a node an earlier outer join null-pads.
+ *   - Each dummy join term links one group of the nodes the ON clause reads to the connected ones.
  *     The nodes in between that the ON clause does not read keep a partition of their own.
  *
  * Reason:
- *   planner_visit_node () grows a join order along join edges only. A cross join has no ON clause, a merged view
- *   whose FROM clause is a cartesian product brings its tables in as PT_JOIN_NONE specs, and an ON clause condition
- *   over three or more nodes is no join edge. Each can leave such a node with no join edge to the nodes it comes after,
- *   and the planner then finds no join order.
+ *   - planner_visit_node () grows a join order along join edges only. When only the node of an ON clause connects
+ *     the nodes the ON clause reads, and the node comes after them, the planner finds no join order.
+ *   - These leave no join edge between the nodes an ON clause reads:
+ *     a cross join, which has no ON clause;
+ *     a merged view whose FROM clause is a cartesian product, which brings its tables in as PT_JOIN_NONE specs;
+ *     an ON clause condition over three or more nodes, which is no join edge.
  *
  * Steps (for each node, as on_node):
  *   Step 1: add the node before on_node to visitable_set.
- *   Step 2: go on only when on_node comes after the nodes its ON clause reads.
- *   Step 3: collect dependent_set, the nodes on_node comes after.
+ *   Step 2: go on only when on_node comes after a node its ON clause reads.
+ *   Step 3: collect dependent_set, the nodes the ON clause of on_node reads and, for a right outer join, the join
+ *           expression to its left.
  *   Step 4: add dummy join terms until dependent_set is connected without going through on_node.
  */
 static void
 qo_add_connected_dummy_join_terms (QO_ENV * env)
 {
   int on_node_idx, first_idx, unconnected_idx, node_idx, link_idx, target_idx, term_idx;
-  BITSET visitable_set, dependent_set, connected_set, component_set, supplier_set;
+  BITSET visitable_set, dependent_set, connected_set, target_set, supplier_set;
   QO_NODE *on_node, *node;
   QO_TERM *term;
 
   bitset_init (&visitable_set, env);
   bitset_init (&dependent_set, env);
   bitset_init (&connected_set, env);
-  bitset_init (&component_set, env);
+  bitset_init (&target_set, env);
   bitset_init (&supplier_set, env);
 
   /* Take one node at a time.
@@ -2310,25 +2313,26 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
    *             left outer join te on te.ca = tb.ca and te.cb = td.cb;
    *
    * Step 2 lets tc and te through. tc reads ta alone, so it needs no term.
-   * te is the case the rounds below work through. */
+   * te reads tb and td, so it needs one; see the rounds in Step 4. */
   for (on_node_idx = 1; on_node_idx < env->nnodes; on_node_idx++)
     {
       /* Step 1: add the node before on_node to visitable_set.
        *
-       * visitable_set = { i : 0 <= i < on_node_idx }, the nodes the planner can place before on_node.
+       * visitable_set = { i : 0 <= i < on_node_idx }.
        * One node enters it per iteration, before the body can skip the node, so it stays complete.
        *
-       * Only join edges inside visitable_set count. on_node is the tail of every join term its ON clause carries,
-       * and a later node whose ON clause reads the same nodes also comes after them,
-       * so a path through either one is no path the planner can follow. */
+       * Only join edges inside visitable_set count.
+       * The planner cannot go through on_node to reach a node on_node comes after.
+       * A later node can come after the same nodes, so a path through a later node does not count either. */
       bitset_add (&visitable_set, on_node_idx - 1);
 
       on_node = QO_ENV_NODE (env, on_node_idx);
 
-      /* Step 2: go on only when on_node comes after the nodes its ON clause reads.
+      /* Step 2: go on only when on_node comes after a node its ON clause reads.
        *
        * An outer join node always does.
        * A semi or anti join node, which an IN or EXISTS subquery unnests into, does as well.
+       * Only a semi join node read with its duplicates removed can come first, and it gets the terms all the same.
        *
        * e.g. select count(*)
        *        from ta
@@ -2341,9 +2345,9 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
        *      so tc comes after ta and tb. */
       if (!QO_NODE_IS_OUTER_JOIN (on_node) && !QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	{
-	  /* An inner join node comes after the nodes its ON clause reads
-	   * when an earlier outer join null-pads one of them.
-	   * A condition over three or more nodes is no join edge, so those nodes can be left unconnected. */
+	  /* An inner join node comes after the earlier outer joins that null-pad a node its ON clause reads.
+	   * It does not come after the other nodes its ON clause reads,
+	   * but a condition over three or more nodes is no join edge, so those nodes can be left unconnected. */
 	  BITSET_CLEAR (supplier_set);
 	  qo_get_on_cond_null_suppliers (env, on_node, &supplier_set);
 	  if (bitset_is_empty (&supplier_set))
@@ -2352,7 +2356,8 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 	    }
 	}
 
-      /* Step 3: collect dependent_set, the nodes on_node comes after.
+      /* Step 3: collect dependent_set, the nodes the ON clause of on_node reads and, for a right outer join, the join
+       * expression to its left.
        *
        * dependent_set = U { QO_TERM_NODES (term) : term is an ON cond term at the location of on_node }.
        *
@@ -2360,7 +2365,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
        *      on te.ca = tb.ca and te.cb = td.cb  ->  {tb, td, te}
        *
        * QO_NODE_OUTER_DEP_SET (on_node) cannot stand in for this scan.
-       * Every writer of that set records a join order, add_hint () included,
+       * add_hint () writes the join order of an ORDERED or LEADING hint into that set as well,
        * so a term added to reach a node in it would make up a join the query does not have. */
       BITSET_CLEAR (dependent_set);
       for (term_idx = 0; term_idx < env->nterms; term_idx++)
@@ -2404,7 +2409,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
        *               7             6             6             7
        *
        *      The cross join keeps tb in the chain, so the walk goes back to ta.
-       *      Without ta in dependent_set, the planner can multiply the NULL padded rows by ta.
+       *      Without ta in dependent_set, the planner can multiply the null-padded rows by ta.
        *
        * e.g. select count(*), count(ta.ca), count(tb.ca), count(tc.ca)
        *        from ta, tb
@@ -2448,7 +2453,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 
       /* e.g. te works through these rounds.
        *
-       *   round 1  connected_set = {tb}      ->  td missing, its component is {td}, add tb-td
+       *   round 1  connected_set = {tb}      ->  td missing, target_set = {td}, add tb-td
        *   round 2  connected_set = {tb, td}  ->  dependent_set covered, stop
        *
        *   ta and tc keep a partition of their own, as te reads neither. */
@@ -2468,12 +2473,12 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 	    }
 
 	  /* node_idx = the lowest node of dependent_set - connected_set */
-	  bitset_assign (&component_set, &dependent_set);
-	  bitset_difference (&component_set, &connected_set);
-	  node_idx = bitset_first_member (&component_set);
+	  bitset_assign (&target_set, &dependent_set);
+	  bitset_difference (&target_set, &connected_set);
+	  node_idx = bitset_first_member (&target_set);
 
-	  /* component_set = the nodes joined to node_idx */
-	  qo_get_joined_nodes (env, &visitable_set, node_idx, &component_set);
+	  /* target_set = the nodes joined to node_idx */
+	  qo_get_joined_nodes (env, &visitable_set, node_idx, &target_set);
 
 	  /* unconnected_idx = min { i : i >= unconnected_idx, i not in connected_set }.
 	   * on_node_idx never enters connected_set, so the scan halts there at the latest. */
@@ -2483,24 +2488,24 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 	    }
 
 	  /* unconnected_idx < on_node_idx: dependent_set still has a node outside connected_set,
-	   * that node comes before on_node_idx, and unconnected_idx does not pass it.
+	   * its index is below on_node_idx, and unconnected_idx does not pass it.
 	   *
 	   * dependent_set has no node at or after on_node_idx: a path entity is the only node indexed after
 	   * the spec it hangs off, and a join condition does not accept a path expression. */
 	  QO_ASSERT (env, unconnected_idx < on_node_idx);
 
-	  /* If the node right after the connected nodes is in component_set, link it to the node before it,
+	  /* If the node right after the connected nodes is in target_set, link it to the node before it,
 	   * which is connected.
-	   * Otherwise link the lowest node of component_set to the highest connected node below it,
+	   * Otherwise link the lowest node of target_set to the highest connected node below it,
 	   * so the nodes in between that on_node does not read keep a partition of their own. */
-	  if (BITSET_MEMBER (component_set, unconnected_idx))
+	  if (BITSET_MEMBER (target_set, unconnected_idx))
 	    {
 	      target_idx = unconnected_idx;
 	      link_idx = unconnected_idx - 1;
 	    }
 	  else
 	    {
-	      target_idx = bitset_first_member (&component_set);
+	      target_idx = bitset_first_member (&target_set);
 	      link_idx = target_idx - 1;
 	      while (link_idx >= 0 && !BITSET_MEMBER (connected_set, link_idx))
 		{
@@ -2508,12 +2513,12 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 		}
 	      if (link_idx < 0)
 		{
-		  /* every connected node is above the component */
+		  /* every connected node is above target_set */
 		  link_idx = bitset_first_member (&connected_set);
 		}
 	    }
 
-	  /* the next round reaches component_set over this term, so the loop always makes progress */
+	  /* the next round reaches target_set over this term, so the loop always makes progress */
 	  (void) qo_add_inner_dummy_join_term (env, QO_ENV_NODE (env, MIN (link_idx, target_idx)),
 					       QO_ENV_NODE (env, MAX (link_idx, target_idx)));
 	}
@@ -2522,7 +2527,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
   bitset_delset (&visitable_set);
   bitset_delset (&dependent_set);
   bitset_delset (&connected_set);
-  bitset_delset (&component_set);
+  bitset_delset (&target_set);
   bitset_delset (&supplier_set);
 }
 
@@ -2537,10 +2542,11 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
  *     of the partition comes after another node.
  *
  * Reason:
- *   planner_visit_node () places a node only over a join edge, and a join order starts at one node. A partition can
- *   still hold two nodes that can be placed only at the start of a join order, such as the first nodes of two outer
- *   join chains that a later inner join bridges. A cross join allows a cartesian product at its place in the FROM
- *   clause, so a term there gives the planner such an order without merging partitions.
+ *   - planner_visit_node () grows a join order along join edges only, and a join order starts at one node.
+ *     When a partition holds two nodes that can be placed only at the start of a join order, such as the first nodes
+ *     of two outer join chains that a later inner join bridges, the planner finds no join order.
+ *   - A cross join allows a cartesian product at its place in the FROM clause, so a term there gives the planner
+ *     a join order without merging partitions.
  *
  * Steps (for each node):
  *   Step 1: go on only when the node is a cross join node.
@@ -2562,8 +2568,8 @@ qo_add_cross_dummy_join_terms (QO_ENV * env)
   bitset_init (&partition_set, env);
   bitset_init (&pair_set, env);
 
-  /* all_set: a partition follows every join edge.
-   * follower_set: the nodes that come after another node */
+  /* all_set = every node, as a partition follows every join edge.
+   * follower_set = the nodes that come after another node */
   for (node_idx = 0; node_idx < env->nnodes; node_idx++)
     {
       bitset_add (&all_set, node_idx);
