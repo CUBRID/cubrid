@@ -20,7 +20,8 @@
  * scope_exit.hpp
  */
 
-#pragma once
+#ifndef _SCOPE_EXIT_HPP_
+#define _SCOPE_EXIT_HPP_
 
 #include <type_traits>
 #include <utility>
@@ -80,3 +81,4 @@ template<class F>
   return scope_exit<std::decay_t<F>> (std::forward<F> (f));
 }
 
+#endif /* _SCOPE_EXIT_HPP_ */
