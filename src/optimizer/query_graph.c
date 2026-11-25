@@ -2271,7 +2271,7 @@ qo_get_joined_nodes (QO_ENV * env, BITSET * scope_set, int node_idx, BITSET * no
  * Behavior:
  *   - An outer, semi or anti join node comes after every node its ON clause reads, and so does an inner join node
  *     whose ON clause reads a node an earlier outer join null-pads.
- *   - A dummy join term links the nodes that the ON clause reads and that are not connected yet to the connected ones.
+ *   - Each dummy join term links one group of those nodes that is not connected yet to the connected ones.
  *     The nodes in between that the ON clause does not read keep a partition of their own.
  *
  * Reason:
@@ -2309,7 +2309,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
    *             cross join td
    *             left outer join te on te.ca = tb.ca and te.cb = td.cb;
    *
-   * The body runs for tc and for te. tc reads ta alone, so it needs no term.
+   * Step 2 lets tc and te through. tc reads ta alone, so it needs no term.
    * te is the case the rounds below work through. */
   for (on_node_idx = 1; on_node_idx < env->nnodes; on_node_idx++)
     {
