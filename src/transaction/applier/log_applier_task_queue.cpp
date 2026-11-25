@@ -39,6 +39,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <time.h>
+#include <atomic>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -50,7 +51,9 @@ struct la_task_queue
   int head;
   int tail;
   int count;
+  std::atomic<int> queued;	/* count, published for la_task_queue_get_queued to read without the lock */
   pthread_cond_t not_empty;
+  pthread_cond_t not_full;	/* the coordinator waits on it for room (la_task_queue_wait_room) */
 };
 
 static LA_TASK_QUEUE *la_Task_queues = NULL;
@@ -59,6 +62,9 @@ static int la_Task_queue_total = 0;	/* tasks in all the queues; kept with the qu
 static int la_Task_queue_max_total = 0;
 static pthread_mutex_t la_Task_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool la_Task_queue_shutdown = false;
+/* bumped by la_task_queue_wake_holding; a worker keeping its batch open on an empty queue stops waiting when it
+ * changes */
+static UINT64 la_Task_queue_wake_seq = 0;
 
 /*
  * la_task_queue_init() - allocate and empty one queue per worker before the workers start
@@ -87,7 +93,9 @@ la_task_queue_init (int worker_count)
       la_Task_queues[i].head = 0;
       la_Task_queues[i].tail = 0;
       la_Task_queues[i].count = 0;
+      la_Task_queues[i].queued.store (0);
       la_cond_init_monotonic (&la_Task_queues[i].not_empty);
+      la_cond_init_monotonic (&la_Task_queues[i].not_full);
     }
   la_Task_queue_count = worker_count;
   la_Task_queue_total = 0;
@@ -114,6 +122,7 @@ la_task_queue_final (void)
   for (int i = 0; i < la_Task_queue_count; i++)
     {
       pthread_cond_destroy (&la_Task_queues[i].not_empty);
+      pthread_cond_destroy (&la_Task_queues[i].not_full);
     }
   free_and_init (la_Task_queues);
   la_Task_queue_count = 0;
@@ -156,6 +165,7 @@ la_task_queue_push (const LA_TASK *task, int worker)
   queue->tasks[queue->tail] = *task;
   queue->tail = (queue->tail + 1) % LA_TASK_QUEUE_CAPACITY;
   queue->count++;
+  queue->queued.store (queue->count, std::memory_order_relaxed);
   la_Task_queue_total++;
   la_Task_queue_max_total = MAX (la_Task_queue_max_total, la_Task_queue_total);
 
@@ -186,29 +196,57 @@ la_task_queue_is_full (int worker)
 }
 
 /*
- * la_task_queue_pop() - take the oldest task of a worker's queue, waiting until one arrives
- *   return: NO_ERROR when a task was taken, ER_FAILED when the queues are shutting down
- *   task(out): the dequeued task
- *   worker(in): index of the calling worker
+ * la_task_queue_get_queued() - number of tasks waiting in a worker's queue, read without the lock
+ *   return: the count as of the last push or take; never below the real count when read by the only thread that
+ *           pushes (the coordinator), since the workers can only lower it
+ *   worker(in): the worker
  *
- * Note: the worker calls this only with no uncommitted task.
- *       On shutdown, queued tasks are abandoned. They were never retired, so committed_lsa stays behind them
- *       and a restart reads them again.
+ * Note: lets the coordinator check for room on every dispatch without taking the lock the workers take tasks under.
  */
 int
-la_task_queue_pop (LA_TASK *task, int worker)
+la_task_queue_get_queued (int worker)
+{
+  assert (worker >= 0 && worker < la_Task_queue_count);
+
+  return la_Task_queues[worker].queued.load (std::memory_order_relaxed);
+}
+
+/*
+ * la_task_queue_wait_room() - wait a while for a worker's queue to have room for one more task
+ *   return: NO_ERROR, or ER_FAILED when the queues are shutting down
+ *   worker(in): the worker
+ *   timeout_msec(in): longest wait
+ *   has_room(out): true when the queue has room
+ *
+ * Note: with one worker the coordinator dispatches every task to it directly and waits here when its queue is
+ *       full; the worker frees a slot each time it takes a task, whether or not it has committed the ones before.
+ *       The wait is bounded because a worker that stops on an error never frees a slot again: the caller checks
+ *       for shutdown and collects results between waits.
+ */
+int
+la_task_queue_wait_room (int worker, int timeout_msec, bool *has_room)
 {
   LA_TASK_QUEUE *queue;
+  struct timespec abstime;
 
-  assert (task != NULL);
   assert (worker >= 0 && worker < la_Task_queue_count);
+  assert (has_room != NULL && timeout_msec > 0);
+
+  *has_room = false;
 
   pthread_mutex_lock (&la_Task_queue_mutex);
 
   queue = &la_Task_queues[worker];
-  while (queue->count == 0 && la_Task_queue_shutdown == false)
+  if (queue->count >= LA_TASK_QUEUE_CAPACITY && la_Task_queue_shutdown == false)
     {
-      pthread_cond_wait (&queue->not_empty, &la_Task_queue_mutex);
+      la_monotonic_deadline ((UINT64) timeout_msec * 1000000ULL, &abstime);
+      while (queue->count >= LA_TASK_QUEUE_CAPACITY && la_Task_queue_shutdown == false)
+	{
+	  if (pthread_cond_timedwait (&queue->not_full, &la_Task_queue_mutex, &abstime) != 0)
+	    {
+	      break;
+	    }
+	}
     }
 
   if (la_Task_queue_shutdown)
@@ -217,10 +255,7 @@ la_task_queue_pop (LA_TASK *task, int worker)
       return ER_FAILED;
     }
 
-  *task = queue->tasks[queue->head];
-  queue->head = (queue->head + 1) % LA_TASK_QUEUE_CAPACITY;
-  queue->count--;
-  la_Task_queue_total--;
+  *has_room = (queue->count < LA_TASK_QUEUE_CAPACITY);
 
   pthread_mutex_unlock (&la_Task_queue_mutex);
 
@@ -228,28 +263,93 @@ la_task_queue_pop (LA_TASK *task, int worker)
 }
 
 /*
- * la_task_queue_try_pop() - take the oldest task of a worker's queue if one is waiting, without waiting
- *   return: NO_ERROR, or ER_FAILED when the queues are shutting down
- *   task(out): the dequeued task, valid only when taken is set
- *   taken(out): a task was dequeued
- *   worker(in): index of the calling worker
- *   hold_nsec(in): how long to wait for a task on an empty queue before reporting it empty, 0 for none
+ * la_task_queue_wake_holding() - wake the workers that keep an open transaction while their queue is empty
  *
- * Note:
- *   A worker with uncommitted tasks calls this instead of la_task_queue_pop: when no task arrives within
- *   hold_nsec, it commits them rather than take more.
+ * Note: called by the coordinator when it starts waiting for results, reaches the end of the log or parks a task;
+ *       a worker woken this way commits its open transaction instead of waiting out the commit interval.
  */
-int
-la_task_queue_try_pop (LA_TASK *task, bool *taken, int worker, UINT64 hold_nsec)
+void
+la_task_queue_wake_holding (void)
 {
-  LA_TASK_QUEUE *queue;
+  pthread_mutex_lock (&la_Task_queue_mutex);
 
-  assert (task != NULL && taken != NULL);
-  assert (worker >= 0 && worker < la_Task_queue_count);
+  la_Task_queue_wake_seq++;
+  for (int i = 0; i < la_Task_queue_count; i++)
+    {
+      pthread_cond_broadcast (&la_Task_queues[i].not_empty);
+    }
 
-  *taken = false;
+  pthread_mutex_unlock (&la_Task_queue_mutex);
+}
+
+/*
+ * la_task_queue_get_wake_seq() - read the wakeup count la_task_queue_pop_many compares against
+ *   return: the number of la_task_queue_wake_holding calls so far
+ */
+UINT64
+la_task_queue_get_wake_seq (void)
+{
+  UINT64 seq;
 
   pthread_mutex_lock (&la_Task_queue_mutex);
+  seq = la_Task_queue_wake_seq;
+  pthread_mutex_unlock (&la_Task_queue_mutex);
+
+  return seq;
+}
+
+/*
+ * la_task_queue_pop_many() - take up to max of the oldest tasks of a worker's queue at once
+ *   return: NO_ERROR, or ER_FAILED when the queues are shutting down
+ *   tasks(out): the dequeued tasks, oldest first
+ *   max(in): room in tasks
+ *   count(out): number of tasks taken; 0 only when wait is false and none arrived within hold_nsec, or
+ *               la_task_queue_wake_holding woke the worker first
+ *   worker(in): index of the calling worker
+ *   wait(in): wait until a task arrives (a worker with no uncommitted task)
+ *   hold_nsec(in): without wait, how long to wait for a task on an empty queue, 0 for none
+ *   wake_seq(in): la_task_queue_get_wake_seq read before hold_nsec was decided; the hold ends at once if it has
+ *                 changed since, so a wakeup sent in between is not missed
+ *
+ * Note: a worker takes every waiting task under one lock instead of one lock per task, as the coordinator pushes
+ *       them one by one under the same lock. Tasks taken but not yet applied when the queues shut down are dropped
+ *       with the queued ones; they were never retired, so a restart reads them again.
+ */
+int
+la_task_queue_pop_many (LA_TASK *tasks, int max, int *count, int worker, bool wait, UINT64 hold_nsec, UINT64 wake_seq)
+{
+  LA_TASK_QUEUE *queue;
+  int n;
+
+  assert (tasks != NULL && count != NULL && max > 0);
+  assert (worker >= 0 && worker < la_Task_queue_count);
+
+  *count = 0;
+
+  pthread_mutex_lock (&la_Task_queue_mutex);
+
+  queue = &la_Task_queues[worker];
+  if (wait)
+    {
+      while (queue->count == 0 && la_Task_queue_shutdown == false)
+	{
+	  pthread_cond_wait (&queue->not_empty, &la_Task_queue_mutex);
+	}
+    }
+  else if (hold_nsec > 0 && queue->count == 0 && la_Task_queue_shutdown == false)
+    {
+      /* keep the batch open a little longer in case the next task is about to arrive */
+      struct timespec abstime;
+
+      la_monotonic_deadline (hold_nsec, &abstime);
+      while (queue->count == 0 && la_Task_queue_shutdown == false && la_Task_queue_wake_seq == wake_seq)
+	{
+	  if (pthread_cond_timedwait (&queue->not_empty, &la_Task_queue_mutex, &abstime) != 0)
+	    {
+	      break;
+	    }
+	}
+    }
 
   if (la_Task_queue_shutdown)
     {
@@ -257,37 +357,23 @@ la_task_queue_try_pop (LA_TASK *task, bool *taken, int worker, UINT64 hold_nsec)
       return ER_FAILED;
     }
 
-  queue = &la_Task_queues[worker];
-  if (hold_nsec > 0 && queue->count == 0)
+  n = MIN (queue->count, max);
+  for (int i = 0; i < n; i++)
     {
-      /* keep the batch open a little longer in case the next task is about to arrive */
-      struct timespec abstime;
-
-      la_monotonic_deadline (hold_nsec, &abstime);
-      while (queue->count == 0 && la_Task_queue_shutdown == false)
-	{
-	  if (pthread_cond_timedwait (&queue->not_empty, &la_Task_queue_mutex, &abstime) != 0)
-	    {
-	      break;
-	    }
-	}
-      if (la_Task_queue_shutdown)
-	{
-	  pthread_mutex_unlock (&la_Task_queue_mutex);
-	  return ER_FAILED;
-	}
-    }
-
-  if (queue->count > 0)
-    {
-      *task = queue->tasks[queue->head];
+      tasks[i] = queue->tasks[queue->head];
       queue->head = (queue->head + 1) % LA_TASK_QUEUE_CAPACITY;
-      queue->count--;
-      la_Task_queue_total--;
-      *taken = true;
+    }
+  queue->count -= n;
+  queue->queued.store (queue->count, std::memory_order_relaxed);
+  la_Task_queue_total -= n;
+  if (n > 0)
+    {
+      pthread_cond_signal (&queue->not_full);
     }
 
   pthread_mutex_unlock (&la_Task_queue_mutex);
+
+  *count = n;
 
   return NO_ERROR;
 }
@@ -297,7 +383,8 @@ la_task_queue_try_pop (LA_TASK *task, bool *taken, int worker, UINT64 hold_nsec)
  *
  * Note:
  *   A waiting thread cannot see the flag until it is woken. Without the broadcast an idle
- *   worker would sleep forever and la_stop_apply_workers would hang in pthread_join.
+ *   worker, or the coordinator waiting for room, would sleep forever and la_stop_apply_workers would hang in
+ *   pthread_join.
  */
 void
 la_task_queue_signal_shutdown (void)
@@ -308,6 +395,7 @@ la_task_queue_signal_shutdown (void)
   for (int i = 0; i < la_Task_queue_count; i++)
     {
       pthread_cond_broadcast (&la_Task_queues[i].not_empty);
+      pthread_cond_broadcast (&la_Task_queues[i].not_full);
     }
 
   pthread_mutex_unlock (&la_Task_queue_mutex);

@@ -375,8 +375,8 @@ struct la_info
 				 * per-worker arrays are LA_MAX_WORKER_COUNT long and only the first worker_count
 				 * slots are in use */
   int commit_order_capacity;	/* most commits read from the log that the frontier has not passed yet,
-				 * finished or not: worker_count * LA_TASK_QUEUE_CAPACITY (see
-				 * LA_COMMIT_ORDER_CAPACITY); set once when the workers start */
+				 * finished or not: LA_COMMIT_ORDER_CAPACITY (worker_count); set once when the workers
+				 * start */
 
   /* _db_ha_apply_info */
   LOG_LSA append_lsa;		/* append lsa of active log header */
@@ -702,6 +702,7 @@ static bool la_is_done_state (int ha_server_state);
 static bool la_record_end_is_stale (void);
 static int la_change_state (void);
 static int la_log_commit (bool update_commit_time);
+static void la_set_end_of_record (bool end_of_record);
 static unsigned long la_get_mem_size (void);
 static int la_check_mem_size (void);
 static int la_check_time_commit (struct timeval *time, unsigned int threshold);
@@ -1362,6 +1363,9 @@ la_start_apply_workers (void)
   config.request_shutdown = la_request_shutdown;
   config.shutdown_requested = la_force_shutdown;
   config.end_context = la_worker_end_context;
+  config.keep_batch_open = la_coordinator_keep_batch_open;
+  config.tasks_parked = la_coordinator_tasks_parked;
+  config.batch_max_msec = MAX (1, prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS));
 
   error = la_worker_start (la_apply_Workers, la_Info.worker_count, &config);
   if (error != NO_ERROR)
@@ -1414,7 +1418,7 @@ la_request_shutdown (void)
 static void
 la_stop_apply_workers (void)
 {
-  /* a woken worker sees the shutdown flag through la_task_queue_pop or la_result_queue_push and leaves its loop */
+  /* a woken worker sees the shutdown flag through la_task_queue_pop_many or la_result_queue_push and leaves its loop */
   la_coordinator_signal_shutdown ();
 
   la_worker_join (la_apply_Workers, la_Info.worker_count);
@@ -9804,7 +9808,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	}
     }
 
-  la_Info.is_end_of_record = false;
+  la_set_end_of_record (false);
   switch (lrec->type)
     {
     case LOG_END_OF_LOG:
@@ -9837,7 +9841,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 #if defined (LA_VERBOSE_DEBUG)
 	    er_log_debug (ARG_FILE_LINE, "reached END_OF_LOG in active log. LSA(%d|%d)", final->pageid, final->offset);
 #endif
-	    la_Info.is_end_of_record = true;
+	    la_set_end_of_record (true);
 	  }
 	return ER_INTERRUPTED;
       }
@@ -10232,6 +10236,23 @@ la_change_state (void)
     }
 
   return error;
+}
+
+/*
+ * la_set_end_of_record() - note whether the main loop has read to the end of the copied log
+ *   end_of_record(in): true at the end of the log, false once a record is read again
+ *
+ * Note: the coordinator also tells the workers, which keep an open transaction through an empty queue only while
+ *       there is more log to read (la_coordinator_keep_batch_open).
+ */
+static void
+la_set_end_of_record (bool end_of_record)
+{
+  if (la_Info.is_end_of_record != end_of_record)
+    {
+      la_coordinator_set_log_drained (end_of_record);
+    }
+  la_Info.is_end_of_record = end_of_record;
 }
 
 /*
@@ -12511,7 +12532,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 				final_log_hdr.eof_lsa.load ().offset, (long long int) hdr_append_lsa.pageid,
 				hdr_append_lsa.offset);
 #endif
-		  la_Info.is_end_of_record = true;
+		  la_set_end_of_record (true);
 		  /* it should be refetched and release later */
 		  la_invalidate_page_buffer (log_buf);
 		  log_buf = NULL;	/* invalidate reclaimed this buffer; skip the paired release */
@@ -12536,7 +12557,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 
 	      if (la_Info.final_lsa == final_log_hdr.eof_lsa && lrec->type != LOG_END_OF_LOG)
 		{
-		  la_Info.is_end_of_record = true;
+		  la_set_end_of_record (true);
 		  la_invalidate_page_buffer (log_buf);
 		  log_buf = NULL;	/* invalidate reclaimed this buffer; skip the paired release */
 		  break;
@@ -12634,7 +12655,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 
 	      er_log_debug (ARG_FILE_LINE, "record end %lld|%d is short of the copied log eof %lld|%d",
 			    LSA_AS_ARGS (&la_Info.final_lsa), LSA_AS_ARGS (&eof_lsa));
-	      la_Info.is_end_of_record = false;
+	      la_set_end_of_record (false);
 	    }
 
 	  /* check and change state */
@@ -12820,6 +12841,11 @@ la_delay_replica (time_t eot_time)
 	}
       else if (replica_delay > 0)
 	{
+	  if ((time (NULL) - eot_time) < replica_delay)
+	    {
+	      /* nothing is read while the delay runs, so the workers should not hold their transactions open */
+	      la_coordinator_note_waiting_results ();
+	    }
 	  while ((time (NULL) - eot_time) < replica_delay)
 	    {
 	      if (la_applier_need_shutdown)

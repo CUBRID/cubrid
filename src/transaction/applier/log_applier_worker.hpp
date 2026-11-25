@@ -41,28 +41,37 @@
 
 /* A worker applies the tasks it takes into one open slave transaction and commits them together, so a
  * transaction on the master does not cost a commit and a log flush on the slave. It commits when:
- *   - no task is waiting once the transaction has been open LA_WORKER_BATCH_EMPTY_HOLD_USEC; until then it waits
- *     that long for the next task, so a queue that runs dry for a moment does not end the batch
+ *   - the transaction has been open for the commit interval (LA_WORKER_CONFIG.batch_max_msec, which is
+ *     ha_applylogdb_max_commit_interval_in_msecs, the interval the serial applier commits at)
  *   - the transaction holds LA_WORKER_BATCH_MAX_TASKS tasks
- *   - the transaction has been open LA_WORKER_BATCH_MAX_MSEC
- * The last two bound how late the changes show on the slave and how long their locks are held.
+ *   - no task is waiting once the transaction has been open LA_WORKER_BATCH_EMPTY_HOLD_USEC, unless the coordinator
+ *     is still reading log, no task waits for another to commit and the coordinator is not waiting for results
+ *     (LA_WORKER_CONFIG.keep_batch_open); the coordinator wakes a worker waiting on an empty queue when that changes
+ *   - a task waits on the coordinator's pending list and the transaction has been open
+ *     LA_WORKER_BATCH_PARKED_MAX_MSEC (LA_WORKER_CONFIG.tasks_parked)
+ * The first condition bounds how late the changes show on the slave and how long their locks are held. While a
+ * backlog is read, a worker whose queue runs dry for a moment keeps its transaction open, so the slave commits about
+ * as often as the serial applier did: a commit costs a log flush, and on a device with slow syncs small commits
+ * made the backlog apply at half the serial applier's rate. Once the coordinator has read to the end of the log,
+ * or a task waits for another to commit, an empty queue ends the transaction after the short hold, so the changes
+ * of a lightly loaded master show without the interval's delay.
  *
- * The limits are fixed, not parameters, because they follow from the applier rather than from the workload:
- *   - with a backlog of single-row transactions, 500 tasks was the fastest for one and for ten workers;
- *     100 commits too often, and 1000 saves almost no commit
- *   - a backlog reaches the task limit long before the time limit, which only bounds an open transaction while
- *     the queue keeps receiving tasks
- *   - the task limit must stay well below one worker's share of the commit-order ring (LA_COMMIT_ORDER_CAPACITY)
+ * The task limit bounds the results a worker keeps and the apply units its open transaction holds in memory. It
+ * is part of a worker's share of the commit-order ring (LA_COMMIT_ORDER_CAPACITY), since an uncommitted task has
+ * not retired.
  */
-#define LA_WORKER_BATCH_MAX_TASKS   500
-#define LA_WORKER_BATCH_MAX_MSEC    100
+#define LA_WORKER_BATCH_MAX_TASKS   10000
 #define LA_WORKER_BATCH_EMPTY_HOLD_USEC 500
+/* while a task is parked, a worker commits its open transaction after this long even if its queue keeps receiving
+ * tasks (la_worker_batch_is_due) */
+#define LA_WORKER_BATCH_PARKED_MAX_MSEC 100
 
 /* Size of the gate's commit-order ring: the most apply units read from the log that the gap-free frontier has
- * not passed yet, whether parked, queued, running, or finished but waiting behind an earlier one. The
- * in-flight list and the result queue are sized by it too, so none of them can fill. When the ring is full
- * the coordinator stops reading the log and only collects results until the frontier moves. */
-#define LA_COMMIT_ORDER_CAPACITY(worker_count)  ((worker_count) * LA_TASK_QUEUE_CAPACITY)
+ * not passed yet, whether parked, queued, running, or finished but waiting behind an earlier one. Each worker may
+ * hold a full queue and a full open transaction. The in-flight list and the result queue are sized by it too, so
+ * none of them can fill. When the ring is full the coordinator stops reading the log and only collects results
+ * until the frontier moves. */
+#define LA_COMMIT_ORDER_CAPACITY(worker_count)  ((worker_count) * (LA_TASK_QUEUE_CAPACITY + LA_WORKER_BATCH_MAX_TASKS))
 
 typedef struct la_worker LA_WORKER;
 struct la_worker
@@ -105,6 +114,13 @@ typedef bool (*LA_WORKER_SHUTDOWN_REQUESTED_FUNC) (void);
 /* Releases what run_task kept in the context; called while the worker's connection is still open. */
 typedef void (*LA_WORKER_END_CONTEXT_FUNC) (LA_APPLY_WORKER_CONTEXT *context);
 
+/* Tells whether a worker with an open transaction may keep it open through an empty queue: the coordinator has
+ * more log to read and no task waits for another to commit. Owned by the coordinator; called by worker threads. */
+typedef bool (*LA_WORKER_KEEP_BATCH_OPEN_FUNC) (void);
+
+/* Tells whether a task waits on the coordinator's pending list. Owned by the coordinator; called by worker threads. */
+typedef bool (*LA_WORKER_TASKS_PARKED_FUNC) (void);
+
 typedef struct la_worker_config LA_WORKER_CONFIG;
 struct la_worker_config
 {
@@ -117,6 +133,9 @@ struct la_worker_config
   LA_WORKER_REQUEST_SHUTDOWN_FUNC request_shutdown;
   LA_WORKER_SHUTDOWN_REQUESTED_FUNC shutdown_requested;
   LA_WORKER_END_CONTEXT_FUNC end_context;
+  LA_WORKER_KEEP_BATCH_OPEN_FUNC keep_batch_open;
+  LA_WORKER_TASKS_PARKED_FUNC tasks_parked;
+  int batch_max_msec;		/* commit interval: ha_applylogdb_max_commit_interval_in_msecs, read once at start */
 };
 
 extern int la_worker_start (LA_WORKER *workers, int count, const LA_WORKER_CONFIG *config);

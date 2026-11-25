@@ -75,4 +75,16 @@ extern int la_coordinator_drain (void);
 /* Return true after pending, in-flight and commit-order state are empty. */
 extern bool la_coordinator_drain_complete (void);
 
+/* Record whether the coordinator has read to the end of the copied log. */
+extern void la_coordinator_set_log_drained (bool drained);
+
+/* Record that the coordinator waits for results instead of reading the log; cleared at the next submit. */
+extern void la_coordinator_note_waiting_results (void);
+
+/* Tell a worker whether an empty queue may leave its open transaction open; called by worker threads. */
+extern bool la_coordinator_keep_batch_open (void);
+
+/* Tell a worker whether a task waits on the pending list; called by worker threads. */
+extern bool la_coordinator_tasks_parked (void);
+
 #endif /* _LOG_APPLIER_COORDINATOR_HPP_ */

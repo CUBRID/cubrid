@@ -31,8 +31,12 @@ extern int la_task_queue_init (int worker_count);
 extern void la_task_queue_final (void);
 extern int la_task_queue_push (const LA_TASK *task, int worker);
 extern bool la_task_queue_is_full (int worker);
-extern int la_task_queue_pop (LA_TASK *task, int worker);
-extern int la_task_queue_try_pop (LA_TASK *task, bool *taken, int worker, UINT64 hold_nsec);
+extern int la_task_queue_get_queued (int worker);
+extern int la_task_queue_wait_room (int worker, int timeout_msec, bool *has_room);
+extern void la_task_queue_wake_holding (void);
+extern UINT64 la_task_queue_get_wake_seq (void);
+extern int la_task_queue_pop_many (LA_TASK *tasks, int max, int *count, int worker, bool wait,
+				   UINT64 hold_nsec, UINT64 wake_seq);
 extern void la_task_queue_signal_shutdown (void);
 extern int la_task_queue_get_count (void);
 extern int la_task_queue_get_max_count (void);

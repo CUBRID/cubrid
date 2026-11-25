@@ -62,11 +62,11 @@ TEST_CASE ("task queue hands each worker its own tasks in FIFO order and reports
   REQUIRE (la_task_queue_push (&other, 1) == NO_ERROR);
   REQUIRE (la_task_queue_get_count () == LA_TASK_QUEUE_CAPACITY + 1);
 
-  REQUIRE (la_task_queue_pop (&out, 1) == NO_ERROR);
+  REQUIRE (test_task_pop (&out, 1) == NO_ERROR);
   REQUIRE (out.tranid == 5000);
   for (int t = 0; t < LA_TASK_QUEUE_CAPACITY; t++)
     {
-      REQUIRE (la_task_queue_pop (&out, 0) == NO_ERROR);
+      REQUIRE (test_task_pop (&out, 0) == NO_ERROR);
       REQUIRE (out.tranid == t);
     }
   REQUIRE (la_task_queue_get_count () == 0);
@@ -83,7 +83,7 @@ TEST_CASE ("task queue wakes only the worker whose queue got a task, and every w
   std::thread worker0 ([&got0] ()
   {
     LA_TASK out;
-    if (la_task_queue_pop (&out, 0) == NO_ERROR)
+    if (test_task_pop (&out, 0) == NO_ERROR)
       {
 	got0 = out.tranid;
       }
@@ -91,7 +91,7 @@ TEST_CASE ("task queue wakes only the worker whose queue got a task, and every w
   std::thread worker1 ([&rc1] ()
   {
     LA_TASK out;
-    rc1 = la_task_queue_pop (&out, 1);
+    rc1 = test_task_pop (&out, 1);
   });
   std::this_thread::sleep_for (std::chrono::milliseconds (50));
   LA_TASK task = test_task (42, test_lsa (1), test_null_lsa ());
@@ -115,23 +115,23 @@ TEST_CASE ("task queue try_pop takes a waiting task, reports an empty queue afte
   bool taken = true;
 
   REQUIRE (la_task_queue_init (1) == NO_ERROR);
-  REQUIRE (la_task_queue_try_pop (&out, &taken, 0, 0) == NO_ERROR);
+  REQUIRE (test_task_try_pop (&out, &taken, 0, 0) == NO_ERROR);
   REQUIRE_FALSE (taken);
 
   auto start = std::chrono::steady_clock::now ();
-  REQUIRE (la_task_queue_try_pop (&out, &taken, 0, 50 * 1000 * 1000ULL) == NO_ERROR);
+  REQUIRE (test_task_try_pop (&out, &taken, 0, 50 * 1000 * 1000ULL) == NO_ERROR);
   auto waited = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::steady_clock::now () - start);
   REQUIRE_FALSE (taken);
   REQUIRE (waited.count () >= 40);
 
   LA_TASK task = test_task (7, test_lsa (1), test_null_lsa ());
   REQUIRE (la_task_queue_push (&task, 0) == NO_ERROR);
-  REQUIRE (la_task_queue_try_pop (&out, &taken, 0, 0) == NO_ERROR);
+  REQUIRE (test_task_try_pop (&out, &taken, 0, 0) == NO_ERROR);
   REQUIRE (taken);
   REQUIRE (out.tranid == 7);
 
   la_task_queue_signal_shutdown ();
-  REQUIRE (la_task_queue_try_pop (&out, &taken, 0, 0) == ER_FAILED);
+  REQUIRE (test_task_try_pop (&out, &taken, 0, 0) == ER_FAILED);
   REQUIRE_FALSE (taken);
   la_task_queue_final ();
 }
@@ -146,12 +146,12 @@ TEST_CASE ("task queue abandons queued tasks and refuses new ones after shutdown
   la_task_queue_signal_shutdown ();
 
   /* never retired, so a restart applies them again */
-  REQUIRE (la_task_queue_pop (&out, 0) == ER_FAILED);
+  REQUIRE (test_task_pop (&out, 0) == ER_FAILED);
   REQUIRE (la_task_queue_push (&task, 0) == ER_FAILED);
 
   REQUIRE (la_task_queue_init (1) == NO_ERROR);
   REQUIRE (la_task_queue_push (&task, 0) == NO_ERROR);
-  REQUIRE (la_task_queue_pop (&out, 0) == NO_ERROR);
+  REQUIRE (test_task_pop (&out, 0) == NO_ERROR);
   la_task_queue_final ();
 }
 
@@ -242,4 +242,161 @@ TEST_CASE ("result queue shutdown releases a blocked worker and a waiting coordi
   REQUIRE (la_result_queue_init (1) == NO_ERROR);
   REQUIRE (la_result_queue_get_count () == 0);
   REQUIRE (la_result_queue_push (&r1) == NO_ERROR);
+}
+
+TEST_CASE ("task queue pop_many takes up to max tasks in FIFO order and the lock-free count follows",
+	   "[log_applier_queues]")
+{
+  LA_TASK out[4];
+  int count;
+
+  REQUIRE (la_task_queue_init (1) == NO_ERROR);
+  for (int t = 0; t < 6; t++)
+    {
+      LA_TASK task = test_task (t, test_lsa (t + 1), test_null_lsa ());
+      REQUIRE (la_task_queue_push (&task, 0) == NO_ERROR);
+    }
+  REQUIRE (la_task_queue_get_queued (0) == 6);
+
+  REQUIRE (la_task_queue_pop_many (out, 4, &count, 0, true, 0, 0) == NO_ERROR);
+  REQUIRE (count == 4);
+  for (int i = 0; i < 4; i++)
+    {
+      REQUIRE (out[i].tranid == i);
+    }
+  REQUIRE (la_task_queue_get_queued (0) == 2);
+
+  /* fewer waiting than max: takes what is there without waiting */
+  REQUIRE (la_task_queue_pop_many (out, 4, &count, 0, false, 0, la_task_queue_get_wake_seq ()) == NO_ERROR);
+  REQUIRE (count == 2);
+  REQUIRE (out[0].tranid == 4);
+  REQUIRE (out[1].tranid == 5);
+  REQUIRE (la_task_queue_get_queued (0) == 0);
+  REQUIRE (la_task_queue_get_count () == 0);
+  la_task_queue_final ();
+}
+
+TEST_CASE ("task queue ends a hold on an empty queue when woken, including a wakeup sent before the hold began",
+	   "[log_applier_queues]")
+{
+  LA_TASK out;
+  int count = -1;
+
+  REQUIRE (la_task_queue_init (1) == NO_ERROR);
+
+  /* a wakeup after the worker read the sequence but before it waits ends the hold at once */
+  UINT64 seq = la_task_queue_get_wake_seq ();
+  la_task_queue_wake_holding ();
+  auto start = std::chrono::steady_clock::now ();
+  REQUIRE (la_task_queue_pop_many (&out, 1, &count, 0, false, 5000 * 1000 * 1000ULL, seq) == NO_ERROR);
+  auto waited = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::steady_clock::now () - start);
+  REQUIRE (count == 0);
+  REQUIRE (waited.count () < 1000);
+
+  /* a wakeup during the hold ends it */
+  std::thread waker ([] ()
+  {
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+    la_task_queue_wake_holding ();
+  });
+  start = std::chrono::steady_clock::now ();
+  REQUIRE (la_task_queue_pop_many (&out, 1, &count, 0, false, 5000 * 1000 * 1000ULL, la_task_queue_get_wake_seq ())
+	   == NO_ERROR);
+  waited = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::steady_clock::now () - start);
+  waker.join ();
+  REQUIRE (count == 0);
+  REQUIRE (waited.count () >= 40);
+  REQUIRE (waited.count () < 1000);
+
+  /* a worker with no open batch waits for a task and is not released by the wakeup */
+  std::atomic<int> got (-1);
+  std::thread worker ([&got] ()
+  {
+    LA_TASK task;
+    int n;
+    if (la_task_queue_pop_many (&task, 1, &n, 0, true, 0, 0) == NO_ERROR && n == 1)
+      {
+	got = task.tranid;
+      }
+  });
+  std::this_thread::sleep_for (std::chrono::milliseconds (50));
+  la_task_queue_wake_holding ();
+  std::this_thread::sleep_for (std::chrono::milliseconds (50));
+  REQUIRE (got == -1);
+  LA_TASK task = test_task (9, test_lsa (1), test_null_lsa ());
+  REQUIRE (la_task_queue_push (&task, 0) == NO_ERROR);
+  worker.join ();
+  REQUIRE (got == 9);
+  la_task_queue_final ();
+}
+
+TEST_CASE ("task queue wait_room returns after the timeout on a full queue, sees room once a task is taken, and "
+	   "fails on shutdown", "[log_applier_queues]")
+{
+  LA_TASK out;
+  bool has_room = true;
+
+  REQUIRE (la_task_queue_init (1) == NO_ERROR);
+  REQUIRE (la_task_queue_wait_room (0, 100, &has_room) == NO_ERROR);
+  REQUIRE (has_room);
+
+  for (int t = 0; t < LA_TASK_QUEUE_CAPACITY; t++)
+    {
+      LA_TASK task = test_task (t, test_lsa (t + 1), test_null_lsa ());
+      REQUIRE (la_task_queue_push (&task, 0) == NO_ERROR);
+    }
+
+  auto start = std::chrono::steady_clock::now ();
+  REQUIRE (la_task_queue_wait_room (0, 100, &has_room) == NO_ERROR);
+  auto waited = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::steady_clock::now () - start);
+  REQUIRE_FALSE (has_room);
+  REQUIRE (waited.count () >= 90);
+
+  /* a worker taking a task frees a slot and wakes the wait */
+  std::atomic<int> rc (ER_FAILED);
+  std::thread worker ([&rc] ()
+  {
+    LA_TASK task;
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+    rc = test_task_pop (&task, 0);
+  });
+  REQUIRE (la_task_queue_wait_room (0, 5000, &has_room) == NO_ERROR);
+  worker.join ();
+  REQUIRE (rc == NO_ERROR);
+  REQUIRE (has_room);
+  REQUIRE (la_task_queue_get_queued (0) == LA_TASK_QUEUE_CAPACITY - 1);
+
+  LA_TASK task = test_task (5000, test_lsa (5000), test_null_lsa ());
+  REQUIRE (la_task_queue_push (&task, 0) == NO_ERROR);
+  la_task_queue_signal_shutdown ();
+  REQUIRE (la_task_queue_wait_room (0, 100, &has_room) == ER_FAILED);
+  REQUIRE_FALSE (has_room);
+  REQUIRE (test_task_pop (&out, 0) == ER_FAILED);
+  la_task_queue_final ();
+}
+
+TEST_CASE ("result queue push_many queues a commit's results in order and reports how many on shutdown",
+	   "[log_applier_queues]")
+{
+  LA_RESULT results[3] = { test_result (10), test_result (11), test_result (12) };
+  LA_RESULT out;
+  int pushed = -1;
+
+  REQUIRE (la_result_queue_init (8) == NO_ERROR);
+  REQUIRE (la_result_queue_push_many (results, 3, &pushed) == NO_ERROR);
+  REQUIRE (pushed == 3);
+  for (UINT64 s = 10; s < 13; s++)
+    {
+      REQUIRE (la_result_queue_try_pop (&out) == NO_ERROR);
+      REQUIRE (out.dispatch_seq == s);
+    }
+
+  REQUIRE (la_result_queue_push_many (results, 0, &pushed) == NO_ERROR);
+  REQUIRE (pushed == 0);
+
+  la_result_queue_signal_shutdown ();
+  REQUIRE (la_result_queue_push_many (results, 3, &pushed) == ER_FAILED);
+  REQUIRE (pushed == 0);
+
+  REQUIRE (la_result_queue_init (8) == NO_ERROR);
 }

@@ -32,6 +32,7 @@
 #include "log_applier_worker.hpp"
 #include "log_applier_task_queue.hpp"
 #include "log_applier_result_queue.hpp"
+#include "test_log_applier_common.hpp"
 
 #include "dbi.h"
 #include "error_code.h"
@@ -110,6 +111,18 @@ namespace
   {
   }
 
+  bool
+  keep_batch_open_never ()
+  {
+    return false;
+  }
+
+  bool
+  tasks_parked_never ()
+  {
+    return false;
+  }
+
   LA_WORKER_CONFIG
   test_config ()
   {
@@ -124,7 +137,90 @@ namespace
     config.request_shutdown = request_shutdown;
     config.shutdown_requested = shutdown_requested_never;
     config.end_context = end_context_noop;
+    config.keep_batch_open = keep_batch_open_never;
+    config.tasks_parked = tasks_parked_never;
+    config.batch_max_msec = 100;
     return config;
+  }
+
+  /* batch tests: tasks apply without a server, commits are counted, and the coordinator's answers are flags */
+  std::atomic<int> commits;
+  std::atomic<int> committed_tasks;
+  std::atomic<bool> keep_open;
+  std::atomic<bool> parked;
+
+  void
+  reset_batch_stubs ()
+  {
+    commits = 0;
+    committed_tasks = 0;
+    keep_open = false;
+    parked = false;
+  }
+
+  void
+  run_task_ok (LA_APPLY_WORKER_CONTEXT *, LA_TASK *, int, unsigned long long *, LA_RESULT *result)
+  {
+    result->error = NO_ERROR;
+  }
+
+  int
+  commit_batch_count (LA_APPLY_WORKER_CONTEXT *, int task_count, unsigned long long, LA_STATS *)
+  {
+    committed_tasks += task_count;
+    commits++;
+    return NO_ERROR;
+  }
+
+  bool
+  keep_batch_open_flag ()
+  {
+    return keep_open.load ();
+  }
+
+  bool
+  tasks_parked_flag ()
+  {
+    return parked.load ();
+  }
+
+  /* start one worker that applies with the stubs above and keeps a batch open for up to 10 s */
+  void
+  start_batch_worker (LA_WORKER *workers)
+  {
+    LA_WORKER_CONFIG config = test_config ();
+    int live[1], live_count;
+
+    config.run_task = run_task_ok;
+    config.commit_batch = commit_batch_count;
+    config.keep_batch_open = keep_batch_open_flag;
+    config.tasks_parked = tasks_parked_flag;
+    config.batch_max_msec = 10000;
+
+    REQUIRE (la_task_queue_init (1) == NO_ERROR);
+    REQUIRE (la_result_queue_init (4096) == NO_ERROR);
+    REQUIRE (la_worker_start (workers, 1, &config) == NO_ERROR);
+    REQUIRE (la_worker_wait_started (workers, 1, live, &live_count) == NO_ERROR);
+  }
+
+  void
+  stop_batch_worker (LA_WORKER *workers)
+  {
+    la_task_queue_signal_shutdown ();
+    la_result_queue_signal_shutdown ();
+    la_worker_join (workers, 1);
+    la_task_queue_final ();
+  }
+
+  /* wait up to timeout_msec for at least n commits */
+  bool
+  wait_commits (int n, int timeout_msec)
+  {
+    for (int i = 0; i < timeout_msec / 10 && commits < n; i++)
+      {
+	std::this_thread::sleep_for (std::chrono::milliseconds (10));
+      }
+    return commits >= n;
   }
 
   /* start count workers, wait until each has started or failed, report the ones that started in live, then stop
@@ -273,4 +369,73 @@ TEST_CASE ("a stop while workers are still opening their sub-clients waits for t
   REQUIRE (shutdown_calls == 4);
   REQUIRE (shutdown_requests == 0);
   la_task_queue_final ();
+}
+
+TEST_CASE ("a worker keeps its batch open on an empty queue while told to, and commits once woken",
+	   "[log_applier_worker]")
+{
+  LA_WORKER workers[1] = {};
+
+  reset_stubs (0, 1000);
+  reset_batch_stubs ();
+  keep_open = true;
+  start_batch_worker (workers);
+
+  for (int t = 0; t < 3; t++)
+    {
+      LA_TASK task = test_task (t, test_lsa (t + 1), test_null_lsa ());
+      REQUIRE (la_task_queue_push (&task, 0) == NO_ERROR);
+    }
+
+  /* the coordinator still reads log: an empty queue does not end the batch */
+  std::this_thread::sleep_for (std::chrono::milliseconds (300));
+  CHECK (commits == 0);
+  CHECK (la_result_queue_get_count () == 0);
+
+  /* the coordinator reaches the end of the log (or starts waiting for results) and wakes the holding worker */
+  keep_open = false;
+  la_task_queue_wake_holding ();
+  REQUIRE (wait_commits (1, 2000));
+  REQUIRE (commits == 1);
+  REQUIRE (committed_tasks == 3);
+  REQUIRE (la_result_queue_get_count () == 3);
+
+  stop_batch_worker (workers);
+}
+
+TEST_CASE ("a worker whose queue never runs dry commits soon after a task is parked", "[log_applier_worker]")
+{
+  LA_WORKER workers[1] = {};
+  std::atomic<bool> feeding (true);
+
+  reset_stubs (0, 1000);
+  reset_batch_stubs ();
+  keep_open = true;
+  start_batch_worker (workers);
+
+  std::thread feeder ([&feeding] ()
+  {
+    for (int t = 0; feeding && t < 1000; t++)
+      {
+	LA_TASK task = test_task (t, test_lsa (t + 1), test_null_lsa ());
+	if (la_task_queue_push (&task, 0) != NO_ERROR)
+	  {
+	    break;
+	  }
+	std::this_thread::sleep_for (std::chrono::milliseconds (5));
+      }
+  });
+
+  /* nothing parked: the batch stays open while tasks keep coming (the commit interval is 10 s) */
+  std::this_thread::sleep_for (std::chrono::milliseconds (300));
+  CHECK (commits == 0);
+
+  /* a parked task may wait for this worker's commit: the batch, open for over LA_WORKER_BATCH_PARKED_MAX_MSEC,
+   * commits with the next task although the queue is not empty */
+  parked = true;
+  REQUIRE (wait_commits (1, 1000));
+
+  feeding = false;
+  feeder.join ();
+  stop_batch_worker (workers);
 }

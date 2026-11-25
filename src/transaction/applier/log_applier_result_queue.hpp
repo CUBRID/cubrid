@@ -28,6 +28,7 @@
 extern int la_result_queue_init (int capacity);
 extern void la_result_queue_final (void);
 extern int la_result_queue_push (const LA_RESULT *result);
+extern int la_result_queue_push_many (const LA_RESULT *results, int count, int *pushed);
 extern int la_result_queue_try_pop (LA_RESULT *result);
 extern bool la_result_queue_wait_for_result (int timeout_msec);
 extern void la_result_queue_signal_shutdown (void);

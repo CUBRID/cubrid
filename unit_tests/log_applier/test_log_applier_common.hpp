@@ -25,6 +25,8 @@
 
 #include "log_lsa.hpp"
 #include "log_applier_task.hpp"
+#include "log_applier_task_queue.hpp"
+#include "error_code.h"
 
 #include <string.h>
 
@@ -63,6 +65,27 @@ test_null_lsa ()
 
   LSA_SET_NULL (&lsa);
   return lsa;
+}
+
+/* Take the oldest task of a worker's queue, waiting until one arrives, as a worker with no open batch does. */
+inline int
+test_task_pop (LA_TASK *task, int worker)
+{
+  int count;
+
+  return la_task_queue_pop_many (task, 1, &count, worker, true, 0, 0);
+}
+
+/* Take the oldest task of a worker's queue if one arrives within hold_nsec, as a worker with an open batch does. */
+inline int
+test_task_try_pop (LA_TASK *task, bool *taken, int worker, UINT64 hold_nsec)
+{
+  int count;
+  int error;
+
+  error = la_task_queue_pop_many (task, 1, &count, worker, false, hold_nsec, la_task_queue_get_wake_seq ());
+  *taken = (error == NO_ERROR && count == 1);
+  return error;
 }
 
 #endif /* _TEST_LOG_APPLIER_COMMON_HPP_ */

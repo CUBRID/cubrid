@@ -34,8 +34,12 @@
 #include "memory_alloc.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <thread>
+
+/* a shutdown request raised by another thread while the coordinator waits (a worker that stopped on an error) */
+static std::atomic<bool> test_Shutdown_from_thread (false);
 
 typedef struct test_coordinator_context TEST_COORDINATOR_CONTEXT;
 struct test_coordinator_context
@@ -99,7 +103,7 @@ test_store_progress (void *arg)
 static bool
 test_shutdown_requested (void *arg)
 {
-  return ((TEST_COORDINATOR_CONTEXT *) arg)->shutdown;
+  return ((TEST_COORDINATOR_CONTEXT *) arg)->shutdown || test_Shutdown_from_thread.load ();
 }
 
 static void
@@ -111,15 +115,17 @@ test_discard_task (void *arg, LA_TASK *task)
 }
 
 static void
-test_initialize_coordinator (TEST_COORDINATOR_CONTEXT *context, const LOG_LSA *restart_lsa, int worker_count = 2)
+test_initialize_coordinator (TEST_COORDINATOR_CONTEXT *context, const LOG_LSA *restart_lsa, int worker_count = 2,
+			     int commit_order_capacity = 8)
 {
   LA_COORDINATOR_CONFIG config;
 
   memset (context, 0, sizeof (*context));
   LSA_SET_NULL (&context->frontier);
   la_pending_clear ();
+  test_Shutdown_from_thread = false;
 
-  config.commit_order_capacity = 8;
+  config.commit_order_capacity = commit_order_capacity;
   config.worker_count = worker_count;
   config.run_each_task_alone = false;
   config.restart_lsa = restart_lsa;
@@ -145,7 +151,7 @@ test_pop_any (LA_TASK *task, int *worker)
     {
       for (int w = 0; w < test_Worker_count; w++)
 	{
-	  error = la_task_queue_try_pop (task, &taken, w, 1000 * 1000ULL);
+	  error = test_task_try_pop (task, &taken, w, 1000 * 1000ULL);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -206,7 +212,7 @@ test_queue_empty (int worker)
   LA_TASK task;
   bool taken;
 
-  REQUIRE (la_task_queue_try_pop (&task, &taken, worker, 0) == NO_ERROR);
+  REQUIRE (test_task_try_pop (&task, &taken, worker, 0) == NO_ERROR);
   return !taken;
 }
 
@@ -229,13 +235,13 @@ TEST_CASE ("coordinator spreads independent tasks over the workers and keeps a d
   REQUIRE (context.dispatched == 3);
   REQUIRE (la_pending_is_empty ());
 
-  REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
+  REQUIRE (test_task_pop (&queued, 0) == NO_ERROR);
   REQUIRE (queued.tranid == first.tranid);
   test_push_result (&queued, 0);
-  REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
+  REQUIRE (test_task_pop (&queued, 0) == NO_ERROR);
   REQUIRE (queued.tranid == dependent.tranid);
   test_push_result (&queued, 0);
-  REQUIRE (la_task_queue_pop (&queued, 1) == NO_ERROR);
+  REQUIRE (test_task_pop (&queued, 1) == NO_ERROR);
   REQUIRE (queued.tranid == independent.tranid);
   test_push_result (&queued, 1);
 
@@ -301,7 +307,7 @@ TEST_CASE ("coordinator parks a task whose predecessors are on several workers a
   REQUIRE (context.dispatched == 2);
   REQUIRE (la_pending_get_count () == 1);
 
-  REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
+  REQUIRE (test_task_pop (&queued, 0) == NO_ERROR);
   REQUIRE (queued.tranid == first.tranid);
   test_push_result (&queued, 0);
 
@@ -312,10 +318,10 @@ TEST_CASE ("coordinator parks a task whose predecessors are on several workers a
   REQUIRE (context.dispatched == 3);
   REQUIRE (la_pending_is_empty ());
 
-  REQUIRE (la_task_queue_pop (&queued, 1) == NO_ERROR);
+  REQUIRE (test_task_pop (&queued, 1) == NO_ERROR);
   REQUIRE (queued.tranid == second.tranid);
   test_push_result (&queued, 1);
-  REQUIRE (la_task_queue_pop (&queued, 1) == NO_ERROR);
+  REQUIRE (test_task_pop (&queued, 1) == NO_ERROR);
   REQUIRE (queued.tranid == dependent.tranid);
   test_push_result (&queued, 1);
 
@@ -441,7 +447,7 @@ TEST_CASE ("submission transfers apply-slot ownership at dispatch and preserves 
     REQUIRE (task.apply == NULL);
 
     LA_TASK queued;
-    REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
+    REQUIRE (test_task_pop (&queued, 0) == NO_ERROR);
     REQUIRE (queued.apply == apply);
 
     test_push_result (&queued, 0);
@@ -474,7 +480,7 @@ TEST_CASE ("an out-of-order completion releases dependents only to the worker ho
 
   /* The later commit finishes first. The frontier stays behind the first task, so nothing retires, and both
    * parked tasks may run only after it, on worker 0. */
-  REQUIRE (la_task_queue_pop (&queued_second, 1) == NO_ERROR);
+  REQUIRE (test_task_pop (&queued_second, 1) == NO_ERROR);
   REQUIRE (queued_second.tranid == second.tranid);
   test_push_result (&queued_second, 1);
   REQUIRE (la_coordinator_collect_and_retire () == NO_ERROR);
@@ -565,7 +571,7 @@ TEST_CASE ("drain propagates errors instead of reporting an unfinished stream dr
   REQUIRE (la_coordinator_submit_task (&second) == NO_ERROR);
   REQUIRE (la_coordinator_submit_task (&dependent) == NO_ERROR);
   REQUIRE (la_pending_get_count () == 1);
-  REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
+  REQUIRE (test_task_pop (&queued, 0) == NO_ERROR);
   REQUIRE (queued.tranid == first.tranid);
 
   SECTION ("a failed worker leaves the gap and its dependent unfinished")
@@ -631,7 +637,7 @@ TEST_CASE ("released pending tasks discard only resources not transferred to in-
   };
   REQUIRE (la_coordinator_submit_task (&first) == NO_ERROR);
   REQUIRE (la_coordinator_submit_task (&second) == NO_ERROR);
-  REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
+  REQUIRE (test_task_pop (&queued, 0) == NO_ERROR);
   REQUIRE (queued.tranid == first.tranid);
   pending.apply = reinterpret_cast<LA_APPLY *> (malloc (1));
   REQUIRE (pending.apply != NULL);
@@ -688,9 +694,9 @@ TEST_CASE ("a taskless boundary releases dependents only after the preceding gap
   REQUIRE (context.dispatched == 2);
   REQUIRE (la_pending_get_count () == 1);
 
-  REQUIRE (la_task_queue_pop (&queued, 0) == NO_ERROR);
+  REQUIRE (test_task_pop (&queued, 0) == NO_ERROR);
   test_push_result (&queued, 0);
-  REQUIRE (la_task_queue_pop (&queued, 1) == NO_ERROR);
+  REQUIRE (test_task_pop (&queued, 1) == NO_ERROR);
   test_push_result (&queued, 1);
   REQUIRE (la_coordinator_collect_and_retire () == NO_ERROR);
   REQUIRE (context.dispatched == 3);
@@ -706,4 +712,71 @@ TEST_CASE ("a taskless boundary releases dependents only after the preceding gap
   REQUIRE (context.stored == 3);
   REQUIRE (LSA_EQ (&context.frontier, &dependent.commit_lsa));
   REQUIRE (la_coordinator_drain_complete ());
+}
+
+TEST_CASE ("the coordinator tells the workers when to stop keeping batches open and wakes the holding ones",
+	   "[log_applier_coordinator]")
+{
+  TEST_COORDINATOR_CONTEXT context;
+  LOG_LSA restart_lsa = test_lsa (10);
+  LA_TASK task = test_task (1, test_lsa (20), test_null_lsa ());
+  UINT64 seq;
+
+  test_initialize_coordinator (&context, &restart_lsa);
+  REQUIRE (la_coordinator_keep_batch_open ());
+  REQUIRE_FALSE (la_coordinator_tasks_parked ());
+
+  /* the end of the log: commit on an empty queue, and wake a worker already holding */
+  seq = la_task_queue_get_wake_seq ();
+  la_coordinator_set_log_drained (true);
+  REQUIRE_FALSE (la_coordinator_keep_batch_open ());
+  REQUIRE (la_task_queue_get_wake_seq () > seq);
+
+  /* no new wakeup while it stays set */
+  seq = la_task_queue_get_wake_seq ();
+  la_coordinator_set_log_drained (true);
+  REQUIRE (la_task_queue_get_wake_seq () == seq);
+  la_coordinator_set_log_drained (false);
+  REQUIRE (la_coordinator_keep_batch_open ());
+  REQUIRE (la_task_queue_get_wake_seq () == seq);
+
+  /* waiting for results: same, until the coordinator submits again */
+  la_coordinator_note_waiting_results ();
+  REQUIRE_FALSE (la_coordinator_keep_batch_open ());
+  REQUIRE (la_task_queue_get_wake_seq () > seq);
+  REQUIRE (la_coordinator_submit_task (&task) == NO_ERROR);
+  REQUIRE (la_coordinator_keep_batch_open ());
+}
+
+TEST_CASE ("with one worker the coordinator waiting for queue room stops on a shutdown request",
+	   "[log_applier_coordinator]")
+{
+  TEST_COORDINATOR_CONTEXT context;
+  LOG_LSA restart_lsa = test_lsa (10);
+
+  /* the ring is larger than the queue, so the queue fills first and nobody takes from it (the worker stopped) */
+  test_initialize_coordinator (&context, &restart_lsa, 1, 4 * LA_TASK_QUEUE_CAPACITY);
+  for (int t = 0; t < LA_TASK_QUEUE_CAPACITY; t++)
+    {
+      LA_TASK task = test_task (t + 1, test_lsa (100 + t), test_null_lsa ());
+      REQUIRE (la_coordinator_submit_task (&task) == NO_ERROR);
+    }
+  REQUIRE (la_task_queue_get_queued (0) == LA_TASK_QUEUE_CAPACITY);
+
+  std::atomic<int> rc (NO_ERROR);
+  std::atomic<bool> returned (false);
+  std::thread coordinator ([&rc, &returned] ()
+  {
+    LA_TASK task = test_task (5000, test_lsa (100 + LA_TASK_QUEUE_CAPACITY), test_null_lsa ());
+    rc = la_coordinator_submit_task (&task);
+    returned = true;
+  });
+
+  std::this_thread::sleep_for (std::chrono::milliseconds (300));
+  REQUIRE_FALSE (returned);
+
+  test_Shutdown_from_thread = true;
+  coordinator.join ();
+  REQUIRE (rc == ER_FAILED);
+  test_Shutdown_from_thread = false;
 }

@@ -40,6 +40,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <atomic>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -85,10 +86,22 @@ static_assert (LA_MAX_WORKER_COUNT <= 64, "la_Coordinator_pending_room_workers k
 /* the bit for worker w in la_Coordinator_pending_room_workers */
 #define LA_COORDINATOR_WORKER_BIT(w) (1ULL << (w))
 
-/* A worker whose full queue parked a task is looked at again once its unanswered tasks drop to this many: its queue
+/* A worker whose full queue parked a task is looked at again once its queue holds this many tasks or fewer: the queue
  * then has room for half a queue of tasks, so one pass can release many of them instead of rescanning every parked
- * task each time a single slot frees. Half a queue is still waiting in it, so the worker does not run dry. */
-#define LA_COORDINATOR_ROOM_RESCAN_OUTSTANDING (LA_TASK_QUEUE_CAPACITY / 2)
+ * task each time a single slot frees. Half a queue is still waiting in it, so the worker does not run dry. The
+ * queue is counted, not the worker's unanswered tasks, which also include its uncommitted batch and would keep the
+ * parked tasks waiting until the worker commits. */
+#define LA_COORDINATOR_ROOM_RESCAN_QUEUED (LA_TASK_QUEUE_CAPACITY / 2)
+
+/* Read by the worker threads through la_coordinator_keep_batch_open and la_coordinator_tasks_parked; written only
+ * by the coordinator, through la_coordinator_set_hold_flag. */
+static std::atomic<bool> la_Coordinator_log_drained (false);	/* read to the end of the copied log */
+static std::atomic<bool> la_Coordinator_tasks_parked (false);	/* a task waits on the pending list */
+static std::atomic<bool> la_Coordinator_waiting_results (false);	/* blocked until a worker reports */
+
+/* how long the coordinator waits at a time for room in the only worker's queue before it checks for shutdown and
+ * collects results */
+#define LA_COORDINATOR_ROOM_WAIT_MSEC 100
 
 static int la_coordinator_drain_ready (void);
 static int la_coordinator_wait_for_commit_order_slot (void);
@@ -99,6 +112,7 @@ static void la_coordinator_trace_schedule (const LA_TASK *task, LA_SCHED_STATUS 
 static int la_coordinator_collect_results (void);
 static int la_coordinator_record_result (LA_RESULT *result);
 static int la_coordinator_pop_result (LA_RESULT *result);
+static void la_coordinator_set_hold_flag (std::atomic<bool> *flag, bool value);
 static int la_coordinator_wait_until_retired (void);
 static int la_coordinator_wait_for_inflight_slot (void);
 static int la_coordinator_retire_results (void);
@@ -145,6 +159,9 @@ la_coordinator_initialize (const LA_COORDINATOR_CONFIG *config)
   la_Coordinator_next_worker = 0;
   la_Coordinator_pending_scan_valid = false;
   la_Coordinator_pending_room_workers = 0;
+  la_Coordinator_log_drained.store (false);
+  la_Coordinator_tasks_parked.store (false);
+  la_Coordinator_waiting_results.store (false);
 
   error = la_result_queue_init (config->commit_order_capacity);
   if (error != NO_ERROR)
@@ -235,8 +252,8 @@ la_coordinator_set_live_workers (const int *live_workers, int live_worker_count)
  * Note: a parked task is released by a completion, by the dispatch of an earlier task it waits for, or by room
  *       in a worker queue. The checks below, in order:
  *       1. No pass has run since the coordinator started, so there is nothing to compare with.
- *       2. A task waits for room in a worker queue, and that worker's unanswered tasks have dropped to
- *          LA_COORDINATOR_ROOM_RESCAN_OUTSTANDING.
+ *       2. A task waits for room in a worker queue, and that worker's queue has dropped to
+ *          LA_COORDINATOR_ROOM_RESCAN_QUEUED tasks.
  *       3. A task completed since the last pass, so the frontier may have moved.
  *       4. A task waits for an earlier task to be dispatched, and a task was dispatched since the last pass.
  *          Dispatches happen on almost every call, so they count only while such a task waits.
@@ -252,7 +269,7 @@ la_coordinator_pending_may_release (void)
   for (int w = 0; la_Coordinator_pending_room_workers != 0 && w < la_Coordinator_config.worker_count; w++)
     {
       if ((la_Coordinator_pending_room_workers & LA_COORDINATOR_WORKER_BIT (w))
-	  && la_Coordinator_outstanding[w] <= LA_COORDINATOR_ROOM_RESCAN_OUTSTANDING)
+	  && la_task_queue_get_queued (w) <= LA_COORDINATOR_ROOM_RESCAN_QUEUED)
 	{
 	  return true;
 	}
@@ -291,6 +308,7 @@ la_coordinator_drain_ready (void)
    * room) with what the last pass saw; no change, or no parked task at all, means a pass would release nothing */
   if (la_pending_is_empty () || !la_coordinator_pending_may_release ())
     {
+      la_coordinator_set_hold_flag (&la_Coordinator_tasks_parked, !la_pending_is_empty ());
       return NO_ERROR;
     }
 
@@ -320,6 +338,8 @@ la_coordinator_drain_ready (void)
 	  return error;
 	}
     }
+
+  la_coordinator_set_hold_flag (&la_Coordinator_tasks_parked, !la_pending_is_empty ());
 
   return NO_ERROR;
 }
@@ -351,6 +371,8 @@ la_coordinator_wait_for_commit_order_slot (void)
 
       if (la_gate_order_get_count () >= la_Coordinator_config.commit_order_capacity)
 	{
+	  /* the frontier moves only when the workers commit, so they must not hold their transactions open */
+	  la_coordinator_note_waiting_results ();
 	  (void) la_result_queue_wait_for_result (100);
 	}
     }
@@ -439,19 +461,13 @@ la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status, int
  *
  *   worker(in): the worker
  *
- * Note: a task in a worker's queue is also an unanswered task of that worker, so the queue holds at most
- *       la_Coordinator_outstanding[worker] tasks. Below LA_TASK_QUEUE_CAPACITY unanswered tasks the queue has
- *       room without asking the queue module, which takes the mutex the workers pop under.
+ * Note: reads the queue's count without the lock the workers take tasks under. Only the coordinator pushes, so the
+ *       count it reads is never below the real one, and room it sees is still there when it pushes.
  */
 static bool
 la_coordinator_queue_has_room (int worker)
 {
-  if (la_Coordinator_outstanding[worker] < LA_TASK_QUEUE_CAPACITY)
-    {
-      return true;
-    }
-
-  return !la_task_queue_is_full (worker);
+  return la_task_queue_get_queued (worker) < LA_TASK_QUEUE_CAPACITY;
 }
 
 /*
@@ -563,6 +579,85 @@ la_coordinator_trace_schedule (const LA_TASK *task, LA_SCHED_STATUS sched_status
 		 task->tranid, LSA_AS_ARGS (&task->commit_lsa), task->rectype,
 		 LSA_AS_ARGS (&task->dependency_lsa), (int) sched_status,
 		 (unsigned long long) dispatch_seq);
+}
+
+/*
+ * la_coordinator_set_log_drained - record whether the coordinator has read to the end of the copied log
+ *
+ *   drained(in): true when no log record is left to read, false once a record is read again
+ *
+ * Note: called by the main loop where it notes the end of the log; read by the workers through
+ *       la_coordinator_keep_batch_open.
+ */
+void
+la_coordinator_set_log_drained (bool drained)
+{
+  la_coordinator_set_hold_flag (&la_Coordinator_log_drained, drained);
+}
+
+/*
+ * la_coordinator_note_waiting_results - record that the coordinator dispatches nothing until a worker reports
+ *
+ * Note: called where the coordinator waits for results instead of reading the log (to run a task alone, for room on
+ *       the commit-order ring or in the in-flight list, or for a configured replica delay). The workers then commit
+ *       on an empty queue; the flag is cleared when the coordinator submits the next task, so a wait that ends on an
+ *       error leaves it set only until then.
+ */
+void
+la_coordinator_note_waiting_results (void)
+{
+  la_coordinator_set_hold_flag (&la_Coordinator_waiting_results, true);
+}
+
+/*
+ * la_coordinator_set_hold_flag - set one of the flags that decide whether a worker may keep its transaction open
+ *
+ *   flag(in/out): la_Coordinator_log_drained, la_Coordinator_tasks_parked or la_Coordinator_waiting_results
+ *   value(in): the new value
+ *
+ * Note: each flag set means the workers should commit on an empty queue. A worker already waiting on an empty queue
+ *       decided before the flag was set, so the change from false to true wakes it (la_task_queue_wake_holding).
+ */
+static void
+la_coordinator_set_hold_flag (std::atomic<bool> *flag, bool value)
+{
+  if (flag->exchange (value) == false && value)
+    {
+      la_task_queue_wake_holding ();
+    }
+}
+
+/*
+ * la_coordinator_keep_batch_open - tell a worker whether an empty queue may leave its transaction open
+ *
+ * return: true while the coordinator still has log to read, no task waits on the pending list and the coordinator
+ *         is not waiting for a result
+ *
+ * Note: called by worker threads (LA_WORKER_CONFIG.keep_batch_open). While a backlog is read a queue that runs dry
+ *       is about to be refilled, so committing then would only add a commit. At the end of the log the changes
+ *       should show without waiting for the commit interval, a parked task may be waiting for this worker's commit,
+ *       and a coordinator waiting for results (to run a task alone, or for room on the commit-order ring) dispatches
+ *       nothing until the workers commit, so the worker commits on an empty queue in all three cases.
+ */
+bool
+la_coordinator_keep_batch_open (void)
+{
+  return !la_Coordinator_log_drained.load () && !la_Coordinator_tasks_parked.load ()
+    && !la_Coordinator_waiting_results.load ();
+}
+
+/*
+ * la_coordinator_tasks_parked - tell a worker whether a task waits on the pending list
+ *
+ * return: true while the pending list is not empty
+ *
+ * Note: called by worker threads (LA_WORKER_CONFIG.tasks_parked). A parked task may wait for the commit of a worker
+ *       whose queue never runs dry, so such a worker commits sooner while one is parked.
+ */
+bool
+la_coordinator_tasks_parked (void)
+{
+  return la_Coordinator_tasks_parked.load ();
 }
 
 /*
@@ -715,6 +810,8 @@ la_coordinator_pop_result (LA_RESULT *result)
 	  return ER_FAILED;
 	}
 
+      /* nothing is dispatched until a result arrives, so a worker holding its transaction open would only delay it */
+      la_coordinator_note_waiting_results ();
       (void) la_result_queue_wait_for_result (100);
     }
 }
@@ -930,6 +1027,12 @@ la_coordinator_submit_task (LA_TASK *task, bool commit_order)
 
   task->created_ns = la_monotonic_now_ns ();
 
+  /* the coordinator dispatches again, so the wait that raised the flag is over */
+  if (la_Coordinator_waiting_results.load (std::memory_order_relaxed))
+    {
+      la_coordinator_set_hold_flag (&la_Coordinator_waiting_results, false);
+    }
+
   error = la_coordinator_wait_for_commit_order_slot ();
   if (error != NO_ERROR)
     {
@@ -965,6 +1068,34 @@ la_coordinator_submit_task (LA_TASK *task, bool commit_order)
 	{
 	  return la_coordinator_run_alone (task);
 	}
+      /* the worker's queue is smaller than its share of the ring, which also holds its open transaction */
+      while (!la_coordinator_queue_has_room (la_Coordinator_live_workers[0]))
+	{
+	  bool has_room;
+
+	  error = la_task_queue_wait_room (la_Coordinator_live_workers[0], LA_COORDINATOR_ROOM_WAIT_MSEC, &has_room);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  if (has_room)
+	    {
+	      break;
+	    }
+
+	  /* a worker that stopped on an error frees no slot: its result or the shutdown request ends the wait */
+	  if (la_Coordinator_config.shutdown_requested (la_Coordinator_config.context))
+	    {
+	      return ER_FAILED;
+	    }
+
+	  error = la_coordinator_collect_and_retire ();
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
       return la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED, la_Coordinator_live_workers[0]);
     }
 
@@ -993,6 +1124,7 @@ la_coordinator_submit_task (LA_TASK *task, bool commit_order)
     }
 
   error = la_pending_push (task);
+  la_coordinator_set_hold_flag (&la_Coordinator_tasks_parked, !la_pending_is_empty ());
   if (error == NO_ERROR && task->has_items && task->rectype == LOG_COMMIT)
     {
       la_stat_count_dispatch_parked ();

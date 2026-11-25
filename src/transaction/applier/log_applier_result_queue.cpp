@@ -153,6 +153,56 @@ la_result_queue_push (const LA_RESULT *result)
 }
 
 /*
+ * la_result_queue_push_many() - hand the results of the transactions one slave commit made durable to the coordinator
+ *   return: NO_ERROR, or ER_FAILED when the queue shut down before all of them were queued
+ *   results(in): results to deliver, in the order the tasks were taken; queued as copies
+ *   count(in): number of results
+ *   pushed(out): how many were queued
+ *
+ * Note: one lock and one wakeup for the whole commit instead of one per result. Waits like la_result_queue_push
+ *       if the queue is ever full.
+ */
+int
+la_result_queue_push_many (const LA_RESULT *results, int count, int *pushed)
+{
+  int i;
+
+  assert (results != NULL && pushed != NULL && count >= 0);
+
+  *pushed = 0;
+
+  pthread_mutex_lock (&la_Shared_result_mutex);
+
+  for (i = 0; i < count; i++)
+    {
+      /* safeguard only: the queue is sized never to fill (see la_result_queue_init) */
+      while (la_Shared_result_queue.count >= la_Shared_result_queue.capacity && la_Shared_result_shutdown == false)
+	{
+	  pthread_cond_signal (&la_Shared_result_not_empty);
+	  pthread_cond_wait (&la_Shared_result_not_full, &la_Shared_result_mutex);
+	}
+
+      if (la_Shared_result_shutdown)
+	{
+	  break;
+	}
+
+      la_Shared_result_queue.results[la_Shared_result_queue.tail] = results[i];
+      la_Shared_result_queue.tail = (la_Shared_result_queue.tail + 1) % la_Shared_result_queue.capacity;
+      la_Shared_result_queue.count++;
+    }
+
+  *pushed = i;
+  if (i > 0)
+    {
+      pthread_cond_signal (&la_Shared_result_not_empty);
+    }
+  pthread_mutex_unlock (&la_Shared_result_mutex);
+
+  return (i == count) ? NO_ERROR : ER_FAILED;
+}
+
+/*
  * la_result_queue_try_pop() - take the oldest result without waiting
  *   return: NO_ERROR when a result was taken, ER_FAILED when the queue is empty
  *   result(out): the dequeued result
