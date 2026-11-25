@@ -4278,12 +4278,22 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 int
 pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int default_cs, int default_coll)
 {
-  int attr_cs = attr->data_type->info.data_type.units;
-  int attr_coll = attr->data_type->info.data_type.collation_id;
+  int attr_cs;
+  int attr_coll;
   LANG_COLLATION *lc;
   int err = NO_ERROR;
 
   assert (default_coll >= 0);
+
+  if (attr->data_type == NULL)
+    {
+      /* A view column derived from a NULL value (e.g. "select null m") is typed VARCHAR without a data type node.
+       * Leave it as is: the default domain is used, the same as when the view is first created. */
+      return NO_ERROR;
+    }
+
+  attr_cs = attr->data_type->info.data_type.units;
+  attr_coll = attr->data_type->info.data_type.collation_id;
 
   if (attr->data_type->info.data_type.has_cs_spec)
     {
