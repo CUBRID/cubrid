@@ -953,7 +953,10 @@ struct trace_json_t;
  *   PT_LIST_WALK:     walk the or_next list and the next list, not the children
  *   PT_SKIP_WALK:     walk none of them; the walk goes on with the rest of the tree
  *   PT_STOP_WALK:     end the walk; no node is entered after it, and the nodes already entered get their post
- *                     function, which may set another mode to go on with the walk from there
+ *                     function, which may set another mode to go on with the walk after that node.  The children,
+ *                     the or_next list and the next list of a node are walked before its post, so the ones a stop
+ *                     skipped stay skipped: a pre that stops at a node and a post that goes on at it skip the node
+ *                     as PT_SKIP_WALK does, its next list included
  */
 enum
 {

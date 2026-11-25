@@ -534,8 +534,7 @@ pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   switch (node->info.expr.op)
     {
     case PT_AND:
-      /* walk into the operands: an atom before this node among its parent's operands left PT_LIST_WALK,
-       * which the walk carries over to here */
+      /* walk into the operands */
       *continue_walk = PT_CONTINUE_WALK;
       break;
     case PT_OR:
