@@ -944,13 +944,24 @@ struct trace_json_t;
  functions to manipulate it and put these in the tables. Else crash and burn.
 */
 
-/* enumeration for parser_walk_tree() */
+/* enumeration for parser_walk_tree()
+ *
+ * A pre function sets the mode for the node it is called on; the mode applies to that node only, every node is
+ * entered in PT_CONTINUE_WALK whatever an earlier node set.
+ *   PT_CONTINUE_WALK: walk the children, the or_next list and the next list of the node
+ *   PT_LEAF_WALK:     walk the children and the or_next list, not the next list
+ *   PT_LIST_WALK:     walk the or_next list and the next list, not the children
+ *   PT_SKIP_WALK:     walk none of them; the walk goes on with the rest of the tree
+ *   PT_STOP_WALK:     end the walk; no node is entered after it, and the nodes already entered get their post
+ *                     function, which may set another mode to go on with the walk from there
+ */
 enum
 {
   PT_STOP_WALK = 0,
   PT_CONTINUE_WALK,
   PT_LEAF_WALK,
-  PT_LIST_WALK
+  PT_LIST_WALK,
+  PT_SKIP_WALK
 };
 
 enum

@@ -4445,7 +4445,8 @@ pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
 
   if (tree == NULL || !PT_IS_EXPR_NODE (tree))
     {
-      *continue_walk = PT_STOP_WALK;
+      /* not under this node, but the nodes after it are still searched */
+      *continue_walk = PT_LIST_WALK;
       return tree;
     }
 
@@ -4503,7 +4504,8 @@ pt_find_aggregate_function (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
 
   if (tree == NULL || (!PT_IS_EXPR_NODE (tree) && !PT_IS_FUNCTION (tree)))
     {
-      *continue_walk = PT_STOP_WALK;
+      /* not under this node, but the nodes after it are still searched */
+      *continue_walk = PT_LIST_WALK;
     }
 
   if (pt_is_aggregate_function (parser, tree))
@@ -4552,10 +4554,10 @@ pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *a
       /*
        * Don't search children nodes of this query node, since
        * pt_find_aggregate_analytic_in_where already did it.
-       * We may continue walking to search in the rest parts,
-       * See pt_find_aggregate_analytic_post.
+       * The nodes after it (the next arguments of a function, the next items of a list) are still searched
+       * unless one was found here.
        */
-      *continue_walk = PT_STOP_WALK;
+      *continue_walk = (find != NULL) ? PT_STOP_WALK : PT_LIST_WALK;
     }
   else if (PT_IS_FUNCTION (tree))
     {

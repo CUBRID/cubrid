@@ -1744,8 +1744,9 @@ meth_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int
     }
   else
     {
-      /* if the correlation level is 0, there cannot be correlated subqueries crossing this level */
-      *continue_walk = PT_STOP_WALK;
+      /* if the correlation level is 0, there cannot be correlated subqueries crossing this level; the next list was
+       * bumped above */
+      *continue_walk = PT_SKIP_WALK;
     }
 
   /* increment threshold as we dive into subqueries */
@@ -2332,7 +2333,8 @@ meth_find_hierarchical_op (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 
   if (node->node_type != PT_EXPR)
     {
-      *continue_walk = PT_STOP_WALK;
+      /* not under this node, but the nodes after it are still searched */
+      *continue_walk = PT_LIST_WALK;
     }
   else
     {

@@ -1734,7 +1734,7 @@ qo_null_fold_rejects (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET * 
 {
   QO_NULL_FOLD_INFO info;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
-  PT_NODE *copy;
+  PT_NODE *copy, *save_next;
   bool result;
 
   if (expr == NULL || expr->or_next != NULL || pt_has_error (parser)
@@ -1746,7 +1746,11 @@ qo_null_fold_rejects (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET * 
   info.target = target;
   info.subqueries = 0;
   info.ok = true;
+  /* the callers pass a term of a WHERE list; the walk must not go on to the terms after it */
+  save_next = expr->next;
+  expr->next = NULL;
   (void) parser_walk_tree (parser, expr, qo_null_fold_check_pre, &info, NULL, NULL);
+  expr->next = save_next;
   if (!info.ok || info.subqueries == 0)
     {
       return false;

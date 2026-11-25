@@ -1839,7 +1839,8 @@ pt_check_instnum_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 {
   if (node->node_type == PT_SELECT)
     {
-      *continue_walk = PT_STOP_WALK;
+      /* not in the subquery, but in the nodes after it: a stop here skipped the next list of the subquery too */
+      *continue_walk = PT_LIST_WALK;
     }
 
   return node;
@@ -1884,7 +1885,8 @@ pt_check_groupbynum_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 {
   if (node->node_type == PT_SELECT)
     {
-      *continue_walk = PT_STOP_WALK;
+      /* not in the subquery, but in the nodes after it: a stop here skipped the next list of the subquery too */
+      *continue_walk = PT_LIST_WALK;
     }
 
   return node;
@@ -1929,7 +1931,8 @@ pt_check_orderbynum_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 {
   if (node->node_type == PT_SELECT)
     {
-      *continue_walk = PT_STOP_WALK;
+      /* not in the subquery, but in the nodes after it: a stop here skipped the next list of the subquery too */
+      *continue_walk = PT_LIST_WALK;
     }
 
   return node;
@@ -2871,9 +2874,12 @@ pt_is_filtering_skip_and_or (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
   if (pt_is_filtering_predicate (parser, node))
     {
       *already_found_filtering = true;
+      *continue_walk = PT_STOP_WALK;
+      return node;
     }
 
-  *continue_walk = PT_STOP_WALK;
+  /* a leaf of the AND/OR tree: not under it, but the leaves after it are still checked */
+  *continue_walk = PT_LIST_WALK;
 
   return node;
 }

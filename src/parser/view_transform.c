@@ -631,8 +631,9 @@ mq_bump_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *
     }
   else
     {
-      /* if the correlation level is 0, there cannot be correlated subqueries crossing this level */
-      *continue_walk = PT_STOP_WALK;
+      /* if the correlation level is 0, there cannot be correlated subqueries crossing this level; the next list was
+       * bumped above */
+      *continue_walk = PT_SKIP_WALK;
     }
 
   /* increment threshold as we dive into selects and unions */
@@ -8336,8 +8337,6 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	  spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
 	}
     }
-
-  *walk = PT_STOP_WALK;
 
   return node;
 }

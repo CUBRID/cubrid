@@ -10440,9 +10440,10 @@ pt_set_numbering_node_etc_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
     }
   else if (node->node_type != PT_FUNCTION && node->node_type != PT_SORT_SPEC)
     {
-      /* don't continue if it's not an expression, function or sort spec (analytic window's ORDER BY ROWNUM and
-       * PARTITION BY ROWNUM) */
-      *continue_walk = PT_STOP_WALK;
+      /* don't walk under a node that is not an expression, function or sort spec (analytic window's ORDER BY ROWNUM
+       * and PARTITION BY ROWNUM), but do walk the nodes after it: a stop here skipped the next arguments of a function
+       * and the next items of a list too */
+      *continue_walk = PT_LIST_WALK;
     }
 
   return node;
@@ -18478,8 +18479,8 @@ pt_uncorr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
   if (node->node_type == PT_CTE)
     {
-      /* don't want to include the subqueries from the PT_CTE */
-      *continue_walk = PT_STOP_WALK;
+      /* don't want to include the subqueries from the PT_CTE; its next list is walked above */
+      *continue_walk = PT_SKIP_WALK;
     }
   /* increment level as we dive into subqueries */
   info->level++;
@@ -29995,7 +29996,8 @@ pt_set_qprior_node_etc_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   else if (node->node_type == PT_SELECT || node->node_type == PT_UNION || node->node_type == PT_DIFFERENCE
 	   || node->node_type == PT_INTERSECTION)
     {
-      *continue_walk = PT_STOP_WALK;
+      /* not in the subquery, but in the nodes after it */
+      *continue_walk = PT_LIST_WALK;
     }
 
   return node;
