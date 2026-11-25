@@ -28,6 +28,7 @@
 #include "xasl.h"
 
 #include <map>
+#include <vector>
 
 struct xasl_node;
 
@@ -49,6 +50,10 @@ namespace parallel_scan
   /* renamed from XASL_ID to avoid colliding with the global XASL_ID (sha1 struct). */
   using XASL_NODE_ID = int;
 
+  /* the CTEs a statement runs once before their readers: those in the aptr lists of its blocks, of the blocks those
+   * hold and of the CTE bodies, never under a correlated subquery, which runs again per outer row */
+  void collect_run_once_ctes (xasl_node *xasl, std::vector<xasl_node *> &ctes);
+
   class pre_execution_info
   {
     public:
@@ -67,10 +72,16 @@ namespace parallel_scan
       const DB_VALUE *find_precomp_val (XASL_NODE_ID subquery_id) const;
       void capture_precomp_vals (xasl_node *head);
 
+      /* the result lists of the CTEs the leader ran before the scan, keyed by the header.id of the CTE and of its
+       * non-recursive part, the nodes their readers' list specs name; find only, as for the precomputed values */
+      QFILE_LIST_ID *find_cte_list (XASL_NODE_ID xasl_id) const;
+      void capture_cte_lists (xasl_node *root);
+
     private:
       std::mutex m_mutex;
       std::map <XASL_NODE_ID, scan_info> m_scan_infos;
       std::map <XASL_NODE_ID, DB_VALUE> m_precomp_vals;
+      std::map <XASL_NODE_ID, QFILE_LIST_ID *> m_cte_lists;
   };
 }
 

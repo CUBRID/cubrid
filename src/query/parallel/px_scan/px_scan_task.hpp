@@ -75,6 +75,7 @@ namespace parallel_scan
       m_batch_rows (false),
       m_drain_stop (nullptr),
       m_pre_execution_info (pre_exec_info),
+      m_borrowed_ctes (),
       m_is_fixed (is_fixed),
       m_is_grouped (is_grouped),
       m_is_cached_scan (is_cached_scan),
@@ -117,6 +118,16 @@ namespace parallel_scan
 				 * that call's frame, valid only inside its page batch block -- emit_row_body () is reached from
 				 * the expr_chunk_push () of that block alone, never from a rows node consumed elsewhere */
       pre_execution_info *m_pre_execution_info;
+      struct borrowed_cte
+      {
+	XASL_NODE *cte;
+	XASL_STATUS cte_status;
+	XASL_STATUS part_status;
+	QFILE_LIST_ID *own_list_id;
+	QFILE_LIST_ID *own_part_list_id;
+      };
+      /* the clone's CTEs that read the leader's results (bind_cte_lists ()), given back before the clone is cleared */
+      std::vector<borrowed_cte> m_borrowed_ctes;
       bool m_is_fixed;
       bool m_is_grouped;
       bool m_is_cached_scan;	/* from manager, propagated to scan_open_heap_scan */
@@ -142,6 +153,8 @@ namespace parallel_scan
       int initialize (cubthread::entry &thread_ref);
       int finalize (cubthread::entry &thread_ref);
       int clone_xasl (cubthread::entry &thread_ref);
+      void bind_cte_lists ();
+      void unbind_cte_lists ();
       void loop (cubthread::entry &thread_ref);
       SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
       SCAN_CODE row_body (cubthread::entry &thread_ref, bool &stop);

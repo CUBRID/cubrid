@@ -1854,6 +1854,12 @@ namespace parallel_scan
 	 * workers evaluate the scan predicate too, and a worker that finds no value re-executes the subquery
 	 * (CBRD-27588: NEXT_VALUE ran once per worker). */
 	m_pre_execution_info.capture_precomp_vals (m_xasl);
+	/* the CTEs the statement ran before this scan, whose results a subquery a worker runs again reads instead of
+	 * its clone's never-run copies (task::bind_cte_lists ()) */
+	if (m_orig_vd->xasl_state->xasl != nullptr)
+	  {
+	    m_pre_execution_info.capture_cte_lists (m_orig_vd->xasl_state->xasl);
+	  }
 
 	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	  {

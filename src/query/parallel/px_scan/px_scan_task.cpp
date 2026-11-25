@@ -174,6 +174,8 @@ namespace parallel_scan
 	  }
       }
 
+    bind_cte_lists ();
+
     if constexpr (ST != SCAN_TYPE::LIST)
       {
 	hsidp = &m_scan_id->s.hsid;
@@ -668,6 +670,7 @@ namespace parallel_scan
       {
 	hjoin_rtf_unbind_clone (m_xasl, m_orig_xasl);
       }
+    unbind_cte_lists ();
     if (!m_uses_xasl_clone)
       {
 	/* A worker XASL that is not a cached clone is freed right below, so its compiled expression
@@ -808,7 +811,53 @@ namespace parallel_scan
 	return ER_FAILED;
       }
     m_vd = &m_xasl_state->vd;
+    /* the worker runs the clone: a scan it opens finds the clone's CTEs */
+    m_xasl_state->xasl = m_uses_xasl_clone ? m_xasl_clone.xasl : m_xasl_tree;
     return NO_ERROR;
+  }
+
+  /* A CTE runs once, before its readers (qexec_execute_ctes_first ()), and its readers read its result list. A
+   * subquery the worker runs again reads the clone's copy of the CTE, which never ran: it reads the leader's result
+   * instead, without owning it, as the joined scans read the leader's lists (capture_pre_execution_info ()) */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::bind_cte_lists ()
+  {
+    std::vector<XASL_NODE *> ctes;
+
+    collect_run_once_ctes (m_uses_xasl_clone ? m_xasl_clone.xasl : m_xasl_tree, ctes);
+    for (XASL_NODE *cte : ctes)
+      {
+	XASL_NODE *part = cte->proc.cte.non_recursive_part;
+	QFILE_LIST_ID *leader_list_id = m_pre_execution_info->find_cte_list (cte->header.id);
+	QFILE_LIST_ID *leader_part_list_id =
+		part != nullptr ? m_pre_execution_info->find_cte_list (part->header.id) : nullptr;
+	if (leader_list_id == nullptr || leader_part_list_id == nullptr)
+	  {
+	    continue;
+	  }
+	m_borrowed_ctes.push_back ({ cte, cte->status, part->status, cte->list_id, part->list_id });
+	cte->list_id = leader_list_id;
+	part->list_id = leader_part_list_id;
+	part->status = XASL_SUCCESS;
+	/* the clone's copy runs no more: qexec_execute_cte () returns at once */
+	cte->status = XASL_SUCCESS;
+      }
+  }
+
+  /* before the clone is cleared, which would destroy the list its CTEs name: the leader's lists are the leader's */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::unbind_cte_lists ()
+  {
+    for (borrowed_cte &borrowed : m_borrowed_ctes)
+      {
+	XASL_NODE *part = borrowed.cte->proc.cte.non_recursive_part;
+	borrowed.cte->list_id = borrowed.own_list_id;
+	part->list_id = borrowed.own_part_list_id;
+	part->status = borrowed.part_status;
+	borrowed.cte->status = borrowed.cte_status;
+      }
+    /* freed on this worker's heap, which made it */
+    std::vector<borrowed_cte> ().swap (m_borrowed_ctes);
   }
 
   /* Shared OID-drain helper: leaf-path + late-joiner. Returns S_END on completion, S_ERROR with stop=true on terminal failure. */

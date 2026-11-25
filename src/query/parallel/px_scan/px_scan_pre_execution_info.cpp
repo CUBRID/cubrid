@@ -25,6 +25,8 @@
 #include "object_primitive.h"
 #include "xasl.h"
 
+#include <algorithm>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -33,6 +35,7 @@ namespace parallel_scan
   pre_execution_info::pre_execution_info()
     :  m_scan_infos ()
     , m_precomp_vals ()
+    , m_cte_lists ()
   {
   }
 
@@ -123,6 +126,57 @@ namespace parallel_scan
 	return NULL;
       }
     return &it->second;
+  }
+
+  void collect_run_once_ctes (xasl_node *xasl, std::vector<xasl_node *> &ctes)
+  {
+    for (xasl_node *xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)
+      {
+	for (xasl_node *aptr = xptr->aptr_list; aptr != NULL; aptr = aptr->next)
+	  {
+	    if (aptr->type != CTE_PROC)
+	      {
+		collect_run_once_ctes (aptr, ctes);
+		continue;
+	      }
+	    if (std::find (ctes.begin (), ctes.end (), aptr) != ctes.end ())
+	      {
+		continue;
+	      }
+	    ctes.push_back (aptr);
+	    /* the recursive part runs once per iteration: a CTE under it is not run once */
+	    collect_run_once_ctes (aptr->proc.cte.non_recursive_part, ctes);
+	  }
+      }
+  }
+
+  /* main thread, before workers: a CTE that ran (XASL_SUCCESS) holds its result in its own list, which a WITH
+   * clause's readers name, and in its non-recursive part's, which a shared view's readers name; the leader keeps both
+   * until the end of the query; idempotent (emplace skips existing). */
+  void pre_execution_info::capture_cte_lists (xasl_node *root)
+  {
+    std::vector<xasl_node *> ctes;
+
+    collect_run_once_ctes (root, ctes);
+    for (xasl_node *cte : ctes)
+      {
+	xasl_node *part = cte->proc.cte.non_recursive_part;
+	if (cte->status == XASL_SUCCESS && part != NULL && cte->list_id != NULL && part->list_id != NULL)
+	  {
+	    m_cte_lists.emplace (cte->header.id, cte->list_id);
+	    m_cte_lists.emplace (part->header.id, part->list_id);
+	  }
+      }
+  }
+
+  QFILE_LIST_ID *pre_execution_info::find_cte_list (XASL_NODE_ID xasl_id) const
+  {
+    auto it = m_cte_lists.find (xasl_id);
+    if (it == m_cte_lists.end ())
+      {
+	return NULL;
+      }
+    return it->second;
   }
 
   void pre_execution_info::record_pre_execution_info (XASL_NODE_ID xasl_id, xasl_node *xptr)
