@@ -175,6 +175,11 @@
 #define QEXEC_IS_DEFERRED_PARTITION_WALK(xasl) \
   (XASL_IS_FLAGED ((xasl), XASL_NL_PER_ROW_PARTITIONS) && (xasl)->spec_list != NULL && (xasl)->spec_list->parts != NULL)
 
+/* an inner over a class hierarchy (ALL superclass): each class is one spec in spec_list and one scan block, and an
+ * inner driven per outer row walks them within the row as it walks partitions (CBRD-28215) */
+#define QEXEC_IS_CLASS_HIERARCHY_INNER(xasl) \
+  ((xasl)->spec_list != NULL && (xasl)->spec_list->next != NULL)
+
 #define QEXEC_IS_MULTI_TABLE_UPDATE_DELETE(xasl) \
     (xasl->upd_del_class_cnt > 1 || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr != NULL))
 
@@ -12213,6 +12218,35 @@ qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
       return S_SUCCESS;
     }
 
+  if (XASL_IS_PER_OUTER_ROW (inner) && QEXEC_IS_CLASS_HIERARCHY_INNER (inner))
+    {
+      /* each class of the hierarchy is a spec with its own scan, and the previous row may have stopped on a later
+       * one: the next row starts over from the first class (CBRD-28215) */
+      ACCESS_SPEC_TYPE *first = inner->spec_list;
+
+      while (first != NULL && QEXEC_EMPTY_ACCESS_SPEC_SCAN (first))
+	{
+	  first = first->next;
+	}
+
+      inner->spec_list->s_id.single_fetched = false;
+      inner->next_scan_block_on = false;
+
+      if (first != NULL && inner->curr_spec == first && first->parts == NULL && first->s_id.status == S_STARTED)
+	{
+	  return scan_reset_scan_block (thread_p, &first->s_id);
+	}
+
+      if (inner->curr_spec != NULL)
+	{
+	  scan_end_scan (thread_p, &inner->curr_spec->s_id);
+	  inner->curr_spec->curent = NULL;
+	  inner->curr_spec = NULL;
+	}
+
+      return (qexec_next_scan_block (thread_p, inner) == S_ERROR) ? S_ERROR : S_SUCCESS;
+    }
+
   if ((XASL_IS_NL_SEMI_OR_ANTI (inner) && inner->spec_list != NULL && inner->spec_list->parts != NULL)
       || (XASL_IS_FLAGED (inner, XASL_NL_FOLLOWING_JOIN)
 	  && (QEXEC_IS_MULTI_PARTITION_SPEC (inner->spec_list)
@@ -12616,7 +12650,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
     }
 
   if (XASL_IS_NL_SEMI_OR_ANTI (xasl) && xasl->curr_spec == NULL && xasl->spec_list != NULL
-      && xasl->spec_list->parts != NULL)
+      && (xasl->spec_list->parts != NULL || QEXEC_IS_CLASS_HIERARCHY_INNER (xasl)))
     {
       SCAN_CODE sb_init;
 
@@ -12654,8 +12688,10 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	}
       if (sc_scan == S_END && xasl->memoize_storage
 	  && !(XASL_IS_NL_SEMI_OR_ANTI (xasl)
-	       && (xasl->curr_spec->s_id.single_fetched || xasl->curr_spec->parts != NULL))
-	  && !(XASL_IS_FLAGED (xasl, XASL_NL_FOLLOWING_JOIN) && QEXEC_IS_MULTI_PARTITION_SPEC (xasl->curr_spec)))
+	       && (xasl->curr_spec->s_id.single_fetched || xasl->curr_spec->parts != NULL
+		   || QEXEC_IS_CLASS_HIERARCHY_INNER (xasl)))
+	  && !(XASL_IS_FLAGED (xasl, XASL_NL_FOLLOWING_JOIN)
+	       && (QEXEC_IS_MULTI_PARTITION_SPEC (xasl->curr_spec) || QEXEC_IS_CLASS_HIERARCHY_INNER (xasl))))
 	{
 	  /* the scan produced nothing for this key. Not for a semi/anti inner whose single_fetched is
 	     already set: it did not scan, this is the re-entry after the outer was decided (a surviving
@@ -12663,7 +12699,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	     "no match" entry per outer row until the budget kills the storage. Nor at the end of one
 	     partition of a partitioned inner: the key is only exhausted after the last partition, which
 	     the partition branch below records (CBRD-27465). The same holds for a following join with
-	     more than one partition left, whose partition walk below records it (CBRD-27493). */
+	     more than one partition left, whose partition walk below records it (CBRD-27493), and for
+	     an inner over a class hierarchy, whose walk over the classes records it (CBRD-28215). */
 	  memoize_err_code = memoize_put_nullptr (thread_p, xasl, &memoize_put_success);
 	  if (memoize_err_code == ER_FAILED)
 	    {
@@ -12672,7 +12709,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	}
 
       if (sc_scan == S_END && XASL_IS_FLAGED (xasl, XASL_NL_FOLLOWING_JOIN)
-	  && QEXEC_IS_MULTI_PARTITION_SPEC (xasl->curr_spec))
+	  && (QEXEC_IS_MULTI_PARTITION_SPEC (xasl->curr_spec) || QEXEC_IS_CLASS_HIERARCHY_INNER (xasl)))
 	{
 	  /* a following join is driven per outer row, and the block iterator never moves it to its next
 	   * partition: walk them here within this row, as a semi/anti inner does (CBRD-27493). A deferred walk
@@ -12712,7 +12749,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 
 
       if (sc_scan == S_END && XASL_IS_NL_SEMI_OR_ANTI (xasl) && xasl->curr_spec != NULL
-	  && xasl->curr_spec->parts != NULL && !xasl->curr_spec->s_id.single_fetched)
+	  && (xasl->curr_spec->parts != NULL || QEXEC_IS_CLASS_HIERARCHY_INNER (xasl))
+	  && !xasl->curr_spec->s_id.single_fetched)
 	{
 	  ACCESS_SPEC_TYPE *sa_curr_spec = xasl->curr_spec;
 	  SCAN_CODE sb_scan = S_END;
