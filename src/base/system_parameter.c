@@ -836,7 +836,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
 
 #define PRM_NAME_INDEX_BUILD_PARALLEL_LEAF "index_build_parallel_leaf"
-
+/* eager receive: the transaction thread waits on its socket for the next request */
 #define PRM_NAME_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS "eager_receive_window_in_msecs"
 
 // #endregion
@@ -5791,6 +5791,8 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* a logged parallel index build lets the shard workers put the leaves and the leader append their page logs;
+   * off, the leader puts the leaves of one merged run itself. Changeable on-line, for the builds that follow. */
   {PRM_ID_INDEX_BUILD_PARALLEL_LEAF,
    PRM_NAME_INDEX_BUILD_PARALLEL_LEAF,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
@@ -5815,7 +5817,7 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 0}},		/* 0 disables */
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
 };
 
 /* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the

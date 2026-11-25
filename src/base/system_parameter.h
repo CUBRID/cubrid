@@ -587,8 +587,9 @@ enum param_id
 
   PRM_ID_INDEX_BUILD_PARALLEL_LEAF,
 
+  /* eager receive: the transaction thread waits on its socket for the next request */
   PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS,
-  
+
   /* change PRM_LAST_ID when adding new system parameters */
   PRM_LAST_ID = PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS
 };
