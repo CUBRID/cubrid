@@ -5935,7 +5935,7 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
 {
   TR_TRIGLIST *t, *next;
 
-  if (tr_Trigger_cache_modified)
+  if (time == TR_TIME_AFTER && tr_Trigger_cache_modified)
     {
       reset_trigger_caches (true);
       tr_Trigger_cache_modified = 0;
