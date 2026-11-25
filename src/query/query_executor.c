@@ -12621,7 +12621,8 @@ struct qexec_nl_batch
   int backoff;			/* outer rows joined row at a time after a batch whose pages were all in the buffer:
 				 * twice as many each time */
   int skip;			/* ... of which still to come */
-  int ahead_next;		/* the first OID of the batch whose page was not named to the OS yet */
+  int ahead_next;		/* the first OID of the batch whose page was not named to the OS yet; the first row,
+				 * when the inner scan stops at its first match */
   int ahead_distance;		/* OIDs of the last read-ahead window; grows as an index scan's does */
   int hinted;			/* pages of this batch named to the OS */
   INT64 bytes;			/* memory of the held outer rows */
@@ -12660,6 +12661,8 @@ struct qexec_sq_batch
 };
 
 static void qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_BATCH * batch, int pos);
+static bool qexec_nl_batch_first_only (XASL_NODE * inner);
+static int qexec_nl_batch_slice_ahead (XASL_NODE * inner, QEXEC_NL_BATCH * batch, int oid_start);
 static bool qexec_nl_batch_seen (QEXEC_NL_BATCH * batch, unsigned int hash);
 static int qexec_nl_batch_copy_lists (THREAD_ENTRY * thread_p, VAL_LIST ** lists, int n_lists, DB_VALUE * vals,
 				      bool to_lists, INT64 * bytes);
@@ -13126,6 +13129,7 @@ qexec_nl_batch_open_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BAT
     {
       xasl->curr_spec->s_id.s.isid.nl_slice = batch->oids + row->oid_start;
       xasl->curr_spec->s_id.s.isid.nl_slice_cnt = row->oid_cnt;
+      xasl->curr_spec->s_id.s.isid.nl_slice_ahead = qexec_nl_batch_slice_ahead (xasl, batch, row->oid_start);
     }
   else
     {
@@ -13868,9 +13872,9 @@ qexec_execute_scan_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	}
       batch->ahead_next = 0;
       batch->hinted = 0;
+      batch->next_row = 0;
       qexec_nl_batch_read_ahead (thread_p, xasl, batch, 0);
       batch->replaying = true;
-      batch->next_row = 0;
       batch->row_open = false;
     }
 
@@ -14299,9 +14303,9 @@ qexec_sq_batch_close (THREAD_ENTRY * thread_p, QEXEC_SQ_BATCH * sq)
   sq->close_pending = false;
   b->ahead_next = 0;
   b->hinted = 0;
+  b->next_row = 0;
   qexec_nl_batch_read_ahead (thread_p, sq->sq_xasl, b, 0);
   b->replaying = true;
-  b->next_row = 0;
   sq->close_now = false;
   return NO_ERROR;
 }
@@ -14367,6 +14371,7 @@ qexec_sq_batch_give_slice (QEXEC_SQ_BATCH * sq, SCAN_ID * s_id)
     {
       s_id->s.isid.nl_slice = sq->b.oids + sq->slice_start;
       s_id->s.isid.nl_slice_cnt = sq->slice_cnt;
+      s_id->s.isid.nl_slice_ahead = qexec_nl_batch_slice_ahead (sq->sq_xasl, &sq->b, sq->slice_start);
     }
   sq->slice_cnt = -1;
 }
@@ -14392,12 +14397,44 @@ qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_
       limit = inner->curr_spec->s_id.s.isid.ahead_limit;
     }
 
+  if (qexec_nl_batch_first_only (inner))
+    {
+      /* the scan stops at its first match: only the first OID of each row is named, and the window counts rows */
+      OID firsts[SCAN_INDEX_READ_AHEAD_DISTANCE];
+      int n = 0, row;
+
+      pos = batch->next_row;
+      if (batch->ahead_next >= batch->n_rows || pos + batch->ahead_distance / 2 < batch->ahead_next)
+	{
+	  return;
+	}
+      distance = (batch->ahead_distance == 0 ? SCAN_INDEX_READ_AHEAD_INITIAL : MIN (batch->ahead_distance * 2, limit));
+      distance = MIN (distance, SCAN_INDEX_READ_AHEAD_DISTANCE);
+      end = MIN (batch->n_rows, pos + distance);
+      for (row = MAX (batch->ahead_next, pos); row < end; row++)
+	{
+	  if (batch->rows[row].oid_start < (row + 1 < batch->n_rows ? batch->rows[row + 1].oid_start : batch->n_oids))
+	    {
+	      firsts[n++] = batch->oids[batch->rows[row].oid_start];
+	    }
+	}
+      if (end > batch->ahead_next)
+	{
+	  batch->hinted += scan_index_nl_batch_read_ahead (thread_p, firsts, n);
+	  batch->ahead_next = end;
+	  batch->ahead_distance = distance;
+	}
+      return;
+    }
+
   if (batch->ahead_next >= batch->n_oids || pos + batch->ahead_distance / 2 < batch->ahead_next)
     {
       return;
     }
   distance = (batch->ahead_distance == 0 ? SCAN_INDEX_READ_AHEAD_INITIAL : MIN (batch->ahead_distance * 2, limit));
   end = MIN (batch->n_oids, pos + distance);
+  /* the OIDs before pos were looked up: the scan named the ones this function had not */
+  batch->ahead_next = MAX (batch->ahead_next, pos);
   if (end > batch->ahead_next)
     {
       batch->hinted += scan_index_nl_batch_read_ahead (thread_p, batch->oids + batch->ahead_next,
@@ -14405,6 +14442,41 @@ qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_
       batch->ahead_next = end;
       batch->ahead_distance = distance;
     }
+}
+
+/*
+ * qexec_nl_batch_first_only () - does the inner scan of a batch stop at its first match?
+ *   return: true for the inner scan of a semi or anti join and the scan of a block that needs one row
+ *   inner(in):
+ *
+ * Note: Such a scan tells the OS nothing at its first lookup (scan_next_index_scan ()), since the pages of its other
+ *	 OIDs are mostly not read. The batch names the first OID's page of the rows ahead, no more.
+ */
+static bool
+qexec_nl_batch_first_only (XASL_NODE * inner)
+{
+  /* what qexec_open_scan () and scan_next_index_scan () read for the same question, from the XASL: the scan may not
+   * be open yet when the batch closes */
+  return (XASL_IS_NL_SEMI_OR_ANTI (inner) || XASL_IS_FLAGED (inner, XASL_NEED_SINGLE_TUPLE_SCAN)
+	  || inner->instnum_pred != NULL
+	  || (inner->spec_list != NULL && inner->spec_list->single_fetch == QPROC_SINGLE_INNER));
+}
+
+/*
+ * qexec_nl_batch_slice_ahead () - how many of the first OIDs of a row the batch told the OS about
+ *   return: the count the scan goes on from when it takes the row's OIDs
+ *   inner(in):
+ *   batch(in):
+ *   oid_start(in): the row's first OID in the batch
+ */
+static int
+qexec_nl_batch_slice_ahead (XASL_NODE * inner, QEXEC_NL_BATCH * batch, int oid_start)
+{
+  if (qexec_nl_batch_first_only (inner))
+    {
+      return 1;
+    }
+  return MAX (batch->ahead_next - oid_start, 0);
 }
 
 /*

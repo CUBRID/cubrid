@@ -433,6 +433,7 @@ struct indx_scan_id
   int nl_slice_cnt;		/* OIDs of the next outer row, read from the index when a batched nested-loop join
 				 * collected the row; -1: none, the scan reads the index */
   OID *nl_slice;		/* ... and where they are */
+  int nl_slice_ahead;		/* ... and how many of the first of them the join told the OS about */
   /* Parallel index scan pending state. Set in scan_open_parallel_index_scan when the spec is
    * parallel-eligible; consumed by scan_start_scan to attempt the promotion after
    * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
@@ -497,6 +498,7 @@ struct parallel_index_scan_id
   bool ahead_single;		/* mirror of INDX_SCAN_ID::ahead_single */
   int nl_slice_cnt;		/* mirror of INDX_SCAN_ID::nl_slice_cnt */
   OID *nl_slice;		/* mirror of INDX_SCAN_ID::nl_slice */
+  int nl_slice_ahead;		/* mirror of INDX_SCAN_ID::nl_slice_ahead */
   void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
   INDX_GBY_SKIP *gby_skip;	/* mirror of INDX_SCAN_ID::gby_skip */
   bool bitmap_planned;		/* mirror of INDX_SCAN_ID::bitmap_planned */

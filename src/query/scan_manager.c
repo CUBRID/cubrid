@@ -3265,6 +3265,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->ahead_single = false;
   isidp->nl_slice_cnt = -1;
   isidp->nl_slice = NULL;
+  isidp->nl_slice_ahead = 0;
 
   if (scan_init_indx_coverage (thread_p, coverage_enabled, output_val_list, regu_val_list, vd, query_id,
 			       root_header->node.max_key_len, func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
@@ -3686,6 +3687,7 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   isidp->ahead_single = false;
   isidp->nl_slice_cnt = -1;
   isidp->nl_slice = NULL;
+  isidp->nl_slice_ahead = 0;
 
   if (scan_init_indx_coverage (thread_p, false, NULL, NULL, vd, query_id, root_header->node.max_key_len,
 			       func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
@@ -6613,8 +6615,9 @@ scan_index_take_nl_slice (INDX_SCAN_ID * isidp)
     }
   assert (count <= isidp->oid_list->capacity);
   memcpy (isidp->oid_list->oidp, isidp->nl_slice, count * sizeof (OID));
-  /* the join told the OS about the pages of the whole batch */
-  isidp->ahead_next = INT_MAX;
+  /* the join told the OS about the pages of the first nl_slice_ahead OIDs: the windows go on from there */
+  isidp->ahead_next = (isidp->nl_slice_ahead >= count) ? INT_MAX : isidp->nl_slice_ahead;
+  isidp->ahead_distance = isidp->nl_slice_ahead;
 
   return S_SUCCESS;
 }
