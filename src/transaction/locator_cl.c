@@ -7033,6 +7033,9 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
   int key_length, round_length, wasted_length;
   char *ptr, *obj_start_p;
   bool pending_oos_item = false;
+  /* a partial failure of one copy area must survive the areas forced after it, as in locator_repl_flush_all;
+   * the caller learns from this return value that the error link holds the objects that failed */
+  bool continued_on_error = false;
 
   while (true)
     {
@@ -7086,7 +7089,11 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 	      else
 		{
 		  error_code = locator_repl_mflush_force (mflush);
-		  if (error_code != NO_ERROR && error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+		  if (error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+		    {
+		      continued_on_error = true;
+		    }
+		  else if (error_code != NO_ERROR)
 		    {
 		      return error_code;
 		    }
@@ -7165,7 +7172,7 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
       ws_free_repl_obj (repl_obj);
     }
 
-  return error_code;
+  return continued_on_error ? ER_LC_PARTIALLY_FAILED_TO_FLUSH : NO_ERROR;
 }
 
 
