@@ -553,6 +553,7 @@ static int
 sl_write_sql_locked (string_buffer & query, string_buffer * select)
 {
   time_t curr_time;
+  struct tm curr_tm;
   char time_buf[20];
 
   assert (query.get_buffer () != NULL);
@@ -565,8 +566,11 @@ sl_write_sql_locked (string_buffer & query, string_buffer * select)
 	}
     }
 
+  /* localtime_r: the apply workers and the coordinator run in parallel, and localtime's static result is shared by
+   * every caller in the process, not only by the writers that hold sl_write_mutex */
   curr_time = time (NULL);
-  strftime (time_buf, sizeof (time_buf), "%Y-%m-%d %H:%M:%S", localtime (&curr_time));
+  localtime_r (&curr_time, &curr_tm);
+  strftime (time_buf, sizeof (time_buf), "%Y-%m-%d %H:%M:%S", &curr_tm);
 
   /* -- datetime | sql_id | is_ddl | select length | query length */
   fprintf (log_fp, "-- %s | %u | %zu | %zu\n", time_buf, ++sl_Info.last_inserted_sql_id,
