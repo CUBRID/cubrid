@@ -140,6 +140,7 @@ namespace
     config.keep_batch_open = keep_batch_open_never;
     config.tasks_parked = tasks_parked_never;
     config.batch_max_msec = 100;
+    config.batch_max_tasks = 10000;
     return config;
   }
 
@@ -438,4 +439,25 @@ TEST_CASE ("a worker whose queue never runs dry commits soon after a task is par
   feeding = false;
   feeder.join ();
   stop_batch_worker (workers);
+}
+
+TEST_CASE ("the per-worker task limit follows ha_apply_max_mem_size and the worker count", "[log_applier_worker]")
+{
+  int one = la_worker_batch_max_tasks (500, 1);
+  int ten = la_worker_batch_max_tasks (500, 10);
+
+  /* 30% of 500 MB over about 1.5 KB per task, less one queue */
+  CHECK (one > 50000);
+  CHECK (one < 200000);
+  /* ten workers share the same memory */
+  CHECK (ten < one / 5);
+  CHECK (la_worker_batch_max_tasks (4096, 1) > one);
+
+  /* bounded on both sides */
+  REQUIRE (la_worker_batch_max_tasks (1, 64) == LA_WORKER_BATCH_MIN_TASKS);
+  REQUIRE (la_worker_batch_max_tasks (1000000, 1) == LA_WORKER_BATCH_LIMIT_TASKS);
+
+  /* the ring then holds every worker's full queue and full open transaction within that share */
+  UINT64 ring_bytes = (UINT64) LA_COMMIT_ORDER_CAPACITY (10, ten) * LA_WORKER_TASK_BOOKKEEPING_BYTES;
+  CHECK (ring_bytes <= (UINT64) 500 * 1024 * 1024 * LA_WORKER_BATCH_MEM_PERCENT / 100);
 }

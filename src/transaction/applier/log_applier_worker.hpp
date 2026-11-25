@@ -43,7 +43,8 @@
  * transaction on the master does not cost a commit and a log flush on the slave. It commits when:
  *   - the transaction has been open for the commit interval (LA_WORKER_CONFIG.batch_max_msec, which is
  *     ha_applylogdb_max_commit_interval_in_msecs, the interval the serial applier commits at)
- *   - the transaction holds LA_WORKER_BATCH_MAX_TASKS tasks
+ *   - the transaction holds LA_WORKER_CONFIG.batch_max_tasks tasks, a memory bound (la_worker_batch_max_tasks) that
+ *     a backlog should not reach before the commit interval
  *   - no task is waiting once the transaction has been open LA_WORKER_BATCH_EMPTY_HOLD_USEC, unless the coordinator
  *     is still reading log, no task waits for another to commit and the coordinator is not waiting for results
  *     (LA_WORKER_CONFIG.keep_batch_open); the coordinator wakes a worker waiting on an empty queue when that changes
@@ -56,12 +57,21 @@
  * or a task waits for another to commit, an empty queue ends the transaction after the short hold, so the changes
  * of a lightly loaded master show without the interval's delay.
  *
- * The task limit bounds the results a worker keeps and the apply units its open transaction holds in memory. It
- * is part of a worker's share of the commit-order ring (LA_COMMIT_ORDER_CAPACITY), since an uncommitted task has
- * not retired.
+ * The task limit only bounds memory: every task a worker has not committed keeps a result in the worker's batch,
+ * an in-flight entry and a slot in the result queue and on the commit-order ring until it retires. A fixed count
+ * would decide the commit instead of the interval on a fast slave (10000 tasks filled in about 0.2 s on the test
+ * pair, so workers committed twice as often as the serial applier), so the limit is derived from
+ * ha_apply_max_mem_size instead and set once at start (la_worker_batch_max_tasks).
  */
-#define LA_WORKER_BATCH_MAX_TASKS   10000
 #define LA_WORKER_BATCH_EMPTY_HOLD_USEC 500
+/* share of ha_apply_max_mem_size, in percent, for the bookkeeping of tasks not committed yet */
+#define LA_WORKER_BATCH_MEM_PERCENT 30
+/* bounds of the per-worker task limit derived from it */
+#define LA_WORKER_BATCH_MIN_TASKS 1024
+#define LA_WORKER_BATCH_LIMIT_TASKS 1000000
+/* bookkeeping bytes per uncommitted task: its result in the batch, in the result queue and in the in-flight entry,
+ * plus the entry's own fields and the commit-order ring slot */
+#define LA_WORKER_TASK_BOOKKEEPING_BYTES (3 * sizeof (LA_RESULT) + 64)
 /* while a task is parked, a worker commits its open transaction after this long even if its queue keeps receiving
  * tasks (la_worker_batch_is_due) */
 #define LA_WORKER_BATCH_PARKED_MAX_MSEC 100
@@ -71,7 +81,8 @@
  * hold a full queue and a full open transaction. The in-flight list and the result queue are sized by it too, so
  * none of them can fill. When the ring is full the coordinator stops reading the log and only collects results
  * until the frontier moves. */
-#define LA_COMMIT_ORDER_CAPACITY(worker_count)  ((worker_count) * (LA_TASK_QUEUE_CAPACITY + LA_WORKER_BATCH_MAX_TASKS))
+#define LA_COMMIT_ORDER_CAPACITY(worker_count, batch_max_tasks) \
+  ((worker_count) * (LA_TASK_QUEUE_CAPACITY + (batch_max_tasks)))
 
 typedef struct la_worker LA_WORKER;
 struct la_worker
@@ -136,8 +147,10 @@ struct la_worker_config
   LA_WORKER_KEEP_BATCH_OPEN_FUNC keep_batch_open;
   LA_WORKER_TASKS_PARKED_FUNC tasks_parked;
   int batch_max_msec;		/* commit interval: ha_applylogdb_max_commit_interval_in_msecs, read once at start */
+  int batch_max_tasks;		/* memory bound on an open transaction: la_worker_batch_max_tasks */
 };
 
+extern int la_worker_batch_max_tasks (int max_mem_size_mb, int worker_count);
 extern int la_worker_start (LA_WORKER *workers, int count, const LA_WORKER_CONFIG *config);
 extern int la_worker_wait_started (const LA_WORKER *workers, int count, int *live, int *live_count);
 extern void la_worker_join (LA_WORKER *workers, int count);

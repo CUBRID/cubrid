@@ -80,6 +80,36 @@ static int la_worker_test_fail_startup (const LA_WORKER *worker);
 #endif /* !NDEBUG */
 
 /*
+ * la_worker_batch_max_tasks() - the most tasks one worker keeps in an open transaction
+ *   return: the limit, between LA_WORKER_BATCH_MIN_TASKS and LA_WORKER_BATCH_LIMIT_TASKS
+ *   max_mem_size_mb(in): ha_apply_max_mem_size, in MB
+ *   worker_count(in): number of workers
+ *
+ * Note: LA_WORKER_BATCH_MEM_PERCENT of the memory limit is shared by the workers' uncommitted tasks, each costing
+ *       LA_WORKER_TASK_BOOKKEEPING_BYTES, after every worker's full task queue is counted in. The result is the
+ *       per-worker limit the commit-order ring is sized with (LA_COMMIT_ORDER_CAPACITY), so the ring, the in-flight
+ *       list, the result queue and the batches stay within that share. With the default 500 MB and one worker it is
+ *       about 105,000 tasks, more than a backlog applies within the commit interval on the test pair.
+ */
+int
+la_worker_batch_max_tasks (int max_mem_size_mb, int worker_count)
+{
+  UINT64 budget;
+  UINT64 per_worker;
+
+  assert (worker_count > 0);
+
+  budget = (UINT64) MAX (max_mem_size_mb, 1) * ONE_M * LA_WORKER_BATCH_MEM_PERCENT / 100;
+  per_worker = budget / LA_WORKER_TASK_BOOKKEEPING_BYTES / (UINT64) worker_count;
+  if (per_worker < (UINT64) (LA_TASK_QUEUE_CAPACITY + LA_WORKER_BATCH_MIN_TASKS))
+    {
+      return LA_WORKER_BATCH_MIN_TASKS;
+    }
+
+  return (int) MIN (per_worker - LA_TASK_QUEUE_CAPACITY, (UINT64) LA_WORKER_BATCH_LIMIT_TASKS);
+}
+
+/*
  * la_worker_start() - reset the worker slots and start one thread per slot
  *   return: NO_ERROR, or ER_FAILED when a thread cannot be created
  *   workers(out): worker slots to start
@@ -101,7 +131,8 @@ la_worker_start (LA_WORKER *workers, int count, const LA_WORKER_CONFIG *config)
   assert (workers != NULL && config != NULL);
   assert (config->run_task != NULL && config->commit_batch != NULL && config->abort_batch != NULL
 	  && config->request_shutdown != NULL && config->shutdown_requested != NULL && config->end_context != NULL);
-  assert (config->keep_batch_open != NULL && config->tasks_parked != NULL && config->batch_max_msec > 0);
+  assert (config->keep_batch_open != NULL && config->tasks_parked != NULL && config->batch_max_msec > 0
+	  && config->batch_max_tasks > 0);
   assert (count > 0 && count <= LA_MAX_WORKER_COUNT);
 
   la_Worker_config = *config;
@@ -429,7 +460,7 @@ end:
 typedef struct la_worker_batch LA_WORKER_BATCH;
 struct la_worker_batch
 {
-  LA_RESULT *results;		/* LA_WORKER_BATCH_MAX_TASKS slots, in the order the tasks were taken */
+  LA_RESULT *results;		/* LA_WORKER_CONFIG.batch_max_tasks slots, in the order the tasks were taken */
   int count;
   UINT64 begin_ns;		/* when the first of them was applied */
 };
@@ -547,7 +578,7 @@ la_worker_commit_and_report (LA_APPLY_WORKER_CONTEXT *context, LA_WORKER_BATCH *
  *
  * Note:
  *   The worker applies the tasks it takes into one open slave transaction and commits them together when
- *   la_worker_batch_is_due says it has been open long enough, when it holds LA_WORKER_BATCH_MAX_TASKS of them, or when
+ *   la_worker_batch_is_due says it has been open long enough, when it holds batch_max_tasks of them, or when
  *   no task is waiting in the queue for as long as la_worker_empty_hold_nsec allows. Each task's marker is in the
  *   same transaction as its changes, so a restart skips exactly the tasks that were committed. A task with a
  *   statement item is applied in a transaction of its own: the statement takes la_sql_compile_mutex, and the
@@ -570,13 +601,14 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
   int taken_count;
   int taken_next;
   bool queue_closed = false;
+  bool limit_noted = false;	/* the memory bound ended a transaction once already; logged only the first time */
   int error = NO_ERROR;
 
-  batch.results = (LA_RESULT *) malloc (sizeof (LA_RESULT) * LA_WORKER_BATCH_MAX_TASKS);
+  batch.results = (LA_RESULT *) malloc (sizeof (LA_RESULT) * la_Worker_config.batch_max_tasks);
   if (batch.results == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (LA_RESULT) * LA_WORKER_BATCH_MAX_TASKS);
+	      sizeof (LA_RESULT) * la_Worker_config.batch_max_tasks);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   batch.count = 0;
@@ -715,8 +747,16 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 
       worker->busy = false;
 
-      if (task->has_statement || batch.count >= LA_WORKER_BATCH_MAX_TASKS
-	  || la_worker_batch_is_due (&batch))
+      if (batch.count >= la_Worker_config.batch_max_tasks && !limit_noted)
+	{
+	  /* the commit interval should come first; reaching the memory bound means ha_apply_max_mem_size is small
+	   * for this slave's apply rate, and the worker commits more often than the serial applier would */
+	  er_log_debug (ARG_FILE_LINE, "apply worker %d: open transaction reached %d tasks before the commit interval",
+			context->worker_idx, la_Worker_config.batch_max_tasks);
+	  limit_noted = true;
+	}
+
+      if (task->has_statement || batch.count >= la_Worker_config.batch_max_tasks || la_worker_batch_is_due (&batch))
 	{
 	  error = la_worker_commit_and_report (context, &batch, *worker_applied_item_count, &queue_closed);
 	  if (error != NO_ERROR || queue_closed)

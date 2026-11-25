@@ -374,9 +374,11 @@ struct la_info
   int worker_count;		/* apply workers started, from ha_apply_worker_count (1..LA_MAX_WORKER_COUNT); the
 				 * per-worker arrays are LA_MAX_WORKER_COUNT long and only the first worker_count
 				 * slots are in use */
+  int batch_max_tasks;		/* most tasks a worker keeps in an open transaction, from ha_apply_max_mem_size
+				 * (la_worker_batch_max_tasks); set once when the workers start */
   int commit_order_capacity;	/* most commits read from the log that the frontier has not passed yet,
-				 * finished or not: LA_COMMIT_ORDER_CAPACITY (worker_count); set once when the workers
-				 * start */
+				 * finished or not: LA_COMMIT_ORDER_CAPACITY (worker_count, batch_max_tasks); set once when
+				 * the workers start */
 
   /* _db_ha_apply_info */
   LOG_LSA append_lsa;		/* append lsa of active log header */
@@ -1314,7 +1316,11 @@ la_coordinator_initialize_resources (void)
 {
   LA_COORDINATOR_CONFIG config;
 
-  la_Info.commit_order_capacity = LA_COMMIT_ORDER_CAPACITY (la_Info.worker_count);
+  la_Info.batch_max_tasks = la_worker_batch_max_tasks (la_Info.max_mem_size, la_Info.worker_count);
+  la_Info.commit_order_capacity = LA_COMMIT_ORDER_CAPACITY (la_Info.worker_count, la_Info.batch_max_tasks);
+  er_log_debug (ARG_FILE_LINE, "applier: %d workers, up to %d uncommitted tasks per worker, commit-order ring %d "
+		"(ha_apply_max_mem_size %d MB)", la_Info.worker_count, la_Info.batch_max_tasks,
+		la_Info.commit_order_capacity, la_Info.max_mem_size);
 
   config.commit_order_capacity = la_Info.commit_order_capacity;
   config.worker_count = la_Info.worker_count;
@@ -1366,6 +1372,7 @@ la_start_apply_workers (void)
   config.keep_batch_open = la_coordinator_keep_batch_open;
   config.tasks_parked = la_coordinator_tasks_parked;
   config.batch_max_msec = MAX (1, prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS));
+  config.batch_max_tasks = la_Info.batch_max_tasks;
 
   error = la_worker_start (la_apply_Workers, la_Info.worker_count, &config);
   if (error != NO_ERROR)
