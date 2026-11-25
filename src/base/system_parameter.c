@@ -833,7 +833,11 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
 #define PRM_NAME_ROW_SNAPSHOT_MAX_ROWS "row_snapshot_max_rows"
 
+#define PRM_NAME_ALLOW_LOGIN_METHOD_ON_BROKER "allow_login_method_on_broker"
+
 #define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
+
+#define PRM_NAME_INDEX_BUILD_PARALLEL_LEAF "index_build_parallel_leaf"
 
 // #endregion
 
@@ -2048,9 +2052,11 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* CBRD-28029: in the plan key, since the lexer reads it to take a string literal (csql_lexer.l): one SQL text
+   * gives other values under the other setting */
   {PRM_ID_NO_BACKSLASH_ESCAPES,
    PRM_NAME_NO_BACKSLASH_ESCAPES,
-   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -5775,9 +5781,38 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* whether a client of a broker may switch users with the login () method. The password is in the statement text,
+   * so only tests use it; a test harness that turns it on also gets the user back when the CAS restarts.
+   * Not changeable on-line: a client must not be able to turn it on for itself. */
+  {PRM_ID_ALLOW_LOGIN_METHOD_ON_BROKER,
+   PRM_NAME_ALLOW_LOGIN_METHOD_ON_BROKER,
+   (PRM_FOR_CLIENT | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_MVCC_REEVALUATE_AT_FORCE,
    PRM_NAME_MVCC_REEVALUATE_AT_FORCE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* a logged parallel index build lets the shard workers put the leaves and the leader append their page logs;
+   * off, the leader puts the leaves of one merged run itself. Changeable on-line, for the builds that follow. */
+  {PRM_ID_INDEX_BUILD_PARALLEL_LEAF,
+   PRM_NAME_INDEX_BUILD_PARALLEL_LEAF,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -12901,6 +12936,37 @@ sysprm_get_session_parameters_count (void)
 }
 
 #if defined (CS_MODE)
+/*
+ * sysprm_get_cached_session_param_int () - the value of the conf of an integer session parameter, kept for the
+ *					     sessions to create
+ *
+ * return : the value, or default_value if prm_id is not a session parameter or the values are not loaded
+ * prm_id (in)	      : a session parameter of PRM_INTEGER or PRM_KEYWORD
+ * default_value (in) : the value to return otherwise
+ *
+ * Note: for a broker, whose current values may be those of the session its client reconnected to.
+ */
+int
+sysprm_get_cached_session_param_int (PARAM_ID prm_id, int default_value)
+{
+  int idx;
+
+  if (cached_session_parameters == NULL || prm_id < 0 || prm_id > PRM_LAST_ID)
+    {
+      return default_value;
+    }
+
+  idx = prm_Def_session_idx[prm_id];
+  if (idx < 0)
+    {
+      return default_value;
+    }
+
+  assert (cached_session_parameters[idx].datatype == PRM_INTEGER
+	  || cached_session_parameters[idx].datatype == PRM_KEYWORD);
+  return cached_session_parameters[idx].value.i;
+}
+
 /*
  * sysprm_update_cached_session_param_val () - updates value of a cached
  *		 session parameter
