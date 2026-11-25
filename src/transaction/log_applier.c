@@ -514,6 +514,10 @@ static thread_local bool la_oos_pending_flush = false;
 /* OOS objects buffered since the last heap row. When that row does not reach the buffer (it fails, or it is an update
  * the master rolled back), la_discard_unpaired_oos_objects takes them back out. */
 static thread_local int la_oos_unpaired_count = 0;
+/* An OOS item of the row being applied failed for good. The row is applied as a whole or not at all: its OOS objects
+ * already buffered are taken back, and its remaining OOS items and its heap row are not applied (the heap row is
+ * counted as failed). Cleared when the row ends. */
+static thread_local bool la_oos_row_failed = false;
 
 static bool la_applier_need_shutdown = false;
 /* A worker stopped the applier after an error of its own. That stop does not count as a forced shutdown
@@ -9184,7 +9188,19 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
        * the item's rows are already copied into the record pool, so release them before the next one. */
       la_release_pinned_page_buffers (NULL);
 
-      if (la_need_filter_out (item) == false)
+      if (la_oos_row_failed && item->log_type == LOG_REPLICATION_DATA)
+	{
+	  /* the row lost one of its OOS values: apply neither its other OOS values nor the row itself */
+	  if (!la_is_oos_item (item))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		      "the row is not applied because one of its out-of-row values failed to apply");
+	      la_log_apply_error ("apply_row", (item->item_type == RVREPL_DATA_INSERT)
+				  ? ER_HA_LA_FAILED_TO_APPLY_INSERT : ER_HA_LA_FAILED_TO_APPLY_UPDATE, item,
+				  ER_HA_GENERIC_ERROR, stats);
+	    }
+	}
+      else if (la_need_filter_out (item) == false)
 	{
 #if !defined (NDEBUG)
 	  if (first_attempt && la_worker_test_abort_at_task (context))
@@ -9323,6 +9339,14 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
 		   * reach the worker's result; otherwise a failure on the last item alone would drop the whole
 		   * transaction and stop the applier. */
 		  error = NO_ERROR;
+
+		  if (la_is_oos_item (item))
+		    {
+		      /* without this value the server cannot build the row; the row's other OOS objects must not
+		       * be flushed with a row that will not come */
+		      la_discard_unpaired_oos_objects ();
+		      la_oos_row_failed = true;
+		    }
 		}
 	    }
 	}
@@ -9341,6 +9365,7 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
        * master rolled back), its OOS objects are still there without it. */
       if (item->log_type == LOG_REPLICATION_DATA && !la_is_oos_item (item))
 	{
+	  la_oos_row_failed = false;
 	  la_discard_unpaired_oos_objects ();
 	  /* a multi-chunk OOS item of this row that failed for good leaves the rebuild mark set */
 	  apply->need_oos_rebuild = false;
@@ -9363,6 +9388,7 @@ end:
     }
 
   *total_rows += apply_repl_log_cnt;
+  la_oos_row_failed = false;
   la_free_all_repl_items (apply);
   la_clear_oos_cache ();
   /* A row's OOS items are written with the row (repl_oos_items_follow_row on the master), so they land in the same
