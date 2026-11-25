@@ -151,7 +151,7 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in, DB_VALUE * d
 
   query_id_self = parser->query_id;
   parser->query_id = NULL_QUERY_ID;
-  error = do_select (parser, subquery);
+  error = do_select (parser, subquery, NULL);
   if (error == NO_ERROR)
     {
       list_id = (QFILE_LIST_ID *) subquery->etc;
@@ -1306,7 +1306,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 
       query_id_self = parser->query_id;
       parser->query_id = NULL_QUERY_ID;
-      error = do_select (parser, temp);
+      error = do_select (parser, temp, NULL);
       if (error == NO_ERROR)
 	{
 	  /* If there isn't a value from the select, but the select succeeded, return a NULL instead of an error. It
