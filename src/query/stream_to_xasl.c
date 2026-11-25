@@ -283,6 +283,11 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl->class_oid_list = NULL;
   xasl->class_locks = NULL;
   xasl->tcard_list = NULL;
+  xasl->stmt_flags = 0;
+  xasl->n_write_oid_list = 0;
+  xasl->write_class_oid_list = NULL;
+  xasl->n_read_oid_list = 0;
+  xasl->read_class_oid_list = NULL;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
   xasl->rtf = NULL;
@@ -2322,18 +2327,15 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       return NULL;
     }
   {
-    /* CBRD-27583: each upper bound's conversion into INTEGER, which a top-N takes (qexec_setup_topn_proc): of
-     * the bound's type, or for a < of the type bound - 1 comes out in (qdata_coerce_result_to_domain: the bound's
-     * domain when the plan converts the difference, else the difference's) */
+    /* CBRD-27583: each upper bound's conversion from its own type into BIGINT, which a top-N takes
+     * (qexec_setup_topn_proc) */
     bool planned = true;
     /* *INDENT-OFF* */
     xasl_for_each_orderbynum_upper_bound (xasl->ordbynum_pred, [&] (COMP_EVAL_TERM * term, const REGU_VARIABLE * bound,
 								      REL_OP op)
       {
-	const DOMAIN_OPERAND_COERCION *minus_one = op == R_LT ? term->bound_coercion : NULL;
-	const DB_TYPE source = minus_one != NULL && minus_one->result == NULL ? minus_one->arith.type
-	  : stx_value_type_of (bound->domain);
-	planned = planned && stx_plan_bound_conversion (thread_p, term, source, &tp_Integer_domain);
+	planned = planned && stx_plan_bound_conversion (thread_p, term, stx_value_type_of (bound->domain),
+							&tp_Bigint_domain);
       });
     /* *INDENT-ON* */
     if (!planned)
@@ -2371,7 +2373,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	}
     }
   xasl->orderby_limit_conv = xasl->orderby_limit == NULL ? NULL
-    : stx_plan_limit_converter (stx_value_type_of (xasl->orderby_limit->domain), &tp_Integer_domain);
+    : stx_plan_limit_converter (stx_value_type_of (xasl->orderby_limit->domain), &tp_Bigint_domain);
 
   ptr = or_unpack_int (ptr, (int *) &xasl->ordbynum_flag);
 
@@ -3357,6 +3359,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
   stx_build_list_proc->output_columns = (DB_VALUE **) 0;
   stx_build_list_proc->upddel_oid_locator_ehids = NULL;
   stx_build_list_proc->gby_skip_state = NULL;
+  stx_build_list_proc->upd_deferred_rows = NULL;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4991,7 +4994,7 @@ stx_plan_limit_converter (DB_TYPE type, const TP_DOMAIN * target)
 
 /*
  * stx_plan_bound_conversion () - CBRD-27583: an upper bound term's conversion of its bound, of type source,
- *   into target (an ORDERBY_NUM bound into INTEGER, an INST_NUM limit into BIGINT), set on the term
+ *   into target (an ORDERBY_NUM bound or an INST_NUM limit into BIGINT), set on the term
  *   return: false with the unpack error set
  */
 static bool
@@ -5774,7 +5777,7 @@ stx_build_element_compares (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM *
    * which compares nothing: the term is UNKNOWN, or an empty subquery decides it (CBRD-27574) */
 #if !defined (NDEBUG)
   const TP_DOMAIN *column = term->elemset == NULL ? NULL : term->elemset->type == TYPE_LIST_ID
-    ? domain_list_column_compared (term->elemset->xasl, 0) : term->elemset->domain;
+    ? domain_list_column_of (term->elemset->xasl, 0) : term->elemset->domain;
 #endif
   assert (term->elem == NULL || term->elemset == NULL || kind != 0
 	  || (term->elem->domain != NULL && TP_DOMAIN_TYPE (term->elem->domain) == DB_TYPE_NULL)
@@ -6150,6 +6153,9 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 
   ptr = or_unpack_int (ptr, &access_spec->pruning_type);
   access_spec->batch_keep = NULL;	/* the struct is not allocated zeroed (stx_alloc_struct ()) */
+  access_spec->page_list_keep.npages = 0;
+  access_spec->page_list_keep.nsects = 0;
+  access_spec->page_list_keep.partsect_ftab = NULL;
   access_spec->parts = NULL;
   access_spec->curent = NULL;
   access_spec->row_pruning = NULL;

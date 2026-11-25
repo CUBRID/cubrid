@@ -1504,15 +1504,57 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1390 The secret of session %1$u does not match.
 1391 Cannot end or keep session %1$u because it is not attached to this connection.
-
 1392 A connection used transaction index %1$d, but the server assigned it index %2$d. The assigned index was used instead.
 
 1393 Altering system generated stored procedure is not allowed.
 
 1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 Last Error
+1395 Loading rows into a partitioned class is not supported in CS mode. Load them into its partitions instead.
 
+1396 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
+
+1397 The record cannot be stored because its size (%1$d bytes) exceeds the maximum record size (%2$d bytes) after moving eligible variable-length columns to out-of-row storage (OOS). A record must fit in one page. Reduce the size of fixed-length, small variable-length, or STORAGE FORCE_INLINE columns.
+
+1398 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
+
+1399 Internal error: invalid out-of-row storage argument.
+
+1400 Out-of-row storage (OOS) cleanup skipped during %1$s of object %2$d|%3$d|%4$d: %9$d OOS value chain(s) that the old record referenced are no longer there; the first has head OOS OID %5$d|%6$d|%7$d (%8$s). Nothing was deleted for those chains and the operation completed.
+
+1401 The database was created by a CUBRID build with an incompatible storage format (format %1$d, this build %2$d). Unload it with the build that created it, then load it into a database created by this build.
+
+1402 Vacuum could not find the OOS file of heap file %1$d|%2$d (error %3$d). Object %4$d|%5$d|%6$d and the rest of that heap file in the current log block are left for a later run of the block.
+
+1403 The binary section of the object file is corrupted or truncated at offset %1$lld.
+
+1404 Index %1$s is built with logging because an online backup is in progress; --no-logging-index is not applied to it.
+
+1405 Cannot perform %1$s inside a query or DML statement.
+1406 Cannot perform %1$s in a trigger.
+1407 Cannot perform a DML operation inside a query.
+1408 The stored procedure cannot modify table "%1$s" because the statement references it.
+
+1409 Replacing system generated stored procedure is not allowed.
+
+1410 Unused error code.
+1411 Unused error code.
+1412 Unused error code.
+1413 Unused error code.
+1414 Unused error code.
+1415 Unused error code.
+1416 Unused error code.
+1417 Unused error code.
+1418 Unused error code.
+1419 Unused error code.
+
+1420 The login method cannot be called through a broker.
+
+1421 session renewed: %1$u -> %2$u (%3$s)
+
+1422 Cannot restore the login user %2$s of session %1$u. Open a new connection.
+
+1423 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -2024,11 +2066,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 336 Numeric scale specifier is out of range -84 to 127
 337 The partition name is too long.
 338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+339 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set storage options.
+340 STORAGE option is not allowed on '%1$s'. STORAGE options apply only to normal attributes of a class, and fixed-type attributes accept only DEFAULT and FORCE_INLINE.
 341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
+346 Argument %1$d of %2$s must be a bind variable (? or :name) because it is passed to an %3$s parameter.
 
 
 
@@ -2212,6 +2257,9 @@ $set 14 MSGCAT_SET_LOCK
 48 class %1$s
 49 instance %1$d|%2$d|%3$d of class %4$s
 50 transaction MVCCID %1$llu
+51 %1$s (%2$s on %3$s)
+52 Object type: Transaction lock (MVCCID = %1$llu).\n
+53 \t%1$13s Wait_for_row = %2$s, Wanted_mode = %3$s\n
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n
@@ -2321,6 +2369,10 @@ including those from the current backup level and higher.\n
 30 Number of active log archives has been exceeded the max desired number.
 
 31 This backup and log chain contains a no-logging index build (loaddb) and cannot be replayed past that point; restore from a backup taken after loaddb, or use a partial restore up to a time before it.
+32 An error occurred during a database restore, while formatting the pages that no backup level holds\n\
+   Database Volume: %1$s\n\
+    Database Volid: %2$d\n\
+** WARNING: Do not use the database until an error-free restore is achieved.\n
 $set 17 MSGCAT_SET_GLOSSARY
 1 class
 2 trigger

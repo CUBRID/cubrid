@@ -225,7 +225,8 @@ static int pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALU
 static PT_NODE *pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * gl_expr);
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static int pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr);
+static void pt_mark_filter_terms (PT_NODE * cond);
+static void pt_mark_filter_spine (PT_NODE * node);
 static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -5334,7 +5335,9 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
       PT_NODE *arg2_list = NULL;
 
       /* only the set of values matters to a range predicate.
-       * DISTINCT is set only where it keeps that set, see pt_try_set_subquery_distinct (). */
+       * DISTINCT is set only where it keeps that set, see pt_try_set_subquery_distinct (); a set operation folded
+       * with DISTINCT gives back its operand (pt_fold_union_unwrap ()). */
+      expr->info.expr.arg2 = arg2 = pt_fold_union_unwrap (parser, arg2);
       (void) pt_try_set_subquery_distinct (parser, arg2);
 
       arg2_list = pt_get_select_list (parser, arg2);
@@ -5584,7 +5587,11 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		      keep_searching = false;
 		      break;
 		    }
-		  if (precision < temp->info.data_type.precision)
+		  /* an element of no fixed length (a string literal) is the longest: cast to the length of a shorter one,
+		   * a longer literal would fail to coerce */
+		  if (precision != TP_FLOATING_PRECISION_VALUE
+		      && (temp->info.data_type.precision == TP_FLOATING_PRECISION_VALUE
+			  || precision < temp->info.data_type.precision))
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5599,7 +5606,10 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		      keep_searching = false;
 		      break;
 		    }
-		  if (precision < temp->info.data_type.precision)
+		  /* as for VARCHAR, an element of no fixed length is the longest */
+		  if (precision != TP_FLOATING_PRECISION_VALUE
+		      && (temp->info.data_type.precision == TP_FLOATING_PRECISION_VALUE
+			  || precision < temp->info.data_type.precision))
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5712,6 +5722,13 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
   PT_NODE *b2 = NULL;
 
   op = expr->info.expr.op;
+  if (op == PT_NOT_BETWEEN)
+    {
+      /* x NOT BETWEEN a AND b is evaluated as NOT (x >= a AND x <= b) (pt_to_pred_expr_local_with_arg ()), and the
+       * NOT (x BETWEEN a AND b) of a search condition becomes one (pt_cnf ()). Decide its operand types as for
+       * BETWEEN, or a row can satisfy both x BETWEEN a AND b and its negation, or neither. */
+      op = PT_BETWEEN;
+    }
 
   arg1 = expr->info.expr.arg1;
   if (arg1)
@@ -5902,12 +5919,17 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 		      arg2_type = common_type;
 		    }
 		}
-	      /* we're not casting collection types in this context but we should "propagate" types */
-	      if (arg2_type != PT_TYPE_NONE)
+	      /* we're not casting collection types in this context but we should "propagate" types -- to an operation
+	       * whose result is a collection.  CBRD-28066: a comparison's result is a logical value; the element types
+	       * of its operands are not its data type (the result column's domain is built from it, and an element
+	       * domain whose collation a bound value decides failed the query type copy) */
+	      const bool logical_result = (sig.return_type.type == pt_arg_type::NORMAL
+					   && sig.return_type.val.type == PT_TYPE_LOGICAL);
+	      if (arg2_type != PT_TYPE_NONE && !logical_result)
 		{
 		  pt_propagate_types (parser, expr, PT_NODE_DATA_TYPE (arg1), PT_NODE_DATA_TYPE (arg2));
 		}
-	      if (arg3_type != PT_TYPE_NONE)
+	      if (arg3_type != PT_TYPE_NONE && !logical_result)
 		{
 		  pt_propagate_types (parser, expr, PT_NODE_DATA_TYPE (arg2), PT_NODE_DATA_TYPE (arg3));
 		}
@@ -6936,9 +6958,10 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 	  goto always_false;
 	}
 
-      if (cnf_node->type_enum == PT_TYPE_NA || cnf_node->type_enum == PT_TYPE_NULL)
+      if ((cnf_node->type_enum == PT_TYPE_NA || cnf_node->type_enum == PT_TYPE_NULL) && cnf_node->or_next == NULL)
 	{
-	  /* on_cond does not confused with where conjunct is a NULL, treat it as false condition */
+	  /* on_cond does not confused with where conjunct is a NULL, treat it as false condition; the head of an
+	   * or_next chain is one disjunct only, see the DNF loop below */
 	  goto always_false;
 	}
 
@@ -6990,10 +7013,13 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 		  break;
 		}
 
-	      if (dnf_node->node_type == PT_VALUE && dnf_node->type_enum == PT_TYPE_LOGICAL
-		  && dnf_node->info.value.data_value.i == 0)
+	      if ((dnf_node->node_type == PT_VALUE && dnf_node->type_enum == PT_TYPE_LOGICAL
+		   && dnf_node->info.value.data_value.i == 0)
+		  || dnf_node->type_enum == PT_TYPE_NA || dnf_node->type_enum == PT_TYPE_NULL)
 		{
-		  /* cut it off from DNF list */
+		  /* cut it off from DNF list: a FALSE or NULL disjunct, as a NULL (UNKNOWN) rejects the row as FALSE does
+		   * in a condition (since CBRD-28029 a NULL OR x is folded only in a term pt_cnf () made, and CNF can leave
+		   * the NULL as the head of the chain) */
 		  if (dnf_prev)
 		    {
 		      dnf_prev->or_next = dnf_node->or_next;
@@ -7136,6 +7162,23 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case PT_SELECT:
 
+      /* the ORDER BY ... FOR filter takes the rows out after the aggregation */
+      if (node->info.query.orderby_for)
+	{
+	  where = node->info.query.orderby_for;
+	  if (pt_false_search_condition (parser, where) == true)
+	    {
+	      return true;
+	    }
+	}
+
+      /* an aggregate with no GROUP BY gives one row even over no row: a false START WITH or hierarchical WHERE,
+       * which take the rows out before the aggregation, does not empty it (CBRD-28029) */
+      if (pt_is_single_tuple (parser, node))
+	{
+	  return false;
+	}
+
       /* If the "connect by" condition is false the query still has to return all the "start with" tuples. Therefore we
        * do not check that "connect by" is false. */
       if (node->info.query.q.select.start_with)
@@ -7153,20 +7196,6 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      return true;
 	    }
-	}
-
-      if (node->info.query.orderby_for)
-	{
-	  where = node->info.query.orderby_for;
-	  if (pt_false_search_condition (parser, where) == true)
-	    {
-	      return true;
-	    }
-	}
-
-      if (pt_is_single_tuple (parser, node))
-	{
-	  return false;
 	}
 
       if (node->info.query.q.select.group_by)
@@ -7511,6 +7540,45 @@ pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * recursive_expr)
 }
 
 /*
+ * pt_mark_filter_spine () - mark the AND and OR nodes reached from a term of a search condition through AND and OR
+ *   return:
+ *   node(in/out): a term, or an operand of an AND or an OR of it
+ *
+ * Note: a search condition keeps a row only when it is TRUE, and AND and OR are monotone, so an operand on this spine
+ *	 that is UNKNOWN can be taken as FALSE; pt_eval_type () folds a NULL operand of such an AND or OR.  The spine
+ *	 stops at any other node: under IS, NOT, XOR, CAST, CASE or a function the truth value is a value again.
+ */
+static void
+pt_mark_filter_spine (PT_NODE * node)
+{
+  while (node != NULL && node->node_type == PT_EXPR && (node->info.expr.op == PT_AND || node->info.expr.op == PT_OR))
+    {
+      PT_EXPR_INFO_SET_FLAG (node, PT_EXPR_INFO_FILTER_TERM);
+      pt_mark_filter_spine (node->info.expr.arg1);
+      node = node->info.expr.arg2;
+    }
+}
+
+/*
+ * pt_mark_filter_terms () - mark the AND/OR spine of each term of a search condition
+ *   return:
+ *   cond(in/out): a search condition, a tree or a CNF list with or_next chains
+ */
+static void
+pt_mark_filter_terms (PT_NODE * cond)
+{
+  PT_NODE *term, *disj;
+
+  for (term = cond; term != NULL; term = term->next)
+    {
+      for (disj = term; disj != NULL; disj = disj->or_next)
+	{
+	  pt_mark_filter_spine (disj);
+	}
+    }
+}
+
+/*
  * pt_eval_type_pre () -
  *   return:
  *   parser(in):
@@ -7530,6 +7598,67 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
   if (sc_info->donot_fold == true)
     {				/* skip folding */
       return node;
+    }
+
+  /* the search conditions, where pt_eval_type () folds a NULL operand of an AND or OR as a filter does */
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      pt_mark_filter_terms (node->info.query.q.select.where);
+      pt_mark_filter_terms (node->info.query.q.select.having);
+      pt_mark_filter_terms (node->info.query.q.select.start_with);
+      pt_mark_filter_terms (node->info.query.q.select.connect_by);
+      pt_mark_filter_terms (node->info.query.q.select.after_cb_filter);
+      break;
+
+    case PT_SPEC:
+      pt_mark_filter_terms (node->info.spec.on_cond);
+      break;
+
+    case PT_UPDATE:
+      pt_mark_filter_terms (node->info.update.search_cond);
+      break;
+
+    case PT_DELETE:
+      pt_mark_filter_terms (node->info.delete_.search_cond);
+      break;
+
+    case PT_MERGE:
+      pt_mark_filter_terms (node->info.merge.search_cond);
+      pt_mark_filter_terms (node->info.merge.update.search_cond);
+      pt_mark_filter_terms (node->info.merge.update.del_search_cond);
+      pt_mark_filter_terms (node->info.merge.insert.search_cond);
+      break;
+
+    case PT_CREATE_INDEX:
+      pt_mark_filter_terms (node->info.index.where);
+      break;
+
+    default:
+      break;
+    }
+
+  /* cast before the switch below types the LIMIT values and copies them into the numbering predicates. A PL/CSQL
+   * static SQL keeps the clause as written and casts the copies (pt_limit_to_numbering_expr) */
+  if (!parser->flag.is_parsing_static_sql)
+    {
+      switch (node->node_type)
+	{
+	case PT_SELECT:
+	case PT_UNION:
+	case PT_DIFFERENCE:
+	case PT_INTERSECTION:
+	  pt_cast_limit_string_operands (parser, node->info.query.limit);
+	  break;
+	case PT_UPDATE:
+	  pt_cast_limit_string_operands (parser, node->info.update.limit);
+	  break;
+	case PT_DELETE:
+	  pt_cast_limit_string_operands (parser, node->info.delete_.limit);
+	  break;
+	default:
+	  break;
+	}
     }
 
   switch (node->node_type)
@@ -9248,6 +9377,8 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_DISK_SIZE:
     case PT_SCHEMA_DEF:
     case PT_COLLECTION_TO_STRING:
+      /* EXISTS is LOGICAL whatever its subquery selects, even a host variable that has no type yet */
+    case PT_EXISTS:
       return true;
 
     default:
@@ -9381,6 +9512,15 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  assert (node->info.expr.arg1->node_type == PT_VALUE);
 	}
+      return node;
+    }
+
+  if (pt_is_range_expression (op) && node->info.expr.arg2 != NULL && PT_IS_VALUE_NODE (node->info.expr.arg2)
+      && node->info.expr.arg2->info.value.is_false_where)
+    {
+      /* the right operand is a subquery that returns no row, folded to a NULL value (pt_to_false_subquery ()): the
+       * comparison is TRUE or FALSE whatever the left operand is, and pt_fold_const_expr () folds it */
+      node->type_enum = PT_TYPE_LOGICAL;
       return node;
     }
 
@@ -10521,6 +10661,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->type_enum = PT_TYPE_LOGICAL;
 	  if (pt_is_query (arg1))
 	    {
+	      /* only whether a row exists counts, which the duplicates a folded set operation removes do not change */
+	      node->info.expr.arg1 = arg1 = pt_fold_union_unwrap (parser, arg1);
 	      pt_chop_to_one_select_item (parser, arg1);
 	    }
 	}
@@ -10659,8 +10801,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    /* if other value, the db_str_to_date will return NULL */
 	    node->type_enum = PT_TYPE_NULL;
 	  }
-	else if (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE)
+	else if (type_specifier == PT_TYPE_MAYBE && (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE))
 	  {
+	    /* CBRD-28134: only an unknown format leaves the result open; a known one without a specifier is a DATE, as
+	     * a literal format of no specifier types it, and the row raises the literal's error */
 	    node->type_enum = PT_TYPE_MAYBE;
 	  }
 	break;
@@ -10953,8 +11097,9 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		      if (nextcase->data_type)
 			{
 			  parser_free_tree (parser, nextcase->data_type);
-			  nextcase->data_type = parser_copy_tree_list (parser, next_arg1->data_type);
 			}
+		      /* set it even if nextcase had none; constant folding casts nextcase to it */
+		      nextcase->data_type = parser_copy_tree_list (parser, next_arg1->data_type);
 		    }
 		  /* set nextcase to nextcase->arg2 and continue */
 		  prev = nextcase;
@@ -17858,7 +18003,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    DB_VALUE slash_char;
 	    char const *slash_str = "\\";
 
-	    if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false && DB_IS_NULL (esc_char))
+	    /* with no ESCAPE clause the backslash escapes only under require_like_escape_character, as when the term is
+	     * evaluated (pt_to_pred_expr_local_with_arg ()); no_backslash_escapes concerns string literals only */
+	    if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER) && DB_IS_NULL (esc_char))
 	      {
 		INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET : db_get_string_codeset (arg1);
 		int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION : db_get_string_collation (arg1);
@@ -18471,6 +18618,35 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
       goto end;
     }
+
+  if (pt_is_range_expression (op) && expr->info.expr.arg2 != NULL && PT_IS_VALUE_NODE (expr->info.expr.arg2)
+      && expr->info.expr.arg2->info.value.is_false_where)
+    {
+      /* the right operand is a subquery that returns no row (pt_to_false_subquery ()): x op ALL and x NOT IN over the
+       * empty set are TRUE, x op SOME and x IN are FALSE, also for a NULL x */
+      switch (op)
+	{
+	case PT_EQ_ALL:
+	case PT_NE_ALL:
+	case PT_GE_ALL:
+	case PT_GT_ALL:
+	case PT_LT_ALL:
+	case PT_LE_ALL:
+	case PT_IS_NOT_IN:
+	  db_make_int (&dbval_res, 1);
+	  break;
+	default:
+	  db_make_int (&dbval_res, 0);
+	  break;
+	}
+      result = pt_dbval_to_value (parser, &dbval_res);
+      if (result == NULL)
+	{
+	  has_error = true;
+	}
+      goto end;
+    }
+
   /* special handling for only one range - convert to comp op */
   if (op == PT_RANGE)
     {
@@ -19016,6 +19192,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  }
 	  break;
 	case PT_LIKE:
+	case PT_NOT_LIKE:
+	  /* no ESCAPE clause: a NULL value here would be taken as ESCAPE NULL, which escapes with a backslash */
 	  arg3 = NULL;
 	  type3 = PT_TYPE_NONE;
 	  break;
@@ -19148,6 +19326,16 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
 
       db_value = pt_value_to_db (parser, val);
+      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL
+	  && !PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CNF_DONE | PT_EXPR_INFO_FILTER_TERM))
+	{
+	  /* NULL AND x is FALSE when x is, and NULL OR x is UNKNOWN when x is FALSE: only on the AND/OR spine of a
+	   * search condition (pt_mark_filter_terms (), and pt_cnf () marks its terms CNF_DONE), where UNKNOWN rejects
+	   * the row as FALSE does, takes NULL for the AND and the other operand for the OR.  Under IS, NOT, XOR, CAST or
+	   * CASE the node stays, and the grammar reads its NULL operand back from a stored definition */
+	  goto end;
+	}
+
       if (op == PT_AND)
 	{
 	  if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
@@ -19891,6 +20079,116 @@ end:
 }
 
 /*
+ * pt_eval_type_outside_query_pre () - pt_eval_type_pre () that leaves a subquery as it is
+ *
+ * Note: a subquery is typed with its own statement.  Typed again from the rewrite of the query holding it, it may
+ *	 be in the middle of its own rewrite: qo_reduce_equality_terms () moves the ON condition of a join into the
+ *	 WHERE for a while, and pt_where_type () would read a false ON term there as a false WHERE.
+ */
+static PT_NODE *
+pt_eval_type_outside_query_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  return pt_eval_type_pre (parser, node, arg, continue_walk);
+}
+
+/*
+ * pt_eval_type_outside_query () - pt_eval_type () that leaves a subquery as it is; the walk calls the post of a node
+ *				    whose pre stopped there
+ */
+static PT_NODE *
+pt_eval_type_outside_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (PT_IS_QUERY (node))
+    {
+      return node;
+    }
+  return pt_eval_type (parser, node, arg, continue_walk);
+}
+
+/*
+ * pt_fold_constants_outside_query_pre () - pt_fold_constants_pre () that leaves a subquery as it is
+ */
+static PT_NODE *
+pt_fold_constants_outside_query_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  /* pt_fold_constants_pre () does not reset what the pre of a subquery left */
+  *continue_walk = PT_CONTINUE_WALK;
+  return pt_fold_constants_pre (parser, node, arg, continue_walk);
+}
+
+/*
+ * pt_fold_constants_outside_query_post () - pt_fold_constants_post () that leaves a subquery as it is
+ */
+static PT_NODE *
+pt_fold_constants_outside_query_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (PT_IS_QUERY (node))
+    {
+      return node;
+    }
+  return pt_fold_constants_post (parser, node, arg, continue_walk);
+}
+
+/*
+ * pt_semantic_type_term_in_place () - pt_semantic_type_in_place () of a search condition term in the middle of a
+ *					rewrite: the subqueries it holds are left as they are
+ *   return: NO_ERROR or ER_FAILED
+ *   parser(in):
+ *   tree(in/out): replaced with the resulting tree; kept if the result is NULL
+ *   sc_info_ptr(in):
+ */
+int
+pt_semantic_type_term_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr)
+{
+  PT_NODE *result, *spec_list = NULL;
+
+  if (pt_has_error (parser))
+    {
+      return ER_FAILED;
+    }
+  sc_info_ptr->has_dblink = false;
+
+  result = parser_walk_tree (parser, *tree, pt_eval_type_outside_query_pre, sc_info_ptr, pt_eval_type_outside_query,
+			     sc_info_ptr);
+  if (result == NULL)
+    {
+      return ER_FAILED;
+    }
+  *tree = result;
+  if (pt_has_error (parser))
+    {
+      return ER_FAILED;
+    }
+
+  if (!parser->flag.is_parsing_static_sql)
+    {
+      result = parser_walk_tree (parser, *tree, pt_fold_constants_outside_query_pre, &spec_list,
+				 pt_fold_constants_outside_query_post, sc_info_ptr);
+      if (result == NULL)
+	{
+	  return ER_FAILED;
+	}
+      *tree = result;
+      if (pt_has_error (parser))
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * pt_semantic_type_in_place () - pt_semantic_type () that keeps *tree pointing to the resulting tree even on error
  *   return: NO_ERROR or ER_FAILED
  *   parser(in):
@@ -19900,7 +20198,7 @@ end:
  * Note: pt_semantic_type () returns NULL on error, so a caller cannot get the node that replaced (and freed) the input
  *       tree during type checking or constant folding.
  */
-static int
+int
 pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr)
 {
   PT_NODE *spec = NULL;
@@ -22208,6 +22506,12 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 	}
       break;
     case PT_VALUE:
+      if (!PT_HAS_COLLATION (node->type_enum) && !PT_IS_COLLECTION_TYPE (node->type_enum))
+	{
+	  /* CBRD-28066: a value without a collation - a NUMERIC literal carries its precision in a data type - keeps
+	   * it, as an element of a collection whose collation is applied to its elements */
+	  return node;
+	}
       if (node->data_type == NULL && PT_HAS_COLLATION (node->type_enum) && coll_id != LANG_SYS_COLLATION)
 	{
 	  /* create a data type */
@@ -22467,6 +22771,13 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 
 	      /* 'wrap_dt' is copied in 'pt_wrap_with_cast_op' */
 	      parser_free_node (parser, wrap_dt);
+	    }
+	  else if (node->data_type == NULL)
+	    {
+	      /* a CAST is not wrapped above, and a COLLATE modifier CAST whose type could not be resolved (an error is
+	       * already set, but type checking goes on inside a collection constructor or an IN list) has no data type
+	       * to take the collation */
+	      goto cannot_coerce;
 	    }
 	  else
 	    {

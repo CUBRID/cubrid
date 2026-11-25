@@ -95,7 +95,8 @@ struct disk_volume_header
   INT64 vol_creation;		/* Volume creation time */
   LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the recovery process of this volume */
   HFID boot_hfid;		/* System Heap file for booting purposes and multi volumes */
-  INT32 reserved0;		/* reserved area */
+  INT32 storage_format;		/* DISK_STORAGE_FORMAT_REVISION of the build that formatted the volume. Volumes
+				 * formatted before the stamp existed hold 0 here, which was the reserved area. */
   INT32 reserved1;		/* reserved area */
   INT32 reserved2;		/* reserved area */
   INT32 reserved3;		/* reserved area */
@@ -109,6 +110,10 @@ struct disk_volume_header
 				 * var_fields */
 
 };
+
+/* unit_tests/oos/scripts/test_storage_format_guard.sh rewrites the stamp at this file offset of volume 0 */
+static_assert (offsetof (FILEIO_PAGE, page) + offsetof (DISK_VOLUME_HEADER, storage_format) == 140,
+	       "storage_format moved in the volume header page");
 
 typedef struct disk_recv_link_perm_volume DISK_RECV_LINK_PERM_VOLUME;
 struct disk_recv_link_perm_volume
@@ -567,8 +572,11 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     }
   fault_inject_random_crash ();
 
-  /* this log must be flushed. */
-  logpb_force_flush_pages (thread_p);
+  if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
+    {
+      /* this log must be flushed. a temporary volume has nothing to flush: it is not logged and removed on restart */
+      logpb_force_flush_pages (thread_p);
+    }
   fault_inject_random_crash ();
 
   /* create and initialize the volume. recovery information is initialized in every page. */
@@ -609,7 +617,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   vhdr->db_charset = lang_charset ();
   vhdr->hint_allocsect = NULL_SECTID;
   vhdr->dummy1 = vhdr->dummy2 = 0;	/* alignment. You may use it. */
-  vhdr->reserved0 = vhdr->reserved1 = vhdr->reserved2 = vhdr->reserved3 = 0;	/* for future extension */
+  vhdr->storage_format = DISK_STORAGE_FORMAT_REVISION;
+  vhdr->reserved1 = vhdr->reserved2 = vhdr->reserved3 = 0;	/* for future extension */
 
   /* set sector table info in volume header */
   disk_volume_header_set_stab (vol_purpose, vhdr);
@@ -1738,7 +1747,11 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 			       extend_info->voltype, "volume extension started");
 #endif
 
-      log_sysop_start (thread_p);
+      /* a temporary volume is not logged and is removed on restart; a system operation protects nothing there */
+      if (voltype == DB_PERMANENT_VOLTYPE)
+	{
+	  log_sysop_start (thread_p);
+	}
 
       (void) logtb_set_check_interrupt (thread_p, false);
       error_code = disk_volume_expand (thread_p, extend_info->volid_extend, voltype, to_expand, &nsect_free_new);
@@ -1746,11 +1759,17 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  log_sysop_abort (thread_p);
+	  if (voltype == DB_PERMANENT_VOLTYPE)
+	    {
+	      log_sysop_abort (thread_p);
+	    }
 	  return error_code;
 	}
 
-      log_sysop_commit (thread_p);
+      if (voltype == DB_PERMANENT_VOLTYPE)
+	{
+	  log_sysop_commit (thread_p);
+	}
       assert (nsect_free_new >= to_expand);
 
       if (extend_info->nsect_total == extend_info->nsect_max)
@@ -1924,6 +1943,7 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
    * 5. flush log! without this last step, it is still possible to expand the volume without recovery
    * 6. now it is safe to expand volume.
    *
+   * steps 1 to 5 are only for a permanent volume. a temporary volume is not logged and is removed on restart.
    */
 
   /* round up */
@@ -1941,8 +1961,11 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   assert (volheader->type == voltype);
   do_logging = (volheader->type == DB_PERMANENT_VOLTYPE);
 
-  /* we need system op here */
-  log_sysop_start (thread_p);
+  if (do_logging)
+    {
+      /* we need system op here */
+      log_sysop_start (thread_p);
+    }
 
   /* update sector total number */
   volheader->nsect_total += nsect_extend;
@@ -1982,13 +2005,16 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
-  /* we can now end system op. */
-  log_sysop_commit (thread_p);
+  if (do_logging)
+    {
+      /* we can now end system op. */
+      log_sysop_commit (thread_p);
 
-  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
+      FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
-  /* to be sure expansion really happens on recovery too, we must flush log! */
-  logpb_force_flush_pages (thread_p);
+      /* to be sure expansion really happens on recovery too, we must flush log! */
+      logpb_force_flush_pages (thread_p);
+    }
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
@@ -2232,7 +2258,11 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 	}
     }
 
-  log_sysop_start (thread_p);
+  /* a temporary volume is not logged and is removed on restart; a system operation protects nothing there */
+  if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
+    {
+      log_sysop_start (thread_p);
+    }
 
   /* with disk_format, we start fixing pages. page fixing may depend on */
   if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
@@ -2283,11 +2313,17 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 exit:
   if (error_code == NO_ERROR)
     {
-      log_sysop_commit (thread_p);
+      if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
+	{
+	  log_sysop_commit (thread_p);
+	}
     }
   else
     {
-      log_sysop_abort (thread_p);
+      if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
+	{
+	  log_sysop_abort (thread_p);
+	}
 
       /* undo incrementing volume count. rollback won't do it. */
       if (extinfo->voltype == DB_TEMPORARY_VOLTYPE)
@@ -3155,6 +3191,7 @@ disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
   (void) fprintf (fp, "Boot_hfid: volid %d, fileid %d header_pageid %d\n", vhdr->boot_hfid.vfid.volid,
 		  vhdr->boot_hfid.vfid.fileid, vhdr->boot_hfid.hpgid);
   (void) fprintf (fp, " db_charset = %d\n", vhdr->db_charset);
+  (void) fprintf (fp, " storage_format = %d\n", vhdr->storage_format);
 }
 
 /*
@@ -4348,6 +4385,7 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
   int nreserved;
   bool retried = false;
   bool did_extend = false;
+  bool is_sysop_started = false;
   int error_code = NO_ERROR;
 
   assert (purpose == DB_PERMANENT_DATA_PURPOSE || purpose == DB_TEMPORARY_DATA_PURPOSE);
@@ -4369,14 +4407,25 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
 retry:
   disk_log ("disk_reserve_sectors", "reserve %d sectors for %s.", n_sectors, disk_purpose_to_string (purpose));
 
-  log_sysop_start (thread_p);
+  /* Temporary purpose reservations are not logged (disk_stab_unit_reserve), and the error path below reverts them
+   * by itself. A system operation would protect nothing, but it would hold the transaction's rmutex_topop until
+   * the reservation ends. Parallel query workers share the transaction, so they would wait for each other here, or
+   * forever for a main thread that waits for them inside its own system operation. */
+  if (purpose != DB_TEMPORARY_DATA_PURPOSE)
+    {
+      log_sysop_start (thread_p);
+      is_sysop_started = true;
+    }
 
   /* we don't want to conflict with disk check */
   error_code = csect_enter_as_reader (thread_p, CSECT_DISK_CHECK, INF_WAIT);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      log_sysop_abort (thread_p);
+      if (is_sysop_started)
+	{
+	  log_sysop_abort (thread_p);
+	}
       return error_code;
     }
 
@@ -4408,8 +4457,11 @@ retry:
   assert ((context.vsidp - reserved_sectors) == n_sectors);
 
   csect_exit (thread_p, CSECT_DISK_CHECK);
-  /* attach sys op to outer */
-  log_sysop_attach_to_outer (thread_p);
+  if (is_sysop_started)
+    {
+      /* attach sys op to outer */
+      log_sysop_attach_to_outer (thread_p);
+    }
 
 #if !defined (NDEBUG)
   if (did_extend)
@@ -4463,8 +4515,11 @@ error:
 
   csect_exit (thread_p, CSECT_DISK_CHECK);
 
-  /* abort any changes */
-  log_sysop_abort (thread_p);
+  if (is_sysop_started)
+    {
+      /* abort any changes */
+      log_sysop_abort (thread_p);
+    }
 
   /* The IO entries cover the volume extension half of this function; the latch entry covers the page fix half
    * (disk_get_volheader (), disk_stab_cursor_fix ()). What is left is a logic failure - see
@@ -5958,6 +6013,44 @@ disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, INTL_CODESET * d
   *db_charset = (INTL_CODESET) vhdr->db_charset;
 
   pgbuf_unfix_and_init (thread_p, pgptr);
+
+  return NO_ERROR;
+}
+
+/*
+ * disk_check_storage_format () - Reject a volume formatted with another storage format
+ *   return: NO_ERROR or ER_BO_INCOMPATIBLE_STORAGE_FORMAT
+ *   volid(in): Permanent volume identifier
+ *
+ * Note: Unreleased builds of one disk compatibility level can still change the storage format. Their databases
+ *       must be recreated, and this check makes boot refuse them before any other page is read or recovered.
+ */
+int
+disk_check_storage_format (THREAD_ENTRY * thread_p, INT16 volid)
+{
+  DISK_VOLUME_HEADER *vhdr;
+  PAGE_PTR pgptr = NULL;
+  INT32 storage_format;
+
+  int error_code = NO_ERROR;
+
+  error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &vhdr);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  storage_format = vhdr->storage_format;
+
+  pgbuf_unfix_and_init (thread_p, pgptr);
+
+  if (storage_format != DISK_STORAGE_FORMAT_REVISION)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_INCOMPATIBLE_STORAGE_FORMAT, 2, storage_format,
+	      DISK_STORAGE_FORMAT_REVISION);
+      return ER_BO_INCOMPATIBLE_STORAGE_FORMAT;
+    }
 
   return NO_ERROR;
 }

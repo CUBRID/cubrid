@@ -9378,8 +9378,8 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
  */
 
 static int
-qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_precision, DB_TYPE s1_type,
-		  const unsigned char *s2, int s2_length, int s2_size_, int s2_precision, DB_TYPE s2_type,
+qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size, int s1_precision, DB_TYPE s1_type,
+		  const unsigned char *s2, int s2_length, int s2_size, int s2_precision, DB_TYPE s2_type,
 		  INTL_CODESET codeset, unsigned char **result, int *result_length, int *result_size,
 		  DB_DATA_STATUS * data_status)
 {
@@ -9387,14 +9387,11 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
   int pad1_length, pad2_length;
   int length_left, cat_length, cat_size;
   int s1_logical_length, s2_logical_length;
-  int s1_size, s2_size;
+  int missing_pad_size;
   unsigned char *cat_ptr;
   int error_status = NO_ERROR;
 
   *data_status = DATA_STATUS_OK;
-
-  s1_size = s1_size_;
-  s2_size = s2_size_;
 
   /*
    *  Categorize the source string into fixed and variable
@@ -9424,17 +9421,15 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
       s2_logical_length = s2_length;
     }
 
+  /* the result gets the pad characters a fixed-length string lacks, so reserve their bytes */
+  missing_pad_size = (s1_logical_length - s1_length + s2_logical_length - s2_length) * intl_pad_size (codeset);
+
   /*
    *  If both source strings are fixed-length, the concatenated
    *  result will be fixed-length.
    */
   if (QSTR_IS_PADDED_LENGTH (s1_type) && QSTR_IS_PADDED_LENGTH (s2_type))
     {
-      /*
-       * The only time we enter inside this if statement is 
-       * when we are using the iso88591 codeset and a data type like char(100). 
-       * This is because the size is not fixed in all other cases.
-       */
       /*
        *  The result will be a chararacter string of length =
        *  string1_precision + string2_precision.  If the result
@@ -9449,16 +9444,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 	  *data_status = DATA_STATUS_TRUNCATED;
 	}
 
-      if (s1_size == 0)
-	{
-	  s1_size = s1_logical_length;
-	}
-      if (s2_size == 0)
-	{
-	  s2_size = s2_logical_length;
-	}
-
-      *result_size = s1_size + s2_size;
+      *result_size = s1_size + s2_size + missing_pad_size;
 
       if (*result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
@@ -9518,16 +9504,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
        */
       *result_length = MIN ((s1_logical_length + s2_logical_length), QSTR_MAX_PRECISION (s1_type));
 
-      if (s1_size == 0)
-	{
-	  s1_size = s1_logical_length;
-	}
-      if (s2_size == 0)
-	{
-	  s2_size = s2_logical_length;
-	}
-
-      *result_size = s1_size + s2_size;
+      *result_size = s1_size + s2_size + missing_pad_size;
 
       if (*result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
@@ -16898,7 +16875,7 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
 
   if (result_num->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
-      result_num->data.num.header.precision = precision;
+      result_num->data.num.header.precision = numeric_get_precision_digits (db_locate_numeric (result_num));
       result_num->data.num.header.scale = scale;
     }
   else
@@ -25776,10 +25753,9 @@ error_exit:
  *       on what this function computes.
  *
  * Note: If last_safe_logical_pos is negative the lower bound of the index
- *       scan is negative infinity (equivalent to the empty string or the
- *       string ' ' for the CHAR/VARCHAR default collation) and the upper
- *       bound is positive infinity (currently approximated by a string of
- *       one character code 255).
+ *       scan is the empty string, which no string is smaller than, and the
+ *       upper bound is positive infinity (currently approximated by a string
+ *       of one character code 255).
  */
 int
 db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_VALUE * bound, const bool has_escape_char,
@@ -25827,9 +25803,20 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_VALUE * boun
     {
       if (compute_lower_bound)
 	{
-	  error_code =
-	    db_value_domain_min (bound, DB_TYPE_VARCHAR, DB_VALUE_PRECISION (pattern), DB_VALUE_SCALE (pattern),
-				 codeset, collation_id, NULL);
+	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+	    {
+	      /* '' is NULL here (db_make_db_char ()) and no row holds it: the domain minimum, as a NULL bound would
+	       * make the range empty */
+	      error_code =
+		db_value_domain_min (bound, DB_TYPE_VARCHAR, DB_VALUE_PRECISION (pattern), DB_VALUE_SCALE (pattern),
+				     codeset, collation_id, NULL);
+	    }
+	  else
+	    {
+	      /* the empty string, not the domain minimum (a space): a VARCHAR comparison does not ignore trailing
+	       * spaces, so '' is smaller than ' ' and a pattern that matches '' ('', '%') would lose the rows of '' */
+	      error_code = db_make_varchar (bound, DB_VALUE_PRECISION (pattern), "", 0, codeset, collation_id);
+	    }
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -25904,6 +25891,33 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_VALUE * boun
 	    {
 	      char *next_alpha_char_p = result + result_size;
 	      int next_len = 0;
+	      int char_size = 0;
+	      INTL_UTF8_VALIDITY validity = INTL_UTF8_VALID;
+
+	      /* a byte that is not a character of the codeset has no next character: the next one of an invalid UTF-8
+	       * byte wraps to U+0000 (intl_utf8_to_cp () returns 0xffffffff), and the bound below the pattern made
+	       * LIKE find no row.  No upper bound then, as for a pattern with no fixed prefix */
+	      intl_char_size ((unsigned char *) crt_char_p, 1, codeset, &char_size);
+	      if (codeset == INTL_CODESET_UTF8)
+		{
+		  validity = intl_check_utf8 ((unsigned char *) crt_char_p, char_size, NULL);
+		}
+	      else if (codeset == INTL_CODESET_KSC5601_EUC)
+		{
+		  validity = intl_check_euckr ((unsigned char *) crt_char_p, char_size, NULL);
+		}
+	      if (validity != INTL_UTF8_VALID)
+		{
+		  db_private_free_and_init (NULL, result);
+		  error_code =
+		    db_value_domain_max (bound, DB_TYPE_VARCHAR, DB_VALUE_PRECISION (pattern), DB_VALUE_SCALE (pattern),
+					 codeset, collation_id, NULL);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error_exit;
+		    }
+		  goto fast_exit;
+		}
 
 	      result_size +=
 		QSTR_NEXT_ALPHA_CHAR (collation_id, (unsigned char *) crt_char_p,
@@ -28222,9 +28236,9 @@ db_string_index_prefix (const DB_VALUE * string1, const DB_VALUE * string2, cons
   int cmp_res;
 
   assert (string1 != (DB_VALUE *) NULL);
-  assert (string2 != (DB_VALUE *) NULL);
-  assert (index_type != (DB_VALUE *) NULL);
 
+  /* the evaluation does not fetch the other operands of a NULL string1 (fetch_peek_arith ()): they come as NULL
+   * pointers, which DB_IS_NULL () takes as NULL */
   if (DB_IS_NULL (string1) || DB_IS_NULL (string2) || DB_IS_NULL (index_type))
     {
       if (QSTR_IS_BIT (DB_VALUE_DOMAIN_TYPE (string1)))

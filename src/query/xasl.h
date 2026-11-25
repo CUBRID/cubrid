@@ -117,6 +117,13 @@ struct xasl_node_header
     } \
   while (0)
 
+/* stmt_flags of an XASL, about the SQL statement it was generated for */
+#define XASL_STMT_HAS_SP_CALL		0x01	/* a stored procedure is called while it runs */
+#define XASL_STMT_WRITE_CASCADES	0x02	/* it updates or deletes rows, so a foreign key action can follow */
+#define XASL_STMT_FOR_UPDATE		0x04	/* a SELECT ... FOR UPDATE, which locks the rows for write */
+
+struct xasl_stmt_info;
+
 /************************************************************************/
 /* Enumerations                                                         */
 /************************************************************************/
@@ -181,6 +188,7 @@ using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
 
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;
 typedef struct gby_skip_state GBY_SKIP_STATE;
+typedef struct upd_deferred_rows UPD_DEFERRED_ROWS;
 struct pruning_context;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
@@ -354,6 +362,8 @@ struct buildlist_proc_node
 					 * statement */
   AGGREGATE_HASH_CONTEXT *agg_hash_context;	/* hash aggregate context, not serialized */
   GBY_SKIP_STATE *gby_skip_state;	/* GROUP BY skip aggregated during the scan, one execution's; not serialized */
+  UPD_DEFERRED_ROWS *upd_deferred_rows;	/* rows of the UPDATE's select whose assignments failed on a version
+					 * older than the last; one execution's, not serialized */
   const TP_DOMAIN **g_hk_compares;	/* per hash key column, the domain whose cmpval and collation compare its values
 					 * (domain_compare_in_domain), decided at unpack; NULL: each execution's key domains;
 					 * not serialized */
@@ -838,6 +848,8 @@ struct xasl_stream
 
   char *buffer;
   int buffer_size;
+
+  struct xasl_stmt_info *stmt_info;	/* requested by prepare when not NULL (xasl_stream.hpp) */
 };
 
 #define XASL_STREAM_HEADER_PTR(stream) \
@@ -945,8 +957,11 @@ typedef enum
   ACCESS_SPEC_FLAG_MERGEABLE_LIST = 0x1 << 3,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_BUILDVALUE_OPT = 0x1 << 4,	/* used with parallel heap scan buildvalue aggregate optimization. */
   ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5,	/* used with min/max aggregate. */
-  ACCESS_SPEC_FLAG_PRUNE_PER_ROW = 0x1 << 6	/* a partitioned NL inner walked per outer row prunes its partitions
+  ACCESS_SPEC_FLAG_PRUNE_PER_ROW = 0x1 << 6,	/* a partitioned NL inner walked per outer row prunes its partitions
 						 * by the outer row's join values (CBRD-27866) */
+  ACCESS_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED = 0x1 << 7	/* a DML target left to the force-phase reevaluation.
+								 * Locked at select, as FOR UPDATE, where it does not
+								 * run: see qexec_spec_is_for_update (). */
 } ACCESS_SPEC_FLAG;
 
 #define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)
@@ -1256,6 +1271,10 @@ struct partition_spec_node
   BTID_INT btid_int;		/* the B+tree header of btid, for an index scan switched to this partition */
   SCAN_STATS scan_stats;
   const char *batch_why_not;	/* the page batch's last reason on this partition's heap scan (trace) */
+  /* this partition's page bitmap between its scan's opens of one execution, as the access spec's page_list_keep */
+  FILE_FTAB_COLLECTOR page_list_keep;
+  unsigned int page_list_keep_snapshot;
+  int page_list_keep_npages;
 };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
@@ -1278,6 +1297,12 @@ struct access_spec_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   SCAN_ID s_id;			/* scan identifier */
   SCAN_BATCH_KEEP *batch_keep;	/* the page batch's plan between the scan's opens (scan_manager.h), or NULL */
+  /* the heap's page bitmap between the scan's opens of one execution (scan_heap_scan_page_list ()): a scan opened
+   * again under the same snapshot (a correlated subquery, once per outer row) reads it instead of the file table */
+  FILE_FTAB_COLLECTOR page_list_keep;	/* partsect_ftab is NULL when nothing is kept */
+  HFID page_list_keep_hfid;	/* the heap it lists (a partition's bitmap is kept in its partition_spec_node) */
+  unsigned int page_list_keep_snapshot;	/* the snapshot build it follows (MVCC_SNAPSHOT.build_serial) */
+  int page_list_keep_npages;	/* its pages: the parallel decision's count */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   struct pruning_context *row_pruning;	/* pruning by the outer row's join values, loaded on its first row, or NULL */
@@ -1312,7 +1337,7 @@ struct xasl_node
   DB_VALUE *ordbynum_val;	/* orderby_num() value result */
   REGU_VARIABLE *orderby_limit;	/* the limit to use in top K sorting. Computed from [ordby_num < X] clauses */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  TP_VALUE_CONVERTER orderby_limit_conv;	/* CBRD-27583: orderby_limit's converter into INTEGER, found at
+  TP_VALUE_CONVERTER orderby_limit_conv;	/* CBRD-27583: orderby_limit's converter into BIGINT, found at
 						 * unpack from its domain; not serialized */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
   int ordbynum_flag;		/* stop or continue ordering? */
@@ -1397,6 +1422,11 @@ struct xasl_node
   OID *class_oid_list;		/* list of class/serial OIDs referenced in the XASL */
   int *class_locks;		/* list of locks for class_oid_list. */
   int *tcard_list;		/* list of #pages of the class OIDs */
+  int stmt_flags;		/* XASL_STMT_* */
+  int n_write_oid_list;		/* size of write_class_oid_list */
+  OID *write_class_oid_list;	/* classes the statement writes that class_locks does not mark IX */
+  int n_read_oid_list;		/* size of read_class_oid_list */
+  OID *read_class_oid_list;	/* classes the statement reads that class_oid_list misses */
   const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
