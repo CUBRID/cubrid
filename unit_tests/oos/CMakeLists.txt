@@ -83,6 +83,7 @@ set(SERVER_MODE_TESTS
   test_oos_real_vacuum_server
   test_oos_server_crash_recovery
   test_oos_update_reuse_server
+  test_pgbuf_conditional_latch_server
 )
 
 foreach(test_name ${SERVER_MODE_TESTS})
@@ -376,6 +377,13 @@ add_test(NAME test_oos_real_vacuum_snapshots COMMAND test_oos_real_vacuum_server
 set_tests_properties(
   test_oos_server test_oos_delete_server test_oos_remove_file_server
   test_oos_mock_vacuum_server test_oos_vacuum_server
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
+)
+
+# A page buffer test (CBRD-28379) that reuses the in-process server boot and the unittestdb fixture of the OOS tests.
+add_test(NAME test_pgbuf_conditional_latch_server COMMAND test_pgbuf_conditional_latch_server)
+set_tests_properties(
+  test_pgbuf_conditional_latch_server
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
 )
 

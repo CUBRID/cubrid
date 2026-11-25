@@ -7098,9 +7098,9 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 			  /* Other readers exist - need to release holder's READ latch first */
 			  if (condition == PGBUF_CONDITIONAL_LATCH)
 			    {
-			      /* Conditional latch fails */
+			      /* Conditional latch fails; it is refused below without waiting and leaves waiter_exists as
+			       * it is. */
 			      can_latch = false;
-			      new_impl.impl.waiter_exists = true;
 			    }
 			  else
 			    {
@@ -7116,7 +7116,13 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 		{
 		  /* Case 3: Caller is not a holder - need to block and wait */
 		  can_latch = false;
-		  new_impl.impl.waiter_exists = true;
+		  if (condition == PGBUF_UNCONDITIONAL_LATCH)
+		    {
+		      /* only a request that queues on the BCB is a waiter. a conditional request is refused below
+		       * without waiting; a waiter_exists it set would stay behind it, block the READ requests of
+		       * non-holders and stop the last holder from placing the BCB in an LRU list on unfix. */
+		      new_impl.impl.waiter_exists = true;
+		    }
 		}
 	    }
 	}
@@ -7526,6 +7532,18 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
 #if defined(SERVER_MODE)
       pgbuf_wakeup_reader_writer (thread_p, bufptr);
+
+      if (blocked_reader_writer && get_latch (&bufptr->atomic_latch) == PGBUF_NO_LATCH
+	  && pgbuf_bcb_get_zone (bufptr) == PGBUF_VOID_ZONE)
+	{
+	  /* the zone handling above was skipped for the waiter that takes the latch over, but no waiter took it: all
+	   * gave up (latch timeout or interrupt) before the wake-up. nobody else unfixes the bcb, and a void zone bcb
+	   * left here would be in no lru list, where it is neither flushed nor victimized. place it as an unfix
+	   * without waiters does. the bcb mutex is still held and the bcb is unlatched, as on that path. */
+	  pgbuf_unlatch_void_zone_bcb (thread_p, bufptr,
+				       PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p) ?
+				       PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p)) : -1);
+	}
 #endif /* SERVER_MODE */
     }
 
