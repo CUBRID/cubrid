@@ -168,8 +168,10 @@ extern void dblink_2pc_daemon_init (void);
 extern void dblink_2pc_daemon_stop (void);
 
 /*
- * Run recovery using thread_p (catalog access). Call from log_recovery before daemon_start.
- * Scans _db_global_tran for state 'A'/'C', sends decision to each participant, deletes row on success.
+ * Replay undelivered decisions using thread_p (catalog access). Called once by boot_restart_server () on every
+ * server start (normal or after crash recovery), after dblink_2pc_daemon_init ().
+ * Scans _db_global_tran for state 'P'/'A'/'C' and enqueues each row to the daemon ('P' is sent as abort);
+ * the daemon sends the decision to the participant and deletes the row on success.
  */
 extern void dblink_2pc_daemon_recovery_with_thread (THREAD_ENTRY * thread_p);
 

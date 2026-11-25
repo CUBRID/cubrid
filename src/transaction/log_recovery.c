@@ -24,9 +24,6 @@
 
 #include "log_recovery.h"
 
-#ifdef CCI_XA
-#include "dblink_2pc_daemon.h"
-#endif
 #include "boot_sr.h"
 #include "file_io.h"
 #include "locator_sr.h"
@@ -977,11 +974,8 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       return;
     }
 
-#ifdef CCI_XA
-#ifdef SERVER_MODE
-  dblink_2pc_daemon_recovery_with_thread (thread_p);
-#endif
-#endif
+  /* Undelivered DBLink 2PC decisions (_db_global_tran) are replayed by boot_restart_server () on every
+   * server start, not only after crash recovery. See dblink_2pc_daemon_recovery_with_thread (). */
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
 }

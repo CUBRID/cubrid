@@ -600,9 +600,9 @@ dblink_2pc_daemon_stop (void)
     }
 
   /* Settle whatever is still queued before the queue goes away.  These decisions were not delivered
-   * and recovery will replay them from _db_global_tran, but their completions must not be left counting
-   * entries that no longer exist: any commit path still blocked here would otherwise sit out its
-   * full bound, and the completions themselves would never be freed.
+   * and the next server start replays them from _db_global_tran (boot_restart_server), but their
+   * completions must not be left counting entries that no longer exist: any commit path still blocked
+   * here would otherwise sit out its full bound, and the completions themselves would never be freed.
    *
    * This depends on the ordering above: destroy_daemon() joins the daemon thread, so by now no entry
    * is in flight - the one being processed at stop time either completed (and settled itself) or
@@ -611,8 +611,8 @@ dblink_2pc_daemon_stop (void)
    *
    * A completion settled here can wake its commit path with everything "settled" even though nothing was
    * delivered.  That is accepted: the caller ignores the result and treats it exactly like the
-   * timeout, and recovery redelivers.  Waking it is better than making it wait out the bound while
-   * the server goes down. */
+   * timeout, and the next server start redelivers.  Waking it is better than making it wait out the
+   * bound while the server goes down. */
   if (global_tran_queue != NULL)
     {
       pthread_mutex_lock (&global_tran_queue_mutex);

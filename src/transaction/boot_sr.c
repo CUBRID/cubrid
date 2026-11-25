@@ -2730,6 +2730,16 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+#if defined (SERVER_MODE) && defined (CCI_XA)
+  /* Hand the DBLink 2PC decisions left in _db_global_tran to the daemon.  This must run on every start,
+   * not only after crash recovery: rows survive a normal shutdown while a participant is unreachable
+   * (dblink_2pc_daemon_stop () drops the queue), and an SA_MODE restart can perform crash recovery
+   * without replaying them.  Either way the next server start is a normal one and never enters
+   * log_recovery (), so the participants would stay in doubt and keep holding their locks. */
+  dblink_2pc_daemon_recovery_with_thread (thread_p);
+  logtb_set_to_system_tran_index (thread_p);
+#endif /* SERVER_MODE && CCI_XA */
+
   cfg_free_directory (dir);
 
   if (print_restart)

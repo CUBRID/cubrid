@@ -260,15 +260,17 @@ dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool 
 
 #if defined(SERVER_MODE)
       /* SERVER_MODE: dblink_2pc_daemon_init() runs before log_recovery() and
-       * dblink_2pc_daemon_recovery_with_thread() scans _db_global_tran right after
-       * log_2pc_recovery() completes, so any participant that fails here will be
+       * boot_restart_server() calls dblink_2pc_daemon_recovery_with_thread() to scan
+       * _db_global_tran once the server has restarted, so any participant that fails here will be
        * picked up and retried by the daemon.  Blocking the recovery thread on a
        * single gateway failure is not acceptable. */
       (void) dblink_2pc_send_decision_one_participant (gtrid, &dblink[i], is_commit);
 #else
       /* SA_MODE: no daemon, and dblink_2pc_daemon_recovery_with_thread() is
-       * SERVER_MODE-only, so there is no automatic retry after this call.
-       * TODO: add an SA_MODE _db_global_tran scan in log_recovery() (mirroring
+       * SERVER_MODE-only, so nothing retries this call inside the SA process.  A row
+       * left in _db_global_tran is replayed by the next cub_server start, but an
+       * SA-only database may never get one, so keep delivering here.
+       * TODO: add an SA_MODE _db_global_tran scan (mirroring
        * dblink_2pc_daemon_recovery_with_thread) so this path can also be
        * fire-and-forget instead of blocking indefinitely on a downed participant. */
       while (dblink_2pc_send_decision_one_participant (gtrid, &dblink[i], is_commit) != NO_ERROR)
