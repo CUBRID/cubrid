@@ -874,6 +874,95 @@ TEST_CASE ("a NaN key sends its transaction to commit order", "[writeset]")
   }
 }
 
+TEST_CASE ("a child FK value that overflows the parent domain produces no REF and no error", "[writeset]")
+{
+  /* A value that does not fit the parent key domain cannot equal any parent key. Key collection must not fail
+   * the DML with a cast error; it skips the REF so the foreign-key check reports the invalid reference. */
+  ws_history_guard history;
+  OID parent_class = oid_of (1, 207, 1);
+
+  SECTION ("single VARCHAR longer than the parent precision")
+  {
+    TP_DOMAIN *parent_domain = tp_domain_resolve (DB_TYPE_VARCHAR, NULL, 10, 0, NULL, LANG_COLL_UTF8_BINARY);
+    DB_VALUE child_value;
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (parent_domain != NULL);
+    REQUIRE (db_make_varchar (&child_value, 20, "123456789012345", 15, INTL_CODESET_UTF8,
+			      LANG_COLL_UTF8_BINARY) == NO_ERROR);
+
+    REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_value, parent_domain) == NO_ERROR);
+    REQUIRE (child->wset_entries.empty ());
+    REQUIRE_FALSE (child->wset_fallback);
+
+    pr_clear_value (&child_value);
+    delete child;
+  }
+
+  SECTION ("single BIGINT beyond the INTEGER range")
+  {
+    DB_VALUE child_value;
+    log_tdes *child = make_tdes (2);
+
+    db_make_bigint (&child_value, (DB_BIGINT) 1 << 40);
+
+    REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_value,
+			       tp_domain_resolve_default (DB_TYPE_INTEGER)) == NO_ERROR);
+    REQUIRE (child->wset_entries.empty ());
+    REQUIRE_FALSE (child->wset_fallback);
+
+    delete child;
+  }
+
+  SECTION ("composite key with one element longer than the parent precision")
+  {
+    TP_DOMAIN *parent_domain;
+    TP_DOMAIN *child_domain;
+    DB_VALUE parent_key;
+    DB_VALUE child_key;
+    log_tdes *child = make_tdes (2);
+
+    make_string_int_key (&parent_key, &parent_domain, LANG_COLL_UTF8_BINARY, 10, "abc", 1);
+    make_string_int_key (&child_key, &child_domain, LANG_COLL_UTF8_BINARY, 20, "123456789012345", 1);
+
+    REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_key, parent_domain) == NO_ERROR);
+    REQUIRE (child->wset_entries.empty ());
+    REQUIRE_FALSE (child->wset_fallback);
+
+    pr_clear_value (&parent_key);
+    pr_clear_value (&child_key);
+    delete child;
+  }
+
+  SECTION ("a value that fits once its trailing spaces are dropped still produces the REF")
+  {
+    TP_DOMAIN *parent_domain = tp_domain_resolve (DB_TYPE_VARCHAR, NULL, 10, 0, NULL, LANG_COLL_UTF8_BINARY);
+    DB_VALUE parent_value;
+    DB_VALUE child_value;
+    log_tdes *parent = make_tdes (1);
+    log_tdes *child = make_tdes (2);
+
+    REQUIRE (parent_domain != NULL);
+    REQUIRE (db_make_varchar (&parent_value, 10, "1234567890", 10, INTL_CODESET_UTF8,
+			      LANG_COLL_UTF8_BINARY) == NO_ERROR);
+    REQUIRE (db_make_varchar (&child_value, 20, "1234567890     ", 15, INTL_CODESET_UTF8,
+			      LANG_COLL_UTF8_BINARY) == NO_ERROR);
+
+    REQUIRE (wset_add_write_key (parent, &parent_class, &WS_DEFAULT_VFID, &parent_value) == NO_ERROR);
+    REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_value, parent_domain) == NO_ERROR);
+    REQUIRE (parent->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries[0].kind == LOG_WSET_KIND_REF);
+    /* the REF meets the parent's WRITE over the same key */
+    REQUIRE (child->wset_entries[0].hash == parent->wset_entries[0].hash);
+
+    pr_clear_value (&parent_value);
+    pr_clear_value (&child_value);
+    delete parent;
+    delete child;
+  }
+}
+
 /* Set ignore_trailing_space for one test and restore the previous value when the test ends. */
 struct ws_trailing_space_guard
 {

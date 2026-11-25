@@ -54,7 +54,8 @@
 static const char *wset_fallback_reason_name (WSET_FALLBACK_REASON reason);
 static void wset_trace_log_collected_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid,
     DB_VALUE *key, UINT64 hash, LOG_WSET_KIND kind);
-static int wset_cast_value_to_domain (DB_VALUE *source, DB_VALUE *destination, TP_DOMAIN *domain);
+static int wset_cast_value_to_domain (DB_VALUE *source, DB_VALUE *destination, TP_DOMAIN *domain,
+				      bool *has_reference);
 static int wset_cast_midxkey_element (DB_MIDXKEY *fk_midxkey, int index, TP_DOMAIN *parent_domain,
 				      DB_VALUE *parent_value, bool *has_reference);
 static int wset_make_parent_midxkey (DB_VALUE *fk_value, TP_DOMAIN *parent_pk_domain, DB_VALUE *parent_key,
@@ -249,11 +250,17 @@ wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid
  * wset_cast_value_to_domain - cast one key value to the referenced parent index domain
  *
  * return: NO_ERROR, or an error code on failure
+ *
+ * Note: A value that overflows the parent domain cannot equal any parent key, so it references no
+ *       parent row. Set has_reference to false and return NO_ERROR; the foreign-key check that runs
+ *       after key collection then reports the invalid reference instead of a cast error.
  */
 static int
-wset_cast_value_to_domain (DB_VALUE *source, DB_VALUE *destination, TP_DOMAIN *domain)
+wset_cast_value_to_domain (DB_VALUE *source, DB_VALUE *destination, TP_DOMAIN *domain, bool *has_reference)
 {
   TP_DOMAIN_STATUS status = tp_value_cast (source, destination, domain, false);
+
+  assert (has_reference != NULL);
 
   if (status == DOMAIN_ERROR && er_errid () != NO_ERROR)
     {
@@ -261,9 +268,10 @@ wset_cast_value_to_domain (DB_VALUE *source, DB_VALUE *destination, TP_DOMAIN *d
     }
   if (status == DOMAIN_OVERFLOW)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE_OVERFLOW, 2,
-	      pr_type_name (DB_VALUE_DOMAIN_TYPE (source)), pr_type_name (TP_DOMAIN_TYPE (domain)));
-      return ER_TP_CANT_COERCE_OVERFLOW;
+      pr_clear_value (destination);
+      *has_reference = false;
+
+      return NO_ERROR;
     }
   if (status != DOMAIN_COMPATIBLE)
     {
@@ -281,6 +289,7 @@ wset_cast_value_to_domain (DB_VALUE *source, DB_VALUE *destination, TP_DOMAIN *d
  * return: NO_ERROR, or an error code on failure
  *
  * Note: Under MATCH SIMPLE, a NULL element sets has_reference to false and returns NO_ERROR.
+ *       An element that overflows its parent domain does the same, because the tuple cannot match.
  */
 static int
 wset_cast_midxkey_element (DB_MIDXKEY *fk_midxkey, int index, TP_DOMAIN *parent_domain,
@@ -304,7 +313,7 @@ wset_cast_midxkey_element (DB_MIDXKEY *fk_midxkey, int index, TP_DOMAIN *parent_
       return NO_ERROR;
     }
 
-  error = wset_cast_value_to_domain (&fk_element, parent_value, parent_domain);
+  error = wset_cast_value_to_domain (&fk_element, parent_value, parent_domain, has_reference);
   pr_clear_value (&fk_element);
 
   return error;
@@ -416,6 +425,7 @@ end:
  *       previous REFs, so sibling child transactions remain independent.
  *       NULL FKs have no parent reference and produce no REF. Composite FKs are rebuilt as one complete
  *       MIDXKEY in the parent PK domain before hashing.
+ *       An FK value that overflows the parent domain cannot match a parent row and produces no REF.
  */
 int
 wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
@@ -461,8 +471,8 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
     }
   else
     {
-      error = wset_cast_value_to_domain (fk_value, &casted, parent_pk_domain);
-      if (error != NO_ERROR)
+      error = wset_cast_value_to_domain (fk_value, &casted, parent_pk_domain, &has_reference);
+      if (error != NO_ERROR || !has_reference)
 	{
 	  pr_clear_value (&casted);
 	  return error;
