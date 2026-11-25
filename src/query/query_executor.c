@@ -13718,9 +13718,9 @@ qexec_batch_eligible (const XASL_NODE * xasl)
  *
  * A partitioned class is asked block by block too, each partition's scan getting its own filter plan
  * (qexec_batch_eligible ()).  A block the compiler marked XASL_NO_FIXED_SCAN -- an operator in it reads the catalog
- * or an index while a row is evaluated (INDEX_CARDINALITY, ESTIMATED_*), or a serial -- keeps its filter on the row
- * path: the iterator holds its page while a chunk's terms and constant steps run, which develop does not allow such a
- * block.
+ * or an index while a row is evaluated (INDEX_CARDINALITY, ESTIMATED_*, SENSITIVITY_LABEL_GRADE_LEVEL), or a serial --
+ * keeps its filter on the row path: the iterator holds its page while a chunk's terms and constant steps run, which
+ * develop does not allow such a block.
  */
 bool
 qexec_batch_filter_eligible (const XASL_NODE * xasl)

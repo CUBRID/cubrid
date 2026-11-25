@@ -12297,6 +12297,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_SENSITIVITY_LABEL_GRADE_LEVEL:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_SENSITIVITY_LABEL_GRADE_LEVEL, domain);
+		  if (parser->parent_proc_xasl != NULL)
+		    {
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+		    }
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
 		  break;
 
 		case PT_EXEC_STATS:
