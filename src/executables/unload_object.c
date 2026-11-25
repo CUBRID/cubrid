@@ -1970,6 +1970,20 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 		}
 	      break;
 
+	    case DB_TYPE_BLOB:
+	    case DB_TYPE_CLOB:
+	      /* a binary section has no form for an internal LOB value */
+	      if (data_format != OBJECT_FORMAT_TEXT)
+		{
+		  fprintf (stderr, "warning: %s%s%s has %s type.\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
+			   db_get_type_name (db_type));
+		  fprintf (stderr, "So for class %s%s%s, %s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
+			   optmsg2);
+		  fflush (stderr);
+		  data_format = OBJECT_FORMAT_TEXT;
+		}
+	      break;
+
 	    default:
 	      break;
 	    }
