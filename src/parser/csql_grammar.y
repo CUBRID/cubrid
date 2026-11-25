@@ -24801,6 +24801,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_ESTIMATED_DATA_LENGTH:
     case PT_ESTIMATED_DATA_FREE:
     case PT_COLLECTION_TO_STRING:
+    case PT_SENSITIVITY_LABEL_GRADE_LEVEL:
       {
 	PT_NODE *expr;
 	if (c != 1)

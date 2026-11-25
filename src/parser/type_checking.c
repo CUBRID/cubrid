@@ -3034,6 +3034,20 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_SENSITIVITY_LABEL_GRADE_LEVEL:
+      num = 0;
+
+      /* one overload */
+
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_CHAR;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_INTEGER;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_SIGN:
       num = 0;
 

@@ -1627,6 +1627,7 @@ typedef enum
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
   PT_COLLECTION_TO_STRING,
+  PT_SENSITIVITY_LABEL_GRADE_LEVEL,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
