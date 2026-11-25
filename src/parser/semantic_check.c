@@ -19666,6 +19666,8 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       /* the set operation returns no row, as a subquery with a false WHERE folded by pt_to_false_subquery () does:
        * EXISTS over it is false and NOT IN over it is true */
       new_node->info.value.is_false_where = true;
+      /* the value prints as null even if the column of a view spec takes another type (pt_check_create_view ()) */
+      (void) pt_value_to_db (parser, new_node);
     }
   else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
     {

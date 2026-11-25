@@ -223,6 +223,7 @@ static int pt_difference_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_V
 static int pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, DB_VALUE * set2,
 			    DB_VALUE * result, PT_NODE * o2);
 static PT_NODE *pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_has_false_subquery_operand (PT_NODE * expr);
 static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * gl_expr);
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void pt_mark_filter_terms (PT_NODE * cond);
@@ -7494,9 +7495,43 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
       node->info.value.is_false_where = true;
       node->flag.is_hidden_column = hidden;
       node->next = next;	/* restore link */
+
+      /* the value prints as null even if the column of a view spec takes another type (pt_check_create_view ()) */
+      (void) pt_value_to_db (parser, node);
     }
 
   return node;
+}
+
+/*
+ * pt_has_false_subquery_operand () - whether an operand of the expression is a subquery folded to a NULL value since
+ *				       it returns no row (pt_to_false_subquery (), pt_fold_union ())
+ *   return: true if so
+ *   expr(in): expression
+ */
+static bool
+pt_has_false_subquery_operand (PT_NODE * expr)
+{
+  PT_NODE *args[3];
+  int i;
+
+  if (expr == NULL || expr->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  args[0] = expr->info.expr.arg1;
+  args[1] = expr->info.expr.arg2;
+  args[2] = expr->info.expr.arg3;
+  for (i = 0; i < 3; i++)
+    {
+      if (args[i] != NULL && args[i]->node_type == PT_VALUE && args[i]->info.value.is_false_where)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -19646,7 +19681,11 @@ end:
 	    {
 	      result->alias_print = pt_append_string (parser, NULL, alias_print);
 	    }
-	  if (PT_IS_VALUE_NODE (result) && !result->info.value.text)
+	  /* the value prints as the expression it was folded from, which a stored text (a view spec) keeps. A subquery
+	   * folded to an empty one is printed as a NULL value (pt_to_false_subquery ()), which reads back as NULL, not as
+	   * the empty set: "x IN null" cannot be parsed, and "NOT EXISTS null" would be false. Such a value prints as
+	   * itself. */
+	  if (PT_IS_VALUE_NODE (result) && !result->info.value.text && !pt_has_false_subquery_operand (expr))
 	    {
 	      result->info.value.text = pt_append_string (parser, NULL, expr->alias_print);
 	    }
