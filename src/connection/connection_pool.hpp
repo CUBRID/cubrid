@@ -64,7 +64,7 @@ namespace cubconn::connection
       pool ();
       ~pool ();
 
-      bool initialize (std::uint32_t max_connections, int max_connection_workers, int min_connection_workers);
+      bool initialize (std::uint32_t max_connections, int max_connection_workers);
       void finalize ();
 
       void dispatch (css_conn_entry *conn);
@@ -95,7 +95,6 @@ namespace cubconn::connection
       std::uint32_t m_max_connections;
 
       std::uint32_t m_max_connection_workers;
-      std::uint32_t m_min_connection_workers;
 
       /* freelist */
       struct
@@ -115,10 +114,10 @@ namespace cubconn::connection
       std::uint32_t initialize_topology (std::uint32_t max_connection_workers);
       void finalize_topology ();
 
-      void initialize_workers (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers);
+      void initialize_workers (std::uint32_t max_connection_workers);
       void finalize_workers ();
 
-      void initialize_coordinator (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers);
+      void initialize_coordinator (std::uint32_t max_connection_workers);
       void start_coordinator ();
       void finalize_coordinator ();
   };
