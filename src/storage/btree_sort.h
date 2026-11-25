@@ -94,7 +94,7 @@ struct btsort_run
   char *top;			/* sort buffer end (= output buffer) */
   BTSORT_CMP_FUNC *cmp_fn;
   BTSORT_CMP_FUNC *key_cmp_fn;	/* the keys alone, 0 on a tie, set after BTSORT_RUN_INIT () for the merge sorter */
-  void *cmp_arg;		/* SORT_ARGS */
+  void *cmp_arg;		/* BTSORT_CMP_ARG */
   long numrecs;			/* records collected */
 
   /* sorter-private, kept here so a run needs no allocation */

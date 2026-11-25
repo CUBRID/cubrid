@@ -9049,7 +9049,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                         ") "
         ") "
         "GROUP BY "
-                "[grantee_name], [unique_name], [is_grantable] ASC "
+                "[grantee_name], [object_type], [unique_name], [is_grantable] ASC "
         "ORDER BY 1;";
   // *INDENT-ON*
 
