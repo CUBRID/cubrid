@@ -5412,14 +5412,19 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
 
       if (*coll_cnt >= max_coll_cnt)
 	{
+	  LANG_COLL_COMPAT *new_collations;
+
 	  max_coll_cnt = max_coll_cnt * 2;
 	  alloc_size = max_coll_cnt * sizeof (LANG_COLL_COMPAT);
-	  *db_collations = (LANG_COLL_COMPAT *) db_private_realloc (thread_p, *db_collations, alloc_size);
-	  if (db_collations == NULL)
+	  /* keep *db_collations on failure so that the caller can free it */
+	  new_collations = (LANG_COLL_COMPAT *) db_private_realloc (thread_p, *db_collations, alloc_size);
+	  if (new_collations == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) alloc_size);
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto exit;
 	    }
+	  *db_collations = new_collations;
 	}
 
       curr_coll = &((*db_collations)[(*coll_cnt)++]);
