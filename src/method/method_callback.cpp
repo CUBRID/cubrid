@@ -797,13 +797,13 @@ namespace cubmethod
 		 * needs its value. a PL/CSQL variable removed from the compiled statement (e.g. with an ORDER BY of
 		 * an IN subquery, or with an unused column of a merged derived table) has no marker: it is bound by its
 		 * label, and the statement compiled again at runtime removes it again */
-		const char **labels = parser->static_sql_host_var_labels;
+		const PT_STATIC_SQL_HOST_VAR *pl_vars = parser->static_sql_host_vars;
 		bool all_bound = true;
 
 		for (int k = 0; all_bound && k < parser->host_var_count; k++)
 		  {
 		    all_bound = ((size_t) k < semantics.hvs.size () && semantics.hvs[k].mode != 0)
-				|| (labels != NULL && labels[k] != NULL);
+				|| (pl_vars != NULL && pl_vars[k].label != NULL);
 		  }
 
 		if (all_bound)
@@ -816,7 +816,7 @@ namespace cubmethod
 			if (semantics.hvs[k].mode == 0)
 			  {
 			    semantics.hvs[k].mode = 1;
-			    semantics.hvs[k].name.assign (labels[k]);
+			    semantics.hvs[k].name.assign (pl_vars[k].label);
 			  }
 		      }
 		  }

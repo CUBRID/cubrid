@@ -4214,7 +4214,6 @@ struct parser_context
   int static_sql_edit_status;	/* 0: not collected, 1: collected, -1: can not be expressed as text edits */
   PT_STATIC_SQL_HOST_VAR *static_sql_host_vars;	/* each PL/CSQL variable replaced with a host variable */
   PT_STATIC_SQL_STAR *static_sql_stars;	/* column lists implied in the text */
-  const char **static_sql_host_var_labels;	/* the PL/CSQL variable of each host variable (see pt_keep_static_sql_tree ()) */
   char *static_sql_untranslated_text;	/* the statement printed before view translation, if the compiled tree can not be */
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 

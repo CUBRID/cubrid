@@ -16146,20 +16146,6 @@ pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->static_sql_edit_status = 1;
 }
 
-static PT_NODE *
-pt_get_static_sql_host_var_label (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  const char **labels = (const char **) arg;
-
-  if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
-      && 0 <= node->info.host_var.index && node->info.host_var.index < parser->host_var_count)
-    {
-      labels[node->info.host_var.index] = node->info.host_var.label;
-    }
-
-  return node;
-}
-
 /*
  * pt_keep_static_sql_tree () - keep what the rewritten query of a PL/CSQL static SQL needs from the statement right
  *				after name resolution
@@ -16167,31 +16153,17 @@ pt_get_static_sql_host_var_label (PARSER_CONTEXT * parser, PT_NODE * node, void 
  *   parser(in):
  *   statement(in): the statement right after name resolution
  *
- * Note: the label of each host variable gives the PL/CSQL variable of a host variable that a rewrite removes from the
- *	 compiled statement (e.g. with an unused column of a merged derived table), which the text still has.
- *	 An INSERT given the DEFAULTs of a view is printed before view translation: the compiled tree names the base
+ * Note: an INSERT given the DEFAULTs of a view is printed before view translation: the compiled tree names the base
  *	 class, and the DEFAULTs of the view, evaluated after the rows of the source, can not be written in its text.
  */
 void
 pt_keep_static_sql_tree (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  const char **labels;
   unsigned int save_custom;
 
   if (statement == NULL)
     {
       return;
-    }
-
-  if (parser->host_var_count > 0 && parser->static_sql_host_var_labels == NULL)
-    {
-      labels = (const char **) parser_alloc (parser, parser->host_var_count * sizeof (const char *));
-      if (labels != NULL)
-	{
-	  memset (labels, 0, parser->host_var_count * sizeof (const char *));
-	  (void) parser_walk_tree (parser, statement, pt_get_static_sql_host_var_label, labels, NULL, NULL);
-	  parser->static_sql_host_var_labels = labels;
-	}
     }
 
   if (statement->node_type == PT_INSERT && statement->info.insert.default_values != NULL)
