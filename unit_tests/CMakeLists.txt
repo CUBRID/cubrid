@@ -48,6 +48,7 @@ option (UNIT_TEST_RADIX_SORT "Unit testing: radix run sorter")
 option (UNIT_TEST_SCOPE_EXIT "Unit testing: scope_exit guard")
 option (UNIT_TEST_BTREE_SORT_MERGE "Unit testing: merge run sorter")
 option (UNIT_TEST_WORKER_POOL_ELASTIC "Unit testing: elastic worker pool capacity policy")
+option (UNIT_TEST_SYSTEM_CATALOG "Unit testing: catalog file records")
 
 message("  unit_tests/...")
 
@@ -158,6 +159,11 @@ if (UNIT_TESTS OR UNIT_TEST_WORKER_POOL_ELASTIC)
   message("    worker_pool_elastic")
   add_subdirectory(worker_pool_elastic)
 endif(UNIT_TESTS OR UNIT_TEST_WORKER_POOL_ELASTIC)
+
+if (UNIT_TESTS OR UNIT_TEST_SYSTEM_CATALOG)
+  message("    system_catalog")
+  add_subdirectory(system_catalog)
+endif(UNIT_TESTS OR UNIT_TEST_SYSTEM_CATALOG)
 
 #[[
 TODO compilation fails
