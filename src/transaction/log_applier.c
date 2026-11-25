@@ -254,6 +254,7 @@ struct la_item
   DB_VALUE key;			/* it will be unpacked from packed_key_value on demand */
   int packed_prior_value_length;
   char *packed_prior_value;	/* _db_serial write-back: disk image of the value it replaced, or NULL */
+  bool serial_issue;		/* a _db_serial write that issued values (LOG_REPL_SERIAL_ISSUE_MAGIC) */
   LOG_LSA lsa;			/* the LSA of the replication log record */
   LOG_LSA target_lsa;		/* the LSA of the target log record */
 };
@@ -522,6 +523,8 @@ static LA_CACHE_PB *la_init_cache_pb (void);
 static unsigned int log_pageid_hash (const void *key, unsigned int htsize);
 static int la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size);
 static int la_fetch_log_hdr (LA_ACT_LOG * act_log);
+static int la_open_active_log (LA_ACT_LOG * act_log);
+static bool la_is_active_log_replaced (const LA_ACT_LOG * act_log);
 static int la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbname, bool check_charset);
 static bool la_apply_pre (void);
 static int la_does_page_exist (LOG_PAGEID pageid);
@@ -2628,16 +2631,16 @@ la_fetch_log_hdr (LA_ACT_LOG * act_log)
   return error;
 }
 
+/*
+ * la_open_active_log () - open the active log, waiting until copylogdb creates it
+ *   return: NO_ERROR, or ER_LOG_MOUNT_FAIL if the applier is shut down while waiting
+ *   act_log(in/out): act_log->path is the file to open, act_log->log_vdes gets the descriptor
+ */
 static int
-la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbname, bool check_charset)
+la_open_active_log (LA_ACT_LOG * act_log)
 {
   int error = NO_ERROR;
 
-  /* set active log name */
-  fileio_make_log_active_name (act_log->path, logpath, dbname);
-
-  /* read active log file to get the io page size */
-  /* wait until act_log is opened */
   do
     {
       act_log->log_vdes = fileio_open (act_log->path, O_RDONLY, 0);
@@ -2658,6 +2661,44 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
     }
   while (la_applier_need_shutdown == false);
 
+  return error;
+}
+
+/*
+ * la_is_active_log_replaced () - whether the path no longer names the file opened as the active log
+ *   return: true if the file was removed or another file took the path
+ *   act_log(in): act_log->log_vdes is the opened file, act_log->path its path
+ *
+ * Note: copylogdb removes an active log whose header page is only formatted and creates a new one at the same path.
+ *       A descriptor opened before the removal never sees the new header.
+ */
+static bool
+la_is_active_log_replaced (const LA_ACT_LOG * act_log)
+{
+  struct stat opened_stat, path_stat;
+
+  if (fstat (act_log->log_vdes, &opened_stat) != 0)
+    {
+      return false;
+    }
+  if (stat (act_log->path, &path_stat) != 0)
+    {
+      return true;
+    }
+  return opened_stat.st_dev != path_stat.st_dev || opened_stat.st_ino != path_stat.st_ino;
+}
+
+static int
+la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbname, bool check_charset)
+{
+  int error = NO_ERROR;
+
+  /* set active log name */
+  fileio_make_log_active_name (act_log->path, logpath, dbname);
+
+  /* read active log file to get the io page size */
+  /* wait until act_log is opened */
+  error = la_open_active_log (act_log);
   if (error != NO_ERROR)
     {
       return error;
@@ -2698,6 +2739,20 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 	  er_log_debug (ARG_FILE_LINE, "Active log file(%s) isn't prepared. waiting...", act_log->path);
 
 	  LA_SLEEP (0, 200 * 1000);
+
+	  if (la_is_active_log_replaced (act_log))
+	    {
+	      /* copylogdb removed this file because its header page was only formatted. Open the new one. */
+	      er_log_debug (ARG_FILE_LINE, "Active log file(%s) was replaced. opening it again...", act_log->path);
+	      fileio_close (act_log->log_vdes);
+	      act_log->log_vdes = NULL_VOLDES;
+
+	      error = la_open_active_log (act_log);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
 	  continue;
 	}
 
@@ -3098,6 +3153,7 @@ la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa)
   item->packed_key_value = NULL;
   item->packed_prior_value_length = 0;
   item->packed_prior_value = NULL;
+  item->serial_issue = false;
 
   item->next = NULL;
   item->prev = NULL;
@@ -3158,7 +3214,8 @@ la_get_item_pk_value (LA_ITEM * item)
 /*
  * la_copy_serial_prior_value () - keep the packed value a _db_serial write-back replaced
  *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
- *   item(in/out): its packed_prior_value stays NULL for a record that carries no value
+ *   item(in/out): its packed_prior_value stays NULL for a record that carries no value; serial_issue is set for a
+ *                 record that carries the issue marker
  *   ptr(in): the end of the packed key
  *   end(in): the end of the record
  *
@@ -3176,6 +3233,11 @@ la_copy_serial_prior_value (LA_ITEM * item, char *ptr, const char *end)
       return NO_ERROR;
     }
   ptr = or_unpack_int (ptr, &magic);
+  if (magic == LOG_REPL_SERIAL_ISSUE_MAGIC)
+    {
+      item->serial_issue = true;
+      return NO_ERROR;
+    }
   if (magic != LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC)
     {
       return NO_ERROR;
@@ -5888,7 +5950,7 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
   error =
     __gv_loc_repl.ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
 					   operation, has_index, item->packed_prior_value,
-					   item->packed_prior_value_length);
+					   item->packed_prior_value_length, item->serial_issue);
   return error;
 }
 
