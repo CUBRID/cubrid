@@ -1535,7 +1535,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1407 Cannot perform a DML operation inside a query.
 1408 The stored procedure cannot modify table "%1$s" because the statement references it.
 
-1409 Last Error
+1409 Replacing system generated stored procedure is not allowed.
+
+1410 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
