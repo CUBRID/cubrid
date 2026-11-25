@@ -597,6 +597,29 @@ struct cdt_eval_set
 };
 
 /*
+ * do_clone_value_checked () - copy src into dest like pr_clone_value, but return the error of a failed copy,
+ *	which pr_clone_value drops
+ *   return: NO_ERROR or ER_code
+ */
+static int
+do_clone_value_checked (const DB_VALUE * src, DB_VALUE * dest)
+{
+  const PR_TYPE *type = NULL;
+
+  if (!DB_IS_NULL (src))
+    {
+      type = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (src));
+    }
+  if (type == NULL)
+    {
+      /* a NULL value: only its domain is copied, nothing is allocated */
+      return pr_clone_value (src, dest);
+    }
+
+  return type->setval (dest, src, true);
+}
+
+/*
  * do_release_cdt_eval_entries () - put back the attribute values the entries replaced, release the entry array
  *	of a CDT eval set and reset it to unbuilt; the seeded random states are kept.  The values are not put back
  *	when a DDL or a decache has replaced the attributes since the build: those hold their own values.  The
@@ -622,8 +645,10 @@ do_release_cdt_eval_entries (CDT_EVAL_SET * eval_set)
 	{
 	  if (restore)
 	    {
+	      /* hand the saved value back instead of copying it, so putting it back cannot fail */
 	      pr_clear_value (&eval_set->entries[j].att->default_value.value);
-	      (void) pr_clone_value (&eval_set->entries[j].saved, &eval_set->entries[j].att->default_value.value);
+	      eval_set->entries[j].att->default_value.value = eval_set->entries[j].saved;
+	      db_make_null (&eval_set->entries[j].saved);
 	    }
 	  pr_clear_value (&eval_set->entries[j].saved);
 	}
@@ -680,6 +705,7 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
 {
   SM_ATTRIBUTE *att;
   int n = 0;
+  int error;
 
   do_release_cdt_eval_entries (eval_set);
 
@@ -724,8 +750,6 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
       residual = pt_cdt_registry_tree (parser, att, &vol);
       if (residual == NULL)
 	{
-	  int error;
-
 	  /* the registry diagnosed the failure where it happened; this level only propagates it */
 	  ASSERT_ERROR_AND_SET (error);
 	  do_release_cdt_eval_entries (eval_set);
@@ -738,11 +762,9 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
       eval_set->entries[eval_set->count].att = att;
       eval_set->entries[eval_set->count].tree = residual;
       eval_set->entries[eval_set->count].vol = vol;
-      if (pr_clone_value (&att->default_value.value, &eval_set->entries[eval_set->count].saved) != NO_ERROR)
+      error = do_clone_value_checked (&att->default_value.value, &eval_set->entries[eval_set->count].saved);
+      if (error != NO_ERROR)
 	{
-	  int error;
-
-	  ASSERT_ERROR_AND_SET (error);
 	  do_release_cdt_eval_entries (eval_set);
 	  return error;
 	}
@@ -781,8 +803,12 @@ do_evaluate_cdt (PARSER_CONTEXT * parser, SM_ATTRIBUTE * att, PT_NODE * residual
     }
 
   pr_clear_value (&att->default_value.value);
-  pr_clone_value (&default_value, &att->default_value.value);
+  error = do_clone_value_checked (&default_value, &att->default_value.value);
   db_value_clear (&default_value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   /* make sure the default value can be used for this attribute */
   dom_status = tp_value_cast (&att->default_value.value, &att->default_value.value, att->domain, false);
