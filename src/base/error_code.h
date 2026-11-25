@@ -1797,7 +1797,6 @@
 #define ER_CSS_TRAN_INDEX_NOT_OWNED                 -1392
 #define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
 #define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
-
 #define ER_LDR_PARTITIONED_CLASS_NOT_SUPPORTED      -1395
 
 #define ER_HEAP_OOS_BAD_INLINE_HEADER               -1396
@@ -1825,7 +1824,11 @@
 
 #define ER_SP_REPLACE_NOT_ALLOWED_SYSTEM_GENERATED  -1409
 
-#define ER_LAST_ERROR                               -1410
+#define ER_AU_LOGIN_METHOD_NOT_ALLOWED_ON_BROKER    -1420
+#define ER_SES_SESSION_RENEWED                      -1421
+#define ER_SES_LOGIN_NOT_RESTORED                   -1422
+
+#define ER_LAST_ERROR                               -1423
 
 /*
  * CAUTION!
