@@ -2833,6 +2833,9 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 	      || pt_compact_default_tree_properties (sig.arg.arg_default_expr[i], sig.arg.arg_default_expr_size[i], NULL,
 		  &si_requirement) != NO_ERROR)
 	    {
+	      // nothing holds what is restored so far: give back its values
+	      parser_free_tree (parser, default_next_node);
+	      parser_free_tree (parser, default_next_node_list);
 	      PT_INTERNAL_ERROR (parser, "restore the DEFAULT expression of a parameter");
 	      return NULL;
 	    }
@@ -2862,6 +2865,7 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 	  default_next_node = pt_semantic_type (parser, default_next_node, NULL);
 	  if (default_next_node == NULL)
 	    {
+	      parser_free_tree (parser, default_next_node_list);
 	      return NULL;
 	    }
 

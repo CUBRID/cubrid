@@ -12070,6 +12070,7 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
   TP_DOMAIN *domain = NULL;
   PT_NODE *node = NULL;
   PT_NODE *args[3] = { NULL, NULL, NULL };
+  PT_NODE *arg_list = NULL;
 
   tag = or_get_int (buf, &rc);
   if (rc != NO_ERROR)
@@ -12153,14 +12154,14 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 	  args[i] = pt_cdt_get_node (parser, buf);
 	  if (args[i] == NULL)
 	    {
-	      return NULL;
+	      goto fail;
 	    }
 	}
 
       node = parser_new_node (parser, PT_EXPR);
       if (node == NULL)
 	{
-	  return NULL;
+	  goto fail;
 	}
       node->info.expr.op = (PT_OP_TYPE) code;
       node->info.expr.qualifier = (PT_MISC_TYPE) qualifier;
@@ -12173,14 +12174,14 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
     }
   else
     {
-      PT_NODE *arg_list = NULL, *arg;
+      PT_NODE *arg;
 
       for (i = 0; i < arity; i++)
 	{
 	  arg = pt_cdt_get_node (parser, buf);
 	  if (arg == NULL)
 	    {
-	      return NULL;
+	      goto fail;
 	    }
 	  arg_list = parser_append_node (arg, arg_list);
 	}
@@ -12188,7 +12189,7 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
       node = parser_new_node (parser, PT_FUNCTION);
       if (node == NULL)
 	{
-	  return NULL;
+	  goto fail;
 	}
       node->info.function.function_type = (FUNC_CODE) code;
       node->info.function.expr_volatility = (PT_VOLATILITY) volatility;
@@ -12223,7 +12224,7 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 
       if (holder == NULL)
 	{
-	  return NULL;
+	  goto fail;
 	}
       holder->type_enum = node->type_enum;
       holder->data_type = parser_copy_tree (parser, node->data_type);
@@ -12232,6 +12233,22 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
     }
 
   return node;
+
+fail:
+  /* nothing registers a tree that failed to restore, so give back the values of what it has restored */
+  if (node != NULL)
+    {
+      parser_free_tree (parser, node);
+    }
+  else
+    {
+      for (i = 0; i < 3; i++)
+	{
+	  parser_free_tree (parser, args[i]);
+	}
+      parser_free_tree (parser, arg_list);
+    }
+  return NULL;
 }
 
 /*
