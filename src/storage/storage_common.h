@@ -872,6 +872,7 @@ typedef enum
   T_CURRENT_TIME,
   T_CONV_TZ,
   T_COLLECTION_TO_STRING,
+  T_SENSITIVITY_LABEL_GRADE_LEVEL,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 /************************************************************************/

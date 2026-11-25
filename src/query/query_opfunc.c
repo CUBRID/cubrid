@@ -60,6 +60,7 @@
 #include "xasl_analytic.hpp"
 #include "xserver_interface.h"
 #include "intl_support.h"
+#include "schema_system_catalog_constants.h"
 
 #include "dbtype.h"
 
@@ -7882,6 +7883,156 @@ exit:
   if (parts != NULL)
     {
       heap_clear_partition_info (thread_p, parts, parts_count);
+    }
+  return error;
+}
+
+/*
+ * qdata_get_sensitivity_label_grade_level () - gets the level of a sensitivity label grade using its name
+ *   return: NO_ERROR, or error code
+ *   thread_p(in)   : thread context
+ *   grade_name(in) : string DB_VALUE holding the name of the grade
+ *   result_p(out)  : the level (integer), or NULL DB_VALUE when no grade has the name
+ *
+ * Note: A grade name is stored lowered as an identifier is, so the name is lowered the same way before it is
+ *	 compared. The grades are those the snapshot of the transaction sees.
+ */
+int
+qdata_get_sensitivity_label_grade_level (THREAD_ENTRY * thread_p, DB_VALUE * grade_name, DB_VALUE * result_p)
+{
+  const char *string;
+  char name[DB_MAX_IDENTIFIER_LENGTH];
+  char lower_name[DB_MAX_IDENTIFIER_LENGTH * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER];
+  OID class_oid, inst_oid;
+  HFID hfid;
+  ATTR_ID attr_ids[2];
+  RECDES recdes = RECDES_INITIALIZER;
+  HEAP_SCANCACHE scan_cache;
+  HEAP_CACHE_ATTRINFO attr_info;
+  bool scan_cache_started = false;
+  bool attr_info_started = false;
+  MVCC_SNAPSHOT *mvcc_snapshot;
+  DB_VALUE lower_value, *value;
+  SCAN_CODE scan;
+  int size;
+  int error = NO_ERROR;
+
+  db_make_null (result_p);
+
+  if (DB_IS_NULL (grade_name))
+    {
+      return NO_ERROR;
+    }
+
+  /* intl_identifier_lower takes a NUL-terminated string that is valid in the charset of the database; no grade has
+   * a name that is not one */
+  string = db_get_string (grade_name);
+  size = db_get_string_size (grade_name);
+  if (size <= 0 || size >= DB_MAX_IDENTIFIER_LENGTH || memchr (string, '\0', size) != NULL
+      || (lang_charset () == INTL_CODESET_UTF8
+	  && intl_check_utf8 ((const unsigned char *) string, size, NULL) != INTL_UTF8_VALID))
+    {
+      return NO_ERROR;
+    }
+
+  memcpy (name, string, size);
+  name[size] = '\0';
+  intl_identifier_lower (name, lower_name);
+
+  if (xlocator_find_class_oid (thread_p, CT_SENSITIVITY_LABEL_GRADE_NAME, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, CT_SENSITIVITY_LABEL_GRADE_NAME);
+      return ER_LC_UNKNOWN_CLASSNAME;
+    }
+
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  scan_cache_started = true;
+
+  if (heap_get_class_record (thread_p, &class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  or_class_hfid (&recdes, &hfid);
+
+  error = or_get_attrid (&recdes, "name", &attr_ids[0]);
+  if (error == NO_ERROR)
+    {
+      error = or_get_attrid (&recdes, "grade_level", &attr_ids[1]);
+    }
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+  assert (attr_ids[0] != NULL_ATTRID && attr_ids[1] != NULL_ATTRID);
+
+  scan_cache_started = false;
+  error = heap_scancache_end (thread_p, &scan_cache);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  error = heap_attrinfo_start (thread_p, &class_oid, DIM (attr_ids), attr_ids, &attr_info);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  attr_info_started = true;
+
+  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  assert (mvcc_snapshot != NULL);
+
+  error = heap_scancache_start (thread_p, &scan_cache, &hfid, &class_oid, true, mvcc_snapshot);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  scan_cache_started = true;
+
+  OID_SET_NULL (&inst_oid);
+  while (true)
+    {
+      recdes.data = NULL;
+      scan = heap_next (thread_p, &hfid, &class_oid, &inst_oid, &recdes, &scan_cache, PEEK,
+			HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+      if (scan != S_SUCCESS)
+	{
+	  break;
+	}
+
+      error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      /* compared as the unique index on the names compares them */
+      value = heap_attrinfo_access (attr_ids[0], &attr_info);
+      db_make_varchar (&lower_value, DB_DEFAULT_PRECISION, lower_name, (int) strlen (lower_name),
+		       db_get_string_codeset (value), db_get_string_collation (value));
+      if (tp_value_compare (value, &lower_value, 0, 0) == DB_EQ)
+	{
+	  db_make_int (result_p, db_get_int (heap_attrinfo_access (attr_ids[1], &attr_info)));
+	  goto exit;
+	}
+    }
+
+  if (scan == S_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+
+exit:
+  if (scan_cache_started)
+    {
+      (void) heap_scancache_end (thread_p, &scan_cache);
+    }
+  if (attr_info_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
     }
   return error;
 }

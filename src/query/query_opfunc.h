@@ -146,6 +146,8 @@ extern int qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_n
 				  DB_VALUE * db_key_position, DB_VALUE * result_p);
 extern int qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p,
 					  OPERATOR_TYPE op);
+extern int qdata_get_sensitivity_label_grade_level (THREAD_ENTRY * thread_p, DB_VALUE * grade_name,
+						    DB_VALUE * result_p);
 extern int qdata_tuple_to_values_array (THREAD_ENTRY * thread_p, qfile_tuple_descriptor * tuple, DB_VALUE ** values);
 extern int qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** result_dom, DB_VALUE * result,
 							FUNC_CODE function);
