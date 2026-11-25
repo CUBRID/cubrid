@@ -2437,16 +2437,15 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 
       /* Step 4: add dummy join terms until dependent_set is connected without going through on_node.
        *
-       * first_idx = the lowest node in dependent_set, or -1 when on_node comes after no node.
+       * first_idx = the lowest node in dependent_set.
        *
        * e.g. {ta}      ->  ta
        *      {tb, td}  ->  tb
-       *      {}        ->  -1 */
+       *
+       * dependent_set is never empty: qo_optimize_helper () gave on_node a join term or a dummy join term to an earlier
+       * node at its location, and an inner join node got past Step 2 because its ON clause reads an earlier node. */
       first_idx = bitset_first_member (&dependent_set);
-      if (first_idx < 0)
-	{
-	  continue;
-	}
+      QO_ASSERT (env, first_idx >= 0);
 
       /* unconnected_idx starts right above first_idx and only moves up, as connected_set only grows. */
       unconnected_idx = first_idx + 1;
