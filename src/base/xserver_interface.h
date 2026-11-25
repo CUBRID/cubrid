@@ -56,6 +56,7 @@ struct compile_context;
 struct xasl_cache_ent;
 struct xasl_stream;
 struct xasl_node_header;
+struct xasl_stmt_info;
 
 extern int xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
 				    bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
@@ -237,6 +238,8 @@ extern int xqmgr_end_query (THREAD_ENTRY * thrd, QUERY_ID query_id);
 extern int xqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p);
 extern int xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, const char *sha1);
 extern int xqmgr_drop_query_clones (THREAD_ENTRY * thread_p, const char *sha1);
+extern int xqmgr_get_xasl_stmt_info (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, struct xasl_stmt_info *stmt_info,
+				     bool * found);
 extern void xqmgr_dump_query_plans (THREAD_ENTRY * thread_p, FILE * outfp);
 extern void xqmgr_dump_query_cache (THREAD_ENTRY * thread_p, FILE * outfp);
 
@@ -265,7 +268,7 @@ extern int xboot_heap_compact (THREAD_ENTRY * thread_p, OID * class_oid);
 extern int xboot_compact_start (THREAD_ENTRY * thread_p);
 extern int xboot_compact_stop (THREAD_ENTRY * thread_p);
 
-extern int xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int att_id);
+extern int xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int att_id, bool check_only);
 
 extern int xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * id, char *secret);
 extern int xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id, const char *secret);

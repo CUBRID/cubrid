@@ -136,6 +136,10 @@ enum log_rectype
   LOG_SUPPLEMENTAL_INFO = 52,	/* used for supplemental logs to support CDC interface.
 				 * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
 				 * or undo images that never retrieved from the log. */
+  LOG_DUMMY_OOS_RECORD = 53,	/* boundary marker indicating the start of a multi-chunk OOS record;
+				 * emitted by the master before the RVOOS_INSERT chunks so the slave
+				 * applier can distinguish a multi-chunk OOS record from a series of
+				 * independent single-chunk OOS inserts. */
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
@@ -235,6 +239,8 @@ struct log_rec_replication
 /* after the key (int aligned), a _db_serial write-back's data record carries this marker, the packed length
  * and the packed value (max aligned) of the cur_val it replaced; an older applier ignores what follows the key */
 #define LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC 0x53525056	/* "SRPV" */
+/* in the same place, a _db_serial write that issues values carries this marker and a packed length of 0 */
+#define LOG_REPL_SERIAL_ISSUE_MAGIC 0x53524953	/* "SRIS" */
 
 /* Log the time of termination of transaction */
 typedef struct log_rec_donetime LOG_REC_DONETIME;

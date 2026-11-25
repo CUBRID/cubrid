@@ -564,6 +564,8 @@ css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_r
       /* 3. Call server_request() function */
       status = css_Server_request_handler (&thread_ref, eid, request, size, buffer);
 
+      lock_deferred_wake_on_request_end (&thread_ref);
+
       /* 4. reset thread transaction id(may be NULL_TRAN_INDEX) */
       css_set_thread_info (&thread_ref, -1, 0, local_tran_index, -1);
     }
@@ -634,7 +636,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   cubconn::master::connector connector;
   cubconn::connection::pool connections;
   std::size_t max_request_concurrency, max_request_worker;
-  std::size_t max_connection_workers, min_connection_workers;
+  std::size_t max_connection_workers;
   std::size_t max_connections;
   std::string name;
   int status = NO_ERROR;
@@ -649,7 +651,6 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   max_request_worker = prm_get_integer_value (PRM_ID_MAX_REQUEST_WORKER);
 
   max_connection_workers = prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
-  min_connection_workers = prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
   max_connections = css_get_max_connections ();
 
@@ -679,7 +680,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   /* initialize epoll worker pool */
-  if (!connections.initialize (max_connections, max_connection_workers, min_connection_workers))
+  if (!connections.initialize (max_connections, max_connection_workers))
     {
       _er_log_debug (ARG_FILE_LINE, "connection::pool failed to prepare DMRB for connection contexts.\n");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 32 * 1024);
@@ -2094,8 +2095,10 @@ css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_i
   thread_p->wait_for_latch_promote = false;
   thread_p->lockwait = NULL;
   thread_p->lockwait_state = -1;
+  lock_reset_request_state (thread_p);
   thread_p->query_entry = NULL;
   thread_p->tran_next_wait = NULL;
+  thread_p->oos_oids.clear ();
 
   thread_p->end_resource_tracks ();
   thread_clear_recursion_depth (thread_p);
@@ -2457,17 +2460,6 @@ css_get_thread_runtime_stats (UINT64 *total_slots, UINT64 *target_slots, UINT64 
 
   css_Server_request_worker_pool->get_runtime_stats (*total_slots, *target_slots, *busy_slots,
 						     *total_workers, *target_workers, *busy_workers);
-}
-
-//
-// css_get_task_stats () - get task statistics for server request handlers
-//
-// stats_out (out) : output statistics
-//
-void
-css_get_task_stats (UINT64 *stats_out)
-{
-//  css_Server_request_worker_pool->get_task_stats (stats_out);
 }
 
 //

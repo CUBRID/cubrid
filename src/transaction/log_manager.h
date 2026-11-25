@@ -64,6 +64,9 @@ extern bool log_is_in_crash_recovery_and_not_yet_completes_redo (void);
 extern LOG_LSA *log_get_restart_lsa (void);
 extern LOG_LSA *log_get_crash_point_lsa (void);
 extern LOG_LSA log_get_append_lsa (void);
+extern void log_get_prior_lsa (LOG_LSA * lsa_out);
+extern bool logpb_no_logging_index_build_begin (void);
+extern void logpb_no_logging_index_build_end (void);
 extern LOG_LSA log_get_eof_lsa (void);
 extern bool log_is_logged_since_restart (const LOG_LSA * lsa_ptr);
 extern int log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa);
@@ -96,6 +99,8 @@ extern void log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvinde
 extern void log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 					int num_undo_crumbs, int num_redo_crumbs, const LOG_CRUMB * undo_crumbs,
 					const LOG_CRUMB * redo_crumbs);
+extern int log_append_mvcc_undo_data_with_mvccid (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
+						  LOG_DATA_ADDR * addr, int length, const void *data, MVCCID mvccid);
 extern void log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				    int num_crumbs, const LOG_CRUMB * crumbs);
 extern void log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
@@ -118,8 +123,8 @@ extern void log_append_redo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvin
 				     PGLENGTH offset, const RECDES * recdes);
 
 extern void log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int length, const void *data);
-extern void log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int length,
-				 const void *data);
+extern int log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int length,
+				const void *data);
 extern void log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
 				   PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes);
 extern void log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
@@ -210,6 +215,7 @@ extern bool log_get_undo_record_from_buffer (THREAD_ENTRY * thread_p, const LOG_
 extern void log_sysop_start (THREAD_ENTRY * thread_p);
 extern void log_sysop_start_atomic (THREAD_ENTRY * thread_p);
 extern void log_sysop_abort (THREAD_ENTRY * thread_p);
+extern void log_sysop_abort_and_defer_wake (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa);
 extern void log_sysop_attach_to_outer (THREAD_ENTRY * thread_p);
 extern void log_sysop_commit (THREAD_ENTRY * thread_p);
 extern void log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid,

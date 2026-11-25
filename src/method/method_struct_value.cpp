@@ -318,7 +318,7 @@ namespace cubmethod
       case DB_TYPE_NUMERIC:
       {
 	char str_buf[NUMERIC_MAX_STRING_SIZE];
-	numeric_db_value_print (value, str_buf);
+	numeric_db_value_print (&v, str_buf);
 	size += serializator.get_packed_int_size (size); /* dummy length */
 	size += serializator.get_packed_c_string_size (str_buf, strlen (str_buf), size);
       }
@@ -329,7 +329,7 @@ namespace cubmethod
       {
 	size += serializator.get_packed_int_size (size); /* codeset */
 	size += serializator.get_packed_int_size (size); /* dummy size */
-	size += serializator.get_packed_c_string_size (db_get_string (value), db_get_string_size (value), size);
+	size += serializator.get_packed_c_string_size (db_get_string (&v), db_get_string_size (&v), size);
       }
       break;
 
