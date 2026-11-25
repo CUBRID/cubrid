@@ -6730,8 +6730,13 @@ scan_index_nl_batch_collect (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * o
     }
   if (ret == S_SUCCESS)
     {
-      /* the caller takes a row while half of its array, one OID buffer, is free */
-      assert (isidp->oids_count <= room);
+      /* the caller takes a row while half of its array, one OID buffer, is free. A scan opened again may have got a
+       * larger buffer, after index_scan_oid_buffer_size was raised (CBRD-28138): its OIDs are then left to the row
+       * path, as those of a key with more OIDs than one buffer are */
+      if (isidp->oids_count > room)
+	{
+	  return S_SUCCESS;
+	}
       memcpy (oids, isidp->oid_list->oidp, isidp->oids_count * sizeof (OID));
       *n_oids = isidp->oids_count;
     }
