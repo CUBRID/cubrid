@@ -2377,6 +2377,8 @@ struct pt_spec_info
   PT_SHARE_GROUP *share_group;	/* CBRD-27351: the group of a view reference that reads one result of the view with
 				 * the other references of the group, NULL for none */
   bool share_pushed;		/* CBRD-27351: a term was pushed into the body of this reference, which leaves its group */
+  PT_NODE *share_cols;		/* CBRD-27351: the select list this member of a share group would have without the
+				 * group, which it goes back to when it leaves the group; NULL once it has */
 };
 
 /* CBRD-27351: the references to one view, outside correlated subqueries, that read one result of the view */
@@ -2387,6 +2389,8 @@ struct pt_share_group
   PT_NODE *donor;		/* the reference whose derived table makes the result the others read */
   int n_members;		/* the references expanded as a derived table */
   bool all_columns;		/* the view's body gives other rows without the columns not read, as DISTINCT */
+  PT_NODE *kept;		/* the columns the members left in the group would select without it, while settled */
+  int n_kept;			/* the members whose columns are in kept */
   PT_SHARE_GROUP *next;		/* the next group of the statement */
 };
 
