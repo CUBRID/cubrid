@@ -71,6 +71,7 @@
 
 #include "dbtype.h"
 #include "method_callback.hpp"
+#include "sp_context_rules.hpp"
 #include "filesys_temp.hpp"
 
 #if !defined(WINDOWS)
@@ -1118,6 +1119,7 @@ db_restart (const char *program, int print_version, const char *volume)
 	  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 	  strncpy (db_Database_name, volume, DB_MAX_IDENTIFIER_LENGTH);
 	  install_static_methods ();
+	  sp_reset_context ();
 #if !defined(WINDOWS)
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS))
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
@@ -1325,6 +1327,7 @@ db_shutdown (void)
   (void) os_set_signal_handler (SIGFPE, prev_sigfpe_handler);
 #endif
   db_Disable_modifications = 0;
+  sp_reset_context ();
 
   db_free_execution_plan ();
 
@@ -1476,6 +1479,7 @@ db_end_session (void)
     }
 
   cubmethod::get_callback_handler ()->free_query_handle_all (true);
+  sp_reset_context ();
 
   is_doing_end_session = -1;
 
@@ -1540,6 +1544,12 @@ db_commit_transaction (void)
   CHECK_CONNECT_ERROR ();
   /* CHECK_MODIFICATION_ERROR (); */
 
+  retval = sp_check_statement_allowed (SP_STMT_TCL, PT_COMMIT_WORK);
+  if (retval != NO_ERROR)
+    {
+      return retval;
+    }
+
   /* API does not support RETAIN LOCK */
   retval = tran_commit (false);
 
@@ -1564,6 +1574,12 @@ db_abort_transaction (void)
 
   CHECK_CONNECT_ERROR ();
   /* CHECK_MODIFICATION_ERROR (); */
+
+  error = sp_check_statement_allowed (SP_STMT_TCL, PT_ROLLBACK_WORK);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   error = tran_abort ();
 
@@ -1649,6 +1665,12 @@ db_savepoint_transaction (const char *savepoint_name)
   int retval;
 
   CHECK_CONNECT_ERROR ();
+
+  retval = sp_check_statement_allowed (SP_STMT_TCL, PT_SAVEPOINT);
+  if (retval != NO_ERROR)
+    {
+      return retval;
+    }
 
   retval = db_savepoint_transaction_internal (savepoint_name);
 

@@ -8282,6 +8282,7 @@ delete_stmt
 			if (del)
 			  {
 			    PT_NODE *node = NULL;
+			    PT_NODE *paren_spec = NULL;
 			    del->info.delete_.target_classes = CONTAINER_AT_0 ($4);
 			    del->info.delete_.spec = CONTAINER_AT_1 ($4);
 
@@ -8304,8 +8305,23 @@ delete_stmt
 			    del->info.delete_.limit = $7;
 			    del->info.delete_.rewrite_limit = 1;
 
+			    for (paren_spec = del->info.delete_.spec; paren_spec; paren_spec = paren_spec->next)
+			      {
+				/* "(t1, t2)" leaves a PT_SPEC list as entity_name, which the code below takes for a PT_NAME */
+				if (paren_spec->info.spec.entity_name
+				    && paren_spec->info.spec.entity_name->node_type == PT_SPEC)
+				  {
+				    break;
+				  }
+			      }
+
+			    if (paren_spec)
+			      {
+				PT_ERRORmf (this_parser, paren_spec, MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Parenthesized table list");
+			      }
 			    /* In a multi-table case the LIMIT clauses is not allowed. */
-   			    if (del->info.delete_.spec->next)
+			    else if (del->info.delete_.spec->next)
    			      {
    				if (del->info.delete_.limit)
    				  {
@@ -12654,6 +12670,7 @@ select_expression_without_subquery
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
                             stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
+                            stmt->flag.is_click_counter = $1->flag.is_click_counter | $9->flag.is_click_counter;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12739,6 +12756,7 @@ select_expression
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
                             stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
+                            stmt->flag.is_click_counter = $1->flag.is_click_counter | $9->flag.is_click_counter;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12822,6 +12840,7 @@ select_expression_without_values_query_no_with_clause
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
                             stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
+                            stmt->flag.is_click_counter = $1->flag.is_click_counter | $9->flag.is_click_counter;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12906,6 +12925,7 @@ select_expression_without_values_and_single_subquery
 			     stmt->info.query.q.union_.arg1 = $1;
 			     stmt->info.query.q.union_.arg2 = $9;
                              stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
+                             stmt->flag.is_click_counter = $1->flag.is_click_counter | $9->flag.is_click_counter;
 
 			     if (arg1 != NULL
 				 && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -13294,6 +13314,7 @@ cte_query_list
 			    stmt->info.query.q.union_.arg1 = arg1;
 		            stmt->info.query.q.union_.arg2 = arg2;
                             stmt->flag.recompile = arg1->flag.recompile | arg2->flag.recompile;
+                            stmt->flag.is_click_counter = arg1->flag.is_click_counter | arg2->flag.is_click_counter;
 			  }
 
 			$$ = stmt;
