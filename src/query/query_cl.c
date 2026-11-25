@@ -906,6 +906,16 @@ execute_query_with_internal_lob_dml (const XASL_ID * xasl_id, QUERY_ID * query_i
       return error;
     }
 
+  /* the stream runs the XASL without execute_query (): the same check for a statement a stored procedure runs */
+  if (sp_In_sql_depth > 0 && xasl_id != NULL)
+    {
+      error = check_sp_xasl_writes (xasl_id);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
   result_list = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
   if (result_list == NULL)
     {
@@ -1047,9 +1057,26 @@ prepare_and_execute_query_with_internal_lob_dml (char *stream, int stream_size, 
 {
   COMPILE_CONTEXT context;
   XASL_STREAM xasl_stream;
+  XASL_STMT_INFO stmt_info;
   int error;
 
   *list_idp = NULL;
+
+  /* the rules prepare_and_execute_query () checks, and its frame for a stored procedure the statement calls */
+  stmt_info.stmt_flags = xasl_stream_get_stmt_flags (stream);
+  const bool has_sp_call = (stmt_info.stmt_flags & XASL_STMT_HAS_SP_CALL) != 0;
+
+  if (has_sp_call || sp_In_sql_depth > 0)
+    {
+      xasl_stream_get_stmt_info (stream, stmt_info);
+      error = sp_check_xasl_allowed (stmt_info);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  sp_frame_guard frame_guard (has_sp_call, stmt_info);
 
   memset (&context, 0, sizeof (context));
   error = query_set_one_shot_plan_key (&context);
