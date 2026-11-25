@@ -69,6 +69,7 @@ struct bo_restart_arg;
 struct compile_context;
 struct xasl_node_header;
 struct xasl_stream;
+struct xasl_stmt_info;
 
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;
@@ -290,6 +291,7 @@ extern int qmgr_drop_all_query_plans (void);
 extern int qmgr_bind_variant (const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply);
 extern int qmgr_drop_query_plans_by_sha1 (const char *sha1);
 extern int qmgr_drop_query_clones (const char *sha1);
+extern int qmgr_get_xasl_stmt_info (const XASL_ID * xasl_id, struct xasl_stmt_info *stmt_info, bool * found);
 extern void qmgr_dump_query_plans (FILE * outfp);
 extern void qmgr_dump_query_cache (FILE * outfp);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -349,7 +351,7 @@ extern int es_posix_copy_file (const char *src_path, const char *metaname, char 
 extern int es_posix_rename_file (const char *src_path, const char *metaname, char *new_path);
 extern off_t es_posix_get_file_size (const char *path);
 
-extern int locator_upgrade_instances_domain (OID * class_oid, int attribute_id);
+extern int locator_upgrade_instances_domain (OID * class_oid, int attribute_id, bool check_only);
 extern int boot_get_server_locales (LANG_COLL_COMPAT ** server_collations, LANG_LOCALE_COMPAT ** server_locales,
 				    int *server_coll_cnt, int *server_locales_cnt);
 extern int boot_get_server_timezone_checksum (char *timezone_checksum);
@@ -371,6 +373,10 @@ extern int csession_get_prepared_statement (const char *name, XASL_ID * xasl_id,
 extern int csession_delete_prepared_statement (const char *name);
 
 extern int clogin_user (const char *username);
+extern int cau_challenge (const char *user_name, int *scheme, char *nonce, int nonce_size, INT64 * issued_at, char *tag,
+			  int tag_size, char *salt, int salt_size, char *stored_name, int stored_name_size);
+extern int cau_response (const char *user_name, const char *nonce, INT64 issued_at, const char *tag,
+			 const char *answer);
 
 extern int csession_set_session_variables (DB_VALUE * variables, const int count);
 extern int csession_get_variable (DB_VALUE * name, DB_VALUE * value);

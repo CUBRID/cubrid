@@ -106,6 +106,7 @@ struct symbol_info
   DB_VALUE **reserved_values;	/* db_values array used for reserved attributes */
   PT_FUNC_INDEX_COVER *func_idx_cover_list;	/* function index expressions to route to their result attribute */
   PT_FUNC_INDEX_COVER *func_idx_routed_list;	/* covered scans of the query whose output is routed */
+  bool heap_scan_filter;	/* translating the data filter of a heap scan (pt_to_pred_expr_factor_dnf ()) */
 };
 
 typedef struct aggregate_info AGGREGATE_INFO;
@@ -175,6 +176,8 @@ extern void pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST
 					  const XASL_NODE * producer, const OUTPTR_LIST * output);
 extern void pt_set_sort_list_domains (SORT_LIST * keys, const XASL_NODE * producer, const OUTPTR_LIST * output);
 extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * parser, PT_NODE * node);
+extern bool pt_is_result_reuse_safe (PARSER_CONTEXT * parser, PT_NODE * tree);
+extern SQ_KEY *pt_make_memoize_key (PARSER_CONTEXT * parser, PT_NODE ** names, int n_names);
 extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *argp);
 extern XASL_NODE *parser_generate_xasl (PARSER_CONTEXT * p, PT_NODE * node);
 extern REGU_VARIABLE *pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2,
@@ -190,6 +193,7 @@ extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_n
 				     PT_NODE * using_index, PT_NODE * order_by, PT_NODE * orderby_for,
 				     int server_op, SCAN_OPERATION_TYPE scan_op_type);
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
+extern int pt_add_write_class_oids (XASL_NODE * xasl, const OID * class_oids, int count);
 extern PRED_EXPR_WITH_CONTEXT *pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * filter_pred, PT_NODE * spec);
 extern XASL_NODE *pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
 extern XASL_NODE *pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * node);

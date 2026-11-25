@@ -33,8 +33,10 @@
 #include "file_manager.h"
 #include "locator_sr.h"
 #include "log_manager.h"
+#include "oos_file.hpp"
 #include "overflow_file.h"
 #include "replication.h"
+#include "serial.h"
 #include "system_catalog.h"
 
 #include <stdio.h>
@@ -877,6 +879,66 @@ struct rvfun RV_fun[] = {
    log_rv_undoredo_sysmeta_version,
    NULL,
    NULL},
+  {RVPGBUF_INIT_NEW_PAGE,
+   "RVPGBUF_INIT_NEW_PAGE",
+   pgbuf_rv_init_new_page_undo,
+   pgbuf_rv_init_new_page_redo,
+   NULL,
+   NULL},
+  {RVOOS_INSERT,
+   "RVOOS_INSERT",
+   oos_rv_undo_insert,
+   oos_rv_redo_insert,
+   NULL,
+   NULL},
+  {RVOOS_DELETE,
+   "RVOOS_DELETE",
+   NULL,
+   oos_rv_redo_delete,
+   NULL,
+   NULL},
+  {RVREPL_OOS_INSERT,
+   "RVREPL_OOS_INSERT",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
+  {RVOOS_NOTIFY_VACUUM,
+   "RVOOS_NOTIFY_VACUUM",
+   vacuum_rv_es_nop,
+   vacuum_rv_es_nop,
+   oos_rv_dump_reclaim_intent,
+   NULL},
+  {RVREPL_DUMMY_OOS_RECORD,
+   "RVREPL_DUMMY_OOS_RECORD",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
+  {RVOOS_RECLAIM_POSTPONE,
+   "RVOOS_RECLAIM_POSTPONE",
+   NULL,
+   oos_rv_reclaim_on_postpone,
+   NULL,
+   oos_rv_dump_reclaim_intent},
+  {RVOOS_UPDATE_DROP_POSTPONE,
+   "RVOOS_UPDATE_DROP_POSTPONE",
+   NULL,
+   oos_rv_update_drop_on_postpone,
+   NULL,
+   log_rv_dump_hexa},
+  {RVREPL_OOS_REUSE,
+   "RVREPL_OOS_REUSE",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
+  {RVHF_SERIAL_DDL_UPDATE_UNDO,
+   "RVHF_SERIAL_DDL_UPDATE_UNDO",
+   serial_rv_undo_ddl_update,
+   NULL,
+   log_rv_dump_hexa,
+   NULL}
 };
 
 /*

@@ -55,6 +55,8 @@
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "authenticate.h"
+#include "authenticate_password.hpp"
 #include "log_comm.h"
 #include "log_writer.h"
 #include "arithmetic.h"
@@ -79,9 +81,11 @@
 #include "thread_manager.hpp"
 #include "pl_compile_handler.hpp"
 #include "pl_executor.hpp"
+#include "sp_context_rules.hpp"
 #endif // SA_MODE
 
 #include "xasl.h"
+#include "xasl_stream.hpp"
 #include "lob_locator.hpp"
 #include "crypt_opfunc.h"
 #include "method_error.hpp"
@@ -4625,6 +4629,11 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
       if (error != NO_ERROR)
 	{
 	  free_and_init (request);
+	  if (area != NULL)
+	    {
+	      /* the reply may still carry data; it is not read on an error */
+	      free_and_init (area);
+	    }
 	  return error;
 	}
 
@@ -5305,6 +5314,169 @@ csession_delete_prepared_statement (const char *name)
   exit_server (*thread_p);
 
   return result;
+#endif
+}
+
+#if defined (CS_MODE)
+/*
+ * cau_copy_reply_string () - copy a string out of a challenge reply, trusting
+ *   its length prefix only once the string lies inside the reply.
+ *   return: the position after it, or NULL if it does not fit
+ */
+static char *
+cau_copy_reply_string (char *ptr, char *reply, int reply_size, char *out, int out_size)
+{
+  int declared_len;
+  char *after_len, *str = NULL;
+
+  if (reply_size - (int) (ptr - reply) < OR_INT_SIZE)
+    {
+      return NULL;
+    }
+
+  after_len = or_unpack_int (ptr, &declared_len);
+  if (declared_len <= 0 || declared_len > (reply_size - (int) (after_len - reply))
+      || memchr (after_len, '\0', declared_len) == NULL)
+    {
+      return NULL;
+    }
+
+  ptr = or_unpack_string_nocopy (ptr, &str);
+  if (str == NULL || (int) strlen (str) >= out_size)
+    {
+      return NULL;
+    }
+
+  strcpy (out, str);
+  return ptr;
+}
+#endif /* CS_MODE */
+
+/*
+ * cau_challenge () - ask the server for a one-time password challenge.
+ *   return: NO_ERROR, or the server's error (ER_AU_INVALID_USER for an unknown account,
+ *           ER_AU_LOGIN_DISABLED for one that may not log in)
+ *   user_name (in) : account to prove
+ *   scheme (out)   : form its password is stored in, 0 if none
+ *   nonce (out)    : the challenge
+ *   nonce_size (in): size of nonce
+ *   issued_at (out): when the server issued it
+ *   tag (out)      : the server's signature over it, sent back with the answer
+ *   tag_size (in)  : size of tag
+ *   salt (out)     : the salt of a salted password, empty otherwise
+ *   salt_size (in) : size of salt
+ *   stored_name (out): the account name as stored, for a salted password
+ *   stored_name_size (in): size of stored_name
+ */
+int
+cau_challenge (const char *user_name, int *scheme, char *nonce, int nonce_size, INT64 * issued_at, char *tag,
+	       int tag_size, char *salt, int salt_size, char *stored_name, int stored_name_size)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (CSS_AU_CHALLENGE_REPLY_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int reply_size = OR_ALIGNED_BUF_SIZE (a_reply);
+  char *request, *ptr;
+  int user_len, req_len, error;
+
+  req_len = length_const_string (user_name, &user_len);
+  request = (char *) malloc (req_len);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) req_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  pack_const_string_with_length (request, user_name, user_len);
+
+  memset (reply, 0, reply_size);
+  error = net_client_request (NET_SERVER_AU_CHALLENGE, request, req_len, reply, reply_size, NULL, 0, NULL, 0);
+  free_and_init (request);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  ptr = or_unpack_int (reply, &error);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  ptr = or_unpack_int (ptr, scheme);
+
+  /* reply: error | scheme | nonce | issued_at | tag | salt | stored_name */
+  ptr = cau_copy_reply_string (ptr, reply, reply_size, nonce, nonce_size);
+  /* or_unpack_int64 () aligns first, so check the room from the aligned position */
+  if (ptr != NULL && reply_size - (int) (PTR_ALIGN (ptr, MAX_ALIGNMENT) - reply) >= OR_BIGINT_SIZE)
+    {
+      ptr = or_unpack_int64 (ptr, issued_at);
+      ptr = cau_copy_reply_string (ptr, reply, reply_size, tag, tag_size);
+      ptr = (ptr != NULL) ? cau_copy_reply_string (ptr, reply, reply_size, salt, salt_size) : NULL;
+      ptr = (ptr != NULL) ? cau_copy_reply_string (ptr, reply, reply_size, stored_name, stored_name_size) : NULL;
+    }
+  else
+    {
+      ptr = NULL;
+    }
+
+  if (ptr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
+      return ER_NET_SERVER_DATA_RECEIVE;
+    }
+
+  return NO_ERROR;
+#else
+  return NO_ERROR;
+#endif
+}
+
+/*
+ * cau_response () - answer a challenge. The challenge goes back
+ *   with the answer, so the server can recognise its own without storing it.
+ *   return: NO_ERROR if the server accepted it, else ER_AU_INVALID_PASSWORD
+ *   user_name (in) : account the challenge was issued for
+ *   nonce (in)     : the challenge
+ *   issued_at (in) : when the server issued it
+ *   tag (in)       : the server's signature over it
+ *   answer (in)    : digest over the challenge and the password's stored form
+ */
+int
+cau_response (const char *user_name, const char *nonce, INT64 issued_at, const char *tag, const char *answer)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *a_request, *request, *ptr;
+  int req_len, error;
+
+  /* request: user | nonce | issued_at | tag | answer */
+  req_len = or_packed_string_length (user_name, NULL) + or_packed_string_length (nonce, NULL) + MAX_ALIGNMENT
+    + OR_BIGINT_SIZE + or_packed_string_length (tag, NULL) + or_packed_string_length (answer, NULL);
+  a_request = (char *) malloc (req_len + MAX_ALIGNMENT);
+  if (a_request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (req_len + MAX_ALIGNMENT));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  request = PTR_ALIGN (a_request, MAX_ALIGNMENT);
+  ptr = or_pack_string (request, user_name);
+  ptr = or_pack_string (ptr, nonce);
+  ptr = or_pack_int64 (ptr, issued_at);
+  ptr = or_pack_string (ptr, tag);
+  ptr = or_pack_string (ptr, answer);
+  req_len = (int) (ptr - request);
+
+  error = net_client_request (NET_SERVER_AU_RESPONSE, request, req_len, OR_ALIGNED_BUF_START (a_reply),
+			      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  free_and_init (a_request);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  or_unpack_int (OR_ALIGNED_BUF_START (a_reply), &error);
+  return error;
+#else
+  return NO_ERROR;
 #endif
 }
 
@@ -7377,6 +7549,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
   char *request = NULL, *reply = NULL, *ptr = NULL, *reply_buffer = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int get_xasl_header = stream->xasl_header != NULL;
+  int get_stmt_info = stream->stmt_info != NULL;
 
   INIT_XASL_NODE_HEADER (stream->xasl_header);
 
@@ -7393,6 +7566,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 
   request_size += OR_INT_SIZE;	/* size */
   request_size += OR_INT_SIZE;	/* get_xasl_header */
+  request_size += OR_INT_SIZE;	/* get_stmt_info */
   request_size += OR_INT_SIZE;	/* whether to pin xasl cache entry */
   request_size += OR_INT_SIZE;	/* whether to recompile the pinned xasl cache entry */
   request_size += OR_INT_SIZE;	/* context->recompile_xasl */
@@ -7416,6 +7590,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
   ptr = or_pack_int (ptr, stream->buffer_size);
   /* Pack get_xasl_header. */
   ptr = or_pack_int (ptr, get_xasl_header);
+  ptr = or_pack_int (ptr, get_stmt_info);
   /* Pack context. */
   ptr = or_pack_int (ptr, (int) context->is_xasl_pinned_reference);
   ptr = or_pack_int (ptr, (int) context->recompile_xasl_pinned);
@@ -7443,6 +7618,10 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 	      if (get_xasl_header)
 		{
 		  OR_UNPACK_XASL_NODE_HEADER (ptr, stream->xasl_header);
+		}
+	      if (get_stmt_info)
+		{
+		  ptr = xasl_stmt_info_unpack (ptr, *stream->stmt_info);
 		}
 	      if (ptr < reply_buffer + reply_buffer_size)
 		{
@@ -7486,6 +7665,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
    */
   server_stream.xasl_id = stream->xasl_id;
   server_stream.xasl_header = stream->xasl_header;
+  server_stream.stmt_info = stream->stmt_info;
   server_stream.buffer_size = stream->buffer_size;
   if (stream->buffer_size > 0)
     {
@@ -7812,6 +7992,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 #else /* CS_MODE */
   QFILE_LIST_ID *list_id = NULL;
   bool error;
+  bool save_query_request;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
@@ -7820,9 +8001,12 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   if (!error)
     {
       /* call the server routine of query execute */
+      save_query_request = sp_Sa_query_request;
+      sp_Sa_query_request = true;
       list_id =
 	xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
 			     srv_cache_time, query_timeout, NULL);
+      sp_Sa_query_request = save_query_request;
     }
   qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
 
@@ -7936,14 +8120,17 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
   bool error;
 
   THREAD_ENTRY *thread_p = enter_server ();
+  bool save_query_request = sp_Sa_query_request;
 
   /* CBRD-27583: an object as its OID, as qmgr_execute_query sends it */
   DB_VALUE *server_db_values = qmgr_server_db_values (thread_p, dbval_cnt, dbval_ptr, &error);
   if (!error)
     {
+      sp_Sa_query_request = true;
       regu_result =
 	xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt,
 					 server_db_values, &flag, query_timeout);
+      sp_Sa_query_request = save_query_request;
     }
   qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
 
@@ -8223,6 +8410,69 @@ qmgr_drop_query_plans_by_sha1 (const char *sha1)
   exit_server (*thread_p);
 
   return status;
+#endif /* !CS_MODE */
+}
+
+/*
+ * qmgr_get_xasl_stmt_info - Send a NET_SERVER_QM_QUERY_GET_STMT_INFO request to the server
+ *
+ * return: NO_ERROR or error code
+ *
+ *   xasl_id(in): the XASL
+ *   stmt_info(out): its stmt_flags and the classes it writes
+ *   found(out): whether the XASL cache still has the XASL
+ *
+ * NOTE: This function is a counter part to sqmgr_get_xasl_stmt_info().
+ */
+int
+qmgr_get_xasl_stmt_info (const XASL_ID * xasl_id, XASL_STMT_INFO * stmt_info, bool * found)
+{
+#if defined(CS_MODE)
+  int error = NO_ERROR, req_error, reply_buffer_size = 0, found_int = 0;
+  OR_ALIGNED_BUF (OR_XASL_ID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *request, *reply, *ptr, *reply_buffer = NULL;
+
+  *found = false;
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = request;
+  OR_PACK_XASL_ID (ptr, xasl_id);
+
+  req_error =
+    net_client_request2 (NET_SERVER_QM_QUERY_GET_STMT_INFO, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &reply_buffer, &reply_buffer_size);
+  if (req_error)
+    {
+      return req_error;
+    }
+
+  ptr = or_unpack_int (reply, &reply_buffer_size);
+  ptr = or_unpack_int (ptr, &error);
+  ptr = or_unpack_int (ptr, &found_int);
+  if (error == NO_ERROR && found_int && reply_buffer != NULL)
+    {
+      (void) xasl_stmt_info_unpack (reply_buffer, *stmt_info);
+      *found = true;
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int error;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  error = xqmgr_get_xasl_stmt_info (thread_p, xasl_id, stmt_info, found);
+
+  exit_server (*thread_p);
+
+  return error;
 #endif /* !CS_MODE */
 }
 
@@ -10748,15 +10998,16 @@ log_get_mvcc_snapshot (void)
  * return : NO_ERROR if all OK, error status otherwise
  * class_oid(in) : class whose instances must be upgraded
  * attribute_id(in) : id attribute which must be upgraded
+ * check_only(in) : only check that every instance fits the latest representation
  *
  * Note: Used on ALTER CHANGE (with type change syntax) context
  */
 int
-locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
+locator_upgrade_instances_domain (OID * class_oid, int attribute_id, bool check_only)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED, req_error;
-  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE * 2) a_request;
   char *request, *reply, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
@@ -10771,6 +11022,7 @@ locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
   ptr = request;
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, attribute_id);
+  ptr = or_pack_int (ptr, check_only ? 1 : 0);
 
   req_error =
     net_client_request (NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN, request,
@@ -10786,7 +11038,7 @@ locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error = xlocator_upgrade_instances_domain (thread_p, class_oid, attribute_id);
+  error = xlocator_upgrade_instances_domain (thread_p, class_oid, attribute_id, check_only);
 
   exit_server (*thread_p);
   return error;
@@ -11660,9 +11912,12 @@ error:
   packing_packer packer;
   cubmem::extensible_block eb;
   THREAD_ENTRY *thread_p = enter_server ();
+  bool save_query_request = sp_Sa_query_request;
 
+  sp_Sa_query_request = false;
   {
     DB_VALUE ret_value;
+    db_make_null (&ret_value);
     cubpl::executor executor ((cubpl::pl_signature &) sig);
     req_error = executor.fetch_args_peek (args);
     if (req_error == NO_ERROR)
@@ -11699,6 +11954,7 @@ error:
 
     db_value_clear (&ret_value);
   }
+  sp_Sa_query_request = save_query_request;
 
   exit_server (*thread_p);
 
