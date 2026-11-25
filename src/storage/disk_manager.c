@@ -2666,6 +2666,7 @@ disk_delete_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
   DISK_DELVOL_INFO info;
   DISK_DELVOL_PENDING redo_data;
   VOLID prev_volid;
+  VPID vpid_prev_volheader;
   int error_code = NO_ERROR;
 
   error_code = disk_check_delete_volume (thread_p, volid, &status, &info);
@@ -2724,6 +2725,14 @@ disk_delete_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
     }
 
   (void) FI_TEST_ARG (thread_p, FI_TEST_DISK_MANAGER_VOLUME_DELETE_BEFORE_UNLINK, &fi_exit_now, 0);
+
+  /* the undo of the unlink below changes the link only in the page buffer, and the undo of boot_Db_parm above flushes
+   * its page. without double write buffer nothing orders the two pages on disk, and a crash in between leaves fewer
+   * linked volumes than boot_Db_parm counts. flush the link first (disk_set_link logs this only for a new link) */
+  vpid_prev_volheader.volid = prev_volid;
+  vpid_prev_volheader.pageid = DISK_VOLHEADER_PAGE;
+  log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_prev_volheader),
+			 &vpid_prev_volheader);
 
   error_code = disk_set_link (thread_p, prev_volid, NULL_VOLID, "", true, DISK_FLUSH);
   if (error_code != NO_ERROR)
