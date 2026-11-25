@@ -215,6 +215,7 @@ extern int qo_xasl_get_num_terms (QO_XASL_INDEX_INFO * info);
 extern PT_NODE **qo_xasl_get_terms (QO_XASL_INDEX_INFO *);
 extern PT_NODE *qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 extern bool qo_check_nullable_op (PT_NODE * node);
+extern bool qo_expr_rejects_null (PARSER_CONTEXT * parser, PT_NODE * expr, UINTPTR spec_id, PT_NODE * name);
 extern PT_NODE *mq_rewrite (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #if 0
