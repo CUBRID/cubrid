@@ -328,7 +328,9 @@ catcls_get_vclass_definitions (void)
     system_catalog_initializer::get_view_charset (),
     system_catalog_initializer::get_view_server (),
     system_catalog_initializer::get_view_synonym (),
-    system_catalog_initializer::get_view_db_histogram ()
+    system_catalog_initializer::get_view_db_histogram (),
+    system_catalog_initializer::get_view_package (),
+    system_catalog_initializer::get_view_package_code ()
   };
 }
 
@@ -2078,5 +2080,51 @@ namespace cubschema
     make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
 
+  }
+
+  system_metadata_definition
+  system_catalog_initializer::get_view_package ()
+  {
+    return system_metadata_definition (
+		   // name
+		   CTV_PACKAGE_NAME,
+		   // columns
+    {
+      {"pkg_name", format_varchar (255)},
+      {"owner", format_varchar (DB_MAX_USER_LENGTH)},
+      {"procedure_count", "integer"},
+      {"variable_count", "integer"},
+      {"exception_count", "integer"},
+      {"cursor_count", "integer"},
+      {"record_type_count", "integer"},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_package_spec ()}
+    },
+// authorization
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
+	   );
+  }
+
+  system_metadata_definition
+  system_catalog_initializer::get_view_package_code ()
+  {
+    return system_metadata_definition (
+		   // name
+		   CTV_PACKAGE_CODE_NAME,
+		   // columns
+    {
+      {"pkg_name", format_varchar (255)},
+      {"owner", format_varchar (DB_MAX_USER_LENGTH)},
+      {"spec_code", format_varchar (1073741823)},
+      {"body_code", format_varchar (1073741823)},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_package_code_spec ()}
+    },
+// authorization
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
+	   );
   }
 }

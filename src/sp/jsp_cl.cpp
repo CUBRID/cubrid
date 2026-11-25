@@ -3718,6 +3718,31 @@ cleanup1:
   return err;
 }
 
+/*
+ * jsp_rewrite_pkg_code - print a CREATE PACKAGE [BODY] statement to be saved as the source of the package
+ *   return: CREATE OR REPLACE PACKAGE [BODY] without the owner name and the comment
+ *   parser(in): parser context
+ *   statement(in): a PT_CREATE_PACKAGE node
+ *
+ * Note: the same rewriting as for stored procedures (CBRD-26513, CBRD-26514), so that unloaddb can print it with
+ *       the owner and the comment of the catalog
+ */
+static const char *
+jsp_rewrite_pkg_code (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+  const char *rewritten_code;
+  int custom_print_saved = parser->custom_print;
+
+  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+  parser->flag.is_unloading_plcsql_def = 1;
+  rewritten_code = parser_print_tree (parser, statement);
+  parser->flag.is_unloading_plcsql_def = 0;
+
+  parser->custom_print = custom_print_saved;
+
+  return rewritten_code;
+}
+
 static int
 jsp_create_pkg_body (PARSER_CONTEXT *parser, PT_NODE *statement, const char *unique_name, const char *owner_name,
 		     MOP owner_mop)
@@ -3803,7 +3828,8 @@ jsp_create_pkg_body (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
 	}
 
       // package spec has not been updated, and hence no spec-related updates in system tables
-      err = jsp_set_pkg_scode_body_and_ocode (unique_name, owner_mop, pkg_compile_request.body_code.data(), ocode);
+      // save the rewritten code, not the user code sent to the compiler
+      err = jsp_set_pkg_scode_body_and_ocode (unique_name, owner_mop, jsp_rewrite_pkg_code (parser, statement), ocode);
       if (err != NO_ERROR)
 	{
 	  goto error_exit;
@@ -3888,9 +3914,10 @@ jsp_create_pkg_spec (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
 
   if (err == NO_ERROR && pkg_compile_response.err_code == NO_ERROR)
     {
+      // save the rewritten spec code, not the user code sent to the compiler. the body code is the saved one.
       err = sp_add_pkg_and_related (unique_name, owner_name, owner_mop,
-				    pkg_compile_request.code.data(), pkg_compile_request.body_code.data(), comment, pkg_compile_response,
-				    pkg_mop);
+				    jsp_rewrite_pkg_code (parser, statement), pkg_compile_request.body_code.data(), comment,
+				    pkg_compile_response, pkg_mop);
       if (err != NO_ERROR)
 	{
 	  goto error_exit;

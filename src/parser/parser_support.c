@@ -8753,7 +8753,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                 "CONCAT ('GRANT ', "
                 "GROUP_CONCAT([auth_type] ORDER BY 1 SEPARATOR ', '), "
                 "' ON ',"
-                "IF ([object_type]=5, 'PROCEDURE ', ''), "
+                "CASE [object_type] WHEN 5 THEN 'PROCEDURE ' WHEN 6 THEN 'PACKAGE ' ELSE '' END, "
                 "[unique_name], "
                 "' TO ',"
                 "[grantee_name],"
@@ -8813,13 +8813,40 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                                         "[u].[name] = '%1$s'"
                                 ") "
                         ") "
+        "UNION ALL "
+                "SELECT "
+                        "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
+                        "CAST ([a].[grantee].[name] AS VARCHAR(255)) AS [grantee_name], " /* string -> varchar(255) */
+                        "[a].[object_type] AS [object_type], "
+                        "[p].[unique_name] AS [unique_name], "
+                        "[a].[auth_type] AS [auth_type], "
+                        "[a].[is_grantable] AS [is_grantable] "
+                "FROM "
+                        "[_db_auth] AS [a], [_db_package] AS [p] "
+                "WHERE "
+                        "[a].[object_of] = [p] "
+                        "AND [a].[object_type] = 6 "
+                        "AND MOD ([p].[flags], 2) = 0 " /* PKG_FLAGS_SYSTEM_GENERATED */
+                        "AND ( "
+                        "[a].[grantee].[name] = '%1$s' "
+                        "OR "
+                        "SET {[a].[grantee].[name]} SUBSETEQ ("
+                                "SELECT "
+                                        "SUM (SET {[t].[g].[name]}) "
+                                "FROM "
+                                        /* AU_USER_CLASS_NAME */
+                                        "[_db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                "WHERE "
+                                        "[u].[name] = '%1$s'"
+                                ") "
+                        ") "
         ") "
         "GROUP BY "
                 "[grantee_name], [unique_name], [is_grantable] ASC "
         "ORDER BY 1;";
   // *INDENT-ON*
 
-  const int buffer_size = 4096;	// length of query (1303) + identifier (255) * 4 < 1024
+  const int buffer_size = 4096;	// length of query (2180) + identifier (255) * 6 < 4096
   char buffer[buffer_size];
   memset (buffer, 0, buffer_size);
 

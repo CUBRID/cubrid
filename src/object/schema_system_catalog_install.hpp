@@ -94,6 +94,8 @@ namespace cubschema
     system_metadata_definition get_view_synonym ();
     system_metadata_definition get_view_server ();
     system_metadata_definition get_view_db_histogram ();
+    system_metadata_definition get_view_package ();
+    system_metadata_definition get_view_package_code ();
   }
 } // namespace cubschema
 
@@ -122,5 +124,7 @@ std::string sm_define_view_charset_spec (void);
 std::string sm_define_view_synonym_spec (void);
 std::string sm_define_view_server_spec (void);
 std::string sm_define_view_histogram_spec (void);
+std::string sm_define_view_package_spec (void);
+std::string sm_define_view_package_code_spec (void);
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_INSTALL_HPP_ */
