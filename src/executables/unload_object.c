@@ -1257,6 +1257,10 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 	  fprintf (stderr, "\n'--%s' needs '--%s' of 1 or more; one fetcher is used.\n", UNLOAD_FETCHER_COUNT_L,
 		   UNLOAD_THREAD_COUNT_L);
 	}
+#elif defined(CS_MODE)
+      /* the client library without MULTI_CONN_TO_A_SERVER (libcubridcs): Windows, or an install without libcubridcs_mc */
+      fprintf (stderr, "\n'--%s' needs the client library for multiple connections; one fetcher is used.\n",
+	       UNLOAD_FETCHER_COUNT_L);
 #else
       fprintf (stderr, "\n'--%s' is valid only with '--%s'; one fetcher is used.\n", UNLOAD_FETCHER_COUNT_L,
 	       UNLOAD_CS_MODE_L);
