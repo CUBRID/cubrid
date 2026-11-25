@@ -2922,6 +2922,11 @@ static int
 disk_delete_volume_rollback (THREAD_ENTRY * thread_p, VOLID volid, const char *vol_fullname)
 {
   bool mounted = false, cached = false;
+  VOLID prev_volid;
+  INT16 link_volid = NULL_VOLID;
+  char link_fullname[PATH_MAX];
+  const char *mounted_fullname;
+  int error_code;
 
   if (fileio_get_volume_descriptor (volid) == NULL_VOLDES)
     {
@@ -2941,6 +2946,31 @@ disk_delete_volume_rollback (THREAD_ENTRY * thread_p, VOLID volid, const char *v
 	  return er_errid ();
 	}
       cached = true;
+    }
+
+  /* restoredb -u may have put the volume in another path than the one the undo of the link wrote back. the link must
+   * name the file that is mounted, or the volume information file and the next restart use the old path */
+  prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
+  mounted_fullname = fileio_get_volume_label (volid, PEEK);
+  if (prev_volid != NULL_VOLID && mounted_fullname != NULL)
+    {
+      if (disk_get_link (thread_p, prev_volid, &link_volid, link_fullname) == NULL)
+	{
+	  ASSERT_ERROR ();
+	  return er_errid ();
+	}
+      if (link_volid != volid || strcmp (link_fullname, mounted_fullname) != 0)
+	{
+	  /* not logged, like restoredb -u: the recovery that brought the link back is over */
+	  error_code = disk_set_link (thread_p, prev_volid, volid, mounted_fullname, false, DISK_FLUSH);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  disk_log ("disk_delete_volume_rollback", "link of volume %d changed from %d (%s) to %d (%s)", prev_volid,
+		    link_volid, link_fullname, volid, mounted_fullname);
+	}
     }
 
   (void) logpb_recreate_volume_info (thread_p);
