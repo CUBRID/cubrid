@@ -932,6 +932,8 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->first_save_entry = NULL;
   tdes->lob_locator_root.init ();
   tdes->m_log_postpone_cache.reset ();
+  /* a new client inherits no return of the last one */
+  tdes->commit_batch_epoch = 0;
 }
 
 /*

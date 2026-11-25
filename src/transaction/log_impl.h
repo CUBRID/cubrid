@@ -571,8 +571,8 @@ struct log_tdes
 
   char *ddl_sql_user_text;	/* SQL user text for the transaction */
 
-  UINT64 commit_batch_epoch;	/* log flush broadcast that last released this index's flush waiter; kept across
-				 * transactions so that the next flush wait is known as a return (log_commit_batch.hpp) */
+  UINT64 commit_batch_epoch;	/* epoch of the log flush broadcast that last released this index's flush waiter,
+				 * kept across transactions: the next flush wait is a return while it is current */
 
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))

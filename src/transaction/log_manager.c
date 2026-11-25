@@ -265,7 +265,7 @@ static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TD
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
 static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
-					  LOG_LSA * lsa);
+					  LOG_LSA * lsa, bool holds_locks);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa);
@@ -3399,6 +3399,10 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
+#if defined (SERVER_MODE)
+  /* the callers hold CSECT_HA_SERVER_STATE over this flush: it cannot wait for the commit batching window */
+  cublog::commit_batch.on_urgent_request (start_lsa, cublog::commit_batch_urgent_source::HA_SERVER_STATE);
+#endif /* SERVER_MODE */
   logpb_flush_pages (thread_p, &start_lsa);
 }
 
@@ -4938,10 +4942,12 @@ log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA 
  *   tdes(in/out): State structure of transaction being committed/aborted.
  *   iscommitted(in): Is transaction been finished as committed ?
  *   lsa(in): commit lsa to flush logs
+ *   holds_locks(in): the locks are released after the flush, which then cannot wait for the commit batching window
  *
  */
 static void
-log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted, LOG_LSA * lsa)
+log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted, LOG_LSA * lsa,
+			      bool holds_locks)
 {
   if (iscommitted == LOG_COMMIT)
     {
@@ -4949,6 +4955,12 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
 
       log_Stat.commit_count++;
 
+#if defined (SERVER_MODE)
+      if (holds_locks)
+	{
+	  cublog::commit_batch.on_urgent_request (*lsa, cublog::commit_batch_urgent_source::TWO_PC);
+	}
+#endif /* SERVER_MODE */
       logpb_flush_pages (thread_p, lsa);
     }
   else
@@ -4968,6 +4980,10 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
 	   * at recovery, the current transaction must be aborted. But, some of its log records are in
 	   * the archive that was previously removed => crash. Fixed, by forcing log flush before ending.
 	   */
+	  if (holds_locks)
+	    {
+	      cublog::commit_batch.on_urgent_request (*lsa, cublog::commit_batch_urgent_source::TWO_PC);
+	    }
 	  logpb_flush_pages (thread_p, lsa);
 	}
 #endif
@@ -5490,7 +5506,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    }
 
 	  /* Flush commit log and change the transaction state. */
-	  log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
+	  log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa, false);
 	}
       else
 	{
@@ -5970,14 +5986,14 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 	      LOG_LSA commit_lsa;
 
 	      log_append_commit_log (thread_p, tdes, &commit_lsa);
-	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
+	      log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa, false);
 	    }
 	  else
 	    {
 	      LOG_LSA abort_lsa;
 
 	      log_append_abort_log (thread_p, tdes, &abort_lsa);
-	      log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa);
+	      log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa, false);
 	    }
 
 	  state = tdes->state;
@@ -6259,21 +6275,15 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	      log_append_commit_log (thread_p, tdes, &commit_lsa);
 	    }
 
-#if defined (SERVER_MODE)
-	  /* the locks are released only after this flush: it cannot wait for the commit batching window */
-	  cublog::commit_batch.on_urgent_request (commit_lsa, cublog::commit_batch_urgent::TWO_PC);
-#endif /* SERVER_MODE */
-	  log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa);
+	  /* the locks are still held, and the flush wait cannot tell: it sees COMMITTED or ABORTED, not a 2PC state */
+	  log_change_tran_as_completed (thread_p, tdes, LOG_COMMIT, &commit_lsa, true);
 	}
       else
 	{
 	  LOG_LSA abort_lsa;
 
 	  log_append_abort_log (thread_p, tdes, &abort_lsa);
-#if defined (SERVER_MODE)
-	  cublog::commit_batch.on_urgent_request (abort_lsa, cublog::commit_batch_urgent::TWO_PC);
-#endif /* SERVER_MODE */
-	  log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa);
+	  log_change_tran_as_completed (thread_p, tdes, LOG_ABORT, &abort_lsa, true);
 	}
 
       state = tdes->state;
@@ -10749,16 +10759,16 @@ log_wakeup_log_flush_daemon ()
 }
 
 /*
- * log_wakeup_log_flush_daemon_urgent () - wakeup log flush daemon for a flush that cannot wait for the commit
- *                                         batching window
+ * log_wakeup_log_flush_daemon_for_full_prior_list () - wakeup log flush daemon when the prior list is full; the flush
+ *                                                      cannot wait for the commit batching window
  *
- *   lsa(in): the record that must reach the disk
+ *   lsa(in): the last record appended
  */
 void
-log_wakeup_log_flush_daemon_urgent (const LOG_LSA * lsa)
+log_wakeup_log_flush_daemon_for_full_prior_list (const LOG_LSA * lsa)
 {
 #if defined (SERVER_MODE)
-  cublog::commit_batch.on_urgent_request (*lsa, cublog::commit_batch_urgent::PRIOR_LIST);
+  cublog::commit_batch.on_urgent_request (*lsa, cublog::commit_batch_urgent_source::PRIOR_LIST);
 #endif /* SERVER_MODE */
   log_wakeup_log_flush_daemon ();
 }
@@ -11007,8 +11017,8 @@ log_check_ha_delay_info_execute (cubthread::entry &thread_ref)
  *
  *   synced(in): the flush synced the log volume
  *
- * NOTE: The only broadcast of gc_cond. The commit batching window learns here, so moving the broadcast moves this
- *       function as a whole.
+ * NOTE: The only broadcast of gc_cond. The commit batching window moves its epoch in the same hold of gc_mutex,
+ *       where the woken waiters read it.
  */
 static void
 log_release_commit_waiters (bool synced)

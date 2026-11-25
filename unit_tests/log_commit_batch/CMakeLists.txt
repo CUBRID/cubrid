@@ -22,3 +22,5 @@ add_executable(test_log_commit_batch
 target_include_directories(test_log_commit_batch PRIVATE
   ${CMAKE_SOURCE_DIR}/src/transaction
   )
+
+add_test (NAME test_log_commit_batch COMMAND test_log_commit_batch)

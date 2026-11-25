@@ -331,7 +331,7 @@ PSTAT_METADATA pstat_Metadata[] = {
 
   /* commit batching window of the log flush daemon (log_commit_batch.hpp) */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_COMMIT_BATCH_WAIT, "log_commit_batch_wait"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CLOSE_COUNT, "Num_log_commit_batch_close_count"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CLOSE_RETURNED, "Num_log_commit_batch_close_returned"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CLOSE_GAP, "Num_log_commit_batch_close_gap"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CLOSE_CAP, "Num_log_commit_batch_close_cap"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CLOSE_FLUSHED, "Num_log_commit_batch_close_flushed"),
@@ -345,11 +345,13 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_URGENT_PRIOR_LIST, "Num_log_commit_batch_urgent_prior_list"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_URGENT_PAGES_FIXED, "Num_log_commit_batch_urgent_pages_fixed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_URGENT_2PC, "Num_log_commit_batch_urgent_2pc"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_URGENT_HA_SERVER_STATE,
+				  "Num_log_commit_batch_urgent_ha_server_state"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CYCLES, "Num_log_commit_batch_cycles"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_RELEASED, "Num_log_commit_batch_released"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_LOG_COMMIT_BATCH_RHO, "log_commit_batch_rho"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_LOG_COMMIT_BATCH_T90, "log_commit_batch_t90"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_LOG_COMMIT_BATCH_FLUSH_TIME, "log_commit_batch_flush_time"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_LOG_COMMIT_BATCH_RETURN_PCT, "Num_log_commit_batch_return_pct"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_LOG_COMMIT_BATCH_RETURN_T90_USEC, "Time_log_commit_batch_return_t90_usec"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_LOG_COMMIT_BATCH_FLUSH_USEC, "Time_log_commit_batch_flush_usec"),
 
   /* HA replication delay */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HA_REPL_DELAY, "Time_ha_replication_delay"),
