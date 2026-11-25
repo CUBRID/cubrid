@@ -686,11 +686,10 @@ qo_rewrite_inner_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, QO_UNNEST_
   subq->info.query.q.select.where = where;
   subq->info.query.correlation_level = 0;
 
-  /* an IN subquery keeps its DISTINCT (pt_coerce_range_expr_arguments ()), as in qo_rewrite_subqueries () */
-  if (!info->is_in_form)
-    {
-      subq->info.query.all_distinct = PT_ALL;
-    }
+  /* pt_coerce_range_expr_arguments () marks an IN subquery DISTINCT for the nested evaluation, which scans its
+   * result list per outer row.  A SEMI / ANTI JOIN asks only whether a match exists, so the duplicates cost it
+   * nothing and the sort would: read the derived table as EXISTS does, with every row */
+  subq->info.query.all_distinct = PT_ALL;
 
   /* the derived table selects the inner columns the ON names: search the ON alone, not the specs and their JOIN ... ON */
   for (spec = subq->info.query.q.select.from; spec != NULL; spec = spec->next)
@@ -936,7 +935,6 @@ qo_make_semi_anti_exists_cond (PARSER_CONTEXT * parser, PT_NODE * spec)
   pt_set_pred_order (parser, subq->info.query.q.select.where, max_pred_order + 1);
   subq->info.query.q.select.where = parser_append_node (on_cond, subq->info.query.q.select.where);
 
-  subq->info.query.all_distinct = PT_ALL;
   qo_add_limit_clause (parser, subq);
 
   subq->info.query.is_subquery = PT_IS_SUBQUERY;

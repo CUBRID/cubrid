@@ -23506,10 +23506,7 @@ pt_plan_semi_anti_type (PARSER_CONTEXT * parser, PT_NODE * select_node, PT_NODE 
   else if (type == SEMI_ANTI_DISTINCT)
     {
       node = qo_rewrite_semi_anti_join (parser, query, spec->info.spec.id, SEMI_ANTI_DISTINCT);
-      /* a derived table already DISTINCT keeps its summary when joined INNER */
-      if (node != NULL
-	  && (spec->info.spec.derived_table == NULL
-	      || spec->info.spec.derived_table->info.query.all_distinct != PT_DISTINCT))
+      if (node != NULL)
 	{
 	  subq = node->info.spec.derived_table;
 	}
@@ -23552,7 +23549,7 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
   TABLE_INFO *table_info;
   double cost, best_cost;
   int n_types, best_idx, i;
-  bool can_distinct_inner, is_merge_hinted, was_distinct;
+  bool can_distinct_inner, is_merge_hinted;
 
   /* the plan of a copy reads the rows of a derived table unnested from a subquery from its summary (qo_add_node ()) */
   for (spec = select_node->info.query.q.select.from; spec != NULL && !pt_has_error (parser); spec = spec->next)
@@ -23595,10 +23592,6 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  types[n_types++] = SEMI_ANTI_EXISTS;
 	}
-
-      /* a derived table already DISTINCT keeps its summary when joined INNER */
-      was_distinct = (spec->info.spec.derived_table != NULL
-		      && spec->info.spec.derived_table->info.query.all_distinct == PT_DISTINCT);
 
       best_idx = -1;
       best_cost = 0.0;
@@ -23660,10 +23653,7 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	      parser->symbols->table_info = table_info;
 	    }
 
-	  if (!was_distinct)
-	    {
-	      subq = node->info.spec.derived_table;
-	    }
+	  subq = node->info.spec.derived_table;
 	}
 
       /* the copies for the specs after this one read the rows and the cost of the subquery from its summary; the query
