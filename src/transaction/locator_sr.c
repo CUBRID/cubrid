@@ -10180,39 +10180,36 @@ locator_wset_resolve_ref_partition (THREAD_ENTRY * thread_p, DB_VALUE * key, OID
  *
  *   tdes(in/out): current transaction descriptor
  *   index(in): the index being maintained (only BTREE_FOREIGN_KEY indexes are handled)
- *   btid_index(in): position of this index used to fetch its key from the record
- *   attrinfo(in): cached attribute info for the record
- *   recdes(in): the touched row (new image on insert, old image on delete)
+ *   key(in/out): the row's foreign-key value, already read from the row for this index; a borrowed domain is
+ *                restored before returning
+ *   key_domain(in): domain to borrow when a composite key has none
  *   inst_oid(in): the row's OID
  *
  * return: NO_ERROR, or an error code on failure
  *
  * Note: Orders this transaction behind the parent row that owns the referenced primary key by
- *       reproducing the parent's write hash from the child's foreign-key value. The value is read
- *       from the foreign-key index and packed in the parent primary-key domain. A NULL foreign key has no
- *       parent reference and is skipped.
+ *       reproducing the parent's write hash from the child's foreign-key value, packed in the parent
+ *       primary-key domain. A NULL foreign key has no parent reference and is skipped, and so is a key that no
+ *       partition of a partitioned parent can hold: no parent row can own it, and the foreign key check fails
+ *       the statement.
  *       Every technical failure is returned to the DML path; a key must not be silently omitted.
  */
 static int
-locator_wset_collect_fk_ref (THREAD_ENTRY * thread_p, LOG_TDES * tdes, OR_INDEX * index, int btid_index,
-			     HEAP_CACHE_ATTRINFO * attrinfo, RECDES * recdes, OID * inst_oid,
-			     const OID * table_oid, const char *operation, const char *image)
+locator_wset_collect_fk_ref (THREAD_ENTRY * thread_p, LOG_TDES * tdes, OR_INDEX * index, DB_VALUE * key,
+			     TP_DOMAIN * key_domain, OID * inst_oid, const OID * table_oid, const char *operation,
+			     const char *image)
 {
   TP_DOMAIN *parent_pk_domain;
-  TP_DOMAIN *fk_key_domain = NULL;
-  DB_VALUE *fk_key;
-  DB_VALUE dbvalue;
-  BTID fk_btid;
   OID ref_oid;
   BTID ref_btid;
   bool has_null;
-  char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT];
-  char *aligned_buf;
+  bool lend_domain;
   int error_code;
 
   assert (index != NULL);
   assert (index->fk != NULL);
   assert (tdes != NULL);
+  assert (key != NULL);
 
   if (tdes->wset_fallback || tdes->suppress_replication != 0)
     {
@@ -10225,22 +10222,15 @@ locator_wset_collect_fk_ref (THREAD_ENTRY * thread_p, LOG_TDES * tdes, OR_INDEX 
       return locator_wset_ensure_key_error ("failed to read referenced parent key domain");
     }
 
-  db_make_null (&dbvalue);
-  aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
-
-  fk_key =
-    heap_attrvalue_get_key (thread_p, btid_index, attrinfo, recdes, &fk_btid, &dbvalue, aligned_buf, NULL,
-			    &fk_key_domain);
-  if (fk_key == NULL || fk_key_domain == NULL)
+  /* a composite key comes without a domain; reading its elements needs one */
+  lend_domain = DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY && key->data.midxkey.domain == NULL;
+  if (lend_domain)
     {
-      pr_clear_value (&dbvalue);
-      return locator_wset_ensure_key_error ("failed to extract foreign key value");
-    }
-
-  /* a composite key comes back without a domain; reading its elements needs one */
-  if (DB_VALUE_DOMAIN_TYPE (fk_key) == DB_TYPE_MIDXKEY)
-    {
-      fk_key->data.midxkey.domain = fk_key_domain;
+      if (key_domain == NULL)
+	{
+	  return locator_wset_ensure_key_error ("failed to read composite foreign key domain");
+	}
+      key->data.midxkey.domain = key_domain;
     }
 
   COPY_OID (&ref_oid, &index->fk->ref_class_oid);
@@ -10249,33 +10239,36 @@ locator_wset_collect_fk_ref (THREAD_ENTRY * thread_p, LOG_TDES * tdes, OR_INDEX 
   /* a key with a NULL element references no parent row, and wset_add_ref_key skips it */
   if (index->n_atts > 1)
     {
-      has_null = btree_multicol_key_has_null (fk_key);
+      has_null = btree_multicol_key_has_null (key);
     }
   else
     {
-      has_null = DB_IS_NULL (fk_key);
+      has_null = DB_IS_NULL (key);
     }
 
   if (!has_null)
     {
-      error_code = locator_wset_resolve_ref_partition (thread_p, fk_key, &ref_oid, &ref_btid);
+      error_code = locator_wset_resolve_ref_partition (thread_p, key, &ref_oid, &ref_btid);
       if (error_code != NO_ERROR)
 	{
-	  if (fk_key == &dbvalue)
-	    {
-	      pr_clear_value (&dbvalue);
-	    }
-	  return error_code;
+	  goto end;
+	}
+
+      /* no partition of the parent holds this key */
+      if (OID_ISNULL (&ref_oid))
+	{
+	  goto end;
 	}
     }
 
   locator_wset_trace_key_source (thread_p, tdes, operation, image, LOG_WSET_KIND_REF, table_oid, inst_oid,
 				 index->fk->fkname, &ref_oid, &ref_btid.vfid);
-  error_code = wset_add_ref_key (tdes, &ref_oid, &ref_btid.vfid, fk_key, parent_pk_domain);
+  error_code = wset_add_ref_key (tdes, &ref_oid, &ref_btid.vfid, key, parent_pk_domain);
 
-  if (fk_key == &dbvalue)
+end:
+  if (lend_domain)
     {
-      pr_clear_value (&dbvalue);
+      key->data.midxkey.domain = NULL;
     }
 
   return error_code;
@@ -10340,13 +10333,13 @@ locator_collect_wset_key (THREAD_ENTRY * thread_p, bool need_replication, HEAP_C
   tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   assert (tdes != NULL);
 
+  assert (key != NULL);
   if (index->type == BTREE_FOREIGN_KEY)
     {
-      return locator_wset_collect_fk_ref (thread_p, tdes, index, btid_index, attrinfo, recdes, inst_oid,
-					  &attrinfo->class_oid, operation, image);
+      return locator_wset_collect_fk_ref (thread_p, tdes, index, key, key_domain, inst_oid, &attrinfo->class_oid,
+					  operation, image);
     }
 
-  assert (key != NULL);
   /* A NULL unique key, or a composite one with every column NULL, is not stored in the B-tree and cannot conflict
    * with another row (the same test as the unique check), so it orders nothing. A PRIMARY KEY is never NULL. */
   if (db_value_is_null (key) || btree_multicol_key_is_null (key))
