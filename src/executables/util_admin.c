@@ -1205,6 +1205,11 @@ util_get_library_name (int utility_index)
     case SA_ONLY:
       return LIB_UTIL_SA_NAME;
     case CS_ONLY:
+      /* the parallel apply workers of applylogdb each open their own connection (sub-client) to the server */
+      if (utility_index == APPLYLOGDB)
+	{
+	  return LIB_UTIL_CS_MC_NAME;
+	}
       return LIB_UTIL_CS_NAME;
     case SA_CS:
       {
