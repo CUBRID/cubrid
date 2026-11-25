@@ -13959,8 +13959,7 @@ btree_ovf_find_swap_leftover (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE
  * has_next (out)  : False when the entry is the directory's last one.
  */
 static int
-btree_ovf_dir_next_separator (THREAD_ENTRY * thread_p, PAGE_PTR dir_page, int dir_idx, OID * next_sep,
-			      bool * has_next)
+btree_ovf_dir_next_separator (THREAD_ENTRY * thread_p, PAGE_PTR dir_page, int dir_idx, OID * next_sep, bool * has_next)
 {
   RECDES dir_record;
   PAGE_PTR next_dir_page = NULL;
@@ -15290,8 +15289,7 @@ btree_ovf_dir_grow_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 	  /* Lower half plus the leftover; target_record stays intact as the undo image. */
 	  lower_record.data = PTR_ALIGN (lower_rec_buf, BTREE_MAX_ALIGN);
 	  memcpy (lower_record.data, target_record.data, split_at * obj_size);
-	  memcpy (lower_record.data + split_at * obj_size, target_record.data + (num_objects - 1) * obj_size,
-		  obj_size);
+	  memcpy (lower_record.data + split_at * obj_size, target_record.data + (num_objects - 1) * obj_size, obj_size);
 	  lower_record.length += obj_size;
 	}
       lower_record.area_size = lower_record.length;
