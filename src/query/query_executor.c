@@ -12824,7 +12824,7 @@ qexec_nl_batch_defer_error (QEXEC_NL_BATCH * batch)
 {
   int length;
 
-  if (batch->ahead_error != NULL || er_errid () == NO_ERROR || er_errid () == ER_INTERRUPTED)
+  if (batch->ahead_error != NULL || !qexec_is_value_error (er_errid ()))
     {
       return false;
     }
@@ -13162,7 +13162,7 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
       if (scan_index_nl_batch_collect (thread_p, s_id, batch->oids + batch->n_oids, batch->oid_cap - batch->n_oids,
 				       &n_oids, &complete) == S_ERROR)
 	{
-	  if (batch->n_rows == 1 || er_errid () == ER_INTERRUPTED)
+	  if (batch->n_rows == 1 || !qexec_is_value_error (er_errid ()))
 	    {
 	      return S_ERROR;
 	    }
@@ -14332,7 +14332,7 @@ qexec_sq_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   if (code == S_ERROR)
     {
     read_failed:
-      if (er_errid () == ER_INTERRUPTED)
+      if (!qexec_is_value_error (er_errid ()))
 	{
 	  return S_ERROR;
 	}

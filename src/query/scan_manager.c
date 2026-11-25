@@ -6903,12 +6903,15 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      /* Either we are not using ISS, or we are using it, and in this case, we are supposed to be here for the
 	       * first time */
 	      assert_release (!isidp->iss.use || isidp->iss.current_op == ISS_OP_NONE);
-	      if (isidp->nl_slice_cnt >= 0)
+	      /* a scan opened again may have got a smaller OID buffer than the one its OIDs were read with, after
+	       * index_scan_oid_buffer_size was lowered: the index is read again then */
+	      if (isidp->nl_slice_cnt >= 0 && isidp->nl_slice_cnt <= isidp->oid_list->capacity)
 		{
 		  ret = scan_index_take_nl_slice (isidp);
 		}
 	      else
 		{
+		  isidp->nl_slice_cnt = -1;
 		  ret = call_get_next_index_oidset (thread_p, scan_id, isidp, true);
 		}
 	      if (ret != S_SUCCESS)
