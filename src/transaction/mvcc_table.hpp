@@ -75,10 +75,11 @@ class mvcctable
 
     void alloc_transaction_lowest_active ();
     void reset_transaction_lowest_active (int tran_index);
+    void reset_transaction_lowest_active (int tran_index, const mvcc_snapshot &snapshot);
 
     // mvcc_snapshot/mvcc_info functions
     void build_mvcc_info (log_tdes &tdes);
-    void build_snapshot (int tran_index, mvcc_snapshot &snapshot, bool load_tran_stats);
+    bool build_snapshot (int tran_index, mvcc_snapshot &snapshot, bool load_tran_stats);
     void complete_mvcc (int tran_index, MVCCID mvccid, bool committed);
     void complete_sub_mvcc (MVCCID mvccid);
     MVCCID get_new_mvccid ();

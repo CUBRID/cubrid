@@ -21978,7 +21978,8 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
        * the key filter can be applied to the current key value.
        */
       *is_key_filter_satisfied = true;
-      if (bts->key_filter && bts->key_filter->scan_pred->regu_list)
+      /* test the predicate, not the key columns it reads: a key filter can read none (eval_key_filter ()) */
+      if (bts->key_filter && bts->key_filter->scan_pred->pred_expr)
 	{
 	  if (bts->is_cur_key_compressed)
 	    {
@@ -30345,7 +30346,8 @@ btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION
   BTREE_ADVANCE_WITH_KEY_FUNCTION *advance_function = btree_advance_and_find_key;
   BTREE_PROCESS_KEY_FUNCTION *key_function = NULL;
   MVCC_SNAPSHOT dirty_snapshot;
-  MVCC_SNAPSHOT committed_snapshot;
+  MVCC_SNAPSHOT catalog_read_snapshot;
+  bool catalog_read_holds_vacuum = false;
 #if defined (SERVER_MODE)
   int lock_result;
   LOCK class_lock;
@@ -30413,14 +30415,12 @@ btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION
 	    }
 	  else if (oid_check_cached_class_oid (OID_CACHE_HISTOGRAM_CLASS_ID, class_oid))
 	    {
-	      /* CBRD-27369: _db_histogram is looked up at query compile time to feed the optimizer
-	       * (stats_get_histogram ()). A locked lookup would wait behind a concurrent UPDATE STATISTICS, which
-	       * X-locks the class's rows until it commits, for the rest of that transaction. The optimizer only wants
-	       * the last committed histogram: find that version without a lock and without materializing the
-	       * transaction snapshot (kept out of this lookup below, see need_skip_mvcc_snapshot). Writers still come
-	       * through S_SELECT_WITH_LOCK / S_UPDATE and keep their locking semantics. */
-	      committed_snapshot.snapshot_fnc = mvcc_satisfies_committed;
-	      find_unique_helper.snapshot = &committed_snapshot;
+	      /* _db_histogram is read without waiting for an uncommitted UPDATE STATISTICS: no lock, and one catalog
+	       * read snapshot judges every object of the key at the same point in time; the transaction snapshot is
+	       * not built here (see need_skip_mvcc_snapshot) */
+	      find_unique_helper.snapshot =
+		logtb_get_catalog_read_snapshot (thread_p, &catalog_read_snapshot, &catalog_read_holds_vacuum);
+	      assert (find_unique_helper.snapshot != NULL);
 	      key_function = btree_key_find_unique_version_oid;
 	      find_unique_helper.lock_mode = NULL_LOCK;
 	    }
@@ -30481,6 +30481,10 @@ btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION
   error_code =
     btree_search_key_and_apply_functions (thread_p, btid, NULL, key, NULL, NULL, advance_function, NULL, key_function,
 					  &find_unique_helper, NULL, NULL);
+  if (catalog_read_holds_vacuum)
+    {
+      logtb_release_catalog_read_snapshot (thread_p, &catalog_read_snapshot);
+    }
   if (error_code != NO_ERROR)
     {
       /* Error! */
@@ -31716,9 +31720,19 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       if (!bts->is_key_partially_processed)
 	{
 	  /* If no objects have been processed this iteration, don't count. If already processed more than soft limit,
-	   * don't count. If currently process + key's leaf and first overflow count exceed soft limit, stop iteration
-	   * before processing key. */
-	  if (bts->n_oids_read_last_iteration > 0 && BTS_IS_SOFT_CAPACITY_ENOUGH (bts, bts->n_oids_read_last_iteration))
+	   * stop iteration before processing key: a key that did not fit the soft limit was read up to the hard limit
+	   * (from its overflow pages), and the keys after it must not be added unchecked -- with a soft limit below the
+	   * buffer's capacity (a small index_scan_oid_buffer_size, or a reused buffer larger than it asks), they would
+	   * fill the buffer past its capacity. If currently process + key's leaf and first overflow count exceed soft
+	   * limit, stop iteration before processing key. */
+	  if (bts->n_oids_read_last_iteration > 0
+	      && !BTS_IS_SOFT_CAPACITY_ENOUGH (bts, bts->n_oids_read_last_iteration))
+	    {
+	      /* Stop this iteration and resume with an empty buffer, from this key. */
+	      bts->end_one_iteration = true;
+	      return NO_ERROR;
+	    }
+	  if (bts->n_oids_read_last_iteration > 0)
 	    {
 	      /* Count the objects. */
 	      if (BTREE_IS_UNIQUE (bts->btid_int.unique_pk))
