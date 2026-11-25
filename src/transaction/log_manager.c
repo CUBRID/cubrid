@@ -5503,6 +5503,9 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  else
 	    {
 	      lock_deferred_wake_clear (thread_p, tdes->tran_index);
+#if defined (SERVER_MODE)
+	      cublog::commit_batch.on_urgent_request (commit_lsa, cublog::commit_batch_urgent_source::RETAINED_LOCKS);
+#endif /* SERVER_MODE */
 	    }
 
 	  /* Flush commit log and change the transaction state. */

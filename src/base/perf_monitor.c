@@ -347,6 +347,8 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_URGENT_2PC, "Num_log_commit_batch_urgent_2pc"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_URGENT_HA_SERVER_STATE,
 				  "Num_log_commit_batch_urgent_ha_server_state"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_URGENT_RETAINED_LOCKS,
+				  "Num_log_commit_batch_urgent_retained_locks"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_CYCLES, "Num_log_commit_batch_cycles"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_COMMIT_BATCH_RELEASED, "Num_log_commit_batch_released"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_LOG_COMMIT_BATCH_RETURN_PCT, "Num_log_commit_batch_return_pct"),

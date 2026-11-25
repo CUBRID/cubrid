@@ -51,6 +51,7 @@ namespace cublog
     PAGES_FIXED,		/* a waiter holds fixed pages */
     TWO_PC,			/* a 2PC waiter holds its locks */
     HA_SERVER_STATE,		/* a waiter holds CSECT_HA_SERVER_STATE */
+    RETAINED_LOCKS,		/* a COMMIT WORK RETAIN LOCK waiter holds its locks */
     LAST
   };
 
