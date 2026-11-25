@@ -672,46 +672,6 @@ fetch_arith_caches (const ARITH_TYPE * arithptr)
   return arithptr->pred == NULL && fetch_opcode_caches (arithptr->opcode);
 }
 
-/*
- * fetch_opcode_caches () - fetch_arith_caches by the operator alone (the branch operators CASE, DECODE, IF and
- *   PREDICATE are not cached because the fetch does not analyze their predicate)
- */
-bool
-fetch_opcode_caches (OPERATOR_TYPE opcode)
-{
-  switch (opcode)
-    {
-    case T_INCR:
-    case T_DECR:
-    case T_CURRENT_VALUE:
-    case T_NEXT_VALUE:
-    case T_CASE:
-    case T_DECODE:
-    case T_IF:
-    case T_PREDICATE:
-    case T_ROW_COUNT:
-    case T_LAST_INSERT_ID:
-    case T_EVALUATE_VARIABLE:
-    case T_DEFINE_VARIABLE:
-    case T_RAND:
-    case T_RANDOM:
-    case T_DRAND:
-    case T_DRANDOM:
-    case T_SYS_GUID:
-    case T_UUID:
-    case T_EXEC_STATS:
-    case T_TRACE_STATS:
-    case T_SLEEP:
-    case T_PRIOR:
-    case T_QPRIOR:
-    case T_CONNECT_BY_ROOT:
-    case T_SYS_CONNECT_BY_PATH:
-      return false;
-    default:
-      return true;
-    }
-}
-
 /* an operand a constant node reads: none, or one this execution marked constant */
 static bool
 fetch_regu_is_all_const (const REGU_VARIABLE * regu)

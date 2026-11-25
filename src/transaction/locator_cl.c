@@ -6812,6 +6812,12 @@ locator_can_skip_fetch_from_server (MOP mop, LOCK * lock, LC_FETCH_VERSION_TYPE 
 
   if (class_mop != NULL && class_mop != sm_Root_class_mop && *lock == NULL_LOCK)
     {
+      if (fetch_version_type == LC_FETCH_CATALOG_VERSION)
+	{
+	  /* the row may have been committed again since this snapshot fetched it; the CHN sent with the request
+	   * spares the body when it has not */
+	  return false;
+	}
       /* Go to server only if required lock is at least shared lock. */
       return ws_is_mop_fetched_with_current_snapshot (mop);
     }
