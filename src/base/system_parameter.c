@@ -6181,6 +6181,10 @@ static int prm_load_by_section (INI_TABLE * ini, const char *section, bool ignor
 				const char *file, const int load_flags, bool ignore_case, bool is_common_section);
 static int prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, const bool reload,
 					const int load_flags);
+#if defined (SERVER_MODE)
+static void prm_ini_take_ha_node_lists (INI_TABLE * ini, const char *section, bool ignore_case, char *node_list,
+					size_t node_size, char *replica_list, size_t replica_size);
+#endif /* SERVER_MODE */
 static void prm_report_bad_entry (const char *key, int line, int err, const char *where);
 static SYSPRM_ERR sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max);
 static int prm_check_range (SYSPRM_PARAM * prm, void *value);
@@ -6823,29 +6827,34 @@ sysprm_reload_and_init (const char *db_name, const char *conf_file)
 #if defined (SERVER_MODE)
 /*
  * sysprm_read_ha_node_lists () - read ha_node_list and ha_replica_list as the
- *   HA configuration file has them now
- *   return: NO_ERROR, or ER_FAILED when the file cannot be read
+ *   parameter files and the environment have them now
+ *   return: NO_ERROR, or ER_FAILED when the HA configuration file cannot be read
+ *           or a list does not fit
+ *   db_name(in): the database, for its section of cubrid.conf
  *   node_list(out): ha_node_list, empty when not set
  *   node_size(in): size of node_list
  *   replica_list(out): ha_replica_list, empty when not set
  *   replica_size(in): size of replica_list
  *
  * Note: the server loads its parameters once, while cubrid heartbeat reload
- *   lets the nodes take a node added to or removed from the file later. The
- *   sections are looked at in the order the loader applies them, so a later
- *   one wins.
+ *   lets the nodes take a node added to or removed from the files later. The
+ *   lists are taken as sysprm_load_and_init_internal () sets them in cub_master
+ *   and the other HA processes (the server's own load skips ha_replica_list, a
+ *   client parameter): from cubrid.conf, then the HA configuration file, each
+ *   by section in the order prm_read_and_parse_ini_file () goes through them,
+ *   then the environment; a later one wins.
  */
 int
-sysprm_read_ha_node_lists (char *node_list, size_t node_size, char *replica_list, size_t replica_size)
+sysprm_read_ha_node_lists (const char *db_name, char *node_list, size_t node_size, char *replica_list,
+			   size_t replica_size)
 {
   char file[PATH_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
   char user_name[CUB_MAXHOSTNAMELEN];
-  char sections[3][LINE_MAX];
+  char section[LINE_MAX];
   const char *conf_file;
   const char *value;
   INI_TABLE *ini;
-  int num_sections = 0, i;
   /* the ini parser works in static buffers: one reader at a time */
   static std::mutex ini_mutex;
   std::lock_guard < std::mutex > lock (ini_mutex);
@@ -6853,44 +6862,63 @@ sysprm_read_ha_node_lists (char *node_list, size_t node_size, char *replica_list
   node_list[0] = '\0';
   replica_list[0] = '\0';
 
+  /* cubrid.conf: [common] and keys before any section, then [@db_name] */
+  conf_file = envvar_get ("CONF_FILE");
+  if (conf_file == NULL || conf_file[0] == '\0')
+    {
+      envvar_confdir_file (file, PATH_MAX, sysprm_conf_file_name);
+      conf_file = file;
+    }
+  ini = ini_parser_load (conf_file);
+  if (ini != NULL)
+    {
+      prm_ini_take_ha_node_lists (ini, "common", true, node_list, node_size, replica_list, replica_size);
+      if (db_name != NULL && db_name[0] != '\0')
+	{
+	  snprintf (section, LINE_MAX, "@%s", db_name);
+	  prm_ini_take_ha_node_lists (ini, section, false, node_list, node_size, replica_list, replica_size);
+	}
+      ini_parser_free (ini);
+    }
+
+  /* the HA configuration file: [common] and keys before any section, then [%host|*] and [%host|user] */
   conf_file = envvar_get ("HA_CONF_FILE");
   if (conf_file == NULL || conf_file[0] == '\0')
     {
       envvar_confdir_file (file, PATH_MAX, sysprm_ha_conf_file_name);
       conf_file = file;
     }
-
   ini = ini_parser_load (conf_file);
   if (ini == NULL)
     {
       return ER_FAILED;
     }
-
-  snprintf (sections[num_sections++], LINE_MAX, "common");
+  prm_ini_take_ha_node_lists (ini, "common", true, node_list, node_size, replica_list, replica_size);
   if (GETHOSTNAME (host_name, CUB_MAXHOSTNAMELEN) == 0)
     {
-      snprintf (sections[num_sections++], LINE_MAX, "%%%s|*", host_name);
+      snprintf (section, LINE_MAX, "%%%s|*", host_name);
+      prm_ini_take_ha_node_lists (ini, section, true, node_list, node_size, replica_list, replica_size);
       if (getlogin_r (user_name, CUB_MAXHOSTNAMELEN) == 0)
 	{
-	  snprintf (sections[num_sections++], LINE_MAX, "%%%s|%s", host_name, user_name);
+	  snprintf (section, LINE_MAX, "%%%s|%s", host_name, user_name);
+	  prm_ini_take_ha_node_lists (ini, section, true, node_list, node_size, replica_list, replica_size);
 	}
     }
-
-  for (i = 0; i < num_sections; i++)
-    {
-      value = ini_getstr (ini, sections[i], PRM_NAME_HA_NODE_LIST, NULL, NULL);
-      if (value != NULL)
-	{
-	  snprintf (node_list, node_size, "%s", value);
-	}
-      value = ini_getstr (ini, sections[i], PRM_NAME_HA_REPLICA_LIST, NULL, NULL);
-      if (value != NULL)
-	{
-	  snprintf (replica_list, replica_size, "%s", value);
-	}
-    }
-
   ini_parser_free (ini);
+
+  /* CUBRID_HA_NODE_LIST and CUBRID_HA_REPLICA_LIST, as prm_check_environment () takes them. A list cut short
+   * could end in another host's name, so one that does not fit takes no peer for a node */
+  value = envvar_get ("HA_NODE_LIST");
+  if (value != NULL && value[0] != '\0' && snprintf (node_list, node_size, "%s", value) >= (int) node_size)
+    {
+      return ER_FAILED;
+    }
+  value = envvar_get ("HA_REPLICA_LIST");
+  if (value != NULL && value[0] != '\0' && snprintf (replica_list, replica_size, "%s", value) >= (int) replica_size)
+    {
+      return ER_FAILED;
+    }
+
   return NO_ERROR;
 }
 #endif /* SERVER_MODE */
@@ -6915,6 +6943,60 @@ prm_section_cmp (const char *key1, const char *key2, int key_len, bool ignore_ca
 
   return (memcmp (key1, key2, key_len) == 0);
 }
+
+#if defined (SERVER_MODE)
+/*
+ * prm_ini_take_ha_node_lists () - take ha_node_list and ha_replica_list from
+ *   one section as prm_load_by_section () with ignore_section would set them
+ *   ini(in): a parameter file
+ *   section(in): the section; the keys before any section are taken with it
+ *   ignore_case(in): compare the section name ignoring case
+ *   node_list(in/out): ha_node_list, left as it is when the section has none
+ *   node_size(in): size of node_list
+ *   replica_list(in/out): ha_replica_list, left as it is when the section has none
+ *   replica_size(in): size of replica_list
+ */
+static void
+prm_ini_take_ha_node_lists (INI_TABLE * ini, const char *section, bool ignore_case, char *node_list, size_t node_size,
+			    char *replica_list, size_t replica_size)
+{
+  int sec_len = (int) strlen (section);
+  const char *key;
+  int i;
+
+  /* in the order of the file, as the loader sets them: a later key wins */
+  for (i = 0; i < ini->size; i++)
+    {
+      key = ini->key[i];
+      if (key == NULL || ini->val[i] == NULL)
+	{
+	  continue;
+	}
+
+      if (key[0] == ':')
+	{
+	  key += 1;
+	}
+      else if (prm_section_cmp (key, section, sec_len, ignore_case))
+	{
+	  key += sec_len + 1;
+	}
+      else
+	{
+	  continue;
+	}
+
+      if (intl_mbs_casecmp (key, PRM_NAME_HA_NODE_LIST) == 0)
+	{
+	  snprintf (node_list, node_size, "%s", ini->val[i]);
+	}
+      else if (intl_mbs_casecmp (key, PRM_NAME_HA_REPLICA_LIST) == 0)
+	{
+	  snprintf (replica_list, replica_size, "%s", ini->val[i]);
+	}
+    }
+}
+#endif /* SERVER_MODE */
 
 /*
  * prm_load_by_section - Set system parameters from a file

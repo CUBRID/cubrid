@@ -815,9 +815,6 @@ css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
  *   return: true for a loopback peer, or a peer whose address is the socket's
  *           own address
  *   sockfd(in): a connected socket
- *
- * Note: both ends of one connection see the same two addresses, swapped, so a
- *   client and the server it is connected to get the same answer.
  */
 bool
 css_is_local_socket (SOCKET sockfd)
@@ -831,9 +828,9 @@ css_is_local_socket (SOCKET sockfd)
       return false;
     }
 
-  /* a loopback address on either end means the other end is on this host too */
-  return ((ntohl (peer.sin_addr.s_addr) >> 24) == 127
-	  || (ntohl (self.sin_addr.s_addr) >> 24) == 127 || peer.sin_addr.s_addr == self.sin_addr.s_addr);
+  /* only the peer's address tells where it is: a peer on another host can reach this host's loopback
+   * address too, as through DNAT to 127.0.0.1 */
+  return ((ntohl (peer.sin_addr.s_addr) >> 24) == 127 || peer.sin_addr.s_addr == self.sin_addr.s_addr);
 }
 
 /*

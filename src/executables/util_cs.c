@@ -2007,59 +2007,69 @@ killtran (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  /* disable password, if don't use kill option */
   if (isbatch == 0)
     {
+      /* -p goes only with a kill option. Without one, killtran only lists the transactions and connects as the
+       * other admin utilities do: the server's host and the HA nodes need no password, and from elsewhere the
+       * password is asked for on a terminal, or with none the error comes at once */
       if (dba_password != NULL)
 	{
 	  goto print_killtran_usage;
 	}
-      AU_DISABLE_PASSWORDS ();
-    }
-
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-
-  if (db_login ("DBA", dba_password) != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      goto error_exit;
-    }
-
-  /* first try to restart with the password given (possibly none) */
-  error = db_restart (arg->command_name, TRUE, database_name);
-  if (error)
-    {
-      if ((error == ER_AU_REJECT_LOGIN && use_console_password) && (dba_password == NULL || strlen (dba_password) == 0))
+      error = util_restart_as_dba (arg->command_name, database_name, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
+      if (error != NO_ERROR)
 	{
-	  /*
-	   * prompt for a valid password and try again, need a reusable
-	   * password prompter so we can use getpass() on platforms that
-	   * support it.
-	   */
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+    }
+  else
+    {
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
-	  /* get password interactively if interactive mode */
-	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
-					     KILLTRAN_MSG_DBA_PASSWORD));
-	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+      if (db_login ("DBA", dba_password) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+
+      /* first try to restart with the password given (possibly none) */
+      error = db_restart (arg->command_name, TRUE, database_name);
+      if (error)
+	{
+	  if ((error == ER_AU_REJECT_LOGIN && use_console_password)
+	      && (dba_password == NULL || strlen (dba_password) == 0))
 	    {
-	      passbuf = (char *) NULL;
+	      /*
+	       * prompt for a valid password and try again, need a reusable
+	       * password prompter so we can use getpass() on platforms that
+	       * support it.
+	       */
+
+	      /* get password interactively if interactive mode */
+	      passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+						 KILLTRAN_MSG_DBA_PASSWORD));
+	      if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+		{
+		  passbuf = (char *) NULL;
+		}
+	      dba_password = passbuf;
+	      if (db_login ("DBA", dba_password) != NO_ERROR)
+		{
+		  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+		  goto error_exit;
+		}
+	      else
+		{
+		  error = db_restart (arg->command_name, TRUE, database_name);
+		}
 	    }
-	  dba_password = passbuf;
-	  if (db_login ("DBA", dba_password) != NO_ERROR)
+
+	  if (error)
 	    {
 	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	      goto error_exit;
 	    }
-	  else
-	    {
-	      error = db_restart (arg->command_name, TRUE, database_name);
-	    }
-	}
-
-      if (error)
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  goto error_exit;
 	}
     }
 
