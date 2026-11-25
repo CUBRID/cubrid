@@ -36,6 +36,8 @@
 
 static int la_init_recdes_pool (LA_APPLY_WORKER_CONTEXT *context, int page_size, int num_recdes);
 static void la_clear_recdes_pool (LA_APPLY_WORKER_CONTEXT *context);
+static RECDES *la_assign_overflow_recdes (LA_RECDES_POOL *pool);
+static void la_release_overflow_recdes (LA_RECDES_POOL *pool);
 
 /*
  * la_worker_context_init - allocate one worker's unzip buffers and record pool
@@ -152,6 +154,14 @@ la_clear_recdes_pool (LA_APPLY_WORKER_CONTEXT *context)
       free_and_init (pool->area);
     }
 
+  la_release_overflow_recdes (pool);
+  if (pool->overflow != NULL)
+    {
+      free_and_init (pool->overflow);
+    }
+  pool->overflow_capacity = 0;
+  pool->in_use = 0;
+
   pool->db_page_size = 0;
   pool->next_idx = 0;
   pool->num_recdes = 0;
@@ -203,11 +213,103 @@ la_realloc_recdes_data (LA_APPLY_WORKER_CONTEXT *context, RECDES *recdes, int da
 }
 
 /*
+ * la_assign_overflow_recdes - allocate a record buffer outside the ring
+ *
+ * return: a reset record buffer, or NULL with an error set when memory runs out
+ *
+ *   pool(in/out): pool whose ring buffers are all in use
+ *
+ * Note: the buffer and its page-sized record area are one allocation, so la_realloc_recdes_data and
+ *       la_release_oversized_recdes treat it as they treat a ring buffer.
+ */
+static RECDES *
+la_assign_overflow_recdes (LA_RECDES_POOL *pool)
+{
+  RECDES *recdes;
+  size_t header_size = DB_ALIGN (sizeof (RECDES), MAX_ALIGNMENT);
+  char *block;
+
+  if (pool->overflow_count >= pool->overflow_capacity)
+    {
+      int new_capacity = (pool->overflow_capacity == 0) ? pool->num_recdes : pool->overflow_capacity * 2;
+      RECDES **new_overflow = (RECDES **) realloc (pool->overflow, sizeof (RECDES *) * new_capacity);
+
+      if (new_overflow == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (RECDES *) * new_capacity);
+	  return NULL;
+	}
+      pool->overflow = new_overflow;
+      pool->overflow_capacity = new_capacity;
+    }
+
+  block = (char *) malloc (header_size + pool->db_page_size);
+  if (block == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, header_size + pool->db_page_size);
+      return NULL;
+    }
+
+  recdes = (RECDES *) block;
+  recdes->data = block + header_size;
+  recdes->area_size = pool->db_page_size;
+  recdes->length = 0;
+  recdes->type = 0;
+  pool->overflow[pool->overflow_count++] = recdes;
+
+  if (!pool->overflow_noted)
+    {
+      char message[256];
+
+      pool->overflow_noted = true;
+      /* once per pool: shows that a flush unit needed more buffers than the ring holds */
+      snprintf (message, sizeof (message), "apply worker record pool: %d buffers in use before a flush and the ring "
+		"has %d; the rest are allocated on their own until the next flush", pool->in_use, pool->num_recdes);
+      er_stack_push ();
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, message);
+      er_stack_pop ();
+    }
+
+  return recdes;
+}
+
+/*
+ * la_release_overflow_recdes - free the record buffers allocated outside the ring
+ *
+ * return: none
+ *
+ *   pool(in/out): pool whose buffers no replication object refers to any more
+ */
+static void
+la_release_overflow_recdes (LA_RECDES_POOL *pool)
+{
+  size_t header_size = DB_ALIGN (sizeof (RECDES), MAX_ALIGNMENT);
+  int i;
+
+  for (i = 0; i < pool->overflow_count; i++)
+    {
+      RECDES *recdes = pool->overflow[i];
+
+      if (recdes->data != (char *) recdes + header_size)
+	{
+	  /* grown by la_realloc_recdes_data */
+	  free_and_init (recdes->data);
+	}
+      free_and_init (pool->overflow[i]);
+    }
+  pool->overflow_count = 0;
+}
+
+/*
  * la_assign_recdes_from_pool - return the next record buffer from one worker's ring
  *
- * return: a reset record buffer, or NULL when the pool is not initialized
+ * return: a reset record buffer, or NULL when the pool is not initialized or memory runs out (error set)
  *
  *   context(in/out): context that owns the record pool
+ *
+ * Note: a buffer stays referred to by its replication object until the object is flushed. Once num_recdes
+ *       buffers are in use, the next ring buffer may still be referred to, so a buffer is allocated outside
+ *       the ring instead until la_release_oversized_recdes says nothing refers to them.
  */
 RECDES *
 la_assign_recdes_from_pool (LA_APPLY_WORKER_CONTEXT *context)
@@ -223,6 +325,16 @@ la_assign_recdes_from_pool (LA_APPLY_WORKER_CONTEXT *context)
       return NULL;
     }
 
+  if (pool->in_use >= pool->num_recdes)
+    {
+      recdes = la_assign_overflow_recdes (pool);
+      if (recdes != NULL)
+	{
+	  pool->in_use++;
+	}
+      return recdes;
+    }
+
   recdes = &pool->recdes_arr[pool->next_idx];
   assert (recdes->data != NULL);
 
@@ -235,18 +347,21 @@ la_assign_recdes_from_pool (LA_APPLY_WORKER_CONTEXT *context)
 
   recdes->length = 0;
   pool->next_idx = (pool->next_idx + 1) % pool->num_recdes;
+  pool->in_use++;
 
   return recdes;
 }
 
 /*
- * la_release_oversized_recdes - return oversized record buffers to their page-sized pool areas
+ * la_release_oversized_recdes - return the pool's buffers once no replication object refers to them
  *
  * return: none
  *
  *   context(in/out): context whose record buffers are reset
  *
- * Note: call only after no replication object refers to a record in this pool.
+ * Note: call only after no replication object refers to a record in this pool. Oversized ring buffers go back
+ *       to their page-sized areas, buffers allocated outside the ring are freed, and the ring may be reused
+ *       from any position again.
  */
 void
 la_release_oversized_recdes (LA_APPLY_WORKER_CONTEXT *context)
@@ -273,6 +388,9 @@ la_release_oversized_recdes (LA_APPLY_WORKER_CONTEXT *context)
 	  recdes->area_size = pool->db_page_size;
 	}
     }
+
+  la_release_overflow_recdes (pool);
+  pool->in_use = 0;
 }
 
 /*
@@ -330,6 +448,7 @@ la_init_recdes_pool (LA_APPLY_WORKER_CONTEXT *context, int page_size, int num_re
     }
 
   pool->next_idx = 0;
+  pool->in_use = 0;
 
   return NO_ERROR;
 }

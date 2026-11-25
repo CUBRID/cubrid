@@ -1222,6 +1222,7 @@ la_worker_abort_batch (LA_APPLY_WORKER_CONTEXT * context)
 
   (void) db_abort_transaction ();
   __gv_loc_repl.ws_clear_all_repl_objs ();
+  la_release_oversized_recdes (context);
   la_oos_pending_flush = false;
   la_oos_unpaired_count = 0;
 }
@@ -4021,7 +4022,7 @@ la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * key
   recdes = la_assign_recdes_from_pool (context);
   if (recdes == NULL)
     {
-      error = ER_FAILED;
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
       goto end;
     }
   recdes->type = REC_HOME;
@@ -4055,6 +4056,11 @@ la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * key
   if (error == NO_ERROR && __gv_loc_repl.ws_get_repl_obj_count () >= LA_MAX_UNFLUSHED_REPL_ITEMS)
     {
       error = la_flush_repl_items (true, stats, &context->marker_class_oid);
+      if (error == NO_ERROR && __gv_loc_repl.ws_get_repl_obj_count () == 0)
+	{
+	  /* the flushed objects no longer refer to the pool's records */
+	  la_release_oversized_recdes (context);
+	}
     }
 
 end:
@@ -8051,6 +8057,11 @@ end:
       la_oos_pending_flush = false;
       la_oos_unpaired_count = 0;
       error = la_flush_repl_items (false, stats, NULL);
+      if (error == NO_ERROR && __gv_loc_repl.ws_get_repl_obj_count () == 0)
+	{
+	  /* the flushed objects no longer refer to the pool's records */
+	  la_release_oversized_recdes (context);
+	}
     }
 
   return error;
@@ -8165,6 +8176,11 @@ la_apply_update_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS
     }
 
   recdes = la_assign_recdes_from_pool (context);
+  if (recdes == NULL)
+    {
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+      goto end;
+    }
 
   /* retrieve the target record description */
   error = la_get_recdes (context, &item->target_lsa, pgptr, recdes, &rcvindex, (char *) &context->rec_type, false);
@@ -8231,6 +8247,11 @@ end:
       la_oos_pending_flush = false;
       la_oos_unpaired_count = 0;
       error = la_flush_repl_items (false, stats, NULL);
+      if (error == NO_ERROR && __gv_loc_repl.ws_get_repl_obj_count () == 0)
+	{
+	  /* the flushed objects no longer refer to the pool's records */
+	  la_release_oversized_recdes (context);
+	}
     }
 
   la_release_page_buffer (old_pageid);
@@ -8390,6 +8411,11 @@ la_apply_oos_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LA
     }
 
   recdes = la_assign_recdes_from_pool (context);
+  if (recdes == NULL)
+    {
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+      goto end;
+    }
 
   if (rebuild_oos)
     {
@@ -8602,6 +8628,11 @@ la_apply_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS
     }
 
   recdes = la_assign_recdes_from_pool (context);
+  if (recdes == NULL)
+    {
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+      goto end;
+    }
   is_mvcc_class = la_is_mvcc_class (ws_oid (class_obj));
 
   /* get the target log page */
@@ -8671,6 +8702,11 @@ end:
       la_oos_pending_flush = false;
       la_oos_unpaired_count = 0;
       error = la_flush_repl_items (false, stats, NULL);
+      if (error == NO_ERROR && __gv_loc_repl.ws_get_repl_obj_count () == 0)
+	{
+	  /* the flushed objects no longer refer to the pool's records */
+	  la_release_oversized_recdes (context);
+	}
     }
 
   if (old_pageid != NULL_PAGEID)

@@ -41,6 +41,14 @@ struct la_recdes_pool
   int next_idx;
   int db_page_size;
   int num_recdes;
+  /* Buffers handed out since nothing referred to the pool's records last (la_release_oversized_recdes).
+   * A replication object keeps a pointer to its buffer until it is flushed, so a ring buffer is reused only
+   * while fewer than num_recdes buffers are in use; past that a buffer is allocated on its own. */
+  int in_use;
+  RECDES **overflow;		/* buffers allocated past the ring, each with its record area right after it */
+  int overflow_count;
+  int overflow_capacity;
+  bool overflow_noted;		/* the first overflow is logged once per pool */
   bool is_initialized;
 };
 
