@@ -49,11 +49,11 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+static bool domain_key_collections_identical (const DB_VALUE * first, const DB_VALUE * second);
+
 static int domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_operands,
 				    const TP_DOMAIN * compiled, RESOLVED_DOMAIN * result);
 static const TP_DOMAIN *domain_variable_string_value (const TP_DOMAIN * domain);
-
-static bool domain_key_collections_identical (const DB_VALUE * first, const DB_VALUE * second);
 
 static DB_TYPE domain_hash_type (DB_TYPE type);
 static bool domain_hashable (const TP_DOMAIN * first, const TP_DOMAIN * second);
@@ -2420,7 +2420,7 @@ domain_copy_one (const TP_DOMAIN * domain)
 /* Whether every value of type source converts into the column's domain without failure, rounding or change of order:
  * the integers into wider integers, into a NUMERIC holding all their digits and the two shorter ones into DOUBLE, FLOAT
  * into DOUBLE, DATE and TIMESTAMP into DATETIME, a time zone TIMESTAMP into the DATETIME of its family. */
-static bool
+bool
 domain_key_converts_losslessly (DB_TYPE source, const TP_DOMAIN * column)
 {
   const DB_TYPE target = TP_DOMAIN_TYPE (column);
@@ -3304,11 +3304,12 @@ domain_hashable_resolve (const TP_DOMAIN * first, const TP_DOMAIN * second, cons
       return false;
     }
 
-  /* a collection against another type: type checking refuses to compare them, so no pair reaches here; one that did is
-   * not hashable, since its values converted to a common domain need not compare as they did */
+  /* a collection against another type: type checking refuses to compare them, so only NULL reaches here, a host
+   * variable under arithmetic; a pair like this is not hashable, since its values converted to a common domain need
+   * not compare as they did */
   if (unlikely (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (first)) != TP_IS_SET_TYPE (TP_DOMAIN_TYPE (second))))
     {
-      assert (false);
+      assert (TP_DOMAIN_TYPE (first) == DB_TYPE_NULL || TP_DOMAIN_TYPE (second) == DB_TYPE_NULL);
       return false;
     }
 

@@ -27,7 +27,6 @@
 #include "xasl_generation.h"
 
 #include <assert.h>
-#include <float.h>
 #include <search.h>
 #include <stdio.h>
 
@@ -16903,28 +16902,10 @@ pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
     }
   else
     {
-      /* a type keeps two keys apart only if it holds every key */
-      switch (TP_DOMAIN_TYPE (decided.target[0]))
-	{
-	case DB_TYPE_FLOAT:
-	  /* a FLOAT keeps FLT_DIG decimal digits; a NUMERIC key is taken only with a scale in 0..precision, whose
-	   * values the FLOAT's normal range holds */
-	  is_lossless_conversion = (key_type == DB_TYPE_SHORT
-				    || (key_type == DB_TYPE_NUMERIC && key->precision <= FLT_DIG
-					&& key->scale >= 0 && key->scale <= key->precision));
-	  break;
-
-	case DB_TYPE_DOUBLE:
-	case DB_TYPE_MONETARY:
-	  /* a DOUBLE, a MONETARY's amount too, keeps DBL_DIG decimal digits */
-	  is_lossless_conversion = (key_type == DB_TYPE_SHORT || key_type == DB_TYPE_INTEGER
-				    || key_type == DB_TYPE_FLOAT
-				    || (key_type == DB_TYPE_NUMERIC && key->precision <= DBL_DIG));
-	  break;
-
-	default:
-	  break;
-	}
+      /* a type keeps two keys apart if it holds every key; a DATETIME does not where daylight saving time ends: two
+       * TIMESTAMPs an hour apart are one local time */
+      is_lossless_conversion = (key_type != DB_TYPE_TIMESTAMP
+				&& domain_key_converts_losslessly (key_type, decided.target[0]));
     }
 
   return is_lossless_conversion && (decided.conv[1] == NULL || TP_DOMAIN_TYPE (decided.target[1]) == key_type);

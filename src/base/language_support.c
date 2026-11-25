@@ -313,11 +313,11 @@ STATIC_INLINE UINT64 lang_hash_u64_add (UINT64 hash_key, UINT64 chunk, bool nul_
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE UINT64 lang_hash_u64_nul_as_space (UINT64 chunk) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE UINT64 lang_hash_u64_upper (UINT64 chunk) __attribute__ ((ALWAYS_INLINE));
-static unsigned int lang_mht2str_ko (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
-static unsigned int lang_mht2str_binary (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
 #if !defined (NDEBUG)
 static void lang_verify_mht2str_weights (const LANG_COLLATION * lang_coll);
 #endif
+static unsigned int lang_mht2str_ko (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
+static unsigned int lang_mht2str_binary (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
 static void lang_init_coll_en_ci (LANG_COLLATION * lang_coll);
 static void lang_init_coll_en_cs (LANG_COLLATION * lang_coll);
 static void lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll);
@@ -4557,6 +4557,9 @@ lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data, bool is_match, 
  * Behavior:
  *   - A weight 0 is skipped unless its character is a space, as the compare functions skip it.
  *   - Trailing weights 0 are not hashed, so strings that differ only in them hash alike.
+ *   - An empty string is not returned early: it must hash as the strings of weights 0 only that equal it, whose levels'
+ *     hashes stay at the offset into Step 3. Step 1 reads nothing of it, and only Step 2, which starts at the last
+ *     character, leaves it out.
  *
  * Method:
  *   Each level lang_strmatch_utf8_uca_w_coll_data () compares is hashed on its own, in the order the compare functions
@@ -4652,9 +4655,9 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
    *   - hash each element's weights from the last element, level 2 only:
    *
    *   level  weight of element ce_index            hash         hashed if
-   *   2      UCA_GET_L2_W (uca_w_l13[ce_index])    hash_key[1]  l2 and sett_backwards
+   *   2      UCA_GET_L2_W (uca_w_l13[ce_index])    hash_key[1]  l2 and sett_backwards, a nonempty string
    */
-  if (l2 && opt->sett_backwards)
+  if (l2 && opt->sett_backwards && size > 0)
     {
       /* leave out the trailing spaces: the compare function skips them before reading from the end */
       str_last = str_end - 1;

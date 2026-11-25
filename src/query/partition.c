@@ -2676,9 +2676,9 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 		partition_convert_value (term, left->domain, &old_collection_val, &casted_val, &attribute_value);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &old_collection_val, left->domain);
-
-		  pinfo->error_code = ER_FAILED;
+		  /* the expression has no value for one the attribute's type does not hold (70000 of a SMALLINT): the term
+		   * does not prune */
+		  er_clear ();
 		  goto cleanup;
 		}
 	      if (attribute_value == NULL)
@@ -2715,9 +2715,9 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 	  dom_status = partition_convert_value (term, left->domain, &val, &casted_val, &attribute_value);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &val, left->domain);
-
-	      pinfo->error_code = ER_FAILED;
+	      /* the expression has no value for one the attribute's type does not hold (70000 of a SMALLINT): the term
+	       * does not prune */
+	      er_clear ();
 	      goto cleanup;
 	    }
 	  if (attribute_value == NULL)

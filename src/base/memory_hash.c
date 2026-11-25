@@ -836,7 +836,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 {
   const DB_VALUE *val = (const DB_VALUE *) key;
   unsigned int hash = 0;
-  bool is_mixed = false;	/* hashed by mht_mixhash64_to_32 (), which mixes all the bits already */
+  bool is_mixed = false;	/* hashed by mht_mixhash64_to_32 () or from mht_valhash () results, which mix all the bits */
 
   if (unlikely (val == NULL || DB_IS_NULL (val) || ht_size <= 1))
     {
@@ -946,6 +946,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 
     case DB_TYPE_JSON:
       hash = mht_hash_json (val);
+      is_mixed = true;
       break;
 
     case DB_TYPE_SET:
@@ -969,6 +970,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	    hash = mht_valhash (&element, UINT_MAX);
 	    (void) pr_clear_value (&element);
 	  }
+	is_mixed = true;
       }
       break;
 
@@ -992,6 +994,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 		(void) pr_clear_value (&element);
 	      }
 	  }
+	is_mixed = true;
       }
       break;
 

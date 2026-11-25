@@ -11954,26 +11954,6 @@ exit:
 }
 
 /*
- * qo_check_collection_type () - find a node of a collection type (SET, MULTISET, SEQUENCE)
- *   return: tree, the visited node unchanged
- *   parser(in): the parser context
- *   tree(in): the node the walk visits
- *   arg(in/out): bool *, set when such a node is found
- *   continue_walk(in/out): PT_STOP_WALK once such a node is found
- */
-static PT_NODE *
-qo_check_collection_type (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
-{
-  if (PT_IS_COLLECTION_TYPE (tree->type_enum))
-    {
-      *(bool *) arg = true;
-      *continue_walk = PT_STOP_WALK;
-    }
-
-  return tree;
-}
-
-/*
  * qo_can_hash_terms () - CBRD-28060: whether a hash join can be made of a join's terms: there is a term, and the
  *   operands of every term hash alike whenever the term's comparison finds them equal
  *   return: false for no term, or a term not known to hash alike
@@ -12046,6 +12026,26 @@ qo_can_hash_terms (QO_ENV * env, BITSET * terms)
 	}
     }
   return true;
+}
+
+/*
+ * qo_check_collection_type () - find a node of a collection type (SET, MULTISET, SEQUENCE)
+ *   return: tree, the visited node unchanged
+ *   parser(in): the parser context
+ *   tree(in): the node the walk visits
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out): PT_STOP_WALK once such a node is found
+ */
+static PT_NODE *
+qo_check_collection_type (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  if (PT_IS_COLLECTION_TYPE (tree->type_enum))
+    {
+      *(bool *) arg = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
 }
 
 /*

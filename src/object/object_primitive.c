@@ -15281,106 +15281,6 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   return res;
 }
 
-/*
- * mr_cmpval_json_number - compare by value a JSON integer and a DOUBLE or a string that converts to a DOUBLE
- *   return: the comparison; DB_UNK to leave any other pair to the scalars' own comparison, which is exact for two
- *	     integers (INTEGER, BIGINT) and for two DOUBLEs
- *   value1(in): the first value mr_cmpval_json () compares: a scalar's SQL value, or an array's or object's body text
- *   value2(in): the second value, of the same kind
- *
- * Reason:
- *   The comparison through DOUBLE rounds an integer above 2^53 (2^62 + 1 equals 2^62.0), and mht_hash_json () hashes
- *   an integer by its value, so two values equal through DOUBLE would not hash alike.
- */
-static DB_VALUE_COMPARE_RESULT
-mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
-{
-  const bool is_discrete1 = TP_IS_DISCRETE_NUMBER_TYPE (DB_VALUE_TYPE (value1));
-  const bool is_discrete2 = TP_IS_DISCRETE_NUMBER_TYPE (DB_VALUE_TYPE (value2));
-  DB_BIGINT discrete;
-  double number, integral, fraction;
-  int sign;
-  DB_DATA_STATUS data_status;
-
-  if (is_discrete1 == is_discrete2)
-    {
-      return DB_UNK;
-    }
-
-  const DB_VALUE *discrete_value = (is_discrete1) ? value1 : value2;
-  const DB_VALUE *other_value = (is_discrete1) ? value2 : value1;
-
-  /* the other value is a DOUBLE or a string. A string is a number when tp_value_coerce () converts it to DOUBLE: read
-   * whole and without overflow ('1e0' = 1, '0x10' = 16), as mht_hash_json () reads it.
-   *
-   * tp_string_to_real () sets an error only when out of memory, so a string that does not convert leaves no error */
-  if (DB_VALUE_TYPE (other_value) == DB_TYPE_DOUBLE)
-    {
-      number = db_get_double (other_value);
-    }
-  else if (!TP_IS_CHAR_TYPE (DB_VALUE_TYPE (other_value))
-	   || tp_string_to_real (other_value, &number, &data_status) != NO_ERROR || data_status != DATA_STATUS_OK)
-    {
-      return DB_UNK;
-    }
-
-  /* NaN ('nan' read as a number) passes neither range check below and has no BIGINT. The comparison through DOUBLE
-   * orders it after every number, and mht_hash_json () hashes it as a DOUBLE */
-  if (isnan (number))
-    {
-      return DB_UNK;
-    }
-
-  switch (DB_VALUE_TYPE (discrete_value))
-    {
-    case DB_TYPE_SMALLINT:
-      discrete = db_get_short (discrete_value);
-      break;
-
-    case DB_TYPE_INTEGER:
-      discrete = db_get_int (discrete_value);
-      break;
-
-    case DB_TYPE_BIGINT:
-      discrete = db_get_bigint (discrete_value);
-      break;
-
-    default:
-      assert (false);
-      return DB_UNK;
-    }
-
-  /* the integral part of -2^63 <= number < 2^63 converts to a BIGINT exactly; any other number is past every BIGINT */
-  if (number >= 9223372036854775808.0)
-    {
-      sign = -1;
-    }
-  else if (number < -9223372036854775808.0)
-    {
-      sign = 1;
-    }
-  else
-    {
-      fraction = modf (number, &integral);
-      if (discrete != (DB_BIGINT) integral)
-	{
-	  sign = (discrete < (DB_BIGINT) integral) ? -1 : 1;
-	}
-      else
-	{
-	  /* the fraction decides */
-	  sign = (fraction > 0) ? -1 : (fraction < 0) ? 1 : 0;
-	}
-    }
-
-  /* sign is the discrete number against the number: flip it when the discrete number is value2 */
-  if (!is_discrete1)
-    {
-      sign = -sign;
-    }
-  return (sign < 0) ? DB_LT : (sign > 0) ? DB_GT : DB_EQ;
-}
-
 /* when total_order is true,
  * we force to string uncomparable types.
  * this is because "order by" uses total_order=true
@@ -15489,4 +15389,104 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   pr_clear_value (&scalar_value1);
   pr_clear_value (&scalar_value2);
   return cmp_result;
+}
+
+/*
+ * mr_cmpval_json_number - compare by value a JSON integer and a DOUBLE or a string that converts to a DOUBLE
+ *   return: the comparison; DB_UNK to leave any other pair to the scalars' own comparison, which is exact for two
+ *	     integers (INTEGER, BIGINT) and for two DOUBLEs
+ *   value1(in): the first value mr_cmpval_json () compares: a scalar's SQL value, or an array's or object's body text
+ *   value2(in): the second value, of the same kind
+ *
+ * Reason:
+ *   The comparison through DOUBLE rounds an integer above 2^53 (2^62 + 1 equals 2^62.0), and mht_hash_json () hashes
+ *   an integer by its value, so two values equal through DOUBLE would not hash alike.
+ */
+static DB_VALUE_COMPARE_RESULT
+mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
+{
+  const bool is_discrete1 = TP_IS_DISCRETE_NUMBER_TYPE (DB_VALUE_TYPE (value1));
+  const bool is_discrete2 = TP_IS_DISCRETE_NUMBER_TYPE (DB_VALUE_TYPE (value2));
+  DB_BIGINT discrete;
+  double number, integral, fraction;
+  int sign;
+  DB_DATA_STATUS data_status;
+
+  if (is_discrete1 == is_discrete2)
+    {
+      return DB_UNK;
+    }
+
+  const DB_VALUE *discrete_value = (is_discrete1) ? value1 : value2;
+  const DB_VALUE *other_value = (is_discrete1) ? value2 : value1;
+
+  /* the other value is a DOUBLE or a string. A string is a number when tp_value_coerce () converts it to DOUBLE: read
+   * whole and without overflow ('1e0' = 1, '0x10' = 16), as mht_hash_json () reads it.
+   *
+   * tp_string_to_real () sets an error only when out of memory, so a string that does not convert leaves no error */
+  if (DB_VALUE_TYPE (other_value) == DB_TYPE_DOUBLE)
+    {
+      number = db_get_double (other_value);
+    }
+  else if (!TP_IS_CHAR_TYPE (DB_VALUE_TYPE (other_value))
+	   || tp_string_to_real (other_value, &number, &data_status) != NO_ERROR || data_status != DATA_STATUS_OK)
+    {
+      return DB_UNK;
+    }
+
+  /* NaN ('nan' read as a number) passes neither range check below and has no BIGINT. The comparison through DOUBLE
+   * orders it after every number, and mht_hash_json () hashes it as a DOUBLE */
+  if (isnan (number))
+    {
+      return DB_UNK;
+    }
+
+  switch (DB_VALUE_TYPE (discrete_value))
+    {
+    case DB_TYPE_SMALLINT:
+      discrete = db_get_short (discrete_value);
+      break;
+
+    case DB_TYPE_INTEGER:
+      discrete = db_get_int (discrete_value);
+      break;
+
+    case DB_TYPE_BIGINT:
+      discrete = db_get_bigint (discrete_value);
+      break;
+
+    default:
+      assert (false);
+      return DB_UNK;
+    }
+
+  /* the integral part of -2^63 <= number < 2^63 converts to a BIGINT exactly; any other number is past every BIGINT */
+  if (number >= 9223372036854775808.0)
+    {
+      sign = -1;
+    }
+  else if (number < -9223372036854775808.0)
+    {
+      sign = 1;
+    }
+  else
+    {
+      fraction = modf (number, &integral);
+      if (discrete != (DB_BIGINT) integral)
+	{
+	  sign = (discrete < (DB_BIGINT) integral) ? -1 : 1;
+	}
+      else
+	{
+	  /* the fraction decides */
+	  sign = (fraction > 0) ? -1 : (fraction < 0) ? 1 : 0;
+	}
+    }
+
+  /* sign is the discrete number against the number: flip it when the discrete number is value2 */
+  if (!is_discrete1)
+    {
+      sign = -sign;
+    }
+  return (sign < 0) ? DB_LT : (sign > 0) ? DB_GT : DB_EQ;
 }

@@ -543,6 +543,8 @@ const struct pr_type *domain_compare_cmp (const DOMAIN_COMPARE * compare);
 /* An integer against a NUMERIC: the pair a comparison takes as it is, by the exact values. */
 bool domain_compare_is_exact_number (DB_TYPE type1, DB_TYPE type2);
 
+bool domain_key_converts_losslessly (DB_TYPE source, const TP_DOMAIN * column);
+
 /* The rule a column of a search key follows for values of an element's domain. */
 DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey);
 
