@@ -126,7 +126,9 @@ namespace cubschema
       CTV_CHARSET_NAME,		// "db_charset"
       CTV_SERVER_NAME,		// "db_server"
       CTV_SYNONYM_NAME,			// "db_synonym"
-      CTV_HISTOGRAM_NAME		// "db_histogram"
+      CTV_HISTOGRAM_NAME,		// "db_histogram"
+      CTV_PACKAGE_NAME,		// "db_package"
+      CTV_PACKAGE_CODE_NAME		// "db_package_code"
     };
 
     const std::string prefix = std::string (AU_INFORMATION_SCHEMA_USER_NAME) + ".";
