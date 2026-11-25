@@ -6052,7 +6052,9 @@ vacuum_collect_dropped_files_in_log (THREAD_ENTRY * thread_p, VACUUM_LOG_BLOCKID
 		assert (!ZIP_CHECK (undo.length) && undo.length == (int) sizeof (rcv_data));
 		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_UNDO), &copy_lsa, log_page_p);
 		logpb_copy_from_log (thread_p, (char *) &rcv_data, sizeof (rcv_data), &copy_lsa, log_page_p);
+		/* *INDENT-OFF* */
 		created_files.push_back ({log_rec_header.trid, log_rec_header.prev_tranlsa, rcv_data.vfid});
+		/* *INDENT-ON* */
 	      }
 	  }
 	  break;
@@ -6161,7 +6163,6 @@ vacuum_add_recovered_dropped_files (THREAD_ENTRY * thread_p)
 
   // *INDENT-OFF*
   for (VACUUM_DROPPED_FILE &dropped_file : vacuum_Recovered_dropped_files)
-  // *INDENT-ON*
     {
       /* the entry in list is not older if the MVCCID before this one precedes it */
       assert (MVCC_ID_PRECEDES (MVCCID_FIRST, dropped_file.mvccid));
@@ -6194,6 +6195,7 @@ vacuum_add_recovered_dropped_files (THREAD_ENTRY * thread_p)
 	}
       log_sysop_commit (thread_p);
     }
+  // *INDENT-ON*
 
   if (claimed_worker)
     {
