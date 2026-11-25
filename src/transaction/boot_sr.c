@@ -1062,7 +1062,8 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
  * Note: Temporary volumes are given identifiers from LOG_MAX_DBVOLID down. The volumes boot_Db_parm knows start at
  *       temp_last_volid, and the volumes added after boot_Db_parm reached the disk follow right below it, while a
  *       volume being formatted when the server crashed may have no header. Only these names are the ones the server
- *       removed without reading the header before CBRD-26086.
+ *       removed without reading the header before CBRD-26086, and the names below temp_last_volid only before the
+ *       server is restarted: once it is running, boot_Db_parm knows every temporary volume it adds.
  */
 static VOLID
 boot_get_temp_volid_left_by_crash (const char *temp_path, const char *db_name)
@@ -1071,6 +1072,11 @@ boot_get_temp_volid_left_by_crash (const char *temp_path, const char *db_name)
   VOLID volid;
 
   volid = (boot_Db_parm->temp_last_volid == NULL_VOLID) ? LOG_MAX_DBVOLID + 1 : boot_Db_parm->temp_last_volid;
+  if (BO_IS_SERVER_RESTARTED ())
+    {
+      return volid;
+    }
+
   while (volid - 1 > boot_Db_parm->last_volid)
     {
       fileio_make_volume_temp_name (temp_vol_fullname, temp_path, db_name, volid - 1);
