@@ -6371,6 +6371,12 @@ delvoldb (UTIL_FUNCTION_ARG * arg)
   db_shutdown ();
 
   fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_DONE), volid);
+  if (access (info.vol_fullname, F_OK) == 0)
+    {
+      /* the deletion is decided and cannot be repeated; only the file could not be removed */
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DELVOLDB, DELVOLDB_MSG_FILE_LEFT),
+			     info.vol_fullname);
+    }
   return EXIT_SUCCESS;
 
 cancel_exit:
