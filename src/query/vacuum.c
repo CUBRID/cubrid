@@ -67,6 +67,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <stack>
+#include <vector>
 
 #include <cstring>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -591,6 +592,12 @@ struct vacuum_dropped_file
   MVCCID mvccid;
 };
 
+/* Files dropped while vacuum was disabled, found in the log by vacuum_recover_lost_block_data (). They are added to
+ * the dropped files list once it is loaded (vacuum_add_recovered_dropped_files). */
+// *INDENT-OFF*
+static std::vector<VACUUM_DROPPED_FILE> vacuum_Recovered_dropped_files;
+// *INDENT-ON*
+
 /* A page of dropped files entries */
 typedef struct vacuum_dropped_files_page VACUUM_DROPPED_FILES_PAGE;
 struct vacuum_dropped_files_page
@@ -690,6 +697,8 @@ static MVCCID vacuum_last_saved_entry_oldest_mvccid (THREAD_ENTRY * thread_p);
 static void vacuum_init_data_page_with_last_blockid (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page,
 						     VACUUM_LOG_BLOCKID blockid);
 static int vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p);
+static int vacuum_collect_dropped_files_in_log (THREAD_ENTRY * thread_p, VACUUM_LOG_BLOCKID first_blockid);
+static int vacuum_add_recovered_dropped_files (THREAD_ENTRY * thread_p);
 
 static int vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * block_data,
 				     bool sa_mode_partial_block);
@@ -1366,6 +1375,13 @@ vacuum_boot (THREAD_ENTRY * thread_p)
 
   /* load dropped files from disk */
   error_code = vacuum_load_dropped_files_from_disk (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  error_code = vacuum_add_recovered_dropped_files (thread_p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -5879,6 +5895,316 @@ vacuum_last_saved_entry_oldest_mvccid (THREAD_ENTRY * thread_p)
   return oldest;
 }
 
+/*
+ * vacuum_data_newest_mvccid () - Newest MVCCID of all entries in vacuum data.
+ *
+ * return	 : The MVCCID, or MVCCID_NULL when vacuum data has no entry.
+ * thread_p (in) : Thread entry.
+ */
+static MVCCID
+vacuum_data_newest_mvccid (THREAD_ENTRY * thread_p)
+{
+  MVCCID newest = MVCCID_NULL;
+  VACUUM_DATA_PAGE *data_page = vacuum_Data.first_page;
+  VPID next_vpid;
+  INT16 i;
+
+  while (data_page != NULL)
+    {
+      for (i = 0; i < data_page->index_free; i++)
+	{
+	  if (newest == MVCCID_NULL || MVCC_ID_PRECEDES (newest, data_page->data[i].newest_mvccid))
+	    {
+	      newest = data_page->data[i].newest_mvccid;
+	    }
+	}
+      VPID_COPY (&next_vpid, &data_page->next_page);
+      vacuum_unfix_data_page (thread_p, data_page);
+      if (VPID_ISNULL (&next_vpid))
+	{
+	  break;
+	}
+      data_page = vacuum_fix_data_page (thread_p, &next_vpid);
+      if (data_page == NULL)
+	{
+	  ASSERT_ERROR ();
+	  er_clear ();
+	  break;
+	}
+    }
+  return newest;
+}
+
+/*
+ * vacuum_collect_dropped_files_in_log () - Find the files dropped in the log that is not in vacuum data yet and keep
+ *					    them in vacuum_Recovered_dropped_files.
+ *
+ * return	       : Error code.
+ * thread_p (in)       : Thread entry.
+ * first_blockid (in)  : First log block that is not in vacuum data.
+ *
+ * While vacuum is disabled, a dropped file is not added to the dropped files list (vacuum_rv_notify_dropped_file), so
+ * its pages can be reused by another file while the blocks with its records are recovered here. Vacuum would then
+ * process those records on the pages of the new file. The dropped files are found by walking the log forward:
+ *   - a committed drop is the run postpone (LOG_SYSOP_END_LOGICAL_RUN_POSTPONE) of a RVVAC_NOTIFY_DROPPED_FILE
+ *     postpone;
+ *   - a rolled-back create is the compensate (LOG_SYSOP_END_LOGICAL_COMPENSATE) of a RVVAC_NOTIFY_DROPPED_FILE undo;
+ *     the compensate LSA is the previous LSA in transaction of the undone record (log_rollback).
+ * The MVCCID of a dropped file is one after the newest MVCCID logged before the drop. Every record of the dropped file
+ * was logged before the drop (the drop waits for the other transactions on the file), so its MVCCID precedes. The
+ * MVCCID of the next ID at recovery time is not used: the records of a new file that got the same VFID would be
+ * taken as dropped.
+ */
+static int
+vacuum_collect_dropped_files_in_log (THREAD_ENTRY * thread_p, VACUUM_LOG_BLOCKID first_blockid)
+{
+  char log_page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char aux_page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_page_p = (LOG_PAGE *) PTR_ALIGN (log_page_buf, MAX_ALIGNMENT);
+  LOG_PAGE *aux_page_p = (LOG_PAGE *) PTR_ALIGN (aux_page_buf, MAX_ALIGNMENT);
+  LOG_LSA log_lsa, copy_lsa;
+  LOG_LSA end_lsa = log_Gl.hdr.append_lsa;
+  LOG_RECORD_HEADER log_rec_header;
+  VACUUM_DROPPED_FILES_RCV_DATA rcv_data;
+  VACUUM_DROPPED_FILE dropped_file;
+  MVCCID newest_mvccid;
+  MVCCID mvccid;
+  int error_code = NO_ERROR;
+  struct created_file
+  {
+    TRANID trid;
+    LOG_LSA prev_tranlsa;
+    VFID vfid;
+  };
+  // *INDENT-OFF*
+  std::vector<created_file> created_files;
+  // *INDENT-ON*
+
+  newest_mvccid = vacuum_data_newest_mvccid (thread_p);
+
+  /* Find the first log record of the first block. */
+  log_lsa.pageid = VACUUM_FIRST_LOG_PAGEID_IN_BLOCK (first_blockid);
+  log_lsa.offset = 0;
+  while (true)
+    {
+      if (log_lsa.pageid > end_lsa.pageid)
+	{
+	  return NO_ERROR;
+	}
+      error_code = logpb_fetch_page (thread_p, &log_lsa, LOG_CS_SAFE_READER, log_page_p);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      if (log_page_p->hdr.offset != NULL_OFFSET)
+	{
+	  log_lsa.offset = log_page_p->hdr.offset;
+	  break;
+	}
+      log_lsa.pageid++;
+    }
+
+  while (!LSA_ISNULL (&log_lsa) && LSA_LT (&log_lsa, &end_lsa))
+    {
+      if (log_page_p->hdr.logical_pageid != log_lsa.pageid)
+	{
+	  error_code = logpb_fetch_page (thread_p, &log_lsa, LOG_CS_SAFE_READER, log_page_p);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
+      log_rec_header = *LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
+      copy_lsa = log_lsa;
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &copy_lsa, log_page_p);
+
+      mvccid = MVCCID_NULL;
+      VFID_SET_NULL (&dropped_file.vfid);
+      switch (log_rec_header.type)
+	{
+	case LOG_MVCC_UNDO_DATA:
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDO), &copy_lsa, log_page_p);
+	  mvccid = ((LOG_REC_MVCC_UNDO *) (log_page_p->area + copy_lsa.offset))->mvccid;
+	  break;
+
+	case LOG_MVCC_UNDOREDO_DATA:
+	case LOG_MVCC_DIFF_UNDOREDO_DATA:
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_UNDOREDO), &copy_lsa, log_page_p);
+	  mvccid = ((LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + copy_lsa.offset))->mvccid;
+	  break;
+
+	case LOG_MVCC_REDO_DATA:
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_MVCC_REDO), &copy_lsa, log_page_p);
+	  mvccid = ((LOG_REC_MVCC_REDO *) (log_page_p->area + copy_lsa.offset))->mvccid;
+	  break;
+
+	case LOG_UNDO_DATA:
+	  {
+	    LOG_REC_UNDO undo;
+
+	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_UNDO), &copy_lsa, log_page_p);
+	    undo = *(LOG_REC_UNDO *) (log_page_p->area + copy_lsa.offset);
+	    if (undo.data.rcvindex == RVVAC_NOTIFY_DROPPED_FILE)
+	      {
+		/* a created file; dropped if this record is undone */
+		assert (!ZIP_CHECK (undo.length) && undo.length == (int) sizeof (rcv_data));
+		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_UNDO), &copy_lsa, log_page_p);
+		logpb_copy_from_log (thread_p, (char *) &rcv_data, sizeof (rcv_data), &copy_lsa, log_page_p);
+		created_files.push_back ({log_rec_header.trid, log_rec_header.prev_tranlsa, rcv_data.vfid});
+	      }
+	  }
+	  break;
+
+	case LOG_SYSOP_END:
+	  {
+	    LOG_REC_SYSOP_END sysop_end;
+
+	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &copy_lsa, log_page_p);
+	    sysop_end = *(LOG_REC_SYSOP_END *) (log_page_p->area + copy_lsa.offset);
+	    if (sysop_end.type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
+	      {
+		mvccid = sysop_end.mvcc_undo.mvccid;
+	      }
+	    else if (sysop_end.type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+	      {
+		/* read the postpone record that was run */
+		LOG_REC_REDO redo;
+		LOG_RECORD_HEADER posp_header;
+
+		copy_lsa = sysop_end.run_postpone.postpone_lsa;
+		error_code = logpb_fetch_page (thread_p, &copy_lsa, LOG_CS_SAFE_READER, aux_page_p);
+		if (error_code != NO_ERROR)
+		  {
+		    ASSERT_ERROR ();
+		    return error_code;
+		  }
+		posp_header = *LOG_GET_LOG_RECORD_HEADER (aux_page_p, &copy_lsa);
+		if (posp_header.type != LOG_POSTPONE)
+		  {
+		    assert (false);
+		    break;
+		  }
+		LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &copy_lsa, aux_page_p);
+		LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REDO), &copy_lsa, aux_page_p);
+		redo = *(LOG_REC_REDO *) (aux_page_p->area + copy_lsa.offset);
+		if (redo.data.rcvindex == RVVAC_NOTIFY_DROPPED_FILE)
+		  {
+		    assert (!ZIP_CHECK (redo.length) && redo.length == (int) sizeof (rcv_data));
+		    LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_REDO), &copy_lsa, aux_page_p);
+		    logpb_copy_from_log (thread_p, (char *) &rcv_data, sizeof (rcv_data), &copy_lsa, aux_page_p);
+		    dropped_file.vfid = rcv_data.vfid;
+		  }
+	      }
+	    else if (sysop_end.type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
+	      {
+		for (size_t i = 0; i < created_files.size (); i++)
+		  {
+		    if (created_files[i].trid == log_rec_header.trid
+			&& LSA_EQ (&created_files[i].prev_tranlsa, &sysop_end.compensate_lsa))
+		      {
+			dropped_file.vfid = created_files[i].vfid;
+			created_files.erase (created_files.begin () + i);
+			break;
+		      }
+		  }
+	      }
+	  }
+	  break;
+
+	default:
+	  break;
+	}
+
+      if (MVCCID_IS_VALID (mvccid) && (newest_mvccid == MVCCID_NULL || MVCC_ID_PRECEDES (newest_mvccid, mvccid)))
+	{
+	  newest_mvccid = mvccid;
+	}
+      if (!VFID_ISNULL (&dropped_file.vfid) && MVCCID_IS_VALID (newest_mvccid))
+	{
+	  /* with no MVCCID logged before, no record of the file can be vacuumed */
+	  dropped_file.mvccid = newest_mvccid;
+	  MVCCID_FORWARD (dropped_file.mvccid);
+	  vacuum_Recovered_dropped_files.push_back (dropped_file);
+	  vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES | VACUUM_ER_LOG_RECOVERY,
+			 "found dropped file %d|%d at lsa %lld|%d, mvccid = %llu", VFID_AS_ARGS (&dropped_file.vfid),
+			 LSA_AS_ARGS (&log_lsa), (unsigned long long int) dropped_file.mvccid);
+	}
+
+      log_lsa = log_rec_header.forw_lsa;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * vacuum_add_recovered_dropped_files () - Add the files found by vacuum_collect_dropped_files_in_log () to the dropped
+ *					   files list. An entry already newer in the list is kept.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ */
+static int
+vacuum_add_recovered_dropped_files (THREAD_ENTRY * thread_p)
+{
+  int error_code = NO_ERROR;
+  bool is_newer_in_list;
+  MVCCID prev_mvccid;
+  bool claimed_worker = false;
+  int save_tran_index = NULL_TRAN_INDEX;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  // *INDENT-OFF*
+  for (VACUUM_DROPPED_FILE &dropped_file : vacuum_Recovered_dropped_files)
+  // *INDENT-ON*
+    {
+      /* the entry in list is not older if the MVCCID before this one precedes it */
+      assert (MVCC_ID_PRECEDES (MVCCID_FIRST, dropped_file.mvccid));
+      prev_mvccid = dropped_file.mvccid - 1;
+      error_code = vacuum_find_dropped_file (thread_p, &is_newer_in_list, &dropped_file.vfid, prev_mvccid);
+      if (error_code != NO_ERROR)
+	{
+	  break;
+	}
+      if (is_newer_in_list)
+	{
+	  continue;
+	}
+
+      if (!claimed_worker && thread_p->get_system_tdes () == NULL)
+	{
+	  /* the boot thread runs as the system transaction that cannot start a system operation; borrow a system
+	   * worker transaction like the vacuum threads do */
+	  save_tran_index = thread_p->tran_index;
+	  thread_p->claim_system_worker ();
+	  claimed_worker = true;
+	}
+
+      log_sysop_start (thread_p);
+      error_code = vacuum_add_dropped_file (thread_p, &dropped_file.vfid, dropped_file.mvccid);
+      if (error_code != NO_ERROR)
+	{
+	  log_sysop_abort (thread_p);
+	  break;
+	}
+      log_sysop_commit (thread_p);
+    }
+
+  if (claimed_worker)
+    {
+      thread_p->retire_system_worker ();
+      thread_p->tran_index = save_tran_index;
+    }
+
+  vacuum_Recovered_dropped_files.clear ();
+  return error_code;
+}
+
 static int
 vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 {
@@ -6113,6 +6439,14 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	}
 
       crt_blockid = vacuum_get_log_blockid (log_lsa.pageid);
+    }
+
+  /* Records of the recovered blocks may belong to files dropped while vacuum was disabled. */
+  error_code = vacuum_collect_dropped_files_in_log (thread_p, vacuum_Data.get_last_blockid () + 1);
+  if (error_code != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
+      return error_code;
     }
 
   /* Produce recovered blocks, oldest first. There can be more blocks than the buffer holds (vacuum was disabled for
