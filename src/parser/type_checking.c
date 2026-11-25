@@ -17755,7 +17755,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  return 0;
 	}
-      dom_status = tp_value_cast (arg1, result, domain, false);
+      if (PT_IS_EXPR_NODE (expr) && PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP | PT_EXPR_INFO_CAST_NOFAIL))
+	{
+	  dom_status = tp_value_cast (arg1, result, domain, false);
+	}
+      else
+	{
+	  /* a CAST the user wrote truncates a longer string, as the server's T_CAST does */
+	  dom_status = tp_value_cast_force (arg1, result, domain, false);
+	}
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  assert (expr->node_type == PT_EXPR);
