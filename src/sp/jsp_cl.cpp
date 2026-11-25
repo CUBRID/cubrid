@@ -713,7 +713,7 @@ jsp_get_call_params (PARSER_CONTEXT *parser, PT_NODE *node, DB_TYPE &return_type
   DB_VALUE value, args, elem;
   DB_SET *param_set;
   int save, num_args = 0, i;
-  bool found = false;
+  bool readable = false;
   const char *name = jsp_pl_call_name (parser, node);
 
   params.clear ();
@@ -723,67 +723,85 @@ jsp_get_call_params (PARSER_CONTEXT *parser, PT_NODE *node, DB_TYPE &return_type
       return false;
     }
 
+  db_make_null (&args);
   db_make_null (&elem);
 
   AU_SAVE_AND_DISABLE (save);
   er_stack_push ();
 
   mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
-  if (mop_p != NULL)
+  if (mop_p == NULL || db_get (mop_p, SP_ATTR_RETURN_TYPE, &value) != NO_ERROR)
     {
-      found = true;
-      if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &value) == NO_ERROR)
-	{
-	  return_type = (DB_TYPE) db_get_int (&value);
-	  pr_clear_value (&value);
-	}
-      if (db_get (mop_p, SP_ATTR_ARG_COUNT, &value) == NO_ERROR)
-	{
-	  num_args = db_get_int (&value);
-	  pr_clear_value (&value);
-	}
-      if (num_args > 0 && db_get (mop_p, SP_ATTR_ARGS, &args) == NO_ERROR)
-	{
-	  param_set = db_get_set (&args);
-	  for (i = 0; i < num_args && set_get_element (param_set, i, &elem) == NO_ERROR; i++)
-	    {
-	      sp_arg_info param;
+      goto end;
+    }
+  return_type = (DB_TYPE) db_get_int (&value);
+  pr_clear_value (&value);
 
-	      arg_mop_p = db_get_object (&elem);
-	      if (arg_mop_p == NULL)
-		{
-		  pr_clear_value (&elem);
-		  break;
-		}
-	      if (db_get (arg_mop_p, SP_ARG_ATTR_MODE, &value) == NO_ERROR)
-		{
-		  param.mode = (SP_MODE_ENUM) db_get_int (&value);
-		  pr_clear_value (&value);
-		}
-	      if (db_get (arg_mop_p, SP_ARG_ATTR_DATA_TYPE, &value) == NO_ERROR)
-		{
-		  param.data_type = (DB_TYPE) db_get_int (&value);
-		  pr_clear_value (&value);
-		}
-	      if (db_get (arg_mop_p, SP_ARG_ATTR_ARG_NAME, &value) == NO_ERROR)
-		{
-		  if (!DB_IS_NULL (&value))
-		    {
-		      param.arg_name = db_get_string (&value);
-		    }
-		  pr_clear_value (&value);
-		}
-	      params.push_back (param);
-	      pr_clear_value (&elem);
+  if (db_get (mop_p, SP_ATTR_ARG_COUNT, &value) != NO_ERROR)
+    {
+      goto end;
+    }
+  num_args = db_get_int (&value);
+  pr_clear_value (&value);
+
+  if (num_args > 0)
+    {
+      if (db_get (mop_p, SP_ATTR_ARGS, &args) != NO_ERROR)
+	{
+	  goto end;
+	}
+      param_set = db_get_set (&args);
+      for (i = 0; i < num_args; i++)
+	{
+	  sp_arg_info param;
+
+	  if (set_get_element (param_set, i, &elem) != NO_ERROR)
+	    {
+	      goto end;
 	    }
-	  pr_clear_value (&args);
+	  arg_mop_p = db_get_object (&elem);
+	  if (arg_mop_p == NULL || db_get (arg_mop_p, SP_ARG_ATTR_MODE, &value) != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  param.mode = (SP_MODE_ENUM) db_get_int (&value);
+	  pr_clear_value (&value);
+
+	  if (db_get (arg_mop_p, SP_ARG_ATTR_DATA_TYPE, &value) != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  param.data_type = (DB_TYPE) db_get_int (&value);
+	  pr_clear_value (&value);
+
+	  if (db_get (arg_mop_p, SP_ARG_ATTR_ARG_NAME, &value) != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  if (!DB_IS_NULL (&value))
+	    {
+	      param.arg_name = db_get_string (&value);
+	    }
+	  pr_clear_value (&value);
+
+	  params.push_back (param);
+	  pr_clear_value (&elem);
 	}
     }
+  readable = true;
 
+end:
+  pr_clear_value (&elem);
+  pr_clear_value (&args);
   er_stack_pop ();
   AU_RESTORE (save);
 
-  return found;
+  if (!readable)
+    {
+      params.clear ();
+      return_type = DB_TYPE_NULL;
+    }
+  return readable;
 }
 
 /* the catalog name of the routine a PT_METHOD_CALL calls */
