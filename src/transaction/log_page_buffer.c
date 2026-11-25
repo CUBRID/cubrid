@@ -8220,9 +8220,12 @@ logpb_set_backup_info_in_header (LOG_HEADER * log_hdr, FILEIO_BACKUP_LEVEL backu
  *   num_threads(in): number of threads
  *   zip_method(in): compression method
  *   zip_level(in): compression level
- *   skip_activelog(in):
- *   sleep_msecs(in):
+ *   skip_activelog(in): must be 0; the active log is always backed up
+ *   sleep_msecs(in): sleep time per 1MB of data volume read, server only (0: use io_backup_sleep_msecs)
+ *   separate_keys(in): copy the TDE keys file to a separate file instead of into the backup volume
  *
+ * The body runs in the steps marked "Step n" below. The log header records the backup only in step 10, after
+ * the last call that can fail. Every error after step 1 jumps to the error label at the end.
  */
 int
 logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_path, FILEIO_BACKUP_LEVEL backup_level,
@@ -8276,6 +8279,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   size_t read_thread_count = 0;
   int specified_thread_count = num_threads;
 
+  /* Step 1 (server only): allow one backup at a time. Step 12 and the error label clear the flag. */
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
   LOG_CS_ENTER (thread_p);
@@ -8291,6 +8295,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   LOG_CS_EXIT (thread_p);
 #endif /* SERVER_MODE */
 
+  /* Step 2: prepare: mount the TDE keys file, open the backup session and start the read workers. */
   memset (&session, 0, sizeof (FILEIO_BACKUP_SESSION));
 
   /*
@@ -8336,6 +8341,10 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 loop:
 #endif /* SERVER_MODE */
 
+  /*
+   * Step 3: (server only) wait until no checkpoint and no no-logging index build is running, then block checkpoints.
+   * Read the checkpoint LSA and the log end where the page copy starts.
+   */
   // actually, it is not really necessary for SA but just for code consistency.
   LOG_CS_ENTER (thread_p);
 
@@ -8423,6 +8432,7 @@ loop:
 
   LOG_CS_EXIT (thread_p);
 
+  /* Step 4: check the level. An incremental backup starts at the LSA of the lower level backup. */
   switch (backup_level)
     {
 
@@ -8467,6 +8477,9 @@ loop:
     }
 
   /*
+   * Step 5: read the backup information file. If the previous backup of this level is in the same location, delete
+   * the backup volumes of this level and higher, after asking the user.
+   *
    * Check for existing backup volumes in this location, and warn
    * the user that they will be destroyed.
    */
@@ -8568,6 +8581,7 @@ loop:
   LSA_COPY (&all_bkup_info[2].lsa, &log_Gl.hdr.bkup_level2_lsa);
   all_bkup_info[2].at_time = log_Gl.hdr.bkinfo[2].bkup_attime;
 
+  /* Step 6: print the verbose header. */
   if (session.verbose_fp)
     {
       if (backup_level != FILEIO_BACKUP_FULL_LEVEL)
@@ -8650,7 +8664,11 @@ loop:
       fprintf (session.verbose_fp, "-----------------------------------------------------------------------------\n");
     }
 
-  /* Begin backing up in earnest */
+  /*
+   * Step 7: write the backup header, then copy the TDE keys file, the volume information file and the permanent
+   * volumes, in this order. After the first pass of the loop (bkup_in_progress), an error removes this backup and
+   * every backup volume of this level and higher.
+   */
   assert (!skip_activelog);
   session.bkup.bkuphdr->skip_activelog = skip_activelog;
   LSA_COPY (&session.bkup.bkuphdr->start_log_end_lsa, &bkup_start_log_end_lsa);
@@ -8708,9 +8726,9 @@ loop:
 	  continue;
 	case LOG_DBLOG_ACTIVE_VOLID:
 	  /*
-	   * Archiving log active must be done after all data volumes
-	   * have been backed up (in order to insure we get all of the
-	   * log records needed to restore consistency).
+	   * The active log is copied after this loop (step 8), when all data volumes
+	   * have been backed up, so that it holds all of the log records needed to
+	   * restore consistency. Go on to the first data volume.
 	   */
 	  volid = LOG_DBFIRST_VOLID;
 	  continue;
@@ -8747,6 +8765,11 @@ loop:
       bkup_in_progress = true;
     }
   while (volid != NULL_VOLID);
+
+  /*
+   * Step 8: under LOG_CS, flush the log, pin the archives this backup needs (server only), copy the log information
+   * volume and the active log, and stamp end_time. Every error inside exits LOG_CS before it jumps to the error label.
+   */
 
   /* at here, diable multi-thread usage for fast Log copy */
   session.read_thread_info.num_threads = 1;
@@ -8874,6 +8897,7 @@ loop:
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 
+  /* Step 9: out of LOG_CS, copy the pinned archives (server only). */
 #if defined(SERVER_MODE)
   if (first_arv_needed >= 0 && first_arv_needed <= last_arv_needed)
     {
@@ -8892,6 +8916,10 @@ loop:
     }
 #endif
 
+  /*
+   * Step 10: finish the backup volumes, write the final backup information file, then record the backup in the log
+   * header. Recording it is the success point.
+   */
   if (fileio_finish_backup (thread_p, &session) == NULL)
     {
       error_code = ER_FAILED;
@@ -8920,6 +8948,7 @@ loop:
   logpb_flush_header (thread_p);
   LOG_CS_EXIT (thread_p);
 
+  /* Step 11: remove the archives that are no longer needed (-r), and print the verbose footer. */
   if (delete_unneeded_logarchives != false)
     {
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN);
@@ -8953,6 +8982,11 @@ loop:
       fprintf (session.verbose_fp, "[ Database(%s) %s Backup end ]\n", boot_db_name (), str_tmp);
     }
 
+  /*
+   * Step 12: clean up. With false, fileio_abort_backup () ends the session without removing the backup volumes.
+   * Then let checkpoints run again and clear the backup flags. The error label below does the same, and also removes
+   * this backup and every backup volume of this level and higher when bkup_in_progress is set.
+   */
   fileio_abort_backup (thread_p, &session, false);
 
 #if defined(SERVER_MODE)
