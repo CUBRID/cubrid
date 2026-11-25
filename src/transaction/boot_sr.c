@@ -1069,6 +1069,7 @@ static VOLID
 boot_get_temp_volid_left_by_crash (const char *temp_path, const char *db_name)
 {
   char temp_vol_fullname[PATH_MAX];
+  struct stat stat_buffer;
   VOLID volid;
 
   volid = (boot_Db_parm->temp_last_volid == NULL_VOLID) ? LOG_MAX_DBVOLID + 1 : boot_Db_parm->temp_last_volid;
@@ -1080,7 +1081,9 @@ boot_get_temp_volid_left_by_crash (const char *temp_path, const char *db_name)
   while (volid - 1 > boot_Db_parm->last_volid)
     {
       fileio_make_volume_temp_name (temp_vol_fullname, temp_path, db_name, volid - 1);
-      if (!fileio_is_volume_exist (temp_vol_fullname))
+      /* the same test as fileio_is_volume_exist, without opening the file: closing a descriptor of a file reached by
+       * a link would release a lock this process holds on it (e.g. the lock on the active log) */
+      if (stat (temp_vol_fullname, &stat_buffer) != 0 && errno == ENOENT)
 	{
 	  break;
 	}
