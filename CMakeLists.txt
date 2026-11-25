@@ -75,10 +75,6 @@ option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 option(WITH_CCI "Build with CCI driver" ON)
-<<<<<<< HEAD
-option(MULTI_CONN_TO_A_SERVER "Allow multiple connections to a server in a client process (experimental)" ON)
-=======
->>>>>>> upstream/develop
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
