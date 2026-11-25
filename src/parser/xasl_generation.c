@@ -809,7 +809,9 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
       save_from = select_node->info.query.q.select.from->next;
       select_node->info.query.q.select.from->next = NULL;
 
+      PT_SELECT_INFO_SET_FLAG (select_node, PT_SELECT_INFO_HQ_ITERATION);
       xasl = pt_plan_single_table_hq_iterations (parser, select_node, xasl);
+      PT_SELECT_INFO_CLEAR_FLAG (select_node, PT_SELECT_INFO_HQ_ITERATION);
 
       select_node->info.query.q.select.where = save_where;
       select_node->info.query.q.select.from->next = save_from;
@@ -34905,6 +34907,11 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
     {
     case QO_PLANTYPE_SCAN:
       if (!(qo_is_iscan (qo_plan) || qo_is_iscan_from_analytic (qo_plan)) || (env = (qo_plan->info)->env) == NULL)
+	{
+	  return 0;
+	}
+      /* the rows of a bitmap heap scan leave in file order */
+      if (qo_plan->plan_un.scan.bitmap_heap)
 	{
 	  return 0;
 	}

@@ -3011,6 +3011,8 @@ struct pt_select_info
 #define PT_SELECT_INFO_LENIENT_JOIN_HINT  0x040000	/* retry of an optimization that failed with the join method
 							 * hints: ignore one that cannot be applied to a join for
 							 * that join only (CBRD-28089) */
+#define PT_SELECT_INFO_HQ_ITERATION       0x080000	/* being planned as the scan a hierarchical query runs once a
+							 * parent row */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))

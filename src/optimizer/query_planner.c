@@ -456,7 +456,7 @@ static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index
 static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_NODE * col);
 static int qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type);
 static bool qo_index_holds_all_rows (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
-static bool qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp);
+static bool qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp, bool any);
 static PT_NODE *qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						   int *continue_walk);
 static double qo_analytic_sort_cost (QO_PLAN * plan);
@@ -492,6 +492,7 @@ static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
 static double qo_bitmap_heap_gain (QO_PLAN * planp);
 static bool qo_bitmap_heap_allowed (QO_PLANNER * planner);
 static bool qo_plan_has_bitmap_heap (QO_PLAN * plan);
+static bool qo_plan_saves_sort (QO_PLAN * plan);
 static void qo_generate_bitmap_heap_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * ni_entryp,
 					  BITSET * range_terms);
 static int qo_check_groupby_iscan (QO_PLAN * plan, void *arg);
@@ -3203,7 +3204,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
       /* the same scan, its heap read through a bitmap: made when that is cheaper and the key order saves no sort */
       if (qo_bitmap_heap_gain (plan) <= 0.0
 	  || (QO_ENV_PT_TREE (env)->info.query.order_by != NULL && qo_plan_is_orderby_skip_candidate (plan))
-	  || qo_plan_is_groupby_skip_candidate (plan) || qo_index_covers_analytic_sort (env, node, ni_entry))
+	  || qo_plan_is_groupby_skip_candidate (plan) || qo_index_covers_analytic_sort (env, node, ni_entry, true))
 	{
 	  qo_plan_release (plan);
 	  return NULL;
@@ -3905,6 +3906,31 @@ qo_plan_has_bitmap_heap (QO_PLAN * plan)
 }
 
 /*
+ * qo_plan_saves_sort () - whether the order of a plan saves a sort of the statement
+ *   return: true or false
+ *   plan(in): a plan without a bitmap heap scan
+ *
+ * Note: Such a plan won by the order it gives (an ORDER BY or GROUP BY skip, a multi range optimization), which
+ *	 the cost of a plan with a bitmap heap scan and a sort does not weigh: it is not replaced by one.
+ */
+static bool
+qo_plan_saves_sort (QO_PLAN * plan)
+{
+  QO_PLAN *scan = plan;
+
+  if (qo_plan_multi_range_opt (plan) || qo_plan_skip_groupby (plan))
+    {
+      return true;
+    }
+  while (scan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (scan))
+    {
+      scan = scan->plan_un.join.outer;
+    }
+  return (scan->plan_type == QO_PLANTYPE_SCAN && scan->plan_un.scan.index != NULL
+	  && scan->plan_un.scan.index->head->orderby_skip);
+}
+
+/*
  * qo_plan_mark_bitmap_heap_scans () - mark the spec of every scan of a plan that reads its heap through a bitmap
  *   return: nothing
  *   planp(in): a plan
@@ -4006,9 +4032,10 @@ qo_bitmap_heap_allowed (QO_PLANNER * planner)
       /* a scan that locks the rows it reads looks them up in key order */
       return false;
     }
-  if (tree->info.query.correlation_level != 0)
+  if (tree->info.query.correlation_level != 0 || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_HQ_ITERATION))
     {
-      /* a correlated subquery runs once an outer row: a bitmap made again for every run costs more than it saves */
+      /* a correlated subquery runs once an outer row, the scan of a hierarchical query once a parent row: a bitmap
+       * made again for every run costs more than it saves */
       return false;
     }
   if (tree->info.query.limit != NULL
@@ -10532,7 +10559,8 @@ qo_find_best_list_input_on_info (QO_INFO * info, QO_EQCLASS * order)
 	  best_cost = cost;
 	}
     }
-  if (order == QO_UNORDERED && info->planner != NULL && info->planner->bitmap_heap_pass)
+  if (order == QO_UNORDERED && info->planner != NULL && info->planner->bitmap_heap_pass
+      && !qo_plan_saves_sort (best_plan))
     {
       for (i = 0, pv = &info->best_bitmap; i < pv->nplans; i++)
 	{
@@ -11146,10 +11174,11 @@ qo_find_best_plan_on_info (QO_INFO * info, QO_EQCLASS * order, double n)
 	  QO_PLAN *plan = qo_find_best_plan_on_planvec (pv, n);
 	  QO_PLAN *bitmap_plan = qo_find_best_plan_on_planvec (&info->best_bitmap, n);
 
-	  return ((bitmap_plan->fixed_cpu_cost + bitmap_plan->fixed_io_cost
-		   + n * (bitmap_plan->variable_cpu_cost + bitmap_plan->variable_io_cost))
-		  <= (plan->fixed_cpu_cost + plan->fixed_io_cost
-		      + n * (plan->variable_cpu_cost + plan->variable_io_cost))) ? bitmap_plan : plan;
+	  return (!qo_plan_saves_sort (plan)
+		  && ((bitmap_plan->fixed_cpu_cost + bitmap_plan->fixed_io_cost
+		       + n * (bitmap_plan->variable_cpu_cost + bitmap_plan->variable_io_cost))
+		      <= (plan->fixed_cpu_cost + plan->fixed_io_cost
+			  + n * (plan->variable_cpu_cost + plan->variable_io_cost)))) ? bitmap_plan : plan;
 	}
     }
   else
@@ -15276,7 +15305,7 @@ qo_search_planner (QO_PLANNER * planner)
 		  /* CBRD-27469: a full index scan that supplies the rows in the PARTITION BY + ORDER BY order of an
 		   * analytic function lets the analytic evaluation skip its sort; the sort it saves is charged to
 		   * the sequential scan in qo_plan_cmp (). */
-		  if (!n && qo_index_covers_analytic_sort (info->env, node, ni_entry))
+		  if (!n && qo_index_covers_analytic_sort (info->env, node, ni_entry, false))
 		    {
 		      n =
 			qo_check_plan_on_info (info,
@@ -18437,7 +18466,6 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
       else
 	{
 	  cover->has_uncovered = true;
-	  *continue_walk = PT_STOP_WALK;
 	}
     }
 
@@ -18453,6 +18481,8 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
  *   env(in): pointer to the optimizer environment
  *   node(in): the node scanned by the index
  *   ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ *   any(in): true to ask whether the index key order covers the sort list of at least one analytic function, in a
+ *	      join and on a class hierarchy too: XASL generation may then skip a sort on the key order of the scan
  *
  * Note: XASL generation evaluates analytic functions in sort groups and may merge the sort lists of compatible
  *   functions into one (pt_metadomains_compatible () compares PARTITION BY keys as sets), so a function that the
@@ -18461,7 +18491,7 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
  *   the order they first appear, which is then the index order), so that the first group surely skips its sort.
  */
 static bool
-qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp)
+qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp, bool any)
 {
   PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
   PT_NODE *tree = QO_ENV_PT_TREE (env);
@@ -18476,13 +18506,14 @@ qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY
   /* The analytic functions see the scan order only when the scan feeds them directly: no join, grouping or
    * hierarchical query in between. A partitioned class or a class hierarchy is scanned one class at a time, which
    * does not keep the index order across the classes. */
-  if (env->nnodes != 1 || tree->info.query.q.select.group_by != NULL || tree->info.query.q.select.connect_by != NULL
-      || QO_NODE_IS_CLASS_HIERARCHY (node) || pt_has_aggregate (parser, tree) || !pt_has_analytic (parser, tree))
+  if (tree->info.query.q.select.group_by != NULL || tree->info.query.q.select.connect_by != NULL
+      || pt_has_aggregate (parser, tree) || !pt_has_analytic (parser, tree))
     {
       return false;
     }
 
-  if (qo_is_prefix_index (index_entryp) || !qo_index_holds_all_rows (env, ni_entryp))
+  if (!any && (env->nnodes != 1 || QO_NODE_IS_CLASS_HIERARCHY (node) || qo_is_prefix_index (index_entryp)
+	       || !qo_index_holds_all_rows (env, ni_entryp)))
     {
       return false;
     }
@@ -18496,7 +18527,7 @@ qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY
   (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_index_covers_analytic_sort_pre, &cover, NULL,
 			   NULL);
 
-  return cover.has_covered && !cover.has_uncovered;
+  return cover.has_covered && (any || !cover.has_uncovered);
 }
 
 /*
