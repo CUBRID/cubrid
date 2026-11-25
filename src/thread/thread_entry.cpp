@@ -789,12 +789,11 @@ thread_is_resumed_status (thread_resume_suspend_status status)
     case THREAD_SLEEP_FUNC_SUSPENDED:
     case THREAD_CONCURRENCY_SLOT_SUSPENDED:
       return false;
-
-    default:
-      /* a new status must be classified here */
-      assert (false);
-      return false;
     }
+
+  /* not a valid status; with no default label, -Wswitch reports a status missing from the cases above */
+  assert (false);
+  return false;
 }
 
 /*
@@ -814,12 +813,11 @@ thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status
   if ((resume_reason == THREAD_RESUME_DUE_TO_INTERRUPT || resume_reason == THREAD_RESUME_DUE_TO_SHUTDOWN)
       && thread_is_resumed_status (thread_p->resume_status))
     {
-      /* The waker already decided for the thread (handed the resource over, or told it to retry) and woke it; the
-       * thread has not taken the entry lock back yet. Overwriting the resumed status would make it believe the
-       * resource was not granted and leave the resource without an owner. Keep it. The interrupt is not lost: the
-       * two INTERRUPT senders through here (css_stop_non_log_writer and the deadlock victim loop in lock_suspend)
-       * record it in the transaction table (logtb_set_tran_index_interrupt) and repeat the wakeup (50 ms / 10 ms)
-       * until the thread is gone. No code sends SHUTDOWN now; it is a stop reason like INTERRUPT and kept the same. */
+      /* The status may hold a decision a waker made for the thread (a resource handed over, or a retry) that the
+       * thread has not read yet. Overwriting it would make the thread believe it got nothing and leave the resource
+       * without an owner. The interrupt is not lost: the sender also records it in the transaction table and sends
+       * it again, and the thread sees it at its next interrupt check or its next wait. No code sends SHUTDOWN now;
+       * it is a stop reason like INTERRUPT and kept the same. */
       if (had_mutex == false)
 	{
 	  thread_unlock_entry (thread_p);
@@ -872,6 +870,10 @@ thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
  *   return:
  *   thread_p(in/out):
  *   resume_reason:
+ *
+ *   Note: an INTERRUPT or SHUTDOWN does not replace a *_RESUMED status the thread has not read yet (see
+ *         thread_wakeup_internal). A sender of INTERRUPT must therefore also record it in the transaction table
+ *         (logtb_set_tran_index_interrupt) and send it again until the thread acts on it.
  */
 void
 thread_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason)
@@ -891,6 +893,10 @@ thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resum
  *   return:
  *   thread_p(in/out):
  *   resume_reason:
+ *
+ *   Note: an INTERRUPT or SHUTDOWN does not replace a *_RESUMED status the thread has not read yet (see
+ *         thread_wakeup_internal). A sender of INTERRUPT must therefore also record it in the transaction table
+ *         (logtb_set_tran_index_interrupt) and send it again until the thread acts on it.
  */
 void
 thread_wakeup_already_had_mutex (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason)

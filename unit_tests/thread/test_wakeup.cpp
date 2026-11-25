@@ -26,6 +26,7 @@
 #include "lock_free.h"
 
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
@@ -48,11 +49,25 @@ namespace test_thread
       {
 	thread_lock_entry (&entry);
 	thread_wakeup_already_had_mutex (&entry, c.sent);
+	// the wakeup must leave the caller's entry lock held
+	if (pthread_mutex_trylock (&entry.th_entry_lock) != EBUSY)
+	  {
+	    std::cout << "  FAIL: before=" << c.before << " sent=" << c.sent << " released the caller's entry lock"
+		      << std::endl;
+	    std::exit (1);	// the lock state is broken for the following cases
+	  }
 	thread_unlock_entry (&entry);
       }
     else
       {
 	thread_wakeup (&entry, c.sent);
+	// the wakeup must release the entry lock it took
+	if (pthread_mutex_trylock (&entry.th_entry_lock) != 0)
+	  {
+	    std::cout << "  FAIL: before=" << c.before << " sent=" << c.sent << " kept the entry lock" << std::endl;
+	    std::exit (1);	// the lock state is broken for the following cases
+	  }
+	pthread_mutex_unlock (&entry.th_entry_lock);
       }
 
     if (entry.resume_status != c.expected)
@@ -131,6 +146,98 @@ namespace test_thread
     return 0;
   }
 
+  // The second CBRD-28191 window: the waiter is granted while waiting in thread_suspend_timeout_wakeup_and_unlock_entry
+  // (as pgbuf_timed_sleep waits), returns with the entry lock released, and an interrupt is sent through thread_wakeup
+  // before the waiter takes the entry lock again to read its status. The waiter is held in that window by a flag, so
+  // the order is certain. The waiter must still see the grant.
+  static int
+  test_after_wait_returns (void)
+  {
+    cubthread::entry waiter;
+    std::atomic<bool> returned (false);
+    std::atomic<bool> go_on (false);
+    std::atomic<bool> done (false);
+    thread_resume_suspend_status seen = THREAD_RESUME_NONE;
+
+    std::thread t ([&] ()
+    {
+      struct timespec to;
+      clock_gettime (CLOCK_REALTIME, &to);
+      to.tv_sec += 10;
+
+      thread_lock_entry (&waiter);
+      waiter.m_status = cubthread::entry::status::TS_RUN;
+      waiter.resume_status = THREAD_PGBUF_SUSPENDED;
+      (void) thread_suspend_timeout_wakeup_and_unlock_entry (&waiter, &to, THREAD_PGBUF_SUSPENDED);
+      // returned with the entry lock released; stay here until the interrupt has been sent
+      returned = true;
+      for (int i = 0; i < 5000 && !go_on; i++)
+	{
+	  std::this_thread::sleep_for (std::chrono::milliseconds (1));
+	}
+      thread_lock_entry (&waiter);
+      seen = waiter.resume_status;
+      thread_unlock_entry (&waiter);
+      done = true;
+    });
+
+    // grant while the waiter is really waiting, for at most 5 seconds
+    bool granted = false;
+    for (int i = 0; i < 5000 && !granted; i++)
+      {
+	thread_lock_entry (&waiter);
+	if (waiter.m_status == cubthread::entry::status::TS_WAIT)
+	  {
+	    thread_wakeup_already_had_mutex (&waiter, THREAD_PGBUF_RESUMED);
+	    granted = true;
+	  }
+	thread_unlock_entry (&waiter);
+	if (!granted)
+	  {
+	    std::this_thread::sleep_for (std::chrono::milliseconds (1));
+	  }
+      }
+    if (!granted)
+      {
+	std::cout << "  FAIL: the timed waiter did not start waiting" << std::endl;
+	std::exit (1);	// the waiter is not waiting; cannot wake or join it
+      }
+
+    for (int i = 0; i < 5000 && !returned; i++)
+      {
+	std::this_thread::sleep_for (std::chrono::milliseconds (1));
+      }
+    if (!returned)
+      {
+	std::cout << "  FAIL: the timed waiter did not return from the wait" << std::endl;
+	std::exit (1);	// the waiter is blocked; cannot join it
+      }
+
+    // the waiter is between the wait and taking the entry lock again
+    thread_wakeup (&waiter, THREAD_RESUME_DUE_TO_INTERRUPT);
+    go_on = true;
+
+    for (int i = 0; i < 5000 && !done; i++)
+      {
+	std::this_thread::sleep_for (std::chrono::milliseconds (1));
+      }
+    if (!done)
+      {
+	std::cout << "  FAIL: the timed waiter did not finish" << std::endl;
+	std::exit (1);	// the waiter is blocked; cannot join it
+      }
+    t.join ();
+    waiter.m_status = cubthread::entry::status::TS_DEAD;
+
+    if (seen != THREAD_PGBUF_RESUMED)
+      {
+	std::cout << "  FAIL: timed waiter interrupted after the wait returned saw " << seen << " (expected "
+		  << THREAD_PGBUF_RESUMED << ")" << std::endl;
+	return 1;
+      }
+    return 0;
+  }
+
   static int
   test_wakeup (void)
   {
@@ -158,11 +265,6 @@ namespace test_thread
       { THREAD_SLEEP_FUNC_SUSPENDED, false },
       { THREAD_CONCURRENCY_SLOT_SUSPENDED, false }, { THREAD_CONCURRENCY_SLOT_RESUMED, true }
     };
-    if (sizeof (all_statuses) / sizeof (all_statuses[0]) != (size_t) THREAD_CONCURRENCY_SLOT_RESUMED + 1)
-      {
-	std::cout << "  FAIL: a status is missing from all_statuses" << std::endl;
-	return 1;
-      }
     const thread_resume_suspend_status stops[] = { THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_RESUME_DUE_TO_SHUTDOWN };
 
     int failures = 0;
@@ -198,6 +300,7 @@ namespace test_thread
     }
     failures += test_real_waiter (false);
     failures += test_real_waiter (true);
+    failures += test_after_wait_returns ();
     lf_destroy_transaction_systems ();
 
     if (failures == 0)

@@ -159,7 +159,8 @@ enum thread_type
 };
 
 // a new value must also be classified in thread_is_resumed_status () and thread_resume_status_to_string ()
-// (thread_entry.cpp) and in the client interrupt switch of network_sr.c
+// (thread_entry.cpp), in the client interrupt switch of network_sr.c and in all_statuses of
+// unit_tests/thread/test_wakeup.cpp
 enum thread_resume_suspend_status
 {
   THREAD_RESUME_NONE = 0,
