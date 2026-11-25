@@ -59,7 +59,7 @@ static RECDES *Diskrec = NULL;
 
 static int compactdb_start (bool verbose_flag, char *input_filename, char **input_class_name, int input_class_length);
 static void process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag);
-static void process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag);
+static int process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag);
 static int process_set (THREAD_ENTRY * thread_p, DB_SET * set);
 static int process_value (THREAD_ENTRY * thread_p, DB_VALUE * value);
 static DB_OBJECT *is_class (OID * obj_oid, OID * class_oid);
@@ -441,7 +441,12 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
 		  LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
 		  if (desc_disk_to_obj (class_, class_ptr, &recdes, desc_obj, false) == NO_ERROR)
 		    {
-		      process_object (thread_p, desc_obj, &obj->oid, verbose_flag);
+		      if (process_object (thread_p, desc_obj, &obj->oid, verbose_flag) != NO_ERROR)
+			{
+			  /* The object is not updated. Clear the error, or desc_disk_to_obj () fails the next objects. */
+			  failed_objects++;
+			  er_clear ();
+			}
 		    }
 		  else
 		    {
@@ -483,13 +488,13 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
 
 /*
  * process_object - process one object. update instance if needed
- *    return: void
+ *    return: NO_ERROR, or the error of a value that could not be processed (the object is not updated)
  *    desc_obj(in): object data
  *    obj_oid(in): object oid
  *    recdes(in): record descriptor
  *    verbose_flag(in)
  */
-static void
+static int
 process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag)
 {
   SM_CLASS *class_ptr;
@@ -498,6 +503,7 @@ process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * obj_oid, boo
   OID *class_oid;
   int v = 0;
   int update_flag = 0;
+  int result;
 
   class_ptr = desc_obj->class_;
   class_oid = ws_oid (desc_obj->classop);
@@ -511,7 +517,12 @@ process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * obj_oid, boo
   while (attribute)
     {
       value = &desc_obj->values[v++];
-      update_flag += process_value (thread_p, value);
+      result = process_value (thread_p, value);
+      if (result < 0)
+	{
+	  return result;
+	}
+      update_flag += result;
       attribute = (SM_ATTRIBUTE *) attribute->header.next;
     }
 
@@ -523,12 +534,14 @@ process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * obj_oid, boo
 	}
       disk_update_instance (thread_p, desc_obj->classop, desc_obj, obj_oid);
     }
+
+  return NO_ERROR;
 }
 
 
 /*
  * process_value - process one value
- *    return: whether the object should be updated.
+ *    return: the number of references set to NULL (the object should be updated if it is not 0), or an error code
  *    value(in): the value to process
  */
 static int
@@ -572,8 +585,17 @@ process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
 		ref_oid->pageid, ref_oid->slotid, ref_class_oid.volid, ref_class_oid.pageid, ref_class_oid.slotid);
 #endif
 
-	if (scan_code != S_SUCCESS)
+	if (scan_code == S_ERROR)
 	  {
+	    /* The referenced object could not be read. Keep the reference. */
+	    ASSERT_ERROR_AND_SET (return_value);
+	    break;
+	  }
+	else if (scan_code != S_SUCCESS)
+	  {
+	    /* The referenced object does not exist. Clear the error that the read sets for a deleted object. */
+	    er_clear ();
+
 	    /* Set NULL link. */
 	    OID_SET_NULL (ref_oid);
 	    return_value = 1;
@@ -606,7 +628,7 @@ process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
 
 /*
  * process_set - process one set
- *    return: whether the object should be updated.
+ *    return: the number of references set to NULL, or an error code
  *    set(in): the set to process
  */
 static int
@@ -615,11 +637,21 @@ process_set (THREAD_ENTRY * thread_p, DB_SET * set)
   SET_ITERATOR *it;
   DB_VALUE *element_value;
   int return_value = 0;
+  int error_code;
 
   it = set_iterate (set);
   while ((element_value = set_iterator_value (it)) != NULL)
     {
-      return_value += process_value (thread_p, element_value);
+      error_code = process_value (thread_p, element_value);
+      if (error_code > 0)
+	{
+	  return_value += error_code;
+	}
+      else if (error_code != NO_ERROR)
+	{
+	  set_iterator_free (it);
+	  return error_code;
+	}
       set_iterator_next (it);
     }
   set_iterator_free (it);

@@ -189,7 +189,7 @@ process_set (THREAD_ENTRY * thread_p, DB_SET * set)
  * process_object - process an object
  *    return: 1 - object has changed
  *	      0 - object has not changed
- *	     -1 - object failed
+ *	     -1 or an error code - object failed
  *    upd_scancache(in):
  *    attr_info(in):
  *    oid(in): the oid of the object to process
@@ -449,7 +449,7 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, int max_sp
 			    {
 			      lock_unlock_object (thread_p, &obj->oid, class_oid, oid_lock, true);
 
-			      if (object_processed == -1)
+			      if (object_processed < 0)
 				{
 				  (*failed_objects)++;
 				}
