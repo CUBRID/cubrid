@@ -1849,19 +1849,21 @@ namespace parallel_scan
 
     if (unlikely (!m_task_started))
       {
-	/* an uncorrelated list subquery of an IN or NOT IN term: execute it and build its hash here, so the workers
-	 * share both (hash_lookup_bind_clone) in place of executing it and building a hash each */
-	for (XASL_NODE *xptr = m_xasl; xptr != nullptr; xptr = xptr->scan_ptr)
+	/* an uncorrelated list subquery of an IN or NOT IN term: execute it and build its hash here, before
+	 * start_tasks (), so the workers find both on the leader's node (bind_lookup_lists ()) in place of executing
+	 * the subquery and building a hash each */
+	for (XASL_NODE *node = m_xasl; node != nullptr; node = node->scan_ptr)
 	  {
-	    for (XASL_NODE *subq = xptr->aptr_list; subq != nullptr; subq = subq->next)
+	    for (XASL_NODE *subquery = node->aptr_list; subquery != nullptr; subquery = subquery->next)
 	      {
-		if (subq->hash_lookup_term != nullptr
-		    && eval_hash_lookup_prepare (m_thread_p, subq, m_orig_vd) != NO_ERROR)
+		if (subquery->hash_lookup_term != nullptr
+		    && eval_hash_lookup_prepare (m_thread_p, subquery, m_orig_vd) != NO_ERROR)
 		  {
 		    return S_ERROR;
 		  }
 	      }
 	  }
+
 	/* snapshot precomputed scalar values for worker injection; unconditional so a single-table scan injects too
 	 * instead of re-executing per worker. Every gather mode needs it, the row-by-row XASL_SNAPSHOT included: its
 	 * workers evaluate the scan predicate too, and a worker that finds no value re-executes the subquery

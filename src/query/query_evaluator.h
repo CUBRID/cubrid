@@ -47,6 +47,7 @@ class regu_variable_node;
 struct val_descr;
 typedef struct val_descr VAL_DESCR;
 struct val_list_node;
+struct xasl_node;
 
 // *INDENT-OFF*
 namespace cubxasl
@@ -151,7 +152,6 @@ extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, in
 				   FILTER_INFO * filter);
 extern DB_LOGICAL update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualification);
 
-struct xasl_node;
 /* An uncorrelated list subquery's IN or NOT IN term: the subquery executed and its hash built (query_hash_lookup.cpp)
  * before a PX scan starts its workers. */
 extern int eval_hash_lookup_prepare (THREAD_ENTRY * thread_p, xasl_node * subquery, val_descr * vd);

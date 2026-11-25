@@ -49,23 +49,23 @@ struct hash_lookup_stats
 
 /* each lookup: the hash, built by the first lookup of the list */
 extern int hash_lookup_get (THREAD_ENTRY *thread_p, xasl_node *subquery, qfile_list_id *list_id,
-			    const DOMAIN_COMPARE *compare, HASH_LOOKUP **hash);
+			    const DOMAIN_COMPARE *compare, HASH_LOOKUP **lookup);
 
 /* the list values of one item, through the hash */
-extern bool hash_lookup_start (HASH_LOOKUP *hash, const DB_VALUE *item);
-extern bool hash_lookup_has_null (const HASH_LOOKUP *hash);
-extern SCAN_CODE hash_lookup_next (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash, DB_VALUE **value);
-extern void hash_lookup_end (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
+extern bool hash_lookup_start (HASH_LOOKUP *lookup, const DOMAIN_COMPARE *compare, const DB_VALUE *item);
+extern bool hash_lookup_has_null (const HASH_LOOKUP *lookup);
+extern SCAN_CODE hash_lookup_next (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup, DB_VALUE **value);
+extern void hash_lookup_end (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup);
 
 /* a PX scan worker's clone of the subquery: the leader's table, lent and given back */
-extern int hash_lookup_bind_clone (THREAD_ENTRY *thread_p, xasl_node *clone, const xasl_node *orig);
+extern int hash_lookup_bind_clone (THREAD_ENTRY *thread_p, xasl_node *clone, const xasl_node *leader);
 extern void hash_lookup_unbind_clone (xasl_node *clone);
 
 /* the hash's lifetime: a lookup creates it (hash_lookup_get), the subquery's XASL frees it */
-extern void hash_lookup_release (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
-extern void hash_lookup_destroy (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
+extern void hash_lookup_release (THREAD_ENTRY *thread_p, xasl_node *subquery);
+extern void hash_lookup_destroy (THREAD_ENTRY *thread_p, xasl_node *subquery);
 
-extern const HASH_LOOKUP_STATS *hash_lookup_get_stats (const HASH_LOOKUP *hash);
-extern void hash_lookup_merge_stats (xasl_node *dst, const xasl_node *src);
+extern const HASH_LOOKUP_STATS *hash_lookup_get_stats (const HASH_LOOKUP *lookup);
+extern void hash_lookup_merge_stats (xasl_node *leader, const xasl_node *clone);
 
 #endif /* _QUERY_HASH_LOOKUP_HPP_ */

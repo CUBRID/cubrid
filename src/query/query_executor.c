@@ -2806,11 +2806,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
     {
       clear_memoize_storage (thread_p, xasl);
     }
-  if (xasl->hash_lookup != NULL)
-    {
-      hash_lookup_destroy (thread_p, xasl->hash_lookup);
-      xasl->hash_lookup = NULL;
-    }
+
+  /* before qexec_clear_xasl_head () clears the list the hash is over: the table must not outlive the list */
+  hash_lookup_destroy (thread_p, xasl);
+
   if (xasl->type == HASHJOIN_PROC)
     {
       /* the runtime filter and the build input's hashes, when the join did not run to release them.  Both are in
@@ -3370,12 +3369,11 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
       hjoin_rtf_release (thread_p, xasl);
       hjoin_prehash_release (thread_p, &xasl->proc.hashjoin.prehash);
     }
-  if (xasl->hash_lookup != NULL)
-    {
-      /* before qexec_clear_xasl_head () clears the list the hash is over, as qexec_clear_xasl () does. The hash stays
-       * with its stats for the trace, and qexec_clear_xasl () frees it */
-      hash_lookup_release (thread_p, xasl->hash_lookup);
-    }
+
+  /* before qexec_clear_xasl_head () clears the list the hash is over, as qexec_clear_xasl () does. The hash stays with
+   * its stats for the trace, and qexec_clear_xasl () frees it */
+  hash_lookup_release (thread_p, xasl);
+
   qexec_clear_xasl_head (thread_p, xasl);
 
 #if defined (ENABLE_COMPOSITE_LOCK)

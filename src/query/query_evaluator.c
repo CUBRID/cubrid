@@ -77,7 +77,7 @@ static DB_LOGICAL eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SE
 static int eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
 static DB_LOGICAL eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
 				       REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd);
-static bool eval_is_hash_candidate (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id);
+static bool eval_is_hash_lookup_candidate (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id);
 static DB_LOGICAL eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
 					 REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd,
 					 XASL_NODE * subquery);
@@ -1013,89 +1013,151 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 }
 
 /*
- * eval_is_hash_candidate () - the subquery's list may get a hash for its R_EQ lookups (hash_lookup_get decides by the
- *			       comparison). A correlated subquery executes again for each outer row, so its list is
- *			       seldom looked up twice. A PX hash join worker evaluates no term with a subquery
- *			       (plan_generation.c keeps it out of the join's predicates).
+ * eval_is_hash_lookup_candidate () - whether a subquery's list may get a hash for its R_EQ lookups
+ *   return: true for an uncorrelated subquery's list of one column without NO_HASH_LOOKUP
+ *   subquery(in): the subquery
+ *   list_id(in): the subquery's list
+ *
+ * Reason:
+ *   - A correlated subquery executes again for each outer row, so its list is seldom looked up twice.
+ *   - hash_lookup_get () decides by the comparison.
+ *   - A PX hash join worker evaluates no term with a subquery: plan_generation.c keeps it out of the join's predicates.
  */
 static bool
-eval_is_hash_candidate (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id)
+eval_is_hash_lookup_candidate (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id)
 {
+  assert (subquery != NULL);
+  assert (list_id != NULL);
+
   return XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL) && !XASL_IS_FLAGED (subquery, XASL_NO_HASH_LOOKUP)
     && list_id->type_list.type_cnt == 1;
 }
 
 /*
- * eval_hash_lookup_prepare () - executes an uncorrelated list subquery an IN or NOT IN term looks up, and builds its
- *				 hash, before the scans that look it up open: a PX scan's workers then share both
- *				 (hash_lookup_bind_clone) in place of executing the subquery and building a hash each
+ * eval_hash_lookup_prepare () - execute the uncorrelated list subquery of an IN or NOT IN term and build its hash
  *   return: error code
+ *   thread_p(in): thread entry
  *   subquery(in): the subquery; hash_lookup_term is its term
  *   vd(in): the value descriptor of the main block that evaluates the term
+ *
+ * Behavior:
+ *   - A PX scan calls it before its workers start.
+ *   - The hash hash_lookup_get () gives is left unused: the hash is the subquery's, and the lookups get it themselves.
+ *
+ * Steps:
+ *   Step 1: leave a term that looks nothing up by equality, or a correlated subquery.
+ *   Step 2: execute the subquery.
+ *   Step 3: leave an empty list, or one eval_is_hash_lookup_candidate () refuses.
+ *   Step 4: build the hash (hash_lookup_get ()).
+ *
+ * Reason:
+ *   The workers then share the list and the hash (hash_lookup_bind_clone ()) in place of executing the subquery and
+ *   building a hash each.
  */
 int
 eval_hash_lookup_prepare (THREAD_ENTRY * thread_p, XASL_NODE * subquery, val_descr * vd)
 {
-  const ALSM_EVAL_TERM *et_alsm = subquery->hash_lookup_term;
+  const ALSM_EVAL_TERM *et_alsm;
   QFILE_LIST_ID *list_id;
   EVAL_ELEMENTS elements;
-  HASH_LOOKUP *hash;
+  HASH_LOOKUP *lookup;
 
-  /* = SOME looks up R_EQ, and <> ALL its negation (eval_all_list_eval) */
+  if (subquery == NULL || subquery->hash_lookup_term == NULL)
+    {
+      assert_release_error (false);
+      return er_errid ();
+    }
+
+  et_alsm = subquery->hash_lookup_term;
+
+  /* Step 1: = SOME looks up R_EQ, and <> ALL its negation (eval_all_list_eval) */
   if (et_alsm->eq_flag == F_ALL ? et_alsm->rel_op != R_NE : et_alsm->rel_op != R_EQ)
     {
       return NO_ERROR;
     }
+
   if (!XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL))
     {
       return NO_ERROR;
     }
 
+  /* Step 2: execute the subquery */
   EXECUTE_REGU_VARIABLE_XASL (thread_p, et_alsm->elemset, vd);
   if (CHECK_REGU_VARIABLE_XASL_STATUS (et_alsm->elemset) != XASL_SUCCESS)
     {
-      assert_release_error (er_errid () != NO_ERROR);
+      ASSERT_ERROR ();
       return er_errid ();
     }
+
+  /* Step 3: a list that gets a hash */
   list_id = et_alsm->elemset->value.srlist_id->list_id;
-  if (list_id->tuple_cnt == 0 || !eval_is_hash_candidate (subquery, list_id))
+  if (list_id->tuple_cnt == 0 || !eval_is_hash_lookup_candidate (subquery, list_id))
     {
       return NO_ERROR;
     }
+
+  /* Step 4: build the hash */
   eval_resolved_elements (et_alsm, &elements);
-  /* the hash is the subquery's: the lookups get it themselves */
-  return hash_lookup_get (thread_p, subquery, list_id, elements.all, &hash);
+  return hash_lookup_get (thread_p, subquery, list_id, elements.all, &lookup);
 }
 
 /*
- * eval_some_list_lookup () - eval_some_list_eval; once the subquery's list has a hash (query_hash_lookup.cpp), the list
- *			      values of the item's hash answer in place of the whole list
+ * eval_some_list_lookup () - eval_some_list_eval () through the hash of the subquery's list
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN, V_ERROR)
+ *   thread_p(in): thread entry
+ *   item(in): db_value
+ *   list_id(in): list file identifier
+ *   rel_operator(in): relational comparison operator
+ *   compare(in): the comparison of the item with the list's column resolved for this execution
+ *   vd(in): value descriptor of the term's execution
  *   subquery(in): the subquery whose list list_id is
+ *
+ * Behavior:
+ *   Once the subquery's list has a hash (query_hash_lookup.cpp), the list values of the item's hash answer an R_EQ
+ *   lookup in place of the whole list. Any other lookup reads the list.
+ *
+ * Steps:
+ *   Step 1: read the list for a lookup other than R_EQ, or for a list that gets no hash.
+ *   Step 2: get the hash and start the item's list values; read the list if the item has no hash key.
+ *   Step 3: compare the item with the list values of its hash key, as eval_some_list_eval () compares it with every
+ *           list value.
+ *   Step 4: end the item's list values.
  */
 static DB_LOGICAL
 eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id, REL_OP rel_operator,
 		       const DOMAIN_COMPARE * compare, const val_descr * vd, XASL_NODE * subquery)
 {
-  HASH_LOOKUP *hash;
+  HASH_LOOKUP *lookup;
   DB_VALUE *list_val;
   SCAN_CODE qp_scan;
   DB_LOGICAL res, t_res;
 
-  if (rel_operator != R_EQ || !eval_is_hash_candidate (subquery, list_id))
-    {
-      return eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd);
-    }
-  if (hash_lookup_get (thread_p, subquery, list_id, compare, &hash) != NO_ERROR)
-    {
-      return V_ERROR;
-    }
-  if (hash == NULL || !hash_lookup_start (hash, item))
+  assert (item != NULL);
+  assert (list_id != NULL);
+  assert (compare != NULL);
+  assert (subquery != NULL);
+
+  /* Step 1: an R_EQ lookup of a list that gets a hash */
+  if (rel_operator != R_EQ || !eval_is_hash_lookup_candidate (subquery, list_id))
     {
       return eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd);
     }
 
-  res = hash_lookup_has_null (hash) ? V_UNKNOWN : V_FALSE;
-  while ((qp_scan = hash_lookup_next (thread_p, hash, &list_val)) == S_SUCCESS)
+  /* Step 2: the hash; the first lookup of an execution of the subquery makes it, and a PX scan made it before its
+   * workers started (eval_hash_lookup_prepare ()) */
+  if (hash_lookup_get (thread_p, subquery, list_id, compare, &lookup) != NO_ERROR)
+    {
+      return V_ERROR;
+    }
+
+  if (lookup == NULL || !hash_lookup_start (lookup, compare, item))
+    {
+      return eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd);
+    }
+
+  /* Step 3: the list values of the item's hash key */
+  res = hash_lookup_has_null (lookup) ? V_UNKNOWN : V_FALSE;
+  while ((qp_scan = hash_lookup_next (thread_p, lookup, &list_val)) == S_SUCCESS)
     {
       t_res = eval_value_rel_cmp (thread_p, item, list_val, R_EQ, NULL, vd, compare);
       if (t_res == V_TRUE || t_res == V_ERROR)
@@ -1108,7 +1170,11 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
 	  res = V_UNKNOWN;
 	}
     }
-  hash_lookup_end (thread_p, hash);
+
+  /* Step 4: on every way out of the loop, before the debug check below reads the list with a scan of its own: the
+   * page of the last tuple is unfixed between rows */
+  hash_lookup_end (thread_p, lookup);
+
   if (qp_scan == S_ERROR)
     {
       return V_ERROR;
@@ -1118,6 +1184,7 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
   /* the hash answers as reading the list does */
   assert (res == V_ERROR || res == eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd));
 #endif
+
   return res;
 }
 
