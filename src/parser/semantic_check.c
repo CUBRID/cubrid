@@ -4482,6 +4482,65 @@ pt_find_not_value_expr_form (PT_NODE * node)
 }
 
 /*
+ * pt_bind_default_session_variable () - parser_walk_tree post function: replace a session variable read in a
+ *	DEFAULT with its current value
+ *   return: the value node, or node itself if it is not a session variable read or on error
+ *   parser(in): parser context
+ *   node(in): a node of the DEFAULT expression
+ *   arg(in): unused
+ *   continue_walk(in/out): PT_STOP_WALK on error
+ *
+ * A session variable belongs to the session that runs the DDL, so a DEFAULT takes its value when the DDL runs, as
+ * earlier versions stored it.
+ */
+static PT_NODE *
+pt_bind_default_session_variable (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  DB_VALUE *name;
+  DB_VALUE value;
+  PT_NODE *value_node;
+
+  if (node == NULL || node->node_type != PT_EXPR || node->info.expr.op != PT_EVALUATE_VARIABLE)
+    {
+      return node;
+    }
+
+  assert (node->info.expr.arg1 != NULL && node->info.expr.arg1->node_type == PT_VALUE);
+  name = pt_value_to_db (parser, node->info.expr.arg1);
+  if (name == NULL)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  db_make_null (&value);
+  if (db_get_variable (name, &value) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      PT_ERRORc (parser, node, er_msg ());
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  value_node = pt_dbval_to_value (parser, &value);
+  pr_clear_value (&value);
+  if (value_node == NULL)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  value_node->line_number = node->line_number;
+  value_node->column_number = node->column_number;
+  value_node->next = node->next;
+  node->next = NULL;
+  parser_free_tree (parser, node);
+
+  return value_node;
+}
+
+/*
  * pt_check_data_default () - checks data_default for semantic errors
  *
  * result	    	 : modified data_default
@@ -4549,6 +4608,18 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_
       edl_text = data_default->info.data_default.expr_text;
       column_rules = (data_default->info.data_default.shared == PT_DEFAULT && owner != PT_DEFAULT_OF_CLASS_ATTRIBUTE
 		      && expr_vol == PT_VOLATILITY_UNSET);
+
+      /* a session variable stands for its value when the DDL runs: bare or in parentheses, it is a literal from
+       * here on */
+      if (column_rules)
+	{
+	  default_value = parser_walk_tree (parser, default_value, NULL, NULL, pt_bind_default_session_variable, NULL);
+	  data_default->info.data_default.default_value = default_value;
+	  if (pt_has_error (parser))
+	    {
+	      goto end;
+	    }
+	}
 
       /* a bare (non-parenthesized) DEFAULT expression is allowed only for the legacy whitelist forms and literals
        * (a signed numeric literal included); anything else needs parentheses */
