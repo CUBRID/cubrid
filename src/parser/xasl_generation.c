@@ -2403,6 +2403,7 @@ pt_factor_dnf_is_unsafe (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	case PT_DRAND:
 	case PT_DRANDOM:
 	case PT_SYS_GUID:
+	case PT_UUID:
 	case PT_CURRENT_VALUE:
 	case PT_NEXT_VALUE:
 	case PT_INST_NUM:
