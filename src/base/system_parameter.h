@@ -585,8 +585,10 @@ enum param_id
 
   PRM_ID_MVCC_REEVALUATE_AT_FORCE,
 
+  PRM_ID_INDEX_BUILD_PARALLEL_LEAF,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_MVCC_REEVALUATE_AT_FORCE
+  PRM_LAST_ID = PRM_ID_INDEX_BUILD_PARALLEL_LEAF
 };
 typedef enum param_id PARAM_ID;
 

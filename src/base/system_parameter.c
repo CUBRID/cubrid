@@ -835,6 +835,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
 
+#define PRM_NAME_INDEX_BUILD_PARALLEL_LEAF "index_build_parallel_leaf"
+
 // #endregion
 
 #define PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL "numeric_empty_string_as_null"
@@ -5401,35 +5403,25 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_CSS_MIN_CONNECTION_WORKER,
    PRM_NAME_CSS_MIN_CONNECTION_WORKER,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_OBSOLETED),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-#if defined (SERVER_MODE)
-   {false, {.i = std::max ((int) cubthread::system_core_count () / 2, 1)}},
-   {false, {.i = std::max ((int) cubthread::system_core_count () / 2, 1)}},
-   {false, {.i = (int) cubthread::system_core_count ()}},
-#else
-   {false, {.i = 2}},
-   {false, {.i = 2}},
    NULL_SYSPRM_PARAM_VALUE,
-#endif
-   {false, {.i = 1}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_CSS_AUTO_SCALING_WINDOW_SIZE,
    PRM_NAME_CSS_AUTO_SCALING_WINDOW_SIZE,
-   (PRM_FOR_SERVER),
+   (PRM_FOR_SERVER | PRM_OBSOLETED),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 4}},
-   {false, {.i = 4}},
-#if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count ()}},
-#else
    NULL_SYSPRM_PARAM_VALUE,
-#endif
-   {false, {.i = 1}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5788,6 +5780,20 @@ SYSPRM_PARAM prm_Def[] = {
   {PRM_ID_MVCC_REEVALUATE_AT_FORCE,
    PRM_NAME_MVCC_REEVALUATE_AT_FORCE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* a logged parallel index build lets the shard workers put the leaves and the leader append their page logs;
+   * off, the leader puts the leaves of one merged run itself. Changeable on-line, for the builds that follow. */
+  {PRM_ID_INDEX_BUILD_PARALLEL_LEAF,
+   PRM_NAME_INDEX_BUILD_PARALLEL_LEAF,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -10429,7 +10435,6 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *max_parallel_workers_prm;
   SYSPRM_PARAM *parallelism_prm;
   SYSPRM_PARAM *max_connection_workers_prm;
-  SYSPRM_PARAM *min_connection_workers_prm;
   int system_cpu_count;
   int client_limit;
   int max_value;
@@ -10512,17 +10517,11 @@ prm_tune_parameters (void)
 
       /* connection worker */
       max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
-      min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
       if (PRM_GET_INT (max_connection_workers_prm->value) > system_cpu_count)
 	{
 	  sprintf (newval, "%d", system_cpu_count);
 	  (void) prm_set (max_connection_workers_prm, newval, false);
-	}
-      if (PRM_GET_INT (min_connection_workers_prm->value) > PRM_GET_INT (max_connection_workers_prm->value))
-	{
-	  sprintf (newval, "%d", PRM_GET_INT (max_connection_workers_prm->value));
-	  (void) prm_set (min_connection_workers_prm, newval, false);
 	}
 
       /* set parallelism to system_cpu_count if it is greater than cubthread::system_core_count () */
