@@ -1859,6 +1859,10 @@ typedef struct _ha_config
 #else
 #define LIB_UTIL_CS_NAME                "libcubridcs.so"
 #define LIB_UTIL_SA_NAME                "libcubridsa.so"
+#if defined(LINUX)
+/* libcubridcs built with MULTI_CONN_TO_A_SERVER, for the utilities that use sub-clients (see cs/CMakeLists.txt) */
+#define LIB_UTIL_CS_MC_NAME             "libcubridcs_mc.so"
+#endif
 #endif
 
 #define UTILITY_GENERIC_MSG_FUNC_NAME	"utility_get_generic_message"

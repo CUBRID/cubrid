@@ -2533,7 +2533,8 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
   int error_code = NO_ERROR;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
-  MVCC_SNAPSHOT mvcc_snapshot_committed;
+  MVCC_SNAPSHOT mvcc_snapshot_catalog;
+  bool catalog_read_holds_vacuum = false;
   SCAN_OPERATION_TYPE operation_type;
   OID *p_oid = oid;
   bool object_locked = false;
@@ -2575,9 +2576,8 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
       break;
 
     case LC_FETCH_CATALOG_VERSION:
-      /* latest committed version, without materializing the transaction snapshot (CBRD-27369) */
-      mvcc_snapshot_committed.snapshot_fnc = mvcc_satisfies_committed;
-      mvcc_snapshot = &mvcc_snapshot_committed;
+      mvcc_snapshot = logtb_get_catalog_read_snapshot (thread_p, &mvcc_snapshot_catalog, &catalog_read_holds_vacuum);
+      assert (mvcc_snapshot != NULL);
       break;
 
     case LC_FETCH_CURRENT_VERSION:
@@ -2618,6 +2618,10 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 	    {
 	      /* error was not previously set; set error in order to have it returned to client */
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error_code, 3, oid->volid, oid->pageid, oid->slotid);
+	    }
+	  if (catalog_read_holds_vacuum)
+	    {
+	      logtb_release_catalog_read_snapshot (thread_p, &mvcc_snapshot_catalog);
 	    }
 	  return error_code;
 	}
@@ -2807,6 +2811,10 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
     }
 
 error:
+  if (catalog_read_holds_vacuum)
+    {
+      logtb_release_catalog_read_snapshot (thread_p, &mvcc_snapshot_catalog);
+    }
   if (lock != NULL_LOCK)
     {
       if (error_code != NO_ERROR)
@@ -5904,6 +5912,30 @@ locator_key_changes (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk, OID *
 				       &new_value->dbvalue, 0, 1) != DB_EQ);
     }
   return error_code;
+}
+
+/*
+ * locator_assigns_unique_key () - does an UPDATE assign an attribute of a unique index of the class?
+ *
+ * return: NO_ERROR or error code
+ *   assigns(out): an assigned attribute is a key attribute of a unique index
+ */
+int
+locator_assigns_unique_key (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID * att_id, int n_att_id, bool * assigns)
+{
+  HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_IDX_ELEMENTS_INFO idx_info;
+  int num_found;
+
+  *assigns = false;
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &attr_info, &idx_info);
+  if (num_found <= 0)
+    {
+      return num_found;
+    }
+  *assigns = heap_attrinfo_check_unique_index (thread_p, &attr_info, att_id, n_att_id);
+  heap_attrinfo_end (thread_p, &attr_info);
+  return NO_ERROR;
 }
 
 /*

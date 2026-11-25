@@ -75,7 +75,10 @@ option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 option(WITH_CCI "Build with CCI driver" ON)
+<<<<<<< HEAD
 option(MULTI_CONN_TO_A_SERVER "Allow multiple connections to a server in a client process (experimental)" ON)
+=======
+>>>>>>> upstream/develop
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -606,10 +609,6 @@ configure_file(cmake/version.h.cmake version.h)
 # build_version.h has the per-commit version: never include it from config.h or version.h (see CBRD-27124).
 configure_file(cmake/build_version.h.cmake build_version.h)
 
-if(MULTI_CONN_TO_A_SERVER)
-  add_definitions(-DMULTI_CONN_TO_A_SERVER)
-endif(MULTI_CONN_TO_A_SERVER)
-
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
@@ -787,6 +786,10 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
     PATTERN "src" EXCLUDE
     PATTERN "output" EXCLUDE
     PATTERN "release" EXCLUDE
+    PATTERN "gradle" EXCLUDE
+    PATTERN "build" EXCLUDE
+    PATTERN ".gradle" EXCLUDE
+    PATTERN "lib" EXCLUDE
   )
 endif()
 

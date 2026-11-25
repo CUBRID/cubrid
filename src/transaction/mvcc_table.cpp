@@ -233,9 +233,12 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 
 /*
  * build_snapshot () - copy the active transactions into snapshot. The transaction's lowest visible MVCCID is
- *		       registered for vacuum only when it is unset, and is cleared when the transaction ends.
+ *		       registered for vacuum only when it is unset, and is cleared when the transaction ends or when the
+ *		       catalog read that registered it is done.
+ *
+ * return: true if this call registered the transaction's lowest visible MVCCID
  */
-void
+bool
 mvcctable::build_snapshot (int tran_index, mvcc_snapshot &snapshot, bool load_tran_stats)
 {
   MVCCID tx_lowest_active;
@@ -360,6 +363,8 @@ mvcctable::build_snapshot (int tran_index, mvcc_snapshot &snapshot, bool load_tr
 			    snapshot_retry_count - 1);
 	}
     }
+
+  return !MVCCID_IS_VALID (tx_lowest_active);
 }
 
 MVCCID
@@ -638,6 +643,17 @@ mvcctable::share_lowest_visible (int dest_tran_index, int src_tran_index)
     }
 
   return true;
+}
+
+/*
+ * reset_transaction_lowest_active () - clear the registration that build_snapshot () made for snapshot
+ */
+void
+mvcctable::reset_transaction_lowest_active (int tran_index, const mvcc_snapshot &snapshot)
+{
+  assert (oldest_active_get (m_transaction_lowest_visible_mvccids[tran_index], tran_index,
+			     oldest_active_event::RESET) == snapshot.lowest_active_mvccid);
+  reset_transaction_lowest_active (tran_index);
 }
 
 void
