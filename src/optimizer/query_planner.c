@@ -6606,11 +6606,12 @@ qo_check_serial_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
  *
  * Note: the PT counterparts of what scan_check_parallel_scan_possible () rejects in the XASL
  *	 (px_scan_checker.cpp): a method or a stored procedure without PARALLEL_ENABLE (TYPE_SP,
- *	 qo_check_method_call_parallel_eligibility ()), a serial NEXT_VALUE / CURRENT_VALUE and a
- *	 session variable (the ARITH_TYPE opcodes T_NEXT_VALUE, T_CURRENT_VALUE,
- *	 T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE), a path expression and an object column
- *	 (TYPE_ATTR_ID of DB_TYPE_OBJECT / DB_TYPE_OID). In the select list the executor blocks
- *	 the scan for all of these but the method call (qo_check_serial_select_list_expr ()).
+ *	 qo_check_method_call_parallel_eligibility ()), a serial NEXT_VALUE / CURRENT_VALUE /
+ *	 serial_current_value_by_oid () and a session variable (the ARITH_TYPE opcodes T_NEXT_VALUE,
+ *	 T_CURRENT_VALUE, T_CURRENT_VALUE_BY_OID, T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE), a path
+ *	 expression and an object column (TYPE_ATTR_ID of DB_TYPE_OBJECT / DB_TYPE_OID). In the
+ *	 select list the executor blocks the scan for all of these but the method call
+ *	 (qo_check_serial_select_list_expr ()).
  */
 static PT_NODE *
 qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -6702,13 +6703,14 @@ qo_check_serial_select_list_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void 
  *
  * Note: a serial is updated under a system operation and through the serial cache,
  *	 so the parallel probe workers may evaluate NEXT_VALUE and CURRENT_VALUE.
+ *	 serial_current_value_by_oid () stays blocked as in qo_check_serial_block_expr (): only the
+ *	 db_serial and information_schema.tables view specs call it, in their select lists.
  */
 static PT_NODE *
 qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   if (tree != NULL && tree->node_type == PT_EXPR
-      && (tree->info.expr.op == PT_NEXT_VALUE || tree->info.expr.op == PT_CURRENT_VALUE
-	  || tree->info.expr.op == PT_CURRENT_VALUE_BY_OID))
+      && (tree->info.expr.op == PT_NEXT_VALUE || tree->info.expr.op == PT_CURRENT_VALUE))
     {
       *continue_walk = PT_CONTINUE_WALK;
       return tree;
@@ -6737,8 +6739,9 @@ qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
  *	 - the source query of UPDATE / DELETE (UPDATE_PROC, DELETE_PROC) and SELECT ... FOR UPDATE;
  *	 - a select list or WHERE clause holding one of the expressions of
  *	   qo_check_serial_block_expr () (T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE, T_NEXT_VALUE,
- *	   T_CURRENT_VALUE, an attribute of DB_TYPE_OBJECT), a WHERE clause holding a method or a
- *	   stored procedure without PARALLEL_ENABLE (TYPE_SP), or a path expression;
+ *	   T_CURRENT_VALUE, T_CURRENT_VALUE_BY_OID, an attribute of DB_TYPE_OBJECT), a WHERE clause
+ *	   holding a method or a stored procedure without PARALLEL_ENABLE (TYPE_SP), or a path
+ *	   expression;
  *	 - a subquery of the select list or WHERE clause holding a session variable anywhere
  *	   (SESSION_STATE_ACCESS).
  *	 Rarer cases stay costed as parallel: an uncorrelated scalar subquery used as is in a
