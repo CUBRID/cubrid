@@ -2102,6 +2102,42 @@ qo_unmark_substituted_function_index (PARSER_CONTEXT * parser, PT_NODE * node, v
 }
 
 /*
+ * qo_null_padded_at () - can a column of the spec be NULL padded where the term is evaluated?
+ *   return: bool
+ *   spec(in): a spec of the FROM list
+ *   location(in): the location of the term; 0 for WHERE, n for the ON condition of the n-th spec
+ *
+ * Note: the spec is the null-supplying side of an outer join when it is the inner of a LEFT OUTER, or when a spec
+ *	 after it opens a RIGHT OUTER. Its own ON condition still reads its real rows; any other term may read
+ *	 the NULL row the join makes.
+ */
+static bool
+qo_null_padded_at (PT_NODE * spec, short location)
+{
+  PT_NODE *next_spec;
+
+  if (location > 0 && location == spec->info.spec.location)
+    {
+      return false;
+    }
+
+  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || spec->info.spec.join_type == PT_JOIN_FULL_OUTER)
+    {
+      return true;
+    }
+
+  for (next_spec = spec->next; next_spec != NULL; next_spec = next_spec->next)
+    {
+      if (next_spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER || next_spec->info.spec.join_type == PT_JOIN_FULL_OUTER)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_reduce_equality_terms () -
  *   return:
  *   parser(in):
@@ -2280,10 +2316,14 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		    break;	/* found match */
 		}
 
-	      /* if arg2 is derived alias col, get its corresponding constant column from derived-table */
+	      /* if arg2 is derived alias col, get its corresponding constant column from derived-table. the term is
+	       * dropped for its copy with the constant in place of the column, which is right only where the column
+	       * holds the constant: not where an outer join may give the column a NULL (y.c = y.c would become
+	       * 5 = 5, true for the NULL row it must filter out) */
 	      if (spec && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
 		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT
-		  && !derived_table->info.query.q.select.single_table_opt)
+		  && !derived_table->info.query.q.select.single_table_opt
+		  && !qo_null_padded_at (spec, expr->info.expr.location))
 		{
 		  /* traverse as_attr_list */
 		  for (attr = spec->info.spec.as_attr_list, idx = 0; attr; attr = attr->next, idx++)
