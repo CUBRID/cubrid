@@ -392,6 +392,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/es_common.c
   ${STORAGE_DIR}/es_posix.c
   ${STORAGE_DIR}/file_io.c
+  ${STORAGE_DIR}/file_io_backup.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/statistics_cl.c
   ${STORAGE_DIR}/storage_common.c

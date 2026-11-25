@@ -28,6 +28,7 @@ navigation and safety rules.
 | `storage_common.h`, `oid.c/h`, `record_descriptor.cpp/hpp` | Core storage identifiers and record descriptors |
 | `page_buffer.c/h` | Buffer pool: fix/unfix, latches, dirty pages, flushing |
 | `file_io.c/h`, `double_write_buffer.cpp/hpp`, `tde.c/h` | Raw volume I/O, torn-write protection, page/log encryption |
+| `file_io_backup.c` | Backup and restore of database volumes; `SERVER_MODE` / `SA_MODE` only (empty in `cubridcs`) |
 | `disk_manager.c/h`, `file_manager.c/h` | Volumes/sectors and logical file allocation |
 | `heap_file.c/h`, `bestspace.cpp/hpp` | Heap lifecycle, scans, MVCC versions, class representation cache, free-space search |
 | `slotted_page.c/h`, `overflow_file.c/h` | Page slot layout and multipage record storage |

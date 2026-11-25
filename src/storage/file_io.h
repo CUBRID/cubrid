@@ -93,6 +93,13 @@
 #define FILEIO_SUFFIX_KEYS           "_keys"
 #define FILEIO_MAX_SUFFIX_LENGTH     7
 
+/* used by both file_io.c and file_io_backup.c */
+#define FILEIO_DISK_FORMAT_MODE            (O_RDWR | O_CREAT)
+#define FILEIO_DISK_PROTECTION_MODE        0600
+#define FILEIO_GET_FILE_SIZE(pagesize, npages)  \
+  (((off_t)(pagesize)) * ((off_t)(npages)))
+#define FILEIO_CHECK_FOR_INTERRUPT_INTERVAL       100
+
 typedef enum
 {
   FILEIO_BACKUP_FULL_LEVEL = 0,	/* Full backup */
@@ -544,9 +551,9 @@ extern void fileio_make_removed_log_archive_name (char *logarchive_name, const c
 extern void fileio_make_log_archive_temp_name (char *log_archive_temp_name_p, const char *log_path_p,
 					       const char *db_name_p);
 extern void fileio_make_log_info_name (char *loginfo_name, const char *log_path, const char *dbname);
+#if defined (SERVER_MODE) || defined (SA_MODE)
 extern void fileio_make_backup_volume_info_name (char *backup_volinfo_name, const char *backinfo_path,
 						 const char *dbname);
-#if defined (SERVER_MODE) || defined (SA_MODE)
 extern void fileio_make_backup_name (char *backup_name, const char *nopath_volname, const char *backup_path,
 				     FILEIO_BACKUP_LEVEL level, int unit_num);
 #endif /* defined (SERVER_MODE) || (SA_MODE) */
@@ -556,8 +563,8 @@ extern void fileio_make_keys_name_given_path (char *keys_name_p, const char *key
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 extern void fileio_make_ha_sock_name (char *sock_path_p, const char *base_path_p, const char *sock_name_p);
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
-extern void fileio_remove_all_backup (THREAD_ENTRY * thread_p, int level);
 #if defined (SERVER_MODE) || defined (SA_MODE)
+extern void fileio_remove_all_backup (THREAD_ENTRY * thread_p, int level);
 extern FILEIO_BACKUP_SESSION *fileio_initialize_backup (const char *db_fullname, const char *backup_destination,
 							FILEIO_BACKUP_SESSION * session, FILEIO_BACKUP_LEVEL level,
 							const char *verbose_file_path, int num_threads,
@@ -596,17 +603,20 @@ extern const char *fileio_get_zip_method_string (FILEIO_ZIP_METHOD zip_method);
 extern const char *fileio_get_zip_level_string (FILEIO_ZIP_LEVEL zip_level);
 
 
-extern int fileio_read_backup_info_entries (FILE * fp, int which_bkvinf);
+/* defined in file_io.c, also used by file_io_backup.c */
+extern int fileio_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
+			  bool dolock, bool dosync);
+extern char *fileio_ctime (INT64 * clock, char *buf);
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
+extern int fileio_read_backup_info_entries (FILE * fp, int which_bkvinf);
 extern int fileio_write_backup_info_entries (FILE * fp, int which_bkvinf);
-#endif /* defined (SERVER_MODE) || (SA_MODE) */
 extern const char *fileio_get_backup_info_volume_name (FILEIO_BACKUP_LEVEL level, int unit_num, int which_bkvinf);
 extern int fileio_add_volume_to_backup_info (const char *name, FILEIO_BACKUP_LEVEL level, int unit_num,
 					     int which_bkvinf);
 extern int fileio_clear_backup_info_level (int level, bool dealloc, int which_bkvinf);
 extern void fileio_finalize_backup_info (int which_bkvinf);
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
 extern int fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE prompt_id,
 					 const char *prompt, char *response, const char *failure_prompt, int range_low,
 					 int range_high, const char *secondary_prompt, int reprompt_value);

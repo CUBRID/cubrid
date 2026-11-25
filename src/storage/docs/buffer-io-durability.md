@@ -8,7 +8,8 @@ page fix/unfix behavior, dirty-page flushing, page LSA handling, volume read/wri
 | File | Role |
 |------|------|
 | `page_buffer.c/h` | Buffer pool, page latches, LRU/victim selection, dirty tracking, flush daemon |
-| `file_io.c/h` | Raw volume/log/backup file I/O, page reserved area, page watermark/LSA helpers |
+| `file_io.c/h` | Raw volume/log file I/O, page reserved area, page watermark/LSA helpers |
+| `file_io_backup.c` | Backup and restore sessions (`SERVER_MODE` / `SA_MODE` only); types stay in `file_io.h` |
 | `double_write_buffer.cpp/hpp` | Torn-write protection for data page flushes |
 | `tde.c/h` | Transparent data encryption helpers for pages/logs and TDE algorithm metadata |
 
@@ -87,8 +88,9 @@ Rules:
 
 ## Raw I/O Layer
 
-`file_io.c` owns physical files, volume labels, page reads/writes, backups, and low-level path handling. It is below the
-buffer pool. Heap/B-tree/catalog code should not bypass `pgbuf_*` to edit permanent pages through `fileio_*` calls.
+`file_io.c` owns physical files, volume labels, page reads/writes, and low-level path handling; backup and restore
+live in `file_io_backup.c` on top of it. It is below the buffer pool. Heap/B-tree/catalog code should not bypass
+`pgbuf_*` to edit permanent pages through `fileio_*` calls.
 
 ## Double-Write Buffer
 
