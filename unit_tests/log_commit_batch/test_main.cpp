@@ -35,9 +35,9 @@ static int failures = 0;
 static const std::int64_t MAX_WAIT_NS = 1000000;
 
 static cbp::estimates
-estimates_of (double rho, double t90_us, double f_us)
+estimates_of (double rho, double t90_us, double f_us, double capped = 0)
 {
-  return cbp::estimates { rho, t90_us * 1000, f_us * 1000 };
+  return cbp::estimates { rho, t90_us * 1000, f_us * 1000, capped };
 }
 
 static cbp::skip_reason
@@ -51,10 +51,11 @@ skip_of (std::uint64_t released, std::uint64_t returned, const cbp::estimates &e
 			      max_wait_ns, cap != NULL ? cap : &unused);
 }
 
-/* one cycle of the daemon with R = 20 and nothing back at the decision: a window that opens closes on the cap with
- * this many back */
+/* one cycle of the daemon with R = 20 and nothing back at the decision: a window that opens closes for reason c
+ * with this many back */
 static bool
-run_cycle (cbp::estimates &est, std::uint64_t cycle, std::uint64_t returned)
+run_cycle (cbp::estimates &est, std::uint64_t cycle, std::uint64_t returned,
+	   cbp::close_reason c = cbp::close_reason::GAP)
 {
   const std::uint64_t released = 20;
   cbp::skip_reason s = skip_of (released, 0, est, cycle);
@@ -64,7 +65,7 @@ run_cycle (cbp::estimates &est, std::uint64_t cycle, std::uint64_t returned)
       est = cbp::learn_at_skip (est, s, released, 0);
       return false;
     }
-  est = cbp::learn_at_close (est, cbp::close_reason::CAP, released, returned);
+  est = cbp::learn_at_close (est, c, released, returned);
   return true;
 }
 
@@ -322,13 +323,179 @@ test_thresholds ()
   CHECK (!run_cycle (est, cbp::PROBE_PERIOD + 3, 20));
 }
 
+/* one cycle with R = 20 on a load whose waiters are all back load_all_back_ns after the broadcast: a window that opens
+ * closes on its cap when the cap comes first, with 18 back, else with every waiter back. The estimates other than
+ * rho and the capped share stay as given (no broadcast is learned), so the capped guard is tested alone. */
+static bool
+run_cycle_late (cbp::estimates &est, std::uint64_t cycle, std::int64_t load_all_back_ns)
+{
+  const std::uint64_t released = 20;
+  std::int64_t cap;
+  cbp::skip_reason s = skip_of (released, 0, est, cycle, false, false, 0, &cap);
+
+  if (s != cbp::skip_reason::NONE)
+    {
+      est = cbp::learn_at_skip (est, s, released, 0);
+      return false;
+    }
+  bool late = cap < load_all_back_ns;
+
+  est = cbp::learn_at_close (est, late ? cbp::close_reason::CAP : cbp::close_reason::RETURNED, released,
+			     late ? 18 : released);
+  return true;
+}
+
+static void
+test_capped ()
+{
+  std::int64_t cap;
+  const std::int64_t max_wait = 10 * MAX_WAIT_NS;
+  double above = std::nextafter (cbp::CAPPED_MAX, 1.0);
+
+  /* most windows closed on the cap: one probe window in PROBE_PERIOD cycles, with the usual cap, since a shorter one
+   * would close the probe on the cap by itself */
+  CHECK (skip_of (16, 0, estimates_of (1, 200, 3000, cbp::CAPPED_MAX), 1) == cbp::skip_reason::NONE);
+  CHECK (skip_of (16, 0, estimates_of (1, 200, 3000, above), 1) == cbp::skip_reason::CAPPED);
+  CHECK (skip_of (16, 0, estimates_of (1, 2000, 6000, 0.5), cbp::PROBE_PERIOD - 1, false, false, 0, &cap, max_wait)
+	 == cbp::skip_reason::CAPPED);
+  CHECK (skip_of (16, 0, estimates_of (1, 2000, 6000, 0.5), cbp::PROBE_PERIOD, false, false, 0, &cap, max_wait)
+	 == cbp::skip_reason::NONE && cap == 3000000);
+  /* NVMe, F 100 us and T90 45 us: the probe keeps the 50 us cap */
+  CHECK (skip_of (16, 0, estimates_of (1, 45, 100, 0.5), cbp::PROBE_PERIOD, false, false, 0, &cap)
+	 == cbp::skip_reason::NONE && cap == 50000);
+  /* both guards: the rho probe's quarter-flush cap */
+  CHECK (skip_of (16, 0, estimates_of (0.1, 2000, 6000, 0.5), cbp::PROBE_PERIOD, false, false, 0, &cap, max_wait)
+	 == cbp::skip_reason::NONE && cap == 1500000);
+  /* the T90 guard first, then the rho guard names the skip */
+  CHECK (skip_of (16, 0, estimates_of (1, 200, 300, 0.9), 1) == cbp::skip_reason::SLOW_RETURN);
+  CHECK (skip_of (16, 0, estimates_of (0.1, 200, 3000, 0.9), 1) == cbp::skip_reason::LOW_RETURN);
+  CHECK (skip_of (16, 16, estimates_of (1, 200, 3000, 0.9), 1) == cbp::skip_reason::READY);
+
+  /* learning: a window that ran its course says whether it reached the cap */
+  cbp::estimates half = estimates_of (1, 200, 3000, 0.5);
+
+  CHECK (cbp::learn_at_close (half, cbp::close_reason::CAP, 16, 3).capped == 0.53125);
+  CHECK (cbp::learn_at_close (half, cbp::close_reason::RETURNED, 16, 16).capped == 0.46875);
+  CHECK (cbp::learn_at_close (half, cbp::close_reason::GAP, 16, 8).capped == 0.46875);
+  CHECK (cbp::learn_at_close (half, cbp::close_reason::FLUSHED, 16, 3).capped == 0.5);
+  CHECK (cbp::learn_at_close (half, cbp::close_reason::URGENT, 16, 3).capped == 0.5);
+  for (int s = (int) cbp::skip_reason::NONE; s < (int) cbp::skip_reason::LAST; s++)
+    {
+      CHECK (cbp::learn_at_skip (half, (cbp::skip_reason) s, 16, 16).capped == 0.5);
+    }
+  CHECK (cbp::learn_at_broadcast (half, true, 3000000, 1000 + 200000, 1000).capped == 0.5);
+  /* while few waiters come back at all, the cap says nothing about late returns */
+  CHECK (cbp::learn_at_close (estimates_of (0.1, 200, 3000, 0.2), cbp::close_reason::CAP, 16, 0).capped == 0.2);
+  CHECK (cbp::learn_at_close (estimates_of (cbp::RHO_MIN, 200, 3000, 0.5), cbp::close_reason::CAP, 16, 0).capped
+	 == 0.53125);
+
+  /* eight windows on the cap in a row close it: 1 - (15/16)^7 = 0.36, 1 - (15/16)^8 = 0.40 */
+  cbp::estimates est = cbp::initial ();
+  std::uint64_t cycle = 1;
+
+  for (int i = 0; i < 8; i++)
+    {
+      CHECK (run_cycle (est, cycle++, 10, cbp::close_reason::CAP));
+    }
+  CHECK (!run_cycle (est, cycle++, 10, cbp::close_reason::CAP));
+
+  /* one window in 8 on the cap keeps a window in every cycle; every other one settles on the probes */
+  int opened = 0;
+
+  est = cbp::initial ();
+  for (cycle = 1; cycle <= 50 * cbp::PROBE_PERIOD; cycle++)
+    {
+      opened += run_cycle (est, cycle, 20, cycle % 8 == 0 ? cbp::close_reason::CAP : cbp::close_reason::RETURNED);
+    }
+  CHECK (opened == (int) (50 * cbp::PROBE_PERIOD) && est.capped <= cbp::CAPPED_MAX);
+
+  int windows = 0;
+
+  est = cbp::initial ();
+  opened = 0;
+  for (cycle = 1; cycle <= 60 * cbp::PROBE_PERIOD; cycle++)
+    {
+      if (run_cycle (est, cycle, 10, windows % 2 == 0 ? cbp::close_reason::CAP : cbp::close_reason::GAP))
+	{
+	  windows++;
+	  opened += cycle > 50 * cbp::PROBE_PERIOD ? 1 : 0;
+	}
+    }
+  CHECK (opened == 10 && est.capped > cbp::CAPPED_MAX);
+
+  /* windows on the cap at random: 16% of them (4 clients on an NVMe, which gain) keep the window in nearly every cycle;
+   * half of them (8 clients, which lose) leave little more than the probes */
+  std::uint64_t x = 88172645463325252ULL;
+  auto uniform = [&x] ()
+  {
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    return (double) (x >> 11) / 9007199254740992.0;
+  };
+  const std::uint64_t span = 100 * cbp::PROBE_PERIOD;
+
+  est = cbp::initial ();
+  opened = 0;
+  for (cycle = 1; cycle <= span; cycle++)
+    {
+      opened += run_cycle (est, cycle, 20, uniform () < 0.16 ? cbp::close_reason::CAP : cbp::close_reason::RETURNED);
+    }
+  CHECK (opened > (int) (0.95 * span));
+  est = cbp::initial ();
+  opened = 0;
+  for (cycle = 1; cycle <= span; cycle++)
+    {
+      opened += run_cycle (est, cycle, 20, uniform () < 0.5 ? cbp::close_reason::CAP : cbp::close_reason::RETURNED);
+    }
+  CHECK (opened < (int) (0.1 * span));
+
+  /* probes whose returns come back in time open it again: (15/16)^15 = 0.38 from 1 */
+  est = estimates_of (1, 200, 3000, 1.0);
+  opened = 0;
+  for (cycle = 1; est.capped > cbp::CAPPED_MAX; cycle++)
+    {
+      opened += run_cycle (est, cycle, 20, cbp::close_reason::RETURNED);
+    }
+  CHECK (opened == 15);
+  CHECK (run_cycle (est, cycle, 20, cbp::close_reason::RETURNED));
+
+  /* NVMe, F 100 us, T90 45 us: waiters back within the 50 us cap reopen it after 15 probes; back at 60 us, it stays
+   * on the probes */
+  est = estimates_of (1, 45, 100, 1.0);
+  opened = 0;
+  for (cycle = 1; cycle <= 16 * cbp::PROBE_PERIOD && est.capped > cbp::CAPPED_MAX; cycle++)
+    {
+      opened += run_cycle_late (est, cycle, 45000) ? 1 : 0;
+    }
+  CHECK (opened == 15 && est.capped <= cbp::CAPPED_MAX);
+  CHECK (run_cycle_late (est, cycle, 45000));
+  est = estimates_of (1, 45, 100, 1.0);
+  opened = 0;
+  for (cycle = 1; cycle <= 10 * cbp::PROBE_PERIOD; cycle++)
+    {
+      opened += run_cycle_late (est, cycle, 60000) ? 1 : 0;
+    }
+  CHECK (opened == 10 && est.capped > cbp::CAPPED_MAX);
+
+  /* a period of no returns does not leave the capped share behind: once rho is back, the window opens */
+  est = estimates_of (0.1, 200, 3000, 0.0);
+  for (cycle = 1; cycle <= 20 * cbp::PROBE_PERIOD; cycle++)
+    {
+      (void) run_cycle (est, cycle, 0, cbp::close_reason::CAP);
+    }
+  CHECK (est.capped == 0.0 && est.rho < cbp::RHO_MIN);
+  est.rho = 1.0;
+  CHECK (run_cycle (est, cycle, 20, cbp::close_reason::RETURNED));
+}
+
 static void
 test_initial ()
 {
   std::int64_t cap;
   cbp::estimates init = cbp::initial ();
 
-  CHECK (init.rho == 1.0 && init.t90_ns == 200000 && init.f_ns == 3000000);
+  CHECK (init.rho == 1.0 && init.t90_ns == 200000 && init.f_ns == 3000000 && init.capped == 0.0);
   /* the first cycle after a reset has R = 0 and opens no window */
   CHECK (skip_of (0, 0, init, 0) == cbp::skip_reason::SMALL);
   /* the cycle after it may open, with the cap the initial values give */
@@ -367,6 +534,7 @@ main (void)
   test_learning ();
   test_sample_bounds ();
   test_thresholds ();
+  test_capped ();
   test_initial ();
   test_t90_return_index ();
   if (failures != 0)

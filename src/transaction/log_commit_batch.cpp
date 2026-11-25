@@ -43,7 +43,8 @@ namespace cublog
   static const PERF_STAT_ID skip_stats[] =
   {
     PSTAT_LOG_COMMIT_BATCH_SKIP_URGENT, PSTAT_LOG_COMMIT_BATCH_SKIP_SMALL, PSTAT_LOG_COMMIT_BATCH_SKIP_READY,
-    PSTAT_LOG_COMMIT_BATCH_SKIP_SLOW_RETURN, PSTAT_LOG_COMMIT_BATCH_SKIP_LOW_RETURN, PSTAT_LOG_COMMIT_BATCH_SKIP_LATE
+    PSTAT_LOG_COMMIT_BATCH_SKIP_SLOW_RETURN, PSTAT_LOG_COMMIT_BATCH_SKIP_LOW_RETURN, PSTAT_LOG_COMMIT_BATCH_SKIP_CAPPED,
+    PSTAT_LOG_COMMIT_BATCH_SKIP_LATE
   };
   static const PERF_STAT_ID close_stats[] =
   {
@@ -341,6 +342,7 @@ namespace cublog
     perfmon_inc_stat (NULL, PSTAT_LOG_COMMIT_BATCH_CYCLES);
     perfmon_add_stat (NULL, PSTAT_LOG_COMMIT_BATCH_RELEASED, m_released);
     perfmon_set_stat (NULL, PSTAT_LOG_COMMIT_BATCH_RETURN_PCT, peek_value (m_estimates.rho * 100), false);
+    perfmon_set_stat (NULL, PSTAT_LOG_COMMIT_BATCH_CAPPED_PCT, peek_value (m_estimates.capped * 100), false);
     perfmon_set_stat (NULL, PSTAT_LOG_COMMIT_BATCH_RETURN_T90_USEC, peek_value (m_estimates.t90_ns / 1000), false);
     perfmon_set_stat (NULL, PSTAT_LOG_COMMIT_BATCH_FLUSH_USEC, peek_value (m_estimates.f_ns / 1000), false);
   }

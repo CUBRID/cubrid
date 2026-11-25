@@ -43,6 +43,7 @@ namespace cublog
       READY,			/* every released waiter is back, or nothing appended waits for a flush */
       SLOW_RETURN,		/* returns take longer than half a flush */
       LOW_RETURN,		/* released waiters rarely come back within a window */
+      CAPPED,			/* most windows reach the cap before the returns are in */
       LATE,			/* the cap passed before the daemon got here */
       LAST
     };
@@ -62,12 +63,17 @@ namespace cublog
       double rho;		/* share of the released waiters that came back within the window */
       double t90_ns;		/* time from the broadcast until 90% of them came back */
       double f_ns;		/* one flush, from the daemon's drain to the broadcast, in cycles that synced */
+      double capped;		/* share of the windows that closed on the cap */
     };
 
     constexpr double EMA_WEIGHT = 1.0 / 8;
     constexpr double CAP_F_RATIO = 0.5;	/* a window shorter than a cycle is the break-even; keep half of it */
     constexpr double PROBE_F_RATIO = 0.25;
     constexpr double RHO_MIN = 0.3;
+    /* a load that gains closes some windows on the cap too: on an NVMe, 4 clients close 7-16% of them and gain,
+     * 8 clients close 45-64% and lose; the slower average keeps the guard off below about 20% */
+    constexpr double CAPPED_MAX = 0.4;
+    constexpr double CAPPED_EMA_WEIGHT = 1.0 / 16;
     constexpr std::uint64_t PROBE_PERIOD = 32;
     constexpr std::int64_t GAP_MIN_NS = 20000;
     constexpr std::int64_t GAP_MAX_NS = 500000;
@@ -77,18 +83,19 @@ namespace cublog
     constexpr double RHO_INIT = 1.0;
     constexpr double T90_INIT_NS = 200000;
     constexpr double F_INIT_NS = 3000000;
+    constexpr double CAPPED_INIT = 0.0;
     constexpr double F_SAMPLE_MAX_RATIO = 2.0;	/* of the F estimate: one long flush cannot set F alone */
 
     inline double
-    ema (double avg, double sample)
+    ema (double avg, double sample, double weight = EMA_WEIGHT)
     {
-      return avg + (sample - avg) * EMA_WEIGHT;
+      return avg + (sample - avg) * weight;
     }
 
     inline estimates
     initial ()
     {
-      return estimates { RHO_INIT, T90_INIT_NS, F_INIT_NS };
+      return estimates { RHO_INIT, T90_INIT_NS, F_INIT_NS, CAPPED_INIT };
     }
 
     /* how long after the broadcast the window may stay open */
@@ -132,14 +139,14 @@ namespace cublog
 	{
 	  return skip_reason::SLOW_RETURN;
 	}
-      if (est.rho < RHO_MIN)
+      if (est.rho < RHO_MIN || est.capped > CAPPED_MAX)
 	{
 	  if (cycle % PROBE_PERIOD != 0)
 	    {
-	      return skip_reason::LOW_RETURN;
+	      return est.rho < RHO_MIN ? skip_reason::LOW_RETURN : skip_reason::CAPPED;
 	    }
-	  /* the window only re-measures rho */
-	  probe = true;
+	  /* the window only re-measures them; a short cap fits rho, but would decide the capped share by itself */
+	  probe = est.rho < RHO_MIN;
 	}
       *cap = cap_ns (est, max_wait_ns, probe);
       if (since_broadcast_ns >= *cap)
@@ -216,12 +223,17 @@ namespace cublog
       return est;
     }
 
-    /* windows closed by a request or by a flush outside the daemon say nothing about how many waiters come back */
+    /* windows closed by a request or by a flush outside the daemon say nothing about how many waiters come back, nor
+     * whether they come back before the cap; while few come back at all, the cap says nothing about late returns */
     inline estimates
     learn_at_close (estimates est, close_reason c, std::uint64_t released, std::uint64_t returned)
     {
       if (c == close_reason::RETURNED || c == close_reason::GAP || c == close_reason::CAP)
 	{
+	  if (est.rho >= RHO_MIN)
+	    {
+	      est.capped = ema (est.capped, c == close_reason::CAP ? 1.0 : 0.0, CAPPED_EMA_WEIGHT);
+	    }
 	  est.rho = ema (est.rho, return_share (returned, released));
 	}
       return est;
