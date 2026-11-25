@@ -835,7 +835,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
 
-/* eager receive: the transaction thread waits on its socket for the next request */
+#define PRM_NAME_INDEX_BUILD_PARALLEL_LEAF "index_build_parallel_leaf"
+
 #define PRM_NAME_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS "eager_receive_window_in_msecs"
 
 // #endregion
@@ -5790,6 +5791,18 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_INDEX_BUILD_PARALLEL_LEAF,
+   PRM_NAME_INDEX_BUILD_PARALLEL_LEAF,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   /* eager receive: the transaction thread waits on its socket for the next request; 0 disables */
   {PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS,
    PRM_NAME_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS,
@@ -5802,7 +5815,7 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 0}},		/* 0 disables */
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
+   (DUP_PRM_FUNC) NULL}
 };
 
 /* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the

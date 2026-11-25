@@ -1769,7 +1769,7 @@
 
 #define ER_IMPLICITLY_ABORT_FOR_LOGIN_METHOD        -1376
 
-#define ER_BT_LOAD_NOTIFY_VACUUM_LIMIT              -1377
+#define ER_BT_LOAD_NOTIFY_VACUUM_LIMIT              -1377	/* not used */
 
 #define ER_AU_CANT_ALTER_LOGIN                      -1378
 
@@ -1823,7 +1823,9 @@
 #define ER_SP_DML_IN_QUERY                          -1407
 #define ER_SP_TABLE_REFERENCED                      -1408
 
-#define ER_LAST_ERROR                               -1409
+#define ER_SP_REPLACE_NOT_ALLOWED_SYSTEM_GENERATED  -1409
+
+#define ER_LAST_ERROR                               -1410
 
 /*
  * CAUTION!
