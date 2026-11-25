@@ -197,6 +197,13 @@ namespace cubregex
 	return error_status;
       }
 
+    /* the caller checks position against the character length; never let substr () throw out_of_range */
+    if ((size_t) position > src_wstring.size ())
+      {
+	result = 0;
+	return NO_ERROR;
+      }
+
     /* split source string by position value */
     std::wstring target (
 	    src_wstring.substr (position, src_wstring.size () - position)
@@ -255,6 +262,13 @@ namespace cubregex
       {
 	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
+      }
+
+    /* the caller checks position against the character length; never let substr () throw out_of_range */
+    if ((size_t) position > src_wstring.size ())
+      {
+	result = 0;
+	return NO_ERROR;
       }
 
     /* split source string by position value */
@@ -355,6 +369,13 @@ namespace cubregex
       {
 	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
+      }
+
+    /* the caller checks position against the character length; never let substr () throw out_of_range */
+    if ((size_t) position > src_wstring.size ())
+      {
+	result.assign (src);
+	return NO_ERROR;
       }
 
     /* split source string by position value */
@@ -470,6 +491,13 @@ namespace cubregex
 	return error_status;
       }
 
+    /* the caller checks position against the character length; never let substr () throw out_of_range */
+    if ((size_t) position > src_wstring.size ())
+      {
+	result.assign (src);
+	return NO_ERROR;
+      }
+
     /* split source string by position value */
     std::wstring result_wstring (src_wstring.substr (0, position));
     std::wstring target (
@@ -568,6 +596,12 @@ namespace cubregex
       {
 	error_status = ER_QSTR_BAD_SRC_CODESET;
 	return error_status;
+      }
+
+    /* the caller checks position against the character length; never let substr () throw out_of_range */
+    if ((size_t) position > src_wstring.size ())
+      {
+	return NO_ERROR;
       }
 
     /* split source string by position value */

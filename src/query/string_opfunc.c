@@ -5185,8 +5185,8 @@ db_string_regexp_count (DB_VALUE * result, DB_VALUE * args[], int const num_args
 	match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
       }
 
-    /* check pattern string */
-    if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_size (src))
+    /* check pattern string and position (position counts characters, not bytes) */
+    if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_length (src))
       {
 	goto exit;
       }
@@ -5401,8 +5401,8 @@ db_string_regexp_instr (DB_VALUE * result, DB_VALUE * args[], int const num_args
 	match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
       }
 
-    /* check pattern string */
-    if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_size (src))
+    /* check pattern string and position (position counts characters, not bytes) */
+    if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_length (src))
       {
 	goto exit;
       }
@@ -5784,8 +5784,8 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
 	match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
       }
 
-    /* check pattern string */
-    if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_size (src))
+    /* check pattern string and position (position counts characters, not bytes) */
+    if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_length (src))
       {
 	goto exit_copy;
       }
@@ -6023,8 +6023,8 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
 	match_type_str.assign (db_get_string (match_type), db_get_string_size (match_type));
       }
 
-    /* check pattern string */
-    if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_size (src))
+    /* check pattern string and position (position counts characters, not bytes) */
+    if (db_get_string_size (pattern) == 0 || position_value >= db_get_string_length (src))
       {
 	goto exit;
       }
