@@ -3189,7 +3189,8 @@ xboot_get_server_session_key (void)
  * Note: the client type is the client's own word. An admin or log replicator
  *   client goes without proving the password only from this host or from an HA
  *   node. From anywhere else an admin client proves it as any other client does,
- *   and a log replicator client, which has no password to give, is refused.
+ *   and a log replicator client is refused even with the password proven: only
+ *   where it connects from lets it in.
  */
 static int
 boot_check_client_proof (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_credential)
@@ -3204,8 +3205,6 @@ boot_check_client_proof (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * clien
       return ER_GENERIC_ERROR;
     }
 
-  /* the declared user is trusted only once this connection proved its
-   * password, so check it before a transaction index is given out */
   proven = css_consume_auth_proof (conn, client_credential->get_db_user ());
   if (proven && !BOOT_LOG_REPLICATOR_TYPE (client_type))
     {
@@ -3220,7 +3219,7 @@ boot_check_client_proof (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * clien
 
   if (BOOT_LOG_REPLICATOR_TYPE (client_type))
     {
-      /* a log replicator has no password to give: only an HA node may connect as one */
+      /* a log replicator is let in only from this host or an HA node; a password does not stand in for that */
       unsigned char ip[4];
       char ip_str[16] = "unknown";
 
@@ -3346,6 +3345,9 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
     }
 
 #if defined (SERVER_MODE)
+  /* the declared user is trusted only once this connection proved its
+   * password, or comes from where it may go without, so check it before a
+   * transaction index is given out */
   if (boot_check_client_proof (thread_p, client_credential) != NO_ERROR)
     {
       *tran_state = TRAN_UNACTIVE_UNKNOWN;

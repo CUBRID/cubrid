@@ -1440,9 +1440,10 @@ util_get_table_list_from_file (char *fname, dynamic_array * darray)
  *   dba_password(in): the DBA password the utility was given, or NULL
  *   client_type(in): the admin client type to register as
  *
- * Note: a server on another host takes an admin utility only with the DBA
- *   password. When none was given, it is asked for on the terminal, once per
- *   process; with no terminal, the error is returned at once.
+ * Note: the server takes an admin utility without the DBA password only from
+ *   its own host or an HA node; from anywhere else it needs the password. When
+ *   none was given, it is asked for on the terminal, once per process; with no
+ *   terminal, the error is returned at once.
  */
 int
 util_restart_as_dba (const char *program_name, const char *db_name, const char *dba_password, int client_type)
