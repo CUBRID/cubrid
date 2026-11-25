@@ -43,14 +43,6 @@ namespace cubconn::connection
   class coordinator
   {
     private:
-      enum class status
-      {
-	PREPARING,
-	STABLE,
-	DRAINING,
-	EXPANDING
-      };
-
       struct worker_statistics
       {
 	/* score */
@@ -74,30 +66,11 @@ namespace cubconn::connection
 	m_contexts;
       };
 
-      enum class scaling_status
-      {
-	TRIAL,
-	STABLE
-      };
-
-      enum class scaling_direction
-      {
-	DOWN,
-	UP
-      };
-
-      struct scaling_statistics
-      {
-	std::size_t scale;
-	double score;
-      };
-
       enum class timer_latency : uint64_t
       {
 	NA = 0, /* off */
 	LOW_LATENCY = static_cast<uint64_t> (1 * 1e9), /* 1 sec */
-	MEDIUM_LATENCY = static_cast<uint64_t> (5 * 1e9), /* 5 sec */
-	HIGH_LATENCY = static_cast<uint64_t> (60 * 1e9) /* 1 min */
+	MEDIUM_LATENCY = static_cast<uint64_t> (5 * 1e9) /* 5 sec */
       };
 
       enum class timer_type : uint32_t
@@ -105,7 +78,6 @@ namespace cubconn::connection
 	NA,
 	STATISTICS,
 	REBALANCING,
-	SCALING,
 
 	TYPE_COUNT
       };
@@ -124,9 +96,6 @@ namespace cubconn::connection
       {
 	/* RECV */
 	SHOW_STATS,
-
-	SCALE_UP,
-	SCALE_DOWN,
 
 	CLIENT_MOVE,
 
@@ -205,8 +174,7 @@ namespace cubconn::connection
       };
 
     public:
-      coordinator (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core,
-		   std::uint32_t max_worker, std::uint32_t min_worker);
+      coordinator (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core, std::uint32_t max_worker);
       ~coordinator ();
 
       void initialize ();
@@ -230,7 +198,6 @@ namespace cubconn::connection
       /* thread handle */
       std::thread m_thread;
       std::size_t m_core;
-      status m_status;
       bool m_stop;
 
       cubthread::entry *m_entry;
@@ -261,46 +228,11 @@ namespace cubconn::connection
 
       /* workers */
       std::uint32_t m_max_worker;
-      std::uint32_t m_min_worker;
-      std::uint32_t m_current_worker;
 
       /* rebalancing, in flight client id set (hand-off - take over) */
       std::unordered_set<uint64_t> m_migrating;
 
-      /* dynamic scaling of the worker */
-      struct
-      {
-	uint64_t last_drain_ns;
-	uint64_t last_expand_ns;
-	int draining_worker;
-      } m_scaling;
-
-      /* auto scaling */
-      struct
-      {
-	scaling_status status;
-
-	std::size_t window_size;
-	std::vector<scaling_statistics> history;
-
-	scaling_direction previous_direction;
-	std::size_t previous_scale;
-
-	scaling_direction direction;
-	std::size_t count;
-      } m_scaling_statistics;
-
       /* statistics */
-      struct
-      {
-	std::uint32_t workers;
-	uint64_t time_ns;
-
-	std::pair<double, uint64_t> requested;
-	std::pair<double, uint64_t> started;
-	std::pair<double, uint64_t> completed;
-	std::pair<double, uint64_t> depth;
-      } m_task_statistics;
       std::vector<worker_statistics> m_statistics;
 
       /* --------------------------------------------------------------------------- */
@@ -310,17 +242,9 @@ namespace cubconn::connection
       bool random_bit ();
 
       /* --------------------------------------------------------------------------- */
-      /* transfer and scale							     */
+      /* transfer								     */
       /* --------------------------------------------------------------------------- */
       bool transfer_connection (uint64_t id, int from, int to);
-
-      bool scale_up ();
-
-      bool scale_down_finish ();
-      bool scale_down ();
-
-      void scale_trial ();
-      std::size_t scale_selection ();
 
       /* --------------------------------------------------------------------------- */
       /* statistics								     */
@@ -328,7 +252,6 @@ namespace cubconn::connection
       template <typename T>
       void statistics_EWMA (double alpha, uint64_t time_delta, statistics::metrics<T, double> &acc,
 			    statistics::metrics<T> &prev, statistics::metrics<T> &current);
-      void statistics_EWMA (double alpha, uint64_t time_delta, double &acc, uint64_t &prev, uint64_t current);
 
       std::pair<std::size_t, std::size_t> statistics_find_score_extremes ();
 
@@ -336,11 +259,9 @@ namespace cubconn::connection
       void statistics_update_connection (uint64_t delta,
 					 std::pair<std::size_t, statistics::metrics<statistics::worker>> &worker,
 					 std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> &contexts);
-      void statistics_update_task ();
       bool statistics_update ();
 
       bool statistics_rebalancing ();
-      bool statistics_scaling ();
 
       void statistics_print ();
 
