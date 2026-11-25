@@ -835,6 +835,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
 
+#define PRM_NAME_INDEX_BUILD_PARALLEL_LEAF "index_build_parallel_leaf"
+
 // #endregion
 
 #define PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL "numeric_empty_string_as_null"
@@ -5778,6 +5780,20 @@ SYSPRM_PARAM prm_Def[] = {
   {PRM_ID_MVCC_REEVALUATE_AT_FORCE,
    PRM_NAME_MVCC_REEVALUATE_AT_FORCE,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* a logged parallel index build lets the shard workers put the leaves and the leader append their page logs;
+   * off, the leader puts the leaves of one merged run itself. Changeable on-line, for the builds that follow. */
+  {PRM_ID_INDEX_BUILD_PARALLEL_LEAF,
+   PRM_NAME_INDEX_BUILD_PARALLEL_LEAF,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
