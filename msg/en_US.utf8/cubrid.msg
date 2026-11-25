@@ -1537,7 +1537,24 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1409 Replacing system generated stored procedure is not allowed.
 
-1410 Last Error
+1410 Unused error code.
+1411 Unused error code.
+1412 Unused error code.
+1413 Unused error code.
+1414 Unused error code.
+1415 Unused error code.
+1416 Unused error code.
+1417 Unused error code.
+1418 Unused error code.
+1419 Unused error code.
+
+1420 The login method cannot be called through a broker.
+
+1421 session renewed: %1$u -> %2$u (%3$s)
+
+1422 Cannot restore the login user %2$s of session %1$u. Open a new connection.
+
+1423 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
