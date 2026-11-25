@@ -16344,14 +16344,14 @@ typedef struct do_share_key_info DO_SHARE_KEY_INFO;
 struct do_share_key_info
 {
   PT_SHARE_GROUP *groups;	/* the groups of the query, as mq_share_settle_groups () returns them */
-  char *key;			/* the position, group and role of each member */
+  char **members;		/* per group, in the order of groups: the position and role of each member */
   int n_specs;			/* specs visited so far */
   bool failed;
 };
 
 /*
- * do_collect_share_key () - add a member of a share group to the key: its position among the specs of the query,
- *   the number of its group and whether it is the donor (d) or another member (m)
+ * do_collect_share_key () - add a member of a share group to the key of its group: its position among the specs of
+ *   the query and whether it is the donor (d) or another member (m)
  */
 static PT_NODE *
 do_collect_share_key (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -16359,7 +16359,7 @@ do_collect_share_key (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   DO_SHARE_KEY_INFO *info = (DO_SHARE_KEY_INFO *) arg;
   PT_SHARE_GROUP *group;
   char buf[32];
-  int n = 1;
+  int i = 0;
 
   if (node->node_type != PT_SPEC)
     {
@@ -16373,11 +16373,16 @@ do_collect_share_key (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 
   for (group = info->groups; group != NULL && group != node->info.spec.share_group; group = group->next)
     {
-      n++;
+      i++;
     }
-  snprintf (buf, sizeof (buf), " %d:%d%c", info->n_specs, n, (group != NULL && node == group->donor) ? 'd' : 'm');
-  info->key = pt_append_string (parser, info->key, buf);
-  if (info->key == NULL)
+  if (group == NULL)
+    {
+      return node;
+    }
+  snprintf (buf, sizeof (buf), "%s%d%c", (info->members[i] != NULL) ? "," : "", info->n_specs,
+	    (node == group->donor) ? 'd' : 'm');
+  info->members[i] = pt_append_string (parser, info->members[i], buf);
+  if (info->members[i] == NULL)
     {
       info->failed = true;
       *continue_walk = PT_STOP_WALK;
@@ -16395,7 +16400,9 @@ static int
 do_append_share_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement)
 {
   DO_SHARE_KEY_INFO info = { NULL, NULL, 0, false };
+  PT_SHARE_GROUP *group;
   char *text;
+  int n_groups = 0, i;
 
   if (!PT_IS_QUERY (statement) || contextp->sql_hash_text == NULL)
     {
@@ -16409,12 +16416,36 @@ do_append_share_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NOD
       return NO_ERROR;
     }
 
+  for (group = info.groups; group != NULL; group = group->next)
+    {
+      n_groups++;
+    }
+  info.members = (char **) parser_alloc (parser, (int) (n_groups * sizeof (char *)));
+  if (info.members == NULL)
+    {
+      int err;
+
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  for (i = 0; i < n_groups; i++)
+    {
+      info.members[i] = NULL;
+    }
   (void) parser_walk_tree (parser, statement, do_collect_share_key, &info, NULL, NULL);
 
-  /* append to a copy: the hash text is the statement's alias_print */
+  /* append to a copy: the hash text is the statement's alias_print; each group as "view:members" */
   text = info.failed ? NULL : pt_append_string (parser, NULL, contextp->sql_hash_text);
   text = (text != NULL) ? pt_append_string (parser, text, " [share") : NULL;
-  text = (text != NULL) ? pt_append_string (parser, text, info.key) : NULL;
+  for (group = info.groups, i = 0; group != NULL && text != NULL; group = group->next, i++)
+    {
+      const char *name = sm_get_ch_name (group->view);
+
+      text = pt_append_string (parser, text, " ");
+      text = (text != NULL) ? pt_append_string (parser, text, (name != NULL) ? name : "?") : NULL;
+      text = (text != NULL) ? pt_append_string (parser, text, ":") : NULL;
+      text = (text != NULL && info.members[i] != NULL) ? pt_append_string (parser, text, info.members[i]) : text;
+    }
   text = (text != NULL) ? pt_append_string (parser, text, "]") : NULL;
   if (text == NULL)
     {
