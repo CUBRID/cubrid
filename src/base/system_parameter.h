@@ -585,6 +585,8 @@ enum param_id
 
   PRM_ID_MVCC_REEVALUATE_AT_FORCE,
 
+  PRM_ID_INDEX_BUILD_PARALLEL_LEAF,
+
   PRM_ID_TEMP_WRITEBACK_SIZE,
 
   /* change PRM_LAST_ID when adding new system parameters */

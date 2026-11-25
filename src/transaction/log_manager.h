@@ -64,6 +64,9 @@ extern bool log_is_in_crash_recovery_and_not_yet_completes_redo (void);
 extern LOG_LSA *log_get_restart_lsa (void);
 extern LOG_LSA *log_get_crash_point_lsa (void);
 extern LOG_LSA log_get_append_lsa (void);
+extern void log_get_prior_lsa (LOG_LSA * lsa_out);
+extern bool logpb_no_logging_index_build_begin (void);
+extern void logpb_no_logging_index_build_end (void);
 extern LOG_LSA log_get_eof_lsa (void);
 extern bool log_is_logged_since_restart (const LOG_LSA * lsa_ptr);
 extern int log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa);
@@ -212,6 +215,7 @@ extern bool log_get_undo_record_from_buffer (THREAD_ENTRY * thread_p, const LOG_
 extern void log_sysop_start (THREAD_ENTRY * thread_p);
 extern void log_sysop_start_atomic (THREAD_ENTRY * thread_p);
 extern void log_sysop_abort (THREAD_ENTRY * thread_p);
+extern void log_sysop_abort_and_defer_wake (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa);
 extern void log_sysop_attach_to_outer (THREAD_ENTRY * thread_p);
 extern void log_sysop_commit (THREAD_ENTRY * thread_p);
 extern void log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid,

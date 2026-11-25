@@ -68,6 +68,7 @@
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
 #include "execute_statement.h"
+#include "sp_context_rules.hpp"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
@@ -139,9 +140,9 @@ static int jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE
 static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type, bool allow_system_generated);
 static int replace_stored_procedure (SP_INFO &sp_info);
 static int check_stored_procedure_modifiable (const char *name, SP_TYPE_ENUM expected_type, MOP *sp_mop_p,
-    MOP *owner_p, bool allow_system_generated);
+    MOP *owner_p, bool allow_system_generated, bool is_replace);
 static int drop_stored_procedure_args (MOP sp_mop);
-static int drop_stored_procedure_code (MOP sp_mop, bool allow_system_generated);
+static int drop_stored_procedure_code (MOP sp_mop);
 
 static int jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &out);
 static int check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
@@ -997,6 +998,8 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   if (error == NO_ERROR && locator_get_sig_interrupt () == 0)
     {
       std::vector <DB_VALUE> out_args;
+      sp_depth_guard sql_guard (sp_In_sql_depth, statement->info.method_call.call_or_expr == PT_IS_MTHD_EXPR);
+
       error = pl_call (sig, args, out_args, ret_value);
       if (error == NO_ERROR)
 	{
@@ -1375,6 +1378,7 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
     {
       SP_ARG_INFO arg_info (sp_info.unique_name);
 
+      arg_info.is_system_generated = sp_info.is_system_generated;
       arg_info.index_of = param_count++;
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
       arg_info.data_type = pt_type_enum_to_db (p->type_enum);
@@ -1882,13 +1886,13 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type, bool allow_
 
   AU_SAVE_AND_DISABLE (save);
 
-  err = check_stored_procedure_modifiable (name, expected_type, &sp_mop, &owner, allow_system_generated);
+  err = check_stored_procedure_modifiable (name, expected_type, &sp_mop, &owner, allow_system_generated, false);
   if (err != NO_ERROR)
     {
       goto error;
     }
 
-  err = drop_stored_procedure_code (sp_mop, allow_system_generated);
+  err = drop_stored_procedure_code (sp_mop);
   if (err != NO_ERROR)
     {
       goto error;
@@ -1948,13 +1952,13 @@ replace_stored_procedure (SP_INFO &sp_info)
   MOP sp_mop;
   int err;
 
-  err = check_stored_procedure_modifiable (sp_info.unique_name.data (), sp_info.sp_type, &sp_mop, NULL, false);
+  err = check_stored_procedure_modifiable (sp_info.unique_name.data (), sp_info.sp_type, &sp_mop, NULL, false, true);
   if (err != NO_ERROR)
     {
       return err;
     }
 
-  err = drop_stored_procedure_code (sp_mop, false);
+  err = drop_stored_procedure_code (sp_mop);
   if (err != NO_ERROR)
     {
       return err;
@@ -1977,6 +1981,7 @@ replace_stored_procedure (SP_INFO &sp_info)
  *   sp_mop_p(out): the stored procedure
  *   owner_p(out): the owner of the stored procedure (can be NULL)
  *   allow_system_generated(in): accept it even if the engine created it
+ *   is_replace(in): true for CREATE OR REPLACE, false for DROP; it selects the error message
  *
  * Note: It checks the existence, the owner or DBA privilege, the system generated flag and the type.
  *       ALTER does not use it.
@@ -1984,7 +1989,7 @@ replace_stored_procedure (SP_INFO &sp_info)
 
 static int
 check_stored_procedure_modifiable (const char *name, SP_TYPE_ENUM expected_type, MOP *sp_mop_p, MOP *owner_p,
-				   bool allow_system_generated)
+				   bool allow_system_generated, bool is_replace)
 {
   MOP sp_mop, owner;
   DB_VALUE sp_type_val, owner_val, generated_val;
@@ -2013,7 +2018,7 @@ check_stored_procedure_modifiable (const char *name, SP_TYPE_ENUM expected_type,
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DDL_NOT_ALLOWED_PRIVILEGES, 1, "drop");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DDL_NOT_ALLOWED_PRIVILEGES, 1, is_replace ? "replace" : "drop");
       err = er_errid ();
       goto error;
     }
@@ -2026,7 +2031,8 @@ check_stored_procedure_modifiable (const char *name, SP_TYPE_ENUM expected_type,
 
   if (!allow_system_generated && 1 == db_get_int (&generated_val))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      is_replace ? ER_SP_REPLACE_NOT_ALLOWED_SYSTEM_GENERATED : ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
       err = er_errid ();
       goto error;
     }
@@ -2122,23 +2128,22 @@ error:
  * drop_stored_procedure_code - delete the code row of a stored procedure
  *   return: Error code
  *   sp_mop(in): the stored procedure
- *   allow_system_generated(in): drop it even if the engine created it
  *
  * Note: Only a PL/CSQL stored procedure has a code row.
+ *       The caller checks the stored procedure with check_stored_procedure_modifiable ().
  */
 
 static int
-drop_stored_procedure_code (MOP sp_mop, bool allow_system_generated)
+drop_stored_procedure_code (MOP sp_mop)
 {
-  MOP code_mop, owner;
-  DB_VALUE owner_val, generated_val, lang_val, target_cls_val;
+  MOP code_mop;
+  DB_VALUE lang_val, target_cls_val;
   const char *target_cls;
   int save, lang;
   int err;
 
   AU_SAVE_AND_DISABLE (save);
 
-  db_make_null (&owner_val);
   db_make_null (&target_cls_val);
 
   err = db_get (sp_mop, SP_ATTR_LANG, &lang_val);
@@ -2172,32 +2177,21 @@ drop_stored_procedure_code (MOP sp_mop, bool allow_system_generated)
 	  goto error;
 	}
 
-      err = db_get (code_mop, SP_ATTR_OWNER, &owner_val);
-      if (err != NO_ERROR)
-	{
-	  goto error;
-	}
-      owner = db_get_object (&owner_val);
+#if !defined (NDEBUG)
+      {
+	DB_VALUE sp_owner_val, code_owner_val;
 
-      if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DDL_NOT_ALLOWED_PRIVILEGES, 1, "drop");
-	  err = er_errid ();
-	  goto error;
-	}
-
-      err = db_get (code_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
-      if (err != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      if (!allow_system_generated && !DB_IS_NULL (&generated_val) && 1 == db_get_int (&generated_val))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
-	  err = er_errid ();
-	  goto error;
-	}
+	db_make_null (&sp_owner_val);
+	db_make_null (&code_owner_val);
+	if (db_get (sp_mop, SP_ATTR_OWNER, &sp_owner_val) == NO_ERROR
+	    && db_get (code_mop, SP_ATTR_OWNER, &code_owner_val) == NO_ERROR)
+	  {
+	    assert (ws_is_same_object (db_get_object (&sp_owner_val), db_get_object (&code_owner_val)));
+	  }
+	pr_clear_value (&sp_owner_val);
+	pr_clear_value (&code_owner_val);
+      }
+#endif
 
       // TODO: If a unreloadable SP is deleted, mark a flag in PL server to block calling the deleted SP
       err = obj_delete (code_mop);
@@ -2206,7 +2200,6 @@ drop_stored_procedure_code (MOP sp_mop, bool allow_system_generated)
 error:
   AU_RESTORE (save);
 
-  pr_clear_value (&owner_val);
   pr_clear_value (&target_cls_val);
 
   return err;
