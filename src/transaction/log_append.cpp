@@ -77,6 +77,7 @@ static void prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
 static void prior_lsa_append_data (int length);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
+static void prior_lsa_wait_if_list_full (THREAD_ENTRY *thread_p);
 static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid, bool is_explicit_mvccid);
 static char *log_append_get_data_ptr (THREAD_ENTRY *thread_p);
 static bool log_append_realloc_data_ptr (THREAD_ENTRY *thread_p, int length);
@@ -1411,9 +1412,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   LOG_VACUUM_INFO *vacuum_info = NULL;
   MVCCID mvccid = MVCCID_NULL;
 
-  /* Ahead of the mutex, so that all the append path holds it for is the ring push. Nothing can free the
-   * node between here and register (): the tail of this function always links it into the prior list. */
-  log_prior_inflight_prepare (node);
+  /* The caller ran log_prior_inflight_prepare () on the node. Nothing can free the node between there and
+   * register (): the tail of this function always links it into the prior list. */
 
   if (with_lock == LOG_PRIOR_LSA_WITHOUT_LOCK)
     {
@@ -1580,30 +1580,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   if (with_lock == LOG_PRIOR_LSA_WITHOUT_LOCK)
     {
       log_Gl.prior_info.prior_lsa_mutex.unlock ();
-
-      if (log_Gl.prior_info.list_size >= (INT64) logpb_get_memsize ())
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_PRIOR_LSA_LIST_MAXED);
-
-#if defined(SERVER_MODE)
-	  if (!log_is_in_crash_recovery ())
-	    {
-	      log_wakeup_log_flush_daemon ();
-
-	      thread_sleep (1);	/* 1msec */
-	    }
-	  else
-	    {
-	      LOG_CS_ENTER (thread_p);
-	      logpb_prior_lsa_append_all_list (thread_p);
-	      LOG_CS_EXIT (thread_p);
-	    }
-#else
-	  LOG_CS_ENTER (thread_p);
-	  logpb_prior_lsa_append_all_list (thread_p);
-	  LOG_CS_EXIT (thread_p);
-#endif
-	}
+      prior_lsa_wait_if_list_full (thread_p);
     }
 
   tdes->num_log_records_written++;
@@ -1611,16 +1588,89 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   return start_lsa;
 }
 
+/*
+ * prior_lsa_wait_if_list_full - Let the log flush catch up when the prior list outgrows the log buffer
+ *
+ * Note: Called without prior_lsa_mutex, after an append.
+ */
+static void
+prior_lsa_wait_if_list_full (THREAD_ENTRY *thread_p)
+{
+  if (log_Gl.prior_info.list_size >= (INT64) logpb_get_memsize ())
+    {
+      perfmon_inc_stat (thread_p, PSTAT_PRIOR_LSA_LIST_MAXED);
+
+#if defined(SERVER_MODE)
+      if (!log_is_in_crash_recovery ())
+	{
+	  log_wakeup_log_flush_daemon ();
+
+	  thread_sleep (1);	/* 1msec */
+	}
+      else
+	{
+	  LOG_CS_ENTER (thread_p);
+	  logpb_prior_lsa_append_all_list (thread_p);
+	  LOG_CS_EXIT (thread_p);
+	}
+#else
+      LOG_CS_ENTER (thread_p);
+      logpb_prior_lsa_append_all_list (thread_p);
+      LOG_CS_EXIT (thread_p);
+#endif
+    }
+}
+
 LOG_LSA
 prior_lsa_next_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes)
 {
+  /* Ahead of the mutex, so that all the append path holds it for is the ring push. */
+  log_prior_inflight_prepare (node);
   return prior_lsa_next_record_internal (thread_p, node, tdes, LOG_PRIOR_LSA_WITHOUT_LOCK);
 }
 
 LOG_LSA
 prior_lsa_next_record_with_lock (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes)
 {
+  log_prior_inflight_prepare (node);
   return prior_lsa_next_record_internal (thread_p, node, tdes, LOG_PRIOR_LSA_WITH_LOCK);
+}
+
+/*
+ * prior_lsa_next_record_list - Append records of one transaction under one hold of prior_lsa_mutex
+ *
+ *   list(in/out): the records, oldest first, linked through next; each goes into the prior list
+ *   tdes(in/out):
+ *
+ * Note: As prior_lsa_next_record () does for one record, the in-flight holders are made ahead of the mutex,
+ *       and the wait for a full prior list comes after it, once for the list.
+ */
+void
+prior_lsa_next_record_list (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *list, log_tdes *tdes)
+{
+  LOG_PRIOR_NODE *node, *next;
+
+  if (list == NULL)
+    {
+      return;
+    }
+
+  for (node = list; node != NULL; node = node->next)
+    {
+      log_prior_inflight_prepare (node);
+    }
+
+  log_Gl.prior_info.prior_lsa_mutex.lock ();
+  for (node = list; node != NULL; node = next)
+    {
+      /* the prior list links the record through next: detach it from the caller's list first */
+      next = node->next;
+      node->next = NULL;
+      (void) prior_lsa_next_record_internal (thread_p, node, tdes, LOG_PRIOR_LSA_WITH_LOCK);
+    }
+  log_Gl.prior_info.prior_lsa_mutex.unlock ();
+
+  prior_lsa_wait_if_list_full (thread_p);
 }
 
 int
