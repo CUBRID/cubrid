@@ -4220,9 +4220,21 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	char tmp[BUFSIZ];
 
 	net_arg_get_str (&value, &val_size, net_value);
+	if (val_size >= (int) sizeof (tmp))
+	  {
+	    /* longer than any NUMERIC string, so it is parsed into a float NUMERIC without a copy into tmp */
+	    err_code = db_value_domain_init (&db_val, DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
+					     DB_DEFAULT_NUMERIC_SCALE);
+	    if (err_code == 0)
+	      {
+		err_code = db_value_put (&db_val, DB_TYPE_C_CHAR, value, (int) strnlen (value, val_size));
+	      }
+	    coercion_flag = FALSE;
+	    break;
+	  }
 	if (value != NULL)
 	  {
-	    strcpy (tmp, value);
+	    memcpy (tmp, value, val_size);
 	  }
 	tmp[val_size] = '\0';
 	ut_trim (tmp);
@@ -4240,6 +4252,12 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	if (tmp[0] == '-')
 	  {
 	    precision--;
+	  }
+	if (precision > DB_MAX_FIXED_NUMERIC_PRECISION)
+	  {
+	    /* more digits than a fixed NUMERIC holds, so db_value_put parses it as a literal into a float NUMERIC */
+	    precision = DB_DEFAULT_NUMERIC_PRECISION;
+	    scale = DB_DEFAULT_NUMERIC_SCALE;
 	  }
 
 	err_code = db_value_domain_init (&db_val, DB_TYPE_NUMERIC, precision, scale);
