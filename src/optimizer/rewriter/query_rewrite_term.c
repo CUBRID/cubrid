@@ -29,6 +29,7 @@
 static void qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where, bool in_tree);
 static void qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
+static bool qo_like_range_is_present (PARSER_CONTEXT * parser, PT_NODE * cnf_list, PT_NODE * like);
 static void qo_rewrite_like_in_factor (PARSER_CONTEXT * parser, PT_NODE * node);
 static void qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep);
@@ -4454,6 +4455,42 @@ qo_rewrite_like_in_factor (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * qo_like_range_is_present () - whether the range derived from a LIKE is already among the terms
+ *   return: true when a range derived from this LIKE's column is in cnf_list
+ *   parser(in):
+ *   cnf_list(in): the terms the LIKE belongs to
+ *   like(in): a LIKE term
+ *
+ * Note: mq_copypush_sargable_terms () pushes the LIKE and the range derived from it in the outer
+ *	 query into a derived table as two separate terms (a UNION ALL view member, for example), and
+ *	 the rewrite of that query then meets the LIKE again.  Deriving the range a second time puts
+ *	 the same range check on every row twice.  The range is not always pushed with the LIKE, so
+ *	 the LIKE's mark alone does not tell that it is there; look for it.
+ */
+static bool
+qo_like_range_is_present (PARSER_CONTEXT * parser, PT_NODE * cnf_list, PT_NODE * like)
+{
+  PT_NODE *term;
+
+  if (!PT_EXPR_INFO_IS_FLAGED (like, PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE))
+    {
+      return false;
+    }
+
+  for (term = cnf_list; term != NULL; term = term->next)
+    {
+      if (term->node_type == PT_EXPR && term->or_next == NULL
+	  && PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_LIKE_DERIVED_RANGE)
+	  && pt_check_path_eq (parser, term->info.expr.arg1, like->info.expr.arg1) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_rewrite_like_terms ()
  *   return:
  *   parser(in):
@@ -4560,6 +4597,11 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	       * to rewrite the query because we need to preserve the CNF. */
 	      /* TODO We should check that the column is indexed. Otherwise it might not be worth the effort to do this
 	       * rewrite. */
+	      if (qo_like_range_is_present (parser, *cnf_list, crt_expr))
+		{
+		  /* pushed into this query together with its range: the range is already here */
+		  continue;
+		}
 	      if (pt_is_pseudo_const (pattern)
 		  && (escape == NULL || PT_IS_NULL_NODE (escape) || pt_is_pseudo_const (escape)))
 		{
