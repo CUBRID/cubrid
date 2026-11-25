@@ -5705,6 +5705,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    case S_PARALLEL_INDEX_SCAN:
 #endif /* SERVER_MODE && !WINDOWS */
 	      scan_id->partition_stats->read_keys += scan_id->scan_stats.read_keys - old_scan_stats.read_keys;
+	      scan_id->partition_stats->read_ahead_pages +=
+		scan_id->scan_stats.read_ahead_pages - old_scan_stats.read_ahead_pages;
 	      scan_id->partition_stats->qualified_keys +=
 		scan_id->scan_stats.qualified_keys - old_scan_stats.qualified_keys;
 	      scan_id->partition_stats->key_qualified_rows +=

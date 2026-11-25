@@ -13406,7 +13406,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     {
       /* at here, not yet visited at this join level; use cache */
 
-      if (new_info->best_no_order.nplans == 0)
+      if (new_info->best_no_order.nplans == 0 && new_info->best_bitmap.nplans == 0)
 	{
 	  goto wrapup;		/* give up */
 	}

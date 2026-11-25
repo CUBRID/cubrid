@@ -14533,12 +14533,22 @@ qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_
   int distance, end, hinted;
   int limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
   UINT64 stat_unused = 0;
-  UINT64 *stat = &stat_unused;	/* the pages named are counted on the inner scan */
+  UINT64 *stat = &stat_unused;	/* the pages named are counted on the inner scan, and on its partition */
+  UINT64 *part_stat = &stat_unused;
 
   if (inner->curr_spec != NULL && inner->curr_spec->s_id.type == S_INDX_SCAN)
     {
       limit = inner->curr_spec->s_id.s.isid.ahead_limit;
       stat = &inner->curr_spec->s_id.scan_stats.read_ahead_pages;
+      if (inner->curr_spec->s_id.partition_stats != NULL)
+	{
+	  part_stat = &inner->curr_spec->s_id.partition_stats->read_ahead_pages;
+	}
+    }
+  else if (inner->curr_spec == NULL && inner->spec_list != NULL)
+    {
+      /* a subquery between two of its executions: its scan is closed, its statistics stay */
+      stat = &inner->spec_list->s_id.scan_stats.read_ahead_pages;
     }
 
   if (qexec_nl_batch_first_only (inner))
@@ -14567,6 +14577,7 @@ qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_
 	  hinted = scan_index_nl_batch_read_ahead (thread_p, firsts, n);
 	  batch->hinted += hinted;
 	  *stat += hinted;
+	  *part_stat += hinted;
 	  batch->ahead_next = end;
 	  batch->ahead_distance = distance;
 	}
@@ -14586,6 +14597,7 @@ qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_
       hinted = scan_index_nl_batch_read_ahead (thread_p, batch->oids + batch->ahead_next, end - batch->ahead_next);
       batch->hinted += hinted;
       *stat += hinted;
+      *part_stat += hinted;
       batch->ahead_next = end;
       batch->ahead_distance = distance;
     }

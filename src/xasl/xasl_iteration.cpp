@@ -122,6 +122,7 @@ extern "C" {
     dst->read_rows += src->read_rows;
     dst->qualified_rows += src->qualified_rows;
     dst->read_keys += src->read_keys;
+    dst->read_ahead_pages += src->read_ahead_pages;
     dst->qualified_keys += src->qualified_keys;
     dst->key_qualified_rows += src->key_qualified_rows;
     dst->data_qualified_rows += src->data_qualified_rows;
