@@ -343,6 +343,7 @@ extern "C"
 
   extern PT_NODE *pt_lambda_with_arg (PARSER_CONTEXT * parser_ptr, PT_NODE * expression, PT_NODE * name,
 				      PT_NODE * named_expression, bool loc_check, int type, bool dont_replace);
+  extern bool pt_reduce_eq_keeps_cast (PARSER_CONTEXT * parser, PT_TYPE_ENUM tree_type, PT_NODE * name, PT_NODE * cast);
   extern PT_NODE *pt_lambda (PARSER_CONTEXT * parser_ptr, PT_NODE * expression, PT_NODE * name,
 			     PT_NODE * named_expression);
 
@@ -495,6 +496,7 @@ extern "C"
 
   extern PT_NODE *pt_is_method_call_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
+  extern bool pt_is_ddl_node_type (PT_NODE_TYPE node_type);
   extern int pt_is_ddl_statement (const PT_NODE * node);
   extern int pt_is_method_call (PT_NODE * node);
   extern int pt_is_attr (PT_NODE * node);

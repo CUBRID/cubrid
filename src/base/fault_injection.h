@@ -103,6 +103,12 @@ typedef enum
   FI_TEST_CONNECTION_WORKER_QUEUE_TIMER_STOP_FAIL = 700002,	/* disarming the queue timer */
   FI_TEST_CONNECTION_WORKER_CLOSE_HOLD = 700003,	/* hold a close before it drains the worker's queue */
 
+  /* SERIAL */
+  FI_TEST_SERIAL_DDL_UNDO_HOLD_AFTER_CLR = 700010,	/* flush the compensation of a serial row undo, then hold */
+  FI_TEST_SERIAL_DDL_UNDO_FALLBACK = 700011,	/* (FI_INSERTED only) the serial row undo restores the replaced row */
+  FI_TEST_SERIAL_REPL_APPLY_HOLD = 700012,	/* hold the log applier's serial row image before its write */
+  FI_TEST_SERIAL_APPLIER_DDL_WRITE_HOLD = 700013,	/* hold the serial row write of a DDL the log applier runs */
+
   /* VACUUM */
   FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT = 800000,	/* vacuum's wait for a busy heap header fails at once as a latch
 							 * timeout; arg is the header VPID */
