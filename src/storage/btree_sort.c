@@ -100,12 +100,15 @@
 #define BTSORT_MIN_REC_AREA  ((ssize_t) (BTSORT_REC_HEADER_SIZE + 2 * OR_OID_SIZE + (int) INT_ALIGNMENT))
 
 #define BTSORT_MAX_PARALLEL	PRM_MAX_PARALLELISM
-/* Runs the main thread merges itself at the end of a parallel sort, at most. A worker leaves the runs of its last
- * pass to that merge when their count times the number of workers is no more than this, so that all workers
- * together never leave more, and merges them into one result run otherwise. Leaving saves the workers a pass over
- * their runs; merging keeps the fan-in small on the one thread that builds the leaf level. With an int key and
- * limited I/O, leaving was faster up to 47 runs, merging from 71 on. */
+/* Runs the workers of a parallel sort leave to the main thread, at most: it merges them itself, or the shard put
+ * cuts them into key ranges (btsort_px_slice_runs_index_leaf). A worker leaves the runs of its last pass when their
+ * count times the number of workers is no more than this, so that all workers together never leave more, and merges
+ * them into one result run otherwise. Leaving saves the workers a pass over their runs; merging keeps the fan-in of
+ * the main thread's merge small. With an int key and limited I/O, leaving was faster up to 47 runs, merging from
+ * 71 on. */
 #define BTSORT_PX_LEADER_FANIN	64
+/* a worker that does not leave its runs leaves one result run: the bound holds only for no more workers than it */
+static_assert (BTSORT_MAX_PARALLEL <= BTSORT_PX_LEADER_FANIN, "the workers may leave more runs than the leader takes");
 /* Pages of the sort buffer a worker of a parallel build sorts in, at least. A smaller slice makes more runs and more
  * merge passes, so a smaller buffer takes fewer workers. The default buffer has a slice for BTSORT_MAX_PARALLEL. */
 #define BTSORT_PX_MIN_WORKER_BUFFERS	128
@@ -250,12 +253,9 @@ struct btsort_param
 
   /* support parallelism */
   BTSORT_PX_STATUS px_status;
-  int px_result_file_idx;
   THREAD_ENTRY *px_orig_thread_p;
   BTSORT_PARAM *ori_sort_param;
   int px_parallel_num;
-  bool px_leave_runs;		/* a worker leaves the runs of its last pass to the main thread's merge rather than
-				 * merging them into one result run (see BTSORT_PX_LEADER_FANIN) */
     parallel_query::worker_manager * px_worker_manager;
     cuberr::context * main_error_context;
   bool px_error_published;	/* first-error-wins guard: set (under px_mtx) by the first failing worker that
@@ -907,7 +907,6 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   sort_param->tot_tempfiles = 0;
   sort_param->data_sects = 0;
 
-  sort_param->px_leave_runs = false;
   sort_param->px_parallel_num = 1;
 
   /* initialize memory allocable fields */
@@ -984,7 +983,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
     {
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
 
-      /* no-redo builds are restricted to genuinely parallel construction. This is the single-process
+      /* the shard put is restricted to genuinely parallel construction. This is the single-process
        * shape (parallelism threshold not met, or no workers could be reserved) -- demote to a fully
        * logged build now, strictly before btree_create_file()/any content page write below, so the
        * legacy build that follows logs normally end to end and no replay barrier record is appended
@@ -1027,10 +1026,6 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (BTSORT_PARAM));
 	  goto cleanup;
 	}
-
-      /* the workers leave the runs of their last pass to the main thread's merge, unless a no-logging build needs
-       * one result run per worker to partition into key ranges (btsort_px_construct_index_leaf) */
-      sort_param->px_leave_runs = !bt_load_parallel_enabled ((const LOAD_ARGS *) sort_param->put_arg);
 
       /* parallel process */
       error = btsort_start_parallelism (thread_p, px_sort_param, sort_param);
@@ -1807,7 +1802,7 @@ btsort_check_parallelism (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   int parallel_num = 1;
   SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
   int n_data_pages = 0, n_sects = 0, error_code = NO_ERROR;
-  bool no_logging_build = bt_load_parallel_enabled ((const LOAD_ARGS *) sort_param->put_arg);
+  bool no_logging_build = bt_load_is_no_logging ((const LOAD_ARGS *) sort_param->put_arg);
 
   if (sort_args_p->n_classes != 1)
     {
@@ -2001,7 +1996,6 @@ btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, B
       /* init px variable */
       px_sort_param[i].px_status = BTSORT_PX_PROGRESS;
       px_sort_param[i].px_parallel_num = parallel_num;
-      px_sort_param[i].px_result_file_idx = 0;
       /* Copy the parent's thread_p. */
       px_sort_param[i].px_orig_thread_p =
 	thread_p->m_px_orig_thread_entry ? thread_p->m_px_orig_thread_entry : thread_p;
@@ -3082,8 +3076,8 @@ btsort_merge_produce_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, bool 
  * Note: A pass merges the first runs of the active input files into one output run until the input runs are used
  *       up, deals the output runs to the output files in turn, and then exchanges the input and output halves.
  *       The pass that produces one run is the last: a serial merge hands its records to put_fn, a parallel merge
- *       leaves them in the file px_result_file_idx names for the main thread, or, when px_leave_runs allows,
- *       leaves that pass to the main thread altogether, with its input runs where they are.
+ *       writes them to an output file for the main thread, or, when BTSORT_PX_LEADER_FANIN allows, leaves that
+ *       pass to the main thread altogether, with its input runs where they are.
  */
 static int
 btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
@@ -3140,10 +3134,11 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
       num_runs = btsort_merge_count_pass_runs (sort_param, ctx.act_infiles);
 
       very_last_run = (num_runs == 1);
-      if (very_last_run && BTSORT_IS_PARALLEL (sort_param) && sort_param->px_leave_runs
+      if (very_last_run && BTSORT_IS_PARALLEL (sort_param)
 	  && ctx.act_infiles * sort_param->px_parallel_num <= BTSORT_PX_LEADER_FANIN)
 	{
-	  /* the main thread merges the runs of this pass itself, with those of the other workers: leave them */
+	  /* the main thread takes the runs of this pass as they are, one per file, with those of the other workers:
+	   * leave them */
 	  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	    {
 	      _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: btsort merge: %d run(s) left to the main thread",
@@ -3152,12 +3147,8 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	  break;
 	}
 
+      /* the final run of a parallel merge goes to an output file, which the main thread reads */
       put_to_caller = very_last_run && !BTSORT_IS_PARALLEL (sort_param);
-      if (very_last_run && !put_to_caller)
-	{
-	  /* put_fn is performed by the parent thread; it reads the file that receives the result */
-	  sort_param->px_result_file_idx = ctx.out.file_idx;
-	}
 
       /* Distribute the internal memory to the input and output sections */
       btsort_merge_assign_sections (&ctx, put_to_caller);
@@ -3260,9 +3251,9 @@ bailout:
  *   sort_param(in): main sort parameters; put_fn builds the leaf level
  *   parallel_num(in): number of workers
  *
- * Note: A no-logging build (loaddb --no-logging-index) partitions the workers' result runs into key ranges and
- *       builds them in parallel (btsort_px_construct_index_leaf). Otherwise the main thread merges every run the
- *       workers left in one pass and hands the records to put_fn, as the final pass of a serial sort does.
+ * Note: The shard put partitions the runs the workers left into key ranges and builds them in parallel
+ *       (btsort_px_construct_index_leaf). Otherwise the main thread merges every run the workers left in one pass
+ *       and hands the records to put_fn, as the final pass of a serial sort does.
  */
 static int
 btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param,
@@ -3291,10 +3282,10 @@ btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_
     }
 
   /*
-   * no-redo builds are restricted to genuinely parallel construction.  btsort_px_construct_index_leaf
+   * the shard put is restricted to genuinely parallel construction.  btsort_px_construct_index_leaf
    * owns both the shard-count decision and the main/overflow-key file creation: it creates and attaches both
-   * files, in one sysop, only once it has committed to n_shards >= 2, and demotes load_args_p->no_redo to
-   * false (with no file created yet) whenever it falls back to BT_PX_NOT_ATTEMPTED.  This removes the
+   * files, in one sysop, only once it has committed to n_shards >= 2, and demotes load_args_p to the serial
+   * put (with no file created yet) whenever it falls back to BT_PX_NOT_ATTEMPTED.  This removes the
    * previous eager file-creation window (main file created and attached to the outer transaction ahead of
    * knowing whether the shard build would actually engage): on the n_shards < 2 fallthrough, no file exists
    * yet when we reach the legacy path below, so there is nothing left orphaned if the eventual put fails --
@@ -3310,18 +3301,24 @@ btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_
     BT_LOAD_PX_OUTCOME outcome = btsort_px_construct_index_leaf (thread_p, px_sort_param, sort_param, parallel_num);
     if (outcome != BT_PX_NOT_ATTEMPTED)
       {
-	/* the initial runs were consumed in place; nothing staged them into sort_param->temp, so retire them
-	 * here (the BTSORT_PX_THREAD_IN_PARALLEL resource cleanup never retires temp files). */
+	/* the workers' runs were consumed in place; nothing staged them into sort_param->temp, so retire their
+	 * files here (the BTSORT_PX_THREAD_IN_PARALLEL resource cleanup never retires temp files). */
 	for (i = 0; i < parallel_num; i++)
 	  {
-	    int idx = px_sort_param[i].px_result_file_idx;
-	    if (px_sort_param[i].file_contents[idx].num_pages[0] > 0 && !VFID_ISNULL (&px_sort_param[i].temp[idx]))
+	    for (int k = 0; k < px_sort_param[i].tot_tempfiles; k++)
 	      {
-		int retire_error = file_temp_retire (thread_p, &px_sort_param[i].temp[idx]);
+		int retire_error;
+
+		if (btsort_run_count (&px_sort_param[i].file_contents[k]) == 0
+		    || VFID_ISNULL (&px_sort_param[i].temp[k]))
+		  {
+		    continue;
+		  }
+		retire_error = file_temp_retire (thread_p, &px_sort_param[i].temp[k]);
 		if (retire_error == NO_ERROR)
 		  {
-		    VFID_SET_NULL (&px_sort_param[i].temp[idx]);
-		    file_find_nth_cursor_reset (&px_sort_param[i].temp_cursor[idx]);
+		    VFID_SET_NULL (&px_sort_param[i].temp[k]);
+		    file_find_nth_cursor_reset (&px_sort_param[i].temp_cursor[k]);
 		  }
 		else
 		  {
@@ -3334,9 +3331,9 @@ btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_
       }
   }
 
-  /* no-redo builds are restricted to genuinely parallel construction, so by construction we never
-   * reach here with load_args_p->no_redo still true -- btsort_px_construct_index_leaf above either committed to
-   * the parallel shard path (returning before this point) or demoted load_args_p->no_redo to false before
+  /* the shard put is restricted to genuinely parallel construction, so by construction we never
+   * reach here with it still enabled -- btsort_px_construct_index_leaf above either committed to
+   * the parallel shard path (returning before this point) or demoted load_args_p to the serial put before
    * returning BT_PX_NOT_ATTEMPTED. The file was therefore never created above; create it now and leave the
    * wrapping sysop open through the put below, exactly like the single-process (serial) fallback in
    * btree_sort() does -- xbtree_load_index attaches it to the outer transaction once the tree is fully
@@ -3679,16 +3676,16 @@ btsort_px_select_splitters (THREAD_ENTRY * thread_p, VFID * run_temp, const int 
   int *hot_order = NULL;
   bool *forced = NULL;
   bool *iso = NULL;
-  int cand_begin[BTSORT_MAX_PARALLEL], cand_end[BTSORT_MAX_PARALLEL], head[BTSORT_MAX_PARALLEL];
+  int cand_begin[BTSORT_PX_LEADER_FANIN], cand_end[BTSORT_PX_LEADER_FANIN], head[BTSORT_PX_LEADER_FANIN];
   /* one page lookup position per run. this runs on the main thread only, so plain locals are enough. */
-  FILE_FIND_NTH_CURSOR run_cursor[BTSORT_MAX_PARALLEL];
+  FILE_FIND_NTH_CURSOR run_cursor[BTSORT_PX_LEADER_FANIN];
   int n_cand = 0, k = 0, n_hot = 0, n_iso = 0, used = 0, m = 0;
   const int B = parallel_num - 1;
   INT64 W = 0, iso_mass = 0, thr;
   int error = NO_ERROR;
 
   *n_splitters = 0;
-  assert (n_runs >= 1 && n_runs <= BTSORT_MAX_PARALLEL && parallel_num >= 2);
+  assert (n_runs >= 1 && n_runs <= BTSORT_PX_LEADER_FANIN && parallel_num >= 2);
 
   for (int r = 0; r < n_runs; r++)
     {
@@ -3971,10 +3968,10 @@ btsort_px_slice_runs_index_leaf (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort
 				 int parallel_num, BTSORT_PX_MERGE_INPUT ** shard_inputs, int *n_runs_out,
 				 int *n_shards_out, INT64 * total_pages_out)
 {
-  VFID run_temp[BTSORT_MAX_PARALLEL];
-  int run_npages[BTSORT_MAX_PARALLEL];
+  VFID run_temp[BTSORT_PX_LEADER_FANIN];
+  int run_npages[BTSORT_PX_LEADER_FANIN];
   /* one page lookup position per run, see btsort_px_select_splitters */
-  FILE_FIND_NTH_CURSOR run_cursor[BTSORT_MAX_PARALLEL];
+  FILE_FIND_NTH_CURSOR run_cursor[BTSORT_PX_LEADER_FANIN];
   DB_VALUE splitters[BTSORT_MAX_PARALLEL];
   int *bp_page = NULL, *bp_slot = NULL;
   LOAD_ARGS *load_args = (LOAD_ARGS *) sort_param->put_arg;
@@ -3988,19 +3985,25 @@ btsort_px_slice_runs_index_leaf (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort
   *n_shards_out = 0;
   *total_pages_out = 0;
 
+  /* every run a worker left: a worker leaves the runs of one pass, one per file from its page 0, and all workers
+   * together leave BTSORT_PX_LEADER_FANIN at most (btsort_exphase_merge) */
   for (int i = 0; i < parallel_num; i++)
     {
-      int idx = px_sort_param[i].px_result_file_idx;
-      int npages = px_sort_param[i].file_contents[idx].num_pages[0];
-      if (npages <= 0)
+      for (int k = 0; k < px_sort_param[i].tot_tempfiles; k++)
 	{
-	  continue;
+	  BTSORT_FILE_CONTENTS *contents = &px_sort_param[i].file_contents[k];
+
+	  if (btsort_run_count (contents) == 0)
+	    {
+	      continue;
+	    }
+	  assert (btsort_run_count (contents) == 1 && n_runs < BTSORT_PX_LEADER_FANIN);
+	  run_temp[n_runs] = px_sort_param[i].temp[k];
+	  run_npages[n_runs] = contents->num_pages[contents->first_run];
+	  file_find_nth_cursor_reset (&run_cursor[n_runs]);
+	  total_pages += run_npages[n_runs];
+	  n_runs++;
 	}
-      run_temp[n_runs] = px_sort_param[i].temp[idx];
-      run_npages[n_runs] = npages;
-      file_find_nth_cursor_reset (&run_cursor[n_runs]);
-      total_pages += npages;
-      n_runs++;
     }
   *n_runs_out = n_runs;
   *total_pages_out = total_pages;
@@ -4345,10 +4348,10 @@ btsort_put_result_index_leaf (cubthread::entry & thread_ref, BTSORT_PARAM * sort
     {
       error = bt_load_worker_close_shard (thread_p, load_args);
     }
-  /* The build's first failure (e.g. the dedicated vacuum-notification-limit error of a no-logging build) reaches the
-   * leader through the page provider: bt_load_worker_epilogue () keeps that worker's error context, and the leader
-   * takes it in its own thread once every worker is done.  Writing it into the leader's context from here would race
-   * with the leader, which serves page refills and may push and pop its error stack meanwhile. */
+  /* The build's first failure reaches the leader through the page provider: bt_load_worker_epilogue () keeps that
+   * worker's error context, and the leader takes it in its own thread once every worker is done.  Writing it into the
+   * leader's context from here would race with the leader, which serves page refills and may push and pop its error
+   * stack meanwhile. */
   error = bt_load_worker_epilogue (thread_p, load_args, error);
   thread_p->pop_resource_tracks ();
 
@@ -4400,7 +4403,7 @@ btsort_px_construct_index_leaf (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_
   if (n_shards < 2)
     {
       /*
-       * no-redo builds are restricted to genuinely parallel construction.
+       * the shard put is restricted to genuinely parallel construction.
        * btsort_px_slice_runs_index_leaf allocates shard_inputs only when it commits to n_shards >= 2, so
        * nothing needs freeing here.  Demote to a fully logged build now -- strictly before any file is
        * created -- so the legacy single-run path in btsort_merge_run_for_parallel_index_leaf_build() creates
@@ -4522,8 +4525,8 @@ cleanup:
  *   sort_param(in/out): sort parameters; tot_tempfiles says how many files, temp_slots is set to it
  *
  * Note: Every slot starts empty: a null file, a reset cursor and a zeroed run list with room for
- *       BTSORT_INITIAL_DYN_ARRAY_SIZE runs. A worker that receives no records makes no run, which the readers of
- *       its result run see as num_pages[0] = 0. On failure whatever was allocated is freed again.
+ *       BTSORT_INITIAL_DYN_ARRAY_SIZE runs. A worker that receives no records makes no run, so its run lists stay
+ *       empty. On failure whatever was allocated is freed again.
  */
 static int
 btsort_alloc_temp_slots (BTSORT_PARAM * sort_param)
