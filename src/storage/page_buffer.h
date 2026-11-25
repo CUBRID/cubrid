@@ -376,6 +376,7 @@ extern int pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_r
 extern int pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 				   const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * smallest_lsa, int *flushed_page_cnt);
 extern int pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid);
+extern int pgbuf_flush_all_and_wait_ongoing_writes (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null (THREAD_ENTRY * thread_p, VOLID volid);
 

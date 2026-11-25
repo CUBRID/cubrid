@@ -1764,6 +1764,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
        * drains the DWB when enabled).  A loaddb-only build has no concurrent traffic to
        * shield, so the global gate is the simplest correct form; most of those pages were
        * already written through right after their unfix, so the residue here is small.
+       * The pool flush also waits for a page that another thread (a checkpoint, the flush daemon) is writing:
+       * that page is not dirty any more, and without the DWB its write can still be on the way to the disk.
        * The order is: pool flush first, DWB drain + fsync second, barrier record append only after success.
        *
        * The barrier is appended as a commit-time postpone instead of a plain redo record, so that
@@ -1771,7 +1773,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
        * sysop region that was rolled back, and log_sysop_attach_to_outer () below hands this one
        * to the outer transaction's postpone list.
        */
-      if (pgbuf_flush_all (thread_p, NULL_VOLID) != NO_ERROR)
+      if (pgbuf_flush_all_and_wait_ongoing_writes (thread_p, NULL_VOLID) != NO_ERROR)
 	{
 	  goto error;
 	}
