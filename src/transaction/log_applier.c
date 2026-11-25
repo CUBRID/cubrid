@@ -474,10 +474,11 @@ static LA_OOS_CACHE_ENTRY *la_oos_cache_tail = NULL;
 static MHT_TABLE *la_oos_cache_hash = NULL;
 static TRANID la_oos_current_tranid = NULL_TRANID;
 
-/* The OOS items of the heap row being assembled, in attribute order: true for a column the master's UPDATE reused
- * (CBRD-27230). The UPDATE did not assign such a column, so the row's sql.log line omits it. When an item could not
- * be recorded no column counts as reused, and a reused column fails its cache lookup instead of hiding another. */
+/* The OOS columns of the heap row being assembled that the master's UPDATE reused (CBRD-27230), so its sql.log line
+ * omits them: by attribute id, or for items without attribute metadata (an older master) one entry per OOS item in
+ * attribute order. When an item could not be recorded no column counts as reused, and its cache lookup fails. */
 /* *INDENT-OFF* */
+static std::vector<int> la_oos_row_reused_attrids;
 static std::vector<bool> la_oos_row_reused;
 /* *INDENT-ON* */
 static bool la_oos_row_reused_lost = false;
@@ -567,8 +568,8 @@ static int la_cache_oos_value (const OID * head_oid, const OID * next_chunk_oid,
 			       int payload_length);
 static LA_OOS_CACHE_ENTRY *la_lookup_oos_value (const OID * head_oid);
 static void la_clear_oos_cache (void);
-static void la_note_oos_item (bool reused);
-static bool la_oos_item_is_reused (int ordinal);
+static void la_note_oos_item (bool reused, int attrid);
+static bool la_oos_item_is_reused (int ordinal, int attrid);
 static void la_forget_oos_row (void);
 static int la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM_ATTRIBUTE * att,
 					     DB_VALUE * value);
@@ -3895,12 +3896,20 @@ la_clear_oos_cache (void)
 }
 
 static void
-la_note_oos_item (bool reused)
+la_note_oos_item (bool reused, int attrid)
 {
   /* *INDENT-OFF* */
   try
     {
-      la_oos_row_reused.push_back (reused);
+      /* an internal LOB is one item per chunk and precedes the other items, so match by attribute id */
+      if (attrid == NULL_ATTRID)
+	{
+	  la_oos_row_reused.push_back (reused);
+	}
+      else if (reused)
+	{
+	  la_oos_row_reused_attrids.push_back (attrid);
+	}
     }
   catch (const std::bad_alloc &)
     {
@@ -3910,14 +3919,26 @@ la_note_oos_item (bool reused)
 }
 
 static bool
-la_oos_item_is_reused (int ordinal)
+la_oos_item_is_reused (int ordinal, int attrid)
 {
-  return !la_oos_row_reused_lost && ordinal < (int) la_oos_row_reused.size () && la_oos_row_reused[ordinal];
+  if (la_oos_row_reused_lost)
+    {
+      return false;
+    }
+  for (size_t i = 0; i < la_oos_row_reused_attrids.size (); i++)
+    {
+      if (la_oos_row_reused_attrids[i] == attrid)
+	{
+	  return true;
+	}
+    }
+  return ordinal < (int) la_oos_row_reused.size () && la_oos_row_reused[ordinal];
 }
 
 static void
 la_forget_oos_row (void)
 {
+  la_oos_row_reused_attrids.clear ();
   la_oos_row_reused.clear ();
   la_oos_row_reused_lost = false;
 }
@@ -4374,7 +4395,7 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
   for (i = sm_class->fixed_count, j = 0; i < sm_class->att_count && j < sm_class->variable_count;
        i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
     {
-      if (vars_oos[j] && la_oos_item_is_reused (oos_ordinal++))
+      if (vars_oos[j] && la_oos_item_is_reused (oos_ordinal++, att->id))
 	{
 	  v_start += vars[j];
 	  buf->ptr = v_start;
@@ -6637,7 +6658,7 @@ end:
     {
       if (la_enable_sql_logging)
 	{
-	  la_note_oos_item (false);
+	  la_note_oos_item (false, item->oos_attrid);
 	}
       la_Info.insert_counter++;
       la_Info.num_unflushed++;
@@ -6666,7 +6687,7 @@ end:
  *   item(in): OOS reuse replication item
  *
  * Note:
- *      The marker carries no record. It holds the column's place among the OOS items of the heap row that follows:
+ *      The marker carries no record. It names a column (by attribute id) of the heap row that follows:
  *      the slave's fixup gives that row the stub of the slave's own previous version, and the row's sql.log line
  *      omits the column, which the UPDATE did not assign.
  */
@@ -6710,7 +6731,7 @@ end:
     {
       if (la_enable_sql_logging)
 	{
-	  la_note_oos_item (true);
+	  la_note_oos_item (true, item->oos_attrid);
 	}
       la_Info.num_unflushed++;
       la_Info.pending_oos_flush = true;
