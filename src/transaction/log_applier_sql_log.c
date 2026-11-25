@@ -658,7 +658,11 @@ sl_open_next_file (FILE * old_fp)
 
   if (sl_write_catalog () != NO_ERROR)
     {
-      fclose (new_fp);
+      /* fopen above may have failed as well */
+      if (new_fp != NULL)
+	{
+	  fclose (new_fp);
+	}
       return NULL;
     }
 
