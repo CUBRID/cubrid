@@ -16926,7 +16926,7 @@ mq_share_collect_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 }
 
 /*
- * mq_share_body_is_safe_pre () - find a method in a view's definition
+ * mq_share_body_is_safe_pre () - find a method or BENCHMARK, whose run is part of its result, in a view's definition
  */
 static PT_NODE *
 mq_share_body_is_safe_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -16934,7 +16934,7 @@ mq_share_body_is_safe_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
   bool *safe = (bool *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
-  if (PT_IS_METHOD (node))
+  if (PT_IS_METHOD (node) || (node->node_type == PT_FUNCTION && node->info.function.function_type == F_BENCHMARK))
     {
       *safe = false;
       *continue_walk = PT_STOP_WALK;
@@ -16944,8 +16944,8 @@ mq_share_body_is_safe_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 
 /*
  * mq_share_view_is_safe () - whether evaluating a view once for all its references gives each the rows it would read
- *   by itself: no random value, serial, session variable, nondeterministic stored function, method, or counter
- *   (rownum, incr) in its definition. A view of VALUES is not shared.
+ *   by itself: no random value, serial, session variable, nondeterministic stored function, method, BENCHMARK, or
+ *   counter (rownum, incr) in its definition. A view of VALUES is not shared.
  */
 static bool
 mq_share_view_is_safe (PARSER_CONTEXT * parser, PT_NODE * entity)
