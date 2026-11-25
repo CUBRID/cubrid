@@ -38,7 +38,7 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 
 | File | Description |
 |------|-------------|
-| `error_code.h` | All error codes as `#define` negative integers (~1700 codes). Adding new codes requires 6-place update (see [src/AGENTS.md](../AGENTS.md)) |
+| `error_code.h` | All error codes as `#define` negative integers (see [src/AGENTS.md](../AGENTS.md) for the error-code update procedure) |
 | `error_manager.c/h` | `er_set()`, error stack, error logging, severity levels, `ASSERT_ERROR()` macros |
 | `error_context.hpp/cpp` | C++ per-thread error context (`cuberr::context`) with stackable error levels |
 
@@ -166,7 +166,7 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 
 | Task | Primary File(s) |
 |------|-----------------|
-| Add error code | `error_code.h` (see [src/AGENTS.md](../AGENTS.md) for 6-place procedure) |
+| Add error code | `error_code.h` (see [src/AGENTS.md](../AGENTS.md) for the error-code update procedure) |
 | Fix memory leak | `memory_alloc.c`, `resource_tracker.hpp` |
 | Fix lock-free structure | `lockfree_hashmap.hpp` (modern), `lock_free.c` (legacy) |
 | Add system parameter | `system_parameter.c/h` — add `PRM_ID_*`, update `prm_Def`, `PRM_LAST_ID` |
