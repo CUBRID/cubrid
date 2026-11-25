@@ -12549,7 +12549,8 @@ qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * 
  * for it as it would have, finding its OIDs read already.  The rows of the join come out in the same order.
  */
 #define QEXEC_NL_BATCH_MAX_LISTS 16
-#define QEXEC_NL_BATCH_FIRST_OIDS 16	/* the first batch of a join; each following one is twice as large */
+#define QEXEC_NL_BATCH_FIRST_ROWS 8	/* outer rows of the first batch of a join; each following one is twice as large */
+#define QEXEC_NL_BATCH_MAX_BYTES (2 * 1024 * 1024)	/* held values: a batch of wide rows closes here */
 #define QEXEC_NL_BATCH_FIRST_BACKOFF 64
 #define QEXEC_NL_BATCH_MAX_BACKOFF 65536
 
@@ -12590,8 +12591,8 @@ struct qexec_nl_batch
   OID *oids;
   int n_oids;
   int oid_cap;			/* twice the inner scan's OID buffer: a row is taken while the first half has room */
-  int oid_target;		/* OIDs that close the batch: grows batch by batch up to one OID buffer, so a join
-				 * that stops after a few rows reads few rows ahead */
+  int row_target;		/* outer rows that close the batch, unless their OIDs fill one OID buffer first: grows
+				 * batch by batch, so a join that stops after a few rows reads few rows ahead */
   int backoff;			/* outer rows joined row at a time after a batch whose pages were all in the buffer:
 				 * twice as many each time */
   int skip;			/* ... of which still to come */
@@ -12640,6 +12641,7 @@ static void qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inne
 static bool qexec_nl_batch_first_only (XASL_NODE * inner);
 static int qexec_nl_batch_slice_ahead (XASL_NODE * inner, QEXEC_NL_BATCH * batch, int oid_start);
 static bool qexec_nl_batch_seen (QEXEC_NL_BATCH * batch, unsigned int hash);
+static bool qexec_nl_batch_is_full (QEXEC_NL_BATCH * batch, bool closed);
 static bool qexec_nl_batch_holds_ahead (XASL_NODE * inner);
 static bool qexec_nl_batch_defer_error (QEXEC_NL_BATCH * batch);
 static void qexec_nl_batch_raise_error (QEXEC_NL_BATCH * batch);
@@ -12684,6 +12686,7 @@ qexec_nl_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * outer, XASL_NODE * inne
     {
       return;
     }
+  batch->row_target = QEXEC_NL_BATCH_FIRST_ROWS;
   inner->nl_batch = batch;
   batch->outer = outer;
 
@@ -13001,6 +13004,29 @@ qexec_nl_batch_free (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
+ * qexec_nl_batch_is_full () - whether the batch closes with the row just held
+ *   return: true to close it
+ *   batch(in/out): the batch
+ *   closed(in): the row itself closes the batch
+ *
+ * Note: The batch closes at its row target, which the next batch doubles up to the OIDs of one OID buffer, or sooner
+ *       when the OIDs read for its rows fill one OID buffer. A batch that holds no OID array yet (rows the subquery's
+ *       cache answers) closes by its rows alone.
+ */
+static bool
+qexec_nl_batch_is_full (QEXEC_NL_BATCH * batch, bool closed)
+{
+  if (!closed && batch->n_rows < batch->row_target && (batch->oids == NULL || batch->n_oids < batch->oid_cap / 2)
+      && batch->bytes < QEXEC_NL_BATCH_MAX_BYTES)
+    {
+      return false;
+    }
+  batch->row_target = MIN (batch->row_target * 2, MAX (batch->oid_cap / 2, QEXEC_NL_BATCH_FIRST_ROWS));
+
+  return true;
+}
+
+/*
  * qexec_nl_batch_seen () - does the batch hold a row of this key already?
  *   return: true when a held row had the same key hash; otherwise false, and the hash is remembered
  *   hash(in): of the key by which the step's answers are kept
@@ -13102,7 +13128,6 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
   if (batch->oids == NULL)
     {
       batch->oid_cap = 2 * s_id->s.isid.oid_list->capacity;
-      batch->oid_target = MIN (QEXEC_NL_BATCH_FIRST_OIDS, batch->oid_cap / 2);
       batch->oids = (OID *) malloc (batch->oid_cap * sizeof (OID));
       if (batch->oids == NULL)
 	{
@@ -13190,13 +13215,7 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
     }
 
   /* rows that copy no value and find no OID still count: the batch does not grow to the whole outer */
-  if (closed || batch->n_oids >= batch->oid_target || batch->n_rows >= batch->oid_target
-      || batch->bytes >= (INT64) batch->oid_target * (INT64) sizeof (OID))
-    {
-      batch->oid_target = MIN (batch->oid_target * 2, batch->oid_cap / 2);
-      return S_END;
-    }
-  return S_SUCCESS;
+  return qexec_nl_batch_is_full (batch, closed) ? S_END : S_SUCCESS;
 }
 
 /*
@@ -13631,8 +13650,8 @@ memoize_lookup:
 	  if (held == S_END)
 	    {
 	      /* a step that memoizes closes the batch after the last row of the outer row, while the batch has room */
-	      if (xasl->memoize_storage != NULL && sq->b.n_oids < sq->b.oid_cap / 2
-		  && sq->b.bytes < (INT64) (sq->b.oid_cap / 2) * (INT64) sizeof (OID))
+	      if (xasl->memoize_storage != NULL && (sq->b.oids == NULL || sq->b.n_oids < sq->b.oid_cap / 2)
+		  && sq->b.bytes < QEXEC_NL_BATCH_MAX_BYTES)
 		{
 		  sq->close_pending = true;
 		}
@@ -14116,6 +14135,7 @@ qexec_sq_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
   sq->sq_xasl = sq_xasl;
   sq->slice_cnt = -1;
+  sq->b.row_target = QEXEC_NL_BATCH_FIRST_ROWS;
   for (up = xasl; up != NULL; up = (up->nl_batch != NULL) ? up->nl_batch->outer : NULL)
     {
       if (up->val_list == NULL || sq->b.n_lists == QEXEC_SQ_BATCH_MAX_LISTS)
@@ -14314,7 +14334,6 @@ qexec_sq_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   if (scan_ok && b->oids == NULL)
     {
       b->oid_cap = 2 * s_id->s.isid.oid_list->capacity;
-      b->oid_target = MIN (QEXEC_NL_BATCH_FIRST_OIDS, b->oid_cap / 2);
       b->oids = (OID *) malloc (b->oid_cap * sizeof (OID));
       if (b->oids == NULL)
 	{
@@ -14411,13 +14430,7 @@ hold:
       closed = true;
     }
 
-  if (closed || b->n_oids >= b->oid_target || b->n_rows >= b->oid_target
-      || b->bytes >= (INT64) b->oid_target * (INT64) sizeof (OID))
-    {
-      b->oid_target = MIN (b->oid_target * 2, b->oid_cap / 2);
-      return S_END;
-    }
-  return S_SUCCESS;
+  return qexec_nl_batch_is_full (b, closed) ? S_END : S_SUCCESS;
 }
 
 /*

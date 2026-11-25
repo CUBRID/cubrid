@@ -10819,22 +10819,34 @@ qo_find_best_parallel_driving_plan_on_info (QO_INFO * info)
   QO_PLANVEC *pv = &info->best_no_order;
   QO_PLAN *best_plan = NULL;
   double best_cost = 0.0, cost;
+  bool bitmap = false;
   int i;
 
-  for (i = 0; i < pv->nplans; i++)
+  for (;;)
     {
-      if (!qo_plan_drives_parallel (pv->plan[i]))
+      for (i = 0; i < pv->nplans; i++)
 	{
-	  continue;
-	}
+	  if (!qo_plan_drives_parallel (pv->plan[i]))
+	    {
+	      continue;
+	    }
 
-      cost = pv->plan[i]->fixed_cpu_cost + pv->plan[i]->fixed_io_cost + pv->plan[i]->variable_cpu_cost
-	+ pv->plan[i]->variable_io_cost;
-      if (best_plan == NULL || cost < best_cost)
-	{
-	  best_plan = pv->plan[i];
-	  best_cost = cost;
+	  cost = pv->plan[i]->fixed_cpu_cost + pv->plan[i]->fixed_io_cost + pv->plan[i]->variable_cpu_cost
+	    + pv->plan[i]->variable_io_cost;
+	  /* an equal cost goes to the bitmap, as in qo_find_best_plan_on_info () */
+	  if (best_plan == NULL || cost < best_cost || (bitmap && cost == best_cost))
+	    {
+	      best_plan = pv->plan[i];
+	      best_cost = cost;
+	    }
 	}
+      if (bitmap || info->planner == NULL || !info->planner->bitmap_heap_pass)
+	{
+	  break;
+	}
+      /* the pass that joins from the plans with a bitmap heap scan: those drive a parallel block too */
+      pv = &info->best_bitmap;
+      bitmap = true;
     }
 
   return best_plan;
