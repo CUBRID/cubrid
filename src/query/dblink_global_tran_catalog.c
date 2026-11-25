@@ -32,6 +32,9 @@
 #include "system_catalog.h"
 #include "heap_file.h"
 #include "locator_sr.h"
+#include "log_impl.h"
+#include "mvcc.h"
+#include "thread_manager.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
 #include "crypt_opfunc.h"
@@ -60,6 +63,54 @@ dblink_global_tran_errid (void)
 {
   int error = er_errid ();
   return (error == NO_ERROR) ? ER_FAILED : error;
+}
+
+/*
+ * dblink_global_tran_live_snapshot_start () - build the snapshot a heap scan of _db_global_tran reads rows under
+ *
+ * return: local, or NULL when the current transaction cannot have a snapshot (the scan then reads every version
+ *	   in the heap, as it did before)
+ *
+ *   thread_p(in): thread entry
+ *   local(out): snapshot owned by the caller until dblink_global_tran_live_snapshot_end ()
+ *   holds_vacuum(out): to pass to dblink_global_tran_live_snapshot_end ()
+ *
+ * Note: A row is removed with an MVCC delete once its decision has been delivered, and the deleted version stays
+ *	 in the heap until vacuum removes it. A scan without a snapshot returns that version as if the row were
+ *	 still there: recovery replays a decision that was already delivered, and a lookup by (gtrid, bqual) can
+ *	 take it instead of the live row of a later global transaction that reuses the pair. A catalog read
+ *	 snapshot hides it and still shows the rows that the current transaction wrote itself, without building
+ *	 or changing the transaction snapshot of the caller.
+ */
+static MVCC_SNAPSHOT *
+dblink_global_tran_live_snapshot_start (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local, bool * holds_vacuum)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  return logtb_get_catalog_read_snapshot (thread_p, local, holds_vacuum);
+}
+
+/*
+ * dblink_global_tran_live_snapshot_end () - stop holding vacuum back for a snapshot that
+ *					      dblink_global_tran_live_snapshot_start () built
+ */
+static void
+dblink_global_tran_live_snapshot_end (THREAD_ENTRY * thread_p, const MVCC_SNAPSHOT * local, bool holds_vacuum)
+{
+  if (!holds_vacuum)
+    {
+      return;
+    }
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  logtb_release_catalog_read_snapshot (thread_p, local);
 }
 
 int
@@ -202,19 +253,29 @@ find_row_by_gtrid_bqual (THREAD_ENTRY * thread_p, int gtrid, int bqual, OID * ou
 			 HEAP_SCANCACHE * scan_p, const HFID * hfid_p, const OID * class_oid_p)
 {
   OID inst_oid;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   SCAN_CODE sc;
   int i;
   HEAP_ATTRVALUE *heap_value = NULL;
   bool valid_gtrid, valid_bqual;
   int found_gtrid = 0, found_bqual = 0;
+  int error = ER_FAILED;	/* not found */
+  MVCC_SNAPSHOT live_snapshot;
+  MVCC_SNAPSHOT *save_snapshot;
+  bool holds_vacuum = false;
+
+  /* scan_p is the modify scan cache of the caller: look the row up under a snapshot, then give the cache back
+   * unchanged so that the update/delete which follows behaves as before */
+  save_snapshot = scan_p->mvcc_snapshot;
+  scan_p->mvcc_snapshot = dblink_global_tran_live_snapshot_start (thread_p, &live_snapshot, &holds_vacuum);
 
   sc = heap_first (thread_p, hfid_p, (OID *) class_oid_p, &inst_oid, &recdes, scan_p, PEEK);
   while (sc == S_SUCCESS)
     {
       if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, attr_info) != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto end;
 	}
       valid_gtrid = false;
       valid_bqual = false;
@@ -240,13 +301,21 @@ find_row_by_gtrid_bqual (THREAD_ENTRY * thread_p, int gtrid, int bqual, OID * ou
       if (valid_gtrid && valid_bqual && found_gtrid == gtrid && found_bqual == bqual)
 	{
 	  *out_oid = inst_oid;
-	  return NO_ERROR;
+	  error = NO_ERROR;
+	  goto end;
 	}
+      /* a version that the snapshot does not see is read from the log into the scan cache area; with PEEK,
+       * recdes still points into the page of the previous row, so let heap_next () assign the area again */
+      recdes.data = NULL;
       sc =
 	heap_next (thread_p, hfid_p, (OID *) class_oid_p, &inst_oid, &recdes, scan_p, PEEK,
 		   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
     }
-  return ER_FAILED;		/* not found */
+
+end:
+  scan_p->mvcc_snapshot = save_snapshot;
+  dblink_global_tran_live_snapshot_end (thread_p, &live_snapshot, holds_vacuum);
+  return error;
 }
 
 int
@@ -403,7 +472,7 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
   HFID *hfid_p;
   HEAP_SCANCACHE scan;
   HEAP_CACHE_ATTRINFO attr_info;
-  RECDES recdes;
+  RECDES recdes = RECDES_INITIALIZER;
   SCAN_CODE sc;
   int i;
   HEAP_ATTRVALUE *heap_value = NULL;
@@ -412,6 +481,9 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
   bool scan_cache_inited = false;
   bool attr_inited = false;
   char cipher[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
+  MVCC_SNAPSHOT live_snapshot;
+  MVCC_SNAPSHOT *snapshot_p;
+  bool holds_vacuum = false;
 
   if (callback == NULL)
     {
@@ -429,7 +501,10 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
     }
   hfid_p = &cls_info->ci_hfid;
 
-  if (heap_scancache_start (thread_p, &scan, hfid_p, &class_oid, true, NULL) != NO_ERROR)
+  /* replay only the rows that are still there: a row whose decision was delivered is deleted, but its version
+   * stays in the heap until vacuum removes it */
+  snapshot_p = dblink_global_tran_live_snapshot_start (thread_p, &live_snapshot, &holds_vacuum);
+  if (heap_scancache_start (thread_p, &scan, hfid_p, &class_oid, true, snapshot_p) != NO_ERROR)
     {
       error = dblink_global_tran_errid ();
       goto cleanup;
@@ -513,6 +588,8 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
 	      break;
 	    }
 	}
+      /* see find_row_by_gtrid_bqual () */
+      recdes.data = NULL;
       sc =
 	heap_next (thread_p, hfid_p, &class_oid, &inst_oid, &recdes, &scan, PEEK, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
     }
@@ -526,6 +603,7 @@ cleanup:
     {
       heap_scancache_end (thread_p, &scan);
     }
+  dblink_global_tran_live_snapshot_end (thread_p, &live_snapshot, holds_vacuum);
   if (cls_info != NULL)
     {
       catalog_free_class_info (cls_info);
