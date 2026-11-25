@@ -6969,6 +6969,32 @@ la_get_overflow_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * l
   return error;
 }
 
+/*
+ * la_set_apply_item_error() - set the error of a replication item that cannot be applied
+ *   return: ER_HA_GENERIC_ERROR
+ *   function(in): the function that found the problem
+ *   what(in): what was unexpected, e.g. "record type"
+ *   value(in): the unexpected value
+ *   lsa(in): position of the log record
+ *   class_name(in): class of the item, or NULL
+ *
+ * Note:
+ *   la_apply_repl_log decides from the error set whether to skip, retry or stop, so an item must not fail
+ *   with no error set.
+ */
+static int
+la_set_apply_item_error (const char *function, const char *what, int value, const LOG_LSA * lsa,
+			 const char *class_name)
+{
+  char message[LINE_MAX];
+
+  snprintf (message, sizeof (message), "%s: unexpected %s %d at %lld|%d (class %s)", function, what, value,
+	    LSA_AS_ARGS (lsa), (class_name != NULL) ? class_name : "-");
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, message);
+
+  return ER_HA_GENERIC_ERROR;
+}
+
 typedef struct la_oos_chunk LA_OOS_CHUNK;
 struct la_oos_chunk
 {
@@ -7561,7 +7587,7 @@ la_get_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_LSA * lsa, LOG_PAGE * pgpt
     }
   else
     {
-      /* logged in release builds too: the caller may receive ER_FAILED with no error set */
+      /* logged in release builds too, with the details the error message below leaves out */
       _er_log_debug (ARG_FILE_LINE,
 		     "la_get_recdes: cannot get the log record at %lld|%d (log page %lld, record type %d, "
 		     "error %d, data %s)\n", (long long) lsa->pageid, (int) lsa->offset,
@@ -7571,10 +7597,9 @@ la_get_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_LSA * lsa, LOG_PAGE * pgpt
 	{
 	  return error;
 	}
-      else
-	{
-	  return ER_FAILED;
-	}
+
+      return la_set_apply_item_error ("la_get_recdes", "missing data of log record type", (int) lrec->type, lsa,
+				      NULL);
     }
 
   /* Now.. we have to process overflow pages */
@@ -8150,11 +8175,8 @@ la_apply_update_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS
 
   if (recdes->type == REC_ASSIGN_ADDRESS || recdes->type == REC_RELOCATION)
     {
-      /* logged in release builds too: ER_FAILED is returned with no error set */
-      _er_log_debug (ARG_FILE_LINE,
-		     "la_apply_update_log: unexpected record type %d at %lld|%d (class %s)\n", (int) recdes->type,
-		     (long long) item->target_lsa.pageid, (int) item->target_lsa.offset, item->class_name);
-      error = ER_FAILED;
+      error = la_set_apply_item_error ("la_apply_update_log", "record type", (int) recdes->type, &item->target_lsa,
+				       item->class_name);
 
       goto end;
     }
@@ -8162,12 +8184,8 @@ la_apply_update_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS
   if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK && rcvindex != RVHF_MVCC_INSERT
       && rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && rcvindex != RVHF_INSERT_NEWHOME)
     {
-      /* logged in release builds too: ER_FAILED is returned with no error set */
-      _er_log_debug (ARG_FILE_LINE,
-		     "la_apply_update_log: unexpected recovery index %u at %lld|%d (class %s, record type %d)\n",
-		     rcvindex, (long long) item->target_lsa.pageid, (int) item->target_lsa.offset, item->class_name,
-		     (int) recdes->type);
-      error = ER_FAILED;
+      error = la_set_apply_item_error ("la_apply_update_log", "recovery index", (int) rcvindex, &item->target_lsa,
+				       item->class_name);
 
       goto end;
     }
@@ -8417,16 +8435,16 @@ la_apply_oos_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LA
 
   if (recdes->type == REC_ASSIGN_ADDRESS || recdes->type == REC_RELOCATION)
     {
-      er_log_debug (ARG_FILE_LINE, "apply_insert : rectype.type = %d\n", recdes->type);
-      error = ER_FAILED;
+      error = la_set_apply_item_error ("la_apply_oos_insert_log", "record type", (int) recdes->type,
+				       &item->target_lsa, item->class_name);
 
       goto end;
     }
 
   if (rcvindex != RVOOS_INSERT)
     {
-      er_log_debug (ARG_FILE_LINE, "apply_insert : rcvindex = %d\n", rcvindex);
-      error = ER_FAILED;
+      error = la_set_apply_item_error ("la_apply_oos_insert_log", "recovery index", (int) rcvindex,
+				       &item->target_lsa, item->class_name);
 
       goto end;
     }
@@ -8611,23 +8629,16 @@ la_apply_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS
 
   if (recdes->type == REC_ASSIGN_ADDRESS || recdes->type == REC_RELOCATION)
     {
-      /* logged in release builds too: ER_FAILED is returned with no error set */
-      _er_log_debug (ARG_FILE_LINE,
-		     "la_apply_insert_log: unexpected record type %d at %lld|%d (class %s)\n", (int) recdes->type,
-		     (long long) item->target_lsa.pageid, (int) item->target_lsa.offset, item->class_name);
-      error = ER_FAILED;
+      error = la_set_apply_item_error ("la_apply_insert_log", "record type", (int) recdes->type, &item->target_lsa,
+				       item->class_name);
 
       goto end;
     }
 
   if (rcvindex != RVHF_INSERT && rcvindex != RVHF_MVCC_INSERT)
     {
-      /* logged in release builds too: ER_FAILED is returned with no error set */
-      _er_log_debug (ARG_FILE_LINE,
-		     "la_apply_insert_log: unexpected recovery index %u at %lld|%d (class %s, record type %d)\n",
-		     rcvindex, (long long) item->target_lsa.pageid, (int) item->target_lsa.offset, item->class_name,
-		     (int) recdes->type);
-      error = ER_FAILED;
+      error = la_set_apply_item_error ("la_apply_insert_log", "recovery index", (int) rcvindex, &item->target_lsa,
+				       item->class_name);
 
       goto end;
     }
@@ -9130,6 +9141,8 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
   while (item)
     {
       error = NO_ERROR;
+      /* the skip, retry and stop decisions below read the error set by this item, not one left by an earlier item */
+      er_clear ();
 
       /* Pages the previous item fixed while reading records across a page boundary are still held;
        * the item's rows are already copied into the record pool, so release them before the next one. */
@@ -9175,10 +9188,9 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
 		  break;
 
 		default:
-		  er_log_debug (ARG_FILE_LINE, "apply_repl_log : log_type %d item_type %d\n", item->log_type,
-				item->item_type);
-
 		  assert_release (false);
+		  error = la_set_apply_item_error ("la_apply_repl_log", "item type", item->item_type, &item->lsa,
+						   item->class_name);
 		}
 	    }
 	  else if (item->log_type == LOG_REPLICATION_STATEMENT)
@@ -9187,9 +9199,9 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
 	    }
 	  else
 	    {
-	      er_log_debug (ARG_FILE_LINE, "apply_repl_log : log_type %d item_type\n", item->log_type, item->item_type);
-
 	      assert_release (false);
+	      error = la_set_apply_item_error ("la_apply_repl_log", "log type", item->log_type, &item->lsa,
+					       item->class_name);
 	    }
 
 	  apply_repl_log_cnt++;
