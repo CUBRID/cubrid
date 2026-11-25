@@ -51,16 +51,21 @@
 class SqlServerEnv : public ::testing::Environment
 {
   public:
+    explicit SqlServerEnv (const char *db_name = "unittestdb")
+      : m_db_name (db_name)
+    {
+    }
+
     void SetUp () override
     {
       printf ("##### Starting Server For OOS SQL Testing #####\n");
       er_init ("./test_oos_sql_log", ER_NEVER_EXIT);
 #if defined(SA_MODE)
       db_set_client_type (DB_CLIENT_TYPE_MAX);
-      auto err = db_restart ("unit_test", TRUE, "unittestdb");
+      auto err = db_restart ("unit_test", TRUE, m_db_name);
 #else
       db_set_client_type (DB_CLIENT_TYPE_DEFAULT);
-      auto err = db_restart ("unit_test", FALSE, "unittestdb");
+      auto err = db_restart ("unit_test", FALSE, m_db_name);
 #endif
       printf ("will be written at %s\n", er_get_msglog_filename ());
       if (err != NO_ERROR)
@@ -80,6 +85,9 @@ class SqlServerEnv : public ::testing::Environment
 	  abort ();
 	}
     }
+
+  private:
+    const char *m_db_name;
 };
 
 // ============================================================================
