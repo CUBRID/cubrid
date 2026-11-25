@@ -9,7 +9,7 @@ page fix/unfix behavior, dirty-page flushing, page LSA handling, volume read/wri
 |------|------|
 | `page_buffer.c/h` | Buffer pool, page latches, LRU/victim selection, dirty tracking, flush daemon |
 | `file_io.c/h` | Raw volume/log file I/O, page reserved area, page watermark/LSA helpers |
-| `file_io_backup.c` | Backup and restore sessions (`SERVER_MODE` / `SA_MODE` only); types stay in `file_io.h` |
+| `file_io_backup.c/h` | Backup and restore sessions (`SERVER_MODE` / `SA_MODE` only); backup level, zip and prompt types shared with clients stay in `file_io.h` |
 | `double_write_buffer.cpp/hpp` | Torn-write protection for data page flushes |
 | `tde.c/h` | Transparent data encryption helpers for pages/logs and TDE algorithm metadata |
 

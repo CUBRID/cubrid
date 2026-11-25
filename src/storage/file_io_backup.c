@@ -48,6 +48,7 @@
 
 #include "chartype.h"
 #include "file_io.h"
+#include "file_io_backup.h"
 #include "compressor.hpp"
 #include "storage_common.h"
 #include "memory_alloc.h"
