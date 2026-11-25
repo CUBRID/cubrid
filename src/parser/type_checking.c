@@ -18106,6 +18106,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     case PT_ESTIMATED_AVG_ROW_LENGTH:
     case PT_ESTIMATED_DATA_LENGTH:
     case PT_ESTIMATED_DATA_FREE:
+    case PT_SENSITIVITY_LABEL_GRADE_LEVEL:
       /* constant folding for this expression is never performed : is always resolved on server */
       return 0;
     case PT_LIST_DBS:
