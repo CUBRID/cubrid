@@ -7344,8 +7344,7 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
   int line, column;
   const char *alias_print;
   PT_SELECT_INFO *subq;
-  int col_cnt, i;
-  PT_NODE *col, *set, *spec;
+  PT_NODE *col, *set, *spec, *old_list, *old_col;
 
   if (node->info.query.flag.has_outer_spec == 1 || node->info.query.flag.is_sort_spec
       || node->info.query.flag.is_insert_select)
@@ -7360,26 +7359,29 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 
       subq = &(node->info.query.q.select);
 
-      /* rewrite SELECT list */
-      col_cnt = pt_length_of_select_list (subq->list, EXCLUDE_HIDDEN_COLUMNS);
-
-      parser_free_tree (parser, subq->list);
+      /* rewrite SELECT list, hidden columns too: a derived table takes them into its columns
+       * (pt_get_attr_list_of_derived_table ()), and an ORDER BY kept below refers to them by position */
+      old_list = subq->list;
       subq->list = NULL;
 
-      for (i = 0; i < col_cnt; i++)
+      for (old_col = old_list; old_col != NULL; old_col = old_col->next)
 	{
 	  col = parser_new_node (parser, PT_VALUE);
 	  if (col)
 	    {
 	      col->type_enum = PT_TYPE_NULL;
+	      col->flag.is_hidden_column = old_col->flag.is_hidden_column;
 	      subq->list = parser_append_node (subq->list, col);
 	    }
 	  else
 	    {
+	      parser_free_tree (parser, old_list);
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      return NULL;
 	    }
 	}
+
+      parser_free_tree (parser, old_list);
 
       /* rewrite FROM list */
       set = parser_new_node (parser, PT_VALUE);
