@@ -17160,6 +17160,31 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       }
 
     case PT_SCHEMA:
+      {
+	/* the schema is the current user, as in XASL generation */
+	char *username = db_get_user_name ();
+
+	db_make_null (result);
+	if (username == NULL)
+	  {
+	    assert (er_errid () != NO_ERROR);
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+
+	error = db_make_string_copy (result, username);
+	db_string_free (username);
+	if (error < 0)
+	  {
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	else
+	  {
+	    return 1;
+	  }
+      }
+
     case PT_DATABASE:
       db_make_null (result);
       error = db_make_string (&tmp_val, db_get_database_name ());
@@ -17755,7 +17780,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  return 0;
 	}
-      dom_status = tp_value_cast (arg1, result, domain, false);
+      if (PT_IS_EXPR_NODE (expr) && PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP | PT_EXPR_INFO_CAST_NOFAIL))
+	{
+	  dom_status = tp_value_cast (arg1, result, domain, false);
+	}
+      else
+	{
+	  /* a CAST the user wrote truncates a longer string, as the server's T_CAST does */
+	  dom_status = tp_value_cast_force (arg1, result, domain, false);
+	}
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  assert (expr->node_type == PT_EXPR);

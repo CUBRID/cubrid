@@ -1611,7 +1611,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 
   new_recdesc.set_external_buffer (copyarea);
 
-  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc);
+  /* the row is logged redo-only, so it must not write anything a rollback undoes, such as a new OOS chain */
+  scan = heap_attrinfo_transform_to_disk_keep_form (thread_p, attr_info, recdesc, &new_recdesc);
   if (scan != S_SUCCESS)
     {
       assert (false);
@@ -2154,7 +2155,9 @@ serial_repl_rebuild_image (THREAD_ENTRY * thread_p, const OID * serial_oidp, REC
     {
       goto end;
     }
-  if (heap_attrinfo_transform_to_disk (thread_p, &row_info, &row, rebuilt) == S_SUCCESS)
+  /* keep this node's storage form: a _db_serial row that holds an OOS stub would write a new chain on
+   * every replicated NEXT VALUE and break HA apply after failover */
+  if (heap_attrinfo_transform_to_disk_keep_form (thread_p, &row_info, &row, rebuilt) == S_SUCCESS)
     {
       error = NO_ERROR;
     }
@@ -2477,8 +2480,10 @@ serial_row_write_keep_value (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, 
     {
       error = heap_attrinfo_set (serial_oidp, started_id, old_started, &write->new_info);
     }
+  /* keep the client's storage form, which is inline for a system class: a _db_serial row that holds an OOS stub
+   * replicates as an image the HA applier cannot apply, and every later NEXT VALUE would keep that stub */
   if (error == NO_ERROR
-      && heap_attrinfo_transform_to_disk (thread_p, &write->new_info, new_recdes, merged) != S_SUCCESS)
+      && heap_attrinfo_transform_to_disk_keep_form (thread_p, &write->new_info, new_recdes, merged) != S_SUCCESS)
     {
       ASSERT_ERROR_AND_SET (error);
     }
