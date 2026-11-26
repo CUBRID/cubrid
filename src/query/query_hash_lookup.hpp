@@ -45,10 +45,13 @@ struct hash_lookup_stats
 {
   TSCTIMEVAL build_time;	/* building the tables, measured while the query is traced */
   TSCTIMEVAL lookup_time;	/* the lookups, from hash_lookup_start to hash_lookup_end, measured while traced */
+  TSCTIMEVAL lookup_time_min;	/* PX scan: the shortest lookup_time of the workers */
+  TSCTIMEVAL lookup_time_max;	/* PX scan: the longest lookup_time of the workers */
   UINT64 builds;		/* tables built over the subquery's list */
   UINT64 lookups;		/* the lookups those tables answered */
   UINT64 rows;			/* the list values those lookups gave the comparison */
   int method;			/* the tables' HASH_METHOD (query_hash_scan.h) */
+  int workers;			/* PX scan: the workers whose lookups hash_lookup_merge_stats merged */
 };
 
 /* each lookup: the hash, built by the first lookup of the list */

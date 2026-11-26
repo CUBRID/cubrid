@@ -131,6 +131,9 @@ static int qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_N
 static const char *qdump_hashjoin_type_string (HASH_METHOD hash_method);
 static void qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent);
 static void qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent);
+#if defined (SERVER_MODE)
+static void qdump_hash_lookup_time_string (const HASH_LOOKUP_STATS * hl_stats, char *time_str, size_t time_str_size);
+#endif /* SERVER_MODE */
 static void qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor,
 						trace_json_t * parent);
 static void qdump_print_px_subquery_stats_text (FILE * fp, parallel_query_execute::query_executor * px_executor);
@@ -3654,6 +3657,27 @@ qdump_print_px_subquery_stats_text (FILE * fp, parallel_query_execute::query_exe
 }
 
 /*
+ * qdump_hash_lookup_time_string () - the time of a subquery's hash lookups for the trace
+ *   hl_stats(in): the hash's stats
+ *   time_str(out): the time, or the range of the workers' times after a PX scan as a parallel hash join prints its
+ *                  probe times
+ *   time_str_size(in): the size of time_str
+ */
+static void
+qdump_hash_lookup_time_string (const HASH_LOOKUP_STATS * hl_stats, char *time_str, size_t time_str_size)
+{
+  if (hl_stats->workers > 0)
+    {
+      snprintf (time_str, time_str_size, "%d..%d", TO_MSEC (hl_stats->lookup_time_min),
+		TO_MSEC (hl_stats->lookup_time_max));
+    }
+  else
+    {
+      snprintf (time_str, time_str_size, "%d", TO_MSEC (hl_stats->lookup_time));
+    }
+}
+
+/*
  * qdump_print_stats_json () -
  *   return:
  *   xasl_p(in):
@@ -3841,6 +3865,7 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
     {
       const HASH_LOOKUP_STATS *hl_stats;
       const char *hash_temp;
+      char time_str[32];	/* "INT_MIN..INT_MAX" needs 25 bytes */
 
       if (xptr->hash_lookup == NULL || hash_lookup_get_stats (xptr->hash_lookup)->builds == 0)
 	{
@@ -3852,7 +3877,15 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       hash_lookup = trace_json_object ();
       trace_json_object_set_new (hash_lookup, "access", trace_json_string (hash_temp));
       trace_json_object_set_new (hash_lookup, "build time", trace_json_integer (TO_MSEC (hl_stats->build_time)));
-      trace_json_object_set_new (hash_lookup, "time", trace_json_integer (TO_MSEC (hl_stats->lookup_time)));
+      if (hl_stats->workers > 0)
+	{
+	  qdump_hash_lookup_time_string (hl_stats, time_str, sizeof (time_str));
+	  trace_json_object_set_new (hash_lookup, "time", trace_json_string (time_str));
+	}
+      else
+	{
+	  trace_json_object_set_new (hash_lookup, "time", trace_json_integer (TO_MSEC (hl_stats->lookup_time)));
+	}
       trace_json_object_set_new (hash_lookup, "lookups", trace_json_integer (hl_stats->lookups));
       trace_json_object_set_new (hash_lookup, "rows", trace_json_integer (hl_stats->rows));
 
@@ -4626,6 +4659,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     {
       const HASH_LOOKUP_STATS *hl_stats;
       const char *hash_temp;
+      char time_str[32];	/* "INT_MIN..INT_MAX" needs 25 bytes */
 
       if (xptr->hash_lookup == NULL || hash_lookup_get_stats (xptr->hash_lookup)->builds == 0)
 	{
@@ -4634,9 +4668,10 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
       hl_stats = hash_lookup_get_stats (xptr->hash_lookup);
       hash_temp = (hl_stats->method == HASH_METH_HYBRID) ? "hash temp(h)" : "hash temp(m)";
+      qdump_hash_lookup_time_string (hl_stats, time_str, sizeof (time_str));
       fprintf (fp, "%*c", indent, ' ');
-      fprintf (fp, "HASH_LOOKUP (%s, build time: %d, time: %d, lookups: %llu, rows: %llu)\n", hash_temp,
-	       TO_MSEC (hl_stats->build_time), TO_MSEC (hl_stats->lookup_time), (unsigned long long) hl_stats->lookups,
+      fprintf (fp, "HASH_LOOKUP (%s, build time: %d, time: %s, lookups: %llu, rows: %llu)\n", hash_temp,
+	       TO_MSEC (hl_stats->build_time), time_str, (unsigned long long) hl_stats->lookups,
 	       (unsigned long long) hl_stats->rows);
     }
 

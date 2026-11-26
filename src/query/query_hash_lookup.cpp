@@ -997,7 +997,7 @@ hash_lookup_get_stats (const HASH_LOOKUP *lookup)
 }
 
 /*
- * hash_lookup_merge_stats () - add the stats of a PX scan worker's clone of a subquery to the leader's node
+ * hash_lookup_merge_stats () - merge the stats of a PX scan worker's clone of a subquery into the leader's node
  *   leader(in/out): the leader's node (xasl_merge_stats ())
  *   clone(in): the clone
  *
@@ -1035,8 +1035,18 @@ hash_lookup_merge_stats (xasl_node *leader, const xasl_node *clone)
   clone_stats = &clone->hash_lookup->stats;
   leader_stats = &leader->hash_lookup->stats;
 
+  /* the workers' lookup times as a parallel hash join's probe times: their range, while the counts add up */
+  if (leader_stats->workers == 0 || timercmp (&clone_stats->lookup_time, &leader_stats->lookup_time_min, <))
+    {
+      leader_stats->lookup_time_min = clone_stats->lookup_time;
+    }
+  if (leader_stats->workers == 0 || timercmp (&clone_stats->lookup_time, &leader_stats->lookup_time_max, >))
+    {
+      leader_stats->lookup_time_max = clone_stats->lookup_time;
+    }
+  leader_stats->workers++;
+
   TSC_ADD_TIMEVAL (leader_stats->build_time, clone_stats->build_time);
-  TSC_ADD_TIMEVAL (leader_stats->lookup_time, clone_stats->lookup_time);
   leader_stats->builds += clone_stats->builds;
   leader_stats->lookups += clone_stats->lookups;
   leader_stats->rows += clone_stats->rows;
