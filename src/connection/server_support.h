@@ -110,6 +110,8 @@ extern void css_get_thread_runtime_stats (UINT64 * total_slots, UINT64 * target_
 					  UINT64 * total_workers, UINT64 * target_workers, UINT64 * busy_workers);
 extern size_t css_get_num_request_workers (void);
 extern bool css_are_all_request_handlers_suspended (void);
+extern int css_get_request_core (const THREAD_ENTRY & thread_ref);
+extern int css_get_queued_transaction_request_core (void);
 extern size_t css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, int client_id);
 extern void css_set_max_concurrency_and_workers (std::size_t max_concurrency, std::size_t max_worker);
 

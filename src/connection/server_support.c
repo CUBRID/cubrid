@@ -2581,6 +2581,42 @@ css_are_all_request_handlers_suspended (void)
 }
 
 //
+// css_get_request_core () - get the request worker core that runs the requests of the thread's connection, or -1
+//
+int
+css_get_request_core (const THREAD_ENTRY &thread_ref)
+{
+  // the core css_push_server_task () pushes the connection's requests to
+  const CSS_CONN_ENTRY *conn = thread_ref.conn_entry;
+  return conn != NULL ? conn->idx % (int) css_Server_request_worker_pool->get_core_count () : -1;
+}
+
+//
+// css_get_queued_transaction_request_core () - get the request worker core where a request of a connection inside a
+//                                              transaction waits to start, or -1
+//
+int
+css_get_queued_transaction_request_core (void)
+{
+  CSS_CONN_ENTRY *conn;
+  int core = -1;
+  int r;
+
+  START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
+  for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
+    {
+      if (conn->in_transaction && conn->has_pending_request ())
+	{
+	  core = conn->idx % (int) css_Server_request_worker_pool->get_core_count ();
+	  break;
+	}
+    }
+  END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
+
+  return core;
+}
+
+//
 // css_count_transaction_worker_threads_mapfunc () - mapper function for worker pool thread entries. tries to identify
 //                                                   entries belonging to given transaction/client and increment
 //                                                   counter
