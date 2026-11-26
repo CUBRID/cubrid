@@ -644,7 +644,7 @@ get_cci_type (char *p)
 	}
       else if (memcmp (p, "BLOB", 5) == 0)
 	{
-	  /* the bundled CCI (develop's) binds a BLOB only as an external-file LOB, not as an internal one */
+	  /* the SQL log does not keep a LOB value, so it is replayed as NULL */
 	  type = CCI_U_TYPE_NULL;
 	}
       break;
