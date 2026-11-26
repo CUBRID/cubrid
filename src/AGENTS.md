@@ -38,7 +38,7 @@ When adding a new source file under `src/`:
 - **Allocator/deallocator pairing** (`src/base/memory_alloc.h`, `src/parser/parser.h`):
   - `db_private_alloc (thread_p, size)` ↔ `db_private_free_and_init (thread_p, ptr)`
   - `malloc`/`calloc`/`realloc` ↔ `free_and_init (ptr)`
-  - `os_malloc`/`os_realloc` (all modes) and `os_calloc` (`SERVER_MODE` only; unavailable in `!SERVER_MODE` files) ↔ `os_free_and_init (ptr)`
+  - `os_malloc` (all modes) and `os_calloc` (`SERVER_MODE` only; unavailable in `!SERVER_MODE` files) ↔ `os_free_and_init (ptr)` (do not pair `os_realloc` with `os_free_and_init`: in `SERVER_MODE` debug/optdebug, `os_realloc` maps to plain `realloc` without resource tracking and triggers `restrack_assert` in `os_free`)
   - `parser_alloc (parser, len)` → parser-context arena lifetime (never freed manually)
   - Verify ownership and cleanup on every error and early-return path. Existing C++ RAII helpers (`src/base/scope_exit.hpp`, `src/base/mem_block.hpp`, `std::unique_ptr`, `std::lock_guard`) are used where appropriate; follow the surrounding module's conventions.
   - `db_private_alloc` / `db_private_free` use the private heap of the passed `thread_p` argument in `SERVER_MODE` (`db_private_get_heapid_from_thread ()`, asserting `size > 0`): always pass the current thread's own `thread_p` (or `NULL`), never another thread's entry, and free on the same thread. Allocate cross-thread buffers (parallel worker ↔ requester) with `malloc`/`free_and_init` (never cross-free with `db_private_free`). In `CS_MODE`, `db_private_alloc` delegates to `db_ws_alloc`; in `SA_MODE`, the private heap is process-wide.

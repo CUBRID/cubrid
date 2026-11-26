@@ -49,7 +49,7 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 | `porting.c/h` | Master platform abstraction: timeval, atomic ops, POSIX↔Win32 function mapping |
 | `process_util.c/h` | Cross-platform process creation/termination |
 | `dynamic_load.c/h` | Dynamic shared library loading (`dlopen`/`dlsym` on Linux, `shl_load` on HP-UX) |
-| `cubrid_getopt_long.c/h` | CUBRID's own `getopt_long` implementation |
+| `cubrid_getopt_long.c`, `cubrid_getopt.h` | CUBRID's own `getopt_long` implementation |
 
 ### 5. Internationalization, Locale & Character Set
 
@@ -143,7 +143,7 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 | `compressor.hpp` | LZ4 compression wrapper (`cubcompress` namespace) |
 | `xml_parser.c/h` | XML parser wrapper around expat (used for LDML locale, timezone data) |
 | `util_func.c/h` | General utilities: hashing, filepath comparison, signal handling, string splitting |
-| `hide_password.c/h` | Password hiding in SQL strings for logging |
+| `hide_password.cpp`, `hide_password.h` | Password hiding in SQL strings for logging |
 | `xserver_interface.h` | Server-mode-only function declarations (boot, locator, log, heap, btree, query) |
 | `server_interface.h` | Server interface constants |
 
