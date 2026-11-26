@@ -1675,8 +1675,10 @@ vacuum_heap_skip_failed_page (THREAD_ENTRY * thread_p, int error_code, int *held
 {
 #if defined (NDEBUG)
   /* Retrying the page would repeat a lasting error. The held error leaves the block unfinished, so the skipped page
-   * is vacuumed again when the block runs again. Debug stops earlier, in vacuum_check_shutdown_interruption. */
-  if (!thread_p->shutdown)
+   * is vacuumed again when the block runs again. Debug stops earlier, in vacuum_check_shutdown_interruption.
+   * A stop request is not skipped: shutdown for a vacuum worker, ER_INTERRUPTED (interrupt or query timeout) for
+   * SA mode, where vacuum runs with interrupt checks on. */
+  if (!thread_p->shutdown && error_code != ER_INTERRUPTED)
     {
       vacuum_heap_hold_error (error_code, held_error);
       return true;
