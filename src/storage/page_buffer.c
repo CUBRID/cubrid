@@ -1711,7 +1711,7 @@ pgbuf_initialize (void)
   pgbuf_Pool.shared_lrus_with_victims = NULL;
 
   /* after the memsets above, which clear the lists holding invalid_mutex and Aout_mutex, and before the first
-   * goto error, so that every path into pgbuf_finalize sees these mutexes initialized exactly once */
+   * goto error, so that every error path of this function finds these mutexes initialized exactly once */
   pgbuf_initialize_mutexes ();
 
   pgbuf_Pool.num_buffers = prm_get_integer_value (PRM_ID_PB_NBUFFERS);
