@@ -13228,6 +13228,265 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
   return spec;
 }
 
+/* ===============================================================================================
+ * remote MERGE + local source.
+ *
+ * The sink sends the statement once per source row, with the source columns it reads bound as one
+ * row of values. The clauses are name-resolved, so a column belongs to the spec its spec_id names.
+ *
+ * pt_check_with_info () calls a check here, after the statement's semantic check:
+ *   - pt_dblink_merge_check_key_types () on the type-checked statement
+ * The walk over the ON below serves it.
+ * ============================================================================================= */
+
+/* The two specs of a remote MERGE with a local source */
+typedef struct pt_dblink_merge_refs PT_DBLINK_MERGE_REFS;
+struct pt_dblink_merge_refs
+{
+  UINTPTR target_id;		/* the INTO spec, in the derived dblink table shape */
+  UINTPTR source_id;		/* the USING spec */
+};
+
+/* pt_dblink_dml_classify_value leaves for a MERGE value. A target column is sent as written. A
+ * source column is bound. */
+static PT_DBLINK_LEAF_KIND
+pt_dblink_merge_value_leaf (PT_NODE * node, void *arg)
+{
+  PT_DBLINK_MERGE_REFS *refs = (PT_DBLINK_MERGE_REFS *) arg;
+
+  if (node->node_type != PT_NAME || node->info.name.meta_class != PT_NORMAL)
+    {
+      return PT_DBLINK_LEAF_NONE;
+    }
+
+  if (node->info.name.spec_id == refs->target_id)
+    {
+      return PT_DBLINK_LEAF_REMOTE;
+    }
+  if (node->info.name.spec_id == refs->source_id)
+    {
+      return PT_DBLINK_LEAF_LOCAL;
+    }
+
+  return PT_DBLINK_LEAF_NONE;
+}
+
+/* Is term an ON key? A key is "target column = source column", in either order. Returns the source
+ * column, or NULL when term is not a key. *target_col, when asked for, gets the target side. The
+ * source side must be a bare column. The sink checks key values for duplicates before sending, and
+ * reads each value from one USING column. */
+static PT_NODE *
+pt_dblink_merge_on_key (PT_NODE * term, PT_DBLINK_MERGE_REFS * refs, PT_NODE ** target_col)
+{
+  PT_NODE *col, *val;
+  int i;
+
+  if (target_col != NULL)
+    {
+      *target_col = NULL;
+    }
+
+  if (term->node_type != PT_EXPR || term->info.expr.op != PT_EQ)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < 2; i++)
+    {
+      col = (i == 0) ? term->info.expr.arg1 : term->info.expr.arg2;
+      val = (i == 0) ? term->info.expr.arg2 : term->info.expr.arg1;
+      if (col == NULL || val == NULL)
+	{
+	  continue;
+	}
+
+      if (pt_dblink_merge_value_leaf (col, refs) == PT_DBLINK_LEAF_REMOTE
+	  && pt_dblink_merge_value_leaf (val, refs) == PT_DBLINK_LEAF_LOCAL)
+	{
+	  if (target_col != NULL)
+	    {
+	      *target_col = col;
+	    }
+	  return val;
+	}
+    }
+
+  return NULL;
+}
+
+/* Called once per AND-ed term of the ON. A key comes with its two columns. Any other term comes
+ * with NULLs. Returning false stops the walk. */
+typedef bool (*PT_DBLINK_MERGE_TERM_FN) (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col,
+					 PT_NODE * source_col, void *arg);
+
+/* The one walk over the ON's terms, in the order written. */
+static bool
+pt_dblink_merge_walk_on (PARSER_CONTEXT * parser, PT_NODE * cond, PT_DBLINK_MERGE_REFS * refs,
+			 PT_DBLINK_MERGE_TERM_FN fn, void *arg)
+{
+  PT_NODE *target_col = NULL, *source_col;
+
+  for (; cond != NULL; cond = cond->next)
+    {
+      if (cond->node_type == PT_EXPR && cond->info.expr.op == PT_AND)
+	{
+	  /* arg1/arg2 head no lists of their own. So this walks only the two sides. */
+	  if (!pt_dblink_merge_walk_on (parser, cond->info.expr.arg1, refs, fn, arg)
+	      || !pt_dblink_merge_walk_on (parser, cond->info.expr.arg2, refs, fn, arg))
+	    {
+	      return false;
+	    }
+	  continue;
+	}
+
+      source_col = pt_dblink_merge_on_key (cond, refs, &target_col);
+      if (!fn (parser, cond, target_col, source_col, arg))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/* the specs of merge, for the walks below */
+static void
+pt_dblink_merge_init_refs (PT_NODE * merge, PT_DBLINK_MERGE_REFS * refs)
+{
+  refs->target_id = merge->info.merge.into->info.spec.id;
+  refs->source_id = merge->info.merge.using_clause->info.spec.id;
+}
+
+/* what pt_dblink_merge_check_key_types carries over the walk */
+typedef struct pt_dblink_merge_key_type_check PT_DBLINK_MERGE_KEY_TYPE_CHECK;
+struct pt_dblink_merge_key_type_check
+{
+  PT_DBLINK_MERGE_REFS refs;
+  PT_NODE *merge;
+};
+
+/* node without the CAST type checking wrapped it in */
+static PT_NODE *
+pt_dblink_merge_unwrap_cast (PT_NODE * node)
+{
+  if (node != NULL && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST
+      && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
+    {
+      return node->info.expr.arg1;
+    }
+  return node;
+}
+
+/* Do the two columns of a key have one type? The scale of a NUMERIC is part of its type. A length
+ * or a precision is not, as a value that does not fit fails at the remote. A source column with
+ * no type yet, as one that selects a host variable, has no type the target column has. */
+static bool
+pt_dblink_merge_key_is_one_type (PT_NODE * target_col, PT_NODE * source_col)
+{
+  if (target_col->type_enum != source_col->type_enum)
+    {
+      return false;
+    }
+  if (target_col->type_enum == PT_TYPE_NUMERIC)
+    {
+      return target_col->data_type != NULL && source_col->data_type != NULL
+	&& (target_col->data_type->info.data_type.dec_precision == source_col->data_type->info.data_type.dec_precision);
+    }
+  return true;
+}
+
+/* the message for a key whose two columns do not have one type */
+#define PT_DBLINK_MERGE_KEY_TYPE_MSG \
+  "dblink: remote MERGE with a local source needs each ON key's source column to have the type of its target " \
+  "column; cast the source column to the target column's type in the USING; %s = %s"
+
+/* A pt_dblink_merge_walk_on callback. It stops at the first key the sink cannot take. */
+static bool
+pt_dblink_merge_check_key_type (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col,
+				PT_NODE * source_col, void *arg)
+{
+  PT_DBLINK_MERGE_KEY_TYPE_CHECK *check = (PT_DBLINK_MERGE_KEY_TYPE_CHECK *) arg;
+  PT_NODE *arg1, *arg2, *target_arg, *source_arg;
+  PT_DBLINK_LEAF_KIND leaf1, leaf2;
+
+  if (source_col != NULL)
+    {
+      if (target_col->type_enum == PT_TYPE_NULL)
+	{
+	  /* a remote type DBLink does not map, NCHAR for one. How the remote compares it is
+	   * unknown. */
+	  PT_ERRORf2 (parser, check->merge,
+		      "dblink: remote MERGE with a local source does not support the type of the ON key's target "
+		      "column; %s = %s", pt_short_print (parser, target_col), pt_short_print (parser, source_col));
+	  return false;
+	}
+      if (!pt_dblink_merge_key_is_one_type (target_col, source_col))
+	{
+	  PT_ERRORf2 (parser, check->merge, PT_DBLINK_MERGE_KEY_TYPE_MSG, pt_short_print (parser, target_col),
+		      pt_short_print (parser, source_col));
+	  return false;
+	}
+      return true;
+    }
+
+  if (term->node_type != PT_EXPR || term->info.expr.op != PT_EQ)
+    {
+      return true;
+    }
+
+  arg1 = pt_dblink_merge_unwrap_cast (term->info.expr.arg1);
+  arg2 = pt_dblink_merge_unwrap_cast (term->info.expr.arg2);
+  if (arg1 == term->info.expr.arg1 && arg2 == term->info.expr.arg2)
+    {
+      return true;
+    }
+
+  leaf1 = (arg1 != NULL) ? pt_dblink_merge_value_leaf (arg1, &check->refs) : PT_DBLINK_LEAF_NONE;
+  leaf2 = (arg2 != NULL) ? pt_dblink_merge_value_leaf (arg2, &check->refs) : PT_DBLINK_LEAF_NONE;
+  if ((leaf1 == PT_DBLINK_LEAF_REMOTE && leaf2 == PT_DBLINK_LEAF_LOCAL)
+      || (leaf1 == PT_DBLINK_LEAF_LOCAL && leaf2 == PT_DBLINK_LEAF_REMOTE))
+    {
+      /* a key type checking wrapped in a CAST. Its two columns differ in type, or are two strings
+       * of different collations. The target column is printed first, as for any other key. */
+      target_arg = (leaf1 == PT_DBLINK_LEAF_REMOTE) ? arg1 : arg2;
+      source_arg = (leaf1 == PT_DBLINK_LEAF_REMOTE) ? arg2 : arg1;
+      PT_ERRORf2 (parser, check->merge, PT_DBLINK_MERGE_KEY_TYPE_MSG, pt_short_print (parser, target_arg),
+		  pt_short_print (parser, source_arg));
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * pt_dblink_merge_check_key_types () - Reject an ON key of a remote MERGE with a local source
+ *   whose two columns do not have one type. A source row's key has to be the same value in three
+ *   places. The sink looks for duplicate keys in the source column's type. The remote matches a
+ *   key in the target column's type. An INSERT stores it in the target column's type. '1' and '01'
+ *   are two strings but one INTEGER, so they could update one target row twice. 1.2345 is stored
+ *   as 1.23 in a NUMERIC(5,2), where a later source row with 1.23 would update it. A key whose
+ *   target column has a type DBLink does not map is rejected too.
+ *   return: NO_ERROR, or ER_FAILED with the parser error set
+ *   parser(in): parser context
+ *   merge(in): a type-checked PT_MERGE whose target is in the derived dblink table shape
+ */
+int
+pt_dblink_merge_check_key_types (PARSER_CONTEXT * parser, PT_NODE * merge)
+{
+  PT_DBLINK_MERGE_KEY_TYPE_CHECK check;
+
+  pt_dblink_merge_init_refs (merge, &check.refs);
+  check.merge = merge;
+
+  if (!pt_dblink_merge_walk_on (parser, merge->info.merge.search_cond, &check.refs, pt_dblink_merge_check_key_type,
+				&check))
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
 static void
 pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
