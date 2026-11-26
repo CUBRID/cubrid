@@ -12894,6 +12894,19 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 		    {
 		      goto exit;
 		    }
+		  /* The header of an overflow record always has the maximum size: the DELID flag on with a null DELID,
+		   * and the INSID flag on with MVCCID_ALL_VISIBLE once vacuumed. Drop such flags, the rebuilt row may fit
+		   * in a page. Its insert redo rejects the DELID flag and would write the INSID of this transaction to a
+		   * row that vacuum has already passed. */
+		  if (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID)
+		      && MVCC_GET_INSID (&mvcc_header) == MVCCID_ALL_VISIBLE)
+		    {
+		      MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_INSID);
+		    }
+		  if (!MVCC_IS_HEADER_DELID_VALID (&mvcc_header))
+		    {
+		      MVCC_CLEAR_FLAG_BITS (&mvcc_header, OR_MVCC_FLAG_VALID_DELID);
+		    }
 		  mvcc_header.repid = attr_info.last_classrepr->id;
 		  new_recdes = new_record.get_recdes ();
 		  error = or_mvcc_set_header (&new_recdes, &mvcc_header);
