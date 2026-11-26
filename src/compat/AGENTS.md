@@ -1,6 +1,6 @@
 # src/compat/ — Client API & DB_VALUE
 
-The public `db_*` client API and the `DB_VALUE` container. Mode membership: see "Build-Mode Boundaries" in [src/AGENTS.md](../AGENTS.md).
+The public `db_*` client API and the `DB_VALUE` container. Mode membership: see "Build-Mode Boundaries" in [src/AGENTS.md](../AGENTS.md#build-mode-boundaries).
 
 ## Key Files
 
@@ -23,7 +23,7 @@ The public `db_*` client API and the `DB_VALUE` container. Mode membership: see 
 | Add a `db_make_*` / `db_get_*` function | `dbtype_function.i`: a `STATIC_INLINE ... __attribute__ ((ALWAYS_INLINE))` declaration in the `#if !defined (_NO_INLINE_DBTYPE_FUNCTION_)` block and the definition below it; plus an `extern` declaration in `dbtype_function.h`. Follow a neighbouring function |
 | Fix type conversion, CAST, or coercion | `src/object/object_domain.c` (`tp_value_coerce`, `tp_value_cast`, `tp_value_auto_cast`) and `src/object/object_domain_convert.cpp` |
 | Fix the client compile/execute path | `db_vdb.c` |
-| Add an error code | Only `src/base/error_code.h` and the message catalogs. Follow "Adding a new error code" in [src/AGENTS.md](../AGENTS.md) |
+| Add an error code | Only `src/base/error_code.h` and the message catalogs. Follow [docs/error-codes.md](../../docs/error-codes.md) |
 
 ## DB_VALUE
 

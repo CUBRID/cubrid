@@ -1,6 +1,6 @@
 # src/ — CUBRID Engine Source
 
-Follow [the root AGENTS.md](../AGENTS.md) for repository-wide build, CI, and reporting rules. Consult the target module's `AGENTS.md` (and `src/storage/docs/` when working in `src/storage/`) before changing subsystem behavior.
+Follow [the root AGENTS.md](../AGENTS.md) for repository-wide rules, hazards, task guides (build, PRs, CI), and reporting. Consult the target module's `AGENTS.md` (and `src/storage/docs/` when working in `src/storage/`) before changing subsystem behavior.
 
 **Compilation language**: most `.c` sources in engine targets compile as C++17 (`-std=c++17` in `CMakeLists.txt`) via per-directory `set_source_files_properties(... PROPERTIES LANGUAGE CXX)` in CMake (a few exceptions such as `cm_broker_jni.c` and `gencat.c` compile as C); always check every owning target `CMakeLists.txt` for actual language settings. `c_to_cpp.sh <path>` only runs `git mv` from `.c` to `.cpp` for every `.c` file under `<path>` (under the current directory when the argument is missing), so pass a single file.
 
@@ -31,7 +31,8 @@ When adding a new source file under `src/`:
 1. Search top-level `CMakeLists.txt` files for sibling files in the same module to identify every target that must compile it.
 2. Add the file (and tracked headers where listed) to each owning target's `CMakeLists.txt`, ensuring `PROPERTIES LANGUAGE CXX` is set in every owning directory for C++-compiled `.c` files.
 3. If the file is listed in `cubrid/CMakeLists.txt`, satisfy the `memory_wrapper.hpp` include check below.
-4. Build every affected target (`libcubrid`/`cub_server`, `libcubridsa`, `libcubridcs`, utilities, broker, or unit tests).
+4. If its extension is one the license check covers, give it an accepted Apache 2.0 license header ([docs/pull-requests.md](../docs/pull-requests.md#pr-title-license-headers-and-cla)); keep third-party files under their own license.
+5. Build every affected target (`libcubrid`/`cub_server`, `libcubridsa`, `libcubridcs`, utilities, broker, or unit tests).
 
 ## Resource, Memory, and Error Handling
 
@@ -47,11 +48,8 @@ When adding a new source file under `src/`:
   - Engine interfaces use negative error codes in `src/base/error_code.h` (`NO_ERROR = 0`) and report errors with `er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CODE, ...)`. Do not let C++ exceptions escape across C-style engine interfaces.
   - Prefer `.cpp` files for new STL-heavy code. Whenever calling throwing STL operations (in `.cpp` or C++-compiled `.c`), catch exceptions at or before the C-interface boundary and translate them via `er_set (...)` and an error-code return (see `src/storage/heap_file.c`, `src/optimizer/histogram/histogram_sampler_sr.cpp`, and `src/query/string_regex_std.cpp`).
   - The error context is per thread (`cuberr::context`): an `er_set` on a worker thread is not visible to the thread answering the client. In parallel query workers (`src/query/parallel/`), propagate errors explicitly via `parallel_query::err_messages_with_lock::move_top_error_message_to_this ()` (`src/query/parallel/px_interrupt.hpp`), and swap them into the requester's context after `wait_workers ()`.
-- **Adding a new error code**: `ER_LAST_ERROR` is a sentinel one below the newest code, and `er_set ()` rejects any code at or below it (`src/base/error_manager.c`).
-  1. In `src/base/error_code.h`, define the new code with the current `ER_LAST_ERROR` value, then set `ER_LAST_ERROR` one lower. Add codes only there: `src/compat/dbi_compat.h` includes `error_code.h` and defines no `ER_*` macros.
-  2. In both `msg/en_US.utf8/cubrid.msg` and `msg/ko_KR.utf8/cubrid.msg`, under `$set 5 MSGCAT_SET_ERROR`, the new message takes positive ID `-ER_CODE`, which is the ID of the current `Last Error` line (ko_KR: `마지막 에러`); move that line to ID `-ER_LAST_ERROR`.
-  3. Check the text at runtime: the build compiles the catalogs with `gencat`, and the engine reads them from `$CUBRID/msg`, so install an assert-enabled build into a scratch `$CUBRID`, raise the error once, and confirm that the message is yours, not `No error message available.`.
-  4. If a client-facing error must also be exposed in CCI, open a separate PR in `CUBRID/cubrid-cci` for `src/cci/base_error_code.h`; do not modify files inside `cubrid-cci/` in an engine PR. The submodule bump PR normally comes from `.github/workflows/submodule-bump-receiver.yml`; check for an open bump PR before you bump the submodule by hand.
+- **Adding a new error code**: before you add an `ER_*` code, read [docs/error-codes.md](../docs/error-codes.md).
+- **`ER_QPROC_INVALID_XASLNODE`** makes the client drop its `xasl_id` and recompile (`src/compat/db_vdb.c`); do not raise it for unrelated "cannot happen" checks.
 
 ## Formatting, Includes, and Static Checks
 
@@ -73,23 +71,9 @@ When adding a new source file under `src/`:
 
 ## Cross-Module Impact Checks
 
-- **XASL changes**: check all four pipeline stages together — generation (`src/parser/xasl_generation.c`, `src/parser/xasl_regu_alloc.cpp`, `src/optimizer/plan_generation.c`), serialization (`src/query/xasl_to_stream.c`), deserialization (`src/query/stream_to_xasl.c`, `src/xasl/xasl_unpack_info.hpp`, `src/xasl/xasl_unpack_info.cpp`), and execution/evaluation (`src/query/query_executor.c`, `src/query/scan_manager.c`, `src/query/fetch.c`, `src/query/expr_compile.c`, `src/query/query_evaluator.c`, `src/query/query_dump.c`) — along with shared node definitions in `src/xasl/` and `src/query/xasl.h`. See [src/xasl/AGENTS.md](xasl/AGENTS.md), [src/parser/AGENTS.md](parser/AGENTS.md), [src/optimizer/AGENTS.md](optimizer/AGENTS.md), and [src/query/AGENTS.md](query/AGENTS.md).
-  - Each `xts_sizeof_*` must count every byte that its matching `xts_process_*` writes (`src/query/xasl_to_stream.c`), and the `stx_*` reader (`src/query/stream_to_xasl.c`) must read the same fields in the same order. Only assert-enabled builds check the size (`assert (buf <= buf_p + size)` in `xts_save_*`), so run a query that uses the new member on `debug` or `optdebug`.
-  - The stream has no version: client and server must come from the same build. `SA_MODE` compiles both `xasl_to_stream.c` and `stream_to_xasl.c`, so standalone runs use the same pack/unpack path.
-  - Parallel hash join workers copy parts of a node through `cubxasl::spawner` (`src/xasl/xasl_spawner.cpp`, `SERVER_MODE` only). If workers read the new member (a pointer, regu variable, value list, or predicate), add it to the spawner copy.
-  - Stream layout is also an on-disk format: filter-index predicates (`pred_stream`) and function-index expressions (`expr_stream`) are stored in the catalog and read back with `stx_map_stream_to_filter_pred ()` / `stx_map_stream_to_func_pred ()`.
-  - XASL clones are reused across executions and sessions: `xcache_retire_clone ()` relies on `qexec_clear_xasl ()` to reset a clone, and parallel scan workers take clones from the same pool. Reset any per-execution state added to a node there.
-  - `ER_QPROC_INVALID_XASLNODE` makes the client drop its `xasl_id` and recompile (`src/compat/db_vdb.c`); do not reuse it for unrelated "cannot happen" checks.
-- **Storage & transaction changes**: verify page latches vs. transaction locks, latch ordering, WAL/LSAs, crash redo/undo recovery, MVCC visibility, and vacuum (`src/query/vacuum.c`, `src/query/vacuum_oos.cpp`) together. See [src/storage/AGENTS.md](storage/AGENTS.md) and [src/transaction/AGENTS.md](transaction/AGENTS.md).
-  - **Adding a recovery index** (`LOG_RCVINDEX`, `RV*`). A new log record type (`LOG_RECTYPE` in `src/transaction/log_record.hpp`) is a different, larger change, because the recovery passes, the log dumps, and `src/transaction/log_applier.c` switch on it.
-    - `src/transaction/recovery.h`: add `RVFOO = <last value + 1>` just before the `RV_LAST_LOGID = ...` alias and point the alias at it; `RV_NOT_DEFINED = 999` stays last.
-    - `src/transaction/recovery.c`: add the `RV_fun[]` entry at the same position, `{RVFOO, "RVFOO", undofun, redofun, dump_undofun, dump_redofun}`. Recovery functions take `(THREAD_ENTRY *, LOG_RCV *)`, not `const LOG_RCV *`; a dump function may be `NULL`. `rv_check_rvfuns ()` checks the order only when an assert-enabled server or SA boot runs `log_initialize_internal ()`, so boot one.
-    - `RCV_IS_*` macros (`recovery.h`): `RCV_IS_LOGICAL_LOG` when rollback and postpone must not fix the logged page, because the function fixes pages and logs its own changes (a null VPID counts as logical already); `RCV_IS_NOTHING_TO_UNDO` when rollback must skip the record; `RCV_IS_LOGICAL_COMPENSATE_MANUAL` / `RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL` when the undo / postponed redo function logs its own compensation / run-postpone record from `rcv->reference_lsa`; `RCV_IS_POSTPONE_NOT_UNDOABLE` when the log does not cover the postponed effect.
-    - TDE: add the index to `LOG_MAY_CONTAIN_USER_DATA` (`src/storage/tde.h`) when its data can hold user row or key data; otherwise that data is logged in plaintext for encrypted tables.
-    - Parallel redo: add it to `log_rv_need_sync_redo ()` (`src/transaction/log_recovery.c`) when its redo must finish before later records are redone, as for volume or sector changes.
-    - Page-less records: when the record is appended with a NULL `pgptr`, add the index to `LOG_IS_PAGELESS_RCVINDEX` (`src/transaction/log_manager.c`); otherwise `log_append_undoredo_data ()` / `log_append_redo_data ()` set a page LSA on the NULL page.
-    - Replication records (`RVREPL_*`) also need `log_dump_record_replication ()` (`src/transaction/log_manager.c`), `src/transaction/replication.c`, and `src/transaction/log_applier.c`.
-    - Compatibility: an older binary cannot recover a log that holds the new index, so say so in the PR. Never bump `disk_compatibility_level` (`src/base/release_string.c`) in a feature PR—it is a release-level version bumped once per incompatible release with release/upgrade coordination; instead, verify compatibility and flag breaking on-disk changes to release owners.
+- **XASL changes**: before you change an XASL node or its serialization, read [docs/xasl-changes.md](../docs/xasl-changes.md); it lists the four pipeline stages and their files.
+- **Storage & transaction changes**: verify page latches vs. transaction locks, latch ordering, WAL/LSAs, crash redo/undo recovery, MVCC visibility, and vacuum (`src/query/vacuum.c`, `src/query/vacuum_oos.cpp`) together. See [src/storage/AGENTS.md](storage/AGENTS.md) and [src/transaction/AGENTS.md](transaction/AGENTS.md). Never bump `disk_compatibility_level` (`src/base/release_string.c`) in a feature PR; it is bumped once per incompatible release. Verify compatibility and flag breaking on-disk changes to release owners.
+  - **Adding a recovery index**: before you add a recovery index (`LOG_RCVINDEX`, `RV_fun[]`), read [docs/recovery-index.md](../docs/recovery-index.md).
 - **Key coupling points** (workflow checklist, not an exhaustive include graph):
   - `src/base/` and `src/compat/` (`DB_VALUE`) underpin most targets.
   - `src/parser/` ↔ `src/optimizer/`: bidirectional compile/rewrite/planning; note `src/optimizer/histogram/` also builds in `SERVER_MODE`.

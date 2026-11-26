@@ -1,6 +1,6 @@
 # src/optimizer/ — Cost-Based Query Planning
 
-Builds client-side only (`CS_MODE`/`SA_MODE`; `optimizer.h` has `#error Does not belong to server module`), **except** `histogram/`. See "Build-Mode Boundaries" in [src/AGENTS.md](../AGENTS.md).
+Builds client-side only (`CS_MODE`/`SA_MODE`; `optimizer.h` has `#error Does not belong to server module`), **except** `histogram/`. See "Build-Mode Boundaries" in [src/AGENTS.md](../AGENTS.md#build-mode-boundaries).
 
 ## Key Files
 

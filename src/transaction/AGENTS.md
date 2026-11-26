@@ -3,8 +3,8 @@
 Follow [src/AGENTS.md](../AGENTS.md) for build modes, error handling, CMake registration, and the storage and
 transaction change checklist. This file adds transaction-specific navigation and rules.
 
-Before you add a recovery index (`LOG_RCVINDEX`, `RV_fun[]`), follow "Adding a recovery index" under "Storage & transaction changes" in
-[src/AGENTS.md](../AGENTS.md#cross-module-impact-checks). This file does not repeat it.
+Before you add a recovery index (`LOG_RCVINDEX`, `RV_fun[]`), read [docs/recovery-index.md](../../docs/recovery-index.md).
+This file does not repeat it.
 
 ## Build Modes
 

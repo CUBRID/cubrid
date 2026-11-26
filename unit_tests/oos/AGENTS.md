@@ -30,7 +30,7 @@ The fixtures run the installed `cubrid` from `PATH`, read `$CUBRID` and `$CUBRID
 - `scripts/setup_unittestdb.sh` edits `$CUBRID/conf/cubrid.conf`. It first removes old fixture sections (this removal is kept), then backs up the file, appends its own section, and restores the backup on exit. An existing `unittestdb` is reused as it is.
 - Setup scripts run `cubrid createdb` for `unittestdb` and the per-binary databases. Cleanup scripts run `cubrid server stop` and `cubrid deletedb` only on databases that the fixture created.
 
-So run OOS tests only against a scratch installation of the same build (see the scratch-install rule in [the root AGENTS.md](../../AGENTS.md)):
+So run OOS tests only against a scratch installation of the same build (see the scratch-install rule in [docs/build.md](../../docs/build.md#scratch-install)):
 
 1. Set `CUBRID` and `CUBRID_DATABASES` to scratch paths, and put `$CUBRID/bin` first in `PATH`.
 2. Configure an assert-enabled mode (`debug` or `optdebug`) with `-DUNIT_TEST_OOS=ON`, build, and install into `$CUBRID` (`cmake --build <build dir> --target install`). `ServerEnv` checks the boot with `assert`, which `release` (`-DNDEBUG`) compiles out.

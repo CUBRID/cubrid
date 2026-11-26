@@ -42,6 +42,8 @@ This builds in `build_x86_64_release` without packaging. Without a target (`buil
 it first deletes everything in the build and install directories, then creates all packages.
 To see usage, run `./build.sh -h`
 
+For presets, scratch installs, build modes, and unit tests, see [docs/build.md](docs/build.md).
+
 On Windows:
 ```
 .\win\build.bat /out ${OUTPUT_DIR} dist

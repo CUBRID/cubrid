@@ -1,6 +1,6 @@
 # src/query/ — XASL Execution & Scan Managers
 
-Executes deserialized XASL plans. Most files build in `SERVER_MODE`/`SA_MODE`, but a client subset also builds in `CS_MODE`: see `QUERY_SOURCES` in `cs/CMakeLists.txt` (for example `execute_statement.c`, `execute_schema.c`, `arithmetic.c`, `string_opfunc.c`, `expr_compile.c`, `domain_rules.c`, `query_dump.c`, `regu_var.cpp`, `xasl_to_stream.c`). Before you add a server-only call or include to one of these files, check its guards. General mode rules: [src/AGENTS.md](../AGENTS.md) "Build-Mode Boundaries".
+Executes deserialized XASL plans. Most files build in `SERVER_MODE`/`SA_MODE`, but a client subset also builds in `CS_MODE`: see `QUERY_SOURCES` in `cs/CMakeLists.txt` (for example `execute_statement.c`, `execute_schema.c`, `arithmetic.c`, `string_opfunc.c`, `expr_compile.c`, `domain_rules.c`, `query_dump.c`, `regu_var.cpp`, `xasl_to_stream.c`). Before you add a server-only call or include to one of these files, check its guards. General mode rules: "Build-Mode Boundaries" in [src/AGENTS.md](../AGENTS.md#build-mode-boundaries).
 
 ## Key Files
 
@@ -37,7 +37,7 @@ Executes deserialized XASL plans. Most files build in `SERVER_MODE`/`SA_MODE`, b
 | Window function | `query_analytic.cpp` |
 | Hash join | `query_hash_join.c`, `parallel/px_hash_join/` |
 | Sort / ORDER BY | `list_file.c` |
-| XASL layout or serialization | Follow "XASL changes" in [src/AGENTS.md](../AGENTS.md) |
+| XASL layout or serialization | Follow [docs/xasl-changes.md](../../docs/xasl-changes.md) |
 
 ## Adding an arithmetic opcode (new SQL function)
 

@@ -26,6 +26,6 @@ Shared XASL plan types. The client generates and serializes them, and the server
 
 ## Rules
 
-- Any change to a serialized member follows the "XASL changes" checklist in [src/AGENTS.md](../AGENTS.md). It covers generation, `xts_process_*` / `xts_sizeof_*`, deserialization, execution, the catalog-stored filter and function-index streams, and the clone reset in `qexec_clear_xasl ()`.
+- Any change to a serialized member follows the checklist in [docs/xasl-changes.md](../../docs/xasl-changes.md). It covers generation, `xts_process_*` / `xts_sizeof_*`, deserialization, execution, the catalog-stored filter and function-index streams, and the clone reset in `qexec_clear_xasl ()`.
 - Mode guards: a serialized member must sit outside every mode guard, so its layout is the same in all modes. A server-only runtime member that is not serialized goes inside `#if defined (SERVER_MODE) || defined (SA_MODE)` (see the "not serialized" members in `src/query/xasl.h`). Keep the existing guards.
 - If parallel hash join workers read a new pointer, regu, or predicate member, copy it in `xasl_spawner.cpp`. If the tree walkers must visit it, update `xasl_iteration.cpp`.

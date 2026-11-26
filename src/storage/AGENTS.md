@@ -5,8 +5,9 @@ Mostly server/standalone storage code. A small client subset is also compiled in
 (plus `es_owfs.c` on UNIX builds). Core managers such as B-tree, heap, page buffer, disk/file manager, slotted
 pages, overflow files, OOS, catalog, and server statistics are `SERVER_MODE` / `SA_MODE` only.
 
-For project-wide style, error handling, memory rules, build commands, and CI policy, follow
-[the root AGENTS.md](../../AGENTS.md) and [src/AGENTS.md](../AGENTS.md). If your tool also loads local instruction
+For project-wide style, error handling, and memory rules, follow [the root AGENTS.md](../../AGENTS.md) and
+[src/AGENTS.md](../AGENTS.md); for build commands and CI policy, read [docs/build.md](../../docs/build.md) and
+[docs/pull-requests.md](../../docs/pull-requests.md). If your tool also loads local instruction
 files for this checkout, those take precedence where they apply. This file adds storage-specific navigation and safety
 rules.
 

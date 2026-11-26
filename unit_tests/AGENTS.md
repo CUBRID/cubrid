@@ -1,6 +1,6 @@
 # unit_tests/ — C/C++ Unit Tests
 
-Follow [the root AGENTS.md](../AGENTS.md) for presets, build modes, and scratch installs. For OOS tests (`oos/`, GoogleTest), read [oos/AGENTS.md](oos/AGENTS.md); the Catch2 and module steps below do not apply there.
+Follow [docs/build.md](../docs/build.md) for presets, build modes, and scratch installs. For OOS tests (`oos/`, GoogleTest), read [oos/AGENTS.md](oos/AGENTS.md); the Catch2 and module steps below do not apply there.
 
 ## Modules
 

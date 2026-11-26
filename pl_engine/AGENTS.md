@@ -15,7 +15,7 @@ Gradle (Kotlin DSL) project that builds `pl_server.jar`: the Java SP runtime and
 
 ## Build and Test
 
-Use the CMake targets in a configured build directory (see the root [AGENTS.md](../AGENTS.md) for configuring):
+Use the CMake targets in a configured build directory (see [docs/build.md](../docs/build.md) for configuring):
 
 ```bash
 cmake --build <build-dir> --target pl_build      # part of ALL; runs gradlew build -x test
@@ -24,7 +24,7 @@ cmake --build <build-dir> --target pl_unittest   # runs gradlew cleanTest test; 
 
 - `pl_build` writes to `<build-dir>/pl_engine` (`-PbuildDir=`). `pl_unittest` passes `-DbuildDir=` instead, which Gradle does not read as the build directory, so its test build lands in the source tree (`pl_engine/pl_server/build/`, gitignored). When the `cubrid-jdbc` submodule is present, `pl_build` copies its jar and passes `-PcubridJdbcPath=<build-dir>/pl_engine/lib`.
 - The Gradle toolchain is pinned to Java 8, so Gradle must find a JDK 8: an installed one, or a download through the foojay resolver (`settings.gradle.kts`). `pl_install_jdk` downloads a JDK 8 into `<build-dir>/vm/jdk8` for packaging.
-- `install` copies `pl_server.jar`, `logging.properties`, and the bundled `jdk8` into the `vm` directory of the install prefix. Install into a scratch prefix for a runtime check (root [AGENTS.md](../AGENTS.md)).
+- `install` copies `pl_server.jar`, `logging.properties`, and the bundled `jdk8` into the `vm` directory of the install prefix. Install into a scratch prefix for a runtime check ([docs/build.md](../docs/build.md#scratch-install)).
 - A direct `./gradlew build` run differs from the CMake build:
   - It runs the tests.
   - It writes into the source tree (`build/`, gitignored).
