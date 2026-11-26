@@ -283,6 +283,11 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl->class_oid_list = NULL;
   xasl->class_locks = NULL;
   xasl->tcard_list = NULL;
+  xasl->stmt_flags = 0;
+  xasl->n_write_oid_list = 0;
+  xasl->write_class_oid_list = NULL;
+  xasl->n_read_oid_list = 0;
+  xasl->read_class_oid_list = NULL;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
   xasl->rtf = NULL;
@@ -6330,6 +6335,10 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
   ptr = or_unpack_int (ptr, &indx_info->orderby_skip);
 
   ptr = or_unpack_int (ptr, &indx_info->groupby_skip);
+
+  ptr = or_unpack_int (ptr, &indx_info->analytic_sort_cols);
+
+  ptr = or_unpack_int (ptr, &indx_info->analytic_desc_cols);
 
   ptr = or_unpack_int (ptr, &indx_info->use_iss);
 

@@ -45,6 +45,7 @@
 #include "cas_common.h"
 #include "ddl_log.h"
 #include "parse_tree.h"
+#include "parser.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "broker_config.h"
@@ -1424,39 +1425,6 @@ logddl_is_ddl_type (int node_type, PT_NODE * node)
 {
   switch (node_type)
     {
-    case PT_ALTER:
-    case PT_ALTER_INDEX:
-    case PT_ALTER_SERIAL:
-    case PT_ALTER_STORED_PROCEDURE:
-    case PT_ALTER_SYNONYM:
-    case PT_ALTER_TRIGGER:
-    case PT_CREATE_ENTITY:
-    case PT_CREATE_INDEX:
-    case PT_CREATE_SERIAL:
-    case PT_CREATE_STORED_PROCEDURE:
-    case PT_CREATE_SYNONYM:
-    case PT_CREATE_TRIGGER:
-    case PT_DROP:
-    case PT_DROP_INDEX:
-    case PT_DROP_SERIAL:
-    case PT_DROP_SERVER:
-    case PT_DROP_STORED_PROCEDURE:
-    case PT_DROP_SYNONYM:
-    case PT_DROP_TRIGGER:
-    case PT_DROP_USER:
-    case PT_GRANT:
-    case PT_RENAME:
-    case PT_RENAME_SERVER:
-    case PT_RENAME_SYNONYM:
-    case PT_REVOKE:
-    case PT_REMOVE_TRIGGER:
-    case PT_RENAME_TRIGGER:
-    case PT_UPDATE_STATS:
-    case PT_TRUNCATE:
-      /* TODO: check it  */
-      has_password_type = false;
-      return true;
-
     case PT_CREATE_SERVER:
     case PT_ALTER_SERVER:
     case PT_ALTER_USER:
@@ -1483,6 +1451,12 @@ logddl_is_ddl_type (int node_type, PT_NODE * node)
 
     default:
       break;
+    }
+
+  if (pt_is_ddl_node_type ((PT_NODE_TYPE) node_type))
+    {
+      has_password_type = false;
+      return true;
     }
 
   return false;
