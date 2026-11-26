@@ -3673,7 +3673,7 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
   xasl_node *xptr;
   trace_json_t *sq_cache;
   trace_json_t *memoize;
-  trace_json_t *hash_lookup;
+  trace_json_t *hash_lookup, *hash_lookup_array;
 
   if (xasl_p == NULL || parent == NULL)
     {
@@ -3835,6 +3835,39 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 
   qdump_print_stats_json (xasl_p->connect_by_ptr, proc);
 
+  /* after the scans: their terms look up the lists of the uncorrelated subqueries through the subqueries' hashes */
+  hash_lookup_array = NULL;
+  for (xptr = xasl_p->aptr_list; xptr != NULL; xptr = xptr->next)
+    {
+      const HASH_LOOKUP_STATS *hl_stats;
+      const char *hash_temp;
+
+      if (xptr->hash_lookup == NULL || hash_lookup_get_stats (xptr->hash_lookup)->builds == 0)
+	{
+	  continue;
+	}
+
+      hl_stats = hash_lookup_get_stats (xptr->hash_lookup);
+      hash_temp = (hl_stats->method == HASH_METH_HYBRID) ? "hash temp(h)" : "hash temp(m)";
+      hash_lookup = trace_json_object ();
+      trace_json_object_set_new (hash_lookup, "access", trace_json_string (hash_temp));
+      trace_json_object_set_new (hash_lookup, "build time", trace_json_integer (TO_MSEC (hl_stats->build_time)));
+      trace_json_object_set_new (hash_lookup, "time", trace_json_integer (TO_MSEC (hl_stats->lookup_time)));
+      trace_json_object_set_new (hash_lookup, "lookups", trace_json_integer (hl_stats->lookups));
+      trace_json_object_set_new (hash_lookup, "rows", trace_json_integer (hl_stats->rows));
+
+      if (hash_lookup_array == NULL)
+	{
+	  hash_lookup_array = trace_json_array ();
+	}
+      trace_json_array_append_new (hash_lookup_array, hash_lookup);
+    }
+
+  if (hash_lookup_array != NULL)
+    {
+      trace_json_object_set_new (proc, "HASH_LOOKUP", hash_lookup_array);
+    }
+
   if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE) && SQ_CACHE_HIT (xasl_p) > 0)
     {
       sq_cache = trace_json_object ();
@@ -3962,21 +3995,6 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 	  trace_json_object_set_new (proc, "PARALLEL ORDERBY", parallel);
 	}
 
-    }
-
-  /* after ORDERBY: the hash is built over the list the subquery made, as a hash list scan prints it */
-  if (xasl_p->hash_lookup != NULL && hash_lookup_get_stats (xasl_p->hash_lookup)->builds > 0)
-    {
-      const HASH_LOOKUP_STATS *hl_stats = hash_lookup_get_stats (xasl_p->hash_lookup);
-      const char *hash_temp = (hl_stats->method == HASH_METH_HYBRID) ? "hash temp(h)" : "hash temp(m)";
-
-      hash_lookup = trace_json_object ();
-      trace_json_object_set_new (hash_lookup, "access", trace_json_string (hash_temp));
-      trace_json_object_set_new (hash_lookup, "build time", trace_json_integer (TO_MSEC (hl_stats->build_time)));
-      trace_json_object_set_new (hash_lookup, "time", trace_json_integer (TO_MSEC (hl_stats->lookup_time)));
-      trace_json_object_set_new (hash_lookup, "lookups", trace_json_integer (hl_stats->lookups));
-      trace_json_object_set_new (hash_lookup, "rows", trace_json_integer (hl_stats->rows));
-      trace_json_object_set_new (proc, "HASH_LOOKUP", hash_lookup);
     }
 
   astats = xasl_p->analytic_stats;
@@ -4603,6 +4621,25 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);
   qdump_print_stats_text (fp, xasl_p->connect_by_ptr, indent);
 
+  /* after the scans: their terms look up the lists of the uncorrelated subqueries through the subqueries' hashes */
+  for (xptr = xasl_p->aptr_list; xptr != NULL; xptr = xptr->next)
+    {
+      const HASH_LOOKUP_STATS *hl_stats;
+      const char *hash_temp;
+
+      if (xptr->hash_lookup == NULL || hash_lookup_get_stats (xptr->hash_lookup)->builds == 0)
+	{
+	  continue;
+	}
+
+      hl_stats = hash_lookup_get_stats (xptr->hash_lookup);
+      hash_temp = (hl_stats->method == HASH_METH_HYBRID) ? "hash temp(h)" : "hash temp(m)";
+      fprintf (fp, "%*c", indent, ' ');
+      fprintf (fp, "HASH_LOOKUP (%s, build time: %d, time: %d, lookups: %llu, rows: %llu)\n", hash_temp,
+	       TO_MSEC (hl_stats->build_time), TO_MSEC (hl_stats->lookup_time), (unsigned long long) hl_stats->lookups,
+	       (unsigned long long) hl_stats->rows);
+    }
+
   if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE) && SQ_CACHE_HIT (xasl_p) > 0)
     {
       fprintf (fp, "%*c", indent, ' ');
@@ -4762,18 +4799,6 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  fprintf (fp, ", skipsort: true");
 	}
       fprintf (fp, ")\n");
-    }
-
-  /* after ORDERBY: the hash is built over the list the subquery made, as a hash list scan prints it */
-  if (xasl_p->hash_lookup != NULL && hash_lookup_get_stats (xasl_p->hash_lookup)->builds > 0)
-    {
-      const HASH_LOOKUP_STATS *hl_stats = hash_lookup_get_stats (xasl_p->hash_lookup);
-      const char *hash_temp = (hl_stats->method == HASH_METH_HYBRID) ? "hash temp(h)" : "hash temp(m)";
-
-      fprintf (fp, "%*c", indent, ' ');
-      fprintf (fp, "HASH_LOOKUP (%s, build time: %d, time: %d, lookups: %llu, rows: %llu)\n", hash_temp,
-	       TO_MSEC (hl_stats->build_time), TO_MSEC (hl_stats->lookup_time), (unsigned long long) hl_stats->lookups,
-	       (unsigned long long) hl_stats->rows);
     }
 
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
