@@ -4839,7 +4839,7 @@ expr_scan_pred_compute_step (void *compiled, int step, cubthread::entry * thread
   expr_ctx_arm_depth (&ctx, prog);
   /* the execution first (a new one rebinds the operands), then whether this execution computed the step */
   rc = expr_prog_prepare (prog, &ctx);
-  if (rc == NO_ERROR && (prog->steps[step].once_exec == 0 || prog->steps[step].once_exec != prog->n_executions))
+  if (rc == NO_ERROR && prog->steps[step].once_exec != prog->n_executions)
     {
       rc = expr_run_range (prog, step, step + 1, &ctx);
     }
