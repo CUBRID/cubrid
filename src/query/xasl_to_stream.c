@@ -1703,13 +1703,15 @@ xts_save_db_value (const DB_VALUE * value)
   size = xts_sizeof_db_value (value);
   if (size == ER_FAILED)
     {
-      return ER_FAILED;
+      offset = ER_FAILED;
+      goto end;
     }
 
   offset = xts_reserve_location_in_stream (size);
   if (offset == ER_FAILED || xts_mark_ptr_visited (value, offset) == ER_FAILED)
     {
-      return ER_FAILED;
+      offset = ER_FAILED;
+      goto end;
     }
 
   if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
@@ -1722,7 +1724,8 @@ xts_save_db_value (const DB_VALUE * value)
       if (buf_p == NULL)
 	{
 	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return ER_FAILED;
+	  offset = ER_FAILED;
+	  goto end;
 	}
 
       is_buf_alloced = true;
@@ -1743,6 +1746,7 @@ end:
     {
       free_and_init (buf_p);
     }
+  pr_clear_compressed_string ((DB_VALUE *) value);
 
   return offset;
 }
@@ -5226,6 +5230,10 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 
   ptr = or_pack_int (ptr, indx_info->groupby_skip);
 
+  ptr = or_pack_int (ptr, indx_info->analytic_sort_cols);
+
+  ptr = or_pack_int (ptr, indx_info->analytic_desc_cols);
+
   ptr = or_pack_int (ptr, indx_info->use_iss);
 
   ptr = or_pack_int (ptr, indx_info->ils_prefix_len);
@@ -6041,6 +6049,7 @@ static char *
 xts_process_db_value (char *ptr, const DB_VALUE * value)
 {
   ptr = or_pack_db_value (ptr, (DB_VALUE *) value);
+  pr_clear_compressed_string ((DB_VALUE *) value);
 
   return ptr;
 }
@@ -7664,6 +7673,8 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 	   + OR_INT_SIZE	/* use_desc_index */
 	   + OR_INT_SIZE	/* orderby_skip */
 	   + OR_INT_SIZE	/* groupby_skip */
+	   + OR_INT_SIZE	/* analytic_sort_cols */
+	   + OR_INT_SIZE	/* analytic_desc_cols */
 	   + OR_INT_SIZE	/* use_iss boolean (int) */
 	   + OR_INT_SIZE	/* ils_prefix_len (int) */
 	   + OR_INT_SIZE	/* func_idx_col_id (int) */

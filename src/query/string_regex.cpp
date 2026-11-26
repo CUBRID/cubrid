@@ -178,10 +178,10 @@ namespace cubregex
     switch (reg.type)
       {
       case engine_type::LIB_CPPSTD:
-	return std_instr (result, reg, src, position, occurrence, return_opt);
+	return std_instr (result, reg, utf8_src, position, occurrence, return_opt);
 	break;
       case engine_type::LIB_RE2:
-	return re2_instr (result, reg, src, position, occurrence, return_opt);
+	return re2_instr (result, reg, utf8_src, position, occurrence, return_opt);
 	break;
       default:
 	assert (false);
