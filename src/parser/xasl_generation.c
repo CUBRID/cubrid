@@ -835,7 +835,9 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
       save_from = select_node->info.query.q.select.from->next;
       select_node->info.query.q.select.from->next = NULL;
 
+      PT_SELECT_INFO_SET_FLAG (select_node, PT_SELECT_INFO_HQ_ITERATION);
       xasl = pt_plan_single_table_hq_iterations (parser, select_node, xasl);
+      PT_SELECT_INFO_CLEAR_FLAG (select_node, PT_SELECT_INFO_HQ_ITERATION);
 
       select_node->info.query.q.select.where = save_where;
       select_node->info.query.q.select.from->next = save_from;
@@ -17421,6 +17423,11 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		    {
 		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
 		    }
+		  if (access->access == ACCESS_METHOD_INDEX
+		      && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_BITMAP_HEAP_SCAN))
+		    {
+		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN);
+		    }
 		  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
 		    {
 		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
@@ -19912,6 +19919,16 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 		}
 	    }
 
+	  /* a session variable, a serial, a random number or a non-deterministic stored function is evaluated in the
+	   * order of the rows: a scan that held rows would evaluate its key before the rows ahead of it were output */
+	  if (xasl->scan_ptr != NULL && !pt_is_result_reuse_safe (parser, select_node))
+	    {
+	      XASL_NODE *ptr;
+	      for (ptr = xasl; ptr; ptr = ptr->scan_ptr)
+		{
+		  XASL_SET_FLAG (ptr, XASL_NO_ROW_BATCH);
+		}
+	    }
 	}
     }
 
@@ -35943,6 +35960,11 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
     {
     case QO_PLANTYPE_SCAN:
       if (!(qo_is_iscan (qo_plan) || qo_is_iscan_from_analytic (qo_plan)) || (env = (qo_plan->info)->env) == NULL)
+	{
+	  return 0;
+	}
+      /* the rows of a bitmap heap scan leave in file order */
+      if (qo_plan->plan_un.scan.bitmap_heap)
 	{
 	  return 0;
 	}
