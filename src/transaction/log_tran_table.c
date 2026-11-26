@@ -4045,8 +4045,9 @@ logtb_tran_log_unique_stats_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   if (tdes->state != TRAN_ACTIVE)
     {
-      /* A site that is also the coordinator left TRAN_ACTIVE in its nested prepare. The records of that state are not
-       * logged, so its statistics stay out of the log as before. */
+      /* Not expected: a site that is also the coordinator commits its local part in the first phase of its nested
+       * 2PC (CCI_XA) and comes back as a new active transaction. Without a build that leaves another state here,
+       * keep the statistics out of the log as before. */
       return NO_ERROR;
     }
 
@@ -4093,23 +4094,6 @@ logtb_tran_log_unique_stats_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   db_private_free_and_init (thread_p, data);
   return error_code;
-}
-
-/*
- * logtb_rv_redo_2pc_unique_stats () - redo of RVBT_2PC_UNIQUE_STATS: nothing
- *
- * return	    : NO_ERROR
- * thread_p(in)	    :
- * rcv(in)	    : recovery structure (no page)
- *
- * Note: The record changes nothing by itself. Restart reads it back at the end of redo, for the transactions still
- *	 in doubt (log_recovery_2pc_restore_unique_stats). The function exists so that redo does not log a warning about
- *	 a missing redo function for every such record.
- */
-int
-logtb_rv_redo_2pc_unique_stats (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  return NO_ERROR;
 }
 
 /*

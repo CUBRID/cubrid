@@ -145,8 +145,8 @@ struct logwr_info;
 
 /* Whether the undo and redo records of a transaction outside a system operation are logged. Besides an active
  * transaction, a 2PC transaction that commits after its prepare or commit decision logs them: checkpoints save those
- * states and restart resumes the commit, so what the commit logs must not be dropped. Postpone records keep the
- * LOG_ISTRAN_ACTIVE rule. */
+ * states, and after a restart the coordinator sends its decision again to finish the commit, so what the commit logs
+ * must not be dropped. Postpone records keep the LOG_ISTRAN_ACTIVE rule. */
 #define LOG_ISTRAN_LOGGABLE(tdes) \
   (((tdes)->state == TRAN_ACTIVE || (tdes)->state == TRAN_UNACTIVE_2PC_PREPARE \
     || (tdes)->state == TRAN_UNACTIVE_2PC_COMMIT_DECISION) && LOG_ISRESTARTED ())
@@ -1252,7 +1252,6 @@ extern int logtb_tran_log_unique_stats_for_2pc (THREAD_ENTRY * thread_p, LOG_TDE
 extern int logtb_rv_2pc_restore_unique_stats (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const char *data, int length);
 extern void logtb_rv_2pc_skip_applied_unique_stats (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BTID * btid);
 extern void logtb_rv_2pc_clear_unique_stats (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
-extern int logtb_rv_redo_2pc_unique_stats (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promotion_time);
 extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time);

@@ -1439,6 +1439,9 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   int tran_index;
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
+#if !defined (NDEBUG)
+  LOG_LSA stats_lsa;
+#endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -1546,6 +1549,9 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
     {
       return TRAN_UNACTIVE_UNKNOWN;
     }
+#if !defined (NDEBUG)
+  stats_lsa = tdes->tail_lsa;
+#endif
 
   lock_unlock_all_shared_get_all_exclusive (thread_p, &acq_locks);
 
@@ -1587,6 +1593,10 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   /* Dead field, but the header is malloc'd: unassigned means indeterminate bytes in the log. */
   prepared->num_page_locks = 0;
 
+#if !defined (NDEBUG)
+  /* the prepare record must follow the statistics record in the transaction's chain */
+  assert (LSA_EQ (&tdes->tail_lsa, &stats_lsa));
+#endif
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   if (acq_locks.locks != NULL)

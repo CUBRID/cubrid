@@ -942,7 +942,7 @@ struct rvfun RV_fun[] = {
   {RVBT_2PC_UNIQUE_STATS,
    "RVBT_2PC_UNIQUE_STATS",
    NULL,
-   logtb_rv_redo_2pc_unique_stats,
+   log_rv_outside_noop_redo,
    NULL,
    NULL}
 };
