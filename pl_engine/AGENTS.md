@@ -22,13 +22,13 @@ cmake --build <build-dir> --target pl_build      # part of ALL; runs gradlew bui
 cmake --build <build-dir> --target pl_unittest   # runs gradlew cleanTest test; depends on pl_build
 ```
 
-- `pl_build` writes to `<build-dir>/pl_engine` (`-PbuildDir=`). `pl_unittest` passes `-DbuildDir=` instead, which Gradle does not read as the build directory, so its test build lands in the source tree (`pl_engine/pl_server/build/`, gitignored). When the `cubrid-jdbc` submodule is present, `pl_build` copies its jar and passes `-PcubridJdbcPath=<build-dir>/pl_engine/lib`.
+- `pl_build` writes to `<build-dir>/pl_engine` (`-PbuildDir=`). `pl_unittest` passes `-DbuildDir=` instead, which Gradle does not read as the build directory, so its test build lands in the source tree (`pl_engine/pl_server/build/`, gitignored; CBRD-28411). When the `cubrid-jdbc` submodule is present, `pl_build` copies its jar and passes `-PcubridJdbcPath=<build-dir>/pl_engine/lib`.
 - The Gradle toolchain is pinned to Java 8, so Gradle must find a JDK 8: an installed one, or a download through the foojay resolver (`settings.gradle.kts`). `pl_install_jdk` downloads a JDK 8 into `<build-dir>/vm/jdk8` for packaging.
 - `install` copies `pl_server.jar`, `logging.properties`, and the bundled `jdk8` into the `vm` directory of the install prefix. Install into a scratch prefix for a runtime check ([docs/build.md](../docs/build.md#scratch-install)).
 - A direct `./gradlew build` run differs from the CMake build:
   - It runs the tests.
   - It writes into the source tree (`build/`, gitignored).
-  - Without `-PcubridJdbcPath`, it resolves `cubrid-jdbc:latest.integration` from `http://maven.cubrid.org/` over plain HTTP. The result is not the pinned submodule jar, and the network fetch is insecure.
+  - Without `-PcubridJdbcPath`, it resolves `cubrid-jdbc:latest.integration` from `http://maven.cubrid.org/` over plain HTTP. The result is not the pinned submodule jar, and the network fetch is insecure (CBRD-28410).
   - Prefer the CMake targets. If you must run Gradle directly, pass `-PcubridJdbcPath=<build-dir>/pl_engine/lib` after a CMake `pl_build`.
 - CI does not run `pl_unittest` or Gradle tests. The test tree is small, and the PL/CSQL library tests are disabled (`*.java.disable`). To verify a behavior change, add a JUnit test and also exercise the procedure through SQL (a SQL regression test or a scratch server).
 

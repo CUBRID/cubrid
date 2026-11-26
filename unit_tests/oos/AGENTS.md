@@ -19,7 +19,7 @@ This subtree uses GoogleTest, an explicit exception to the Catch2 default in [th
 3. Register it separately with `add_test(NAME ... COMMAND ...)` in the matching "Register ..." section. A target that is not registered never runs under `ctest`.
 4. Give every test a `TIMEOUT` from 1 to 60 seconds with `set_tests_properties`. `oos_check_test_timeouts` runs at the end of configure and stops it with `FATAL_ERROR` if any test in the directory breaks this rule.
 5. Choose the database fixture:
-   - Tests that use the shared `unittestdb`: `FIXTURES_REQUIRED OOS_DB`, plus `RESOURCE_LOCK OOS_SHARED_UNITTESTDB` (SA tests) or `RUN_SERIAL TRUE` (SERVER tests). Copy the properties of a sibling test in the same list.
+   - Tests that use the shared `unittestdb`: `FIXTURES_REQUIRED OOS_DB`, plus `RESOURCE_LOCK OOS_SHARED_UNITTESTDB` (SA tests) or `RUN_SERIAL TRUE` (SERVER tests and every test in `sql/`). Copy the properties of a sibling test in the same list.
    - A test that turns off logging, kills a writer, or damages its database must own a database: add a `setup_isolated_db.sh <db>` / `cleanup_isolated_db.sh <db>` fixture pair with `FIXTURES_SETUP` / `FIXTURES_CLEANUP` and `RESOURCE_LOCK OOS_DATABASES_REGISTRY` (see the CBRD-26950 comment in `CMakeLists.txt`).
    - Pure-logic tests need no fixture.
 

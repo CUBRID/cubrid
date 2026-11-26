@@ -11,7 +11,7 @@ See [install_build_requirements.md](install_build_requirements.md) and `CMakeLis
 
 - Pass an explicit build target, e.g. `./build.sh -m <mode> build`, or use `cmake --preset <preset> && cmake --build --preset <preset>` (presets are in `CMakePresets.json`).
 - Without a target, `build.sh` runs `all` (`clean build dist` for `release`/`debug`/`optdebug`). `clean` deletes everything inside the `-b` build directory (default `build_x86_64_<mode>`) and the `-p` prefix (default `<build directory>/_install/CUBRID`). Point neither at a directory you want to keep, such as a live `$CUBRID` or another build tree.
-- `./build.sh -h` lists the options, but `-i` and `-a` are not implemented (they print usage and exit 1), and its `-b` default text is out of date.
+- `./build.sh -h` lists the options, but `-i` and `-a` are not implemented (they print usage and exit 1), and its `-b` default text is out of date (CBRD-28411).
 
 ## Scratch Install
 

@@ -60,11 +60,11 @@ build only in `cubridcs`, and `boot_cl.c`, `locator_cl.c`, and `transaction_cl.c
 ## Adding a Recovery Index
 
 The checklist for adding a recovery index (`LOG_RCVINDEX`, `RV*`) with its recovery functions.
-Read this before you add or renumber a recovery index or its `RV_fun[]` entry.
+Read this before you add a recovery index or its `RV_fun[]` entry.
 
 A new log record type (`LOG_RECTYPE` in `src/transaction/log_record.hpp`) is a different, larger change, because the recovery passes, the log dumps, and `src/transaction/log_applier.c` switch on it.
 
-- `src/transaction/recovery.h`: add `RVFOO = <last value + 1>` just before the `RV_LAST_LOGID = ...` alias and point the alias at it; `RV_NOT_DEFINED = 999` stays last.
+- `src/transaction/recovery.h`: add `RVFOO = <last value + 1>` just before the `RV_LAST_LOGID = ...` alias and point the alias at it; `RV_NOT_DEFINED = 999` stays last. Never renumber or insert between existing values: logs store the numbers, and `RV_fun[]` is indexed by position. The comment above `RVOOS_INSERT` about renumbering the OOS block describes the former feat/oos branch and does not apply on `develop`.
 - `src/transaction/recovery.c`: add the `RV_fun[]` entry at the same position, `{RVFOO, "RVFOO", undofun, redofun, dump_undofun, dump_redofun}`. Recovery functions take `(THREAD_ENTRY *, LOG_RCV *)`, not `const LOG_RCV *`; a dump function may be `NULL`. `rv_check_rvfuns ()` checks the order only when an assert-enabled server or SA boot runs `log_initialize_internal ()`, so boot one.
 - `RCV_IS_*` macros (`recovery.h`):
   - `RCV_IS_LOGICAL_LOG` when rollback and postpone must not fix the logged page, because the function fixes pages and logs its own changes (a null VPID counts as logical already).

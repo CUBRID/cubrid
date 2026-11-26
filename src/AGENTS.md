@@ -19,6 +19,8 @@ Never infer mode membership from directory name alone; verify both the owning `C
 - `src/compat/` builds broadly in `SA_MODE`/`CS_MODE` and as a reduced subset in `SERVER_MODE`; `src/connection/` uses `_sr`/`_cl` files plus shared sources.
 - Keep `#error Belongs to server module` and similar mode guards intact when refactoring headers.
 
+Before finalizing engine C/C++ changes, verify both `release` (the only `-Werror` mode; asserts compiled out) and one assert-enabled mode (`debug` or `optdebug`); see [docs/build.md](../docs/build.md#build-modes).
+
 ## CMake Source Registration
 
 There are no per-module `CMakeLists.txt` files under `src/`. Top-level target files reference `src/` via `*_DIR` variables defined in root `CMakeLists.txt`:
@@ -67,6 +69,7 @@ When adding a new source file under `src/`:
   - Place `#include "memory_wrapper.hpp"` as the last `^#include` line (including conditional includes inside `#if` blocks), with exact comment `// XXX: SHOULD BE THE LAST INCLUDE HEADER` (no trailing space) on the immediately preceding line.
   - **Checked exception**: `src/debugging/strict_warnings_on.hpp` and `src/debugging/strict_warnings_off.hpp` may follow `memory_wrapper.hpp`.
   - Keep `memory_wrapper.hpp` out of header files (`.h`/`.hpp`); use `src/base/memory_cwrapper.h` in headers when allocation wrappers are needed.
+- **Third-party allocator**: leave `src/heaplayers/lea_heap.c` untouched unless the task requires it (`src/heaplayers/` is excluded from `cppcheck` in `.github/workflows/check.yml`).
 - **Conventions & static analysis**: new `.c` files include `"config.h"` first; new headers use the guard style of their neighboring headers (`#ifndef _FILENAME_H_` / `_FILENAME_HPP_`, or `#pragma once`). Do not retrofit untouched legacy files. Avoid inline `cppcheck` suppressions without justification in the PR.
 
 ## Cross-Module Impact Checks

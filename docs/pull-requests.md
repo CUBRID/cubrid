@@ -11,7 +11,7 @@ Read this before you add a file, push, open or update a PR, comment `/run`, chan
 
 ## PR Static Checks
 
-`.github/workflows/check.yml` runs `license`, `pr-style`, `code-style` (`.github/workflows/codestyle.sh`), `cppcheck` (using `.github/workflows/cppcheck-spr-list`), and `memory-monitor-check`. `pr-style` checks the PR title; the others check only files the PR adds or modifies (`.github/actions/changed-files/action.yml`), so run them yourself on renamed files.
+`.github/workflows/check.yml` runs `license`, `pr-style`, `code-style` (`.github/workflows/codestyle.sh`), `cppcheck` (using `.github/workflows/cppcheck-spr-list`), and `memory-monitor-check`. `pr-style` checks the PR title; the others check only files the PR adds or modifies (`.github/actions/changed-files/action.yml`), so run them yourself on renamed files (CBRD-28409).
 
 ## Regression CI
 

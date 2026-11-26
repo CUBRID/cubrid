@@ -7,8 +7,7 @@ pages, overflow files, OOS, catalog, and server statistics are `SERVER_MODE` / `
 
 For project-wide style, error handling, and memory rules, follow [the root AGENTS.md](../../AGENTS.md) and
 [src/AGENTS.md](../AGENTS.md); for build commands and CI policy, read [docs/build.md](../../docs/build.md) and
-[docs/pull-requests.md](../../docs/pull-requests.md). If your tool also loads local instruction
-files for this checkout, those take precedence where they apply. This file adds storage-specific navigation and safety
+[docs/pull-requests.md](../../docs/pull-requests.md). This file adds storage-specific navigation and safety
 rules.
 
 ## Reference Docs

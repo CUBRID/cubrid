@@ -4,7 +4,7 @@ Entry points of the CUBRID programs and the admin utilities (`cubrid <utility>`)
 
 ## Binaries
 
-Every executable is defined in `util/CMakeLists.txt`.
+Every binary below is defined in `util/CMakeLists.txt`. `gen_timezone` (`generate_timezone.cpp`) is the exception: `timezones/CMakeLists.txt` defines it.
 
 | Binary | Entry file | Notes |
 |--------|-----------|-------|
