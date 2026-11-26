@@ -35,12 +35,6 @@
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 
-bool
-wset_trace_is_enabled (int level)
-{
-  return wset_config_get_trace_level () >= level;
-}
-
 const char *
 wset_trace_kind_name (LOG_WSET_KIND kind)
 {

@@ -32,4 +32,7 @@ extern void wset_config_finalize (void);
 extern INT64 wset_config_get_key_limit (void);
 extern int wset_config_get_trace_level (void);
 
+/* read directly by wset_trace_is_enabled (), which every WSET_TRACE checks */
+extern int wset_Trace_level;
+
 #endif /* _WRITESET_CONFIG_HPP_ */

@@ -30,12 +30,19 @@
 
 #include "storage_common.h"
 #include "writeset_types.hpp"
+#include "writeset_config.hpp"
 
 #include "error_manager.h"
 
 typedef struct log_tdes LOG_TDES;
 
-extern bool wset_trace_is_enabled (int level);
+/* inline so that a disabled trace costs one load and compare where it is checked, often per key on commit */
+static inline bool
+wset_trace_is_enabled (int level)
+{
+  return wset_Trace_level >= level;
+}
+
 extern const char *wset_trace_kind_name (LOG_WSET_KIND kind);
 extern void wset_trace_key_source (LOG_TDES *tdes, const char *operation, const char *image,
 				   LOG_WSET_KIND kind, const OID *table_oid, const OID *row_oid,

@@ -34,7 +34,7 @@
 #if defined(SERVER_MODE) || defined(SA_MODE)
 
 static INT64 wset_Key_limit = 0;
-static int wset_Trace_level = 0;
+int wset_Trace_level = 0;
 
 void
 wset_config_initialize (void)
