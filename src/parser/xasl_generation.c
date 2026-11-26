@@ -2197,7 +2197,15 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	  if (arg1 && arg2)
 	    {
 	      arg1->type_enum = PT_TYPE_INTEGER;
-	      if (node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i != 0)
+	      data_type = DB_TYPE_INTEGER;
+	      if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_NULL)
+		{
+		  /* a predicate folded to NULL, as one an equality substitution made constant under IS, NOT, XOR or
+		   * CAST: NULL = 1 is UNKNOWN there, where 0 = 1 (FALSE) is not the same as at the top of a filter */
+		  arg1->type_enum = PT_TYPE_NULL;
+		  data_type = DB_TYPE_NULL;
+		}
+	      else if (node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i != 0)
 		{
 		  arg1->info.value.data_value.i = 1;
 		}
@@ -2207,7 +2215,6 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		}
 	      arg2->type_enum = PT_TYPE_INTEGER;
 	      arg2->info.value.data_value.i = 1;
-	      data_type = DB_TYPE_INTEGER;
 
 	      regu_var1 = pt_to_regu_variable (parser, arg1, UNBOX_AS_VALUE);
 	      regu_var2 = pt_to_regu_variable (parser, arg2, UNBOX_AS_VALUE);
@@ -16549,6 +16556,8 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
   /* 0 for now, see gen optimized plan for its computation */
   indx_infop->orderby_desc = 0;
   indx_infop->groupby_desc = 0;
+  indx_infop->analytic_sort_cols = 0;
+  indx_infop->analytic_desc_cols = 0;
 
   indx_infop->use_iss = 0;	/* init */
   if (qo_is_index_iss_scan (plan))
@@ -19866,6 +19875,27 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 	      if (gb->info.sort_spec.asc_or_desc == PT_DESC)
 		{
 		  xasl->spec_list->indexptr->groupby_desc = 1;
+		}
+	    }
+
+	  /* the order of the analytic evaluation that skips its sort, which the keys of a key list are read in. see
+	   * also scan_get_index_oidset() in scan_manager.c */
+	  if (xasl->spec_list && xasl->spec_list->indexptr && xasl->type == BUILDLIST_PROC
+	      && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT) && xasl->proc.buildlist.a_eval_list != NULL)
+	    {
+	      ANALYTIC_EVAL_TYPE *eval = xasl->proc.buildlist.a_eval_list;
+	      INDX_INFO *indx_info = xasl->spec_list->indexptr;
+	      SORT_LIST *sort;
+	      int i;
+
+	      assert (eval->covered_size <= INDX_INFO_ANALYTIC_MAX_SORT_COLS);
+	      indx_info->analytic_sort_cols = eval->covered_size;
+	      for (sort = eval->sort_list, i = 0; sort != NULL && i < eval->covered_size; sort = sort->next, i++)
+		{
+		  if (sort->s_order == S_DESC)
+		    {
+		      indx_info->analytic_desc_cols |= (1 << i);
+		    }
 		}
 	    }
 
@@ -26351,6 +26381,16 @@ exit_on_error:
     {
       PT_INTERNAL_ERROR (parser, "ODKU Info generation failed");
       error = ER_FAILED;
+    }
+  if (odku != NULL && odku->assignments != NULL)
+    {
+      for (i = 0; i < odku->num_assigns; i++)
+	{
+	  if (odku->assignments[i].constant != NULL)
+	    {
+	      pr_clear_value (odku->assignments[i].constant);
+	    }
+	}
     }
   if (pt_pred != NULL)
     {
@@ -35938,7 +35978,8 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
   is_desc_index = qo_plan->info->env->pt_tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC;
 
   sort_list = eval->sort_list;
-  for (i = 0; i < index_entry->nsegs && sort_list; i++)
+  /* the order a key list is read in keeps one bit per sort column (INDX_INFO.analytic_desc_cols) */
+  for (i = 0; i < index_entry->nsegs && i < INDX_INFO_ANALYTIC_MAX_SORT_COLS && sort_list; i++)
     {
       seg_idx = (index_entry->seg_idxs[i]);
       if (seg_idx == -1)
