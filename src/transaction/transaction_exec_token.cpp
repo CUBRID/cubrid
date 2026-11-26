@@ -110,7 +110,7 @@ tx_exec_token::give_back (THREAD_ENTRY *thread_p)
  * Note: the token is remembered in the thread entry, as a 2PC attach changes the request's transaction midway.
  */
 void
-logtb_exec_begin (THREAD_ENTRY * thread_p)
+logtb_exec_begin (THREAD_ENTRY *thread_p)
 {
 #if defined (SERVER_MODE)
   LOG_TDES *tdes;
@@ -131,7 +131,7 @@ logtb_exec_begin (THREAD_ENTRY * thread_p)
 }
 
 void
-logtb_exec_end (THREAD_ENTRY * thread_p)
+logtb_exec_end (THREAD_ENTRY *thread_p)
 {
 #if defined (SERVER_MODE)
   if (thread_p->exec_token != NULL)
@@ -150,7 +150,7 @@ logtb_exec_end (THREAD_ENTRY * thread_p)
  *   return: whether it was given up, for logtb_exec_resume ()
  */
 bool
-logtb_exec_yield (THREAD_ENTRY * thread_p)
+logtb_exec_yield (THREAD_ENTRY *thread_p)
 {
 #if defined (SERVER_MODE)
   if (thread_p == NULL || thread_p->exec_token == NULL)
@@ -164,7 +164,7 @@ logtb_exec_yield (THREAD_ENTRY * thread_p)
 }
 
 void
-logtb_exec_resume (THREAD_ENTRY * thread_p, bool yielded)
+logtb_exec_resume (THREAD_ENTRY *thread_p, bool yielded)
 {
 #if defined (SERVER_MODE)
   if (yielded)
@@ -180,7 +180,7 @@ logtb_exec_resume (THREAD_ENTRY * thread_p, bool yielded)
  *   return: false if another request runs that transaction
  */
 bool
-logtb_exec_try_take (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+logtb_exec_try_take (THREAD_ENTRY *thread_p, LOG_TDES *tdes)
 {
 #if defined (SERVER_MODE)
   return thread_p->exec_token == NULL || tdes->exec_token.try_own (thread_p);
@@ -191,7 +191,7 @@ logtb_exec_try_take (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
 /* logtb_exec_untake () - give back the token logtb_exec_try_take () took, for an attach that fails before the switch */
 void
-logtb_exec_untake (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+logtb_exec_untake (THREAD_ENTRY *thread_p, LOG_TDES *tdes)
 {
 #if defined (SERVER_MODE)
   if (thread_p->exec_token != NULL && thread_p->exec_token != &tdes->exec_token)
@@ -206,7 +206,7 @@ logtb_exec_untake (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
 /* the request now runs tdes: give back the token of the transaction it left */
 void
-logtb_exec_switch (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+logtb_exec_switch (THREAD_ENTRY *thread_p, LOG_TDES *tdes)
 {
 #if defined (SERVER_MODE)
   if (thread_p->exec_token != NULL)

@@ -300,9 +300,9 @@ extern void lock_group_check_sections_closed (void);
 extern lock_group *lock_get_tran_group (int tran_index);
 extern bool lock_tran_lock_is_initialized (int tran_index);
 extern INT64 *lock_get_wait_stime (int tran_index);
-extern void lock_interrupt_lockwait (THREAD_ENTRY * guest, int tran_index);
-extern LK_RES_KEY lock_create_search_key (const OID * oid, const OID * class_oid);
-extern UINT64 lock_pack_row_oid (const OID * oid);
+extern void lock_interrupt_lockwait (THREAD_ENTRY *guest, int tran_index);
+extern LK_RES_KEY lock_create_search_key (const OID *oid, const OID *class_oid);
+extern UINT64 lock_pack_row_oid (const OID *oid);
 extern int lock_res_key_compare (void *k1, void *k2);
 
 #endif /* SERVER_MODE */

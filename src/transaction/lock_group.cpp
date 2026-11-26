@@ -671,7 +671,7 @@ lock_group::defer_abort (THREAD_ENTRY *thread_p)
  * one: its class may be released first, and a catalog directory OID left locked fails the next catalog access.
  */
 static bool
-lock_pending_release_may_drop (const LK_PENDING_RELEASE * release)
+lock_pending_release_may_drop (const LK_PENDING_RELEASE *release)
 {
   return (release->type == LK_PENDING_UNLOCK_TRANSIENT || OID_ISNULL (&release->class_oid)
 	  || OID_IS_ROOTOID (&release->class_oid));
@@ -853,8 +853,8 @@ lock_group_set_abort_error (int tran_index, int error)
 }
 
 static void
-lock_pending_release_init (LK_PENDING_RELEASE * release, LK_PENDING_RELEASE_TYPE type, const OID * oid,
-			   const OID * class_oid, LOCK lock, bool force)
+lock_pending_release_init (LK_PENDING_RELEASE *release, LK_PENDING_RELEASE_TYPE type, const OID *oid,
+			   const OID *class_oid, LOCK lock, bool force)
 {
   release->next = NULL;
   release->type = type;
@@ -877,8 +877,8 @@ lock_pending_release_init (LK_PENDING_RELEASE * release, LK_PENDING_RELEASE_TYPE
  * locks under it (lock_remove_all_inst_locks ()), the owner's among them.
  */
 static const LK_RES_KEY *
-lock_group_acquire_guest_key (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
-			      LK_RES_KEY * key)
+lock_group_acquire_guest_key (THREAD_ENTRY *thread_p, const OID *oid, const OID *class_oid, LOCK lock,
+			      LK_RES_KEY *key)
 {
   if (oid != NULL && class_oid != NULL
       && (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (class_oid)
@@ -895,7 +895,7 @@ lock_group_acquire_guest_key (THREAD_ENTRY * thread_p, const OID * oid, const OI
  * no class entry, only lowers its granule count, and escalates nothing
  */
 static const LK_RES_KEY *
-lock_group_row_release_key (const OID * oid, const OID * class_oid, LK_RES_KEY * key)
+lock_group_row_release_key (const OID *oid, const OID *class_oid, LK_RES_KEY *key)
 {
   if (oid == NULL || class_oid == NULL || OID_IS_ROOTOID (oid) || OID_IS_ROOTOID (class_oid))
     {
@@ -1023,7 +1023,7 @@ lock_group_has_open_section (int tran_index)
  *	 client unregisters or the index is freed, and the abort then runs.
  */
 bool
-lock_group_defer_abort (THREAD_ENTRY * thread_p, int tran_index)
+lock_group_defer_abort (THREAD_ENTRY *thread_p, int tran_index)
 {
 #if defined (SERVER_MODE)
   return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_get_tran_group (tran_index)->defer_abort (thread_p);
@@ -1038,7 +1038,7 @@ lock_group_defer_abort (THREAD_ENTRY * thread_p, int tran_index)
  *					   (lock_group::enter ()). Set as the lock timeout it is to the requester.
  */
 void
-lock_group_set_error_for_own_wait (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock)
+lock_group_set_error_for_own_wait (THREAD_ENTRY *thread_p, const OID *oid, LOCK lock)
 {
   const char *prog_name, *user_name, *host_name;
   int pid, tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
