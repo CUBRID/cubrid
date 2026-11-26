@@ -248,7 +248,8 @@ IDL       [a-zA-Z0-9_]
 [bB][iI][tT]_[xX][oO][rR]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return BIT_XOR; }
 [bB][lL][oO][bB]							{ return BLOB_; }
-[bB][oO][dD][yY]                                                        { return BODY; }
+[bB][oO][dD][yY]							{ csql_yylval.cptr = pt_makename(yytext);
+									  return BODY; }
 [bB][oO][oO][lL][eE][aA][nN]						{ return BOOLEAN_; }
 [bB][oO][tT][hH]							{ return BOTH_; }
 [bB][rR][eE][aA][dD][tT][hH]						{ return BREADTH; }
@@ -726,7 +727,8 @@ IDL       [a-zA-Z0-9_]
 [oO][vV][eE][rR][lL][aA][pP][sS]					{ return OVERLAPS; }
 [oO][wW][nN][eE][rR]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return OWNER; }
-[pP][aA][cC][kK][aA][gG][eE]                                            { return PACKAGE; }
+[pP][aA][cC][kK][aA][gG][eE]						{ csql_yylval.cptr = pt_makename(yytext);
+									  return PACKAGE; }
 [pP][aA][gG][eE]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return PAGE; }
                                                                                 
