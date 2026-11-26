@@ -16909,10 +16909,8 @@ pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
     }
   else
     {
-      /* a type keeps two keys apart if it holds every key; a DATETIME does not where daylight saving time ends: two
-       * TIMESTAMPs an hour apart are one local time */
-      is_lossless_conversion = (key_type != DB_TYPE_TIMESTAMP
-				&& domain_key_converts_losslessly (key_type, decided.target[0]));
+      /* a type keeps two keys apart if it holds every key */
+      is_lossless_conversion = domain_key_converts_losslessly (key_type, decided.target[0]);
     }
 
   return is_lossless_conversion && (decided.conv[1] == NULL || TP_DOMAIN_TYPE (decided.target[1]) == key_type);
