@@ -947,6 +947,7 @@ static int qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, V
 static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext);
 static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * class_oid,
 				       UPDDEL_CLASS_INFO_INTERNAL * class_);
+static int qexec_start_class_spec_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
 static SCAN_CODE qexec_open_row_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static bool qexec_can_switch_index_partition (ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
@@ -11696,6 +11697,40 @@ qexec_next_merge_block (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE ** spec)
 }
 
 /*
+ * qexec_start_class_spec_scan () - start the scan of xasl->curr_spec, a class spec the block iterator moves to
+ *   return: NO_ERROR, or error code
+ *   thread_p(in): Thread entry
+ *   xasl(in)    : XASL Tree block
+ *
+ * Note: an inner over a class hierarchy driven per outer row (CBRD-28215) starts each class again for every outer
+ *	 row, and scan_start_scan () leaves the index scan where the class's last scan stopped: the B-tree scan
+ *	 position, the key limit evaluated for an earlier outer row and the covering list file. Reset them as
+ *	 scan_reset_scan_block () does for a rewound class, and as scan_switch_index_partition () does for a
+ *	 partition.
+ */
+static int
+qexec_start_class_spec_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  SCAN_ID *s_id = &xasl->curr_spec->s_id;
+  int error;
+
+  error = scan_start_scan (thread_p, s_id);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (s_id->type == S_INDX_SCAN && XASL_IS_PER_OUTER_ROW (xasl) && QEXEC_IS_CLASS_HIERARCHY_INNER (xasl)
+      && scan_reset_scan_block (thread_p, s_id) == S_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * qexec_next_scan_block () -
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   xasl(in)   : XASL Tree pointer
@@ -11800,7 +11835,7 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 		}
 	    }
 	}
-      else if (scan_start_scan (thread_p, &xasl->curr_spec->s_id) != NO_ERROR)
+      else if (qexec_start_class_spec_scan (thread_p, xasl) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -11845,7 +11880,7 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	    }
 
 	  /* initialize scan */
-	  if (scan_start_scan (thread_p, &xasl->curr_spec->s_id) != NO_ERROR)
+	  if (qexec_start_class_spec_scan (thread_p, xasl) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
