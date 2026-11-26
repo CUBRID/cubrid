@@ -382,9 +382,14 @@ match_password (const char *name, const char *user, const char *database)
 #define AU_PASSWORD_POLICY_MIN_USER_NAME_LEN    3
 #define AU_PASSWORD_POLICY_SPECIAL_CHARS        "!@#$%^&*()-_=+{}:?.,~"
 
-/* the special characters typed with Shift, and the unshifted key of each */
-#define AU_PASSWORD_POLICY_SHIFTED_CHARS        "!@#$%^&*()_+{}:?~"
-#define AU_PASSWORD_POLICY_SHIFTED_KEYS         "1234567890-=[];/`"
+/*
+ * the special characters typed with Shift, and the unshifted key of each at the same index; named arrays, not macros,
+ * so that au_password_key () searches and subtracts the same array (two equal string literals need not share storage)
+ */
+static const char au_password_shifted_chars[] = "!@#$%^&*()_+{}:?~";
+static const char au_password_shifted_keys[] = "1234567890-=[];/`";
+static_assert (sizeof (au_password_shifted_chars) == sizeof (au_password_shifted_keys),
+	       "every shifted character needs its unshifted key");
 
 /* rows of unshifted keys the sequence rule looks in; each is also checked reversed */
 static const char *au_password_sequences[] =
@@ -412,10 +417,10 @@ au_password_key (unsigned char c)
       return (char) (c + ('a' - 'A'));
     }
 
-  shifted = (c != '\0') ? strchr (AU_PASSWORD_POLICY_SHIFTED_CHARS, c) : NULL;
+  shifted = (c != '\0') ? strchr (au_password_shifted_chars, c) : NULL;
   if (shifted != NULL)
     {
-      return AU_PASSWORD_POLICY_SHIFTED_KEYS[shifted - AU_PASSWORD_POLICY_SHIFTED_CHARS];
+      return au_password_shifted_keys[shifted - au_password_shifted_chars];
     }
 
   return (char) c;
