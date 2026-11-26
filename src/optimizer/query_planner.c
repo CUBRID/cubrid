@@ -7251,6 +7251,14 @@ qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
       *found = true;
       break;
 
+    case PT_FUNCTION:
+      if (tree->info.function.function_type == F_CLASS_OF)
+	{
+	  /* reads the object's heap page */
+	  *found = true;
+	}
+      break;
+
     case PT_NAME:
       if (tree->type_enum == PT_TYPE_OBJECT)
 	{

@@ -16586,9 +16586,10 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
 	    }
 	  scan_cache_inited = true;
 	  local_scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+	  /* the row is copied: its page is let go at once, not kept in the cache while the filters below are evaluated */
+	  local_scan_cache.cache_last_fix_page = false;
 
-	  /* record is consumed only through the attribute layer for MVCC reevaluation (CBRD-26847); a copy, so that
-	   * its page is not held while the filters below are evaluated */
+	  /* record is consumed only through the attribute layer for MVCC reevaluation (CBRD-26847) */
 	  scan_code =
 	    heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, COPY, NULL_CHN,
 				      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);

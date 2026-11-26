@@ -4132,6 +4132,16 @@ expr_xasl_node_runs (const XASL_NODE * xasl, EXPR_RUNS_WHAT what)
 	{
 	  return true;
 	}
+      /* group by skip ends a group between two rows of the scan: what it evaluates then, a scan joined to the block
+       * still holding its page */
+      if (xasl->spec_list != NULL && xasl->spec_list->indexptr != NULL && xasl->spec_list->indexptr->groupby_skip
+	  && (expr_pred_runs (xasl->proc.buildlist.g_having_pred, what)
+	      || expr_pred_runs (xasl->proc.buildlist.g_grbynum_pred, what)
+	      || (xasl->proc.buildlist.g_outptr_list != NULL
+		  && expr_regu_list_runs (xasl->proc.buildlist.g_outptr_list->valptrp, what))))
+	{
+	  return true;
+	}
     }
   else if (xasl->type == BUILDVALUE_PROC)
     {

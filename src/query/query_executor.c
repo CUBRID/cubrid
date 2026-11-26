@@ -26445,6 +26445,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool fixed,
 
   /* start the scanner on "input": a heap scan that keeps no page reads from its copy of the page, as a block's
    * scans do (qexec_open_scan () turns it off again for a scan that is not eligible) */
+  assert (xasl->spec_list->next == NULL);	/* one class (no hierarchy, no partition) or the input list */
   xasl->spec_list->cached_scan = true;
   if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, fixed, false,
 		       false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, NULL, xasl,
