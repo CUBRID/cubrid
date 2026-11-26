@@ -335,3 +335,42 @@ TEST_CASE ("gate holds a unit whose unfinished predecessors are on several worke
   REQUIRE (la_gate_route (&l40, &worker, &wait_reason) == LA_GATE_ROUTE_WAIT);
   REQUIRE (wait_reason == 1);
 }
+
+TEST_CASE ("gate follows a unit to its new worker and forgets the old one", "[log_applier_gate]")
+{
+  LOG_LSA l10 = test_lsa (10), l20 = test_lsa (20), l30 = test_lsa (30);
+  int worker = -1, reason = -1;
+
+  REQUIRE (la_gate_init (8) == NO_ERROR);
+  la_gate_set_initial_frontier (&l10);
+  REQUIRE (la_gate_order_push (&l20) == NO_ERROR);
+  REQUIRE (la_gate_order_push (&l30) == NO_ERROR);
+
+  /* not dispatched yet: a unit depending on it has no worker to follow */
+  REQUIRE (la_gate_route (&l20, &worker, &reason) == LA_GATE_ROUTE_WAIT);
+  REQUIRE (reason == 1);
+
+  REQUIRE (la_gate_set_owner (&l20, 0) == NO_ERROR);
+  REQUIRE (la_gate_route (&l20, &worker, &reason) == LA_GATE_ROUTE_WORKER);
+  REQUIRE (worker == 0);
+
+  /* given to worker 1 instead: worker 0's stale copy must not make the route look split */
+  REQUIRE (la_gate_set_owner (&l20, 1) == NO_ERROR);
+  REQUIRE (la_gate_route (&l20, &worker, &reason) == LA_GATE_ROUTE_WORKER);
+  REQUIRE (worker == 1);
+
+  /* l30 on worker 0: a dependency on l30 sees units on two workers */
+  REQUIRE (la_gate_set_owner (&l30, 0) == NO_ERROR);
+  REQUIRE (la_gate_route (&l30, &worker, &reason) == LA_GATE_ROUTE_WAIT);
+  REQUIRE (reason == 2);
+
+  /* l20 applied and passed: only worker 0 holds an unfinished unit through l30 */
+  la_gate_mark_completed (&l20);
+  la_gate_advance_frontier ();
+  REQUIRE (la_gate_route (&l30, &worker, &reason) == LA_GATE_ROUTE_WORKER);
+  REQUIRE (worker == 0);
+
+  la_gate_mark_completed (&l30);
+  la_gate_advance_frontier ();
+  REQUIRE (la_gate_route (&l30, &worker, &reason) == LA_GATE_ROUTE_ANY);
+}

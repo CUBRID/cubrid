@@ -38,8 +38,9 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include <algorithm>
+#include <functional>
 #include <new>
-#include <set>
 #include <vector>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -69,11 +70,18 @@ static int la_Gate_order_count = 0;
 #define LA_GATE_UNDISPATCHED (-1)
 
 /* Positions of the apply units on the ring that are not applied yet: la_Gate_undispatched for the units not
- * dispatched yet, and la_Gate_unfinished[w] for those dispatched to worker w. Each set keeps its positions in
- * order, so its first element is the earliest unit its owner has not committed, which tells la_gate_route
- * whether that owner holds an unfinished unit at or below a dependency without walking the ring. */
-static std::set<std::int64_t> la_Gate_undispatched;
-static std::vector<std::set<std::int64_t>> la_Gate_unfinished;
+ * dispatched yet, and la_Gate_unfinished[w] for those dispatched to worker w. Each is a min-heap of positions, so
+ * its top is the earliest unit its owner has not committed, which tells la_gate_route whether that owner holds an
+ * unfinished unit at or below a dependency without walking the ring. A position is not removed when its unit
+ * completes or changes owner: la_gate_earliest_unfinished drops it when it reaches the top and the ring says it
+ * no longer belongs there. A heap in a vector allocates nothing per unit, where a set allocated and freed a node
+ * for every unit. */
+typedef std::vector<std::int64_t> LA_GATE_POSITIONS;
+static LA_GATE_POSITIONS la_Gate_undispatched;
+static std::vector<LA_GATE_POSITIONS> la_Gate_unfinished;
+/* false with one worker: every unit goes to it in commit order, so nothing asks la_gate_route where a unit may run
+ * and the position sets above are not kept (la_gate_set_routing) */
+static bool la_Gate_routing = true;
 
 /* Counters the coordinator compares to tell whether a parked task may have become releasable. The completion
  * counter moves when a unit completes or the frontier advances, which is when a task waiting for earlier units
@@ -93,7 +101,7 @@ la_gate_lsa_to_int (const LOG_LSA *lsa)
   return (std::int64_t) lsa->pageid * 65536 + (std::int64_t) (lsa->offset & 0xffff);
 }
 
-static std::set<std::int64_t> &
+static LA_GATE_POSITIONS &
 la_gate_unfinished_of (int owner)
 {
   assert (owner == LA_GATE_UNDISPATCHED || owner >= 0);
@@ -109,6 +117,70 @@ la_gate_unfinished_of (int owner)
     }
 
   return la_Gate_unfinished[owner];
+}
+
+/* An integer position back into the LSA it was made from (la_gate_lsa_to_int). */
+static void
+la_gate_int_to_lsa (std::int64_t pos, LOG_LSA *lsa)
+{
+  lsa->pageid = (decltype (lsa->pageid)) (pos / 65536);
+  lsa->offset = (decltype (lsa->offset)) (pos % 65536);
+}
+
+/* add a unit's position to its owner's heap; throws std::bad_alloc when the heap cannot grow */
+static void
+la_gate_add_unfinished (int owner, std::int64_t pos)
+{
+  LA_GATE_POSITIONS &heap = la_gate_unfinished_of (owner);
+
+  heap.push_back (pos);
+  std::push_heap (heap.begin (), heap.end (), std::greater<std::int64_t> ());
+}
+
+/* drop from the top of a heap the positions the frontier has passed; their units are applied */
+static void
+la_gate_drop_passed (LA_GATE_POSITIONS &heap, std::int64_t frontier_pos)
+{
+  while (!heap.empty () && heap.front () <= frontier_pos)
+    {
+      std::pop_heap (heap.begin (), heap.end (), std::greater<std::int64_t> ());
+      heap.pop_back ();
+    }
+}
+
+/*
+ * la_gate_earliest_unfinished() - the earliest position the owner has not committed
+ *   return: false when the owner holds no unfinished unit
+ *   owner(in): a worker, or LA_GATE_UNDISPATCHED
+ *   pos(out): the position
+ *
+ * Note: drops from the top the positions whose unit completed, went to another owner, or left the ring behind the
+ *       frontier. A position can be in a heap twice (a unit given back to an owner it had before); both copies
+ *       stand for the same unit, so the earliest stays right.
+ */
+static bool
+la_gate_earliest_unfinished (int owner, std::int64_t *pos)
+{
+  LA_GATE_POSITIONS &heap = la_gate_unfinished_of (owner);
+
+  while (!heap.empty ())
+    {
+      LOG_LSA lsa;
+      LA_GATE_ORDER *entry;
+
+      la_gate_int_to_lsa (heap.front (), &lsa);
+      entry = la_gate_order_find (&lsa);
+      if (entry != NULL && !entry->completed && entry->owner == owner)
+	{
+	  *pos = heap.front ();
+	  return true;
+	}
+
+      std::pop_heap (heap.begin (), heap.end (), std::greater<std::int64_t> ());
+      heap.pop_back ();
+    }
+
+  return false;
 }
 
 /*
@@ -295,7 +367,7 @@ la_gate_order_push (const LOG_LSA *commit_lsa)
   la_Gate_order_count++;
   try
     {
-      la_gate_unfinished_of (LA_GATE_UNDISPATCHED).insert (la_gate_lsa_to_int (commit_lsa));
+      la_gate_add_unfinished (LA_GATE_UNDISPATCHED, la_gate_lsa_to_int (commit_lsa));
     }
   catch (const std::bad_alloc &)
     {
@@ -330,6 +402,18 @@ la_gate_advance_frontier (void)
 
   if (advanced > 0)
     {
+      /* la_gate_route returns early for a unit whose dependency the frontier already passed, the common case, and
+       * would then never look at the heaps; trim them here so that they hold no more than the ring */
+      if (la_Gate_routing)
+	{
+	  std::int64_t frontier_pos = la_gate_lsa_to_int (&la_Gate_frontier);
+
+	  la_gate_drop_passed (la_Gate_undispatched, frontier_pos);
+	  for (LA_GATE_POSITIONS &heap : la_Gate_unfinished)
+	    {
+	      la_gate_drop_passed (heap, frontier_pos);
+	    }
+	}
       la_Gate_completion_version++;
       LA_DEBUG_LOG (ARG_FILE_LINE, "ws_gate frontier advanced by %d -> %lld|%d (ring=%d)\n", advanced,
 		    LSA_AS_ARGS (&la_Gate_frontier), la_Gate_order_count);
@@ -355,7 +439,7 @@ la_gate_mark_completed (const LOG_LSA *commit_lsa)
     {
       if (!entry->completed)
 	{
-	  la_gate_unfinished_of (entry->owner).erase (la_gate_lsa_to_int (&entry->commit_lsa));
+	  /* its position leaves the owner's heap when it reaches the top (la_gate_earliest_unfinished) */
 	  la_Gate_completion_version++;
 	}
       entry->completed = true;
@@ -470,14 +554,14 @@ la_gate_set_owner (const LOG_LSA *commit_lsa, int worker)
 
       try
 	{
-	  la_gate_unfinished_of (worker).insert (pos);
+	  la_gate_add_unfinished (worker, pos);
 	}
       catch (const std::bad_alloc &)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (std::int64_t));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      la_gate_unfinished_of (entry->owner).erase (pos);
+      /* the copy in the old owner's heap is dropped when it reaches the top (la_gate_earliest_unfinished) */
       la_Gate_dispatch_version++;
     }
   entry->owner = worker;
@@ -536,13 +620,13 @@ la_gate_route (const LOG_LSA *dependency_lsa, int *worker, int *wait_reason)
   std::int64_t dependency_pos = la_gate_lsa_to_int (dependency_lsa);
 
   /* an earlier unit has no worker yet, so there is no worker to follow */
-  undispatched = (!la_Gate_undispatched.empty () && *la_Gate_undispatched.begin () <= dependency_pos);
+  std::int64_t earliest;
+
+  undispatched = (la_gate_earliest_unfinished (LA_GATE_UNDISPATCHED, &earliest) && earliest <= dependency_pos);
 
   for (int w = 0; w < (int) la_Gate_unfinished.size (); w++)
     {
-      const std::set<std::int64_t> &positions = la_Gate_unfinished[w];
-
-      if (positions.empty () || *positions.begin () > dependency_pos)
+      if (!la_gate_earliest_unfinished (w, &earliest) || earliest > dependency_pos)
 	{
 	  continue;
 	}
