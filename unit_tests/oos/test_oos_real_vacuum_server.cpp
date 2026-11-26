@@ -251,6 +251,16 @@ current_log_blockid ()
   return vacuum_get_log_blockid (log_Gl.prior_info.prior_lsa.load ().pageid);
 }
 
+/* Flushes the log through the last appended record, as a commit does. prior_lsa is where the next record will go,
+ * and the flushed end of the log never passes it until another record is appended. logpb_flush_pages waits for that
+ * forever when no other thread writes the log (CBRD-28436). */
+static void
+flush_log_through_last_record ()
+{
+  LOG_LSA flush_lsa = log_Gl.prior_info.prev_lsa;
+  logpb_flush_pages (thread_p, &flush_lsa);
+}
+
 /* Vacuum data entries are produced only when the log crosses a block boundary,
  * so the block containing the interesting MVCC op must be closed before the
  * master daemon can ever see it. On top of that, the master refuses entries
@@ -1063,8 +1073,7 @@ TEST_F (OosRealVacuum, VacuumWaitsForHeapHeaderWithoutHoldingLastPage)
     }
   if (log_advanced)
     {
-      LOG_LSA flush_lsa = log_Gl.prior_info.prior_lsa;
-      logpb_flush_pages (thread_p, &flush_lsa);
+      flush_log_through_last_record ();
     }
 
   const bool vacuum_waits_for_header = log_advanced
@@ -1314,8 +1323,7 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
     /* Vacuum skips log blocks near the end of the flushed log. */
     static void flush_log ()
     {
-      LOG_LSA flush_lsa = log_Gl.prior_info.prior_lsa;
-      logpb_flush_pages (thread_p, &flush_lsa);
+      flush_log_through_last_record ();
     }
 
     bool close_block_with_oos_fillers (VACUUM_LOG_BLOCKID block)
