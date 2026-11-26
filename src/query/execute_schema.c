@@ -255,6 +255,7 @@ static int check_procedure_grantable (MOP proc_mop);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
 static int do_check_kept_residual_default (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * attribute);
+static void do_drop_att_default (SM_ATTRIBUTE * att);
 static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
 static int lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name);
 static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const alter);
@@ -8344,6 +8345,11 @@ do_check_kept_residual_default (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * at
       return er_errid ();
     }
 
+  /* the restored tree has no source position: report its errors at the column */
+  expr->buffer_pos = attribute->buffer_pos;
+  expr->line_number = attribute->line_number;
+  expr->column_number = attribute->column_number;
+
   data_default = pt_make_data_default_expr_node (parser, expr);
   if (data_default == NULL)
     {
@@ -8364,6 +8370,22 @@ do_check_kept_residual_default (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * at
   parser_free_tree (parser, data_default);
 
   return error;
+}
+
+/*
+ * do_drop_att_default () - drop the DEFAULT of an attribute in a class template
+ *   att(in/out): the attribute
+ */
+static void
+do_drop_att_default (SM_ATTRIBUTE * att)
+{
+  pr_clear_value (&att->default_value.value);
+  classobj_clear_default_expr (&att->default_value.default_expr);
+
+  if (att->properties != NULL)
+    {
+      classobj_drop_prop (att->properties, "default_expr");
+    }
 }
 
 /*
@@ -12035,6 +12057,22 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	}
     }
 
+  /* an AUTO_INCREMENT drops the DEFAULT (below), unchecked: a residual DEFAULT goes before the change, so its
+   * DDL-time value is not fitted to the new type */
+  if (attr_chg_prop->name_space == ID_ATTRIBUTE
+      && is_att_prop_set (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_LOST))
+    {
+      error = smt_find_attribute (ctemplate, attr_name, 0, &old_att);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+      if (DB_IS_RESIDUAL_DEFAULT_EXPR (&old_att->default_value.default_expr))
+	{
+	  do_drop_att_default (old_att);
+	}
+    }
+
   /* a residual DEFAULT (STABLE or VOLATILE) keeps its expression through MODIFY / CHANGE, so it keeps being
    * evaluated per statement or per row instead of freezing to the DDL-time snapshot */
   error = do_build_default_expr (parser, attribute->info.attr_def.data_default, &new_default_expr);
@@ -12128,13 +12166,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   /* DEFAULT value */
   if (is_att_prop_set (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_LOST))
     {
-      pr_clear_value (&(found_att->default_value.value));
-      classobj_clear_default_expr (&found_att->default_value.default_expr);
-
-      if (found_att->properties != NULL)
-	{
-	  classobj_drop_prop (found_att->properties, "default_expr");
-	}
+      do_drop_att_default (found_att);
     }
 
   /* on update expression */
