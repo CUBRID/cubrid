@@ -562,7 +562,7 @@ la_coordinator_route (const LA_TASK *task, int *worker)
       return false;
     }
 
-  /* least busy live worker with room; ties go round-robin */
+  /* the live worker with room and the shortest queue; ties go round-robin */
   *worker = -1;
   for (int k = 0; k < live_worker_count; k++)
     {
@@ -574,9 +574,11 @@ la_coordinator_route (const LA_TASK *task, int *worker)
 	  continue;
 	}
 
-      /* the first worker with room becomes the candidate; a later one replaces it only with fewer unanswered
-       * tasks, so on a tie the worker met first from la_Coordinator_next_worker stays */
-      if (*worker < 0 || la_Coordinator_outstanding[i] < la_Coordinator_outstanding[*worker])
+      /* the first worker with room becomes the candidate; a later one replaces it only with fewer tasks queued, so
+       * on a tie the worker met first from la_Coordinator_next_worker stays. The queue is compared, not the
+       * unanswered tasks: those include the tasks in the worker's open transaction, which a worker that committed
+       * last has few of, so every task went to it while the other ran dry and waited for its commit interval. */
+      if (*worker < 0 || la_task_queue_get_queued (i) < la_task_queue_get_queued (*worker))
 	{
 	  *worker = i;
 	  chosen = pos;
