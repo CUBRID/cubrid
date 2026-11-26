@@ -1312,6 +1312,8 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
   if (tran_index != LOG_SYSTEM_TRAN_INDEX)
     {
+      lock_group_clear (tran_index);
+
       TR_TABLE_CS_ENTER (thread_p);
       tdes->trid = NULL_TRANID;
       tdes->client_id = -1;
@@ -1570,6 +1572,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   DB_VALUE *dbval;
   HL_HEAPID save_heap_id;
 
+  /* the execution token is not cleared: the request that ends the transaction still runs it */
   tdes->isloose_end = false;
   tdes->state = TRAN_ACTIVE;
   LSA_SET_NULL (&tdes->head_lsa);
@@ -1648,6 +1651,9 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   XASL_ID_SET_NULL (&tdes->xasl_id);
   tdes->waiting_for_res = NULL;
   tdes->tran_abort_reason = TRAN_NORMAL;
+#if defined (SERVER_MODE)
+  tdes->abort_deferred.store (false, std::memory_order_release);
+#endif /* SERVER_MODE */
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
   tdes->m_log_postpone_cache.reset ();
@@ -1742,6 +1748,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->waiting_for_res = NULL;
   tdes->disable_modifications = db_Disable_modifications;
   tdes->tran_abort_reason = TRAN_NORMAL;
+#if defined (SERVER_MODE)
+  tdes->abort_deferred.store (false, std::memory_order_release);
+#endif /* SERVER_MODE */
   tdes->num_exec_queries = 0;
   tdes->ddl_sql_user_text = NULL;
 
@@ -1780,6 +1789,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
+
 }
 
 /*
@@ -3285,6 +3295,39 @@ logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index,
 
 
 /*
+ * logtb_is_abort_deferred () - whether the transaction's abort is left to the request that ends it
+ *				 (lock_group_defer_abort (), tran_defer_abort_to_pl_caller ())
+ */
+bool
+logtb_is_abort_deferred (int tran_index)
+{
+#if defined (SERVER_MODE)
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+  return tdes != NULL && tdes->abort_deferred.load (std::memory_order_acquire);
+#else /* SERVER_MODE */
+  return false;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * logtb_fail_if_abort_deferred () - fail a statement whose transaction's abort is left to a request that ends it
+ *   return: ER_LK_UNILATERALLY_ABORTED (set) or NO_ERROR
+ */
+int
+logtb_fail_if_abort_deferred (int tran_index)
+{
+#if defined (SERVER_MODE)
+  if (logtb_is_abort_deferred (tran_index))
+    {
+      lock_set_error_for_aborted (tran_index);
+      return ER_LK_UNILATERALLY_ABORTED;
+    }
+#endif /* SERVER_MODE */
+  return NO_ERROR;
+}
+
+/*
  * logtb_is_active - is transaction active ?
  *
  * return:
@@ -4401,36 +4444,45 @@ logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 }
 
 /*
- * logtb_has_active_savepoint () - Is a savepoint declared, so a partial rollback can reach back to here?
+ * logtb_wait_for_tran_end () - Block until the transaction a stamp named ends, or until what the caller saw may be
+ *				gone
  *
- * return: true if this transaction has declared a savepoint
- *
- *   thread_p(in): thread entry
- */
-bool
-logtb_has_active_savepoint (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-  return tdes != NULL && !LSA_ISNULL (&tdes->savept_lsa);
-}
-
-/*
- * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends
- *
- * return	 : NO_ERROR once that transaction has ended.  An error if the lock failed, or if the lock was granted
- *		   while that transaction is still active -- waiting again cannot help.
+ * return	 : NO_ERROR once that transaction has ended, or when the caller is to read the stamp again
+ *		   (lock_wait_transaction_mvccid ()). An error if the lock failed, or if it was granted while that
+ *		   transaction is still active -- waiting again cannot help.
  * thread_p (in) : Thread entry.
- * mvccid (in)	 : MVCCID of the in-progress transaction to wait out.
+ * seen (in)	 : the in-progress transaction to wait out (seen->owner), the wake generation read with its stamp, and
+ *		   the row the stamp was on, for the lock wait diagnostics.
  *
  * Note: call with no page latch held.
  */
 int
-logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
+logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen)
+{
+  return logtb_wait_for_tran_end_on_row (thread_p, seen, NULL);
+}
+
+/*
+ * logtb_wait_for_tran_end_on_row () - logtb_wait_for_tran_end () for a caller that holds a row X while it waits; the
+ *				       owner may be handed the row (held->lost when it is not had back)
+ */
+int
+logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen, LK_HELD_ROW * held)
 {
   int error_code;
+  int granted;
 
-  if (lock_transaction_mvccid (thread_p, mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  granted = lock_wait_transaction_mvccid (thread_p, seen, held);
+  if (granted == LK_NOTGRANTED_DUE_RECHECK)
+    {
+      return NO_ERROR;
+    }
+  if (granted != LK_GRANTED)
     {
       error_code = er_errid ();
       if (error_code == NO_ERROR)
@@ -4440,9 +4492,9 @@ logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
 	}
       return error_code;
     }
-  lock_unlock_transaction_mvccid (thread_p, mvccid, S_LOCK);
+  lock_unlock_transaction_mvccid (thread_p, seen->owner, S_LOCK);
 
-  if (log_Gl.mvcc_table.is_active (mvccid))
+  if (log_Gl.mvcc_table.is_active (seen->owner))
     {
       /* Invariant breach: no-op grant while that transaction is still active. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
@@ -4497,19 +4549,22 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
  * logtb_get_catalog_read_snapshot () - build into local a snapshot for one catalog read request
  *
  * Whatever the isolation level, the transaction snapshot is neither built nor changed, so reading the catalog does
- * not fix the point in time a transaction's queries see. Like that snapshot, it holds vacuum back from the versions
- * it may read until the transaction ends.
+ * not fix the point in time a transaction's queries see. It holds vacuum back from the versions it may read until
+ * logtb_release_catalog_read_snapshot ().
  *
  * return: local, or NULL for a system transaction
  *
  *   thread_p(in): thread entry
  *   local(out): snapshot owned by the caller for the duration of the request
+ *   holds_vacuum(out): set when local registered the transaction's lowest visible MVCCID; the caller then calls
+ *			logtb_release_catalog_read_snapshot ()
  */
 MVCC_SNAPSHOT *
-logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local)
+logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local, bool * holds_vacuum)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
+  *holds_vacuum = false;
   if (!tdes->is_active_worker_transaction ())
     {
       return NULL;
@@ -4518,8 +4573,32 @@ logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local)
   /* no parallel worker reads the catalog this way, so the main thread's snapshot mutex is not needed */
   assert (thread_p->m_px_orig_thread_entry == NULL);
 
-  log_Gl.mvcc_table.build_snapshot (tdes->tran_index, *local, false);
+  *holds_vacuum = log_Gl.mvcc_table.build_snapshot (tdes->tran_index, *local, false);
   return local;
+}
+
+/*
+ * logtb_release_catalog_read_snapshot () - stop holding vacuum back for a catalog read snapshot no longer used, so
+ *					    that a transaction which only compiles does not hold it back until it ends
+ *
+ * Call it on the thread that built local. In between, the transaction starts no other catalog read and does not
+ * build and then drop its own snapshot.
+ *
+ *   thread_p(in): thread entry
+ *   local(in): a snapshot logtb_get_catalog_read_snapshot () built with holds_vacuum set
+ */
+void
+logtb_release_catalog_read_snapshot (THREAD_ENTRY * thread_p, const MVCC_SNAPSHOT * local)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  assert (thread_p->m_px_orig_thread_entry == NULL);
+
+  /* a transaction snapshot built in the meantime relies on the same registration */
+  if (!tdes->mvccinfo.snapshot.valid)
+    {
+      log_Gl.mvcc_table.reset_transaction_lowest_active (tdes->tran_index, *local);
+    }
 }
 
 /*

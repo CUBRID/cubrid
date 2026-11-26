@@ -75,7 +75,9 @@ namespace parallel_index_scan
       m_ahead_slot (0),
       m_ahead_end (false),
       m_ahead_skipped_keys (0),
-      m_ahead_interrupted (false)
+      m_ahead_interrupted (false),
+      m_bm_worker (nullptr),
+      m_bm_sector_hint (-1)
   {
     db_make_null (&m_slot_key);
     db_make_null (&m_ahead_last.key);
@@ -167,10 +169,15 @@ namespace parallel_index_scan
     m_page = page;
     m_num_keys = btree_node_number_of_keys (thread_p, m_page);
 
-    /* slot_hint > m_num_keys (BTREE_KEY_BIGGER) keeps loop entry-guard false → immediate leaf-chain advance. */
+    /* slot_hint is where the walk starts in this leaf: the descent's slot (the key it found, or where the bound would
+     * go -- btree_locate_key ()) or the slot a resume gives.  Past the last key (BTREE_KEY_BIGGER) an ascending walk's
+     * loop guard is false at once and the walk moves to the next leaf; a descending walk starts at the last key, as the
+     * serial scan starts one key back when the bound is not found (btree_range_scan_start ()) -- the slot past it holds
+     * no record to read.  Inside the leaf a descending walk starts at the next bigger key, which check_key_in_range ()
+     * skips. */
     if (slot_hint != NULL_SLOTID && slot_hint >= 1)
       {
-	m_current_slot = slot_hint;
+	m_current_slot = (m_use_desc_index && slot_hint > m_num_keys) ? m_num_keys : slot_hint;
       }
     else
       {
@@ -480,6 +487,12 @@ namespace parallel_index_scan
 	return S_SUCCESS;
       }
 
+    if (m_bm_worker != nullptr)
+      {
+	/* bitmap heap scan, index step: the heap step looks the row up */
+	return m_input_handler->bitmap ().mark (thread_p, m_bm_worker, oid, &m_bm_sector_hint) == NO_ERROR ? S_END : S_ERROR;
+      }
+
     /* Non-covering index path: read values from heap record */
     read_ahead (thread_p);
     if (m_ahead_interrupted)
@@ -487,6 +500,13 @@ namespace parallel_index_scan
 	return S_ERROR;
       }
 
+    return lookup_heap_row (thread_p, oid);
+  }
+
+  SCAN_CODE
+  leaf_slot_walker::lookup_heap_row (THREAD_ENTRY *thread_p, OID *oid)
+  {
+    INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
     RECDES heap_recdes = RECDES_INITIALIZER;
     if (m_scan_id->fixed == false)
       {
@@ -509,6 +529,14 @@ namespace parallel_index_scan
 	return S_ERROR;
       }
 
+    return finish_heap_row (thread_p, oid, &heap_recdes);
+  }
+
+  SCAN_CODE
+  leaf_slot_walker::finish_heap_row (THREAD_ENTRY *thread_p, OID *oid, RECDES *heap_recdes)
+  {
+    INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
+
     if (isidp->scan_pred.pr_eval_fnc != nullptr && isidp->scan_pred.pred_expr != nullptr)
       {
 	FILTER_INFO data_filter;
@@ -519,7 +547,7 @@ namespace parallel_index_scan
 	data_filter.val_descr = m_vd;
 	data_filter.class_oid = &isidp->cls_oid;
 
-	DB_LOGICAL ev_res = eval_data_filter (thread_p, oid, &heap_recdes, &isidp->scan_cache, &data_filter);
+	DB_LOGICAL ev_res = eval_data_filter (thread_p, oid, heap_recdes, &isidp->scan_cache, &data_filter);
 	ev_res = update_logical_result (thread_p, ev_res, (int *) &m_scan_id->qualification);
 	if (ev_res != V_TRUE)
 	  {
@@ -536,7 +564,7 @@ namespace parallel_index_scan
 
     if (isidp->rest_regu_list != nullptr)
       {
-	if (heap_attrinfo_read_dbvalues (thread_p, oid, &heap_recdes, isidp->rest_attrs.attr_cache) != NO_ERROR)
+	if (heap_attrinfo_read_dbvalues (thread_p, oid, heap_recdes, isidp->rest_attrs.attr_cache) != NO_ERROR)
 	  {
 	    return S_ERROR;
 	  }
@@ -552,6 +580,37 @@ namespace parallel_index_scan
       }
 
     return S_SUCCESS;
+  }
+
+  int
+  leaf_slot_walker::fix_bitmap_page (THREAD_ENTRY *thread_p, const VPID *vpid, bool *is_fixed)
+  {
+    return scan_fix_bitmap_heap_page (thread_p, &m_scan_id->s.isid.scan_cache, vpid, is_fixed);
+  }
+
+  SCAN_CODE
+  leaf_slot_walker::process_bitmap_row (THREAD_ENTRY *thread_p, OID *oid)
+  {
+    HEAP_SCANCACHE *scan_cache = &m_scan_id->s.isid.scan_cache;
+    const auto keep_page_save = scan_cache->cache_last_fix_page;
+    SCAN_CODE scan;
+
+    /* the lookup takes the page fix_bitmap_page holds from the scan cache and hands it back */
+    scan_cache->cache_last_fix_page = true;
+    scan = lookup_heap_row (thread_p, oid);
+    scan_cache->cache_last_fix_page = keep_page_save;
+    return scan;
+  }
+
+  void
+  leaf_slot_walker::release_bitmap_page (THREAD_ENTRY *thread_p)
+  {
+    HEAP_SCANCACHE *scan_cache = &m_scan_id->s.isid.scan_cache;
+
+    if (scan_cache->page_watcher.pgptr != NULL)
+      {
+	pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+      }
   }
 
   /* the slot's key failed: as the lookups reach it, the error is raised and the range's end signaled; looked at
@@ -608,8 +667,11 @@ namespace parallel_index_scan
 
 	if (spage_get_record (thread_p, m_page, *slot, &rec, PEEK) != S_SUCCESS)
 	  {
+	    /* every slot from 1 to m_num_keys of a leaf holds a record: a failed read is an error, as in the serial scan.
+	     * Skipped, it left its error set, for a later look at er_errid () to report somewhere else. */
+	    assert (false);
 	    m_use_desc_index ? (*slot)-- : (*slot)++;
-	    continue;
+	    return stop (stop_at_error (thread_p, ahead));
 	  }
 
 	/* fence keys duplicate adjacent-leaf keys; counting them double-inflates aggregate / group-by. */

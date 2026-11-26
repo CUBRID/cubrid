@@ -53,6 +53,13 @@
 
 #define PLAN_BUF_INITIAL_LENGTH (1024)
 
+/* bits of the packed prepare info flags */
+#define PREPARE_INFO_RECOMPILE          0x01
+#define PREPARE_INFO_DO_CACHE           0x02
+#define PREPARE_INFO_OIDS_INCLUDED      0x04
+#define PREPARE_INFO_CLICK_COUNTER      0x08
+#define PREPARE_INFO_METHOD_ON_TARGET   0x10
+
 /* A resource mechanism used to effectively handle memory allocation for the
    query result structures. */
 struct alloc_resource
@@ -426,6 +433,8 @@ db_init_prepare_info (DB_PREPARE_INFO * info)
   info->auto_param_count = 0;
   info->recompile = 0;
   info->oids_included = 0;
+  info->is_click_counter = 0;
+  info->is_method_on_target = 0;
   info->into_list = NULL;
   info->into_count = 0;
 
@@ -446,6 +455,7 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   char *ptr = NULL;
   int packed_size = 0, i = 0;
   int query_len = 0, columns_cnt = 0;
+  int flags = 0;
 
   assert (*buffer == NULL);
   assert (info != NULL);
@@ -490,11 +500,7 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   packed_size += OR_INT_SIZE;
   /* auto parameters count */
   packed_size += OR_INT_SIZE;
-  /* recompile */
-  packed_size += OR_INT_SIZE;
-  /* do_cache */
-  packed_size += OR_INT_SIZE;
-  /* oids included */
+  /* flags */
   packed_size += OR_INT_SIZE;
   /* into list length */
   packed_size += OR_INT_SIZE;
@@ -536,12 +542,29 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
   ptr = or_pack_int (ptr, info->stmt_type);
   /* auto parameters count */
   ptr = or_pack_int (ptr, info->auto_param_count);
-  /* recompile */
-  ptr = or_pack_int (ptr, info->recompile);
-  /* do_cache */
-  ptr = or_pack_int (ptr, info->do_cache);
-  /* oids included */
-  ptr = or_pack_int (ptr, info->oids_included);
+  /* flags */
+  flags = 0;
+  if (info->recompile)
+    {
+      flags |= PREPARE_INFO_RECOMPILE;
+    }
+  if (info->do_cache)
+    {
+      flags |= PREPARE_INFO_DO_CACHE;
+    }
+  if (info->oids_included)
+    {
+      flags |= PREPARE_INFO_OIDS_INCLUDED;
+    }
+  if (info->is_click_counter)
+    {
+      flags |= PREPARE_INFO_CLICK_COUNTER;
+    }
+  if (info->is_method_on_target)
+    {
+      flags |= PREPARE_INFO_METHOD_ON_TARGET;
+    }
+  ptr = or_pack_int (ptr, flags);
   /* into list length */
   ptr = or_pack_int (ptr, info->into_count);
   for (i = 0; i < info->into_count; i++)
@@ -611,6 +634,7 @@ int
 db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 {
   int i, subquery_num, q = 0;
+  int flags = 0;
   char *ptr = NULL;
 
   assert (info != NULL);
@@ -624,12 +648,13 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
   ptr = or_unpack_int (ptr, (int *) &info->stmt_type);
   /* unpack auto parameters count */
   ptr = or_unpack_int (ptr, &info->auto_param_count);
-  /* unpack recompile */
-  ptr = or_unpack_int (ptr, &info->recompile);
-  /* unpack do_cache */
-  ptr = or_unpack_int (ptr, &info->do_cache);
-  /* oids included */
-  ptr = or_unpack_int (ptr, &info->oids_included);
+  /* unpack flags */
+  ptr = or_unpack_int (ptr, &flags);
+  info->recompile = (flags & PREPARE_INFO_RECOMPILE) ? 1 : 0;
+  info->do_cache = (flags & PREPARE_INFO_DO_CACHE) ? 1 : 0;
+  info->oids_included = (flags & PREPARE_INFO_OIDS_INCLUDED) ? 1 : 0;
+  info->is_click_counter = (flags & PREPARE_INFO_CLICK_COUNTER) ? 1 : 0;
+  info->is_method_on_target = (flags & PREPARE_INFO_METHOD_ON_TARGET) ? 1 : 0;
   /* unpack into list length */
   ptr = or_unpack_int (ptr, &info->into_count);
   if (info->into_count > 0)

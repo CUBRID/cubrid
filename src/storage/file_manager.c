@@ -3159,9 +3159,10 @@ file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype,
 
       FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
 
-      /* file_create() internally calls log_sysop_start().
-       * log_sysop_start() uses a transaction-level mutex (rmutex_topop) that does not
-       * support concurrent access from multiple worker threads sharing the same transaction. */
+      /* Before CBRD-27562, file_create() opened a system operation for a temp file too, and its transaction-level
+       * mutex (rmutex_topop) does not support concurrent access from worker threads sharing the transaction.
+       * A temp file no longer opens one (it is not logged). The lock still serializes temp file creation by the
+       * workers of one transaction; revisit it when the CBRD-27492 parallel guard is removed. */
       file_tempcache_lock_tran_entry (tran_entry);
       error_code = file_create (thread_p, ftype, &tablespace, NULL, true, is_numerable, vfid_out);
       file_tempcache_unlock_tran_entry (tran_entry);
@@ -4845,8 +4846,10 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
       /* callers usually expect a "deallocated" page. we need to simulate that.
        * note that maybe we can do without really deallocating. a page type update would be enough. this is however the
        * safest way to do it, even though not optimal. the case will not affect performance in any benchmark or
-       * production scenario anyway. */
-      pgbuf_dealloc_page (thread_p, page_part_ftab_first, PGBUF_DEALLOC_KEEP_CONTENTS);
+       * production scenario anyway.
+       * the caller writes the new page over the table page before this system operation ends. if the system operation
+       * is rolled back, the table page must come back with the sectors it held, so its contents are saved. */
+      pgbuf_dealloc_page (thread_p, page_part_ftab_first, PGBUF_DEALLOC_SAVE_CONTENTS);
       page_part_ftab_first = NULL;
 
       if (alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR)
@@ -4868,6 +4871,10 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
 
 	  log_append_undoredo_data2 (thread_p, RVFL_FHEAD_CONVERT_FTAB_TO_USER, NULL, page_fhead, NULL_OFFSET, 0, 0,
 				     NULL, NULL);
+
+	  /* arm the faults that file_alloc injects into this allocation */
+	  FI_SET (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_FAIL, 1);
+	  FI_SET (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_HOLD, 1);
 	}
     }
 
@@ -5474,6 +5481,28 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	  goto exit;
 	}
 
+      /* the new page is written over the reused table page: a test stops or fails the allocation here */
+#if !defined (NDEBUG)
+      if (fi_state (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_HOLD) == 1)
+	{
+	  int hold_seconds = 120;
+
+	  /* the test kills the server in the hold, and the restart must find the allocation in the log */
+	  logpb_force_flush_pages (thread_p);
+	  er_log_debug (ARG_FILE_LINE, "file_alloc: hold the allocation of page %d|%d, which reused the first "
+			"partial table page\n", VPID_AS_ARGS (vpid_out));
+	  (void) FI_TEST_ARG (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_HOLD, &hold_seconds, 1);
+	}
+#endif /* !NDEBUG */
+      if (FI_TEST (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_FAIL, 1) != NO_ERROR)
+	{
+	  /* the fault only logs a notification, so set the error that a failed init leaves */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_GENERIC_ERROR;
+	  pgbuf_unfix (thread_p, page_alloc);
+	  goto exit;
+	}
+
       assert (pgbuf_get_page_ptype (thread_p, page_alloc) != PAGE_UNKNOWN);
 
       if (page_out != NULL)
@@ -5503,6 +5532,10 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
   assert (error_code == NO_ERROR);
 
 exit:
+  /* the faults act on the allocation that armed them only */
+  FI_RESET (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_FAIL);
+  FI_RESET (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_HOLD);
+
   if (is_sysop_started)
     {
       if (error_code != NO_ERROR)

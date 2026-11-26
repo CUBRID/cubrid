@@ -39,6 +39,7 @@ import com.cubrid.plcsql.compiler.type.TypeVarchar;
 
 public class DBTypeAdapter {
 
+    // block_type_is_supported () in trigger_manager.c follows this list. Change them together.
     public static boolean isSupported(int dbType) {
         switch (dbType) {
             case DBType.DB_NULL:

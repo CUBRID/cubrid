@@ -312,6 +312,9 @@ struct fileio_backup_header
   FILEIO_ZIP_METHOD zip_method;	/* compression method */
   FILEIO_ZIP_LEVEL zip_level;	/* compression level */
   int skip_activelog;
+  LOG_LSA start_log_end_lsa;	/* Log end (next LSA to be assigned) when this backup started copying pages.  Valid
+				 * from bk_hdr_version 3, NULL_LSA in older headers.  Media recovery lets a no-logging
+				 * index build's barrier pass when it precedes this LSA of the top restored level. */
 };
 
 /* Shouldn't this structure should use int and such? */
@@ -647,7 +650,7 @@ extern void fileio_page_bitmap_list_destroy (FILEIO_RESTORE_PAGE_BITMAP_LIST * p
 extern int fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page);
 extern int fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted);
 extern void fileio_page_hexa_dump (const char *data, int length);
-extern bool fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page);
+extern bool fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page, PGLENGTH page_size);
 
 /* lob_dir */
 extern int fileio_lob_remove_dir (char *lob_path);

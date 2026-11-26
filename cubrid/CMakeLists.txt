@@ -480,6 +480,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/client_credentials.cpp
   ${TRANSACTION_DIR}/locator.c
   ${TRANSACTION_DIR}/locator_sr.c
+  ${TRANSACTION_DIR}/lock_group.cpp
   ${TRANSACTION_DIR}/lock_manager.c
   ${TRANSACTION_DIR}/lock_table.c
   ${TRANSACTION_DIR}/log_2pc.c
@@ -504,12 +505,15 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/recovery.c
   ${TRANSACTION_DIR}/replication.c
   ${TRANSACTION_DIR}/transaction_sr.c
+  ${TRANSACTION_DIR}/transaction_exec_token.cpp
   ${TRANSACTION_DIR}/transaction_transient.cpp
   ${TRANSACTION_DIR}/wait_for_graph.c
   ${TRANSACTION_DIR}/flashback.c
   )
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
+  ${TRANSACTION_DIR}/lock_deferred_wake.hpp
+  ${TRANSACTION_DIR}/lock_group.hpp
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
   ${TRANSACTION_DIR}/log_archives.hpp
@@ -531,6 +535,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/mvcc_active_tran.hpp
   ${TRANSACTION_DIR}/mvcc_table.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
+  ${TRANSACTION_DIR}/transaction_exec_token.hpp
   ${TRANSACTION_DIR}/transaction_transient.hpp
   ${TRANSACTION_DIR}/flashback.h
   )
