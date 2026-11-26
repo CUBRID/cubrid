@@ -6917,6 +6917,8 @@ pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, D
  *	 which the planner takes for an equi-join term (QO_TERM_EQUAL_OP) while the hash keys of a hash join or of a
  *	 hash list scan are made from the operands of '=' only. A bound that is a constant is left as it is: a key
  *	 range on one column, not a join term.
+ *	 This fold is the only known way such a term is made. A rewrite that leaves a lone join RANGE in another way
+ *	 fails the same: "generate var" in release, the assert of qo_init_projection_info () in debug.
  */
 static void
 pt_range_join_to_eq (PARSER_CONTEXT * parser, PT_NODE * term)

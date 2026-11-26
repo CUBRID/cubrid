@@ -2108,33 +2108,38 @@ qo_unmark_substituted_function_index (PARSER_CONTEXT * parser, PT_NODE * node, v
  *   location(in): the location of the term; 0 for WHERE, n for the ON condition of the n-th spec
  *
  * Note: the spec is the null-supplying side of an outer join when it is the inner of a LEFT OUTER, or when a spec
- *	 after it opens a RIGHT OUTER. Its own ON condition still reads its real rows; any other term may read
- *	 the NULL row the join makes.
+ *	 after it opens a RIGHT OUTER; the first such join pads it. The ON condition of that join, and of the joins
+ *	 before it, still reads its real rows; the WHERE clause and the ON conditions after it may read the NULL row.
  */
 static bool
 qo_null_padded_at (PT_NODE * spec, short location)
 {
   PT_NODE *next_spec;
+  short pad_location = -1;
 
-  if (location > 0 && location == spec->info.spec.location)
+  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || spec->info.spec.join_type == PT_JOIN_FULL_OUTER)
+    {
+      pad_location = spec->info.spec.location;
+    }
+  else
+    {
+      for (next_spec = spec->next; next_spec != NULL; next_spec = next_spec->next)
+	{
+	  if (next_spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER
+	      || next_spec->info.spec.join_type == PT_JOIN_FULL_OUTER)
+	    {
+	      pad_location = next_spec->info.spec.location;
+	      break;
+	    }
+	}
+    }
+
+  if (pad_location < 0)
     {
       return false;
     }
 
-  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || spec->info.spec.join_type == PT_JOIN_FULL_OUTER)
-    {
-      return true;
-    }
-
-  for (next_spec = spec->next; next_spec != NULL; next_spec = next_spec->next)
-    {
-      if (next_spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER || next_spec->info.spec.join_type == PT_JOIN_FULL_OUTER)
-	{
-	  return true;
-	}
-    }
-
-  return false;
+  return (location == 0 || location > pad_location);
 }
 
 /*
