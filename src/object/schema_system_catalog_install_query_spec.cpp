@@ -1049,12 +1049,9 @@ sm_define_view_sensitivity_label_spec (void)
 {
   char stmt [4096];
 
-  /* Temporary: no index of _db_attribute has attr_id, so a nested loop join reads every attribute of the class for
-   * each label. USE_HASH reads each catalog once, and NO_MERGE keeps the hint off the other joins of a query that
-   * reads this view. To be replaced when a label can reach its _db_attribute row without this join. */
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof(stmt),
-	"SELECT /*+ USE_HASH NO_MERGE */ "
+	"SELECT "
 	  "[c].[owner].[name] AS [owner_name], "
 	  "[c].[class_name] AS [class_name], "
 	  "[a].[attr_name] AS [attr_name], "
