@@ -6846,9 +6846,7 @@ la_apply_statement_log (LA_ITEM * item)
 	}
 
       // *INDENT-OFF*
-      if (item->item_type == CUBRID_STMT_ALTER_STORED_PROCEDURE
-	   || item->item_type == CUBRID_STMT_DROP_STORED_PROCEDURE
-	   || item->item_type == CUBRID_STMT_CREATE_USER
+      if (item->item_type == CUBRID_STMT_CREATE_USER
 	   || item->item_type == CUBRID_STMT_ALTER_USER
 	   || item->item_type == CUBRID_STMT_DROP_USER)
 	{
