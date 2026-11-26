@@ -2187,8 +2187,8 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
  *   - The term stands for no ON clause: location 0 keeps QO_ON_COND_TERM () false, and JOIN_INNER keeps
  *     QO_OUTER_JOIN_TERM () false.
  *   - qo_add_dummy_join_term () makes the dummy join term of an ANSI join node instead. It gives the term the location
- *     and the join type of the node, and adds the node before it to a dependency set of an outer, semi or anti join
- *     node.
+ *     and the join type of the node. It adds the node before it to the dependency set of a right outer, semi or anti
+ *     join node, and of a left outer join node that has no outer join term.
  */
 static QO_TERM *
 qo_add_inner_dummy_join_term (QO_ENV * env, QO_NODE * head_node, QO_NODE * tail_node)
@@ -2272,7 +2272,7 @@ qo_get_joined_nodes (QO_ENV * env, BITSET * scope_set, int node_idx, BITSET * no
  *   - The terms are for the nodes that come after a node their ON clause reads: an outer, semi or anti join node, and
  *     an inner join node whose ON clause reads a node an earlier outer join null-pads.
  *   - Each dummy join term links one group of the nodes the ON clause reads to the connected ones.
- *     The nodes in between that the ON clause does not read keep a partition of their own.
+ *     The nodes in between that the ON clause does not read get no term.
  *
  * Reason:
  *   - planner_visit_node () grows a join order along join edges only. When only the node of an ON clause connects
@@ -2455,7 +2455,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
        *   round 1  connected_set = {tb}      ->  td missing, target_set = {td}, add tb-td
        *   round 2  connected_set = {tb, td}  ->  dependent_set covered, stop
        *
-       *   ta and tc keep a partition of their own, as te reads neither. */
+       *   ta and tc get no term, as te reads neither. */
       while (true)
 	{
 	  /* connected_set = the nodes joined to first_idx */
@@ -2496,7 +2496,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 	  /* If the node right after the connected nodes is in target_set, link it to the node before it,
 	   * which is connected.
 	   * Otherwise link the lowest node of target_set to the highest connected node below it,
-	   * so the nodes in between that on_node does not read keep a partition of their own. */
+	   * so the nodes in between that on_node does not read get no term. */
 	  if (BITSET_MEMBER (target_set, unconnected_idx))
 	    {
 	      target_idx = unconnected_idx;
@@ -2531,25 +2531,26 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 }
 
 /*
- * qo_add_cross_dummy_join_terms () - add a dummy join term between a cross join or comma node and the node before it
- *   when the two are in one partition already
+ * qo_add_cross_dummy_join_terms () - add a dummy join term between a cross join or comma node and the nearest node
+ *   before it in its partition
  *   return: void
  *   env(in): optimizer environment
  *
  * Behavior:
- *   - No term is added where it would merge two partitions, where a join edge joins the node to a node before it
- *     already, or where no node of the partition comes after another node.
+ *   - No term is added where no node before the node is in its partition, where a join edge joins the node to a node
+ *     before it already, or where no node of the partition comes after another node.
+ *   - The nodes in between that are in another partition get no term.
  *
  * Reason:
  *   - planner_visit_node () grows a join order along join edges only, and a join order starts at one node.
  *     When a partition holds two nodes that can be placed only at the start of a join order, such as the first nodes
- *     of two outer join chains that a later inner join bridges, the planner finds no join order.
+ *     of two outer join chains that a later condition joins, the planner finds no join order.
  *   - A cross join or a comma allows a cartesian product at its place in the FROM clause, so a term there gives
  *     the planner a join order without merging partitions.
  *
  * Steps (for each node):
  *   Step 1: go on only when the node is a cross join node or a table after a comma in the FROM clause.
- *   Step 2: go on only when the node is in the partition of the node before it.
+ *   Step 2: go on only when a node before the node is in its partition, and take the nearest one.
  *   Step 3: go on only when the partition has a node that comes after another node.
  *   Step 4: go on only when no join edge joins the node to a node before it.
  *   Step 5: add a dummy join term between the two.
@@ -2557,7 +2558,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 static void
 qo_add_cross_dummy_join_terms (QO_ENV * env)
 {
-  int node_idx, term_idx;
+  int node_idx, link_idx, term_idx;
   BITSET all_set, follower_set, partition_set, before_set;
   QO_NODE *node;
   QO_TERM *term;
@@ -2596,12 +2597,27 @@ qo_add_cross_dummy_join_terms (QO_ENV * env)
 	  continue;
 	}
 
-      /* Step 2: go on only when the node is in the partition of the node before it.
-       * partition_set = the nodes joined to node_idx - 1 */
-      qo_get_joined_nodes (env, &all_set, node_idx - 1, &partition_set);
-      if (!BITSET_MEMBER (partition_set, node_idx))
+      /* Step 2: go on only when a node before the node is in its partition.
+       * partition_set = the nodes joined to node_idx
+       * link_idx = max { i : i < node_idx, i in partition_set }
+       *
+       * A term to a node of another partition would merge two partitions,
+       * so the nodes in between that are in another partition get no term.
+       *
+       * e.g. ta right join tb on tb.ca = ta.ca cross join tx cross join tc left join td on td.ca = tc.ca
+       *        inner join te on te.ca = td.ca where te.cb = tb.cb
+       *
+       *      For tc, partition_set = {ta, tb, tc, td, te} and link_idx = tb.
+       *      The term is tb-tc, and tx gets no term. */
+      qo_get_joined_nodes (env, &all_set, node_idx, &partition_set);
+      link_idx = node_idx - 1;
+      while (link_idx >= 0 && !BITSET_MEMBER (partition_set, link_idx))
 	{
-	  continue;		/* a term here would merge two partitions */
+	  link_idx--;
+	}
+      if (link_idx < 0)
+	{
+	  continue;
 	}
 
       /* Step 3: go on only when the partition has a node that comes after another node;
@@ -2628,7 +2644,7 @@ qo_add_cross_dummy_join_terms (QO_ENV * env)
 	}
 
       /* Step 5: add a dummy join term between the two */
-      (void) qo_add_inner_dummy_join_term (env, QO_ENV_NODE (env, node_idx - 1), QO_ENV_NODE (env, node_idx));
+      (void) qo_add_inner_dummy_join_term (env, QO_ENV_NODE (env, link_idx), QO_ENV_NODE (env, node_idx));
     }
 
   bitset_delset (&all_set);

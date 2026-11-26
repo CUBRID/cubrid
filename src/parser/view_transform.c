@@ -519,7 +519,7 @@ mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
 	  return false;
 
 	case PT_JOIN_CROSS:
-	  /* a cross join keeps the join expression, so a later right outer join still joins this spec */
+	  /* a cross join keeps the join expression, so a later right outer join still null-pads this spec */
 	  break;
 
 	case PT_JOIN_RIGHT_OUTER:
@@ -573,7 +573,7 @@ mq_is_right_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
 	  return false;
 
 	case PT_JOIN_CROSS:
-	  /* a cross join keeps the join expression, so a later right outer join still joins this spec */
+	  /* a cross join keeps the join expression, so a later right outer join still null-pads this spec */
 	  break;
 
 	case PT_JOIN_RIGHT_OUTER:
