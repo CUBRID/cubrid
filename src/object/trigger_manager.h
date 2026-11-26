@@ -94,6 +94,7 @@ typedef struct tr_trigger
   int chn;
   const char *comment;
   bool altered;			/* changed by ALTER TRIGGER in this transaction */
+  bool reset_pending;		/* to be read again once its condition and action stop running */
 } TR_TRIGGER;
 
 

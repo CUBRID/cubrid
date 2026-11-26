@@ -251,8 +251,12 @@ static void tr_finish (TR_STATE * state);
 static int its_deleted (DB_OBJECT * object);
 
 static int map_flush_helper (const void *key, void *data, void *args);
+static void mark_trigger_altered (TR_TRIGGER * trigger);
 static int reset_trigger_cache_helper (const void *key, void *data, void *args);
 static void reset_trigger_caches (bool end_transaction);
+static bool trigger_activity_running (TR_TRIGGER * trigger);
+static void reset_trigger_cache (TR_TRIGGER * trigger);
+static void reset_pending_trigger_cache (TR_TRIGGER * trigger);
 static int forget_altered_trigger_helper (const void *key, void *data, void *args);
 static void forget_altered_triggers (void);
 static int define_trigger_classes (void);
@@ -421,6 +425,7 @@ tr_make_trigger (void)
   trigger->chn = NULL_CHN;
   trigger->comment = NULL;
   trigger->altered = false;
+  trigger->reset_pending = false;
 
   return trigger;
 }
@@ -1842,6 +1847,7 @@ validate_trigger (TR_TRIGGER * trigger)
 	}
 
       new_trigger.altered = trigger->altered;
+      new_trigger.reset_pending = false;
       tr_clear_trigger (trigger);
       *trigger = new_trigger;
     }
@@ -5198,6 +5204,8 @@ execute_activity (TR_TRIGGER * trigger, DB_TRIGGER_TIME tr_time, DB_OBJECT * cur
 	}
     }
 
+  reset_pending_trigger_cache (trigger);
+
   if (save_user != NULL)
     {
       if (AU_SET_USER (save_user))
@@ -5871,10 +5879,9 @@ tr_check_commit_triggers (DB_TRIGGER_TIME time)
 {
   int error = NO_ERROR;
 
-  if (time == TR_TIME_AFTER && tr_Trigger_cache_modified)
+  if (time == TR_TIME_AFTER)
     {
       forget_altered_triggers ();
-      tr_Trigger_cache_modified = 0;
     }
 
   /*
@@ -5944,10 +5951,9 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
 {
   TR_TRIGLIST *t, *next;
 
-  if (time == TR_TIME_AFTER && tr_Trigger_cache_modified)
+  if (time == TR_TIME_AFTER)
     {
       reset_trigger_caches (true);
-      tr_Trigger_cache_modified = 0;
     }
 
   /*
@@ -6012,10 +6018,7 @@ tr_check_partial_rollback_triggers (void)
       tr_invalidate_user_cache ();
     }
 
-  if (tr_Trigger_cache_modified)
-    {
-      reset_trigger_caches (false);
-    }
+  reset_trigger_caches (false);
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -6049,11 +6052,7 @@ tr_check_timeout_triggers (void)
 void
 tr_check_abort_triggers (void)
 {
-  if (tr_Trigger_cache_modified)
-    {
-      reset_trigger_caches (true);
-      tr_Trigger_cache_modified = 0;
-    }
+  reset_trigger_caches (true);
 
   /*
    * If trigger firing has been disabled, do nothing.
@@ -7057,8 +7056,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
     }
 
   trigger->name = new_name;
-  trigger->altered = true;
-  tr_Trigger_cache_modified = 1;
+  mark_trigger_altered (trigger);
 
 end:
   if (new_name != NULL && trigger->name != new_name)
@@ -7125,8 +7123,7 @@ tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_f
 	}
       else
 	{
-	  trigger->altered = true;
-	  tr_Trigger_cache_modified = 1;
+	  mark_trigger_altered (trigger);
 
 	  /*
 	   * The schema manager maintains a flag indicating whether active triggers are defined for the class.
@@ -7195,8 +7192,7 @@ tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api
 	}
       else
 	{
-	  trigger->altered = true;
-	  tr_Trigger_cache_modified = 1;
+	  mark_trigger_altered (trigger);
 
 	  if (trigger->class_mop != NULL)
 	    {
@@ -7273,8 +7269,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
 	    }
 	  else
 	    {
-	      trigger->altered = true;
-	      tr_Trigger_cache_modified = 1;
+	      mark_trigger_altered (trigger);
 	      if (oldcomment != NULL)
 		{
 		  free_and_init (oldcomment);
@@ -7366,6 +7361,7 @@ tr_init (void)
   tr_Deferred_activities_tail = NULL;
   tr_User_triggers_valid = 0;
   tr_User_triggers_modified = 0;
+  tr_Trigger_cache_modified = 0;
   tr_User_triggers = NULL;
   tr_Trace = false;
   tr_Uncommitted_triggers = NULL;
@@ -7374,6 +7370,66 @@ tr_init (void)
 
   /* create the object map */
   tr_object_map = mht_create ("Trigger object map", TR_EST_MAP_SIZE, mht_ptrhash, mht_compare_ptrs_are_equal);
+}
+
+/*
+ * mark_trigger_altered() - Marks a trigger as changed by ALTER TRIGGER in the current transaction
+ *    return: none
+ *    trigger(in): trigger structure
+ */
+static void
+mark_trigger_altered (TR_TRIGGER * trigger)
+{
+  trigger->altered = true;
+  tr_Trigger_cache_modified = 1;
+}
+
+/*
+ * trigger_activity_running() - Checks if the condition or the action of a trigger is running
+ *    return: true if running
+ *    trigger(in): trigger structure
+ */
+static bool
+trigger_activity_running (TR_TRIGGER * trigger)
+{
+  return ((trigger->condition != NULL && trigger->condition->in_use > 0)
+	  || (trigger->action != NULL && trigger->action->in_use > 0));
+}
+
+/*
+ * reset_trigger_cache() - Makes a trigger be read again on its next validation
+ *    return: none
+ *    trigger(in): trigger structure whose condition and action are not running
+ */
+static void
+reset_trigger_cache (TR_TRIGGER * trigger)
+{
+  trigger->chn = NULL_CHN;
+  trigger->reset_pending = false;
+
+  if (trigger->class_mop != NULL)
+    {
+      sm_invalidate_cached_trigger_cache (trigger->class_mop);
+    }
+  else
+    {
+      tr_invalidate_user_cache ();
+    }
+}
+
+/*
+ * reset_pending_trigger_cache() - Makes a trigger skipped by a rollback while its condition or action ran
+ *                                 be read again once they stop running
+ *    return: none
+ *    trigger(in): trigger structure
+ */
+static void
+reset_pending_trigger_cache (TR_TRIGGER * trigger)
+{
+  if (trigger->reset_pending && !trigger_activity_running (trigger))
+    {
+      reset_trigger_cache (trigger);
+    }
 }
 
 /*
@@ -7399,17 +7455,13 @@ reset_trigger_cache_helper (const void *key, void *data, void *args)
       trigger->altered = false;
     }
 
-  if ((trigger->condition != NULL && trigger->condition->in_use > 0)
-      || (trigger->action != NULL && trigger->action->in_use > 0))
+  if (trigger_activity_running (trigger))
     {
-      return NO_ERROR;
+      trigger->reset_pending = true;
     }
-
-  trigger->chn = NULL_CHN;
-
-  if (trigger->class_mop != NULL)
+  else
     {
-      sm_invalidate_cached_trigger_cache (trigger->class_mop);
+      reset_trigger_cache (trigger);
     }
 
   return NO_ERROR;
@@ -7429,14 +7481,23 @@ reset_trigger_caches (bool end_transaction)
 {
   int save;
 
+  if (!tr_Trigger_cache_modified)
+    {
+      return;
+    }
+
   er_stack_push ();
   AU_DISABLE (save);
 
   (void) mht_map (tr_object_map, reset_trigger_cache_helper, &end_transaction);
-  tr_invalidate_user_cache ();
 
   AU_ENABLE (save);
   er_stack_pop ();
+
+  if (end_transaction)
+    {
+      tr_Trigger_cache_modified = 0;
+    }
 }
 
 /*
@@ -7461,7 +7522,13 @@ forget_altered_trigger_helper (const void *key, void *data, void *args)
 static void
 forget_altered_triggers (void)
 {
+  if (!tr_Trigger_cache_modified)
+    {
+      return;
+    }
+
   (void) mht_map (tr_object_map, forget_altered_trigger_helper, NULL);
+  tr_Trigger_cache_modified = 0;
 }
 
 /* Helper routine for tr_final */
