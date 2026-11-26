@@ -27,6 +27,7 @@
 #include "query_rewrite.h"
 #include "query_planner.h"
 #include "xasl_generation.h"
+#include "numeric_opfunc.h"
 
 
 static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -5128,6 +5129,7 @@ struct qo_gbp_env
   QO_GBP_MASK adj[QO_GBP_MAX_SPECS];	/* tables joined to each by an equality in the WHERE */
   QO_GBP_MASK edge[QO_GBP_MAX_SPECS];	/* tables joined to each by an equality in the WHERE or an ON */
   bool args_null_strict;	/* every aggregate argument is NULL when one of its columns is */
+  int sum_digits;		/* the digits the exact value of a NUMERIC argument of SUM needs, 0 for none */
   bool has_groupby_num;		/* groupby_num () counts the groups of the block */
 };
 
@@ -5356,6 +5358,116 @@ qo_gbp_is_null_strict (PT_NODE * node)
 }
 
 /*
+ * qo_gbp_exact_digits () - whether an aggregate argument evaluates without error on every row, and the digits and
+ *			    scale its exact value needs (0 digits for a value that is not a number).  The derived
+ *			    table evaluates the argument on the rows of C the join or the conditions of the other tables
+ *			    drop, which the block never evaluated it on: a column, a constant, and NUMERIC addition,
+ *			    subtraction and multiplication whose exact value fits a NUMERIC qualify; a division, a cast
+ *			    that may not fit, a function, or integer arithmetic that may overflow its type does not
+ */
+static bool
+qo_gbp_exact_digits (PARSER_CONTEXT * parser, PT_NODE * node, int *prec, int *scale)
+{
+  char str[NUMERIC_MAX_STRING_SIZE];
+  DB_VALUE *value;
+  const char *digit;
+  int p1, s1, p2, s2;
+
+  *prec = 0;
+  *scale = 0;
+
+  if (node->node_type == PT_NAME || node->node_type == PT_VALUE)
+    {
+      switch (node->type_enum)
+	{
+	case PT_TYPE_SMALLINT:
+	  *prec = 5;
+	  return true;
+	case PT_TYPE_INTEGER:
+	  *prec = 10;
+	  return true;
+	case PT_TYPE_BIGINT:
+	  *prec = 19;
+	  return true;
+	case PT_TYPE_NUMERIC:
+	  if (node->node_type == PT_NAME)
+	    {
+	      if (node->data_type != NULL)
+		{
+		  *prec = node->data_type->info.data_type.precision;
+		  *scale = node->data_type->info.data_type.dec_precision;
+		}
+	      return *prec > 0;
+	    }
+	  /* a constant takes the digits of its value: one converted to NUMERIC carries the widest precision */
+	  value = pt_value_to_db (parser, node);
+	  if (value == NULL || DB_IS_NULL (value) || DB_VALUE_TYPE (value) != DB_TYPE_NUMERIC)
+	    {
+	      return false;
+	    }
+	  numeric_coerce_num_to_dec_str (value, str);
+	  *scale = DB_VALUE_SCALE (value);
+	  digit = (str[0] == '-') ? str + 1 : str;
+	  *prec = (int) strlen (digit);
+	  while (*prec > *scale && *digit == '0')
+	    {
+	      digit++;
+	      (*prec)--;
+	    }
+	  *prec = MAX (*prec, 1);
+	  return true;
+	default:
+	  /* read as it is (MIN, MAX, COUNT) */
+	  return true;
+	}
+    }
+
+  if (node->node_type != PT_EXPR || node->type_enum != PT_TYPE_NUMERIC)
+    {
+      return false;
+    }
+
+  switch (node->info.expr.op)
+    {
+    case PT_UNARY_MINUS:
+      return qo_gbp_exact_digits (parser, node->info.expr.arg1, prec, scale) && *prec > 0;
+
+    case PT_PLUS:
+    case PT_MINUS:
+    case PT_TIMES:
+      if (!qo_gbp_exact_digits (parser, node->info.expr.arg1, &p1, &s1) || p1 == 0
+	  || !qo_gbp_exact_digits (parser, node->info.expr.arg2, &p2, &s2) || p2 == 0)
+	{
+	  return false;
+	}
+      if (node->info.expr.op == PT_TIMES)
+	{
+	  *prec = p1 + p2;
+	  *scale = s1 + s2;
+	}
+      else
+	{
+	  *scale = MAX (s1, s2);
+	  *prec = MAX (p1 - s1, p2 - s2) + 1 + *scale;
+	}
+      return *prec <= DB_MAX_NUMERIC_PRECISION;
+
+    case PT_CAST:
+      /* a number cast to a NUMERIC with as many integer digits */
+      if (!qo_gbp_exact_digits (parser, node->info.expr.arg1, &p1, &s1) || p1 == 0 || node->data_type == NULL)
+	{
+	  return false;
+	}
+      *prec = node->data_type->info.data_type.precision;
+      *scale = node->data_type->info.data_type.dec_precision;
+      return *prec > 0 && p1 - s1 <= *prec - *scale;
+
+    default:
+      return false;
+    }
+}
+
+/*
  * qo_gbp_is_image_equal () - whether two values of a column that compare equal are the same value, so that it does
  *			      not matter which row of a group gives the group its value: no string collation that
  *			      folds case, accents or trailing spaces, no time zone (PostgreSQL asks the same of an
@@ -5460,6 +5572,7 @@ qo_gbp_check_output_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   QO_GBP_WALK arg_walk;
   PT_NODE *agg_arg;
   FUNC_CODE function;
+  int prec, scale;
 
   if (walk->bad)
     {
@@ -5481,7 +5594,9 @@ qo_gbp_check_output_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       walk->naggs++;
 
       function = node->info.function.function_type;
-      if (node->info.function.all_or_distinct != PT_ALL || node->info.function.order_by != NULL
+      /* COUNT (*) leaves all_or_distinct unset (csql_grammar.y) */
+      if ((function != PT_COUNT_STAR && node->info.function.all_or_distinct != PT_ALL)
+	  || node->info.function.order_by != NULL
 	  || (function != PT_SUM && function != PT_COUNT && function != PT_COUNT_STAR && function != PT_AVG
 	      && function != PT_MIN && function != PT_MAX))
 	{
@@ -5510,8 +5625,9 @@ qo_gbp_check_output_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       arg_walk.bad = false;
       (void) parser_walk_tree (parser, agg_arg, qo_gbp_check_expr_pre, &arg_walk, NULL, NULL);
 
-      /* an argument over several tables (SUM (a.x * b.y)) has no table to be grouped with */
-      if (arg_walk.bad || qo_gbp_popcount (arg_walk.mask) > 1)
+      /* an argument over several tables (SUM (a.x * b.y)) has no table to be grouped with; an argument that may raise
+       * an error is evaluated by the derived table on rows the block drops (qo_gbp_exact_digits ()) */
+      if (arg_walk.bad || qo_gbp_popcount (arg_walk.mask) > 1 || !qo_gbp_exact_digits (parser, agg_arg, &prec, &scale))
 	{
 	  walk->bad = true;
 	  *continue_walk = PT_STOP_WALK;
@@ -5529,14 +5645,19 @@ qo_gbp_check_output_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       /* SUM over FLOAT adds in DOUBLE and casts the total: a partial sum cast to FLOAT would round, or overflow
-       * where the total does not */
+       * where the total does not; a partial sum of DOUBLE over rows the block drops may overflow.  A partial sum of
+       * integers is taken in a wider type (qo_gbp_widen_sum_arg ()); one of NUMERIC must stay exact, which
+       * qo_gbp_is_sure_gain () checks against the rows of C */
       if (function == PT_SUM && agg_arg->type_enum != PT_TYPE_SMALLINT && agg_arg->type_enum != PT_TYPE_INTEGER
-	  && agg_arg->type_enum != PT_TYPE_BIGINT && agg_arg->type_enum != PT_TYPE_NUMERIC
-	  && agg_arg->type_enum != PT_TYPE_DOUBLE)
+	  && agg_arg->type_enum != PT_TYPE_BIGINT && agg_arg->type_enum != PT_TYPE_NUMERIC)
 	{
 	  walk->bad = true;
 	  *continue_walk = PT_STOP_WALK;
 	  return node;
+	}
+      if (function == PT_SUM && agg_arg->type_enum == PT_TYPE_NUMERIC)
+	{
+	  walk->env->sum_digits = MAX (walk->env->sum_digits, prec);
 	}
 
       /* MIN and MAX of values that compare equal return the first one met: partial results met in another order
@@ -6396,6 +6517,26 @@ qo_gbp_cast_to (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * like)
 }
 
 /*
+ * qo_gbp_widen_sum_arg () - the argument of a partial sum, cast to a type its sum over any rows fits when it is an
+ *			     integer: the derived table also adds the rows the block drops, so a partial sum may pass
+ *			     the range where the block's does not
+ */
+static PT_NODE *
+qo_gbp_widen_sum_arg (PARSER_CONTEXT * parser, PT_NODE * arg)
+{
+  switch (arg->type_enum)
+    {
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+      return pt_wrap_with_cast_op (parser, arg, PT_TYPE_BIGINT, 0, 0, NULL);
+    case PT_TYPE_BIGINT:
+      return pt_wrap_with_cast_op (parser, arg, PT_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0, NULL);
+    default:
+      return arg;
+    }
+}
+
+/*
  * qo_gbp_replace_agg_post () - replace an aggregate of the block by the re-aggregation of the partial one(s) the
  *				derived table computes
  */
@@ -6420,8 +6561,12 @@ qo_gbp_replace_agg_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     case PT_SUM:
     case PT_MIN:
     case PT_MAX:
-      s = qo_gbp_add_column (parser, build, qo_gbp_make_agg (parser, function, parser_copy_tree (parser, agg_arg)),
-			     false);
+      s = parser_copy_tree (parser, agg_arg);
+      if (s != NULL && function == PT_SUM)
+	{
+	  s = qo_gbp_widen_sum_arg (parser, s);
+	}
+      s = qo_gbp_add_column (parser, build, qo_gbp_make_agg (parser, function, s), false);
       expr = flat ? s : qo_gbp_make_agg (parser, function, s);
       break;
 
@@ -6442,8 +6587,12 @@ qo_gbp_replace_agg_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       break;
 
     case PT_AVG:
-      s = qo_gbp_add_column (parser, build, qo_gbp_make_agg (parser, PT_SUM, parser_copy_tree (parser, agg_arg)),
-			     false);
+      s = parser_copy_tree (parser, agg_arg);
+      if (s != NULL)
+	{
+	  s = qo_gbp_widen_sum_arg (parser, s);
+	}
+      s = qo_gbp_add_column (parser, build, qo_gbp_make_agg (parser, PT_SUM, s), false);
       c = qo_gbp_add_column (parser, build, qo_gbp_make_agg (parser, PT_COUNT, parser_copy_tree (parser, agg_arg)),
 			     false);
       if (!flat)
@@ -6905,6 +7054,22 @@ qo_gbp_term_selectivity (QO_GBP_ENV * env, PT_NODE * term)
       sel = (ndv >= 1.0 && n > 0) ? MIN (1.0, n / ndv) : DEFAULT_IN_SELECTIVITY;
       return (term->info.expr.op == PT_IS_IN) ? sel : 1.0 - sel;
 
+    case PT_RANGE:
+      /* an IN list of constants on a column comes as a range of points (qo_convert_to_range ()) */
+      sel = 0.0;
+      for (elem = term->info.expr.arg2; elem != NULL; elem = elem->or_next)
+	{
+	  if (elem->node_type == PT_EXPR && elem->info.expr.op == PT_BETWEEN_EQ_NA)
+	    {
+	      sel += (ndv >= 1.0) ? 1.0 / ndv : DEFAULT_EQUAL_SELECTIVITY;
+	    }
+	  else
+	    {
+	      sel += DEFAULT_BETWEEN_SELECTIVITY;
+	    }
+	}
+      return MIN (1.0, sel);
+
     case PT_LIKE:
       return DEFAULT_SELECTIVITY;
 
@@ -6924,7 +7089,6 @@ qo_gbp_term_selectivity (QO_GBP_ENV * env, PT_NODE * term)
       return DEFAULT_COMP_SELECTIVITY;
 
     case PT_BETWEEN:
-    case PT_RANGE:
       return DEFAULT_BETWEEN_SELECTIVITY;
 
     default:
@@ -6979,7 +7143,7 @@ qo_gbp_is_sure_gain (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmas
   CLASS_STATS *stats;
   PT_NODE *col;
   double reached = 1.0, rows = 0.0, sel = 1.0, groups = 1.0, ndv;
-  int k;
+  int k, digits;
 
   for (k = 0; k < env->nspecs; k++)
     {
@@ -7004,6 +7168,20 @@ qo_gbp_is_sure_gain (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmas
   if (reached < QO_GBP_MIN_REACHED)
     {
       return false;
+    }
+
+  /* a partial sum of NUMERIC is rounded to the digits a NUMERIC holds, where the block's sum adds exactly and rounds
+   * once: the partial sums must stay exact, a group of the derived table holding at most the rows of C */
+  if (env->sum_digits > 0)
+    {
+      for (digits = 1, ndv = rows; ndv >= 10.0; ndv /= 10.0)
+	{
+	  digits++;
+	}
+      if (env->sum_digits + digits > DB_MAX_NUMERIC_PRECISION)
+	{
+	  return false;
+	}
     }
 
   if (remove_group_by)
