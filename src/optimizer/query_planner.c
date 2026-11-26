@@ -3127,8 +3127,21 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 
 	  if (t == -1)
 	    {
+	      /* an ON condition whose evaluation may wait is a data filter of this scan also when the join hands it
+	       * over later (the inner of a nested loop join): one that reads this node or belongs to its join */
+	      for (t = 0; t < env->nterms; t++)
+		{
+		  term = QO_ENV_TERM (env, t);
+		  if (QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && QO_ON_COND_TERM (term)
+		      && (BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node))
+			  || QO_TERM_LOCATION (term) == QO_NODE_LOCATION (node)))
+		    {
+		      break;
+		    }
+		}
+
 	      /* not found data-filter; mark as covering index scan */
-	      plan->plan_un.scan.index_cover = true;
+	      plan->plan_un.scan.index_cover = (t == env->nterms);
 	    }
 	}
     }

@@ -1800,7 +1800,8 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
 	   * (where a < 2999 order by id limit 3 would read 3 keys and drop some of them) */
 	  if ((qo_is_iscan (subplan) || qo_is_iscan_from_orderby (subplan))
 	      && (subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE
-		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE) && xasl->spec_list->where_pred == NULL)
+		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE) && xasl->spec_list->where_pred == NULL
+	      && xasl->if_pred == NULL)
 	    {
 	      assert (xasl->instnum_pred == NULL);
 	      assert (xasl->ordbynum_pred != NULL);
@@ -5686,6 +5687,11 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	  return NO_ERROR;
 	}
 
+      if (QO_TERM_IS_FLAGED (termp, QO_TERM_MAY_WAIT))
+	{
+	  /* neither a key range nor a key filter: the rows it drops are dropped after the keys are counted */
+	  return NO_ERROR;
+	}
 
       if (bitset_is_empty (&(termp->segments)))
 	{
