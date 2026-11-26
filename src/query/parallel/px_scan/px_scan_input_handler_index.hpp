@@ -30,7 +30,17 @@
 #include "px_scan_index_key_range_list.hpp"
 #include "px_scan_index_leaf_page_dispatcher.hpp"
 #include "px_scan_index_overflow_chain_pool.hpp"
+#include "file_manager.h"
+#include "list_file.h"
+#include "query_list.h"
+#include "query_manager.h"
 #include "scan_manager.h"
+
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
+#include <mutex>
+#include <vector>
 
 namespace parallel_scan
 {
@@ -48,6 +58,7 @@ namespace parallel_scan
 	  m_parallelism (1)
       {
       }
+      ~input_handler_index ();
       int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, SCAN_ID *scan_id, val_descr *vd, int parallelism);
 
       /* get_next_page_with_fix: worker_scan_id MUST be per-task; held_leaf = caller's current leaf (see leaf_page_dispatcher);
@@ -137,6 +148,26 @@ namespace parallel_scan
 	m_ovf.signal_no_more_leaves ();
       }
 
+      /* --- bitmap heap scan (scan_bitmap_marks): the workers record what the index finds, wait for each other, then read
+       * the heap. --- */
+      /* before init_on_main: the query the temp files belong to */
+      void set_bitmap_query_id (QUERY_ID query_id)
+      {
+	m_bm_query_id = query_id;
+      }
+      bool bitmap_on () const
+      {
+	return m_bm.on ();
+      }
+      scan_bitmap_marks &bitmap ()
+      {
+	return m_bm;
+      }
+      /* a worker's index step is over (its last leaf and its last overflow page are processed) */
+      void bitmap_leave_index_step ();
+      /* wait until every worker's index step is over; false: the query was interrupted meanwhile */
+      bool bitmap_wait_index_step ();
+
     private:
       interrupt *m_interrupt_p;
       err_messages_with_lock *m_err_messages_p;
@@ -148,6 +179,14 @@ namespace parallel_scan
       /* (A) shared overflow pool: per-slot active-chains vector + helpers/wait. */
       parallel_index_scan::overflow_chain_pool m_ovf;
       int m_parallelism;                              /* workers of the scan. */
+
+      int bitmap_init_on_main (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, int parallelism);
+
+      scan_bitmap_marks m_bm;
+      QUERY_ID m_bm_query_id = NULL_QUERY_ID;
+      std::mutex m_bm_mutex;
+      std::condition_variable m_bm_cv;
+      int m_bm_index_pending = 0;	/* workers whose index step is not over; under m_bm_mutex */
   };
 }
 
