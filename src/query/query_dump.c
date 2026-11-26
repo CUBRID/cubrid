@@ -525,6 +525,10 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
     {
       fprintf (foutput, ",no_parallel_scan");
     }
+  if (spec_list_p->flags & ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN)
+    {
+      fprintf (foutput, ",bitmap_heap_scan");
+    }
 
   if (IS_ANY_INDEX_ACCESS (spec_list_p->access))
     {
@@ -1954,6 +1958,8 @@ qdump_arith_opcode_name (OPERATOR_TYPE opcode)
       return "T_TO_NUMBER";
     case T_CURRENT_VALUE:
       return "T_CURRENT_VALUE";
+    case T_CURRENT_VALUE_BY_OID:
+      return "T_CURRENT_VALUE_BY_OID";
     case T_NEXT_VALUE:
       return "T_NEXT_VALUE";
     case T_CAST:
@@ -4123,9 +4129,25 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		    {
 		      spec->s_id.s.pisid.trace_storage->dump_stats_text (fp, multi_spec_indent, class_name);
 		    }
+		  if (spec->s_id.scan_stats.bitmap_heap != 0)
+		    {
+		      /* the heap was read through a bitmap of the rows the index found: a second scan, under the
+		       * index scan */
+		      fprintf (fp, "\n%*cSCAN (bitmap heap lookup: %s), ", indent + 2, ' ',
+			       class_name != NULL ? class_name : "unknown");
+		      scan_print_bitmap_heap_stats_text (fp, &spec->s_id);
+		      spec->s_id.s.pisid.trace_storage->dump_bitmap_heap_stats_text (fp, multi_spec_indent + 2);
+		    }
 		  spec->s_id.s.pisid.trace_storage->~accumulative_trace_storage ();
 		  free (spec->s_id.s.pisid.trace_storage);
 		  spec->s_id.s.pisid.trace_storage = NULL;
+		}
+	      else if (spec->s_id.scan_stats.bitmap_heap != 0)
+		{
+		  /* a serial scan's heap step */
+		  fprintf (fp, "\n%*cSCAN (bitmap heap lookup: %s), ", indent + 2, ' ',
+			   class_name != NULL ? class_name : "unknown");
+		  scan_print_bitmap_heap_stats_text (fp, &spec->s_id);
 		}
 	    }
 #endif
@@ -4223,6 +4245,15 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		      spec->s_id.s.hsid.batch_why_not = curr_part->batch_why_not;
 		    }
 		  scan_print_stats_text (fp, &spec->s_id);
+#if defined (SERVER_MODE)
+		  if (scan_stats->bitmap_heap != 0)
+		    {
+		      /* the partition's heap was read through a bitmap: its heap step, as under the scan's own line */
+		      fprintf (fp, "\n%*cSCAN (bitmap heap lookup: %s), ", multi_spec_indent + 4, ' ',
+			       class_name != NULL ? class_name : "unknown");
+		      scan_print_bitmap_heap_stats_text (fp, &spec->s_id);
+		    }
+#endif
 
 		  if (class_name != NULL)
 		    {

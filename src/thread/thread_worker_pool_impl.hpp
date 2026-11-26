@@ -1443,12 +1443,13 @@ namespace cubthread
 	return nullptr;
       }
 
-    for (auto it = m_available_workers.begin (); it != m_available_workers.end (); it++)
+    // the most recently returned worker first: its cache is warm, and the rest idle long enough to end their threads
+    for (auto it = m_available_workers.rbegin (); it != m_available_workers.rend (); it++)
       {
 	if (static_cast<worker_impl *> (*it)->has_thread ())
 	  {
 	    worker_p = *it;
-	    m_available_workers.erase (it);
+	    m_available_workers.erase (std::prev (it.base ()));
 
 	    return worker_p;
 	  }

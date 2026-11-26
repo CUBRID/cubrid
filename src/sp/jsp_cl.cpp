@@ -1056,6 +1056,12 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  db_value_clear (&arg);
 	  free (&arg);
 	}
+      else
+	{
+	  /* the value belongs to the parse tree or the host variables, so free only the buffer packing it attached */
+	  DB_VALUE &arg = args[i];
+	  pr_clear_compressed_string (&arg);
+	}
       vc = vc->next;
     }
 

@@ -498,7 +498,8 @@ struct trace_json_t;
            (n)->info.expr.op == PT_RANDOM || \
            (n)->info.expr.op == PT_RAND || \
            (n)->info.expr.op == PT_SYS_GUID || \
-           (n)->info.expr.op == PT_UUID ))
+           (n)->info.expr.op == PT_UUID || \
+           (n)->info.expr.op == PT_CURRENT_VALUE_BY_OID ))
 
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
@@ -1507,7 +1508,7 @@ typedef enum
   PT_SYS_TIME, PT_SYS_TIMESTAMP, PT_CURRENT_TIMESTAMP, PT_SYS_DATETIME,
   PT_CURRENT_DATETIME, PT_CURRENT_TIME, PT_CURRENT_DATE, PT_UTC_TIME,
   PT_UTC_DATE, PT_TO_TIME, PT_TO_TIMESTAMP, PT_TO_DATETIME,
-  PT_CURRENT_VALUE, PT_NEXT_VALUE,
+  PT_CURRENT_VALUE, PT_CURRENT_VALUE_BY_OID, PT_NEXT_VALUE,
   PT_INST_NUM, PT_ROWNUM, PT_ORDERBY_NUM,
   PT_CONNECT_BY_ISCYCLE, PT_CONNECT_BY_ISLEAF, PT_LEVEL,
   PT_SYS_CONNECT_BY_PATH,
@@ -1701,9 +1702,10 @@ typedef enum
 						 * generated around it (pt_check_sub_query_spec ()). That derived table is not a scope the statement
 						 * asked for, so it must not hide the remote invisible columns the statement references - unlike
 						 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
-  PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED = 0x80000	/* a DML target left to the force-phase reevaluation; locked
+  PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED = 0x80000,	/* a DML target left to the force-phase reevaluation; locked
 							 * at select as FOR UPDATE where the executor does not
 							 * reevaluate */
+  PT_SPEC_FLAG_BITMAP_HEAP_SCAN = 0x100000	/* the spec's index scan reads its heap rows through a bitmap */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -3057,6 +3059,8 @@ struct pt_select_info
 #define PT_SELECT_INFO_LENIENT_JOIN_HINT  0x040000	/* retry of an optimization that failed with the join method
 							 * hints: ignore one that cannot be applied to a join for
 							 * that join only (CBRD-28089) */
+#define PT_SELECT_INFO_HQ_ITERATION       0x080000	/* being planned as the scan a hierarchical query runs once a
+							 * parent row */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))

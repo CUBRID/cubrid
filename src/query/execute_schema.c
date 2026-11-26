@@ -12003,18 +12003,35 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   assert (default_value == NULL || default_value == &stack_value);
   new_default = default_value;
 
-  if (attribute->info.attr_def.data_default == NULL)
+  /* without a DEFAULT / ON UPDATE clause the old expression is kept: it must fit the new type as in CREATE */
+  if (attr_chg_prop->name_space == ID_ATTRIBUTE && attr_chg_prop->new_name_space == ID_ATTRIBUTE
+      && !is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_UNCHANGED)
+      && (attribute->info.attr_def.data_default == NULL || attribute->info.attr_def.on_update == DB_DEFAULT_NONE))
     {
-      error = smt_find_attribute (ctemplate, attr_name, (attr_chg_prop->name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0,
-				  &old_att);
+      error = smt_find_attribute (ctemplate, attr_name, 0, &old_att);
       if (error != NO_ERROR)
 	{
 	  goto exit;
 	}
-      error = do_check_kept_residual_default (parser, old_att, attribute);
-      if (error != NO_ERROR)
+      /* an AUTO_INCREMENT drops the DEFAULT instead of keeping it */
+      if (attribute->info.attr_def.data_default == NULL
+	  && !is_att_prop_set (attr_chg_prop->p[P_DEFAULT_VALUE], ATT_CHG_PROPERTY_LOST))
 	{
-	  goto exit;
+	  error = do_check_kept_residual_default (parser, old_att, attribute);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+      if (attribute->info.attr_def.on_update == DB_DEFAULT_NONE)
+	{
+	  attribute->info.attr_def.on_update = old_att->on_update_default_expr;
+	  error = check_default_on_update_clause (parser, attribute);
+	  attribute->info.attr_def.on_update = DB_DEFAULT_NONE;
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	}
     }
 

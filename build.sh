@@ -53,9 +53,6 @@ print_version_only=0
 # variables
 product_name="CUBRID"
 product_name_lower=$(echo $product_name | tr '[:upper:]' '[:lower:]')
-typeset -i major_version
-typeset -i minor_version
-typeset -i patch_version
 version=""
 last_checking_msg=""
 output_packages=""
@@ -122,39 +119,15 @@ function build_initialize ()
 
   # check version
   print_check "Checking VERSION"
-  if [ -f $source_dir/VERSION ]; then
-    version_file=VERSION
-  elif [ -f $source_dir/VERSION-DIST ]; then
-    version_file=VERSION-DIST
-  fi
-  version=$(cat $source_dir/$version_file)
-  major_version=$(echo $version | cut -d . -f 1)
-  minor_version=$(echo $version | cut -d . -f 2)
-  patch_version=$(echo $version | cut -d . -f 3)
-  extra_version=$(echo $version | cut -d . -f 4)
-  major_start_date='2019-12-12'
-  if [ "x$extra_version" != "x" ]; then
-    serial_number=$(echo $extra_version | cut -d - -f 1)
-  elif [ -d $source_dir/.git ]; then
-    serial_number=$(cd $source_dir && git rev-list --after $major_start_date --count HEAD | awk '{ printf "%04d", $1 }' 2> /dev/null)
-    [ $? -ne 0 ] && serial_number=$(cd $source_dir && git log --after $major_start_date --oneline | wc -l)
-    hash_tag=$(cd $source_dir && git rev-parse --short=7 HEAD)
-    extra_version="$serial_number-$hash_tag"
-  else
-    extra_version=0000-unknown
-    serial_number=0000
-  fi
-
-  print_info "version: $version ($major_version.$minor_version.$patch_version.$extra_version)"
-  version="$major_version.$minor_version.$patch_version.$extra_version"
+  # the same version the CMake build resolves at build time (CBRD-28253)
+  version=$(bash $source_dir/cmake/build-version.sh resolve $source_dir) || print_fatal "Could not resolve the version"
+  print_info "version: $version"
 
   if [ $print_version_only -eq 1 ]; then
     echo $version
     exit 0
   fi
 
-  # old style version string (digital only version string) for legacy codes
-  build_number="$major_version.$minor_version.$patch_version.$serial_number"
   print_result "OK"
 }
 
@@ -443,7 +416,12 @@ function build_package ()
             package_basename="$product_name-CCI-$cci_version-Linux.$build_target"
 	  fi
   else
-    package_basename="$product_name-$version-Linux.$build_target"
+    # the version of the binaries, which the build wrote and CPack names the package after
+    version_dist=$build_dir/VERSION-DIST
+    [ $build_dir -ef $source_dir ] && version_dist=$build_dir/CMakeFiles/VERSION-DIST
+    package_version=$version
+    [ -f $version_dist ] && package_version=$(cat $version_dist)
+    package_basename="$product_name-$package_version-Linux.$build_target"
   fi
   
 	# The optdebug build masquerades as a debug package so CTP and other tooling
