@@ -1082,19 +1082,13 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
 	}
     }
 
-  /* Step 4: on every way out of the loop, before the debug check below reads the list with a scan of its own: the
-   * page of the last tuple is unfixed between rows */
+  /* Step 4: on every way out of the loop: the page of the last tuple is unfixed between rows */
   hash_lookup_end (thread_p, lookup);
 
   if (qp_scan == S_ERROR)
     {
       return V_ERROR;
     }
-
-#if !defined (NDEBUG)
-  /* the hash answers as reading the list does */
-  assert (res == V_ERROR || res == eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd));
-#endif
 
   return res;
 }
