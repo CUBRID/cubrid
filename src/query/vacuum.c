@@ -1662,8 +1662,8 @@ vacuum_heap_hold_error (int error_code, int *held_error)
 }
 
 /*
- * vacuum_heap_skip_failed_page () - Decide whether vacuum_heap skips a failed page and goes on with the block. A
- *				    skipped page holds its error (vacuum_heap_hold_error).
+ * vacuum_heap_skip_failed_page () - Decide whether vacuum_heap skips a failed page and goes on with the block. The
+ *				    first failed page of the block holds its error (vacuum_heap_hold_error).
  *
  * return	       : True to skip the page, false to stop vacuuming the block.
  * thread_p (in)       : Thread entry.
@@ -1691,8 +1691,7 @@ vacuum_heap_skip_failed_page (THREAD_ENTRY * thread_p, int error_code, int *held
 /*
  * vacuum_heap_pop_held_error () - Pop the error pushed by vacuum_heap_hold_error.
  *
- * return	   : The error that stopped the block if any, otherwise the first held error. The returned error is the
- *		     current error.
+ * return	   : The error that stopped the block if any, otherwise the first held error.
  * error_code (in) : Error that stopped the block, or NO_ERROR.
  * held_error (in) : First held error of the block, or NO_ERROR.
  */
@@ -8493,7 +8492,7 @@ vacuum_check_shutdown_interruption (const THREAD_ENTRY * thread_p, int error_cod
   // interrupted is accepted if:
   // 1. this is an active worker thread
   // 2. or server is shutting down
-  // 3. or the block is left for a later run
+  // 3. or an OOS lookup is deferred (ER_VACUUM_OOS_LOOKUP_DEFERRED)
   assert (!vacuum_is_thread_vacuum_worker (thread_p) || (thread_p->shutdown && error_code == ER_INTERRUPTED)
 	  || error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED);
 }
