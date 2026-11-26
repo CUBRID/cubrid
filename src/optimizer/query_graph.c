@@ -172,10 +172,10 @@ static QO_TERM *qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env);
 static void qo_add_dep_term (QO_NODE * derived_node, BITSET * depend_nodes, BITSET * depend_segs, QO_ENV * env);
 static QO_TERM *qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node);
 static QO_TERM *qo_add_inner_dummy_join_term (QO_ENV * env, QO_NODE * head_node, QO_NODE * tail_node);
-static void qo_get_joined_nodes (QO_ENV * env, BITSET * scope_set, int node_idx, BITSET * node_set);
-static bool qo_partition_has_join_order (QO_ENV * env, BITSET * partition_set);
 static void qo_add_connected_dummy_join_terms (QO_ENV * env);
 static void qo_add_cross_dummy_join_terms (QO_ENV * env);
+static void qo_get_joined_nodes (QO_ENV * env, BITSET * scope_set, int node_idx, BITSET * node_set);
+static bool qo_can_visit_all_nodes (QO_ENV * env, BITSET * node_set);
 static void qo_analyze_term (QO_TERM * term, int term_type);
 static PT_NODE *set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static void set_seg_node (PT_NODE * attr, QO_ENV * env, BITSET * bitset);
@@ -2225,133 +2225,6 @@ qo_add_inner_dummy_join_term (QO_ENV * env, QO_NODE * head_node, QO_NODE * tail_
 }
 
 /*
- * qo_get_joined_nodes () - get the nodes that join edges inside scope_set reach from a node
- *   return: void
- *   env(in): optimizer environment
- *   scope_set(in): the nodes every join edge it follows has to stay inside
- *   node_idx(in): the node to start from
- *   node_set(out): node_idx and every node reached from it
- *
- * Behavior:
- *   - A join edge is a term QO_IS_EDGE_TERM () accepts. The direction of the edge and the dependency sets of its
- *     nodes are not looked at.
- *   - A term can come before the one that reaches its nodes, so the scan over the terms repeats until no node enters
- *     node_set.
- */
-static void
-qo_get_joined_nodes (QO_ENV * env, BITSET * scope_set, int node_idx, BITSET * node_set)
-{
-  int term_idx, prev_size;
-  QO_TERM *term;
-
-  BITSET_CLEAR (*node_set);
-  bitset_add (node_set, node_idx);
-
-  do
-    {
-      prev_size = bitset_cardinality (node_set);
-      for (term_idx = 0; term_idx < env->nterms; term_idx++)
-	{
-	  term = QO_ENV_TERM (env, term_idx);
-	  if (QO_IS_EDGE_TERM (term) && bitset_subset (scope_set, &(QO_TERM_NODES (term)))
-	      && bitset_intersects (node_set, &(QO_TERM_NODES (term))))
-	    {
-	      bitset_union (node_set, &(QO_TERM_NODES (term)));
-	    }
-	}
-    }
-  while (prev_size != bitset_cardinality (node_set));	/* stop once no node enters */
-}
-
-/*
- * qo_partition_has_join_order () - check whether a join order covers every node of a partition
- *   return: true if a join order covers every node of partition_set
- *   env(in): optimizer environment
- *   partition_set(in): the nodes of the partition
- *
- * Behavior:
- *   - A join order starts at a node that comes after no node. It takes a node next when the node comes after placed
- *     nodes only and a join edge joins the node to a placed node, as qo_node_can_be_placed () and
- *     planner_visit_node () require.
- *   - Both conditions hold for more nodes as more nodes are placed, so taking any node that can come next until none
- *     is left places every node a join order from that start can place.
- *   - The planner can place a SEMI join node read with its duplicates removed before the nodes its ON clause reads,
- *     and it also follows the join edges that qo_generate_implied_join_terms () adds after this check.
- *     This check takes neither, so it can find no join order where the planner finds one, and a dummy join term
- *     the planner does not need is added.
- */
-static bool
-qo_partition_has_join_order (QO_ENV * env, BITSET * partition_set)
-{
-  int start_idx, node_idx, term_idx;
-  bool has_join_order, is_placed;
-  BITSET placed_set, other_set;
-  BITSET_ITERATOR start_iter, node_iter;
-  QO_NODE *node;
-  QO_TERM *term;
-
-  bitset_init (&placed_set, env);
-  bitset_init (&other_set, env);
-
-  has_join_order = false;
-  for (start_idx = bitset_iterate (partition_set, &start_iter); start_idx != -1 && !has_join_order;
-       start_idx = bitset_next_member (&start_iter))
-    {
-      node = QO_ENV_NODE (env, start_idx);
-      if (!bitset_is_empty (&(QO_NODE_DEP_SET (node))) || !bitset_is_empty (&(QO_NODE_OUTER_DEP_SET (node)))
-	  || !bitset_is_empty (&(QO_NODE_SEMI_ANTI_DEP_SET (node))))
-	{
-	  continue;
-	}
-
-      BITSET_CLEAR (placed_set);
-      bitset_add (&placed_set, start_idx);
-
-      /* place a node that can come next, and scan again until no node is placed */
-      do
-	{
-	  is_placed = false;
-	  for (node_idx = bitset_iterate (partition_set, &node_iter); node_idx != -1 && !is_placed;
-	       node_idx = bitset_next_member (&node_iter))
-	    {
-	      node = QO_ENV_NODE (env, node_idx);
-	      if (BITSET_MEMBER (placed_set, node_idx) || !bitset_subset (&placed_set, &(QO_NODE_DEP_SET (node)))
-		  || !bitset_subset (&placed_set, &(QO_NODE_OUTER_DEP_SET (node)))
-		  || !bitset_subset (&placed_set, &(QO_NODE_SEMI_ANTI_DEP_SET (node))))
-		{
-		  continue;
-		}
-
-	      for (term_idx = 0; term_idx < env->nterms && !is_placed; term_idx++)
-		{
-		  term = QO_ENV_TERM (env, term_idx);
-		  if (!QO_IS_EDGE_TERM (term) || !BITSET_MEMBER (QO_TERM_NODES (term), node_idx))
-		    {
-		      continue;
-		    }
-
-		  bitset_assign (&other_set, &(QO_TERM_NODES (term)));
-		  bitset_remove (&other_set, node_idx);
-		  if (!bitset_is_empty (&other_set) && bitset_subset (&placed_set, &other_set))
-		    {
-		      bitset_add (&placed_set, node_idx);
-		      is_placed = true;
-		    }
-		}
-	    }
-	}
-      while (is_placed);
-
-      has_join_order = bitset_subset (&placed_set, partition_set);
-    }
-
-  bitset_delset (&placed_set);
-  bitset_delset (&other_set);
-
-  return has_join_order;
-}
-
-/*
  * qo_add_connected_dummy_join_terms () - add dummy join terms until the nodes each ON clause reads are connected
  *   without going through the node of that ON clause
  *   return: void
@@ -2627,7 +2500,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
  *
  * Behavior:
  *   - No term is added where no node before the node is in its partition, where a join edge joins the node to a node
- *     before it already, or where a join order covers the partition already.
+ *     before it already, or where the planner can visit every node of the partition already.
  *   - The nodes in between that are in another partition get no term.
  *
  * Reason:
@@ -2641,7 +2514,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
  *   Step 1: go on only when the node is a cross join node or a table after a comma in the FROM clause.
  *   Step 2: go on only when a node before the node is in its partition, and take the nearest one.
  *   Step 3: go on only when no join edge joins the node to a node before it.
- *   Step 4: go on only when no join order covers the partition.
+ *   Step 4: go on only when the planner cannot visit every node of the partition.
  *   Step 5: add a dummy join term between the two.
  */
 static void
@@ -2716,9 +2589,9 @@ qo_add_cross_dummy_join_terms (QO_ENV * env)
 	  continue;
 	}
 
-      /* Step 4: go on only when no join order covers the partition;
-       * a term where the planner finds a join order already only adds join orders and changes the plan */
-      if (qo_partition_has_join_order (env, &partition_set))
+      /* Step 4: go on only when the planner cannot visit every node of the partition;
+       * a term where the planner visits every node already only adds join orders and changes the plan */
+      if (qo_can_visit_all_nodes (env, &partition_set))
 	{
 	  continue;
 	}
@@ -2730,6 +2603,147 @@ qo_add_cross_dummy_join_terms (QO_ENV * env)
   bitset_delset (&all_set);
   bitset_delset (&partition_set);
   bitset_delset (&before_set);
+}
+
+/*
+ * qo_get_joined_nodes () - get the nodes that join edges inside scope_set reach from a node
+ *   return: void
+ *   env(in): optimizer environment
+ *   scope_set(in): the nodes every join edge it follows has to stay inside
+ *   node_idx(in): the node to start from
+ *   node_set(out): node_idx and every node reached from it
+ *
+ * Behavior:
+ *   - A join edge is a term QO_IS_EDGE_TERM () accepts. The direction of the edge and the dependency sets of its
+ *     nodes are not looked at.
+ *   - A term can come before the one that reaches its nodes, so the scan over the terms repeats until no node enters
+ *     node_set.
+ */
+static void
+qo_get_joined_nodes (QO_ENV * env, BITSET * scope_set, int node_idx, BITSET * node_set)
+{
+  int term_idx, prev_size;
+  QO_TERM *term;
+
+  BITSET_CLEAR (*node_set);
+  bitset_add (node_set, node_idx);
+
+  do
+    {
+      prev_size = bitset_cardinality (node_set);
+      for (term_idx = 0; term_idx < env->nterms; term_idx++)
+	{
+	  term = QO_ENV_TERM (env, term_idx);
+	  if (QO_IS_EDGE_TERM (term) && bitset_subset (scope_set, &(QO_TERM_NODES (term)))
+	      && bitset_intersects (node_set, &(QO_TERM_NODES (term))))
+	    {
+	      bitset_union (node_set, &(QO_TERM_NODES (term)));
+	    }
+	}
+    }
+  while (prev_size != bitset_cardinality (node_set));	/* stop once no node enters */
+}
+
+/*
+ * qo_can_visit_all_nodes () - check whether the planner can visit every node of a node set
+ *   return: true if the planner can visit every node of node_set
+ *   env(in): optimizer environment
+ *   node_set(in): the nodes joined to a node (qo_get_joined_nodes ())
+ *
+ * Behavior:
+ *   - The planner visits a node next when the node comes after visited nodes only (qo_node_can_be_placed ()) and
+ *     a join edge joins the node to a visited node (planner_visit_node ()).
+ *   - The planner can visit a SEMI join node read with its duplicates removed before the nodes its ON clause reads,
+ *     and it also follows the join edges that qo_generate_implied_join_terms () adds after this check.
+ *     This check takes neither, so it can return false where the planner visits every node, and a dummy join term
+ *     the planner does not need is added.
+ *
+ * Method:
+ *   Both conditions hold for more nodes as more nodes are visited, so visiting any node that can come next until none
+ *   is left visits every node that the planner can visit from the same start, whatever the order of visiting.
+ *
+ * Steps (for each node of the set):
+ *   Step 1: go on only when the node comes after no node.
+ *   Step 2: visit the node first.
+ *   Step 3: return true when the visited nodes cover the set.
+ *   Step 4: look for a node to visit next; when none is found, go on to the next start.
+ *   Step 5: take a node that is not visited yet and comes after visited nodes only.
+ *   Step 6: visit the node when a join edge joins it to a visited node, and go back to Step 3.
+ */
+static bool
+qo_can_visit_all_nodes (QO_ENV * env, BITSET * node_set)
+{
+  int start_idx, node_idx, term_idx;
+  bool all_visited, is_visited;
+  BITSET visited_set, other_set;
+  BITSET_ITERATOR start_iter, node_iter;
+  QO_NODE *node;
+  QO_TERM *term;
+
+  bitset_init (&visited_set, env);
+  bitset_init (&other_set, env);
+
+  all_visited = false;
+  for (start_idx = bitset_iterate (node_set, &start_iter); start_idx != -1 && !all_visited;
+       start_idx = bitset_next_member (&start_iter))
+    {
+      /* Step 1: go on only when the node comes after no node */
+      node = QO_ENV_NODE (env, start_idx);
+      if (!bitset_is_empty (&(QO_NODE_DEP_SET (node))) || !bitset_is_empty (&(QO_NODE_OUTER_DEP_SET (node)))
+	  || !bitset_is_empty (&(QO_NODE_SEMI_ANTI_DEP_SET (node))))
+	{
+	  continue;
+	}
+
+      /* Step 2: visit the node first */
+      BITSET_CLEAR (visited_set);
+      bitset_add (&visited_set, start_idx);
+
+      do
+	{
+	  /* Step 3: return true when the visited nodes cover the set */
+	  all_visited = bitset_subset (&visited_set, node_set);
+
+	  /* Step 4: look for a node to visit next; when none is found, go on to the next start */
+	  is_visited = false;
+	  for (node_idx = bitset_iterate (node_set, &node_iter); node_idx != -1 && !is_visited && !all_visited;
+	       node_idx = bitset_next_member (&node_iter))
+	    {
+	      /* Step 5: take a node that is not visited yet and comes after visited nodes only */
+	      node = QO_ENV_NODE (env, node_idx);
+	      if (BITSET_MEMBER (visited_set, node_idx) || !bitset_subset (&visited_set, &(QO_NODE_DEP_SET (node)))
+		  || !bitset_subset (&visited_set, &(QO_NODE_OUTER_DEP_SET (node)))
+		  || !bitset_subset (&visited_set, &(QO_NODE_SEMI_ANTI_DEP_SET (node))))
+		{
+		  continue;
+		}
+
+	      /* Step 6: visit the node when a join edge joins it to a visited node, and go back to Step 3 */
+	      for (term_idx = 0; term_idx < env->nterms && !is_visited; term_idx++)
+		{
+		  term = QO_ENV_TERM (env, term_idx);
+		  if (!QO_IS_EDGE_TERM (term) || !BITSET_MEMBER (QO_TERM_NODES (term), node_idx))
+		    {
+		      continue;
+		    }
+
+		  bitset_assign (&other_set, &(QO_TERM_NODES (term)));
+		  bitset_remove (&other_set, node_idx);
+		  if (!bitset_is_empty (&other_set) && bitset_subset (&visited_set, &other_set))
+		    {
+		      bitset_add (&visited_set, node_idx);
+		      is_visited = true;
+		    }
+		}
+	    }
+	}
+      while (is_visited);
+    }
+
+  bitset_delset (&visited_set);
+  bitset_delset (&other_set);
+
+  return all_visited;
 }
 
 /*
