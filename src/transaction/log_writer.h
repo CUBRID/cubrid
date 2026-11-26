@@ -167,7 +167,7 @@ struct logwr_info
   bool skip_flush;
   bool flush_completed;
   bool is_init;
-  /* eof_lsa of the last flush that woke up the waiting LWTs (protected by flush_start_mutex).
+  /* eof_lsa of the last flush that passed the step of waking up the waiting LWTs (protected by flush_start_mutex).
    * An LWT that has sent less than this missed that flush while sending, and must not wait for the next one. */
   LOG_LSA last_woken_eof_lsa;
 

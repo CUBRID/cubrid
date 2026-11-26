@@ -2119,7 +2119,7 @@ logwr_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TD
 
 #if defined(SERVER_MODE)
 static int logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p, LOG_PAGEID fpageid,
-					int mode, bool copy_from_first_phy_page);
+					int mode, LOGWR_MODE orig_mode, bool copy_from_first_phy_page);
 static bool logwr_unregister_writer_entry (LOGWR_ENTRY * wr_entry, int status);
 static int logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used_size, int *status,
 				 LOGWR_ENTRY * entry, bool copy_from_file);
@@ -2138,12 +2138,13 @@ static void logwr_update_last_sent_eof_lsa (LOGWR_ENTRY * entry);
  *   id(in):
  *   fpageid(in):
  *   mode(in):
+ *   orig_mode(in): the strongest mode the client has requested
  *
  * Note:
  */
 static int
 logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p, LOG_PAGEID fpageid, int mode,
-			     bool copy_from_first_phy_page)
+			     LOGWR_MODE orig_mode, bool copy_from_first_phy_page)
 {
   LOGWR_ENTRY *entry;
   int rv;
@@ -2195,8 +2196,10 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
 	{
 	  /* The caller holds flush_start_mutex, so last_woken_eof_lsa does not change until this LWT waits.
 	   * If a flush woke up the LWTs while this one was sending, the log it flushed has not been sent yet:
-	   * read it now instead of waiting for the next flush, which may not come soon. */
-	  if (!LSA_ISNULL (&entry->last_sent_eof_lsa)
+	   * read it now instead of waiting for the next flush, which may not come soon.
+	   * Only for an ASYNC client: a DELAY of a non-ASYNC client holds LOG_CS until the reply.
+	   * Not after an interrupt: entry->eof_lsa then caps what is sent, never reaching last_woken_eof_lsa. */
+	  if (orig_mode == LOGWR_MODE_ASYNC && LSA_ISNULL (&entry->eof_lsa) && !LSA_ISNULL (&entry->last_sent_eof_lsa)
 	      && LSA_LT (&entry->last_sent_eof_lsa, &writer_info->last_woken_eof_lsa))
 	    {
 	      logwr_er_log ("logwr_register_writer_entry, missed flush: last_sent_eof_lsa(%lld|%d) < "
@@ -2661,7 +2664,8 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 
       /* Register the writer at the list and wait until LFT start to work */
       rv = pthread_mutex_lock (&writer_info->flush_start_mutex);
-      error_code = logwr_register_writer_entry (&entry, thread_p, first_pageid, mode, copy_from_first_phy_page);
+      error_code = logwr_register_writer_entry (&entry, thread_p, first_pageid, mode, orig_mode,
+						copy_from_first_phy_page);
       if (error_code != NO_ERROR)
 	{
 	  pthread_mutex_unlock (&writer_info->flush_start_mutex);
