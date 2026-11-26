@@ -28,6 +28,7 @@
 #if !defined(WINDOWS)
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <new>
 #endif /* !WINDDOWS */
 
 #include "system.h"
@@ -3832,12 +3833,14 @@ session_get_stream_handles (THREAD_ENTRY * thread_p, bool create, stream_handle_
  * session_sa_stream_handles () - The download handles of SA, which has one client and no connection
  *
  *   One table for the process, so a transaction end purges it without a session lookup that could set an error
- *   inside the commit. Never freed, as it may hold handles at exit.
+ *   inside the commit. It is built in static storage, so its first use, often a commit, allocates nothing; it is
+ *   never destroyed, as it may hold handles at exit.
  */
 stream_handle_table *
 session_sa_stream_handles (void)
 {
-  static stream_handle_table *table = new stream_handle_table ();
+  alignas (stream_handle_table) static char storage[sizeof (stream_handle_table)];
+  static stream_handle_table *table = new (storage) stream_handle_table ();
 
   return table;
 }
