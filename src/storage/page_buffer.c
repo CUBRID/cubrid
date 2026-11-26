@@ -7006,6 +7006,16 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
       set_waiter_exists (&bufptr->atomic_latch, false);
     }
 #endif /* SERVER_MODE */
+
+  /* a WRITE fix on a page this thread already holds READ-latched is not a promotion; only
+   * pgbuf_promote_read_latch () promotes. catch the caller in debug builds as before the latch rework. no other
+   * thread can change the latch mode from READ to WRITE while this thread holds a READ fix on the page. */
+  if (holder != NULL && request_mode == PGBUF_LATCH_WRITE
+      && get_impl (&bufptr->atomic_latch).impl.latch_mode == PGBUF_LATCH_READ)
+    {
+      /* release builds go on and count the fix below */
+      assert_release (request_mode != PGBUF_LATCH_WRITE);
+    }
 // *INDENT-OFF*
   do
     {
@@ -7091,7 +7101,8 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 			{
 			  can_latch = true;
 			  new_impl.impl.latch_mode = request_mode;
-			  new_impl.impl.fcnt = 1;
+			  /* this fix adds one to the holder's fix count; keep bcb fcnt equal to it */
+			  new_impl.impl.fcnt++;
 			}
 		      else
 			{
