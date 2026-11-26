@@ -22,8 +22,8 @@ Follow [docs/build.md](../docs/build.md) for presets, build modes, and scratch i
 
 ```bash
 # Use a build directory of its own (see "Engine side effect" below)
-cmake --preset debug -B build_unit_debug -DUNIT_TEST_STRING_BUFFER=ON   # or -DUNIT_TESTS=ON
-cmake --build build_unit_debug --target test_string_buffer
+cmake --preset debug -B build_unit_debug -DUNIT_TEST_STRING_BUFFER=ON -DUNIT_TEST_SCOPE_EXIT=ON   # or -DUNIT_TESTS=ON
+cmake --build build_unit_debug --target test_string_buffer test_scope_exit
 
 # Modules registered with ctest
 ctest --test-dir build_unit_debug --no-tests=error -R test_scope_exit
