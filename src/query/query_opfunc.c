@@ -7504,7 +7504,8 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
 	  ASSERT_ERROR ();
 	  return error;
 	}
-      pr_clear_value (target_value);
+      /* the peeked value is not ours to clear: a constant of the plan, the value of a column the row still needs,
+       * or the result of an operation, which clears it when evaluated again */
     }
 
   bench_clock::time_point end_timept = bench_clock::now ();

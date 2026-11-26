@@ -46,6 +46,7 @@ option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output
 option (UNIT_TEST_STREAM_SESSION "Unit testing: byte-stream transport consumer registry")
 option (UNIT_TEST_RADIX_SORT "Unit testing: radix run sorter")
 option (UNIT_TEST_VALUE_HASH "Unit testing: hash of a DB_VALUE across its types")
+option (UNIT_TEST_SCOPE_EXIT "Unit testing: scope_exit guard")
 option (UNIT_TEST_BTREE_SORT_MERGE "Unit testing: merge run sorter")
 
 message("  unit_tests/...")
@@ -147,6 +148,12 @@ if (UNIT_TESTS OR UNIT_TEST_VALUE_HASH)
   message("    value_hash")
   add_subdirectory(value_hash)
 endif(UNIT_TESTS OR UNIT_TEST_VALUE_HASH)
+
+if (UNIT_TESTS OR UNIT_TEST_SCOPE_EXIT)
+  message("    scope_exit")
+  add_subdirectory(scope_exit)
+endif(UNIT_TESTS OR UNIT_TEST_SCOPE_EXIT)
+
 if (UNIT_TESTS OR UNIT_TEST_BTREE_SORT_MERGE)
   message("    btree_sort_merge")
   add_subdirectory(btree_sort_merge)
