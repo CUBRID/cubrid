@@ -30,7 +30,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <dirent.h>
 
 #if defined(SOLARIS)
 #include <netdb.h>
@@ -175,12 +174,22 @@ static int boot_Server_process_id = 1;
 #endif /* SERVER_MODE */
 
 
+/* arguments of boot_remove_temp_volume_found () */
+typedef struct boot_temp_vol_remove_args BOOT_TEMP_VOL_REMOVE_ARGS;
+struct boot_temp_vol_remove_args
+{
+  const char *temp_path;
+  const char *db_name;
+  INT64 db_creation;
+  VOLID crash_left_volid;
+};
+
 /* Functions */
 static int boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID * dbparm_oid);
 
 static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION delete_action);
-static VOLID boot_get_temp_volid_from_name (const char *file_name, const char *db_name);
 static VOLID boot_get_temp_volid_left_by_crash (const char *temp_path, const char *db_name);
+static void boot_remove_temp_volume_found (THREAD_ENTRY * thread_p, VOLID volid, void *args);
 static void boot_remove_temp_volume_file (THREAD_ENTRY * thread_p, const char *temp_path, const char *db_name,
 					  VOLID volid, INT64 db_creation, VOLID crash_left_volid);
 static int boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_addmore_vols);
@@ -876,48 +885,6 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
 }
 
 /*
- * boot_get_temp_volid_from_name () - get the volume identifier from the file name of a temporary volume
- *
- * return : volume identifier, or NULL_VOLID if the file name is not the name of a temporary volume of the database
- *
- *   file_name(in): file name without the directory
- *   db_name(in): database name
- *
- * Note: A temporary volume is named db_name + FILEIO_VOLTMP_PREFIX + volid in at least three digits ("%03d") by
- *       fileio_make_volume_temp_name ().
- */
-static VOLID
-boot_get_temp_volid_from_name (const char *file_name, const char *db_name)
-{
-  char temp_vol_name[PATH_MAX];
-  size_t prefix_len = strlen (db_name) + strlen (FILEIO_VOLTMP_PREFIX);
-  int volid;
-
-  if (strncmp (file_name, db_name, strlen (db_name)) != 0
-      || strncmp (file_name + strlen (db_name), FILEIO_VOLTMP_PREFIX, strlen (FILEIO_VOLTMP_PREFIX)) != 0
-      || strlen (file_name + prefix_len) > 5 /* digits of LOG_MAX_DBVOLID */ )
-    {
-      return NULL_VOLID;
-    }
-
-  volid = atoi (file_name + prefix_len);
-  if (volid <= boot_Db_parm->last_volid || volid > LOG_MAX_DBVOLID)
-    {
-      return NULL_VOLID;
-    }
-
-  /* the name must be exactly what fileio_make_volume_temp_name () makes for this volid ("%03d": no sign, and leading
-   * zeros only up to three digits) */
-  snprintf (temp_vol_name, sizeof (temp_vol_name), "%s%s%03d", db_name, FILEIO_VOLTMP_PREFIX, volid);
-  if (strcmp (temp_vol_name, file_name) != 0)
-    {
-      return NULL_VOLID;
-    }
-
-  return (VOLID) volid;
-}
-
-/*
  * boot_find_rest_volumes () - call function on the rest of vols
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
@@ -1151,90 +1118,63 @@ boot_remove_temp_volume_file (THREAD_ENTRY * thread_p, const char *temp_path, co
 }
 
 /*
+ * boot_remove_temp_volume_found () - fileio_find_volume_temp_ids function to remove a temporary volume file found
+ *
+ *   volid(in): temporary volume identifier of the file found
+ *   args(in): BOOT_TEMP_VOL_REMOVE_ARGS
+ */
+static void
+boot_remove_temp_volume_found (THREAD_ENTRY * thread_p, VOLID volid, void *args)
+{
+  BOOT_TEMP_VOL_REMOVE_ARGS *remove_args = (BOOT_TEMP_VOL_REMOVE_ARGS *) args;
+
+  boot_remove_temp_volume_file (thread_p, remove_args->temp_path, remove_args->db_name, volid,
+				remove_args->db_creation, remove_args->crash_left_volid);
+}
+
+/*
  * boot_remove_temp_volumes () - find the temporary volumes of the database in their directory and remove them
  *
  * Note: A temporary volume is added and removed without logging, and boot_Db_parm counts them only in memory; the
  *       count reaches the disk only along with other changes of boot_Db_parm. So after a crash the count on disk
  *       does not tell which temporary volumes exist. Every file in the temporary volume directory that is named as
- *       a temporary volume of this database is checked, and it is removed if its header shows a temporary volume of
- *       this database, or if it has no header and its name follows the temporary volumes boot_Db_parm knows
- *       (boot_remove_temp_volume_file). If the directory cannot be listed, every name a temporary volume can have is
- *       looked up instead.
+ *       a temporary volume of this database (fileio_find_volume_temp_ids) is checked, and it is removed if its
+ *       header shows a temporary volume of this database, or if it has no header and its name follows the temporary
+ *       volumes boot_Db_parm knows (boot_remove_temp_volume_file). If the directory cannot be listed to its end,
+ *       every name a temporary volume can have is looked up instead.
  *       At restart, a volume beyond the temporary volumes known by boot_Db_parm is notified as unknown.
  */
 static void
 boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
 {
   char dir_buf[PATH_MAX];
-  const char *temp_path;
-  const char *db_name;
-  DIR *dir_p;
-  struct dirent *entry;
+  BOOT_TEMP_VOL_REMOVE_ARGS remove_args;
   VOLID volid;
-  VOLID crash_left_volid;
-  INT64 db_creation;
   LOG_LSA chkpt_lsa;
 
-  temp_path = prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
-  if (temp_path == NULL || temp_path[0] == '\0')
+  remove_args.temp_path = prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
+  if (remove_args.temp_path == NULL || remove_args.temp_path[0] == '\0')
     {
-      temp_path = fileio_get_directory_path (dir_buf, boot_Db_full_name);
+      remove_args.temp_path = fileio_get_directory_path (dir_buf, boot_Db_full_name);
     }
-  db_name = fileio_get_base_file_name (boot_Db_full_name);
+  remove_args.db_name = fileio_get_base_file_name (boot_Db_full_name);
 
   /* a temporary volume header has the creation time of its database (disk_format) */
-  (void) log_get_db_start_parameters (&db_creation, &chkpt_lsa);
+  (void) log_get_db_start_parameters (&remove_args.db_creation, &chkpt_lsa);
   /* found before any file is removed, since removing breaks the run of names it looks for */
-  crash_left_volid = boot_get_temp_volid_left_by_crash (temp_path, db_name);
+  remove_args.crash_left_volid = boot_get_temp_volid_left_by_crash (remove_args.temp_path, remove_args.db_name);
 
-  /* a database in the root directory has an empty directory path */
-  dir_p = opendir (temp_path[0] != '\0' ? temp_path : "/");
-  if (dir_p == NULL)
+  if (fileio_find_volume_temp_ids (thread_p, remove_args.temp_path, remove_args.db_name, boot_Db_parm->last_volid,
+				   boot_remove_temp_volume_found, &remove_args) != NO_ERROR)
     {
-      if (errno == ENOENT)
-	{
-	  /* no temporary volume could have been created there */
-	  return;
-	}
-
-      /* The directory cannot be listed (e.g. no read permission), but a file in it may still be reached by its name.
-       * Look for every name a temporary volume can have instead. */
-      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1,
-			   temp_path[0] != '\0' ? temp_path : "/");
+      /* The directory cannot be listed (e.g. no read permission) or the listing stopped on an error, but a file in it
+       * may still be reached by its name. Look for every name a temporary volume can have. */
       for (volid = LOG_MAX_DBVOLID; volid > boot_Db_parm->last_volid; volid--)
 	{
-	  boot_remove_temp_volume_file (thread_p, temp_path, db_name, volid, db_creation, crash_left_volid);
-	}
-      return;
-    }
-
-  while (true)
-    {
-      errno = 0;
-      entry = readdir (dir_p);
-      if (entry == NULL)
-	{
-	  break;
-	}
-      volid = boot_get_temp_volid_from_name (entry->d_name, db_name);
-      if (volid != NULL_VOLID)
-	{
-	  boot_remove_temp_volume_file (thread_p, temp_path, db_name, volid, db_creation, crash_left_volid);
+	  boot_remove_temp_volume_file (thread_p, remove_args.temp_path, remove_args.db_name, volid,
+					remove_args.db_creation, remove_args.crash_left_volid);
 	}
     }
-
-  if (errno != 0)
-    {
-      /* the listing stopped on an error, not at its end; look up the names it may have missed */
-      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1,
-			   temp_path[0] != '\0' ? temp_path : "/");
-      for (volid = LOG_MAX_DBVOLID; volid > boot_Db_parm->last_volid; volid--)
-	{
-	  boot_remove_temp_volume_file (thread_p, temp_path, db_name, volid, db_creation, crash_left_volid);
-	}
-    }
-
-  closedir (dir_p);
 }
 
 /*

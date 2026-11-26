@@ -531,6 +531,9 @@ extern void fileio_make_volume_ext_name (char *volext_fullname, const char *ext_
 extern void fileio_make_volume_ext_given_name (char *volext_fullname, const char *ext_path, const char *ext_name);
 extern void fileio_make_volume_temp_name (char *voltmp_fullname, const char *tmp_path, const char *tmp_name,
 					  VOLID volid);
+extern int fileio_find_volume_temp_ids (THREAD_ENTRY * thread_p, const char *tmp_path_p, const char *tmp_name_p,
+					VOLID last_perm_volid,
+					void (*fun) (THREAD_ENTRY * thread_p, VOLID vol_id, void *args), void *args);
 extern void fileio_make_log_active_name (char *logactive_name, const char *log_path, const char *dbname);
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void fileio_make_temp_log_files_from_backup (char *temp_log_name, VOLID volid, FILEIO_BACKUP_LEVEL level,

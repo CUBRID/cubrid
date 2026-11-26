@@ -5723,6 +5723,110 @@ fileio_make_volume_temp_name (char *vol_tmp_full_name_p, const char *tmp_path_p,
 }
 
 /*
+ * fileio_get_volume_temp_id_from_name () - get the volume identifier from the file name of a temporary volume
+ *   return: volume identifier, or NULL_VOLID if the file name is not the name of a temporary volume of the database
+ *   file_name_p(in): file name without the directory
+ *   tmp_name_p(in): database name
+ *   last_perm_volid(in): last permanent volume identifier; a temporary volume has a greater one
+ *
+ * Note: The name must be exactly what fileio_make_volume_temp_name () makes for the identifier ("%03d": no sign,
+ *       and leading zeros only up to three digits).
+ */
+static VOLID
+fileio_get_volume_temp_id_from_name (const char *file_name_p, const char *tmp_name_p, VOLID last_perm_volid)
+{
+  char vol_tmp_name[PATH_MAX];
+  size_t name_len = strlen (tmp_name_p);
+  size_t prefix_len = name_len + strlen (FILEIO_VOLTMP_PREFIX);
+  int vol_id;
+
+  if (strncmp (file_name_p, tmp_name_p, name_len) != 0
+      || strncmp (file_name_p + name_len, FILEIO_VOLTMP_PREFIX, strlen (FILEIO_VOLTMP_PREFIX)) != 0
+      || strlen (file_name_p + prefix_len) > 5 /* digits of LOG_MAX_DBVOLID */ )
+    {
+      return NULL_VOLID;
+    }
+
+  vol_id = atoi (file_name_p + prefix_len);
+  if (vol_id <= last_perm_volid || vol_id > LOG_MAX_DBVOLID)
+    {
+      return NULL_VOLID;
+    }
+
+  snprintf (vol_tmp_name, sizeof (vol_tmp_name), "%s%s%03d", tmp_name_p, FILEIO_VOLTMP_PREFIX, vol_id);
+  if (strcmp (vol_tmp_name, file_name_p) != 0)
+    {
+      return NULL_VOLID;
+    }
+
+  return (VOLID) vol_id;
+}
+
+/*
+ * fileio_find_volume_temp_ids () - call a function on every file in a directory named as a temporary volume
+ *   return: NO_ERROR if the directory was listed to its end or does not exist,
+ *           ER_IO_MOUNT_FAIL (set as a notification) if it cannot be listed or the listing stopped on an error
+ *   thread_p(in):
+ *   tmp_path_p(in): directory of temporary volumes; empty for the root directory
+ *   tmp_name_p(in): database name
+ *   last_perm_volid(in): last permanent volume identifier; a temporary volume has a greater one
+ *   fun(in): function called with the identifier of each file found
+ *   args(in): extra argument of fun
+ *
+ * Note: On ER_IO_MOUNT_FAIL some names may not have been passed to fun; a file may still be reached by its name
+ *       (fileio_make_volume_temp_name), e.g. in a directory without read permission.
+ */
+int
+fileio_find_volume_temp_ids (THREAD_ENTRY * thread_p, const char *tmp_path_p, const char *tmp_name_p,
+			     VOLID last_perm_volid, void (*fun) (THREAD_ENTRY * thread_p, VOLID vol_id, void *args),
+			     void *args)
+{
+  const char *dir_path_p = (tmp_path_p[0] != '\0') ? tmp_path_p : "/";
+  DIR *dir_p;
+  struct dirent *dir_entry;
+  VOLID vol_id;
+
+  dir_p = opendir (dir_path_p);
+  if (dir_p == NULL)
+    {
+      if (errno == ENOENT)
+	{
+	  /* no temporary volume could have been created there */
+	  return NO_ERROR;
+	}
+      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, dir_path_p);
+      return ER_IO_MOUNT_FAIL;
+    }
+
+  while (true)
+    {
+      /* fun may change errno */
+      errno = 0;
+      dir_entry = readdir (dir_p);
+      if (dir_entry == NULL)
+	{
+	  break;
+	}
+      vol_id = fileio_get_volume_temp_id_from_name (dir_entry->d_name, tmp_name_p, last_perm_volid);
+      if (vol_id != NULL_VOLID)
+	{
+	  (*fun) (thread_p, vol_id, args);
+	}
+    }
+
+  if (errno != 0)
+    {
+      /* the listing stopped on an error, not at its end */
+      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, dir_path_p);
+      (void) closedir (dir_p);
+      return ER_IO_MOUNT_FAIL;
+    }
+
+  (void) closedir (dir_p);
+  return NO_ERROR;
+}
+
+/*
  * fileio_make_log_active_name () - Build the name of volumes
  *   return: void
  *   logactive_name(out):
