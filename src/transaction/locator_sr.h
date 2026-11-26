@@ -156,6 +156,8 @@ extern int locator_start_referenced_key (THREAD_ENTRY * thread_p, OID * class_oi
 extern void locator_end_referenced_key (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk);
 extern int locator_key_changes (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk, OID * oid, RECDES * recdes,
 				HEAP_CACHE_ATTRINFO * new_values, bool * changes);
+extern int locator_assigns_unique_key (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID * att_id, int n_att_id,
+				       bool * assigns);
 extern int locator_wait_for_child_writers (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk, const OID * oids,
 					   int n_oids, const OID * class_oid, HEAP_SCANCACHE * scan_cache,
 					   bool on_update);

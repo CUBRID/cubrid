@@ -76,6 +76,7 @@ static int xts_Ptr_max[MAX_PTR_BLOCKS] = { 0 };
 
 /* error code specific to this file */
 static int xts_Xasl_errcode = NO_ERROR;
+static bool xts_Has_sp_call = false;
 
 /* CBRD-27583: a filter index predicate, a function index or a partition expression stream is being packed - it
  * carries no comparison decision (its unpack decides, stx_decide_stream_compare) */
@@ -335,7 +336,12 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
     + sizeof (int)		/* xasl->n_oid_list */
     + sizeof (OID) * xasl_tree->n_oid_list	/* xasl->class_oid_list */
     + sizeof (int) * xasl_tree->n_oid_list	/* xasl->class_locks */
-    + sizeof (int) * xasl_tree->n_oid_list;	/* xasl->tcard_list */
+    + sizeof (int) * xasl_tree->n_oid_list	/* xasl->tcard_list */
+    + sizeof (int)		/* xasl->stmt_flags */
+    + sizeof (int)		/* xasl->n_write_oid_list */
+    + sizeof (OID) * xasl_tree->n_write_oid_list	/* xasl->write_class_oid_list */
+    + sizeof (int)		/* xasl->n_read_oid_list */
+    + sizeof (OID) * xasl_tree->n_read_oid_list;	/* xasl->read_class_oid_list */
 
   offset = sizeof (int)		/* [size of header data] */
     + header_size		/* [header data] */
@@ -347,6 +353,7 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   xts_reserve_location_in_stream (offset);
 
   xts_id_serial = 0;
+  xts_Has_sp_call = false;
 
 #if !defined(NDEBUG)
   /* suppress valgrind UMW error */
@@ -382,6 +389,17 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   for (i = 0; i < xasl_tree->n_oid_list; i++)
     {
       p = or_pack_int (p, xasl_tree->tcard_list[i]);
+    }
+  p = or_pack_int (p, xasl_tree->stmt_flags | (xts_Has_sp_call ? XASL_STMT_HAS_SP_CALL : 0));
+  p = or_pack_int (p, xasl_tree->n_write_oid_list);
+  for (i = 0; i < xasl_tree->n_write_oid_list; i++)
+    {
+      p = or_pack_oid (p, &xasl_tree->write_class_oid_list[i]);
+    }
+  p = or_pack_int (p, xasl_tree->n_read_oid_list);
+  for (i = 0; i < xasl_tree->n_read_oid_list; i++)
+    {
+      p = or_pack_oid (p, &xasl_tree->read_class_oid_list[i]);
     }
 
   /* set body size of new XASL format */
@@ -1685,13 +1703,15 @@ xts_save_db_value (const DB_VALUE * value)
   size = xts_sizeof_db_value (value);
   if (size == ER_FAILED)
     {
-      return ER_FAILED;
+      offset = ER_FAILED;
+      goto end;
     }
 
   offset = xts_reserve_location_in_stream (size);
   if (offset == ER_FAILED || xts_mark_ptr_visited (value, offset) == ER_FAILED)
     {
-      return ER_FAILED;
+      offset = ER_FAILED;
+      goto end;
     }
 
   if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
@@ -1704,7 +1724,8 @@ xts_save_db_value (const DB_VALUE * value)
       if (buf_p == NULL)
 	{
 	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return ER_FAILED;
+	  offset = ER_FAILED;
+	  goto end;
 	}
 
       is_buf_alloced = true;
@@ -1725,6 +1746,7 @@ end:
     {
       free_and_init (buf_p);
     }
+  pr_clear_compressed_string ((DB_VALUE *) value);
 
   return offset;
 }
@@ -5208,6 +5230,10 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 
   ptr = or_pack_int (ptr, indx_info->groupby_skip);
 
+  ptr = or_pack_int (ptr, indx_info->analytic_sort_cols);
+
+  ptr = or_pack_int (ptr, indx_info->analytic_desc_cols);
+
   ptr = or_pack_int (ptr, indx_info->use_iss);
 
   ptr = or_pack_int (ptr, indx_info->ils_prefix_len);
@@ -5930,6 +5956,7 @@ xts_pack_regu_variable_value (char *ptr, const REGU_VARIABLE * regu_var)
       break;
 
     case TYPE_SP:
+      xts_Has_sp_call = true;
       offset = xts_save_sp_type (regu_var->value.sp_ptr);
       if (offset == ER_FAILED)
 	{
@@ -6022,6 +6049,7 @@ static char *
 xts_process_db_value (char *ptr, const DB_VALUE * value)
 {
   ptr = or_pack_db_value (ptr, (DB_VALUE *) value);
+  pr_clear_compressed_string ((DB_VALUE *) value);
 
   return ptr;
 }
@@ -7645,6 +7673,8 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 	   + OR_INT_SIZE	/* use_desc_index */
 	   + OR_INT_SIZE	/* orderby_skip */
 	   + OR_INT_SIZE	/* groupby_skip */
+	   + OR_INT_SIZE	/* analytic_sort_cols */
+	   + OR_INT_SIZE	/* analytic_desc_cols */
 	   + OR_INT_SIZE	/* use_iss boolean (int) */
 	   + OR_INT_SIZE	/* ils_prefix_len (int) */
 	   + OR_INT_SIZE	/* func_idx_col_id (int) */
