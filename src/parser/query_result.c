@@ -398,6 +398,9 @@ pt_report_to_ersys_with_statement (PARSER_CONTEXT * parser, const PT_ERROR_TYPE 
  *   return:
  *   parser(in): handle to parser used to process & derive query
  *   query(out): abstract syntax tree form of a SELECT expression
+ *
+ * Note: the list belongs to query; for a set operation it is the copy kept in union_.select_list, which is freed with
+ *       query. A caller that keeps the list after query is freed has to copy it.
  */
 PT_NODE *
 pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
