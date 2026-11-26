@@ -5340,27 +5340,102 @@ expr_generic_operand_spec (OPERATOR_TYPE op, const TP_DOMAIN * exec_domain)
     }
 }
 
-/* Whether an operand cell of a generic step holds one value for the whole execution: no cell, a literal, a host
- * variable or a value computed from those alone (expr_cells_fixed_class ()), or the slot of a generic step that
- * computes once per execution itself (the CONCAT under the bounds of "col LIKE CONCAT (?, '%')").  The producer is
- * the step that owns the cell, not a '?' check that names it to mark the skipped operands (alias_of). */
+/* expr_generic_operand_fixed () for one cell; memo[c] keeps the answer of a cell already decided (-1: not yet), so a
+ * chain that reads one CSE-shared cell through both operands of every level is walked once per cell, not once per
+ * path (2 ^ depth).  An operand cell is always created before the cell of the step that reads it, so the recursion
+ * ends. */
 static bool
-expr_generic_operand_fixed (const EXPR_BUILD_CTX * bctx, int c)
+expr_cell_once_value (const EXPR_BUILD_CTX * bctx, int c, signed char *memo)
 {
+  const EXPR_STEP *step = NULL;
+  bool once = false;
   int j;
 
-  if (expr_cells_fixed_class (bctx, c, -1) != EXPR_CELL_ROW)
+  if (c < 0 || expr_cells_fixed_class (bctx, c, -1) != EXPR_CELL_ROW)
     {
       return true;
+    }
+  if (memo[c] >= 0)
+    {
+      return memo[c] != 0;
     }
   for (j = 0; j < bctx->n_steps; j++)
     {
       if ((intptr_t) bctx->steps[j].out_cell == c && bctx->steps[j].alias_of < 0)
 	{
-	  return bctx->steps[j].kernel_id == EXPR_KID_generic && bctx->steps[j].out != NULL;
+	  step = &bctx->steps[j];
+	  break;
 	}
     }
-  return false;
+  if (step == NULL)
+    {
+      once = false;
+    }
+  else if (step->kernel_id == EXPR_KID_generic)
+    {
+      once = (step->out != NULL);
+    }
+  else
+    {
+      switch (step->kernel_id)
+	{
+	  /* a kernel whose value is a function of its two argument cells and of what the compiler fixed in the step
+	   * (domain, converter, node): the same arguments give the same value on every row */
+	case EXPR_KID_add_int:
+	case EXPR_KID_sub_int:
+	case EXPR_KID_mul_int:
+	case EXPR_KID_div_int:
+	case EXPR_KID_add_bigint:
+	case EXPR_KID_sub_bigint:
+	case EXPR_KID_mul_bigint:
+	case EXPR_KID_div_bigint:
+	case EXPR_KID_add_double:
+	case EXPR_KID_sub_double:
+	case EXPR_KID_mul_double:
+	case EXPR_KID_add_numeric_float:
+	case EXPR_KID_sub_numeric_float:
+	case EXPR_KID_mul_numeric:
+	case EXPR_KID_div_numeric_float:
+	case EXPR_KID_coerce_numeric:
+	case EXPR_KID_nvl:
+	case EXPR_KID_cast:
+	case EXPR_KID_cast_strict:
+	case EXPR_KID_extract_date:
+	case EXPR_KID_extract_time:
+	case EXPR_KID_extract_datetime:
+	case EXPR_KID_extract_timestamp_date:
+	case EXPR_KID_extract_timestamp_time:
+	case EXPR_KID_nullif:
+	case EXPR_KID_relabel:
+	  once = (step->arg1p == NULL || expr_cell_once_value (bctx, (int) (intptr_t) step->arg1p - 1, memo))
+	    && (step->arg2p == NULL || expr_cell_once_value (bctx, (int) (intptr_t) step->arg2p - 1, memo));
+	  break;
+	default:
+	  /* reads the row (a leaf, a fetch, the interpreter), branches (CASE, a jump that publishes) or runs a
+	   * program of its own: a value per row */
+	  once = false;
+	  break;
+	}
+    }
+  memo[c] = once ? 1 : 0;
+  return once;
+}
+
+/* Whether an operand cell of a generic step holds one value for the whole execution: no cell, a literal, a host
+ * variable or a value computed from those alone (expr_cells_fixed_class ()), the slot of a generic step that
+ * computes once per execution itself (the CONCAT under the bounds of "col LIKE CONCAT (?, '%')"), or the value of a
+ * kernel that only converts or combines such cells (CBRD-28250: the CAST the parser wraps a function argument in,
+ * "col LIKE CONCAT (NULLIF (?, ''), '%')" reaching the CONCAT as CAST (NULLIF (...) AS CHAR)).  The kernel still runs
+ * on every row -- it keeps its place and its slot, which the filter may share -- but computes the same value from the
+ * same arguments, so the generic step over it may keep its value for the execution as the interpreter keeps the node
+ * (FETCH_ALL_CONST).  The producer is the step that owns the cell, not a check that names it (alias_of). */
+static bool
+expr_generic_operand_fixed (const EXPR_BUILD_CTX * bctx, int c)
+{
+  signed char memo[EXPR_MAX_STEPS];
+
+  memset (memo, -1, sizeof (memo));
+  return expr_cell_once_value (bctx, c, memo);
 }
 
 /* An arithmetic node the kernel table does not cover: its operands compiled in the interpreter's fetch order, then
