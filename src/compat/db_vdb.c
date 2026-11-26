@@ -4347,7 +4347,14 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
 
   info_len = err;
 
-  err = csession_create_prepared_statement (name, prepared_stmt->alias_print, stmt_info, info_len);
+  {
+    /* CBRD-27351: a SELECT's XASL is cached under its hash text, which may carry the share key
+     * (do_append_share_key ()); EXECUTE looks the plan up by the text registered here */
+    const char *key_text = prepared_session->parser->context.sql_hash_text;
+
+    err = csession_create_prepared_statement (name, key_text != NULL ? key_text : prepared_stmt->alias_print, stmt_info,
+					      info_len);
+  }
 
 cleanup:
   if (err < 0 && name != NULL)
