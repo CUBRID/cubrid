@@ -3159,9 +3159,10 @@ file_create_temp_internal (THREAD_ENTRY * thread_p, int npages, FILE_TYPE ftype,
 
       FILE_TABLESPACE_FOR_TEMP_NPAGES (&tablespace, npages);
 
-      /* file_create() internally calls log_sysop_start().
-       * log_sysop_start() uses a transaction-level mutex (rmutex_topop) that does not
-       * support concurrent access from multiple worker threads sharing the same transaction. */
+      /* Before CBRD-27562, file_create() opened a system operation for a temp file too, and its transaction-level
+       * mutex (rmutex_topop) does not support concurrent access from worker threads sharing the transaction.
+       * A temp file no longer opens one (it is not logged). The lock still serializes temp file creation by the
+       * workers of one transaction; revisit it when the CBRD-27492 parallel guard is removed. */
       file_tempcache_lock_tran_entry (tran_entry);
       error_code = file_create (thread_p, ftype, &tablespace, NULL, true, is_numerable, vfid_out);
       file_tempcache_unlock_tran_entry (tran_entry);
