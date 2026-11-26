@@ -220,8 +220,25 @@ la_gate_init (int commit_order_capacity)
   LSA_SET_NULL (&la_Gate_frontier);
   la_Gate_undispatched.clear ();
   la_Gate_unfinished.clear ();
+  la_Gate_routing = true;
 
   return NO_ERROR;
+}
+
+/*
+ * la_gate_set_routing() - choose whether the gate keeps what la_gate_route needs
+ *   routing(in): false when one worker takes every unit in commit order
+ *
+ * Note: the ring, the frontier and the completion count are kept either way, since the progress of the applier
+ *       and its DONE report rely on them. Only the per-worker position sets that la_gate_route reads are left out.
+ *       Call it right after la_gate_init, before any unit enters the ring.
+ */
+void
+la_gate_set_routing (bool routing)
+{
+  assert (la_Gate_order_count == 0);
+
+  la_Gate_routing = routing;
 }
 
 /*
@@ -365,6 +382,10 @@ la_gate_order_push (const LOG_LSA *commit_lsa)
   entry->completed = false;
   entry->owner = LA_GATE_UNDISPATCHED;
   la_Gate_order_count++;
+  if (!la_Gate_routing)
+    {
+      return NO_ERROR;
+    }
   try
     {
       la_gate_add_unfinished (LA_GATE_UNDISPATCHED, la_gate_lsa_to_int (commit_lsa));
@@ -541,6 +562,7 @@ la_gate_set_owner (const LOG_LSA *commit_lsa, int worker)
 
   assert (commit_lsa != NULL && !LSA_ISNULL (commit_lsa));
   assert (worker >= 0);
+  assert (la_Gate_routing);
 
   entry = la_gate_order_find (commit_lsa);
   if (entry == NULL)
@@ -604,6 +626,7 @@ la_gate_route (const LOG_LSA *dependency_lsa, int *worker, int *wait_reason)
   bool undispatched = false;
 
   assert (dependency_lsa != NULL && worker != NULL && wait_reason != NULL);
+  assert (la_Gate_routing);
 
   *worker = -1;
   *wait_reason = 0;

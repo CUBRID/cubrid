@@ -185,6 +185,8 @@ la_coordinator_initialize (const LA_COORDINATOR_CONFIG *config)
     {
       return error;
     }
+  /* one worker takes every task in commit order: no task is parked or routed (la_coordinator_submit_task) */
+  la_gate_set_routing (config->worker_count > 1);
 
   la_Coordinator_initialized = true;
 
@@ -418,12 +420,16 @@ la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status, int
     }
 
   /* record the owner on the ring, so a later unit waiting for this one can follow it to the same worker; before
-   * the in-flight list takes the task, so a failure leaves the task with the caller */
+   * the in-flight list takes the task, so a failure leaves the task with the caller. One worker takes every task
+   * in order, so there is nothing to follow. */
   assert (worker >= 0 && worker < la_Coordinator_config.worker_count);
-  error = la_gate_set_owner (&task.commit_lsa, worker);
-  if (error != NO_ERROR)
+  if (la_Coordinator_config.worker_count > 1)
     {
-      return error;
+      error = la_gate_set_owner (&task.commit_lsa, worker);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   /* before the queue push, so every worker result has a matching dispatch number */
@@ -1089,7 +1095,8 @@ la_coordinator_submit_task (LA_TASK *task, bool commit_order)
   la_gate_set_initial_frontier (la_Coordinator_config.restart_lsa);
 
   LSA_COPY (&dependency_lsa, &task->dependency_lsa);
-  if (la_gate_bound_dependency (&task->dependency_lsa))
+  /* one worker applies in commit order and never reads the dependency */
+  if (la_Coordinator_config.worker_count > 1 && la_gate_bound_dependency (&task->dependency_lsa))
     {
       LA_WSET_TRACE (1, "coordinator label lowered trid=%d commit_lsa=%lld|%d label=%lld|%d "
 		     "dependency=%lld|%d\n",

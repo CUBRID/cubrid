@@ -89,6 +89,43 @@ TEST_CASE ("gate advances the frontier only over a gap-free prefix of completed 
   REQUIRE_FALSE (la_gate_get_order_tail (&tail));
 }
 
+TEST_CASE ("gate without routing keeps the ring, the frontier and the completion count for one worker",
+	   "[log_applier_gate]")
+{
+  LOG_LSA l10 = test_lsa (10), l20 = test_lsa (20), l30 = test_lsa (30), l40 = test_lsa (40);
+  LOG_LSA frontier;
+  UINT64 completions;
+
+  REQUIRE (la_gate_init (8) == NO_ERROR);
+  la_gate_set_routing (false);
+  la_gate_set_initial_frontier (&l10);
+  REQUIRE (la_gate_order_push (&l20) == NO_ERROR);
+  REQUIRE (la_gate_order_push (&l30) == NO_ERROR);
+  REQUIRE (la_gate_order_push (&l40) == NO_ERROR);
+  REQUIRE (la_gate_order_get_count () == 3);
+
+  /* a later result first: the frontier still waits for the earlier one */
+  completions = la_gate_get_completion_version ();
+  la_gate_mark_completed (&l30);
+  REQUIRE (la_gate_get_completion_version () != completions);
+  la_gate_advance_frontier ();
+  REQUIRE (la_gate_get_frontier (&frontier));
+  REQUIRE (LSA_EQ (&frontier, &l10));
+
+  la_gate_mark_completed (&l20);
+  la_gate_mark_completed (&l40);
+  la_gate_advance_frontier ();
+  REQUIRE (la_gate_get_frontier (&frontier));
+  REQUIRE (LSA_EQ (&frontier, &l40));
+  REQUIRE (la_gate_order_get_count () == 0);
+
+  /* la_gate_init turns routing back on for the next run */
+  REQUIRE (la_gate_init (8) == NO_ERROR);
+  la_gate_set_initial_frontier (&l10);
+  REQUIRE (la_gate_order_push (&l20) == NO_ERROR);
+  REQUIRE (la_gate_set_owner (&l20, 0) == NO_ERROR);
+}
+
 TEST_CASE ("gate does not pass a dependency that finished above the frontier", "[log_applier_gate]")
 {
   LOG_LSA l10 = test_lsa (10), l20 = test_lsa (20), l30 = test_lsa (30);

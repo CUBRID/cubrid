@@ -26,6 +26,7 @@
 #include "log_lsa.hpp"
 
 extern int la_gate_init (int commit_order_capacity);
+extern void la_gate_set_routing (bool routing);
 extern int la_gate_order_get_count (void);
 extern void la_gate_set_initial_frontier (const LOG_LSA *restart_lsa);
 extern bool la_gate_get_frontier (LOG_LSA *frontier);
