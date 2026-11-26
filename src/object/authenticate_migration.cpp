@@ -100,9 +100,9 @@ static int class_grant_loop (extract_context &ctxt, print_output &output_ctx, CL
  */
 
 /*
- * au_export_users - Generates a sequence of add_user and add_member method
- *                   calls that when evaluated, will re-create the current
- *                   user/group hierarchy.
+ * au_export_users - Generates a sequence of add_user method calls and
+ *                   ALTER USER statements that when evaluated, will
+ *                   re-create the current user/group hierarchy.
  *   return: error code
  *   output_ctx(in/out): print context
  */
@@ -360,8 +360,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 
 		  if (gname != NULL)
 		    {
-		      output_ctx ("call [find_user]('%s') on class [_db_user] to [g_%s];\n", gname, gname);
-		      output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
+		      output_ctx ("ALTER USER [%s] ADD MEMBERS [%s];\n", gname, uname);
 		    }
 		}
 
@@ -445,8 +444,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 	      MOP member_user = au_find_user (uname);
 	      if (member_user == NULL || !au_ctx ()->is_system_user (member_user))
 		{
-		  output_ctx ("call [find_user]('%s') on class [_db_user] to [g_%s];\n", gname, gname);
-		  output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
+		  output_ctx ("ALTER USER [%s] ADD MEMBERS [%s];\n", gname, uname);
 		}
 	    }
 
