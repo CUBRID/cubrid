@@ -277,6 +277,8 @@ extern int expr_agg_prog_image_at_generation (const cubxasl::aggregate_list_node
 /* does the arithmetic subtree under regu contain an operator with a side effect (a serial, RAND, a session
  * variable, INCR)?  For a list that compiles only some of its expressions (the aggregate operand program) */
 extern bool expr_regu_has_side_effect (const REGU_VARIABLE * regu);
+extern bool expr_xasl_node_runs_query (const xasl_node * xasl);
+extern bool expr_xasl_node_calls (const xasl_node * xasl);
 
 /* end of an execution: release the slot values and re-arm the prologues, keep the program
  * for the clone's next execution (see the lifetime note on struct expr_prog) */

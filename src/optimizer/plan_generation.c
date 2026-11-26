@@ -111,6 +111,8 @@ static XASL_NODE *preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
 
 static int is_normal_access_term (QO_TERM *);
 static int is_normal_if_term (QO_TERM *);
+static int is_covered_access_term (QO_TERM *);
+static int is_covered_if_term (QO_TERM *);
 static int is_after_join_term (QO_TERM *);
 static int is_totally_after_join_term (QO_TERM *);
 static int is_follow_if_term (QO_TERM *);
@@ -1964,6 +1966,34 @@ is_normal_if_term (QO_TERM * term)
 }
 
 /*
+ * is_covered_access_term () - is_normal_access_term () for a covering index scan
+ *   return:
+ *   term(in):
+ *
+ * Note: a covering index scan runs no data filter, and its key filter runs under the leaf latch. A term whose
+ *	 evaluation may wait (QO_TERM_MAY_WAIT) is neither: the block evaluates it, as it does a term with a
+ *	 correlated subquery. An ON condition is not moved: the planner gives its scan no covering
+ *	 (qo_index_scan_new ())
+ */
+static int
+is_covered_access_term (QO_TERM * term)
+{
+  return !(QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && !QO_ON_COND_TERM (term)) && is_normal_access_term (term);
+}
+
+/*
+ * is_covered_if_term () - is_normal_if_term () for a covering index scan, see is_covered_access_term ()
+ *   return:
+ *   term(in):
+ */
+static int
+is_covered_if_term (QO_TERM * term)
+{
+  return (is_normal_if_term (term)
+	  || (QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && !QO_ON_COND_TERM (term) && is_normal_access_term (term)));
+}
+
+/*
  * is_after_join_term () -
  *   return:
  *   term(in):
@@ -2241,14 +2271,18 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
   if (predp != NULL && (key_predp == NULL || qo_index_infop == NULL))
     {
       *predp = (make_pred_from_bitset (env, &(plan->sarged_terms), bitset_has_path (env, &(plan->sarged_terms))
-				       ? path_access_term : is_normal_access_term));
+				       ? path_access_term
+				       : (qo_is_index_covering_scan (plan)
+					  ? is_covered_access_term : is_normal_access_term)));
       return;
     }
 
   /* make predicate list for key filter */
   if (key_predp != NULL)
     {
-      if (qo_index_infop && qo_index_infop->need_copy_multi_range_term != -1 && qo_index_infop->need_copy_to_sarg_term)
+      if (qo_index_infop && qo_index_infop->need_copy_multi_range_term != -1
+	  && (qo_index_infop->need_copy_to_sarg_term
+	      || QO_TERM_IS_FLAGED (QO_ENV_TERM (env, qo_index_infop->need_copy_multi_range_term), QO_TERM_MAY_WAIT)))
 	{
 	  bitset_add (&(plan->sarged_terms), qo_index_infop->need_copy_multi_range_term);
 	}
@@ -2275,7 +2309,9 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
   if (predp != NULL)
     {
       *predp = (make_pred_from_bitset (env, &(plan->sarged_terms), bitset_has_path (env, &(plan->sarged_terms))
-				       ? path_access_term : is_normal_access_term));
+				       ? path_access_term
+				       : (qo_is_index_covering_scan (plan)
+					  ? is_covered_access_term : is_normal_access_term)));
     }
 }
 
@@ -2303,7 +2339,8 @@ make_if_pred_from_plan (QO_ENV * env, QO_PLAN * plan)
     }
   else
     {
-      test = bitset_has_path (env, &(plan->sarged_terms)) ? path_if_term : is_normal_if_term;
+      test = (bitset_has_path (env, &(plan->sarged_terms))
+	      ? path_if_term : (qo_is_index_covering_scan (plan) ? is_covered_if_term : is_normal_if_term));
     }
 
   return make_pred_from_bitset (env, &(plan->sarged_terms), test);
@@ -2911,7 +2948,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		{
 		  bitset_add (&taj_terms, i);
 		}
-	      else if (is_normal_access_term (term))
+	      else if (is_normal_access_term (term) && !QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT))
 		{
 		  /* Check if join term can be pushed to key filter instead of sargable terms. The index used for inner
 		   * index scan must include all term segments that belong to inner node */

@@ -794,7 +794,7 @@ static int qexec_update_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * x
 					  QFILE_TUPLE_RECORD * tplrec);
 static void qexec_end_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static void qexec_clear_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
-static int qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+static int qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool fixed, XASL_STATE * xasl_state,
 				     QFILE_TUPLE_RECORD * tplrec);
 static int qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     QFILE_TUPLE_RECORD * tplrec);
@@ -3831,6 +3831,8 @@ int
 qexec_execute_dptr_list (THREAD_ENTRY * thread_p, XASL_NODE * dptr_list, XASL_STATE * xasl_state, bool truncate)
 {
   XASL_NODE *xptr;
+
+  assert (dptr_list == NULL || !pgbuf_holds_heap_or_btree_page (thread_p));
 
   for (xptr = dptr_list; xptr != NULL; xptr = xptr->next)
     {
@@ -22334,7 +22336,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (heap_scancache_start (thread_p, &scan_cache, NULL, NULL, true, mvcc_snapshot) != NO_ERROR)
+      if (heap_scancache_start (thread_p, &scan_cache, NULL, NULL, false, mvcc_snapshot) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -22345,8 +22347,10 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       lock_mode = locator_get_lock_mode_from_op_type (scan_operation_type);
 
       /* fetch the object and the class oid */
+      /* a copy: the object's page is not held while a class lock is waited for and the fetch predicate, which may
+       * run a subquery, is evaluated below */
       scan = locator_get_object (thread_p, &dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, lock_mode,
-				 PEEK, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+				 COPY, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (scan != S_SUCCESS)
 	{
 	  /* setting ER_HEAP_UNKNOWN_OBJECT error for deleted or invisible objects should be replaced by a more clear
@@ -24962,25 +24966,46 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       /* precompute uncorrelated scalar subqueries (precomp_owner_regu set) once on the main thread before the consuming scan opens; workers inject instead of re-executing (px_scan_task.cpp). fetch_peek_dbval reuses the lazy TYPE_CONSTANT path (SQ-/result-cache + owning regu dbvalptr preserved); errors propagate as in lazy eval. aptr_list only -- dptr_list (correlated) must never be precomputed. */
-      for (xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)
+      /* an uncorrelated table subquery (not single-tuple) runs here too: a key filter, a covered visit or a fixed scan
+       * would otherwise start it under the page it holds. Its list is the leader's; a parallel scan is not relaxed
+       * for it (px_scan_checker.cpp) */
+      for (XASL_NODE * head = xasl; head != NULL; head = (head == xasl ? xasl->connect_by_ptr : NULL))
 	{
-	  XASL_NODE *subq;
-	  for (subq = xptr->aptr_list; subq != NULL; subq = subq->next)
+	  for (xptr = head; xptr != NULL; xptr = xptr->scan_ptr)
 	    {
-	      DB_VALUE *peek_precomp = NULL;
-	      if (subq->precomp_owner_regu == NULL)
+	      XASL_NODE *subq;
+
+	      for (subq = xptr->aptr_list; subq != NULL; subq = subq->next)
 		{
-		  continue;
-		}
-	      if (fetch_peek_dbval (thread_p, subq->precomp_owner_regu, &xasl_state->vd, NULL, NULL, NULL,
-				    &peek_precomp) != NO_ERROR)
-		{
-		  if (tplrec.tpl)
+		  DB_VALUE *peek_precomp = NULL;
+		  int precomp_error = NO_ERROR;
+
+		  if (subq->precomp_owner_regu == NULL)
 		    {
-		      db_private_free_and_init (thread_p, tplrec.tpl);
+		      continue;
 		    }
-		  qexec_failure_line (__LINE__, xasl_state);
-		  GOTO_EXIT_ON_ERROR;
+		  if (subq->is_single_tuple)
+		    {
+		      precomp_error = fetch_peek_dbval (thread_p, subq->precomp_owner_regu, &xasl_state->vd, NULL, NULL,
+							NULL, &peek_precomp);
+		    }
+		  else
+		    {
+		      EXECUTE_REGU_VARIABLE_XASL (thread_p, subq->precomp_owner_regu, &xasl_state->vd);
+		      if (CHECK_REGU_VARIABLE_XASL_STATUS (subq->precomp_owner_regu) != XASL_SUCCESS)
+			{
+			  precomp_error = ER_FAILED;
+			}
+		    }
+		  if (precomp_error != NO_ERROR)
+		    {
+		      if (tplrec.tpl)
+			{
+			  db_private_free_and_init (thread_p, tplrec.tpl);
+			}
+		      qexec_failure_line (__LINE__, xasl_state);
+		      GOTO_EXIT_ON_ERROR;
+		    }
 		}
 	    }
 	}
@@ -25093,29 +25118,25 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		    }
 		}
 	    }
-	  if (XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN))
-	    {
-	      /* no fixed scan if it was decided so during compilation */
-	      fixed_scan_xasl = NULL;
-	    }
-	  if (xasl->dptr_list != NULL)
-	    {
-	      /* correlated subquery found, no fixed is allowed */
-	      fixed_scan_xasl = NULL;
-	    }
 	  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
 	    {
 	      /* subquery in HAVING clause, can't have fixed scan */
 	      fixed_scan_xasl = NULL;
 	    }
-	  for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
+	  /* no node of the join starts another statement or waits for each of its rows: the fixed scan's last page
+	   * stays fixed while the nodes before it go on to their next rows */
+	  for (xptr = xasl; fixed_scan_xasl != NULL && xptr != NULL; xptr = xptr->scan_ptr)
 	    {
-	      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
+	      if (qexec_block_waits_per_row (xptr))
 		{
-		  /* uncorrelated query that is not pre-executed, but evaluated in a reguvar; no fixed scan in this
-		   * case */
 		  fixed_scan_xasl = NULL;
 		}
+	    }
+	  if (fixed_scan_xasl != NULL && xasl->connect_by_ptr != NULL
+	      && qexec_block_waits_per_row (xasl->connect_by_ptr))
+	    {
+	      /* START WITH is evaluated for each row of this block */
+	      fixed_scan_xasl = NULL;
 	    }
 
 	  /* open all the scans that are involved within the query, for SCAN blocks */
@@ -25390,7 +25411,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
 		}
 
-	      if (qexec_execute_connect_by (thread_p, xasl->connect_by_ptr, xasl_state, &tplrec) != NO_ERROR)
+	      /* the CONNECT BY scan keeps its page between rows unless it is an index scan (its heap lookup would hold
+	       * the row's page through the data filter) or the block or the CONNECT BY node waits for each row */
+	      if (qexec_execute_connect_by (thread_p, xasl->connect_by_ptr,
+					    !IS_ANY_INDEX_ACCESS (xasl->connect_by_ptr->spec_list->access)
+					    && !qexec_block_waits_per_row (xasl)
+					    && !qexec_block_waits_per_row (xasl->connect_by_ptr), xasl_state,
+					    &tplrec) != NO_ERROR)
 		{
 		  qexec_clear_mainblock_iterations (thread_p, xasl);
 		  GOTO_EXIT_ON_ERROR;
@@ -26277,7 +26304,7 @@ replace_null_dbval (REGU_VARIABLE * regu_var, DB_VALUE * set_dbval)
  *  from LEVEL alone.
  */
 static int
-qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool fixed, XASL_STATE * xasl_state,
 			  QFILE_TUPLE_RECORD * tplrec)
 {
   QFILE_LIST_ID *listfile0 = NULL;	/* output list */
@@ -26416,8 +26443,10 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* start the scanner on "input" */
-  if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, true, false,
+  /* start the scanner on "input": a heap scan that keeps no page reads from its copy of the page, as a block's
+   * scans do (qexec_open_scan () turns it off again for a scan that is not eligible) */
+  xasl->spec_list->cached_scan = true;
+  if (qexec_open_scan (thread_p, xasl->spec_list, xasl->val_list, &xasl_state->vd, false, fixed, false,
 		       false, &xasl->spec_list->s_id, xasl_state->query_id, S_SELECT, false, NULL, xasl,
 		       xasl->upd_del_class_cnt > 0) != NO_ERROR)
     {
@@ -31150,6 +31179,7 @@ qexec_gby_skip_can_visit (XASL_NODE * xasl)
   return (buildlist->eptr_list == NULL && qexec_covered_visit_allowed (xasl, buildlist->g_agg_list)
 	  && qexec_gby_skip_regu_list_is_local (buildlist->g_scan_regu_list)
 	  && qexec_gby_skip_pred_is_local (buildlist->g_having_pred)
+	  && qexec_gby_skip_pred_is_local (buildlist->g_grbynum_pred)
 	  && qexec_gby_skip_regu_list_is_local (buildlist->g_outptr_list->valptrp));
 }
 
@@ -31302,6 +31332,36 @@ qexec_covered_visit (THREAD_ENTRY * thread_p, void *arg, bool key_start, bool * 
   return qexec_end_one_iteration (thread_p, st->xasl, st->xasl_state, st->tplrec);
 }
 
+/*
+ * qexec_block_waits_per_row () - does the block or scan node, for each of its rows, start another statement or wait
+ *				   for what it does not hold? The scan under it then keeps no page between rows
+ *   xasl(in): a block, or a scan node of its join
+ */
+bool
+qexec_block_waits_per_row (const XASL_NODE * xasl)
+{
+  const XASL_NODE *xptr;
+
+  /* XASL_NO_FIXED_SCAN: decided at compilation; runs_query_per_row: an expression of the node calls a stored
+   * procedure or an operator that may wait, or reads a subquery it may have to run, its own or another node's;
+   * dptr_list: correlated subqueries; bptr_list and fptr_list: object fetches, which lock classes and read other
+   * heaps */
+  if (XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN) || xasl->runs_query_per_row || xasl->dptr_list != NULL
+      || xasl->bptr_list != NULL || xasl->fptr_list != NULL)
+    {
+      return true;
+    }
+  for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
+    {
+      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
+	{
+	  /* an uncorrelated subquery a regu variable runs at its first evaluation */
+	  return true;
+	}
+    }
+  return false;
+}
+
 /* true when regu evaluates from its operands alone: no subquery, stored procedure, serial, sleep or lock
  * (index_cardinality () locks its class) */
 static bool
@@ -31322,14 +31382,12 @@ qexec_gby_skip_regu_is_local (REGU_VARIABLE * regu)
       {
 	ARITH_TYPE *arith = regu->value.arithptr;
 
-	return (arith->opcode != T_NEXT_VALUE && arith->opcode != T_CURRENT_VALUE
-		&& arith->opcode != T_CURRENT_VALUE_BY_OID && arith->opcode != T_SLEEP
-		&& arith->opcode != T_INDEX_CARDINALITY && qexec_gby_skip_regu_is_local (arith->leftptr)
+	return (!regu_opcode_may_wait (arith->opcode) && qexec_gby_skip_regu_is_local (arith->leftptr)
 		&& qexec_gby_skip_regu_is_local (arith->rightptr)
 		&& qexec_gby_skip_regu_is_local (arith->thirdptr) && qexec_gby_skip_pred_is_local (arith->pred));
       }
     case TYPE_FUNC:
-      return qexec_gby_skip_regu_list_is_local (regu->value.funcp->operand);
+      return (regu->value.funcp->ftype != F_CLASS_OF && qexec_gby_skip_regu_list_is_local (regu->value.funcp->operand));
     case TYPE_REGU_VAR_LIST:
       return qexec_gby_skip_regu_list_is_local (regu->value.regu_var_list);
     case TYPE_SP:

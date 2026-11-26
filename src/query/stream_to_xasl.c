@@ -40,6 +40,7 @@
 #include "set_object.h"
 #include "query_aggregate.hpp"
 #include "query_analytic.hpp"
+#include "expr_compile.h"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
@@ -2973,6 +2974,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   xasl->rtf_applied = false;
   xasl->hj_prehash = NULL;
   xasl->executed_parallelism = 0;
+  xasl->runs_query_per_row = expr_xasl_node_runs_query (xasl);
   return ptr;
 
 error:

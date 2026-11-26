@@ -192,6 +192,7 @@ extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, r
 						      xasl_node * xasl, xasl_node * connect_by_ptr);
 extern SCAN_CODE qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					 void *scan_func_ptr);
+extern bool qexec_block_waits_per_row (const xasl_node * xasl);
 extern SCAN_CODE qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, xasl_node * inner);
 extern void qexec_nl_batch_arm_worker (THREAD_ENTRY * thread_p, xasl_node * xasl);
 extern bool qexec_nl_batch_flush_worker (xasl_node * xasl);

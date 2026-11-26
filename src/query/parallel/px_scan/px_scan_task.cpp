@@ -140,6 +140,21 @@ namespace parallel_scan
 	      {
 		continue;
 	      }
+	    if (!clone_subq->is_single_tuple)
+	      {
+		/* an uncorrelated table subquery (ALL, SOME, IN): the leader ran it before the scan and the worker only
+		 * reads the leader's list; finalize () points the operand back at the clone's own list (CBRD-28426) */
+		QFILE_LIST_ID *leader_list = m_pre_execution_info->find_precomp_list (clone_subq->header.id);
+		if (leader_list == nullptr || regu->type != TYPE_LIST_ID || regu->xasl != clone_subq)
+		  {
+		    assert (false);
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+		    return ER_QPROC_INVALID_XASLNODE;
+		  }
+		regu->value.srlist_id->list_id = leader_list;
+		clone_subq->status = XASL_SUCCESS;
+		continue;
+	      }
 	    const DB_VALUE *map_val = m_pre_execution_info->find_precomp_val (clone_subq->header.id);
 	    if (map_val == nullptr || clone_subq->single_tuple == nullptr || clone_subq->single_tuple->valp == nullptr
 		|| clone_subq->single_tuple->valp->val == nullptr)
@@ -317,22 +332,21 @@ namespace parallel_scan
 		else if (specp->type == TARGET_CLASS)
 		  {
 		    bool inner_cached_scan = false;
+		    /* as qexec_execute_mainblock_internal () decides: the innermost heap scan keeps its page unless a node
+		     * of the chain starts another statement or waits for each row; an index scan never does (its heap
+		     * lookup would hold the row's page through the data filter) */
 		    bool chain_has_dptr = false;
 		    for (xasl_node *cn = m_xasl; cn != nullptr && !chain_has_dptr; cn = cn->scan_ptr)
 		      {
-			chain_has_dptr = (cn->dptr_list != nullptr);
+			chain_has_dptr = qexec_block_waits_per_row (cn);
 		      }
-		    if (xptr->scan_ptr == NULL)
+		    if (xptr->scan_ptr == NULL && !chain_has_dptr)
 		      {
-			if (!chain_has_dptr)
-			  {
-			    fixed_scan = true;
-			  }
-			else if (!specp->s_id.grouped)
-			  {
-			    inner_cached_scan = true;
-			  }
+			fixed_scan = (specp->access == ACCESS_METHOD_SEQUENTIAL);
 		      }
+		    /* every heap scan of the chain that keeps no page reads from its copy of the page, as the serial
+		     * block's scans do */
+		    inner_cached_scan = (!fixed_scan && !specp->s_id.grouped);
 
 		    /* a partitioned SEMI / ANTI inner, or a following join after one (CBRD-27493), is not advanced
 		     * partition by partition by the main thread's scan-block iteration
@@ -663,6 +677,20 @@ namespace parallel_scan
 	  {
 	    scan_end_scan (&thread_ref, m_scan_id);
 	    scan_close_scan (&thread_ref, m_scan_id);
+	  }
+      }
+
+    /* the table subquery operands initialize () pointed at the leader's lists: back to the clone's own list before
+     * the clone is cleared and retired to the pool, where a leader may pick it up */
+    for (xptr = m_xasl; xptr != NULL; xptr = xptr->scan_ptr)
+      {
+	for (xasl_node *clone_subq = xptr->aptr_list; clone_subq != nullptr; clone_subq = clone_subq->next)
+	  {
+	    REGU_VARIABLE *regu = clone_subq->precomp_owner_regu;
+	    if (regu != nullptr && !clone_subq->is_single_tuple && regu->type == TYPE_LIST_ID)
+	      {
+		regu->value.srlist_id->list_id = clone_subq->list_id;
+	      }
 	  }
       }
 

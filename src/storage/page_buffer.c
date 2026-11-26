@@ -15997,6 +15997,40 @@ pgbuf_get_fix_count (PAGE_PTR pgptr)
   return get_fcnt (&bufptr->atomic_latch);
 }
 
+#if !defined (NDEBUG)
+/*
+ * pgbuf_holds_heap_or_btree_page () - Does the thread hold a page of a heap or of a B-tree? A temporary file's page
+ *				       does not count.
+ *
+ * return        : true if it does
+ * thread_p (in) : thread entry
+ */
+bool
+pgbuf_holds_heap_or_btree_page (THREAD_ENTRY * thread_p)
+{
+  PGBUF_HOLDER *holder;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  for (holder = pgbuf_Pool.thrd_holder_info[thread_get_entry_index (thread_p)].thrd_hold_list; holder != NULL;
+       holder = holder->thrd_link)
+    {
+      switch (holder->bufptr->iopage_buffer->iopage.prv.ptype)
+	{
+	case PAGE_HEAP:
+	case PAGE_OVERFLOW:
+	case PAGE_BTREE:
+	  return true;
+	default:
+	  break;
+	}
+    }
+  return false;
+}
+#endif /* !NDEBUG */
+
 /*
  * pgbuf_get_hold_count () - Get hold count for current thread.
  *

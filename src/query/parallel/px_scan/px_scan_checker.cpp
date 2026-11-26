@@ -302,6 +302,11 @@ namespace parallel_scan
 	 * trust model puts that on the declarer. */
 	break;
       case TYPE_FUNC:
+	if (arg->value.funcp->ftype == F_CLASS_OF)
+	  {
+	    /* reads the object's heap page */
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
 	temp = check<is_outptr_list> (arg->value.funcp->operand);
 	result |= temp;
 	break;
@@ -388,7 +393,7 @@ namespace parallel_scan
     result |= check<is_outptr_list> (arg->pred);
     /* also listed in qo_check_serial_block_expr () (query_planner.c) */
     if (arg->opcode == T_TRACE_STATS || arg->opcode == T_EVALUATE_VARIABLE || arg->opcode == T_DEFINE_VARIABLE
-	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_CURRENT_VALUE_BY_OID || arg->opcode == T_NEXT_VALUE)
+	|| regu_opcode_may_wait (arg->opcode))
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
@@ -441,7 +446,14 @@ namespace parallel_scan
       {
 	return 0;
       }
-    return check<is_outptr_list> (arg->lhs) | check<is_outptr_list> (arg->rhs);
+    possible_flags result = check<is_outptr_list> (arg->lhs) | check<is_outptr_list> (arg->rhs);
+    if (arg->rel_op != R_EXISTS && ((arg->lhs != nullptr && arg->lhs->type == TYPE_LIST_ID)
+				    || (arg->rhs != nullptr && arg->rhs->type == TYPE_LIST_ID)))
+      {
+	/* eval_set_list_cmp () sorts the subquery's list in place: not the list the leader shares with its workers */
+	set_flag (result, CANNOT_PARALLEL_SCAN);
+      }
+    return result;
   }
 
   template <bool is_outptr_list>
@@ -1219,7 +1231,8 @@ namespace parallel_scan
       {
 	/* regu-linked subqueries force-blocked from parallelism (CBRD-26722) except uncorrelated
 	 * scalar ones (precomp_owner_regu set), which recurse so inner scans parallelize. */
-	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE) && xaslp->precomp_owner_regu == NULL)
+	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE)
+	    && (xaslp->precomp_owner_regu == NULL || !xaslp->is_single_tuple))
 	  {
 	    process_xasl_node_recursive_force_cannot_parallel (xaslp);
 	  }
@@ -1254,7 +1267,12 @@ namespace parallel_scan
     const bool block_index_spec =
 	    ((arg->instnum_pred || arg->instnum_val) && !is_renumberable_instnum (arg))
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_SKIP_SORT)
-	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_USES_LIMIT_OPT);
+	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_USES_LIMIT_OPT)
+	    /* a worker of a parallel index scan keeps its leaf while it evaluates the leaf's rows. Under the leaf it
+	     * starts no correlated subquery and no inner scan of a join (they descend an index from its root, against
+	     * the latch order of a split). The leader refuses the scan too when a row of the block calls a stored
+	     * procedure (scan_open_parallel_index_scan ()) */
+	    || arg->dptr_list != nullptr || arg->scan_ptr != nullptr;
 
     /* atomic draw keeps an arbitrary N rows: fine on a heap, but a temp list is usually a sorted
      * top-N idiom, so keep list specs serial. Renumbering (instnum_pred == NULL) is unaffected. */

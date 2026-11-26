@@ -336,6 +336,7 @@ inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
 inline bool regu_is_variable_pos (const regu_variable_node *regu);
 inline bool is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var);
 inline bool fetch_opcode_caches (OPERATOR_TYPE opcode);
+inline bool regu_opcode_may_wait (OPERATOR_TYPE opcode);
 inline TP_DOMAIN *regu_produced_domain (const regu_variable_node *regu);
 inline bool arith_decides_arith (const arith_list_node *arith);
 inline const DOMAIN_ARITH *arith_decided_arith (const arith_list_node *arith);
@@ -398,6 +399,32 @@ is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var)
     }
 
   return false;
+}
+
+/* regu_opcode_may_wait () - an operator whose evaluation may wait for what the row does not hold: a serial's page, a
+ * class lock and the catalog (the statistics functions, INCR and DECR), a timer.  A scan evaluates none of them with a
+ * heap or B-tree page held: its block is compiled XASL_NO_FIXED_SCAN, its term is no key filter, the visits under a
+ * leaf latch and the parallel scan workers refuse it */
+bool
+regu_opcode_may_wait (OPERATOR_TYPE opcode)
+{
+  switch (opcode)
+    {
+    case T_NEXT_VALUE:
+    case T_CURRENT_VALUE:
+    case T_CURRENT_VALUE_BY_OID:
+    case T_INCR:
+    case T_DECR:
+    case T_INDEX_CARDINALITY:
+    case T_ESTIMATED_TABLE_ROWS:
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+    case T_ESTIMATED_DATA_LENGTH:
+    case T_ESTIMATED_DATA_FREE:
+    case T_SLEEP:
+      return true;
+    default:
+      return false;
+    }
 }
 
 /* whether an arithmetic node over constant operands keeps its value for the rest of the execution by its operator

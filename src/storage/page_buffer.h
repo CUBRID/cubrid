@@ -479,6 +479,9 @@ extern void pgbuf_rv_flush_page_dump (FILE * fp, int length, void *data);
 
 extern int pgbuf_get_fix_count (PAGE_PTR pgptr);
 extern int pgbuf_get_hold_count (THREAD_ENTRY * thread_p);
+#if !defined (NDEBUG)
+extern bool pgbuf_holds_heap_or_btree_page (THREAD_ENTRY * thread_p);
+#endif
 
 extern PERF_PAGE_TYPE pgbuf_get_page_type_for_stat (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 

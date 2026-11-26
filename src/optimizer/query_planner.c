@@ -3056,9 +3056,10 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 	      continue;
 	    }
 
-	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))) || QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT))
 	    {
-	      continue;		/* term contains correlated subquery */
+	      /* term contains correlated subquery, or its evaluation may wait: a key filter runs under the leaf latch */
+	      continue;
 	    }
 
 	  /* check for no key-range index scan */
@@ -3112,9 +3113,12 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 	    {
 	      term = QO_ENV_TERM (env, t);
 
-	      if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	      if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term)))
+		  || (QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && !QO_ON_COND_TERM (term)))
 		{
-		  /* term contains correlated subquery */
+		  /* term contains correlated subquery, or is a WHERE term whose evaluation may wait: the block
+		   * evaluates it (if_pred). An ON condition's is a data filter: evaluated after the join it would
+		   * drop the rows an outer join pads */
 		  continue;
 		}
 
@@ -7214,6 +7218,15 @@ qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
 	case PT_CURRENT_VALUE_BY_OID:
 	case PT_DEFINE_VARIABLE:
 	case PT_EVALUATE_VARIABLE:
+	  /* the rest of regu_opcode_may_wait () */
+	case PT_INCR:
+	case PT_DECR:
+	case PT_INDEX_CARDINALITY:
+	case PT_ESTIMATED_TABLE_ROWS:
+	case PT_ESTIMATED_AVG_ROW_LENGTH:
+	case PT_ESTIMATED_DATA_LENGTH:
+	case PT_ESTIMATED_DATA_FREE:
+	case PT_SLEEP:
 	  *found = true;
 	  break;
 	default:

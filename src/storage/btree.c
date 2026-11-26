@@ -1420,7 +1420,7 @@ static void btree_integral_search_key_check (THREAD_ENTRY * thread_p, BTID_INT *
 #endif
 static int btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain);
 static int btree_get_next_page_vpid (THREAD_ENTRY * thread_p, PAGE_PTR leaf_page, VPID * next_vpid);
-static PAGE_PTR btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
+static int btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PAGE_PTR * next_page);
 static int btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 						MULTI_RANGE_OPT * multi_range_opt, OID * p_new_oid, bool * key_added);
 static int btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, TP_DOMAIN ** domains,
@@ -9575,6 +9575,10 @@ retry_repair:
       pgbuf_unfix_and_init (thread_p, next_pgptr);
     }
 
+  /* a retry walks again from the root: the leaf it stood on may have been merged away and freed meanwhile */
+  VPID_SET (&current_vpid, btid->vfid.volid, btid->root_pageid);
+  VPID_SET_NULL (&next_vpid);
+
   while (!VPID_ISNULL (&current_vpid))
     {
       current_pgptr = pgbuf_fix (thread_p, &current_vpid, OLD_PAGE, request_mode, PGBUF_CONDITIONAL_LATCH);
@@ -12887,7 +12891,12 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    ***  STEP 12: update link for next leaf node after the
    ***		 merged nodes to point to the left page.
    ***********************************************************/
-  next_page_after_merged = btree_get_next_page (thread_p, left_pg);
+  ret = btree_get_next_page (thread_p, left_pg, &next_page_after_merged);
+  if (ret != NO_ERROR)
+    {
+      /* the merge is not committed with the next leaf still linked to the freed page */
+      goto exit_on_error;
+    }
   if (next_page_after_merged != NULL)
     {
       /* Update previous link. */
@@ -18871,13 +18880,21 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     {
       /* Since leaf level can be processed in reversed order, we need to update the prev link of next page after the
        * one that was split. */
-      page_after_right = btree_get_next_page (thread_p, R);
+      ret = btree_get_next_page (thread_p, R, &page_after_right);
+      if (ret != NO_ERROR)
+	{
+	  /* the split is not committed with the next leaf still linked to Q */
+	  goto exit_on_error;
+	}
       if (page_after_right != NULL)
 	{
 	  ret = btree_set_vpid_previous_vpid (thread_p, btid, page_after_right, R_vpid);
-	  /* We don't expect any errors here. */
-	  assert (ret == NO_ERROR);
 	  pgbuf_unfix_and_init (thread_p, page_after_right);
+	  if (ret != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit_on_error;
+	    }
 	}
     }
 
@@ -24881,53 +24898,48 @@ btree_get_next_page_vpid (THREAD_ENTRY * thread_p, PAGE_PTR leaf_page, VPID * ne
 }
 
 /*
- * btree_get_next_page () -
- *   return:
+ * btree_get_next_page () - fix the next leaf of a leaf with a WRITE latch
+ *   return: NO_ERROR, or the error of a fix that failed (a latch timeout, an interrupt)
  *
- *   page_p(in):
+ *   page_p(in): the leaf
+ *   next_page(out): the next leaf, NULL when the leaf is the last one
+ *
+ * NOTE: a caller that goes on after a failed fix leaves the next leaf's previous link unrepaired, and a descending
+ *       scan then skips the leaves in between (CBRD-28426)
  */
-static PAGE_PTR
-btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
+static int
+btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PAGE_PTR * next_page)
 {
   BTREE_NODE_HEADER *header = NULL;
-  PAGE_PTR next_page = NULL;
   VPID next_vpid;
+  int error_code = NO_ERROR;
 
-  if (page_p == NULL)
-    {
-      assert (page_p != NULL);
-      return NULL;
-    }
+  *next_page = NULL;
 
+  assert (page_p != NULL);
   header = btree_get_node_header (thread_p, page_p);
   if (header == NULL)
     {
-      return NULL;
+      assert_release (false);
+      return ER_FAILED;
     }
 
   next_vpid = header->next_vpid;
   if (VPID_ISNULL (&next_vpid))
     {
-      goto exit_on_error;
+      return NO_ERROR;
     }
 
-  next_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (next_page == NULL)
+  *next_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (*next_page == NULL)
     {
-      goto exit_on_error;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 
-  (void) pgbuf_check_page_ptype (thread_p, next_page, PAGE_BTREE);
+  (void) pgbuf_check_page_ptype (thread_p, *next_page, PAGE_BTREE);
 
-  return next_page;
-
-exit_on_error:
-
-  if (next_page)
-    {
-      pgbuf_unfix_and_init (thread_p, next_page);
-    }
-  return NULL;
+  return NO_ERROR;
 }
 
 /*
@@ -31099,6 +31111,8 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   int error_code = NO_ERROR;	/* Error code. */
   /* Search key result. */
   BTREE_SEARCH_KEY_HELPER search_key = BTREE_SEARCH_KEY_HELPER_INITIALIZER;
+  bool had_bad_pageid;
+  bool is_link_refused = false;
 
   /* Assert expected arguments. */
   assert (bts != NULL && bts->use_desc_index == true);
@@ -31107,8 +31121,56 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
 
   VPID_COPY (&prev_leaf_vpid, next_vpid);
 
-  /* Conditional latch for previous page. */
-  prev_leaf = pgbuf_fix (thread_p, &prev_leaf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+  /* Conditional latch for previous page. The link is followed only when the previous leaf confirms it: a split or
+   * merge that gave up on this leaf's latch left the link naming a leaf that is no longer its neighbor, which may be
+   * a freed page (CBRD-28426). */
+  had_bad_pageid = (er_errid () == ER_PB_BAD_PAGEID);
+  prev_leaf =
+    pgbuf_fix (thread_p, &prev_leaf_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
+  if (prev_leaf == NULL && !had_bad_pageid && er_errid () == ER_PB_BAD_PAGEID)
+    {
+      /* freed */
+      er_clear ();
+      is_link_refused = true;
+    }
+  else if (prev_leaf != NULL
+	   && (!BTREE_IS_PAGE_VALID_LEAF (thread_p, prev_leaf)
+	       || !VPID_EQ (&btree_get_node_header (thread_p, prev_leaf)->next_vpid, &bts->C_vpid)))
+    {
+      pgbuf_unfix_and_init (thread_p, prev_leaf);
+      is_link_refused = true;
+    }
+  if (is_link_refused)
+    {
+      /* Both links change only under the WRITE latch of this leaf, which the scan has held since it read the link:
+       * a link the previous leaf refuses was written wrong. Starting again at the last key would come back to it. */
+      VPID c_vpid = bts->C_vpid;
+      bool is_link_current = VPID_EQ (&btree_get_node_header (thread_p, bts->C_page)->prev_vpid, &prev_leaf_vpid);
+      char *index_name = NULL;
+
+      btree_check_decompress_key (bts);
+      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+      pgbuf_unfix_and_init (thread_p, bts->C_page);
+      if (!is_link_current)
+	{
+	  /* the caller's link is older than the leaf */
+	  assert (false);
+	  bts->force_restart_from_root = true;
+	  return NO_ERROR;
+	}
+      if (heap_get_indexinfo_of_btid (thread_p, &bts->btid_int.topclass_oid, bts->btid_int.sys_btid, NULL, NULL, NULL,
+				      NULL, &index_name, NULL) != NO_ERROR)
+	{
+	  er_clear ();
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_CORRUPT_PREV_LINK, 3, index_name != NULL ? index_name : "*",
+	      c_vpid.volid, c_vpid.pageid);
+      if (index_name != NULL)
+	{
+	  free_and_init (index_name);
+	}
+      return ER_BTREE_CORRUPT_PREV_LINK;
+    }
   if (prev_leaf != NULL)
     {
       /* Previous leaf was successfully latched. Advance. */

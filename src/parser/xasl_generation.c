@@ -10067,6 +10067,9 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	      regu->type = TYPE_LIST_ID;
 	      regu->value.srlist_id = srlist_id;
 	      srlist_id->list_id = xasl->list_id;
+	      /* an uncorrelated table subquery (ALL, SOME, IN) runs before the block's scans open too, through this
+	       * regu: run at its first evaluation it would start under the page the evaluating scan holds */
+	      xasl->precomp_owner_regu = regu;
 	    }
 	  else
 	    {

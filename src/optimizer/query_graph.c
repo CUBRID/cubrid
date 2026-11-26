@@ -3882,6 +3882,34 @@ check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	    }
 	}
     }
+  else if (node->node_type == PT_METHOD_CALL
+	   || (node->node_type == PT_FUNCTION && node->info.function.function_type == F_CLASS_OF))
+    {
+      /* a stored procedure runs its SQL on another thread of the transaction; CLASS OF reads the object's heap */
+      QO_TERM_SET_FLAG (info->term, QO_TERM_MAY_WAIT);
+    }
+  else if (node->node_type == PT_EXPR)
+    {
+      switch (node->info.expr.op)
+	{
+	case PT_NEXT_VALUE:
+	case PT_CURRENT_VALUE:
+	case PT_CURRENT_VALUE_BY_OID:
+	case PT_INCR:
+	case PT_DECR:
+	case PT_INDEX_CARDINALITY:
+	case PT_ESTIMATED_TABLE_ROWS:
+	case PT_ESTIMATED_AVG_ROW_LENGTH:
+	case PT_ESTIMATED_DATA_LENGTH:
+	case PT_ESTIMATED_DATA_FREE:
+	case PT_SLEEP:
+	  /* the operators of regu_opcode_may_wait () */
+	  QO_TERM_SET_FLAG (info->term, QO_TERM_MAY_WAIT);
+	  break;
+	default:
+	  break;
+	}
+    }
 
   return node;			/* leave node unchanged */
 

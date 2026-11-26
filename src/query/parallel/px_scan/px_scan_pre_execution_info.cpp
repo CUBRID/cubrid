@@ -99,6 +99,14 @@ namespace parallel_scan
 	      {
 		continue;
 	      }
+	    if (!subq->is_single_tuple)
+	      {
+		if (subq->status == XASL_SUCCESS && subq->list_id != NULL)
+		  {
+		    m_precomp_lists.emplace (subq->header.id, subq->list_id);
+		  }
+		continue;
+	      }
 	    if (subq->single_tuple == NULL || subq->single_tuple->valp == NULL
 		|| subq->single_tuple->valp->val == NULL)
 	      {
@@ -123,6 +131,12 @@ namespace parallel_scan
 	return NULL;
       }
     return &it->second;
+  }
+
+  QFILE_LIST_ID *pre_execution_info::find_precomp_list (XASL_NODE_ID subquery_id) const
+  {
+    auto it = m_precomp_lists.find (subquery_id);
+    return it == m_precomp_lists.end () ? NULL : it->second;
   }
 
   void pre_execution_info::record_pre_execution_info (XASL_NODE_ID xasl_id, xasl_node *xptr)

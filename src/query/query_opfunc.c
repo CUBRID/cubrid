@@ -5973,6 +5973,8 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
     {
       return ER_FAILED;
     }
+  /* the list is complete, and the workers of a parallel scan read the leader's at the same time */
+  scan_id.is_read_only = true;
 
   seq_pos = 0;
   while (true)

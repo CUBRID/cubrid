@@ -116,7 +116,7 @@ restart_scan_oid:
 	m_recdes = RECDES_INITIALIZER;
 	slot_code = heap_next_1page (thread_p, &m_hfid, &m_vpid, &m_class_oid,
 				     &m_cur_oid, &m_recdes,
-				     m_scan_cache, m_is_peeking);
+				     m_scan_cache, is_peeking);
 	if (slot_code != S_SUCCESS)
 	  {
 	    return slot_code == S_END ? S_END : S_ERROR;
