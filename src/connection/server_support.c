@@ -2463,12 +2463,16 @@ css_get_thread_runtime_stats (UINT64 *total_slots, UINT64 *target_slots, UINT64 
 }
 
 //
-// css_get_num_request_workers () - get max number of workers executing server requests
+// css_get_num_request_workers () - get number of workers executing server requests
 //
 size_t
 css_get_num_request_workers (void)
 {
-  return css_Server_request_worker_pool->get_max_worker ();
+  UINT64 total_slots, target_slots, busy_slots, total_workers, target_workers, busy_workers;
+
+  css_get_thread_runtime_stats (&total_slots, &target_slots, &busy_slots, &total_workers, &target_workers,
+				&busy_workers);
+  return busy_workers;
 }
 
 //
@@ -2571,11 +2575,9 @@ css_are_all_request_handlers_suspended (void)
       return false;
     }
 
-  // the hard worker cap is a resource ceiling, not a deadlock detection threshold. waiting for the elastic pool to
-  // consume all remaining headroom could create thousands of blocked threads before the fallback victimizer runs.
-  // if every running handler is suspended and undispatched work remains, another worker alone has not proven that it
-  // can make progress. let the lock manager's delayed fallback break the stall independently of elastic headroom.
-  return checked_threads_count > 0 && css_Server_request_worker_pool->has_queued_tasks ();
+  // suspended handlers stall the server only if the pool can start no worker for the queued work. until then it adds
+  // workers, so max_request_worker, not this check, bounds how many threads may wait.
+  return checked_threads_count > 0 && css_Server_request_worker_pool->has_queued_tasks_at_worker_limit ();
 }
 
 //

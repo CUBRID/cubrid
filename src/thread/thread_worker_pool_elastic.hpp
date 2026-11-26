@@ -88,10 +88,9 @@ namespace cubthread
 
       // get the number of threads that can run concurrently in this worker pool
       std::size_t get_max_concurrency (void) const;
-      std::size_t get_max_worker (void) const;
 
-      // true if any core still has work that could not be dispatched
-      bool has_queued_tasks (void) const;
+      // true if a core has queued work that cannot get a worker: none is idle and none can start
+      bool has_queued_tasks_at_worker_limit (void) const;
 
       void check_progress (void);
 
@@ -333,7 +332,7 @@ namespace cubthread
 
       // execute task
       void execute_task (task_type *task_p, task_submission_options options) override;
-      bool has_queued_task (void) const;
+      bool has_queued_task_at_worker_limit (void) const;
       bool has_queued_task (std::unique_lock<std::mutex> &ulock);
 
       bool stop_execution (void) override;
@@ -421,6 +420,9 @@ namespace cubthread
       std::size_t m_stall_slot_count;
       std::size_t m_worker_capacity_count;
       std::uint64_t m_completed_task_count;
+      // queued work could not start a thread, which the worker counts cannot show; cleared by the next successful
+      // hand-off or when the queues drain
+      bool m_thread_start_failed;
 
       stats_base m_retired_stats;
   };
@@ -650,15 +652,8 @@ namespace cubthread
   }
 
   template <stats_t Stats>
-  std::size_t
-  worker_pool_elastic<Stats>::get_max_worker (void) const
-  {
-    return m_max_worker.load ();
-  }
-
-  template <stats_t Stats>
   bool
-  worker_pool_elastic<Stats>::has_queued_tasks (void) const
+  worker_pool_elastic<Stats>::has_queued_tasks_at_worker_limit (void) const
   {
     if (!this->is_running ())
       {
@@ -667,7 +662,7 @@ namespace cubthread
 
     for (const auto &core : this->m_cores)
       {
-	if (static_cast<const core_elastic *> (core.get ())->has_queued_task ())
+	if (static_cast<const core_elastic *> (core.get ())->has_queued_task_at_worker_limit ())
 	  {
 	    return true;
 	  }
@@ -973,6 +968,7 @@ namespace cubthread
     , m_stall_slot_count (0)
     , m_worker_capacity_count (0)
     , m_completed_task_count (0)
+    , m_thread_start_failed (false)
     , m_retired_stats (stats::create ())
   {
   }
@@ -1189,10 +1185,27 @@ namespace cubthread
 
   template <stats_t Stats>
   bool
-  worker_pool_elastic<Stats>::core_elastic::has_queued_task (void) const
+  worker_pool_elastic<Stats>::core_elastic::has_queued_task_at_worker_limit (void) const
   {
     std::lock_guard<std::mutex> guard (this->m_core_mutex);
-    return has_queued_task_unlocked ();
+
+    if (m_thread_start_failed)
+      {
+	return has_queued_task_unlocked ();
+      }
+
+    // the pool-wide ceilings of reserve_available_worker (), not its per-core target, which stall recovery may exceed.
+    // regular work stops short of the continuation reserve.
+    bool at_worker_cap = m_current_worker.load () >= m_max_worker.load ();
+    std::size_t regular_worker_limit = std::min (m_max_regular_worker.load (), m_max_worker.load ());
+    bool at_regular_worker_cap = at_worker_cap || m_current_regular_worker.load () >= regular_worker_limit;
+
+    if (!m_blocking_continuation_queue.empty () && at_worker_cap
+	&& !has_available_worker (task_admission::blocking_continuation))
+      {
+	return true;
+      }
+    return !this->m_task_queue.empty () && at_regular_worker_cap && !has_available_worker (task_admission::regular);
   }
 
   template <stats_t Stats>
@@ -1733,6 +1746,10 @@ namespace cubthread
 				      : m_blocking_continuation_queue;
     wrapped_task task_ref = std::move (queue.front ());
     queue.pop_front ();
+    if (!has_queued_task_unlocked ())
+      {
+	m_thread_start_failed = false;
+      }
     return task_ref;
   }
 
@@ -1881,6 +1898,7 @@ namespace cubthread
     assert (ulock.owns_lock ());
 
     auto unexecuted = worker_p->assign_task (std::move (task_ref), std::move (slot));
+    m_thread_start_failed = unexecuted.has_value ();
     if (unexecuted.has_value ())
       {
 	// could not start a new thread; put the task and slot back
