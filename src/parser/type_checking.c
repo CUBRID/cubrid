@@ -196,6 +196,8 @@ static PT_TYPE_ENUM pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * ar
 					  PT_TYPE_ENUM * arg3, const TP_DOMAIN * expected_domain);
 static bool pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def);
 static bool does_op_specially_treat_null_arg (PT_OP_TYPE op);
+static bool pt_is_null_or_cast_of_null (const PT_NODE * node);
+static bool pt_is_null_fold_operand (const PT_NODE * expr, const PT_NODE * opd);
 static int pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** expr);
 static PT_TYPE_ENUM pt_expr_get_return_type (PT_NODE * expr, const EXPRESSION_SIGNATURE sig);
 static int pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE ** arg,
@@ -6159,6 +6161,42 @@ pt_is_range_or_comp (PT_OP_TYPE op)
     }
 }
 
+/*
+ * pt_is_null_or_cast_of_null () - is the node NULL, or a CAST (NULL AS type) that is kept unfolded as a typed NULL
+ *   return: true if so
+ *   node(in): expression argument
+ */
+static bool
+pt_is_null_or_cast_of_null (const PT_NODE * node)
+{
+  while (node != NULL && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
+    {
+      node = node->info.expr.arg1;
+    }
+
+  return node != NULL && node->type_enum == PT_TYPE_NULL;
+}
+
+/*
+ * pt_is_null_fold_operand () - is the operand NULL for constant folding
+ *   return: true if so
+ *   expr(in): expression being folded
+ *   opd(in): operand of expr
+ *
+ *   Note: a CAST (NULL AS type) operand is kept unfolded only to keep its type. A predicate has no use for the type, so
+ *	   there it is NULL like any other, and the predicate still folds.
+ */
+static bool
+pt_is_null_fold_operand (const PT_NODE * expr, const PT_NODE * opd)
+{
+  if (opd->type_enum == PT_TYPE_NA || opd->type_enum == PT_TYPE_NULL)
+    {
+      return true;
+    }
+
+  return expr->type_enum == PT_TYPE_LOGICAL && pt_is_null_or_cast_of_null (opd);
+}
+
 static bool
 does_op_specially_treat_null_arg (PT_OP_TYPE op)
 {
@@ -6266,8 +6304,8 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       return NO_ERROR;
     }
 
-  /* UUID does not accept a NULL version argument */
-  if (op == PT_UUID && arg1 != NULL && arg1_type == PT_TYPE_NULL)
+  /* UUID does not accept a NULL version argument, typed (CAST (NULL AS type)) or not */
+  if (op == PT_UUID && pt_is_null_or_cast_of_null (arg1))
     {
       PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
       return ER_FAILED;
@@ -19591,7 +19629,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  goto end;
 	}
     }
-  else if (opd1 && (opd1->type_enum == PT_TYPE_NA || opd1->type_enum == PT_TYPE_NULL) && pt_is_range_expression (op)
+  else if (opd1 && pt_is_null_fold_operand (expr, opd1) && pt_is_range_expression (op)
 	   && opd2 && PT_IS_QUERY_NODE_TYPE (opd2->node_type))
     {
       /* NULL <quantified comparison> (subquery) depends on the subquery result: when the subquery returns no row it
@@ -19602,18 +19640,20 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	   && ((opd1->node_type == PT_VALUE
 		&& (op != PT_CAST || PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_SHOULD_FOLD))
 		&& (!opd2 || opd2->node_type == PT_VALUE) && (!opd3 || opd3->node_type == PT_VALUE))
-	       || ((opd1->type_enum == PT_TYPE_NA || opd1->type_enum == PT_TYPE_NULL)
+	       || (pt_is_null_fold_operand (expr, opd1)
 		   && op != PT_CASE && op != PT_TO_CHAR && op != PT_TO_NUMBER && op != PT_TO_DATE && op != PT_TO_TIME
 		   && op != PT_TO_TIMESTAMP && op != PT_TO_DATETIME && op != PT_NULLIF && op != PT_COALESCE
 		   && op != PT_NVL && op != PT_NVL2 && op != PT_DECODE && op != PT_IFNULL && op != PT_TO_DATETIME_TZ
-		   && op != PT_TO_TIMESTAMP_TZ)
-	       || (opd2 && (opd2->type_enum == PT_TYPE_NA || opd2->type_enum == PT_TYPE_NULL)
+		   && op != PT_TO_TIMESTAMP_TZ
+		   /* CAST (NULL AS type) is kept as a typed NULL, the same as a CAST of any other value */
+		   && (op != PT_CAST || PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_SHOULD_FOLD)))
+	       || (opd2 && pt_is_null_fold_operand (expr, opd2)
 		   && op != PT_CASE && op != PT_TO_CHAR && op != PT_TO_NUMBER && op != PT_TO_DATE && op != PT_TO_TIME
 		   && op != PT_TO_TIMESTAMP && op != PT_TO_DATETIME && op != PT_BETWEEN && op != PT_NOT_BETWEEN
 		   && op != PT_SYS_CONNECT_BY_PATH && op != PT_NULLIF && op != PT_COALESCE && op != PT_NVL
 		   && op != PT_NVL2 && op != PT_DECODE && op != PT_IFNULL && op != PT_IF
 		   && (op != PT_RANGE || !opd2->or_next) && op != PT_TO_DATETIME_TZ && op != PT_TO_TIMESTAMP_TZ)
-	       || (opd3 && (opd3->type_enum == PT_TYPE_NA || opd3->type_enum == PT_TYPE_NULL)
+	       || (opd3 && pt_is_null_fold_operand (expr, opd3)
 		   && op != PT_BETWEEN && op != PT_NOT_BETWEEN && op != PT_NVL2 && op != PT_IF)
 	       || (opd2 && opd3 && op == PT_IF && (opd2->type_enum == PT_TYPE_NA || opd2->type_enum == PT_TYPE_NULL)
 		   && (opd3->type_enum == PT_TYPE_NA || opd3->type_enum == PT_TYPE_NULL))
