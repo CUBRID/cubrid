@@ -24858,6 +24858,7 @@ heap_mvcc_log_redistribute (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA
     {
       or_mvcc_get_header (p_recdes, &mvcc_rec_header);
       assert (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID));
+      delid = MVCC_GET_DELID (&mvcc_rec_header);
 
       /* Add representation ID and flags field */
       redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
