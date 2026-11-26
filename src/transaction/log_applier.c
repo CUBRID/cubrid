@@ -179,6 +179,11 @@
 #define LA_IS_FLUSH_ERROR(err) \
   ((err) == ER_LC_PARTIALLY_FAILED_TO_FLUSH || (err) == ER_LC_FAILED_TO_FLUSH_REPL_ITEMS)
 
+/* applylogdb restarts and applies the item again from the last commit instead of skipping it:
+ * a flush failed, or memory ran out, which is no fault of the item */
+#define LA_IS_RESTART_ERROR(err) \
+  (LA_IS_FLUSH_ERROR (err) || (err) == ER_OUT_OF_VIRTUAL_MEMORY)
+
 typedef struct la_cache_buffer LA_CACHE_BUFFER;
 struct la_cache_buffer
 {
@@ -415,8 +420,7 @@ struct la_recdes_pool
   int next_idx;
   int db_page_size;
   int num_recdes;
-  int num_assigned;		/* recdes assigned since the last flush, failed items included;
-				 * repl objects may still point to them */
+  int num_assigned;		/* recdes assigned since the last flush; repl objects may still point to them */
   LA_RECDES_EXTRA *extras;	/* recdes assigned after all num_recdes are taken, freed after the flush */
   bool is_initialized;
 };
@@ -527,6 +531,8 @@ static bool la_retry_on_error (int errid);
 static int la_init_recdes_pool (int page_size, int num_recdes);
 static RECDES *la_assign_recdes_from_pool (void);
 static RECDES *la_assign_extra_recdes (void);
+static void la_free_extra_recdes (LA_RECDES_EXTRA * extra);
+static void la_return_recdes_to_pool (RECDES * recdes);
 static int la_realloc_recdes_data (RECDES * recdes, int data_size);
 static void la_release_recdes_pool (void);
 static void la_clear_recdes_pool (void);
@@ -2473,8 +2479,7 @@ la_assign_recdes_from_pool (void)
     {
       /* The repl objects added since the last flush may point to every recdes of the pool:
        * la_flush_repl_items () does not flush between OOS items and the heap record that follows them,
-       * even past LA_MAX_UNFLUSHED_REPL_ITEMS, and failed items take a recdes without counting in
-       * la_Info.num_unflushed. Reusing a recdes here would overwrite an unflushed item. */
+       * even past LA_MAX_UNFLUSHED_REPL_ITEMS. Reusing a recdes here would overwrite an unflushed item. */
       return la_assign_extra_recdes ();
     }
 
@@ -2529,6 +2534,52 @@ la_assign_extra_recdes (void)
 }
 
 /*
+ * la_free_extra_recdes() - free a recdes that la_assign_extra_recdes () allocated
+ *   extra(in): the recdes, already unlinked from la_recdes_pool.extras
+ */
+static void
+la_free_extra_recdes (LA_RECDES_EXTRA * extra)
+{
+  if (extra->recdes.area_size > la_recdes_pool.db_page_size)
+    {
+      /* recdes.data was realloced by previous operation */
+      free_and_init (extra->recdes.data);
+    }
+  free_and_init (extra);
+}
+
+/*
+ * la_return_recdes_to_pool() - give back the recdes that la_assign_recdes_from_pool () assigned last
+ *   recdes(in): the recdes of an item that failed; no repl object points to it
+ *
+ * Note: an item applied again after a failure (la_retry_on_error ()) then takes the same recdes of the pool,
+ * or a new one from outside the pool in place of the freed one.
+ */
+static void
+la_return_recdes_to_pool (RECDES * recdes)
+{
+  LA_RECDES_EXTRA *extra = la_recdes_pool.extras;
+  int prev_idx = (la_recdes_pool.next_idx + la_recdes_pool.num_recdes - 1) % la_recdes_pool.num_recdes;
+
+  if (extra != NULL && &extra->recdes == recdes)
+    {
+      la_recdes_pool.extras = extra->next;
+      la_free_extra_recdes (extra);
+    }
+  else if (extra == NULL && &la_recdes_pool.recdes_arr[prev_idx] == recdes)
+    {
+      assert (la_recdes_pool.num_assigned > 0);
+      la_recdes_pool.next_idx = prev_idx;
+      la_recdes_pool.num_assigned--;
+    }
+  else
+    {
+      /* not the one assigned last: it stays assigned until the flush, which is safe */
+      assert (false);
+    }
+}
+
+/*
  * la_release_recdes_pool() - make every recdes of the pool assignable again
  *
  * Note: call it only when no repl object points to a recdes of the pool, as after a flush.
@@ -2542,13 +2593,7 @@ la_release_recdes_pool (void)
     {
       extra = la_recdes_pool.extras;
       la_recdes_pool.extras = extra->next;
-
-      if (extra->recdes.area_size > la_recdes_pool.db_page_size)
-	{
-	  /* recdes.data was realloced by previous operation */
-	  free_and_init (extra->recdes.data);
-	}
-      free_and_init (extra);
+      la_free_extra_recdes (extra);
     }
 
   la_recdes_pool.num_assigned = 0;
@@ -5847,7 +5892,7 @@ la_flush_repl_items (bool immediate)
 
   if (la_Info.num_unflushed == 0)
     {
-      /* no repl object is left; only failed items may have taken recdes since the last flush */
+      /* no repl object is left to point to a recdes */
       la_release_recdes_pool ();
       return NO_ERROR;
     }
@@ -6215,7 +6260,7 @@ la_apply_update_log (LA_ITEM * item)
 {
   int error = NO_ERROR;
   unsigned int rcvindex;
-  RECDES *recdes;
+  RECDES *recdes = NULL;
   LOG_PAGE *pgptr = NULL;
   LOG_PAGEID old_pageid = NULL_PAGEID;
   DB_OBJECT *class_obj;
@@ -6270,10 +6315,7 @@ la_apply_update_log (LA_ITEM * item)
   if (class_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      if (er_errid () == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
 
       goto end;
     }
@@ -6302,6 +6344,10 @@ la_apply_update_log (LA_ITEM * item)
 end:
   if (error != NO_ERROR)
     {
+      if (recdes != NULL)
+	{
+	  la_return_recdes_to_pool (recdes);
+	}
       la_log_apply_error ("apply_update", ER_HA_LA_FAILED_TO_APPLY_UPDATE, item, error);
     }
   else
@@ -6446,7 +6492,7 @@ la_apply_oos_insert_log (LA_APPLY * apply, LA_ITEM * item)
   DB_OBJECT *class_obj;
   LOG_PAGE *pgptr = NULL;
   unsigned int rcvindex = 0;
-  RECDES *recdes;
+  RECDES *recdes = NULL;
   LOG_PAGEID old_pageid = NULL_PAGEID;
   bool rebuild_oos = apply->need_oos_rebuild;
   OID oos_head_oid = OID_INITIALIZER;	/* master's chunk_index=0 OID — sql.log cache key */
@@ -6461,10 +6507,7 @@ la_apply_oos_insert_log (LA_APPLY * apply, LA_ITEM * item)
   if (class_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      if (er_errid () == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
 
       goto end;
     }
@@ -6569,6 +6612,10 @@ end:
 
   if (error != NO_ERROR)
     {
+      if (recdes != NULL)
+	{
+	  la_return_recdes_to_pool (recdes);
+	}
       la_Info.pending_oos_flush = false;
       la_log_apply_error ("apply_insert", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, error);
     }
@@ -6671,7 +6718,7 @@ la_apply_insert_log (LA_ITEM * item)
   DB_OBJECT *class_obj;
   LOG_PAGE *pgptr = NULL;
   unsigned int rcvindex;
-  RECDES *recdes;
+  RECDES *recdes = NULL;
   LOG_PAGEID old_pageid = NULL_PAGEID;
   bool is_mvcc_class;
 
@@ -6685,10 +6732,7 @@ la_apply_insert_log (LA_ITEM * item)
   if (class_obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      if (er_errid () == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
 
       goto end;
     }
@@ -6757,6 +6801,10 @@ la_apply_insert_log (LA_ITEM * item)
 end:
   if (error != NO_ERROR)
     {
+      if (recdes != NULL)
+	{
+	  la_return_recdes_to_pool (recdes);
+	}
       la_Info.pending_oos_flush = false;
       la_log_apply_error ("apply_insert", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, error);
     }
@@ -7235,9 +7283,17 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	    }
 	  else
 	    {
-	      /* reconnect to server due to error while flushing repl items */
-	      if (LA_IS_FLUSH_ERROR (error))
+	      /* reconnect to server due to error while flushing repl items, or memory ran out */
+	      if (LA_IS_RESTART_ERROR (error))
 		{
+		  if (error == ER_OUT_OF_VIRTUAL_MEMORY)
+		    {
+		      snprintf (buf, sizeof (buf), "applylogdb will restart and apply the replication log again "
+				"due to out of memory. class: %s", item->class_name);
+		      er_stack_push ();
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buf);
+		      er_stack_pop ();
+		    }
 		  goto end;
 		}
 
@@ -7656,7 +7712,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 		  la_applier_need_shutdown = true;
 		  return error;
 		}
-	      else if (LA_IS_FLUSH_ERROR (error))
+	      else if (LA_IS_RESTART_ERROR (error))
 		{
 		  return error;
 		}
@@ -10008,7 +10064,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		      la_applier_need_shutdown = true;
 		      break;
 		    }
-		  else if (LA_IS_FLUSH_ERROR (error))
+		  else if (LA_IS_RESTART_ERROR (error))
 		    {
 		      la_shutdown ();
 		      return error;
