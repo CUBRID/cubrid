@@ -31,7 +31,7 @@ Legacy or supplementary configurations also exist in `Jenkinsfile` and `.circlec
 ## Testcase Branches
 
 - Testcase changes for PR `<N>` go to the `tc/pr-<N>` branch that `.github/workflows/tc-branch-sync.yml` creates in both testcase repositories when the PR opens; CI checks it out.
-- `.github/workflows/tc-merge-gate.yml` runs `Check TC PRs`, the required check on `develop`. It blocks the merge while `tc/pr-<N>` holds changes that testcase `develop` lacks: the testcase PRs are merged only together with the engine PR, as the last step, following the gate's PR comment. A block is a testcase-PR state, not a regression failure, so do not answer it with `/run`.
+- `.github/workflows/tc-merge-gate.yml` runs `Check TC PRs`, the required check on `develop`. It blocks the merge while a testcase PR for `tc/pr-<N>` is open in either testcase repository, even a draft with no changes (so it fails on every new engine PR); after those PRs are closed or merged, it blocks while `tc/pr-<N>` still holds files that testcase `develop` lacks. Close an empty testcase PR, or merge one with changes, only together with the engine PR as the last step, following the gate's PR comment. A block is a testcase-PR state, not a regression failure, so do not answer it with `/run`.
 - `.github/workflows/tc-branch-finalize.yml` deletes `tc/pr-<N>` when the engine PR merges or closes, and any change on it that was not merged is lost.
 
 ## Running CTP Locally
