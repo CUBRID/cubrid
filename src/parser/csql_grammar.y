@@ -22970,7 +22970,7 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
 		       "ORDERBY_NUM()", "ORDERBY_NUM()");
 	}
 
-      if (PT_IS_SERIAL(OP))
+      if (PT_IS_SERIAL(OP) || OP == PT_CURRENT_VALUE_BY_OID)
 	{
 	  parser_cannot_cache = true;
 	}
@@ -24437,6 +24437,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_QUARTERF:
     case PT_EXEC_STATS:
     case PT_CURRENT_VALUE:
+    case PT_CURRENT_VALUE_BY_OID:
     case PT_HEX:
     case PT_ASCII:
     case PT_INET_ATON:
@@ -26085,7 +26086,10 @@ pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 {
    if (node)
      {
-        if (node->type_enum != PT_TYPE_LOGICAL)
+        /* a NULL is UNKNOWN; type checking keeps a NULL operand of AND, OR, ... outside a search condition, and a
+         * stored definition (view, trigger condition, filter index) prints it so */
+        if (node->type_enum != PT_TYPE_LOGICAL
+            && !(node->node_type == PT_VALUE && node->type_enum == PT_TYPE_NULL))
           {
              PT_ERROR (parser, node, "operand must be logical expression.");
           }

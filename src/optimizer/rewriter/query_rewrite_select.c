@@ -1512,6 +1512,7 @@ qo_check_unmatchable_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 	case PT_SYS_GUID:
 	case PT_UUID:
 	case PT_CURRENT_VALUE:
+	case PT_CURRENT_VALUE_BY_OID:
 	case PT_NEXT_VALUE:
 	case PT_INST_NUM:
 	case PT_ROWNUM:
@@ -4092,8 +4093,11 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 		      expr->next = save_next;
 
 		      /* have found a term which makes outer join to inner */
-		      /* there are predicate referenced by spec and all preds are not nullable */
-		      if (info_spec.appears && !info.nullable)
+		      /* there are predicate referenced by spec and all preds are not nullable; the operator list
+		       * misses a term TRUE on the padded row by its structure, as 5 NOT BETWEEN i.a AND 1 or
+		       * (i.a IS NOT NULL) IS FALSE, so the term must also be proved not TRUE on it */
+		      if (info_spec.appears && !info.nullable
+			  && qo_expr_rejects_null (parser, expr, spec->info.spec.id, NULL))
 			{
 			  rewrite_again = true;
 			  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
