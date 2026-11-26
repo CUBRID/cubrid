@@ -859,8 +859,9 @@ struct pgbuf_buffer_pool
   PGBUF_DISCARD_REDO_BOUND discard_redo_bound;
   PGBUF_RV_UNRESERVED_SECTORS rv_unreserved_sectors;
 
-  /* true between pgbuf_initialize_mutexes and pgbuf_finalize_mutexes; pgbuf_finalize may run on a partially
-   * initialized pool and may run twice, so it destroys the mutexes above only while this is true. */
+  /* true between pgbuf_initialize_mutexes and pgbuf_finalize_mutexes, which init and destroy the single
+   * (non-array) mutexes of the pool. pgbuf_finalize may run on a partially initialized pool and may run twice,
+   * so it destroys those mutexes only while this is true. Add a new single mutex only to these two functions. */
   bool is_mutex_initialized;
 };
 
@@ -1924,6 +1925,9 @@ error:
  *
  * Note: Function invalidates any resident page, destroys the hash table used
  *       for lookup of pages in the page buffer pool.
+ *       It must be safe on a partially initialized pool and when called twice in a row: a failed pgbuf_initialize
+ *       calls it, and its caller calls it again (logtb_undefine_trantable). Free only what is still set and clear
+ *       it, as the code below does.
  */
 void
 pgbuf_finalize (void)
