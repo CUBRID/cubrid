@@ -359,7 +359,7 @@ extern int fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_
 extern int fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page);
 extern int fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted);
 extern void fileio_page_hexa_dump (const char *data, int length);
-extern bool fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page);
+extern bool fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page, PGLENGTH page_size);
 
 /* lob_dir */
 extern int fileio_lob_remove_dir (char *lob_path);
