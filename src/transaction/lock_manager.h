@@ -279,6 +279,7 @@ extern void lock_deferred_wake_mark (THREAD_ENTRY * thread_p, int tran_index);
 extern void lock_deferred_wake_clear (THREAD_ENTRY * thread_p, int tran_index);
 extern void lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p);
 extern void lock_deferred_wake_on_request_end (THREAD_ENTRY * thread_p);
+extern void lock_end_parallel_task (THREAD_ENTRY * thread_p, THREAD_ENTRY * reserver_p);
 extern bool lock_has_xlock_or_self_lock (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid);
 extern int lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * superclass_oid, LOCK lock,
 			  int cond_flag);
@@ -319,8 +320,16 @@ extern int lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOC
 extern void lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid);
 extern const char *lock_wait_state_to_string (int state);
 extern void lock_force_thread_timeout_lock (THREAD_ENTRY * thread_p);
+extern void lock_group_section_begin (int tran_index);
+extern void lock_group_section_end (int tran_index);
+extern void lock_group_clear (int tran_index);
+extern bool lock_group_has_open_section (int tran_index);
+extern bool lock_group_defer_abort (THREAD_ENTRY * thread_p, int tran_index);
+extern void lock_group_set_error_for_own_wait (THREAD_ENTRY * thread_p, const OID * oid, LOCK lock);
 
 #if defined (SERVER_MODE)
 extern void lock_deadlock_detect_daemon_get_stats (UINT64 * statsp);
+extern bool lock_is_tran_deadlock_victim (int tran_index);
+extern void lock_set_error_for_aborted (int tran_index);
 #endif // SERVER_MODE
 #endif /* _LOCK_MANAGER_H_ */
