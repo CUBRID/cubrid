@@ -273,6 +273,20 @@ namespace
     }
   } echo_client_registrar_instance;
 #endif /* CS_MODE */
+
+#if defined (SA_MODE)
+  /* SA is the server and its client in one binary */
+  struct echo_sa_registrar
+  {
+    echo_sa_registrar ()
+    {
+      if (stream_debug_echo_register_server () != NO_ERROR || stream_debug_echo_register_client () != NO_ERROR)
+	{
+	  assert (false);
+	}
+    }
+  } echo_sa_registrar_instance;
+#endif /* SA_MODE */
 }
 
 #endif /* !NDEBUG */

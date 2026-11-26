@@ -81,6 +81,8 @@
 #include "thread_manager.hpp"
 #include "pl_compile_handler.hpp"
 #include "pl_executor.hpp"
+#include "session.h"
+#include "stream_handle.hpp"
 #include "sp_context_rules.hpp"
 #endif // SA_MODE
 
@@ -13251,8 +13253,33 @@ stream_from_read_open (int stream_kind, const char *config, int config_len, int 
 
   return rc;
 #else /* CS_MODE */
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
-  return ER_NOT_IN_STANDALONE;
+  THREAD_ENTRY *thread_p;
+  int rc;
+
+  *handle = 0;
+  *nread = 0;
+  *reply_flags = 0;
+
+  rc = stream_kind_client_authorize (stream_kind, config, config_len);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  if ((flags & ~STREAM_FLAG_RELEASE_AT_EOF) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "unknown stream request flags");
+      return ER_STREAM_INVALID_USE;
+    }
+
+  /* SA runs the core here, as sstream_read_open () does, on the table session_end_tran_streams () purges */
+  thread_p = enter_server ();
+  (void) xlogtb_get_mvcc_snapshot (thread_p);
+  rc = stream_download_open (thread_p, *session_sa_stream_handles (), stream_kind, config, config_len,
+			     LOG_FIND_THREAD_TRAN_INDEX (thread_p), logtb_find_current_tranid (thread_p),
+			     session_stream_client_id (thread_p), first_max, flags, buf, nread, reply_flags, handle);
+  exit_server (*thread_p);
+
+  return rc;
 #endif /* !CS_MODE */
 }
 
@@ -13309,8 +13336,24 @@ stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *
 
   return rc;
 #else /* CS_MODE */
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
-  return ER_NOT_IN_STANDALONE;
+  THREAD_ENTRY *thread_p;
+  int rc;
+
+  *nread = 0;
+  *reply_flags = 0;
+
+  if ((flags & ~STREAM_FLAG_RELEASE_AT_EOF) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "unknown stream request flags");
+      return ER_STREAM_INVALID_USE;
+    }
+
+  thread_p = enter_server ();
+  rc = stream_download_read (thread_p, *session_sa_stream_handles (), handle, LOG_FIND_THREAD_TRAN_INDEX (thread_p),
+			     logtb_find_current_tranid (thread_p), max, flags, buf, nread, reply_flags);
+  exit_server (*thread_p);
+
+  return rc;
 #endif /* !CS_MODE */
 }
 
@@ -13342,7 +13385,12 @@ stream_from_release (INT64 handle)
 
   return stream_request_error (req_error, rc);
 #else /* CS_MODE */
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
-  return ER_NOT_IN_STANDALONE;
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  /* as sstream_release (): a handle that does not resolve is released already */
+  session_sa_stream_handles ()->release (thread_p, handle, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  exit_server (*thread_p);
+
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
