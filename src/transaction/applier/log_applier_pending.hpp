@@ -27,11 +27,11 @@
 
 extern void la_pending_reset (void);
 extern int la_pending_push (const LA_TASK *task);
-extern void la_pending_mark_ready (UINT64 now_ns);
 extern bool la_pending_pop_routable (LA_TASK *task, int *worker, bool (*route) (const LA_TASK *task, int *worker));
 extern int la_pending_release_routable (bool (*route) (const LA_TASK *task, int *worker), bool (*can_route) (void),
 					int (*release) (LA_TASK *task, int worker));
 extern void la_pending_clear (void);
+extern void la_pending_get_lowest_hold_lsa (LOG_LSA *lowest);
 extern bool la_pending_is_empty (void);
 extern int la_pending_get_count (void);
 extern int la_pending_get_max_count (void);

@@ -2777,20 +2777,6 @@ la_lower_lsa (LOG_LSA * lowest, const LOG_LSA * candidate)
 }
 
 /*
- * la_lower_lsa_by_pending_task() - la_pending_foreach callback that feeds a parked task's slot to la_lower_lsa
- *   task(in): parked task
- *   arg(in/out): LOG_LSA * running minimum
- */
-static void
-la_lower_lsa_by_pending_task (const LA_TASK * task, void *arg)
-{
-  if (task->apply != NULL)
-    {
-      la_lower_lsa ((LOG_LSA *) arg, &task->apply->start_lsa);
-    }
-}
-
-/*
  * la_find_required_lsa() - find the lowest log position a worker may still have to read
  *   return: NO_ERROR
  *   required_lsa(out): that position, or final_lsa when nothing is being read or applied
@@ -2809,6 +2795,7 @@ la_find_required_lsa (LOG_LSA * required_lsa)
   int i;
   LOG_LSA slot_lowest;
   LOG_LSA task_lowest;
+  LOG_LSA pending_lowest;
   LOG_LSA lowest_lsa;
   LA_INFLIGHT_ENTRY *entry;
   LA_APPLY *apply;
@@ -2836,7 +2823,9 @@ la_find_required_lsa (LOG_LSA * required_lsa)
 	}
     }
 
-  la_pending_foreach (la_lower_lsa_by_pending_task, &task_lowest);
+  /* the pending list keeps the lowest hold_lsa of its tasks, so the scan does not walk every parked task */
+  la_pending_get_lowest_hold_lsa (&pending_lowest);
+  la_lower_lsa (&task_lowest, &pending_lowest);
 
   LSA_COPY (&lowest_lsa, &slot_lowest);
   la_lower_lsa (&lowest_lsa, &task_lowest);
@@ -9907,6 +9896,7 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 	  LSA_COPY (&task.commit_lsa, final);
 	  task.log_record_time = 0;
 	  task.apply = fragment;
+	  LSA_COPY (&task.hold_lsa, &fragment->start_lsa);
 	  task.has_items = true;
 	  /* a statement takes la_sql_compile_mutex, so the worker must not apply it holding other tasks' locks */
 	  task.has_statement = fragment->has_statement;
@@ -10084,6 +10074,14 @@ la_coordinator_process_commit (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PA
   LSA_COPY (&task.commit_lsa, final);
   /* the worker uses the slot directly and never looks up la_Info.repl_lists */
   task.apply = la_find_apply_list (lrec->trid);
+  if (task.apply != NULL)
+    {
+      LSA_COPY (&task.hold_lsa, &task.apply->start_lsa);
+    }
+  else
+    {
+      LSA_SET_NULL (&task.hold_lsa);
+    }
   task.has_items = (task.apply != NULL && task.apply->head != NULL);
   task.has_statement = (task.apply != NULL && task.apply->has_statement);
   has_label = la_coordinator_set_commit_dependency (&task);

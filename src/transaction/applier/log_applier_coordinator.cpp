@@ -317,8 +317,6 @@ la_coordinator_drain_ready (void)
       return NO_ERROR;
     }
 
-  la_pending_mark_ready (la_monotonic_now_ns ());
-
   /* the route calls of this pass record what the tasks left parked wait for */
   la_Coordinator_pending_waits_dispatch = false;
   la_Coordinator_pending_room_workers = 0;

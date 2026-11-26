@@ -47,6 +47,8 @@ struct la_task
   time_t log_record_time;
   LA_APPLY *apply;		/* repl_list pre-mapped by the coordinator so the worker never calls
 				 * la_find_apply_list, avoiding the la_Info.repl_lists realloc / slot-reuse race */
+  LOG_LSA hold_lsa;		/* apply->start_lsa when the task was made, NULL without a slot: the oldest log
+				 * position the task may still read, kept by the pending list for required_lsa */
   bool has_items;		/* false for a commit without replicated items; the worker does not trace it */
   bool has_statement;		/* the transaction has a statement item (DDL); the worker applies the task in a slave
 				 * transaction of its own, because the statement takes la_sql_compile_mutex and the

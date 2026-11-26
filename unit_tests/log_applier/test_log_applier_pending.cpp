@@ -72,11 +72,41 @@ test_reset (const LOG_LSA *restart_lsa)
   la_gate_set_initial_frontier (restart_lsa);
 }
 
-TEST_CASE ("pending list records dependency readiness before task queue capacity is available",
+static bool
+test_route_never (const LA_TASK *task, int *worker)
+{
+  (void) task;
+  (void) worker;
+  return false;
+}
+
+static void
+test_collect_ready_ns (const LA_TASK *task, void *arg)
+{
+  ((std::vector<UINT64> *) arg)->push_back (task->ready_ns);
+}
+
+static bool
+test_can_route_always (void)
+{
+  return true;
+}
+
+static int
+test_release_none (LA_TASK *task, int worker)
+{
+  (void) task;
+  (void) worker;
+  FAIL ("no task is routed");
+  return NO_ERROR;
+}
+
+TEST_CASE ("pending list records dependency readiness on the tasks a pass visits, before queue room",
 	   "[log_applier_pending]")
 {
   LOG_LSA l10 = test_lsa (10), l20 = test_lsa (20);
   LA_TASK task = test_task (1, test_lsa (30), l20);
+  std::vector<UINT64> ready;
   LA_TASK out;
 
   test_reset (&l10);
@@ -84,14 +114,76 @@ TEST_CASE ("pending list records dependency readiness before task queue capacity
   task.pending_begin_ns = 100;
   REQUIRE (la_pending_push (&task) == NO_ERROR);
 
-  la_pending_mark_ready (200);
-  REQUIRE_FALSE (test_pop (&out));
+  /* dependency not satisfied: a pass visits the task but records nothing */
+  REQUIRE (la_pending_release_routable (test_route_never, test_can_route_always, test_release_none) == NO_ERROR);
+  la_pending_foreach (test_collect_ready_ns, &ready);
+  REQUIRE (ready == std::vector<UINT64> ({0}));
 
+  /* satisfied, but no worker can take it: the pass records readiness and leaves it parked */
   la_gate_mark_completed (&l20);
   la_gate_advance_frontier ();
-  la_pending_mark_ready (300);
+  REQUIRE (la_pending_release_routable (test_route_never, test_can_route_always, test_release_none) == NO_ERROR);
+  ready.clear ();
+  la_pending_foreach (test_collect_ready_ns, &ready);
+  REQUIRE (ready.size () == 1);
+  REQUIRE (ready[0] != 0);
+
   REQUIRE (test_pop (&out));
-  REQUIRE (out.ready_ns == 300);
+  REQUIRE (out.ready_ns == ready[0]);
+}
+
+TEST_CASE ("pending list keeps the lowest hold_lsa of its parked tasks", "[log_applier_pending]")
+{
+  LOG_LSA l10 = test_lsa (10), l20 = test_lsa (20), nul = test_null_lsa (), lowest;
+  LA_TASK a = test_task (4, test_lsa (60), nul);
+  LA_TASK b = test_task (1, test_lsa (61), l20);
+  LA_TASK c = test_task (2, test_lsa (62), nul);
+  LA_TASK d = test_task (3, test_lsa (63), nul);
+  LA_TASK out;
+
+  test_reset (&l10);
+  REQUIRE (la_gate_order_push (&l20) == NO_ERROR);
+  a.hold_lsa = test_lsa (50);
+  b.hold_lsa = test_lsa (30);
+  c.hold_lsa = test_lsa (40);
+  d.hold_lsa = nul;
+
+  la_pending_get_lowest_hold_lsa (&lowest);
+  REQUIRE (LSA_ISNULL (&lowest));
+
+  REQUIRE (la_pending_push (&a) == NO_ERROR);
+  REQUIRE (la_pending_push (&b) == NO_ERROR);
+  REQUIRE (la_pending_push (&c) == NO_ERROR);
+  REQUIRE (la_pending_push (&d) == NO_ERROR);
+  la_pending_get_lowest_hold_lsa (&lowest);
+  REQUIRE (LSA_EQ (&lowest, &b.hold_lsa));
+
+  /* a, c and d run (b waits for 20); b still holds 30 */
+  REQUIRE (test_pop (&out));
+  REQUIRE (out.tranid == 4);
+  la_pending_get_lowest_hold_lsa (&lowest);
+  REQUIRE (LSA_EQ (&lowest, &b.hold_lsa));
+
+  /* b runs: the lowest becomes c's 40 */
+  la_gate_mark_completed (&l20);
+  la_gate_advance_frontier ();
+  REQUIRE (test_pop (&out));
+  REQUIRE (out.tranid == 1);
+  la_pending_get_lowest_hold_lsa (&lowest);
+  REQUIRE (LSA_EQ (&lowest, &c.hold_lsa));
+
+  REQUIRE (test_pop (&out));
+  REQUIRE (test_pop (&out));
+  REQUIRE (la_pending_is_empty ());
+  la_pending_get_lowest_hold_lsa (&lowest);
+  REQUIRE (LSA_ISNULL (&lowest));
+
+  /* clear drops the hold of tasks still parked */
+  REQUIRE (la_pending_push (&c) == NO_ERROR);
+  la_pending_clear ();
+  la_pending_reset ();
+  la_pending_get_lowest_hold_lsa (&lowest);
+  REQUIRE (LSA_ISNULL (&lowest));
 }
 
 TEST_CASE ("pending list releases ready tasks in parking order without waiting for an earlier blocked one",

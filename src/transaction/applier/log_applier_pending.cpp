@@ -24,6 +24,10 @@
  * allow, oldest first. A parked task is always on the gate's
  * commit-order ring, so the list never holds more than the commit-order capacity.
  * Only the coordinator touches the list, so it has no lock.
+ *
+ * The list holds hundreds of thousands of tasks when the workers fall behind, and the coordinator asks about it
+ * after every completion and every commit. Nothing here walks the whole list for such a question: the lowest
+ * hold_lsa is kept in two heaps, and readiness is recorded only on the tasks a release pass visits.
  */
 
 #include "config.h"
@@ -36,6 +40,11 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <cstdint>
+#include <functional>
+#include <new>
+#include <queue>
+#include <vector>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -59,9 +68,20 @@ static int la_Pending_max_count = 0;
 static LA_PENDING_NODE *la_Pending_spare = NULL;
 static int la_Pending_spare_count = 0;
 
+/* hold_lsa of the parked tasks, as a multiset kept in two min-heaps: every parked hold_lsa is pushed to
+ * la_Pending_hold_added and pushed again to la_Pending_hold_removed when its task leaves the list. The lowest parked
+ * one is the top of the first heap once equal tops have been dropped from both. When a heap cannot grow, the heaps
+ * are marked stale and rebuilt from the list on the next question. */
+typedef std::priority_queue<std::int64_t, std::vector<std::int64_t>, std::greater<std::int64_t>> LA_PENDING_HOLD_HEAP;
+static LA_PENDING_HOLD_HEAP la_Pending_hold_added;
+static LA_PENDING_HOLD_HEAP la_Pending_hold_removed;
+static bool la_Pending_hold_stale = false;
+
 static void la_pending_put_spare (LA_PENDING_NODE *node);
 static void la_pending_take_out (LA_PENDING_NODE *prev, LA_PENDING_NODE *cur);
 static void la_pending_note_ready (LA_TASK *task);
+static void la_pending_hold_push (LA_PENDING_HOLD_HEAP &heap, const LA_TASK *task);
+static void la_pending_hold_reset (void);
 
 void
 la_pending_reset (void)
@@ -69,6 +89,7 @@ la_pending_reset (void)
   assert (la_Pending_head == NULL && la_Pending_tail == NULL);
   la_Pending_count = 0;
   la_Pending_max_count = 0;
+  la_pending_hold_reset ();
 }
 
 /*
@@ -115,30 +136,9 @@ la_pending_push (const LA_TASK *task)
 
   la_Pending_count++;
   la_Pending_max_count = MAX (la_Pending_max_count, la_Pending_count);
+  la_pending_hold_push (la_Pending_hold_added, &node->task);
 
   return NO_ERROR;
-}
-
-/*
- * la_pending_mark_ready() - timestamp parked tasks whose dependency has become satisfied
- *   now_ns(in): current CLOCK_MONOTONIC time
- *
- * Note:
- *   This is separate from pop: a ready task may remain parked while the task queue is full. Recording
- *   readiness here keeps dependency wait separate from worker-capacity wait.
- */
-void
-la_pending_mark_ready (UINT64 now_ns)
-{
-  LA_PENDING_NODE *node;
-
-  for (node = la_Pending_head; node != NULL; node = node->next)
-    {
-      if (node->task.ready_ns == 0 && la_gate_is_satisfied (&node->task.dependency_lsa))
-	{
-	  node->task.ready_ns = now_ns;
-	}
-    }
 }
 
 /*
@@ -259,10 +259,57 @@ la_pending_clear (void)
       free_and_init (node);
     }
   la_Pending_spare_count = 0;
+  la_pending_hold_reset ();
 }
 
 /*
- * la_pending_take_out() - unlink a node and keep it as a spare
+ * la_pending_get_lowest_hold_lsa() - the lowest hold_lsa among the parked tasks
+ *   lowest(out): that LSA, NULL when no parked task holds a log position
+ */
+void
+la_pending_get_lowest_hold_lsa (LOG_LSA *lowest)
+{
+  LA_PENDING_NODE *node;
+
+  assert (lowest != NULL);
+
+  if (la_Pending_hold_stale)
+    {
+      /* a heap could not grow: answer from the list, and rebuild the heaps from it for the next question */
+      LSA_SET_NULL (lowest);
+      la_Pending_hold_stale = false;
+      la_Pending_hold_added = LA_PENDING_HOLD_HEAP ();
+      la_Pending_hold_removed = LA_PENDING_HOLD_HEAP ();
+      for (node = la_Pending_head; node != NULL; node = node->next)
+	{
+	  if (!LSA_ISNULL (&node->task.hold_lsa) && (LSA_ISNULL (lowest) || LSA_LT (&node->task.hold_lsa, lowest)))
+	    {
+	      LSA_COPY (lowest, &node->task.hold_lsa);
+	    }
+	  la_pending_hold_push (la_Pending_hold_added, &node->task);
+	}
+      return;
+    }
+
+  while (!la_Pending_hold_removed.empty () && !la_Pending_hold_added.empty ()
+	 && la_Pending_hold_added.top () == la_Pending_hold_removed.top ())
+    {
+      la_Pending_hold_added.pop ();
+      la_Pending_hold_removed.pop ();
+    }
+
+  if (la_Pending_hold_added.empty ())
+    {
+      LSA_SET_NULL (lowest);
+      return;
+    }
+
+  lowest->pageid = (decltype (lowest->pageid)) (la_Pending_hold_added.top () / 65536);
+  lowest->offset = (decltype (lowest->offset)) (la_Pending_hold_added.top () % 65536);
+}
+
+/*
+ * la_pending_take_out() - unlink a node, drop its hold_lsa from the lowest-hold heaps and keep it as a spare
  *   prev(in): the node before cur, NULL when cur is the head
  *   cur(in): the node to take out; its task must have been copied out already
  */
@@ -282,6 +329,7 @@ la_pending_take_out (LA_PENDING_NODE *prev, LA_PENDING_NODE *cur)
       la_Pending_tail = prev;
     }
 
+  la_pending_hold_push (la_Pending_hold_removed, &cur->task);
   la_pending_put_spare (cur);
   assert (la_Pending_count > 0);
   la_Pending_count--;
@@ -291,7 +339,10 @@ la_pending_take_out (LA_PENDING_NODE *prev, LA_PENDING_NODE *cur)
  * la_pending_note_ready() - timestamp a parked task whose dependency has become satisfied
  *   task(in/out): a task a release pass visits
  *
- * Note: readiness keeps dependency wait apart from worker-capacity wait in the statistics.
+ * Note: readiness keeps dependency wait apart from worker-capacity wait in the statistics. It is recorded only on
+ *       the tasks a pass visits: a task past the point where the pass stopped gets it on a later pass, so part of
+ *       its capacity wait may be counted as dependency wait. Walking the whole list for it on every pass took most
+ *       of the coordinator's CPU when hundreds of thousands of tasks were parked.
  */
 static void
 la_pending_note_ready (LA_TASK *task)
@@ -300,6 +351,41 @@ la_pending_note_ready (LA_TASK *task)
     {
       task->ready_ns = la_monotonic_now_ns ();
     }
+}
+
+/*
+ * la_pending_hold_push() - add a task's hold_lsa to one of the lowest-hold heaps
+ *   heap(in/out): la_Pending_hold_added or la_Pending_hold_removed
+ *   task(in): the task
+ */
+static void
+la_pending_hold_push (LA_PENDING_HOLD_HEAP &heap, const LA_TASK *task)
+{
+  if (la_Pending_hold_stale || LSA_ISNULL (&task->hold_lsa))
+    {
+      return;
+    }
+
+  try
+    {
+      heap.push ((std::int64_t) task->hold_lsa.pageid * 65536 + (std::int64_t) (task->hold_lsa.offset & 0xffff));
+    }
+  catch (const std::bad_alloc &)
+    {
+      /* rebuilt from the list when the lowest is asked for next */
+      la_Pending_hold_stale = true;
+    }
+}
+
+/*
+ * la_pending_hold_reset() - empty the lowest-hold heaps
+ */
+static void
+la_pending_hold_reset (void)
+{
+  la_Pending_hold_added = LA_PENDING_HOLD_HEAP ();
+  la_Pending_hold_removed = LA_PENDING_HOLD_HEAP ();
+  la_Pending_hold_stale = false;
 }
 
 /*
