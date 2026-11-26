@@ -5129,7 +5129,6 @@ struct qo_gbp_env
   QO_GBP_MASK adj[QO_GBP_MAX_SPECS];	/* tables joined to each by an equality in the WHERE */
   QO_GBP_MASK edge[QO_GBP_MAX_SPECS];	/* tables joined to each by an equality in the WHERE or an ON */
   bool args_null_strict;	/* every aggregate argument is NULL when one of its columns is */
-  int sum_digits;		/* the digits the exact value of a NUMERIC argument of SUM needs, 0 for none */
   bool has_groupby_num;		/* groupby_num () counts the groups of the block */
 };
 
@@ -5646,18 +5645,15 @@ qo_gbp_check_output_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
       /* SUM over FLOAT adds in DOUBLE and casts the total: a partial sum cast to FLOAT would round, or overflow
        * where the total does not; a partial sum of DOUBLE over rows the block drops may overflow.  A partial sum of
-       * integers is taken in a wider type (qo_gbp_widen_sum_arg ()); one of NUMERIC must stay exact, which
-       * qo_gbp_is_sure_gain () checks against the rows of C */
+       * integers is taken in a wider type (qo_gbp_widen_sum_arg ()).  A partial sum of NUMERIC is rounded to the
+       * digits of a NUMERIC only past them, where the block's sum also rounds as its rows come and a hash GROUP BY
+       * rounds the partial sum it spills (qdata_sum_acc_flatten_for_spill ()) */
       if (function == PT_SUM && agg_arg->type_enum != PT_TYPE_SMALLINT && agg_arg->type_enum != PT_TYPE_INTEGER
 	  && agg_arg->type_enum != PT_TYPE_BIGINT && agg_arg->type_enum != PT_TYPE_NUMERIC)
 	{
 	  walk->bad = true;
 	  *continue_walk = PT_STOP_WALK;
 	  return node;
-	}
-      if (function == PT_SUM && agg_arg->type_enum == PT_TYPE_NUMERIC)
-	{
-	  walk->env->sum_digits = MAX (walk->env->sum_digits, prec);
 	}
 
       /* MIN and MAX of values that compare equal return the first one met: partial results met in another order
@@ -7143,7 +7139,7 @@ qo_gbp_is_sure_gain (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmas
   CLASS_STATS *stats;
   PT_NODE *col;
   double reached = 1.0, rows = 0.0, sel = 1.0, groups = 1.0, ndv;
-  int k, digits;
+  int k;
 
   for (k = 0; k < env->nspecs; k++)
     {
@@ -7168,20 +7164,6 @@ qo_gbp_is_sure_gain (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmas
   if (reached < QO_GBP_MIN_REACHED)
     {
       return false;
-    }
-
-  /* a partial sum of NUMERIC is rounded to the digits a NUMERIC holds, where the block's sum adds exactly and rounds
-   * once: the partial sums must stay exact, a group of the derived table holding at most the rows of C */
-  if (env->sum_digits > 0)
-    {
-      for (digits = 1, ndv = rows; ndv >= 10.0; ndv /= 10.0)
-	{
-	  digits++;
-	}
-      if (env->sum_digits + digits > DB_MAX_NUMERIC_PRECISION)
-	{
-	  return false;
-	}
     }
 
   if (remove_group_by)
