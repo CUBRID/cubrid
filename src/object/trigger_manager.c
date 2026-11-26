@@ -162,6 +162,7 @@ TR_DEFERRED_CONTEXT *tr_Deferred_activities_tail = NULL;
 
 static int tr_User_triggers_valid = 0;
 static int tr_User_triggers_modified = 0;
+static int tr_Trigger_cache_modified = 0;
 static TR_TRIGLIST *tr_User_triggers = NULL;
 
 static TR_TRIGLIST *tr_Uncommitted_triggers = NULL;
@@ -250,6 +251,14 @@ static void tr_finish (TR_STATE * state);
 static int its_deleted (DB_OBJECT * object);
 
 static int map_flush_helper (const void *key, void *data, void *args);
+static void mark_trigger_altered (TR_TRIGGER * trigger);
+static int reset_trigger_cache_helper (const void *key, void *data, void *args);
+static void reset_trigger_caches (bool end_transaction);
+static bool trigger_activity_running (TR_TRIGGER * trigger);
+static void reset_trigger_cache (TR_TRIGGER * trigger);
+static void reset_pending_trigger_cache (TR_TRIGGER * trigger);
+static int forget_altered_trigger_helper (const void *key, void *data, void *args);
+static void forget_altered_triggers (void);
 static int define_trigger_classes (void);
 
 static TR_RECURSION_DECISION tr_check_recursivity (OID oid, OID stack[], int stack_size, bool is_statement);
@@ -415,6 +424,8 @@ tr_make_trigger (void)
   trigger->temp_refname = NULL;
   trigger->chn = NULL_CHN;
   trigger->comment = NULL;
+  trigger->altered = false;
+  trigger->reset_pending = false;
 
   return trigger;
 }
@@ -1835,6 +1846,8 @@ validate_trigger (TR_TRIGGER * trigger)
 	  return error;
 	}
 
+      new_trigger.altered = trigger->altered;
+      new_trigger.reset_pending = false;
       tr_clear_trigger (trigger);
       *trigger = new_trigger;
     }
@@ -1945,7 +1958,7 @@ tr_unmap_trigger (TR_TRIGGER * trigger)
  *    object(in): trigger object
  *
  * Note:
- *    If successful, it will recalculate the user trigger cache list as well.
+ *    If successful, it will mark the user trigger cache to be rebuilt on its next use.
  */
 static int
 register_user_trigger (DB_OBJECT * object)
@@ -1999,8 +2012,7 @@ register_user_trigger (DB_OBJECT * object)
 
   if (error == NO_ERROR)
     {
-      tr_User_triggers_modified = 1;
-      tr_update_user_cache ();
+      tr_mark_user_triggers_modified ();
     }
 
   return error;
@@ -2064,15 +2076,48 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
   /* don't bother updating the cache now if its a rollback */
   if (error == NO_ERROR && !rollback)
     {
-      tr_User_triggers_modified = 1;
-      tr_update_user_cache ();
+      tr_mark_user_triggers_modified ();
     }
 
   return error;
 }
 
 /*
- * get_user_trigger_objects() - This is used to build and return a list of all the user triggers currently defined
+ * check_current_user_trigger() - Checks whether the object is a user trigger owned by the current user
+ *    return: error code
+ *    object(in): trigger object
+ *    is_current_user_trigger(out): true if it is
+ */
+static int
+check_current_user_trigger (DB_OBJECT * object, bool * is_current_user_trigger)
+{
+  DB_VALUE value;
+  int error;
+
+  *is_current_user_trigger = false;
+
+  error = obj_get (object, TR_ATT_EVENT, &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if ((DB_VALUE_TYPE (&value) != DB_TYPE_INTEGER) || !IS_USER_EVENT ((DB_TRIGGER_EVENT) db_get_int (&value)))
+    {
+      return NO_ERROR;
+    }
+
+  error = obj_get (object, TR_ATT_OWNER, &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  *is_current_user_trigger = ws_is_same_object (db_get_object (&value), Au_user);
+  return NO_ERROR;
+}
+
+/*
+ * get_user_trigger_objects() - This is used to build and return a list of the user triggers owned by the current user
  *    return: error code
  *    event(in): event type
  *    active_filter(in): non-zero to filter out inactive triggers
@@ -2085,20 +2130,24 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
   int error = NO_ERROR;
   DB_SET *table;
   DB_VALUE value;
+  bool is_current_user_trigger;
   DB_TRIGGER_EVENT e;
   TR_TRIGGER *trigger;
   int max, i;
+  int save;
 
   *trigger_list = NULL;
 
-  if (Au_user == NULL)
+  if (Au_user == NULL || Au_root == NULL)
     {
       return NO_ERROR;
     }
 
-  error = obj_get (Au_user, "triggers", &value);
+  AU_DISABLE (save);
+  error = obj_get (Au_root, "triggers", &value);
   if (error != NO_ERROR)
     {
+      AU_ENABLE (save);
       return error;
     }
 
@@ -2116,7 +2165,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
       error = set_filter (table);
       max = set_size (table);
 
-      for (i = 0; i < max && error == NO_ERROR; i++)
+      for (i = 1; i < max && error == NO_ERROR; i += 2)
 	{
 	  error = set_get_element (table, i, &value);
 	  if (error == NO_ERROR)
@@ -2124,6 +2173,16 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
 	      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && db_get_object (&value) != NULL)
 		{
 		  /* deleted objects should have been filtered by now */
+		  error = check_current_user_trigger (db_get_object (&value), &is_current_user_trigger);
+		  if (error != NO_ERROR)
+		    {
+		      break;
+		    }
+		  if (!is_current_user_trigger)
+		    {
+		      continue;
+		    }
+
 		  trigger = tr_map_trigger (db_get_object (&value), 1);
 		  if (trigger == NULL)
 		    {
@@ -2165,6 +2224,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
       *trigger_list = NULL;
     }
 
+  AU_ENABLE (save);
   return error;
 }
 
@@ -2173,7 +2233,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
  *    return: error
  *
  * Note:
- *    It goes through the trigger objects defined for the user, maps them to trigger objects and
+ *    It goes through the user triggers owned by the current user, maps them to trigger objects and
  *    stores them on specific lists for quick access.
  */
 int
@@ -2182,8 +2242,10 @@ tr_update_user_cache (void)
   int error = NO_ERROR;
   DB_SET *table;
   DB_VALUE value;
+  bool is_current_user_trigger;
   TR_TRIGGER *trigger;
   int max, i;
+  int save;
 
   tr_User_triggers_valid = 0;
   if (tr_User_triggers != NULL)
@@ -2192,7 +2254,8 @@ tr_update_user_cache (void)
       tr_User_triggers = NULL;
     }
 
-  if (Au_user != NULL && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
+  AU_DISABLE (save);
+  if (Au_user != NULL && Au_root != NULL && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -2208,7 +2271,7 @@ tr_update_user_cache (void)
 	  error = set_filter (table);
 	  max = set_size (table);
 
-	  for (i = 0; i < max && error == NO_ERROR; i++)
+	  for (i = 1; i < max && error == NO_ERROR; i += 2)
 	    {
 	      error = set_get_element (table, i, &value);
 	      if (error == NO_ERROR)
@@ -2217,6 +2280,16 @@ tr_update_user_cache (void)
 		      && db_get_object (&value) != NULL)
 		    {
 		      /* deleted objects will have been filtered by now */
+		      error = check_current_user_trigger (db_get_object (&value), &is_current_user_trigger);
+		      if (error != NO_ERROR)
+			{
+			  break;
+			}
+		      if (!is_current_user_trigger)
+			{
+			  continue;
+			}
+
 		      trigger = tr_map_trigger (db_get_object (&value), 1);
 		      if (trigger == NULL)
 			{
@@ -2245,6 +2318,7 @@ tr_update_user_cache (void)
       tr_User_triggers = NULL;
     }
 
+  AU_ENABLE (save);
   return error;
 }
 
@@ -2258,6 +2332,17 @@ void
 tr_invalidate_user_cache (void)
 {
   tr_User_triggers_valid = 0;
+}
+
+/*
+ * tr_mark_user_triggers_modified() - Marks the user triggers as changed by the current transaction
+ *    return: none
+ */
+void
+tr_mark_user_triggers_modified (void)
+{
+  tr_User_triggers_modified = 1;
+  tr_invalidate_user_cache ();
 }
 
 /* SCHEMA CACHE */
@@ -3426,7 +3511,8 @@ end:
  *
  * Note:
  *    If the trigger is associated with a class, the current user must have appropriate class authorization.
- *    If the trigger is associated with a user, the current user must be the owner of the trigger.
+ *    If the trigger is associated with a user, the current user must be the owner of the trigger or a member
+ *    of the DBA group.
  *    If the alter flag is set, it means that the trigger is about to be modified in some way.
  */
 static bool
@@ -3473,8 +3559,8 @@ check_authorization (TR_TRIGGER * trigger, bool alter_flag)
     }
   else
     {
-      /* its a user trigger, must be the active user */
-      if (ws_is_same_object (trigger->owner, Au_user))
+      /* its a user trigger, must be the owner or a member of the DBA group */
+      if (ws_is_same_object (trigger->owner, Au_user) || au_is_dba_group_member (Au_user))
 	{
 	  status = true;
 	}
@@ -3967,6 +4053,11 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       return NULL;
     }
   owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+  if (owner == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_AU_INVALID_USER, owner_name);
+      goto error;
+    }
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
@@ -5113,6 +5204,8 @@ execute_activity (TR_TRIGGER * trigger, DB_TRIGGER_TIME tr_time, DB_OBJECT * cur
 	}
     }
 
+  reset_pending_trigger_cache (trigger);
+
   if (save_user != NULL)
     {
       if (AU_SET_USER (save_user))
@@ -5786,6 +5879,11 @@ tr_check_commit_triggers (DB_TRIGGER_TIME time)
 {
   int error = NO_ERROR;
 
+  if (time == TR_TIME_AFTER)
+    {
+      forget_altered_triggers ();
+    }
+
   /*
    * If trigger firing has been disabled, do nothing.
    * This is currently used by the loader to disable triggers firing.
@@ -5853,6 +5951,11 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
 {
   TR_TRIGLIST *t, *next;
 
+  if (time == TR_TIME_AFTER)
+    {
+      reset_trigger_caches (true);
+    }
+
   /*
    * If trigger firing has been disabled, do nothing.
    * This is currently used by the loader to disable triggers firing.
@@ -5903,6 +6006,21 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
     }
 }
 
+/*
+ * tr_check_partial_rollback_triggers() - This is called when the transaction is rolled back to a savepoint.
+ *    return: none
+ */
+void
+tr_check_partial_rollback_triggers (void)
+{
+  if (tr_User_triggers_modified)
+    {
+      tr_invalidate_user_cache ();
+    }
+
+  reset_trigger_caches (false);
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tr_check_timeout_triggers() - This is called whenever a lock timeout ocurrs.
@@ -5934,6 +6052,8 @@ tr_check_timeout_triggers (void)
 void
 tr_check_abort_triggers (void)
 {
+  reset_trigger_caches (true);
+
   /*
    * If trigger firing has been disabled, do nothing.
    * This is currently used by the loader to disable triggers firing.
@@ -6936,6 +7056,7 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
     }
 
   trigger->name = new_name;
+  mark_trigger_altered (trigger);
 
 end:
   if (new_name != NULL && trigger->name != new_name)
@@ -7002,6 +7123,8 @@ tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_f
 	}
       else
 	{
+	  mark_trigger_altered (trigger);
+
 	  /*
 	   * The schema manager maintains a flag indicating whether active triggers are defined for the class.
 	   * When the status of a trigger changes, we need to tell the schema manager to recalculate this flag.
@@ -7069,6 +7192,8 @@ tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api
 	}
       else
 	{
+	  mark_trigger_altered (trigger);
+
 	  if (trigger->class_mop != NULL)
 	    {
 	      /*
@@ -7144,6 +7269,7 @@ tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_
 	    }
 	  else
 	    {
+	      mark_trigger_altered (trigger);
 	      if (oldcomment != NULL)
 		{
 		  free_and_init (oldcomment);
@@ -7235,6 +7361,7 @@ tr_init (void)
   tr_Deferred_activities_tail = NULL;
   tr_User_triggers_valid = 0;
   tr_User_triggers_modified = 0;
+  tr_Trigger_cache_modified = 0;
   tr_User_triggers = NULL;
   tr_Trace = false;
   tr_Uncommitted_triggers = NULL;
@@ -7243,6 +7370,165 @@ tr_init (void)
 
   /* create the object map */
   tr_object_map = mht_create ("Trigger object map", TR_EST_MAP_SIZE, mht_ptrhash, mht_compare_ptrs_are_equal);
+}
+
+/*
+ * mark_trigger_altered() - Marks a trigger as changed by ALTER TRIGGER in the current transaction
+ *    return: none
+ *    trigger(in): trigger structure
+ */
+static void
+mark_trigger_altered (TR_TRIGGER * trigger)
+{
+  trigger->altered = true;
+  tr_Trigger_cache_modified = 1;
+}
+
+/*
+ * trigger_activity_running() - Checks if the condition or the action of a trigger is running
+ *    return: true if running
+ *    trigger(in): trigger structure
+ */
+static bool
+trigger_activity_running (TR_TRIGGER * trigger)
+{
+  return ((trigger->condition != NULL && trigger->condition->in_use > 0)
+	  || (trigger->action != NULL && trigger->action->in_use > 0));
+}
+
+/*
+ * reset_trigger_cache() - Makes a trigger be read again on its next validation
+ *    return: none
+ *    trigger(in): trigger structure whose condition and action are not running
+ */
+static void
+reset_trigger_cache (TR_TRIGGER * trigger)
+{
+  trigger->chn = NULL_CHN;
+  trigger->reset_pending = false;
+
+  if (trigger->class_mop != NULL)
+    {
+      sm_invalidate_cached_trigger_cache (trigger->class_mop);
+    }
+  else
+    {
+      tr_invalidate_user_cache ();
+    }
+}
+
+/*
+ * reset_pending_trigger_cache() - Makes a trigger skipped by a rollback while its condition or action ran
+ *                                 be read again once they stop running
+ *    return: none
+ *    trigger(in): trigger structure
+ */
+static void
+reset_pending_trigger_cache (TR_TRIGGER * trigger)
+{
+  if (trigger->reset_pending && !trigger_activity_running (trigger))
+    {
+      reset_trigger_cache (trigger);
+    }
+}
+
+/*
+ * reset_trigger_cache_helper() - Makes a trigger changed by ALTER TRIGGER be read again on its next validation
+ *    return: NO_ERROR
+ *    key(in): trigger object
+ *    data(in): trigger structure
+ *    args(in): whether the transaction ends, which also forgets the change
+ */
+static int
+reset_trigger_cache_helper (const void *key, void *data, void *args)
+{
+  TR_TRIGGER *trigger = (TR_TRIGGER *) data;
+  bool end_transaction = *(bool *) args;
+
+  if (!trigger->altered)
+    {
+      return NO_ERROR;
+    }
+
+  if (end_transaction)
+    {
+      trigger->altered = false;
+    }
+
+  if (trigger_activity_running (trigger))
+    {
+      trigger->reset_pending = true;
+    }
+  else
+    {
+      reset_trigger_cache (trigger);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * reset_trigger_caches() - Makes the triggers changed by ALTER TRIGGER be read again after a rollback
+ *    return: none
+ *    end_transaction(in): true for the rollback of the transaction, false for a rollback to a savepoint
+ *
+ * Note:
+ *    The rollback restores the trigger objects with their old cache coherency numbers,
+ *    so the triggers changed in the cache by ALTER TRIGGER would not be read again.
+ */
+static void
+reset_trigger_caches (bool end_transaction)
+{
+  int save;
+
+  if (!tr_Trigger_cache_modified)
+    {
+      return;
+    }
+
+  er_stack_push ();
+  AU_DISABLE (save);
+
+  (void) mht_map (tr_object_map, reset_trigger_cache_helper, &end_transaction);
+
+  AU_ENABLE (save);
+  er_stack_pop ();
+
+  if (end_transaction)
+    {
+      tr_Trigger_cache_modified = 0;
+    }
+}
+
+/*
+ * forget_altered_trigger_helper() - Forgets that ALTER TRIGGER changed a trigger
+ *    return: NO_ERROR
+ *    key(in): trigger object
+ *    data(in): trigger structure
+ *    args(in): not used
+ */
+static int
+forget_altered_trigger_helper (const void *key, void *data, void *args)
+{
+  ((TR_TRIGGER *) data)->altered = false;
+
+  return NO_ERROR;
+}
+
+/*
+ * forget_altered_triggers() - Forgets the triggers changed by ALTER TRIGGER after the commit
+ *    return: none
+ */
+static void
+forget_altered_triggers (void)
+{
+  if (!tr_Trigger_cache_modified)
+    {
+      return;
+    }
+
+  (void) mht_map (tr_object_map, forget_altered_trigger_helper, NULL);
+  tr_Trigger_cache_modified = 0;
 }
 
 /* Helper routine for tr_final */

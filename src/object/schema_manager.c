@@ -4731,6 +4731,26 @@ sm_invalidate_trigger_cache (DB_OBJECT * classop)
 }
 
 /*
+ * sm_invalidate_cached_trigger_cache() - Makes the class in the workspace recalculate its has_active_triggers flag
+ *    return: none
+ *   classop(in): class object
+ *
+ * Note:
+ *    Unlike sm_invalidate_trigger_cache(), the class is not fetched, so no lock is requested.
+ *    A class not in the workspace has nothing to recalculate.
+ */
+void
+sm_invalidate_cached_trigger_cache (DB_OBJECT * classop)
+{
+  SM_CLASS *class_ = NULL;
+
+  if (ws_find (classop, (MOBJ *) & class_) != WS_FIND_MOP_DELETED && class_ != NULL)
+    {
+      class_->triggers_validated = 0;
+    }
+}
+
+/*
  * alter_trigger_cache() - This function encapsulates the mechanics of updating
  *    the trigger caches on a class.  It calls out to tr_ functions to perform
  *    the actual modification of the caches.

@@ -93,6 +93,8 @@ typedef struct tr_trigger
    */
   int chn;
   const char *comment;
+  bool altered;			/* changed by ALTER TRIGGER in this transaction */
+  bool reset_pending;		/* to be read again once its condition and action stop running */
 } TR_TRIGGER;
 
 
@@ -314,6 +316,7 @@ extern void tr_abort (TR_STATE * state);
 extern int tr_has_user_trigger (bool * has_user_trigger);
 extern int tr_check_commit_triggers (DB_TRIGGER_TIME time);
 extern void tr_check_rollback_triggers (DB_TRIGGER_TIME time);
+extern void tr_check_partial_rollback_triggers (void);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void tr_check_timeout_triggers (void);
 #endif
@@ -375,6 +378,7 @@ extern int tr_unmap_trigger (TR_TRIGGER * trigger);
 
 extern int tr_update_user_cache (void);
 extern void tr_invalidate_user_cache (void);
+extern void tr_mark_user_triggers_modified (void);
 
 /* Migration and information functions */
 
