@@ -1018,7 +1018,7 @@ desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value)
 	u_char tmp[UNLOAD_RAW_NUMERIC_HEADER_SIZE + sizeof (value->data.num.d.buf)];
 	u_char *flags = tmp + (sizeof (int) << 1);
 
-	db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
+	db_get_numeric_precision_and_scale (value, &precision, &scale, NULL, &is_float_numeric);
 	memcpy (tmp, &precision, sizeof (int));
 	memcpy (tmp + sizeof (int), &scale, sizeof (int));
 
