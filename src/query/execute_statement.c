@@ -16344,7 +16344,7 @@ do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp,
 typedef struct do_share_key_info DO_SHARE_KEY_INFO;
 struct do_share_key_info
 {
-  PT_SHARE_GROUP *groups;	/* the groups of the query, as mq_share_settle_groups () returns them */
+  PT_SHARE_GROUP *groups;	/* the groups of the query (its share_groups) */
   char **members;		/* per group, in the order of groups: the position and role of each member */
   int n_specs;			/* specs visited so far */
   bool failed;
@@ -16352,7 +16352,7 @@ struct do_share_key_info
 
 /*
  * do_collect_share_key () - add a member of a share group to the key of its group: its position among the specs of
- *   the query and whether it is the donor (d) or another member (m)
+ *   the query
  */
 static PT_NODE *
 do_collect_share_key (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -16380,8 +16380,7 @@ do_collect_share_key (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     {
       return node;
     }
-  snprintf (buf, sizeof (buf), "%s%d%c", (info->members[i] != NULL) ? "," : "", info->n_specs,
-	    (node == group->donor) ? 'd' : 'm');
+  snprintf (buf, sizeof (buf), "%s%d", (info->members[i] != NULL) ? "," : "", info->n_specs);
   info->members[i] = pt_append_string (parser, info->members[i], buf);
   if (info->members[i] == NULL)
     {
@@ -16396,7 +16395,7 @@ do_collect_share_key (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
  *   variant key is: a query sharing a view result and one that does not may print alike, the views expanded and
  *   their constants turned into host variables, and must not use each other's plan
  * return : error code
- *   groups(in): the share groups of statement, as mq_share_settle_groups () returns them
+ *   groups(in): the share groups of statement (its share_groups)
  */
 static int
 do_append_share_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement, PT_SHARE_GROUP * groups)
@@ -16474,7 +16473,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
   int au_save;
-  PT_SHARE_GROUP *share_groups = NULL;
 
   COMPILE_CONTEXT *contextp;
   XASL_STREAM stream;
@@ -16518,13 +16516,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
 
-  /* CBRD-27351: settle the share groups first, so that the hash text prints the select lists the plan reads; the key
-   * names the groups (do_append_share_key ()) */
-  if (PT_IS_QUERY (statement))
-    {
-      share_groups = mq_share_settle_groups (parser, statement);
-    }
-
   PT_NODE_PRINT_TO_ALIAS (parser, statement, (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER));
 
   contextp->sql_hash_text = (char *) statement->alias_print;
@@ -16533,7 +16524,8 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       return err;
     }
-  err = do_append_share_key (parser, contextp, statement, share_groups);
+  err = do_append_share_key (parser, contextp, statement,
+			     PT_IS_QUERY (statement) ? statement->info.query.share_groups : NULL);
   if (err != NO_ERROR)
     {
       return err;

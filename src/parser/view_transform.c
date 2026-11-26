@@ -236,8 +236,7 @@ static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
 						      PT_NODE * query_spec, PT_NODE * derived_table);
 static PT_NODE *mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
-						       PT_NODE * derived_table, PT_NODE * select_list,
-						       PT_NODE ** new_spec);
+						       PT_NODE * derived_table, PT_NODE ** new_spec);
 static PT_NODE *mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 							PT_NODE * subquery, PT_NODE * derived_spec, PT_NODE * order_by);
 static PT_NODE *mq_substitute_spec_in_method_and_hints (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
@@ -475,15 +474,11 @@ static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_N
 						   PT_NODE * old_select_list);
 static int mq_update_analytic_pos (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * new_select_list,
 				   PT_NODE * old_select_list);
+static void mq_share_view_results (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 static PT_NODE *mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static void mq_share_view_refs (PARSER_CONTEXT * parser, PT_NODE * statement);
-static PT_NODE *mq_share_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SHARE_GROUP * group);
-static PT_NODE *mq_vspec_select_list (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
-				      bool remove_sel_list);
-static bool mq_share_group_covers (PT_SHARE_GROUP * group, PT_NODE * cols);
 static void mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node);
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -1621,11 +1616,10 @@ mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * stateme
  *   statement(in/out): statement into which class will be expanded
  *   query_spec(in): query of class that will be expanded
  *   derived_spec(in): class name of class that will be expanded
- *   select_list(in): CBRD-27351: the columns of derived_spec to keep, NULL for the ones statement reads
  */
 static PT_NODE *
 mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * derived_spec,
-				       PT_NODE * select_list, PT_NODE ** new_spec)
+				       PT_NODE ** new_spec)
 {
   PT_NODE *query_spec_columns, *save_order_by, *save_select_list, *save_order_by_for;
   PT_NODE *attributes, *attr, *as_attr_list;
@@ -1706,7 +1700,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
       goto exit_on_error;
     }
 
-  new_select_list = (select_list != NULL) ? select_list : mq_get_references (parser, statement, spec);
+  new_select_list = mq_get_references (parser, statement, spec);
   for (col = new_select_list; col; col = col->next)
     {
       if (col->flag.is_hidden_column)
@@ -2872,15 +2866,8 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
   /* Due to tree copy, the spec ids of methods are broken. Reset spec ids */
   mq_reset_ids_in_methods (parser, tmp_result);
 
-  /* check whether subquery is pushable; CBRD-27351: a member of a share group keeps its derived table */
-  if (derived_spec->info.spec.share_group != NULL)
-    {
-      is_mergeable = NON_PUSHABLE;
-    }
-  else
-    {
-      is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec, false, order_by, NULL);
-    }
+  /* check whether subquery is pushable */
+  is_mergeable = mq_is_pushable_subquery (parser, subquery, tmp_result, derived_spec, false, order_by, NULL);
 
   if (is_mergeable == HAS_ERROR)
     {
@@ -2891,12 +2878,11 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
     {
       /* rewrite inline view spec */
 
-      /* remove unnecessary select list of subquery; CBRD-27351: but of a member of a share group, read by position */
+      /* remove unnecessary select list of subquery. */
       /* TO_DO : support for union query */
-      if (derived_spec->info.spec.share_group == NULL
-	  && mq_is_removable_select_list (parser, subquery, tmp_result) == PUSHABLE)
+      if (mq_is_removable_select_list (parser, subquery, tmp_result) == PUSHABLE)
 	{
-	  tmp_result = mq_remove_select_list_for_inline_view (parser, tmp_result, derived_spec, NULL, &new_spec);
+	  tmp_result = mq_remove_select_list_for_inline_view (parser, tmp_result, derived_spec, &new_spec);
 	  if (tmp_result == NULL)
 	    {
 	      goto exit_on_error;
@@ -6375,69 +6361,6 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
 }
 
 /*
- * mq_vspec_select_list () - the select list of the derived table spec, a view, is expanded as: the columns statement
- *   reads, and the other columns of the view unless remove_sel_list
- *   return: the list; NULL on an error
- */
-static PT_NODE *
-mq_vspec_select_list (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec, bool remove_sel_list)
-{
-  PT_NODE *list, *col, *v_attr_list, *v_attr;
-
-  list = mq_get_references (parser, statement, spec);
-
-  for (col = list; col; col = col->next)
-    {
-      if (col->flag.is_hidden_column)
-	{
-	  col->flag.is_hidden_column = 0;
-	}
-    }
-
-  if (remove_sel_list)
-    {
-      /* Do not add except for referenced columns. */
-      if (list == NULL)
-	{
-	  /* case of constant attr. e.g.) count(*), count(1) */
-	  /* just add one of integer value */
-	  list = pt_make_integer_value (parser, 1);
-	}
-    }
-  else
-    {
-      /* add view's attributes to select list */
-      v_attr_list = mq_fetch_attributes (parser, spec->info.spec.flat_entity_list);
-      if (v_attr_list == NULL && (pt_has_error (parser) || er_has_error ()))
-	{
-	  return NULL;
-	}
-
-      v_attr_list = parser_copy_tree_list (parser, v_attr_list);
-
-      /* exclude the first oid attr, append non-exist attrs to select list */
-      if (v_attr_list && v_attr_list->type_enum == PT_TYPE_OBJECT)
-	{
-	  v_attr_list = v_attr_list->next;	/* skip oid attr */
-	}
-
-      for (v_attr = v_attr_list; v_attr; v_attr = v_attr->next)
-	{
-	  v_attr->info.name.spec_id = spec->info.spec.id;	/* init spec id */
-	  mq_insert_symbol (parser, &list, v_attr);
-	}			/* for (v_attr = ...) */
-
-      /* free alloced */
-      if (v_attr_list)
-	{
-	  parser_free_tree (parser, v_attr_list);
-	}
-    }
-
-  return list;
-}
-
-/*
  * mq_rewrite_vclass_spec_as_derived() -
  *   return: rewritten SPEC with spec as simple derived select subquery
  *   parser(in):
@@ -6450,13 +6373,14 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
 				   bool remove_sel_list)
 {
   PT_NODE *new_query = parser_new_node (parser, PT_SELECT);
-  PT_NODE *new_spec;
+  PT_NODE *new_spec, *v_attr_list;
   PT_NODE *v_attr;
   PT_NODE *from, *entity_name;
   FIND_ID_INFO info;
   PT_NODE *col;
   bool is_value_query = false;
   PT_NODE *attrs = NULL;
+  DB_OBJECT *view;
 
   if (new_query == NULL)
     {
@@ -6470,7 +6394,6 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
   if (query_spec != NULL && PT_IS_VALUE_QUERY (query_spec))
     {
       is_value_query = true;
-      spec->info.spec.share_group = NULL;
     }
 
   if (is_value_query)
@@ -6495,31 +6418,54 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
     }
   else
     {
-      /* CBRD-27351: a member of a share group selects the columns of its group, and keeps the ones it would select
-       * without the group to go back to on leaving it; one that would select a column its group does not, as all
-       * the columns of the view for the outer query, leaves the group */
-      PT_NODE *own_cols = mq_vspec_select_list (parser, statement, spec, remove_sel_list);
-      if (own_cols == NULL && (pt_has_error (parser) || er_has_error ()))
+      new_query->info.query.q.select.list = mq_get_references (parser, statement, spec);
+
+      for (col = new_query->info.query.q.select.list; col; col = col->next)
 	{
-	  return NULL;
+	  if (col->flag.is_hidden_column)
+	    {
+	      col->flag.is_hidden_column = 0;
+	    }
 	}
 
-      if (spec->info.spec.share_group != NULL && own_cols != NULL
-	  && mq_share_group_covers (spec->info.spec.share_group, own_cols))
+      if (remove_sel_list)
 	{
-	  spec->info.spec.share_cols = own_cols;
-	  new_query->info.query.q.select.list = mq_share_select_list (parser, spec, spec->info.spec.share_group);
+	  /* Do not add except for referenced columns. */
 	  if (new_query->info.query.q.select.list == NULL)
 	    {
-	      return NULL;
+	      /* case of constant attr. e.g.) count(*), count(1) */
+	      /* just add one of integer value */
+	      new_query->info.query.q.select.list = pt_make_integer_value (parser, 1);
 	    }
 	}
       else
 	{
-	  /* the group keeps every column the members would select (mq_share_select_keeps_columns ()) */
-	  assert (spec->info.spec.share_group == NULL || own_cols == NULL);
-	  spec->info.spec.share_group = NULL;
-	  new_query->info.query.q.select.list = own_cols;
+	  /* add view's attributes to select list */
+	  v_attr_list = mq_fetch_attributes (parser, spec->info.spec.flat_entity_list);
+	  if (v_attr_list == NULL && (pt_has_error (parser) || er_has_error ()))
+	    {
+	      return NULL;
+	    }
+
+	  v_attr_list = parser_copy_tree_list (parser, v_attr_list);
+
+	  /* exclude the first oid attr, append non-exist attrs to select list */
+	  if (v_attr_list && v_attr_list->type_enum == PT_TYPE_OBJECT)
+	    {
+	      v_attr_list = v_attr_list->next;	/* skip oid attr */
+	    }
+
+	  for (v_attr = v_attr_list; v_attr; v_attr = v_attr->next)
+	    {
+	      v_attr->info.name.spec_id = spec->info.spec.id;	/* init spec id */
+	      mq_insert_symbol (parser, &new_query->info.query.q.select.list, v_attr);
+	    }			/* for (v_attr = ...) */
+
+	  /* free alloced */
+	  if (v_attr_list)
+	    {
+	      parser_free_tree (parser, v_attr_list);
+	    }
 	}
     }
 
@@ -6537,17 +6483,23 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
   /* free path entities, which will be handled by push_path */
   parser_free_tree (parser, new_spec->info.spec.path_entities);
   new_spec->info.spec.path_entities = NULL;
-  /* CBRD-27351: the derived table is the member of a share group, not the class spec in it */
-  new_spec->info.spec.share_group = NULL;
-  new_spec->info.spec.share_cols = NULL;
   /* remove outer join info, which is included in the spec too */
   new_spec->info.spec.join_type = PT_JOIN_NONE;
   parser_free_tree (parser, new_spec->info.spec.on_cond);
   new_spec->info.spec.on_cond = NULL;
 
+  /* CBRD-27351: the view this derived table comes from, which the spec forgets below (mq_share_view_results ()) */
+  view = NULL;
+  if (!is_value_query && spec->info.spec.flat_entity_list != NULL && spec->info.spec.flat_entity_list->next == NULL
+      && spec->info.spec.flat_entity_list->node_type == PT_NAME)
+    {
+      view = spec->info.spec.flat_entity_list->info.name.db_object;
+    }
+
   /* free old class spec stuff */
   parser_free_tree (parser, spec->info.spec.flat_entity_list);
   spec->info.spec.flat_entity_list = NULL;
+  spec->info.spec.share_view = view;
   parser_free_tree (parser, spec->info.spec.except_list);
   spec->info.spec.except_list = NULL;
   parser_free_tree (parser, spec->info.spec.entity_name);
@@ -10031,11 +9983,8 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
        * convert the expressions in subqueries and improve performance, we
        * put mq_push_paths as post function.
        */
-      /* CBRD-27351: the references to a view read twice or more share its result */
-      mq_share_view_refs (parser, node);
       node = parser_walk_tree (parser, node, NULL, NULL, mq_push_paths, NULL);
       node = parser_walk_tree (parser, node, NULL, NULL, mq_translate_local, NULL);
-      (void) mq_share_settle_groups (parser, node);
 
       mq_bump_order_dep_corr_lvl (parser, node);
 
@@ -10071,6 +10020,12 @@ mq_translate_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (node)
 	    {
 	      node = pt_semantic_type (parser, node, NULL);
+	    }
+
+	  /* CBRD-27351: on the final tree, the references to one view that are the same query read one result */
+	  if (node && !pt_has_error (parser))
+	    {
+	      mq_share_view_results (parser, node);
 	    }
 	}
       break;
@@ -16813,12 +16768,10 @@ mq_update_analytic_pos (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * 
 }
 
 /*
- * CBRD-27351: the references to one view outside correlated subqueries read one result of the view.
- *
- * Before the views are translated, the references of such a view are put in a share group, whose columns are those
- * all its references read. A reference of the group expanded as a derived table selects these columns in the order
- * of the view's; one that is merged into its query leaves the group. Then the derived table of one member, the donor,
- * makes the result the others read: the XASL generation wraps it in a CTE run before the statement (pt_set_aptr ()).
+ * CBRD-27351: the references to one view, expanded and rewritten as without sharing, whose derived tables are the
+ * same query but for the columns they read, read one result of it. mq_share_view_results () decides this once, on the
+ * translated and rewritten statement: a reference rewritten otherwise than the others (a term pushed into it, a join
+ * removed from it) is another query and keeps its own derived table.
  */
 
 /* a reference to a view */
@@ -16826,7 +16779,7 @@ typedef struct mq_share_ref MQ_SHARE_REF;
 struct mq_share_ref
 {
   PT_NODE *spec;
-  PT_NODE *select;		/* the SELECT whose FROM holds spec */
+  int order;			/* the order of the reference in the statement */
   MQ_SHARE_REF *next;
 };
 
@@ -16840,51 +16793,101 @@ struct mq_share_view
   MQ_SHARE_VIEW *next;
 };
 
-/* a correlated subquery the walk is in */
-typedef struct mq_share_corr MQ_SHARE_CORR;
-struct mq_share_corr
+/* a query the walk is in whose references are not shared, innermost first */
+typedef struct mq_share_excl MQ_SHARE_EXCL;
+struct mq_share_excl
 {
   PT_NODE *query;
-  MQ_SHARE_CORR *next;
+  MQ_SHARE_EXCL *next;
 };
 
 typedef struct mq_share_info MQ_SHARE_INFO;
 struct mq_share_info
 {
   PT_NODE *root;
-  MQ_SHARE_CORR *corr;		/* the correlated subqueries the walk is in, innermost first */
-  MQ_SHARE_CORR *selects;	/* the SELECTs the walk is in, innermost first */
+  MQ_SHARE_EXCL *excl;		/* the queries the walk is in that are not shared from */
+  MQ_SHARE_REF *bodies;		/* the references recorded, whose derived tables are not shared from */
   MQ_SHARE_VIEW *views;
+  int n_refs;			/* the references recorded */
   bool failed;
 };
 
 /*
- * mq_share_is_view_spec () - whether spec reads one view, as a whole, for reading only
+ * mq_share_is_body () - whether query is the derived table of a reference recorded
  */
 static bool
-mq_share_is_view_spec (PT_NODE * spec)
+mq_share_is_body (MQ_SHARE_INFO * info, const PT_NODE * query)
 {
-  PT_NODE *entity;
-
-  if (spec->node_type != PT_SPEC || !PT_SPEC_IS_ENTITY (spec) || PT_SPEC_IS_CTE (spec) || PT_SPEC_IS_DERIVED (spec))
+  for (MQ_SHARE_REF * body = info->bodies; body != NULL; body = body->next)
     {
-      return false;
+      if (body->spec->info.spec.derived_table == query)
+	{
+	  return true;
+	}
     }
-  entity = spec->info.spec.flat_entity_list;
-  if (entity == NULL || entity->next != NULL || entity->node_type != PT_NAME || entity->info.name.db_object == NULL
-      || entity->info.name.meta_class == PT_META_CLASS || db_is_vclass (entity->info.name.db_object) <= 0)
-    {
-      return false;
-    }
-  /* a path, or a spec scanned to update, delete or lock its rows, keeps its own translation */
-  return spec->info.spec.path_entities == NULL && spec->info.spec.meta_class != PT_META_CLASS
-    && !PT_SPEC_NEEDS_HEAP_REEVAL (spec);
+  return false;
 }
 
-static PT_NODE *mq_share_collect_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+/*
+ * mq_share_record () - add spec to the references of the view it was expanded from
+ */
+static void
+mq_share_record (PARSER_CONTEXT * parser, MQ_SHARE_INFO * info, PT_NODE * spec)
+{
+  MQ_SHARE_VIEW *view;
+  MQ_SHARE_REF *ref, *body;
+
+  for (view = info->views; view != NULL && view->view != spec->info.spec.share_view; view = view->next)
+    {
+      ;
+    }
+  if (view == NULL)
+    {
+      view = (MQ_SHARE_VIEW *) parser_alloc (parser, sizeof (MQ_SHARE_VIEW));
+      if (view == NULL)
+	{
+	  info->failed = true;
+	  return;
+	}
+      view->view = spec->info.spec.share_view;
+      view->next = info->views;
+      info->views = view;
+    }
+  ref = (MQ_SHARE_REF *) parser_alloc (parser, sizeof (MQ_SHARE_REF));
+  body = (MQ_SHARE_REF *) parser_alloc (parser, sizeof (MQ_SHARE_REF));
+  if (ref == NULL || body == NULL)
+    {
+      info->failed = true;
+      return;
+    }
+  /* keep the order of the references in the tree, the order of the groups in share_groups */
+  ref->spec = spec;
+  ref->order = info->n_refs++;
+  ref->next = NULL;
+  if (view->refs == NULL)
+    {
+      view->refs = ref;
+    }
+  else
+    {
+      MQ_SHARE_REF *last = view->refs;
+      while (last->next != NULL)
+	{
+	  last = last->next;
+	}
+      last->next = ref;
+    }
+  view->n_refs++;
+  body->spec = spec;
+  body->next = info->bodies;
+  info->bodies = body;
+}
 
 /*
- * mq_share_collect_pre () - collect the references to views outside correlated subqueries
+ * mq_share_collect_pre () - collect the derived tables expanded from a view, outside the queries not shared from: a
+ *   correlated subquery, run per row of its outer query; a subquery with the QUERY_CACHE hint, also compiled and run
+ *   by itself (do_prepare_subquery ()); the derived table of another reference, which a member reading the shared
+ *   result never runs
  */
 static PT_NODE *
 mq_share_collect_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -16898,95 +16901,62 @@ mq_share_collect_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       return node;
     }
 
-  if (PT_IS_SELECT (node))
+  if (node->node_type == PT_SPEC && node->info.spec.share_group != NULL)
     {
-      MQ_SHARE_CORR *select = (MQ_SHARE_CORR *) parser_alloc (parser, sizeof (MQ_SHARE_CORR));
-      if (select == NULL)
+      /* a group decided before, as for a copy of a statement translated again (pt_set_table_to_db ()) */
+      node->info.spec.share_group = NULL;
+      if (node->info.spec.derived_table != NULL && PT_IS_QUERY (node->info.spec.derived_table))
 	{
-	  info->failed = true;
-	  return node;
+	  node->info.spec.derived_table->info.query.flag.shared_view_body = 0;
 	}
-      select->query = node;
-      select->next = info->selects;
-      info->selects = select;
     }
 
-  if (PT_IS_QUERY (node) && node != info->root && node->info.query.correlation_level != 0)
+  if (PT_IS_QUERY (node) && node != info->root
+      && (node->info.query.correlation_level != 0
+	  || (PT_IS_SELECT (node) && (node->info.query.q.select.hint & PT_HINT_QUERY_CACHE))
+	  || mq_share_is_body (info, node)))
     {
-      MQ_SHARE_CORR *corr = (MQ_SHARE_CORR *) parser_alloc (parser, sizeof (MQ_SHARE_CORR));
-      if (corr == NULL)
+      MQ_SHARE_EXCL *excl = (MQ_SHARE_EXCL *) parser_alloc (parser, sizeof (MQ_SHARE_EXCL));
+      if (excl == NULL)
 	{
 	  info->failed = true;
+	  *continue_walk = PT_STOP_WALK;
 	  return node;
 	}
-      corr->query = node;
-      corr->next = info->corr;
-      info->corr = corr;
+      excl->query = node;
+      excl->next = info->excl;
+      info->excl = excl;
       return node;
     }
 
-  if (info->corr == NULL && mq_share_is_view_spec (node))
+  if (info->excl == NULL && node->node_type == PT_SPEC && node->info.spec.share_view != NULL
+      && node->info.spec.derived_table_type == PT_IS_SUBQUERY && PT_IS_QUERY (node->info.spec.derived_table))
     {
-      DB_OBJECT *view = node->info.spec.flat_entity_list->info.name.db_object;
-      MQ_SHARE_VIEW *v;
-      MQ_SHARE_REF *ref;
-
-      for (v = info->views; v != NULL && v->view != view; v = v->next)
-	{
-	  ;
-	}
-      if (v == NULL)
-	{
-	  v = (MQ_SHARE_VIEW *) parser_alloc (parser, sizeof (MQ_SHARE_VIEW));
-	  if (v == NULL)
-	    {
-	      info->failed = true;
-	      return node;
-	    }
-	  v->view = view;
-	  v->next = info->views;
-	  info->views = v;
-	}
-      ref = (MQ_SHARE_REF *) parser_alloc (parser, sizeof (MQ_SHARE_REF));
-      if (ref == NULL)
-	{
-	  info->failed = true;
-	  return node;
-	}
-      ref->spec = node;
-      ref->select = (info->selects != NULL) ? info->selects->query : NULL;
-      ref->next = v->refs;
-      v->refs = ref;
-      v->n_refs++;
+      mq_share_record (parser, info, node);
     }
-
   return node;
 }
 
 /*
- * mq_share_collect_post () - leave a correlated subquery
+ * mq_share_collect_post () - leave a query not shared from
  */
 static PT_NODE *
 mq_share_collect_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   MQ_SHARE_INFO *info = (MQ_SHARE_INFO *) arg;
 
-  if (info->corr != NULL && info->corr->query == node)
+  if (info->excl != NULL && info->excl->query == node)
     {
-      info->corr = info->corr->next;
-    }
-  if (info->selects != NULL && info->selects->query == node)
-    {
-      info->selects = info->selects->next;
+      info->excl = info->excl->next;
     }
   return node;
 }
 
 /*
- * mq_share_body_is_safe_pre () - find a method or BENCHMARK, whose run is part of its result, in a view's definition
+ * mq_share_body_safe_pre () - find a method or BENCHMARK, whose run is part of its result
  */
 static PT_NODE *
-mq_share_body_is_safe_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+mq_share_body_safe_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   bool *safe = (bool *) arg;
 
@@ -17000,327 +16970,295 @@ mq_share_body_is_safe_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 }
 
 /*
- * mq_share_view_is_safe () - whether evaluating a view once for all its references gives each the rows it would read
- *   by itself: no random value, serial, session variable, nondeterministic stored function, method, BENCHMARK, or
- *   counter (rownum, incr) in its definition. A view of VALUES is not shared.
+ * mq_share_body_is_safe () - whether running a derived table once gives each reference the rows it would read by
+ *   itself: no random value, serial, session variable, nondeterministic stored function, method, BENCHMARK or counter
+ *   (rownum, incr) in it, and not VALUES
  */
 static bool
-mq_share_view_is_safe (PARSER_CONTEXT * parser, PT_NODE * entity)
+mq_share_body_is_safe (PARSER_CONTEXT * parser, PT_NODE * body)
 {
-  PT_NODE *query_spec;
-  bool safe = true;
+  bool safe = true, has_click_counter = false;
 
-  for (query_spec = mq_fetch_subqueries (parser, entity); query_spec != NULL && safe; query_spec = query_spec->next)
+  if (body->flag.is_value_query || !pt_is_result_reuse_safe (parser, body))
     {
-      bool has_click_counter = false;
-      PT_NODE *next = query_spec->next;
+      return false;
+    }
+  (void) parser_walk_tree (parser, body, mq_has_click_counter, &has_click_counter, NULL, NULL);
+  (void) parser_walk_tree (parser, body, mq_share_body_safe_pre, &safe, NULL, NULL);
+  return safe && !has_click_counter && !pt_has_error (parser);
+}
 
-      if (PT_IS_VALUE_QUERY (query_spec))
+/* a growable array of nodes, each with a string kept for it */
+typedef struct mq_share_nodes MQ_SHARE_NODES;
+struct mq_share_nodes
+{
+  PT_NODE **nodes;
+  const char **strs;
+  int n;
+  int cap;
+};
+
+static bool
+mq_share_push (PARSER_CONTEXT * parser, MQ_SHARE_NODES * a, PT_NODE * node, const char *str)
+{
+  if (a->n == a->cap)
+    {
+      int cap = a->cap * 2 + 16;
+      PT_NODE **nodes = (PT_NODE **) parser_alloc (parser, cap * (int) sizeof (PT_NODE *));
+      const char **strs = (const char **) parser_alloc (parser, cap * (int) sizeof (char *));
+      if (nodes == NULL || strs == NULL)
 	{
-	  safe = false;
+	  return false;
+	}
+      if (a->n > 0)
+	{
+	  memcpy (nodes, a->nodes, a->n * sizeof (PT_NODE *));
+	  memcpy (strs, a->strs, a->n * sizeof (char *));
+	}
+      a->nodes = nodes;
+      a->strs = strs;
+      a->cap = cap;
+    }
+  a->nodes[a->n] = node;
+  a->strs[a->n] = str;
+  a->n++;
+  return true;
+}
+
+/* the text of a derived table compared with those of the other references to its view, printed from a copy of it */
+typedef struct mq_share_text MQ_SHARE_TEXT;
+struct mq_share_text
+{
+  MQ_SHARE_NODES specs;		/* the specs in it, in walk order, with the names of their range variables */
+  MQ_SHARE_NODES hvars;		/* the host variables printed, in walk order */
+  const char *text;
+  bool failed;
+};
+
+static PT_NODE *
+mq_share_text_specs_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  MQ_SHARE_TEXT *text = (MQ_SHARE_TEXT *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type != PT_SPEC || text->failed)
+    {
+      return node;
+    }
+  /* the operands of a set operation over a view are copies of one query, whose specs keep one id each */
+  if (!mq_share_push (parser, &text->specs, node, NULL))
+    {
+      text->failed = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * mq_share_text_names_pre () - name the specs of the copy by their order, s0, s1, ...: the derived tables of two
+ *   references print alike though the references have different aliases
+ */
+static PT_NODE *
+mq_share_text_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  MQ_SHARE_TEXT *text = (MQ_SHARE_TEXT *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type != PT_NAME || text->failed || node->info.name.resolved == NULL)
+    {
+      return node;
+    }
+  for (int i = 0; i < text->specs.n; i++)
+    {
+      if (text->specs.nodes[i]->info.spec.id == node->info.name.spec_id)
+	{
+	  node->info.name.resolved = text->specs.strs[i];
 	  break;
 	}
-      query_spec->next = NULL;
-      if (!pt_is_result_reuse_safe (parser, query_spec))
-	{
-	  safe = false;
-	}
-      (void) parser_walk_tree (parser, query_spec, mq_has_click_counter, &has_click_counter, NULL, NULL);
-      (void) parser_walk_tree (parser, query_spec, mq_share_body_is_safe_pre, &safe, NULL, NULL);
-      query_spec->next = next;
-      if (has_click_counter)
-	{
-	  safe = false;
-	}
     }
-  return safe && !pt_has_error (parser);
+  return node;
 }
 
-/*
- * mq_share_body_keeps_columns () - whether a view's body gives other rows when the columns no reference reads are
- *   removed, as mq_is_removable_select_list () judges of the body: then each reference reads every column
- */
-static bool
-mq_share_body_keeps_columns (PARSER_CONTEXT * parser, PT_NODE * entity)
-{
-  PT_NODE *query_spec = mq_fetch_subqueries (parser, entity);
-
-  if (parser->flag.is_parsing_static_sql || query_spec == NULL || query_spec->next != NULL
-      || !PT_IS_SELECT (query_spec))
-    {
-      /* a view of a set operation or of two query specs is read as a whole, as mq_check_rewrite_select () does */
-      return true;
-    }
-
-  if ((query_spec->info.query.q.select.hint & (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE)) || pt_is_distinct (query_spec)
-      || query_spec->info.query.q.select.connect_by != NULL
-      || pt_has_define_vars (parser, query_spec->info.query.q.select.list) || query_spec->info.query.with != NULL)
-    {
-      return true;
-    }
-  for (PT_NODE * spec = query_spec->info.query.q.select.from; spec != NULL; spec = spec->next)
-    {
-      if (PT_SPEC_IS_CTE (spec))
-	{
-	  return true;
-	}
-    }
-  return false;
-}
-
-/*
- * mq_share_select_keeps_columns () - whether a view read in the FROM of select keeps every column there, as
- *   mq_is_removable_select_list () judges of the query reading it
- */
-static bool
-mq_share_select_keeps_columns (PT_NODE * select)
-{
-  if (select == NULL || !PT_IS_SELECT (select))
-    {
-      return true;
-    }
-  return (PT_SELECT_INFO_IS_FLAGED (select, PT_SELECT_INFO_IS_MERGE_QUERY | PT_SELECT_INFO_IS_UPD_DEL_QUERY
-				    | PT_SELECT_INFO_COLS_SCHEMA | PT_SELECT_FULL_INFO_COLS_SCHEMA)
-	  || select->info.query.q.select.connect_by != NULL || select->info.query.with != NULL);
-}
-
-/*
- * mq_share_find_name () - the name of list named as name, NULL for none
- */
 static PT_NODE *
-mq_share_find_name (PT_NODE * list, const PT_NODE * name)
+mq_share_text_hvars_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  for (; list != NULL; list = list->next)
+  MQ_SHARE_TEXT *text = (MQ_SHARE_TEXT *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type == PT_HOST_VAR && !text->failed && !mq_share_push (parser, &text->hvars, node, NULL))
     {
-      if (list->node_type == PT_NAME && pt_str_compare (list->info.name.original, name->info.name.original,
-							CASE_INSENSITIVE) == 0)
-	{
-	  return list;
-	}
+      text->failed = true;
+      *continue_walk = PT_STOP_WALK;
     }
-  return NULL;
+  return node;
 }
 
 /*
- * mq_share_view_attrs () - the names of the columns the references of view read, each once, in no order; NULL for
- *   none. *shareable is false when a reference reads the view otherwise than by its columns.
- */
-static PT_NODE *
-mq_share_view_attrs (PARSER_CONTEXT * parser, PT_NODE * statement, MQ_SHARE_VIEW * view, bool * shareable)
-{
-  PT_NODE *view_attrs, *attrs = NULL;
-
-  *shareable = true;
-  view_attrs = mq_fetch_attributes (parser, view->refs->spec->info.spec.flat_entity_list);
-  if (view_attrs == NULL)
-    {
-      *shareable = false;
-      return NULL;
-    }
-
-  for (MQ_SHARE_REF * ref = view->refs; ref != NULL && *shareable; ref = ref->next)
-    {
-      PT_NODE *names = mq_get_references (parser, statement, ref->spec);
-
-      for (PT_NODE * name = names; name != NULL && *shareable; name = name->next)
-	{
-	  PT_NODE *attr;
-
-	  if (name->node_type != PT_NAME || (attr = mq_share_find_name (view_attrs, name)) == NULL
-	      || attr->type_enum == PT_TYPE_OBJECT)
-	    {
-	      /* the oid of the view, or a name that is not a column of the view */
-	      *shareable = false;
-	    }
-	  else if (mq_share_find_name (attrs, name) == NULL)
-	    {
-	      PT_NODE *copy = pt_name (parser, attr->info.name.original);
-	      if (copy == NULL)
-		{
-		  *shareable = false;
-		  break;
-		}
-	      attrs = parser_append_node (copy, attrs);
-	    }
-	}
-      parser_free_tree (parser, names);
-    }
-
-  if (!*shareable)
-    {
-      parser_free_tree (parser, attrs);
-      attrs = NULL;
-    }
-  return attrs;
-}
-
-/*
- * mq_share_view_refs () - put in a share group the references to each view that is read twice or more outside
- *   correlated subqueries
+ * mq_share_text_drop_lists () - take the select lists out of the SELECTs of query, the copy of a derived table or an
+ *   operand of one, and print an ORDER BY key of a position as the expression at that position
  */
 static void
-mq_share_view_refs (PARSER_CONTEXT * parser, PT_NODE * statement)
+mq_share_text_drop_lists (PARSER_CONTEXT * parser, MQ_SHARE_TEXT * text, PT_NODE * query)
 {
-  MQ_SHARE_INFO info = { statement, NULL, NULL, NULL, false };
-
-  if (statement == NULL || pt_has_error (parser))
+  if (text->failed)
     {
       return;
     }
-
-  (void) parser_walk_tree (parser, statement, mq_share_collect_pre, &info, mq_share_collect_post, &info);
-  if (info.failed)
+  if (PT_IS_SELECT (query))
     {
-      return;
-    }
+      PT_NODE *list = query->info.query.q.select.list;
 
-  for (MQ_SHARE_VIEW * view = info.views; view != NULL && !pt_has_error (parser); view = view->next)
-    {
-      PT_SHARE_GROUP *group;
-      PT_NODE *attrs;
-      bool shareable;
+      for (PT_NODE * sort = query->info.query.order_by; sort != NULL; sort = sort->next)
+	{
+	  PT_NODE *expr = sort->info.sort_spec.expr;
+	  int pos = sort->info.sort_spec.pos_descr.pos_no;
+	  PT_NODE *item;
 
-      if (view->n_refs < 2 || !mq_share_view_is_safe (parser, view->refs->spec->info.spec.flat_entity_list))
-	{
-	  continue;
-	}
-      attrs = mq_share_view_attrs (parser, statement, view, &shareable);
-      if (!shareable)
-	{
-	  continue;
-	}
-
-      group = (PT_SHARE_GROUP *) parser_alloc (parser, sizeof (PT_SHARE_GROUP));
-      if (group == NULL)
-	{
-	  parser_free_tree (parser, attrs);
-	  return;
-	}
-      group->view = view->view;
-      group->attrs = attrs;
-      group->all_columns = mq_share_body_keeps_columns (parser, view->refs->spec->info.spec.flat_entity_list);
-      for (MQ_SHARE_REF * ref = view->refs; ref != NULL && !group->all_columns; ref = ref->next)
-	{
-	  group->all_columns = mq_share_select_keeps_columns (ref->select);
-	}
-      for (MQ_SHARE_REF * ref = view->refs; ref != NULL; ref = ref->next)
-	{
-	  ref->spec->info.spec.share_group = group;
-	}
-    }
-}
-
-/*
- * mq_share_select_list () - the select list of the derived table a member of group is expanded as: the columns of
- *   the group, in the order of the view's, so that every member reads the donor's result at the same positions
- */
-static PT_NODE *
-mq_share_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SHARE_GROUP * group)
-{
-  PT_NODE *v_attrs, *list = NULL;
-
-  v_attrs = parser_copy_tree_list (parser, mq_fetch_attributes (parser, spec->info.spec.flat_entity_list));
-  /* the first attribute of object type is the oid of the view, which no member reads, as in
-   * mq_rewrite_vclass_spec_as_derived (); an attribute of object type after it is a column */
-  for (PT_NODE * v_attr = (v_attrs != NULL && v_attrs->type_enum == PT_TYPE_OBJECT) ? v_attrs->next : v_attrs;
-       v_attr != NULL; v_attr = v_attr->next)
-    {
-      if (group->all_columns || mq_share_find_name (group->attrs, v_attr) != NULL)
-	{
-	  PT_NODE *col = parser_copy_tree (parser, v_attr);
-	  if (col == NULL)
+	  if (sort->node_type != PT_SORT_SPEC || expr == NULL || expr->node_type != PT_VALUE || pos <= 0)
 	    {
-	      break;
+	      continue;
 	    }
-	  col->info.name.spec_id = spec->info.spec.id;
-	  list = parser_append_node (col, list);
+	  item = pt_get_node_from_list (list, pos - 1);
+	  if (item == NULL)
+	    {
+	      text->failed = true;
+	      return;
+	    }
+	  sort->info.sort_spec.expr = item;
+	}
+      query->info.query.q.select.list = NULL;
+    }
+  else if (PT_IS_QUERY (query))
+    {
+      mq_share_text_drop_lists (parser, text, query->info.query.q.union_.arg1);
+      mq_share_text_drop_lists (parser, text, query->info.query.q.union_.arg2);
+    }
+}
+
+/*
+ * mq_share_text () - print a derived table but for its select lists, its specs named by their order and its host
+ *   variables without their numbers, as the hash text of a query prints it otherwise; collect the host variables
+ */
+static void
+mq_share_text (PARSER_CONTEXT * parser, PT_NODE * body, MQ_SHARE_TEXT * text)
+{
+  unsigned int save_custom = parser->custom_print;
+  PT_NODE *copy;
+  int i;
+
+  memset (text, 0, sizeof (MQ_SHARE_TEXT));
+
+  /* a copy is printed: its specs keep the ids of the derived table's, which its names read */
+  copy = parser_copy_tree (parser, body);
+  if (copy == NULL)
+    {
+      text->failed = true;
+      return;
+    }
+
+  /* the select lists are taken out first, so the specs of a subquery in them take no number of the order */
+  mq_share_text_drop_lists (parser, text, copy);
+  (void) parser_walk_tree (parser, copy, mq_share_text_specs_pre, text, NULL, NULL);
+  for (i = 0; i < text->specs.n && !text->failed; i++)
+    {
+      char buf[32];
+      int j;
+
+      /* a spec of the id of one before it takes its name: one id names one spec where a name can see it */
+      for (j = 0; j < i && text->specs.nodes[j]->info.spec.id != text->specs.nodes[i]->info.spec.id; j++)
+	{
+	  ;
+	}
+      if (j < i)
+	{
+	  text->specs.strs[i] = text->specs.strs[j];
+	  continue;
+	}
+      snprintf (buf, sizeof (buf), "s%d", i);
+      text->specs.strs[i] = pt_append_string (parser, NULL, buf);
+      if (text->specs.strs[i] == NULL)
+	{
+	  text->failed = true;
 	}
     }
-  parser_free_tree (parser, v_attrs);
-
-  if (list == NULL)
+  if (text->failed)
     {
-      /* the references read no column, as COUNT (*) */
-      list = pt_make_integer_value (parser, 1);
+      return;
     }
-  return list;
+  (void) parser_walk_tree (parser, copy, mq_share_text_names_pre, text, NULL, NULL);
+  for (i = 0; i < text->specs.n; i++)
+    {
+      PT_NODE *range = text->specs.nodes[i]->info.spec.range_var;
+      if (range != NULL && range->node_type == PT_NAME)
+	{
+	  range->info.name.original = text->specs.strs[i];
+	}
+    }
+
+  (void) parser_walk_tree (parser, copy, mq_share_text_hvars_pre, text, NULL, NULL);
+  if (text->failed)
+    {
+      return;
+    }
+  parser->custom_print |= (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_DBLINK_INFO
+			   | PT_PRINT_NO_HOST_VAR_INDEX);
+  text->text = parser_print_tree (parser, copy);
+  parser->custom_print = save_custom;
+  if (text->text == NULL)
+    {
+      text->failed = true;
+    }
 }
 
 /*
- * mq_share_settle_pre () - count the members of the share groups, expanded as a derived table, and pick the first as
- *   the donor; a reference left a table spec leaves its group
- */
-static PT_NODE *
-mq_share_settle_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  PT_SHARE_GROUP **groups = (PT_SHARE_GROUP **) arg;
-  PT_SHARE_GROUP *group;
-
-  *continue_walk = PT_CONTINUE_WALK;
-  if (node->node_type != PT_SPEC || (group = node->info.spec.share_group) == NULL)
-    {
-      return node;
-    }
-
-  if (node->info.spec.derived_table_type != PT_IS_SUBQUERY || !PT_IS_QUERY (node->info.spec.derived_table))
-    {
-      node->info.spec.share_group = NULL;
-      return node;
-    }
-
-  if (node->info.spec.share_pushed)
-    {
-      /* a term pushed into its body: it reads other rows than the group's result */
-      node->info.spec.share_group = NULL;
-      node->info.spec.derived_table->info.query.flag.shared_view_body = 0;
-      return node;
-    }
-
-  if (group->n_members < 0)
-    {
-      /* first seen in this walk */
-      group->n_members = 0;
-      group->donor = NULL;
-      group->next = *groups;
-      *groups = group;
-    }
-  group->n_members++;
-  if (group->donor == NULL)
-    {
-      group->donor = node;
-    }
-  return node;
-}
-
-/*
- * mq_share_reset_pre () - mark the share groups unseen
- */
-static PT_NODE *
-mq_share_reset_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  *continue_walk = PT_CONTINUE_WALK;
-  if (node->node_type == PT_SPEC && node->info.spec.share_group != NULL)
-    {
-      node->info.spec.share_group->n_members = -1;
-      node->info.spec.share_group->kept = NULL;
-      node->info.spec.share_group->n_kept = 0;
-    }
-  return node;
-}
-
-/*
- * mq_share_group_covers () - whether the columns of group hold the names of cols
+ * mq_share_same_hvar () - whether two host variables of two derived tables printed alike hold one value: a user's
+ *   host variable, unbound when the query is prepared, only as itself
  */
 static bool
-mq_share_group_covers (PT_SHARE_GROUP * group, PT_NODE * cols)
+mq_share_same_hvar (PARSER_CONTEXT * parser, PT_NODE * hv1, PT_NODE * hv2)
 {
-  if (group->all_columns)
+  DB_VALUE *v1, *v2;
+
+  if (hv1->info.host_var.index == hv2->info.host_var.index)
     {
       return true;
     }
-  for (PT_NODE * col = cols; col != NULL; col = col->next)
+  if (hv1->info.host_var.var_type != PT_HOST_IN || hv2->info.host_var.var_type != PT_HOST_IN
+      || hv1->info.host_var.index < parser->host_var_count || hv2->info.host_var.index < parser->host_var_count)
     {
-      if (col->node_type == PT_NAME && mq_share_find_name (group->attrs, col) == NULL)
+      return false;
+    }
+  v1 = pt_host_var_db_value (parser, hv1);
+  v2 = pt_host_var_db_value (parser, hv2);
+  if (v1 == NULL || v2 == NULL || DB_VALUE_DOMAIN_TYPE (v1) != DB_VALUE_DOMAIN_TYPE (v2))
+    {
+      return false;
+    }
+  if (DB_IS_NULL (v1) || DB_IS_NULL (v2))
+    {
+      return DB_IS_NULL (v1) && DB_IS_NULL (v2);
+    }
+  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (v1)) && db_get_string_size (v1) != db_get_string_size (v2))
+    {
+      /* a comparison that ignores trailing spaces is not equality of the values */
+      return false;
+    }
+  return db_value_compare (v1, v2) == DB_EQ;
+}
+
+/*
+ * mq_share_same_text () - whether two derived tables printed alike are the same query but for their select lists
+ */
+static bool
+mq_share_same_text (PARSER_CONTEXT * parser, const MQ_SHARE_TEXT * t1, const MQ_SHARE_TEXT * t2)
+{
+  if (t1->failed || t2->failed || strcmp (t1->text, t2->text) != 0 || t1->hvars.n != t2->hvars.n)
+    {
+      return false;
+    }
+  for (int i = 0; i < t1->hvars.n; i++)
+    {
+      if (!mq_share_same_hvar (parser, t1->hvars.nodes[i], t2->hvars.nodes[i]))
 	{
 	  return false;
 	}
@@ -17328,229 +17266,439 @@ mq_share_group_covers (PT_SHARE_GROUP * group, PT_NODE * cols)
   return true;
 }
 
-/*
- * mq_share_narrow_cols () - narrow the derived table of spec, a member of a share group read in select, to the
- *   columns named in cols: in their order, or in the order of the columns of spec when in_spec_order
- *   return: NO_ERROR, or an error code
- */
-static int
-mq_share_narrow_cols (PARSER_CONTEXT * parser, PT_NODE * select, PT_NODE * spec, PT_NODE * cols, bool in_spec_order)
+/* how a column expression copied from a member's derived table is moved onto the producer */
+typedef struct mq_share_move MQ_SHARE_MOVE;
+struct mq_share_move
 {
-  PT_NODE *list = NULL, *attr, *col, *old_spec, *new_spec = NULL;
+  PT_NODE *from_specs;		/* the FROM list of the member's derived table */
+  PT_NODE *to_specs;		/* the FROM list of the producer, which matches it spec by spec */
+  bool failed;
+};
 
-  if (!PT_IS_SELECT (spec->info.spec.derived_table)
-      || mq_is_removable_select_list (parser, spec->info.spec.derived_table, select) != PUSHABLE)
-    {
-      /* as mq_substitute_inline_view_in_statement (): a set operation, DISTINCT, ... keeps its select list */
-      return NO_ERROR;
-    }
+/*
+ * mq_share_move_pre () - a name of a spec of the member's FROM list becomes the name of the producer's spec at its
+ *   position; a path or a method brings specs that are not in the expression and is not moved
+ */
+static PT_NODE *
+mq_share_move_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  MQ_SHARE_MOVE *move = (MQ_SHARE_MOVE *) arg;
+  PT_NODE *from, *to;
 
-  if (in_spec_order)
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type == PT_DOT_ || PT_IS_METHOD (node))
     {
-      for (attr = spec->info.spec.as_attr_list; attr != NULL; attr = attr->next)
-	{
-	  if (attr->node_type == PT_NAME && mq_share_find_name (cols, attr) != NULL)
-	    {
-	      list = parser_append_node (parser_copy_tree (parser, attr), list);
-	    }
-	}
+      move->failed = true;
+      *continue_walk = PT_STOP_WALK;
+      return node;
     }
-  else
+  if (node->node_type != PT_NAME || node->info.name.spec_id == 0)
     {
-      for (col = cols; col != NULL; col = col->next)
-	{
-	  if (col->node_type != PT_NAME)
-	    {
-	      continue;
-	    }
-	  attr = mq_share_find_name (spec->info.spec.as_attr_list, col);
-	  if (attr == NULL)
-	    {
-	      /* every column a member would select is a column of its group (mq_share_group_covers ()) */
-	      assert (false);
-	      parser_free_tree (parser, list);
-	      return NO_ERROR;
-	    }
-	  list = parser_append_node (parser_copy_tree (parser, attr), list);
-	}
+      return node;
     }
-
-  /* nothing to do when list names the columns of spec in their order */
-  for (attr = spec->info.spec.as_attr_list, col = list; attr != NULL && col != NULL; attr = attr->next, col = col->next)
+  for (from = move->from_specs, to = move->to_specs; from != NULL && to != NULL; from = from->next, to = to->next)
     {
-      if (attr->node_type != PT_NAME || pt_str_compare (attr->info.name.original, col->info.name.original,
-							CASE_INSENSITIVE) != 0)
+      if (from->info.spec.id == node->info.name.spec_id)
 	{
+	  node->info.name.spec_id = to->info.spec.id;
+	  if (node->info.name.resolved != NULL && to->info.spec.range_var != NULL)
+	    {
+	      node->info.name.resolved = to->info.spec.range_var->info.name.original;
+	    }
 	  break;
 	}
     }
-  if (attr == NULL && col == NULL)
-    {
-      parser_free_tree (parser, list);
-      return NO_ERROR;
-    }
-
-  if (list == NULL)
-    {
-      /* case of constant attr. e.g.) count(*), count(1) */
-      list = pt_make_integer_value (parser, 1);
-      if (list == NULL)
-	{
-	  return ER_FAILED;
-	}
-    }
-
-  /* a copy keeps the derived table being replaced, whose columns the analytic functions are matched against */
-  old_spec = parser_copy_tree (parser, spec);
-  if (old_spec == NULL)
-    {
-      parser_free_tree (parser, list);
-      return ER_FAILED;
-    }
-  (void) mq_remove_select_list_for_inline_view (parser, select, old_spec, list, &new_spec);
-  parser_free_tree (parser, old_spec);
-  return (new_spec != NULL) ? NO_ERROR : ER_FAILED;
-}
-
-/*
- * mq_share_kept_pre () - gather in its group the columns a member left in it would select without the group
- */
-static PT_NODE *
-mq_share_kept_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  PT_SHARE_GROUP *group;
-  bool *failed = (bool *) arg;
-
-  *continue_walk = PT_CONTINUE_WALK;
-  if (node->node_type != PT_SPEC || (group = node->info.spec.share_group) == NULL || node->info.spec.share_cols == NULL)
-    {
-      return node;
-    }
-
-  for (PT_NODE * col = node->info.spec.share_cols; col != NULL; col = col->next)
-    {
-      if (col->node_type == PT_NAME && mq_share_find_name (group->kept, col) == NULL)
-	{
-	  PT_NODE *name = pt_name (parser, col->info.name.original);
-	  if (name == NULL)
-	    {
-	      *failed = true;
-	      *continue_walk = PT_STOP_WALK;
-	      return node;
-	    }
-	  group->kept = parser_append_node (name, group->kept);
-	}
-    }
-  group->n_kept++;
   return node;
 }
 
 /*
- * mq_share_restore_pre () - a member that left its group, or whose group breaks up, goes back to the columns it would
- *   select without the group; the members of a group left with fewer references select the columns they read
+ * mq_share_movable_pre () - find a path or a method, which a column expression cannot be moved with
+ *   (mq_share_move_pre ())
  */
 static PT_NODE *
-mq_share_restore_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+mq_share_movable_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  int *error = (int *) arg;
+  bool *movable = (bool *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
-  if (!PT_IS_SELECT (node) || *error != NO_ERROR)
+  if (node->node_type == PT_DOT_ || PT_IS_METHOD (node))
     {
-      return node;
-    }
-
-  for (PT_NODE * spec = node->info.query.q.select.from; spec != NULL && *error == NO_ERROR; spec = spec->next)
-    {
-      PT_SHARE_GROUP *group = spec->info.spec.share_group;
-
-      if (spec->info.spec.share_cols == NULL || spec->info.spec.derived_table_type != PT_IS_SUBQUERY
-	  || !PT_IS_QUERY (spec->info.spec.derived_table))
-	{
-	  continue;
-	}
-
-      if (group == NULL || group->n_members < 2)
-	{
-	  *error = mq_share_narrow_cols (parser, node, spec, spec->info.spec.share_cols, false);
-	  spec->info.spec.share_cols = NULL;
-	}
-      else if (!group->all_columns && group->n_kept == group->n_members)
-	{
-	  *error = mq_share_narrow_cols (parser, node, spec, group->kept, true);
-	}
+      *movable = false;
+      *continue_walk = PT_STOP_WALK;
     }
   return node;
 }
 
 /*
- * mq_share_mark_pre () -a member of a group of one leaves it; the derived table of a member of a group of two or more
- *   is marked
+ * mq_share_columns_movable () - whether every column a member reads can be moved onto the producer, made from any
+ *   member when the XASL is generated (mq_share_make_producer ()), so that making it never fails
  */
-static PT_NODE *
-mq_share_mark_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+static bool
+mq_share_columns_movable (PARSER_CONTEXT * parser, PT_NODE * member)
 {
-  PT_SHARE_GROUP *group;
+  PT_NODE *attr, *item, *next;
+  bool movable = true;
 
-  *continue_walk = PT_CONTINUE_WALK;
-  if (node->node_type != PT_SPEC || (group = node->info.spec.share_group) == NULL)
+  if (!PT_IS_SELECT (member->info.spec.derived_table))
     {
-      return node;
+      return true;
     }
-
-  if (group->n_members < 2)
+  for (attr = member->info.spec.as_attr_list, item = member->info.spec.derived_table->info.query.q.select.list;
+       attr != NULL && item != NULL && movable; attr = attr->next, item = item->next)
     {
-      node->info.spec.share_group = NULL;
-      node->info.spec.derived_table->info.query.flag.shared_view_body = 0;
+      next = item->next;
+      item->next = NULL;
+      (void) parser_walk_tree (parser, item, mq_share_movable_pre, &movable, NULL, NULL);
+      item->next = next;
     }
-  else
-    {
-      node->info.spec.derived_table->info.query.flag.shared_view_body = 1;
-      /* a generation makes the donor's XASL anew (pt_generate_shared_view_body ()) */
-      node->info.spec.derived_table->info.query.xasl = NULL;
-    }
-  return node;
+  return movable;
 }
 
 /*
- * mq_share_settle_groups () - CBRD-27351: settle the share groups of statement after the views are translated and
- *   again before its XASL is generated: the groups of two or more members, each with its donor
- *   return: the groups
+ * mq_share_make_producer () - CBRD-27351: the query that makes the result of a share group, while its statement's
+ *   XASL is generated: a copy of the first member's derived table that also computes the columns only the other
+ *   members read; the members keep their own derived tables, and read the producer's columns by their names
+ *   return: the producer, NULL on an error (pt_has_error ())
+ *   parser(in):
+ *   members(in): the members in the statement being generated, at least two, in the order of the statement
+ *   n_members(in):
+ *   attrs(out): the names of the producer's columns
  */
-PT_SHARE_GROUP *
-mq_share_settle_groups (PARSER_CONTEXT * parser, PT_NODE * statement)
+PT_NODE *
+mq_share_make_producer (PARSER_CONTEXT * parser, PT_NODE ** members, int n_members, PT_NODE ** attrs)
 {
-  PT_SHARE_GROUP *groups = NULL, *valid = NULL;
-  bool failed = false;
-  int error = NO_ERROR;
+  PT_NODE *body, *add_items = NULL, *add_attrs = NULL;
+  int n_visible = pt_length_of_list (members[0]->info.spec.as_attr_list);
+  int i;
 
-  if (statement == NULL)
+  *attrs = NULL;
+  body = parser_copy_tree (parser, members[0]->info.spec.derived_table);
+  *attrs = parser_copy_tree_list (parser, members[0]->info.spec.as_attr_list);
+  if (body == NULL || *attrs == NULL)
     {
+      PT_INTERNAL_ERROR (parser, "copy tree");
       return NULL;
     }
+  /* the producer is no member: its specs get their own ids, apart from the member it is copied from */
+  body = mq_reset_ids_in_statement (parser, body);
+  body->info.query.id = (UINTPTR) body;
+  body->info.query.flag.shared_view_body = 0;
 
-  (void) parser_walk_tree (parser, statement, mq_share_reset_pre, NULL, NULL, NULL);
-  (void) parser_walk_tree (parser, statement, mq_share_settle_pre, &groups, NULL, NULL);
-  (void) parser_walk_tree (parser, statement, mq_share_kept_pre, &failed, NULL, NULL);
-  if (!failed)
+  /* the columns the other members read and the first does not, moved onto the producer's FROM list */
+  for (i = 1; i < n_members; i++)
     {
-      (void) parser_walk_tree (parser, statement, mq_share_restore_pre, &error, NULL, NULL);
-    }
-  (void) parser_walk_tree (parser, statement, mq_share_mark_pre, NULL, NULL, NULL);
+      PT_NODE *member = members[i], *attr, *item;
+      PT_NODE *mbody = member->info.spec.derived_table;
 
-  while (groups != NULL)
-    {
-      PT_SHARE_GROUP *next = groups->next;
-      if (groups->n_members >= 2)
+      if (!PT_IS_SELECT (body) || !PT_IS_SELECT (mbody) || pt_is_distinct (body))
 	{
-	  groups->next = valid;
-	  valid = groups;
+	  /* the members of a set operation or of DISTINCT read the same columns (mq_share_view_results ()) */
+	  continue;
+	}
+      for (attr = member->info.spec.as_attr_list, item = mbody->info.query.q.select.list; attr != NULL && item != NULL;
+	   attr = attr->next, item = item->next)
+	{
+	  PT_NODE *found, *new_item, *new_attr;
+	  MQ_SHARE_MOVE move;
+
+	  if (attr->node_type != PT_NAME)
+	    {
+	      /* the constant of a member that reads no column */
+	      continue;
+	    }
+	  for (found = *attrs; found != NULL; found = found->next)
+	    {
+	      if (found->node_type == PT_NAME
+		  && pt_str_compare (found->info.name.original, attr->info.name.original, CASE_INSENSITIVE) == 0)
+		{
+		  break;
+		}
+	    }
+	  for (PT_NODE * added = add_attrs; found == NULL && added != NULL; added = added->next)
+	    {
+	      if (pt_str_compare (added->info.name.original, attr->info.name.original, CASE_INSENSITIVE) == 0)
+		{
+		  found = added;
+		}
+	    }
+	  if (found != NULL)
+	    {
+	      continue;
+	    }
+
+	  new_item = parser_copy_tree (parser, item);
+	  new_attr = parser_copy_tree (parser, attr);
+	  if (new_item == NULL || new_attr == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "copy tree");
+	      return NULL;
+	    }
+	  /* the specs of a subquery in the expression get their own ids, apart from the member's copy of it */
+	  new_item = mq_reset_ids_in_statement (parser, new_item);
+	  move.from_specs = mbody->info.query.q.select.from;
+	  move.to_specs = body->info.query.q.select.from;
+	  move.failed = false;
+	  new_item = parser_walk_tree (parser, new_item, mq_share_move_pre, &move, NULL, NULL);
+	  if (move.failed || new_item == NULL || pt_has_error (parser))
+	    {
+	      /* the columns were found movable when the group was made (mq_share_columns_movable ()) */
+	      assert (!move.failed);
+	      PT_INTERNAL_ERROR (parser, "share group producer");
+	      return NULL;
+	    }
+	  new_item->flag.is_hidden_column = 0;
+	  add_items = parser_append_node (new_item, add_items);
+	  add_attrs = parser_append_node (new_attr, add_attrs);
+	}
+    }
+
+  if (add_items != NULL)
+    {
+      PT_NODE *old_list = parser_copy_tree_list (parser, body->info.query.q.select.list);
+      PT_NODE *prev = NULL, *rest, *last;
+      int n_added = pt_length_of_list (add_items);
+      bool had_agg = PT_SELECT_INFO_IS_FLAGED (body, PT_SELECT_INFO_HAS_AGG);
+
+      if (old_list == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "copy tree");
+	  return NULL;
+	}
+
+      /* the added columns go after the columns the first member reads, before the hidden ones ORDER BY reads */
+      rest = body->info.query.q.select.list;
+      for (i = 0; i < n_visible && rest != NULL; i++)
+	{
+	  prev = rest;
+	  rest = rest->next;
+	}
+      for (last = add_items; last->next != NULL; last = last->next)
+	{
+	  ;
+	}
+      last->next = rest;
+      if (prev != NULL)
+	{
+	  prev->next = add_items;
 	}
       else
 	{
-	  groups->next = NULL;
+	  body->info.query.q.select.list = add_items;
 	}
-      groups = next;
+      for (PT_NODE * sort = body->info.query.order_by; sort != NULL; sort = sort->next)
+	{
+	  PT_NODE *expr = sort->info.sort_spec.expr;
+	  if (sort->node_type == PT_SORT_SPEC && sort->info.sort_spec.pos_descr.pos_no > n_visible)
+	    {
+	      sort->info.sort_spec.pos_descr.pos_no += n_added;
+	      if (expr != NULL && expr->node_type == PT_VALUE && expr->type_enum == PT_TYPE_INTEGER)
+		{
+		  expr->info.value.data_value.i += n_added;
+		  db_make_int (&expr->info.value.db_value, expr->info.value.data_value.i);
+		}
+	    }
+	}
+      if (mq_update_analytic_pos (parser, body->info.query.q.select.list, body->info.query.q.select.list, old_list)
+	  != NO_ERROR)
+	{
+	  PT_INTERNAL_ERROR (parser, "share group producer");
+	  return NULL;
+	}
+
+      /* what the select list holds decides these: the added columns may hold an aggregate or an analytic function */
+      PT_SELECT_INFO_CLEAR_FLAG (body, PT_SELECT_INFO_HAS_ANALYTIC);
+      if (pt_has_analytic (parser, body))
+	{
+	  PT_SELECT_INFO_SET_FLAG (body, PT_SELECT_INFO_HAS_ANALYTIC);
+	}
+      PT_SELECT_INFO_CLEAR_FLAG (body, PT_SELECT_INFO_HAS_AGG);
+      PT_SELECT_INFO_CLEAR_FLAG (body, PT_SELECT_INFO_DISABLE_LOOSE_SCAN);
+      if (!pt_has_aggregate (parser, body) && had_agg)
+	{
+	  /* an aggregate query whose aggregates the columns read left out (mq_remove_select_list_for_inline_view ()) */
+	  PT_SELECT_INFO_SET_FLAG (body, PT_SELECT_INFO_HAS_AGG);
+	}
+      *attrs = parser_append_node (add_attrs, *attrs);
     }
-  return valid;
+  return body;
+}
+
+/*
+ * mq_share_view_results () - CBRD-27351: let the references to one view whose derived tables are the same query but
+ *   for the columns they read read one result of it
+ *   parser(in):
+ *   statement(in/out): a translated and rewritten query
+ */
+static void
+mq_share_view_results (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  MQ_SHARE_INFO info;
+  PT_NODE *next;
+  int *group_orders = NULL;	/* the order of the first member of each group in share_groups, in that order */
+  int n_groups = 0;
+
+  if (statement == NULL || !PT_IS_QUERY (statement) || pt_has_error (parser) || parser->flag.is_parsing_static_sql)
+    {
+      /* a static SQL of PL/CSQL is compiled again from its print, where it would read columns of other references */
+      return;
+    }
+  if (PT_IS_SELECT (statement)
+      && PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_IS_MERGE_QUERY | PT_SELECT_INFO_IS_UPD_DEL_QUERY
+				   | PT_SELECT_INFO_COLS_SCHEMA | PT_SELECT_FULL_INFO_COLS_SCHEMA))
+    {
+      return;
+    }
+  if (pt_statement_have_methods (parser, statement))
+    {
+      /* meth_translate () rewrites the statement after this decision */
+      return;
+    }
+
+  memset (&info, 0, sizeof (info));
+  info.root = statement;
+  statement->info.query.share_groups = NULL;
+  next = statement->next;
+  statement->next = NULL;
+  (void) parser_walk_tree (parser, statement, mq_share_collect_pre, &info, mq_share_collect_post, &info);
+  statement->next = next;
+  if (info.failed)
+    {
+      return;
+    }
+
+  for (MQ_SHARE_VIEW * view = info.views; view != NULL && !pt_has_error (parser); view = view->next)
+    {
+      PT_NODE **specs;
+      MQ_SHARE_TEXT *texts;
+      bool *done;
+      int *orders;
+      int i, j;
+
+      if (view->n_refs < 2)
+	{
+	  continue;
+	}
+      specs = (PT_NODE **) parser_alloc (parser, view->n_refs * (int) sizeof (PT_NODE *));
+      texts = (MQ_SHARE_TEXT *) parser_alloc (parser, view->n_refs * (int) sizeof (MQ_SHARE_TEXT));
+      done = (bool *) parser_alloc (parser, view->n_refs * (int) sizeof (bool));
+      orders = (int *) parser_alloc (parser, view->n_refs * (int) sizeof (int));
+      if (specs == NULL || texts == NULL || done == NULL || orders == NULL)
+	{
+	  return;
+	}
+      i = 0;
+      for (MQ_SHARE_REF * ref = view->refs; ref != NULL; ref = ref->next, i++)
+	{
+	  specs[i] = ref->spec;
+	  orders[i] = ref->order;
+	  mq_share_text (parser, ref->spec->info.spec.derived_table, &texts[i]);
+	  done[i] = texts[i].failed;
+	}
+
+      /* the references whose derived tables are the same query make a group */
+      for (i = 0; i < view->n_refs; i++)
+	{
+	  PT_NODE **members;
+	  PT_NODE *body = specs[i]->info.spec.derived_table;
+	  int n_members = 0;
+	  bool same_cols = !PT_IS_SELECT (body) || pt_is_distinct (body);
+
+	  if (done[i])
+	    {
+	      continue;
+	    }
+	  members = (PT_NODE **) parser_alloc (parser, view->n_refs * (int) sizeof (PT_NODE *));
+	  if (members == NULL)
+	    {
+	      return;
+	    }
+	  for (j = i; j < view->n_refs; j++)
+	    {
+	      if (done[j] || !mq_share_same_text (parser, &texts[i], &texts[j]))
+		{
+		  continue;
+		}
+	      if (same_cols && j != i)
+		{
+		  /* more columns change the rows of a set operation or of DISTINCT: only the same columns are read,
+		   * in any order, since the outer query reads the columns of a derived table by their names */
+		  PT_NODE *a1 = specs[i]->info.spec.as_attr_list, *a2;
+		  bool same = pt_length_of_list (a1) == pt_length_of_list (specs[j]->info.spec.as_attr_list);
+		  for (; a1 != NULL && same; a1 = a1->next)
+		    {
+		      for (a2 = specs[j]->info.spec.as_attr_list; a2 != NULL; a2 = a2->next)
+			{
+			  if (a1->node_type == PT_NAME && a2->node_type == PT_NAME
+			      && pt_str_compare (a1->info.name.original, a2->info.name.original, CASE_INSENSITIVE) == 0)
+			    {
+			      break;
+			    }
+			}
+		      same = (a2 != NULL);
+		    }
+		  if (!same)
+		    {
+		      continue;
+		    }
+		}
+	      done[j] = true;
+	      members[n_members++] = specs[j];
+	    }
+	  if (n_members < 2 || !mq_share_body_is_safe (parser, body))
+	    {
+	      continue;
+	    }
+
+	  /* the producer is made from the members when the XASL is generated (mq_share_make_producer ()) */
+	  for (j = 0; j < n_members && mq_share_columns_movable (parser, members[j]); j++)
+	    {
+	      ;
+	    }
+	  if (j < n_members)
+	    {
+	      continue;
+	    }
+
+	  PT_SHARE_GROUP *group = (PT_SHARE_GROUP *) parser_alloc (parser, sizeof (PT_SHARE_GROUP));
+	  if (group == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate share group");
+	      return;
+	    }
+	  group->view = view->view;
+	  group->next = NULL;
+	  group->producer = NULL;
+	  group->producer_attrs = NULL;
+	  for (j = 0; j < n_members; j++)
+	    {
+	      /* a member keeps its derived table, which is not run while its group shares (pt_uncorr_post ()) */
+	      members[j]->info.spec.share_group = group;
+	      members[j]->info.spec.derived_table->info.query.flag.shared_view_body = 1;
+	    }
+
+	  /* the groups of the statement keep the order of their first members in it, as their CTEs and the cache key do */
+	  int *grown = (int *) parser_alloc (parser, (n_groups + 1) * (int) sizeof (int));
+	  PT_SHARE_GROUP **at = &statement->info.query.share_groups;
+	  int k;
+	  if (grown == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate share group");
+	      return;
+	    }
+	  for (k = 0; k < n_groups && group_orders[k] < orders[i]; k++)
+	    {
+	      grown[k] = group_orders[k];
+	      at = &(*at)->next;
+	    }
+	  grown[k] = orders[i];
+	  for (; k < n_groups; k++)
+	    {
+	      grown[k + 1] = group_orders[k];
+	    }
+	  group_orders = grown;
+	  n_groups++;
+	  group->next = *at;
+	  *at = group;
+	}
+    }
 }
