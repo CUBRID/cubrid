@@ -2258,6 +2258,9 @@ pgbuf_monitor_sum_pg_unfix (bool reset)
  *   fetch_mode(in): Page fetch mode.
  *   request_mode(in): Page latch mode.
  *   condition(in): Page latch condition.
+ *
+ * Note: a thread that already holds the page READ-latched must not request WRITE here; use
+ *       pgbuf_promote_read_latch (). debug builds assert on it.
  */
 #if !defined(NDEBUG)
 PAGE_PTR
@@ -2879,6 +2882,9 @@ pgbuf_dealloc_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool need_free
  *   return: error code or NO_ERROR
  *   pgptr(in/out): page pointer
  *   condition(in): promotion condition (single reader holder/shared reader holder)
+ *
+ * Note: this is the only way to turn this thread's READ latch into WRITE; pgbuf_fix () with PGBUF_LATCH_WRITE on a
+ *       page this thread holds READ-latched breaks the fix contract.
  */
 #if !defined (NDEBUG)
 int
@@ -7008,12 +7014,16 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 #endif /* SERVER_MODE */
 
   /* a WRITE fix on a page this thread already holds READ-latched is not a promotion; only
-   * pgbuf_promote_read_latch () promotes. catch the caller in debug builds as before the latch rework. no other
-   * thread can change the latch mode from READ to WRITE while this thread holds a READ fix on the page. */
+   * pgbuf_promote_read_latch () promotes. catch the caller in debug builds as before the latch rework.
+   * one read is enough: every change of the latch mode is made under the bcb mutex, which this thread holds, and the
+   * bcb fcnt includes this thread's READ fixes, so no other thread can make the page WRITE-latched meanwhile. */
   if (holder != NULL && request_mode == PGBUF_LATCH_WRITE
       && get_impl (&bufptr->atomic_latch).impl.latch_mode == PGBUF_LATCH_READ)
     {
-      /* release builds go on and count the fix below */
+      er_log_debug (ARG_FILE_LINE, "pgbuf_latch_bcb_upon_fix: WRITE fix on page %d|%d this thread holds READ-latched\n",
+		    VPID_AS_ARGS (&bufptr->vpid));
+      /* release builds go on to Sub-case 2-2 below: a sole holder is switched to WRITE in place and the fix is
+       * counted; with other readers the READ fixes are dropped and the request waits behind earlier waiters. */
       assert_release (request_mode != PGBUF_LATCH_WRITE);
     }
 // *INDENT-OFF*
@@ -7093,10 +7103,12 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 		      can_latch = true;
 		      new_impl.impl.fcnt++;
 		    }
-		  /* Sub-case 2-2: Page is READ-latched and requesting WRITE latch (promotion) */
+		  /* Sub-case 2-2: Page is READ-latched by holder and WRITE is requested. this breaks the fix
+		   * contract (see the check above) and is reached only in release builds; it is not
+		   * pgbuf_promote_read_latch (). */
 		  else if (old_impl.impl.latch_mode == PGBUF_LATCH_READ)
 		    {
-		      /* If holder is the only one with fix count, can promote to WRITE */
+		      /* If holder is the only one with fix count, switch the latch to WRITE in place */
 		      if (old_impl.impl.fcnt == holder->fix_count)
 			{
 			  can_latch = true;
@@ -7106,7 +7118,8 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 			}
 		      else
 			{
-			  /* Other readers exist - need to release holder's READ latch first */
+			  /* Other readers exist - drop holder's READ fixes and wait behind earlier waiters.
+			   * unlike pgbuf_promote_read_latch (), the page may change before WRITE is granted. */
 			  if (condition == PGBUF_CONDITIONAL_LATCH)
 			    {
 			      /* Conditional latch fails */
@@ -7223,7 +7236,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
     }
   if (promote_needed)
     {
-      /* Release current READ latch to prepare for WRITE latch */
+      /* Drop the holder's READ fixes; the request waits for WRITE with them added (Sub-case 2-2) */
       request_fcnt += holder->fix_count;
 
       holder->fix_count = 0;
