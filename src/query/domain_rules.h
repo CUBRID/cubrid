@@ -412,37 +412,20 @@ bool domain_compare_equal (const DOMAIN_COMPARE * a, const DOMAIN_COMPARE * b);
 void domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs,
 					  DOMAIN_COMPARE * result);
 
-/*
- * domain_resolve_hash_key () - the domain a hash table holds the values of a pair of key columns in, so that the
- *   values the pair's comparison finds equal hash alike: the type that comparison converts both sides to
- *   (domain_resolve_comparison; two types it compares as they are, the more general one), with a precision and scale
- *   that hold both columns' values (a NUMERIC's integral digits and scale, the default NUMERIC past 38 digits:
- *   CBRD-27575)
- *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
- *   common(out): first or second where it has that type, precision and scale (first for two of one), else a cached
- *		  domain
- */
 int domain_resolve_hash_key (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common);
+bool domain_hashable_resolve (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common);
 
-/*
- * domain_decide_hash_join_key () - CBRD-27583: a hash join's key column pair, decided by the compiler from the
- *   two inputs' column domains (unpack's fallback for a list whose column the execution fixes): the domain both
- *   values are hashed and compared in, each side's conversion into it, and the comparison of the two values then
- *   (tp_value_compare without coercion)
- *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
- *   coerce(in/out): a key before this one is coerced, and so is every key after it (one hashed record)
- *   common(out): the domain; NULL for a key compared in its own domains
- *   conv_kind(out): per side, DOMAIN_HASH_KEY_AS_IS, _CONVERTED (the IMPLICIT converter into common) or _COERCED
- *		     (tp_value_coerce at the row: a JSON value, a common string domain whose collation is the values')
- */
+/* How a side of a hash join key reaches the common domain (domain_decide_hash_join_key ()'s conv_kind): as it is, by
+ * the IMPLICIT converter into it, or by tp_value_coerce at the row (a JSON value, which converts by its scalar). */
 enum
 {
   DOMAIN_HASH_KEY_AS_IS = 0,
   DOMAIN_HASH_KEY_CONVERTED = 1,
   DOMAIN_HASH_KEY_COERCED = 2
 };
-int domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, bool * coerce,
-				 const TP_DOMAIN ** common, int conv_kind[2], DOMAIN_COMPARE * compare);
+
+int domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, const TP_DOMAIN ** common,
+				 int conv_kind[2], DOMAIN_COMPARE * compare);
 
 /*
  * domain_compare_in_domain () - two values of one domain fixed before any row (a GROUP BY or an analytic sort key's),
@@ -475,16 +458,7 @@ const DOMAIN_COMPARE *domain_compare_row_entry (int row, const DB_VALUE * elemen
 DB_VALUE_COMPARE_RESULT domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
 					       const DB_VALUE * value2, int total_order, bool * can_compare);
 
-/*
- * domain_key_values_equal () - CBRD-27583: whether two key values of one position of a cache (memoize, the
- *   subquery cache) are equal. Both are values of one regu, so of its compiled domain, and compare by that domain
- *   type's cmpval as tp_value_compare's total order answers: no comparison is decided. A string compares byte by
- *   byte instead (mht_compare_dbvalues_are_identical): keys equal only under a case-insensitive collation can give
- *   different results.
- *   A TIMESTAMPTZ and a DATETIMETZ also need the same zone (CBRD-27804): one instant in two zones casts differently.
- *   domain(in): the key position regu's compiled domain (an OBJECT's values are OIDs on the server)
- */
-bool domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, const DB_VALUE * value2);
+bool domain_key_values_identical (const DB_VALUE * first, const DB_VALUE * second);
 
 /* Kernel CONVERT alone (domain_compare_values' case), for a caller that has switched on the comparison method
  * already. */
@@ -568,6 +542,8 @@ TP_VALUE_CONVERTER domain_compare_converter (DB_TYPE source, const TP_DOMAIN * t
 const struct pr_type *domain_compare_cmp (const DOMAIN_COMPARE * compare);
 /* An integer against a NUMERIC: the pair a comparison takes as it is, by the exact values. */
 bool domain_compare_is_exact_number (DB_TYPE type1, DB_TYPE type2);
+
+bool domain_key_converts_losslessly (DB_TYPE source, const TP_DOMAIN * column);
 
 /* The rule a column of a search key follows for values of an element's domain. */
 DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey);

@@ -33,6 +33,7 @@ cd build_preset_debug && ctest
 | `json_builder/` | `UNIT_TEST_JSON_BUILDER` | ✓ Active |
 | `log_recovery/` | `UNIT_TEST_LOG_RECOVERY` | ✓ Active |
 | `radix_sort/` | `UNIT_TEST_RADIX_SORT` | ✓ Active |
+| `value_hash/` | `UNIT_TEST_VALUE_HASH` | ✓ Active |
 | `btree_sort_merge/` | `UNIT_TEST_BTREE_SORT_MERGE` | ✓ Active |
 | `lockfree/` | `UNIT_TEST_LOCKFREE` | ✗ Disabled (compilation fails) |
 | `loaddb/` | `UNIT_TEST_LOADDB` | ✗ Disabled (compilation fails) |

@@ -24,60 +24,59 @@
 
 #include "config.h"
 
-#include <stdio.h>
-#include <assert.h>
-#include <search.h>
-
 #include "xasl_generation.h"
 
+#include <assert.h>
+#include <search.h>
+#include <stdio.h>
+
 #include "authenticate.h"
-#include "misc_string.h"
+#include "compile_context.h"
+#include "db.h"
+#include "db_json.hpp"
+#include "dbtype.h"
+#include "dbtype_def.h"
+#include "domain_rules.h"
+#include "environment_variable.h"
 #include "error_manager.h"
+#include "execute_schema.h"
+#include "execute_statement.h"
+#include "histogram_cl.hpp"
+#include "intl_support.h"
+#include "jsp_cl.h"
+#include "locator_cl.h"
+#include "misc_string.h"
+#include "object_primitive.h"
+#include "object_print.h"
+#include "object_representation.h"
+#include "optimizer.h"
 #include "parser.h"
+#include "parser_message.h"
+#include "parser_support.h"
+#include "pl_signature.hpp"
+#include "porting.h"
+#include "px_query_checker.hpp"
+#include "px_scan_checker.hpp"
+#include "query_dump.h"
+#include "query_graph.h"
+#include "query_planner.h"
+#include "schema_manager.h"
+#include "schema_system_catalog_constants.h"
+#include "semantic_check.h"
+#include "set_object.h"
+#include "sp_catalog.hpp"
+#include "subquery_cache.h"
+#include "system_parameter.h"
+#include "view_transform.h"
+#include "virtual_object.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include "xasl_regu_alloc.hpp"
-#include "domain_rules.h"
-#include "db.h"
-#include "environment_variable.h"
-#include "parser.h"
-#include "schema_manager.h"
-#include "view_transform.h"
-#include "locator_cl.h"
-#include "optimizer.h"
-#include "histogram_cl.hpp"
-#include "parser_message.h"
-#include "virtual_object.h"
-#include "set_object.h"
-#include "object_primitive.h"
-#include "object_print.h"
-#include "object_representation.h"
-#include "intl_support.h"
-#include "system_parameter.h"
-#include "execute_schema.h"
-#include "porting.h"
-#include "execute_statement.h"
-#include "query_graph.h"
-#include "schema_system_catalog_constants.h"
-#include "query_planner.h"
-#include "semantic_check.h"
-#include "query_dump.h"
-#include "parser_support.h"
-#include "compile_context.h"
-#include "db_json.hpp"
-#include "jsp_cl.h"
-#include "subquery_cache.h"
-#include "dbtype_def.h"
-#include "pl_signature.hpp"
-#include "sp_catalog.hpp"
-#include "px_scan_checker.hpp"
-#include "px_query_checker.hpp"
+
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
-
-#include "dbtype.h"
 
 extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
 
@@ -429,6 +428,11 @@ static int pt_decide_key_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs, 
 static int pt_decide_key_compares (INDX_INFO * indx_infop);
 static INDX_INFO *pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where_pred, QO_PLAN * plan,
 				    QO_XASL_INDEX_INFO * qo_index_infop);
+static bool pt_regu_is_pruning_value (const REGU_VARIABLE * regu);
+static bool pt_domain_takes_pruning_conversion (const TP_DOMAIN * domain);
+static TP_DOMAIN *pt_list_element_domain (const TP_DOMAIN * set);
+static bool pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element);
+static void pt_set_prune_domains (PRED_EXPR * pred);
 static ACCESS_SPEC_TYPE *pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_part,
 						PT_NODE * where_part, QO_PLAN * plan, QO_XASL_INDEX_INFO * index_pred);
 static ACCESS_SPEC_TYPE *pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * subquery,
@@ -7825,72 +7829,19 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
 }
 
 /*
- * pt_hash_key_domain () - CBRD-27583: the domain a hash list scan hashes a build and a probe key's values in,
- *   so that the values the scan's predicate finds equal hash alike and none that it compares fails to hash
- *   return: false where no domain is (another type pair, a domain the execution fixes): the scan reads the list
- *   common(out): NULL to hash the values as they are - one type, strings of one collation (their hash is the
- *		  collation's, trailing spaces ignored), fixed NUMERICs of one scale; else the domain both convert to
- *
- * Two numbers, or NUMERICs of two scales, hash in the pair's common domain (domain_resolve_hash_key, the
- * comparison's type). A NUMERIC pair with a floating side hashes in DOUBLE, an exact NUMERIC hash costing too much
- * per key: a floating NUMERIC hashes a value normalized and a fixed one its scaled digits, and a floating key can
- * hold fixed values (a CONNECT BY PRIOR column). Equal values hash alike only up to 15 digits: past 2^53 a value
- * written in two scales can round to two DOUBLEs and the scan misses the pair (CBRD-27798). Two fixed NUMERICs
- * whose common domain is floating have none.
- */
-static bool
-pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, const TP_DOMAIN ** common)
-{
-  *common = NULL;
-  if (!pt_regu_domain_is_fixed (build) || !pt_regu_domain_is_fixed (probe))
-    {
-      return false;
-    }
-  const TP_DOMAIN *domain[2] = { build->domain, probe->domain };
-  const DB_TYPE type[2] = { TP_DOMAIN_TYPE (domain[0]), TP_DOMAIN_TYPE (domain[1]) };
-  if (TP_IS_CHAR_TYPE (type[0]) && TP_IS_CHAR_TYPE (type[1]))
-    {
-      return domain[0]->collation_id == domain[1]->collation_id;
-    }
-  if (type[0] == type[1] && type[0] != DB_TYPE_NUMERIC)
-    {
-      /* an ENUM hashes its index: two ENUM types' equal strings would not */
-      return type[0] != DB_TYPE_NULL && type[0] != DB_TYPE_VOBJ
-	&& (type[0] != DB_TYPE_ENUMERATION || tp_domain_match (domain[0], domain[1], TP_EXACT_MATCH));
-    }
-  if (!TP_IS_NUMERIC_TYPE (type[0]) || !TP_IS_NUMERIC_TYPE (type[1]))
-    {
-      return false;
-    }
-  const bool floating = domain[0]->precision == DB_DEFAULT_NUMERIC_PRECISION
-    || domain[1]->precision == DB_DEFAULT_NUMERIC_PRECISION;
-  if (type[0] == type[1] && domain[0]->scale == domain[1]->scale && !floating)
-    {
-      return true;
-    }
-  if (domain_resolve_hash_key (domain[0], domain[1], common) != NO_ERROR)
-    {
-      er_clear ();
-      return false;
-    }
-  if (TP_DOMAIN_TYPE (*common) == DB_TYPE_NUMERIC && (floating || (*common)->precision == DB_DEFAULT_NUMERIC_PRECISION))
-    {
-      if (!floating)
-	{
-	  /* two fixed NUMERICs beyond 38 digits together: a DOUBLE rounds a value twice (the coefficient, then
-	   * 10^scale), so equal values of the two scales could hash apart */
-	  *common = NULL;
-	  return false;
-	}
-      *common = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-    }
-  return true;
-}
-
-/*
- * pt_decide_hash_list_keys () - CBRD-27583: each key pair of a hash list scan converted into the domain it
- *   hashes in (pt_hash_key_domain), on the key regus' fetch; a pair without one turns the scan's hash off
+ * pt_decide_hash_list_keys () - CBRD-27583: each key pair of a hash list scan converted into the domain it hashes in
+ *   (domain_hashable_resolve ()), on the key regus' fetch
+ *   return: none
  *   spec(in/out): a list scan spec
+ *
+ * Behavior:
+ *   - The domain makes the values the scan's predicate finds equal hash alike, and none that it compares fails to hash.
+ *   - The scan's hash goes off for:
+ *       + a key whose domain the execution fixes
+ *       + a pair of no domain in which its values hash alike
+ *       + a key that converts already, into a domain other than the pair's common domain
+ *   - A pair of two hash types (domain_hash_type ()) hashes in the pair's common domain, the comparison's type: an
+ *     exact and a floating number, or a SET and a MULTISET. Type checking casts any other pair to one domain.
  */
 static void
 pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
@@ -7899,28 +7850,70 @@ pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
     {
       return;
     }
+
   REGU_VARIABLE_LIST build, probe;
   const TP_DOMAIN *common;
+
   /* every pair decides before any converts: a scan whose hash goes off keeps its keys as generated */
   for (build = spec->s.list_node.list_regu_list_build, probe = spec->s.list_node.list_regu_list_probe;
        build != NULL && probe != NULL; build = build->next, probe = probe->next)
     {
-      if (!pt_hash_key_domain (&build->value, &probe->value, &common)
-	  || (common != NULL && (build->value.original_domain != NULL || build->value.vfetch_to != NULL
-				 || probe->value.original_domain != NULL || probe->value.vfetch_to != NULL)))
+      const REGU_VARIABLE *const key[2] = { &build->value, &probe->value };
+
+      /* a domain the execution fixes */
+      if (!pt_regu_domain_is_fixed (key[0]) || !pt_regu_domain_is_fixed (key[1]))
 	{
 	  spec->s.list_node.hash_list_scan_yn = 0;
 	  return;
 	}
+
+      /* a pair of no domain in which its values hash alike (an OBJECT's values are OIDs on the server) */
+      if (!domain_hashable_resolve (domain_key_value_domain (key[0]->domain),
+				    domain_key_value_domain (key[1]->domain), &common))
+	{
+	  spec->s.list_node.hash_list_scan_yn = 0;
+	  return;
+	}
+
+      if (common == NULL)
+	{
+	  /* hashed as they are */
+	  continue;
+	}
+
+      /* a conversion onto a key that converts already; a key of the common domain does not convert */
+      for (int side = 0; side < 2; side++)
+	{
+	  if (key[side]->domain != common && (key[side]->original_domain != NULL || key[side]->vfetch_to != NULL))
+	    {
+	      spec->s.list_node.hash_list_scan_yn = 0;
+	      return;
+	    }
+	}
     }
+
   for (build = spec->s.list_node.list_regu_list_build, probe = spec->s.list_node.list_regu_list_probe;
        build != NULL && probe != NULL; build = build->next, probe = probe->next)
     {
-      (void) pt_hash_key_domain (&build->value, &probe->value, &common);
       REGU_VARIABLE *const key[2] = { &build->value, &probe->value };
+
+      if (!domain_hashable_resolve (domain_key_value_domain (key[0]->domain),
+				    domain_key_value_domain (key[1]->domain), &common))
+	{
+	  /* the first loop resolved this pair, so only the common domain's allocation fails here; the keys converted
+	   * before serve only the hash, which goes off */
+	  spec->s.list_node.hash_list_scan_yn = 0;
+	  return;
+	}
+
+      if (common == NULL)
+	{
+	  continue;
+	}
+
       for (int side = 0; side < 2; side++)
 	{
-	  if (common != NULL && key[side]->domain != common)
+	  if (key[side]->domain != common)
 	    {
 	      pt_set_operand_conversion (key[side], common, DOMAIN_CONVERT_IMPLICIT);
 	    }
@@ -16883,32 +16876,63 @@ pt_list_element_domain (const TP_DOMAIN * set)
 }
 
 /*
- * pt_comparison_keeps_key () - CBRD-27583: whether a list's elements compare with a partition key as values of
- *   the key's type - the comparison the type rule module decides for the two domains converts the element alone, into
- *   the key's type. Pruning converts the elements into the key's domain; where the comparison converts the key (a
- *   BIGINT key against a DOUBLE element compares in DOUBLE, and two keys can equal one element), the converted element
- *   would leave out a partition whose key the comparison finds equal
+ * pt_comparison_keeps_key () - CBRD-27583: whether a term's value, or a list's element, compares with a partition key
+ *   as a value of the key's type
+ *   return: true when the comparison the type rule module decides for the two domains converts:
+ *	     - the key not at all, or into a type that keeps any two keys apart
+ *	     - the element not at all, or into the key's type
+ *	     false also for a domain that leaves its values' type or collation to the data (domain_decide_comparison ())
+ *   key(in): the partition key's domain
+ *   element(in): the domain of the term's value or of the list's elements
+ *
+ * Reason:
+ *   - Pruning converts the element into the key's domain. Where the comparison converts the key and loses digits, the
+ *     converted element would leave out a partition whose key the comparison finds equal.
+ *   - For example, a BIGINT key against a DOUBLE element compares in DOUBLE, and two keys can equal one element.
  */
 static bool
 pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
 {
   const TP_DOMAIN *const domain[2] = { key, element };
+  const DB_TYPE key_type = TP_DOMAIN_TYPE (key);
   DOMAIN_COMPARE decided;
   bool by_type;
+  bool is_lossless_conversion = false;
 
   if (domain_decide_comparison (domain, &decided, &by_type) != NO_ERROR || !by_type)
     {
       return false;
     }
-  return decided.conv[0] == NULL && (decided.conv[1] == NULL
-				     || TP_DOMAIN_TYPE (decided.target[1]) == TP_DOMAIN_TYPE (key));
+
+  if (decided.conv[0] == NULL)
+    {
+      /* the key compares as it is */
+      is_lossless_conversion = true;
+    }
+  else
+    {
+      /* a type keeps two keys apart if it holds every key */
+      is_lossless_conversion = domain_key_converts_losslessly (key_type, decided.target[0]);
+    }
+
+  return is_lossless_conversion && (decided.conv[1] == NULL || TP_DOMAIN_TYPE (decided.target[1]) == key_type);
 }
 
 /*
- * pt_set_prune_domains () - CBRD-27583: the domain into which a partitioned class's pruning converts a term's
- *   value to hash it or to evaluate a partition expression on it - the other side's - decided here, not at the scan
- *   (partition_prune_hash, partition_prune_for_function); an IN list prunes only when its
- *   elements have one domain, its NULLs aside, that compares with the key in the key's type (pt_comparison_keeps_key)
+ * pt_set_prune_domains () - CBRD-27583: on each term of the predicate that prunes, set the domain into which a
+ *   partitioned class's pruning converts the term's value to hash it or to evaluate a partition expression on it
+ *   return: none
+ *   pred(in/out): a predicate of a partitioned class's scan
+ *
+ * Behavior:
+ *   - The domain is the one of the term's other side, decided here, not at the scan (partition_prune_hash (),
+ *     partition_prune_for_function ()).
+ *   - A term prunes only when:
+ *       + the value's domain and the other side's have a type, neither VARIABLE nor NULL
+ *         (pt_domain_takes_pruning_conversion ())
+ *       + its value, or each element of an IN list, compares with the key in the key's type
+ *         (pt_comparison_keeps_key ())
+ *       + for an IN list, the list's elements have one domain, their NULLs aside (pt_list_element_domain ())
  */
 static void
 pt_set_prune_domains (PRED_EXPR * pred)
@@ -16931,7 +16955,8 @@ pt_set_prune_domains (PRED_EXPR * pred)
 	      TP_DOMAIN *other = values[0] ? term->rhs->domain : term->lhs->domain;
 	      /* the domain the value is read in: the unpack finds the converter from it */
 	      const TP_DOMAIN *from = value->original_domain != NULL ? value->original_domain : value->domain;
-	      if (pt_domain_takes_pruning_conversion (from) && pt_domain_takes_pruning_conversion (other))
+	      if (pt_domain_takes_pruning_conversion (from) && pt_domain_takes_pruning_conversion (other)
+		  && pt_comparison_keeps_key (other, from))
 		{
 		  term->prune_side = values[0] ? 0 : 1;
 		  term->prune_domain = other;
@@ -35181,11 +35206,9 @@ pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * n
 
   sq_key_struct = (SQ_KEY *) pt_alloc_packing_buf (sizeof (SQ_KEY));
   sq_key_struct->dbv_array = (DB_VALUE **) pt_alloc_packing_buf (n_elements * sizeof (DB_VALUE *));
-  sq_key_struct->domains = (TP_DOMAIN **) pt_alloc_packing_buf (n_elements * sizeof (TP_DOMAIN *));
   for (i = 0; i < n_elements; i++)
     {
       sq_key_struct->dbv_array[i] = dbv_list->val;
-      sq_key_struct->domains[i] = dbv_list->dom;
       dbv_list = dbv_list->next;
     }
   sq_key_struct->n_elements = n_elements;
@@ -35716,7 +35739,6 @@ pt_make_memoize_key (PARSER_CONTEXT * parser, PT_NODE ** names, int n_names)
       return NULL;
     }
   key->dbv_array = NULL;
-  key->domains = NULL;
   key->n_elements = 0;
   if (n_names == 0)
     {
@@ -35724,8 +35746,7 @@ pt_make_memoize_key (PARSER_CONTEXT * parser, PT_NODE ** names, int n_names)
     }
 
   key->dbv_array = (DB_VALUE **) pt_alloc_packing_buf (n_names * sizeof (DB_VALUE *));
-  key->domains = (TP_DOMAIN **) pt_alloc_packing_buf (n_names * sizeof (TP_DOMAIN *));
-  if (key->dbv_array == NULL || key->domains == NULL)
+  if (key->dbv_array == NULL)
     {
       return NULL;
     }
@@ -35763,7 +35784,6 @@ pt_make_memoize_key (PARSER_CONTEXT * parser, PT_NODE ** names, int n_names)
 	  continue;
 	}
       key->dbv_array[n] = dbval;
-      key->domains[n] = domain;
       n++;
     }
   key->n_elements = n;

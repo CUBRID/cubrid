@@ -61,8 +61,6 @@ namespace memoize
       };
       struct equal
       {
-	/* the key positions' regu domains (storage::m_key_domains): CBRD-27583 */
-	const std::vector<const TP_DOMAIN *> *m_domains;
 	bool operator() (const key *k1, const key *k2) const;
       };
   };
@@ -88,7 +86,7 @@ namespace memoize
 	       bool match_only);
       ~storage();
       static storage *new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl, bool match_only);
-      void init (std::vector<DB_VALUE *> &key_ptr_src, std::vector<const TP_DOMAIN *> &key_domains);
+      void init (std::vector<DB_VALUE *> &key_ptr_src);
       result_code get ();
       result_code put();
       void start_timer();
@@ -148,7 +146,6 @@ namespace memoize
       size_t m_hash_sz;
       key *m_last_key;
       std::vector<DB_VALUE *> m_keyptr_src;
-      std::vector<const TP_DOMAIN *> m_key_domains;
       std::unordered_multimap<key *, value *, key::hash, key::equal> m_key_value_map;
       std::vector<value *> m_current_value_list;
       bool disabled;

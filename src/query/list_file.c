@@ -56,6 +56,7 @@
 #endif /* SERVER_MODE */
 
 #include <algorithm>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -335,10 +336,6 @@ static int qfile_compare_tran_id (const void *t1, const void *t2);
 #endif /* SERVER_MODE */
 static unsigned int qfile_hash_db_value_array (const void *key, unsigned int htsize);
 static int qfile_compare_equal_db_value_array (const void *key1, const void *key2);
-static bool qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_VALUE * val1,
-					   const DB_VALUE * val2);
-static bool qfile_list_cache_key_of (const XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params,
-				     QFILE_LIST_CACHE_KEY * key);
 
 /* for list cache */
 static int qfile_assign_list_cache (void);
@@ -5991,17 +5988,16 @@ qfile_hash_db_value_array (const void *key, unsigned int htsize)
 {
   unsigned int hash = 0;
   int i;
-  const QFILE_LIST_CACHE_KEY *array = (const QFILE_LIST_CACHE_KEY *) key;
+  const DB_VALUE_ARRAY *array = (const DB_VALUE_ARRAY *) key;
   const DB_VALUE *val;
 
   if (key != NULL && array->size > 0)
     {
+      /* each value's whole hash (UINT_MAX), folded by rotation: a shift would push the earlier values' bits out */
       for (i = 0, val = array->vals; i < array->size; i++, val++)
 	{
-	  hash |= mht_valhash (val, htsize);
-	  hash <<= 8;
+	  hash = mht_foldhash (hash, mht_valhash (val, UINT_MAX));
 	}
-      hash |= array->size;
     }
 
   return (hash % htsize);
@@ -6018,8 +6014,8 @@ static int
 qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 {
   int i;
-  const QFILE_LIST_CACHE_KEY *array1 = (const QFILE_LIST_CACHE_KEY *) key1;
-  const QFILE_LIST_CACHE_KEY *array2 = (const QFILE_LIST_CACHE_KEY *) key2;
+  const DB_VALUE_ARRAY *array1 = (const DB_VALUE_ARRAY *) key1;
+  const DB_VALUE_ARRAY *array2 = (const DB_VALUE_ARRAY *) key2;
   const DB_VALUE *val1, *val2;
 
   if (key1 == key2 || (array1->size == 0 && array2->size == 0))
@@ -6032,12 +6028,11 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
       return false;
     }
 
-  /* CBRD-27583: the keys of one hash table are bound to one XASL cache entry: its signature's comparisons */
-  const DOMAIN_COMPARE *compares = array1->compares != NULL ? array1->compares : array2->compares;
-
+  /* CBRD-28060: values a comparison finds equal can give different results ('A' and 'a', 1.0 and 1.00), so a cached
+   * result serves only identical values (domain_key_values_identical ()) */
   for (i = 0, val1 = array1->vals, val2 = array2->vals; i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
-      if (qfile_list_cache_values_equal (compares, i, val1, val2) == false)
+      if (!domain_key_values_identical (val1, val2))
 	{
 	  return false;
 	}
@@ -6045,7 +6040,7 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 
   for (i = 1, val1 = array1->vals + 1, val2 = array2->vals + 1; i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
-      if (qfile_list_cache_values_equal (compares, i, val1, val2) == false)
+      if (!domain_key_values_identical (val1, val2))
 	{
 	  return false;
 	}
@@ -6053,45 +6048,12 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 
   for (i = 2, val1 = array1->vals + 2, val2 = array2->vals + 2; i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
-      if (qfile_list_cache_values_equal (compares, i, val1, val2) == false)
+      if (!domain_key_values_identical (val1, val2))
 	{
 	  return false;
 	}
     }
 
-  return true;
-}
-
-/*
- * qfile_list_cache_values_equal () - CBRD-27583: whether two values bound to position i of cached results are
- *   equal: by the position's comparison, NULLs equal (total order)
- */
-static bool
-qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_VALUE * val1, const DB_VALUE * val2)
-{
-  /* a key with values has its entry's comparisons (qfile_list_cache_key_of) */
-  assert (compares != NULL);
-  return val1 == val2
-    || eval_compare_values_resolved (thread_get_thread_entry_info (), &compares[i], NULL, val1, val2, 1, NULL) == DB_EQ;
-}
-
-/*
- * qfile_list_cache_key_of () - CBRD-27583: the key the parameter values of an execution of the XASL cache
- *   entry look its cached results up and store them under
- *   return: false when the entry's cache key text did not name each value's type: its results are not cached
- */
-static bool
-qfile_list_cache_key_of (const XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params, QFILE_LIST_CACHE_KEY * key)
-{
-  /* the client sends one value per position the text names (;bind_var_cnt=); -1 is a text whose tokens disagree */
-  assert (xasl->n_param_compares < 0 || xasl->n_param_compares == params->size);
-  if (xasl->n_param_compares != params->size)
-    {
-      return false;
-    }
-  key->size = params->size;
-  key->vals = params->vals;
-  key->compares = params->size > 0 ? xasl->param_compares : NULL;
   return true;
 }
 
@@ -6279,9 +6241,6 @@ qfile_reassign_list_cache_entry_owner (THREAD_ENTRY * thread_p, void *data, void
 
   lent->xcache_entry = new_owner;
   lent->query_string = new_owner->sql_info.sql_hash_text;
-  /* the same text: the same signature's comparisons, in the new owner's buffer */
-  assert (new_owner->n_param_compares == lent->param_values.size);
-  lent->param_values.compares = new_owner->param_compares;
 
   return NO_ERROR;
 }
@@ -6785,18 +6744,19 @@ qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, vo
  * qfile_lookup_list_cache_entry () - Lookup the list cache with the parameter
  * values (DB_VALUE array) bound to the query
  *   return:
- *   list_ht_no(in)     :
+ *   xasl(in/out) :
  *   params(in) :
+ *   result_cached(out) :
  *
- * Note: Look up the hash table to get the cached result with the parameter
- *       values as the key.
+ * Behavior:
+ *   - Look up the hash table to get the cached result with the parameter values as the key.
+ *   - As a side effect, xasl->list_ht_no gets a new hash table number if it was -1.
  */
 QFILE_LIST_CACHE_ENTRY *
 qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl, const DB_VALUE_ARRAY * params,
 			       bool * result_cached)
 {
   QFILE_LIST_CACHE_ENTRY *lent = NULL;
-  QFILE_LIST_CACHE_KEY key;
 #if defined(SERVER_MODE)
   int tran_index;
   TRAN_ISOLATION tran_isolation;
@@ -6825,11 +6785,6 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
       return NULL;
     }
 
-  if (!qfile_list_cache_key_of (xasl, params, &key))
-    {
-      return NULL;
-    }
-
   if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
     {
       return NULL;
@@ -6849,7 +6804,7 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
     LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   /* look up the hash table with the key */
-  lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[xasl->list_ht_no], &key);
+  lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (qfile_List_cache.list_hts[xasl->list_ht_no], params);
   qfile_List_cache.lookup_counter++;	/* counter */
 
   if (lent)
@@ -6948,15 +6903,15 @@ qfile_is_early_time (struct timeval *a, struct timeval *b)
  * qfile_update_list_cache_entry () - Update list cache entry if exist or create new
  *                               one
  *   return:
- *   list_ht_no_ptr(in/out) :
+ *   list_ht_no(in) :
  *   params(in) :
- *   list_id(in)        :
- *   query_string(in)   :
+ *   list_id(in) :
+ *   xasl(in) :
  *
- * Note: Put the query result into the proper hash table with the key of
- *       the parameter values (DB_VALUE array) and the data of LIST ID.
- *       If there already exists the entry with the same key, update its data.
- *       As a side effect, the given 'list_hash_no' will be change if it was -1.
+ * Behavior:
+ *   - Put the query result into the proper hash table with the key of the parameter values (DB_VALUE array) and the
+ *     data of LIST ID.
+ *   - If an entry with the same key is already there, return it and keep its result.
  */
 QFILE_LIST_CACHE_ENTRY *
 qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB_VALUE_ARRAY * params,
@@ -6964,7 +6919,6 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 {
   QFILE_LIST_CACHE_ENTRY *lent;
   MHT_TABLE *ht;
-  QFILE_LIST_CACHE_KEY key;
 
 #if defined(SERVER_MODE)
   int tran_index;
@@ -6987,11 +6941,6 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
       return NULL;
     }
   if (qfile_List_cache.n_hts == 0)
-    {
-      return NULL;
-    }
-
-  if (!qfile_list_cache_key_of (xasl, params, &key))
     {
       return NULL;
     }
@@ -7020,7 +6969,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
   do
     {
       /* check again whether the entry is in the cache */
-      lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (ht, &key);
+      lent = (QFILE_LIST_CACHE_ENTRY *) mht_get (ht, params);
       if (lent == NULL)
 	{
 	  break;
@@ -7100,7 +7049,6 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
 #endif /* SERVER_MODE */
   lent->param_values.size = params->size;
   lent->param_values.vals = qfile_get_list_cache_entry_param_values (lent);
-  lent->param_values.compares = key.compares;
 
   /*
    * Copy parameter values. (DB_VALUE containers)

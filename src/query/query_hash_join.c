@@ -1701,7 +1701,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
       else
 	{
 	  hash_key = qdata_hash_scan_key (temp_key, UINT_MAX, HASH_METH_IN_MEM);
-	  part_id = (has_null_fill_side) ? hash_key % (part_cnt - 1) : hash_key % (part_cnt);
+	  part_id = hjoin_get_partition_id (hash_key, part_cnt, has_null_fill_side);
 
 	  hjoin_update_tuple_hash_key (thread_p, &tuple_record, hash_key);
 	}
@@ -2690,76 +2690,41 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
       goto error_exit;
     }
 
-  if (list_id != NULL)
+  hash_scan->hash_list_scan_type = qdata_hash_scan_method (list_id, mem_limit);
+  switch (hash_scan->hash_list_scan_type)
     {
-      UINT64 in_mem_size = 0;
-      UINT64 hybrid_size = 0;
-
-      /* the slot array is int-indexed; the estimates are computable only when tuple_cnt fits in int */
-      if (list_id->tuple_cnt <= INT_MAX)
+    case HASH_METH_IN_MEM:
+    case HASH_METH_HYBRID:
+      hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
+      if (hash_scan->memory.hash_table == NULL)
 	{
-	  UINT64 slot_array_size = (UINT64) mht_hls_slot_count ((int) list_id->tuple_cnt) * sizeof (MHT_HLS_SLOT);
-	  UINT64 entries_size = (UINT64) list_id->tuple_cnt * sizeof (MHT_HLS_ENTRY);
-	  UINT64 payload_size;
-
-	  /* IN_MEM: slot array + one entry (header) per row + the tuples themselves */
-	  payload_size = (UINT64) list_id->page_cnt * DB_PAGESIZE;
-	  in_mem_size = slot_array_size + entries_size + payload_size;
-
-	  /* HYBRID: slot array + one entry (header) per row + a tuple position per row; tuples stay on the temp file */
-	  payload_size = (UINT64) list_id->tuple_cnt * sizeof (QFILE_TUPLE_SIMPLE_POS);
-	  hybrid_size = slot_array_size + entries_size + payload_size;
+	  goto error_exit;
 	}
 
-      if (list_id->tuple_cnt <= INT_MAX && in_mem_size <= mem_limit)
+      hash_scan->memory.curr_hash_entry = NULL;
+      break;
+
+    case HASH_METH_HASH_FILE:
+      hash_scan->file.hash_table = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
+      if (hash_scan->file.hash_table == NULL)
 	{
-	  hash_scan->hash_list_scan_type = HASH_METH_IN_MEM;
-
-	  hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
-	  if (hash_scan->memory.hash_table == NULL)
-	    {
-	      goto error_exit;
-	    }
-
-	  hash_scan->memory.curr_hash_entry = NULL;
+	  goto error_exit;
 	}
-      else if (list_id->tuple_cnt <= INT_MAX && hybrid_size <= mem_limit)
+
+      if (fhs_create (thread_p, hash_scan->file.hash_table, list_id->tuple_cnt) == NULL)
 	{
-	  hash_scan->hash_list_scan_type = HASH_METH_HYBRID;
-
-	  hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
-	  if (hash_scan->memory.hash_table == NULL)
-	    {
-	      goto error_exit;
-	    }
-
-	  hash_scan->memory.curr_hash_entry = NULL;
+	  /* the FHSID has no valid files; free it so that hjoin_scan_clear () does not destroy them */
+	  db_private_free_and_init (thread_p, hash_scan->file.hash_table);
+	  goto error_exit;
 	}
-      else
-	{
-	  hash_scan->hash_list_scan_type = HASH_METH_HASH_FILE;
 
-	  hash_scan->file.hash_table = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
-	  if (hash_scan->file.hash_table == NULL)
-	    {
-	      goto error_exit;
-	    }
+      hash_scan->file.curr_oid = OID_INITIALIZER;
+      hash_scan->file.is_dk_bucket = false;
+      break;
 
-	  if (fhs_create (thread_p, hash_scan->file.hash_table, list_id->tuple_cnt) == NULL)
-	    {
-	      /* the FHSID has no valid files; free it so that hjoin_scan_clear does not destroy them */
-	      db_private_free_and_init (thread_p, hash_scan->file.hash_table);
-	      goto error_exit;
-	    }
-
-	  hash_scan->file.curr_oid = OID_INITIALIZER;
-	  hash_scan->file.is_dk_bucket = false;
-	}
-    }
-  else
-    {
-      /* skip hash table */
-      hash_scan->hash_list_scan_type = HASH_METH_NOT_USE;
+    default:
+      /* no list or no tuples: skip hash table */
+      break;
     }
 
   hash_scan->curr_hash_key = 0;
@@ -2939,13 +2904,46 @@ hjoin_fetch_val_list (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASH
   return NO_ERROR;
 }
 
-/* Two join column values once converted, compared as the compiler decided (tp_value_compare without coercion). No
- * key compares by its values: the compiler reads an OBJECT column as OID and decides no NULL or variable column
- * (xts_pack_hash_join_keys). */
+/*
+ * hjoin_compare_key () - compare two join column values, once converted, as the compiler decided
+ *   (domain_decide_hash_join_key ())
+ *   return: the comparison result; the caller asks only for DB_EQ
+ *   compare(in): the comparison of the key column pair
+ *   value1(in): the build value
+ *   value2(in): the probe value
+ *
+ * Behavior:
+ *   - The comparison is tp_value_compare without coercion, or with coercion for keys of two types and for JSON and
+ *     collection keys, whose contents the join term's comparison coerces.
+ *   - No comparison that reaches here has the method DOMAIN_COMPARE_OBJECT or DOMAIN_COMPARE_VALUES:
+ *       + the compiler reads an OBJECT column as OID
+ *       + the compiler decides no variable column (xts_pack_hash_join_keys ())
+ *       + a pair of NULL-typed columns is decided as DOMAIN_COMPARE_VALUES, but holds only NULLs, which
+ *         hjoin_fetch_key () skips before the comparison
+ *
+ * Method:
+ *   - The comparison is decided outer first (source[0] the outer type, source[1] the inner) and converts or coerces
+ *     each side by its own source type, so it takes the outer value first.
+ *   - Where the build is the inner input (a left, anti or semi join, or an inner join whose outer is not the smaller),
+ *     value1 is the inner value:
+ *       + a pair of two types of one hash type, hashed as they are, has source[0] != source[1]: value1's type shows
+ *         that it is the inner value, and the values are swapped
+ *       + every other pair is read in one type (the same type, or both converted to a common domain) and keeps its
+ *         order
+ *       + only DB_EQ is asked for, so the sign of a swapped result does not matter
+ */
 static inline DB_VALUE_COMPARE_RESULT
 hjoin_compare_key (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2)
 {
   assert (compare->method != DOMAIN_COMPARE_OBJECT && compare->method != DOMAIN_COMPARE_VALUES);
+  if (DB_VALUE_DOMAIN_TYPE (value1) != compare->source[0])
+    {
+      /* the build is the inner input and the two types differ: the outer value goes first */
+      assert (DB_VALUE_DOMAIN_TYPE (value2) == compare->source[0]);
+      assert (DB_VALUE_DOMAIN_TYPE (value1) == compare->source[1]);
+      return domain_compare_values (compare, value2, value1, 0, NULL);
+    }
+  assert (DB_VALUE_DOMAIN_TYPE (value2) == compare->source[1]);
   return domain_compare_values (compare, value1, value2, 0, NULL);
 }
 
@@ -3013,21 +3011,6 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	  if (value_is_null)
 	    {
 	      goto skip_next;
-	    }
-
-	  if (TP_DOMAIN_TYPE (coerce_domains[key_index]) == DB_TYPE_NUMERIC
-	      && TP_DOMAIN_TYPE (domains[key_index]) == DB_TYPE_NUMERIC
-	      && coerce_domains[key_index]->precision == DB_DEFAULT_NUMERIC_PRECISION
-	      && pre_coerce_value.domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION
-	      && pre_coerce_value.domain.numeric_info.scale < 0)
-	    {
-	      /* 
-	       * for float numeric and fixed numeric, this is used to recalculate the fixed
-	       * numeric's precision later, as it must be known accurately during normalization.
-	       * 
-	       * note: A value in numeric(38,0) column does not guarantee precision 38.
-	       */
-	      pre_coerce_value.domain.numeric_info.precision = DB_HJOIN_NUMERIC_PRECISION_DEFERRED;
 	    }
 
 	  domain_status =
@@ -5205,24 +5188,33 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
 }
 
 /*
- * hjoin_prehash_value_ok () - the value, read back from its column of the list, hashes as it does now
- *   return: true when mht_get_hash_number () gives the value and the one the build reads back from the list
- *	     (qfile_slot_read_column_value () with the column's domain, hjoin_fetch_key () without coercion) the same
- *	     number; false for every other value
+ * hjoin_prehash_value_ok () - whether the value and the value read back from its column of the list hash alike
+ *   return: true when mht_valhash () gives the value and the one the build reads back from the list the same number;
+ *	     false for every other value
  *   v(in): the value the list's column was written from, after the write
  *   dom(in): the column's domain in the list
  *
- * The list writes the value with its own type (qfile_tuple_put_value ()); the build reads the column back with the
- * column's domain.  With the two types the same:
- *   - INTEGER, SMALLINT, BIGINT, DATE, TIME, TIMESTAMP, DATETIME: fixed-size bits written and read back as they are;
- *     the hash is of those bits.
- *   - NUMERIC of the column's fixed precision and scale: the digits are written without their leading zero bytes
- *     and read back zero-filled into the same 17 bytes, with the precision and scale the write recorded (the
- *     value's) and as a fixed numeric (the column's precision); the hash is of the 17 bytes, a fixed numeric's not
- *     normalized (mr_data_writeval_numeric (), mr_data_readval_numeric (), db_make_numeric ()).
- *   - CHAR, VARCHAR with the column's collation: the bytes are written as the value holds them after the write (a
- *     CHAR is padded in the value itself first), compressed or not, and read back as those bytes with the column's
- *     collation; the hash is of the bytes up to their trailing spaces, by the collation.
+ * Reason:
+ *   - The list writes the value with its own type (qfile_tuple_put_value ()).
+ *   - The build reads the column back with the column's domain (qfile_slot_read_column_value (), hjoin_fetch_key ()
+ *     without coercion).
+ *   - With the two types the same:
+ *       + INTEGER, SMALLINT, BIGINT, DATE, TIME, TIMESTAMP, DATETIME:
+ *           . the fixed-size bits are written and read back as they are
+ *           . the hash is of those bits
+ *       + CHAR, VARCHAR with the column's collation:
+ *           . the bytes are written as the value holds them after the write (a CHAR is padded in the value itself
+ *             first), compressed or not, and read back as those bytes with the column's collation
+ *           . the hash is of those bytes, by the collation
+ *       + NUMERIC:
+ *           . the digits are written without their leading zero bytes
+ *           . they are read back zero-filled into the same 17 bytes, with the precision and scale the write recorded,
+ *             as a float NUMERIC when the column is one and as a fixed one otherwise
+ *           . the hash is of the value those bytes and that scale make (mr_data_writeval_numeric (),
+ *             mr_data_readval_numeric (), db_make_numeric (), numeric_db_value_hash ())
+ *           . read back as a fixed NUMERIC, a value written with precision DB_DEFAULT_NUMERIC_PRECISION (40) has the
+ *             precision of a float NUMERIC, whose scale numeric_db_value_hash () reads from the header
+ *           . the read leaves that header scale 0, so such a value gives false
  */
 static bool
 hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
@@ -5245,8 +5237,12 @@ hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
       return true;
 
     case DB_TYPE_NUMERIC:
-      return dom->precision != DB_DEFAULT_NUMERIC_PRECISION && db_value_precision (v) == dom->precision
-	&& db_value_scale (v) == dom->scale;
+      {
+	int precision, scale;
+
+	db_get_numeric_precision_and_scale (v, &precision, &scale, NULL);
+	return dom->precision == DB_DEFAULT_NUMERIC_PRECISION || precision != DB_DEFAULT_NUMERIC_PRECISION;
+      }
 
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
@@ -5265,9 +5261,11 @@ hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
  *   thread_p(in): the thread that wrote the tuple
  *   input(in): an armed input, its tuple descriptor still holding the values the tuple was written from
  *
- * The hash is qdata_hash_scan_key ()'s over the key values in key order (qdata_hash_scan_key_step (), the same
- * step, with the build's table size UINT_MAX), its file-method step left to the build; a tuple with a NULL key is
- * marked, as hjoin_fetch_key () has the build skip it.
+ * Behavior:
+ *   - The hash is the one qdata_hash_scan_key () gives over the key values in key order:
+ *       + each value folded by qdata_hash_scan_key_fold () with the build's table size, UINT_MAX
+ *       + the file-method step (qdata_hash_scan_key_finish ()) left to the build
+ *   - A tuple with a NULL key is marked, as hjoin_fetch_key () has the build skip it.
  */
 void
 hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input)
@@ -5353,7 +5351,7 @@ hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input)
 	  hjoin_prehash_invalidate (ph);
 	  return;
 	}
-      hash_val = qdata_hash_scan_key_step (hash_val, v, UINT_MAX);
+      hash_val = qdata_hash_scan_key_fold (hash_val, v, UINT_MAX);
     }
   ph->hashes[ph->cnt++] = hash_val;
 }

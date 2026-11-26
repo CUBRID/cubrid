@@ -50,6 +50,7 @@
 #include "db.h"
 #endif /* !defined (SERVER_MODE) */
 #include "dbtype.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -295,11 +296,28 @@ static int lang_split_key_w_exp (const LANG_COLLATION * lang_coll, const bool is
 static int lang_split_key_euckr (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1,
 				 const int size1, const unsigned char *str2, const int size2, const unsigned char **key,
 				 int *byte_size, bool ignore_trailing_space);
-static unsigned int lang_mht2str_byte (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
-static unsigned int lang_mht2str_default (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
+STATIC_INLINE unsigned int lang_cp_to_weight_utf8 (const unsigned int cp, const unsigned int *weights,
+						   const int w_count) __attribute__ ((ALWAYS_INLINE));
 static unsigned int lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
+static unsigned int lang_mht2str_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char *str,
+					       const int size);
+STATIC_INLINE void lang_hash_weight (unsigned int *hash_key, int *zeros, const unsigned int weight,
+				     const bool hold_zero) __attribute__ ((ALWAYS_INLINE));
 static unsigned int lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
+static unsigned int lang_mht2str_byte (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
+static unsigned int lang_mht2str_byte_en_cs (const LANG_COLLATION * lang_coll, const unsigned char *str,
+					     const int size);
+STATIC_INLINE unsigned int lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_upper)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE UINT64 lang_hash_u64_add (UINT64 hash_key, UINT64 chunk, bool nul_as_space, bool to_upper)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE UINT64 lang_hash_u64_nul_as_space (UINT64 chunk) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE UINT64 lang_hash_u64_upper (UINT64 chunk) __attribute__ ((ALWAYS_INLINE));
+#if !defined (NDEBUG)
+static void lang_verify_mht2str_weights (const LANG_COLLATION * lang_coll);
+#endif
 static unsigned int lang_mht2str_ko (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
+static unsigned int lang_mht2str_binary (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
 static void lang_init_coll_en_ci (LANG_COLLATION * lang_coll);
 static void lang_init_coll_en_cs (LANG_COLLATION * lang_coll);
 static void lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll);
@@ -330,6 +348,43 @@ static void lang_initloc_en_iso88591 (LANG_LOCALE_DATA * ld);
 
 static void lang_initloc_en_binary (LANG_LOCALE_DATA * ld);
 
+/*
+ * The hash of a string key is its collation's mht2str, mixed by mht_valhash (): strings the collation's fastcmp finds
+ * equal hash alike.
+ *
+ *   collation            SQL name        fastcmp                   mht2str                    hashes
+ *   -------------------  --------------  ------------------------  -------------------------  ------------------------
+ *   coll_Iso_binary      iso88591_bin    lang_fastcmp_byte         lang_mht2str_byte_en_cs    8 bytes at a time
+ *   coll_Utf8_binary     utf8_bin        lang_fastcmp_byte         lang_mht2str_byte_en_cs    8 bytes at a time
+ *   coll_Iso88591_en_cs  iso88591_en_cs  lang_fastcmp_byte         lang_mht2str_byte_en_cs    8 bytes at a time
+ *   coll_Iso88591_en_ci  iso88591_en_ci  lang_fastcmp_byte         lang_mht2str_byte          8 bytes at a time, upper
+ *   coll_Utf8_en_cs      utf8_en_cs      lang_fastcmp_byte         lang_mht2str_byte_en_cs    8 bytes at a time
+ *   coll_Utf8_en_ci      utf8_en_ci      lang_fastcmp_byte         lang_mht2str_byte          8 bytes at a time, upper
+ *   coll_Utf8_tr_cs      utf8_tr_cs      lang_strcmp_utf8          lang_mht2str_utf8          code point weights
+ *   coll_Utf8_ko_cs      utf8_ko_cs      lang_strcmp_utf8          lang_mht2str_utf8          code point weights
+ *   coll_Euckr_bin       euckr_bin       lang_fastcmp_ko           lang_mht2str_ko            EUC-KR character weights
+ *   coll_Binary          binary          lang_fastcmp_binary       lang_mht2str_binary        8 bytes at a time
+ *   loaded               expansions      lang_strcmp_utf8_uca      lang_mht2str_utf8_exp      weights per level
+ *   loaded               contractions    lang_strcmp_utf8_w_contr  lang_mht2str_utf8_w_contr  contraction weights
+ *   loaded               neither         lang_strcmp_utf8          lang_mht2str_utf8          code point weights
+ *
+ * 8 bytes at a time: coll_Binary leaves out the trailing NULs; the others hash a NUL as a space and leave out the
+ *   trailing spaces and NULs, which lang_fastcmp_byte () weighs 0.
+ * upper: 'a' to 'z' hash as 'A' to 'Z'.
+ * contraction weights: a contraction weighs as one unit, other code points one by one.
+ * weights per level: each level the collation compares, hashed on its own.
+ * loaded: a collation of a locale library (cubrid genlocale), with expansions (uca_exp_num > 1), with contractions and
+ *   no expansions (count_contr > 0) or with neither.
+ *
+ * The code point and EUC-KR collations do not hash 8 bytes at a time:
+ *   - a loaded collation gives one weight to different code points that compare equal (uca_support.c)
+ *   - intl_utf8_to_cp () reads some different bytes of an invalid UTF-8 string as the same code point
+ *   - an EUC space (0xA1 0xA1) weighs 0 only at a character's start
+ *
+ * Strings fastcmp tells apart may hash alike too: with ignore_trailing_space off, 'a' and 'a ' compare apart but hash
+ * alike, a collision the comparison after the hash resolves.
+ */
+
 static LANG_COLLATION coll_Utf8_en_cs = {
   INTL_CODESET_UTF8, 1, 1, DEFAULT_COLL_OPTIONS, NULL,
   /* collation data */
@@ -345,7 +400,7 @@ static LANG_COLLATION coll_Utf8_en_cs = {
   lang_strmatch_utf8,
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
-  lang_mht2str_byte,
+  lang_mht2str_byte_en_cs,
   lang_init_coll_en_cs,
   LANG_LOCKSTEP_NONE
 };
@@ -377,7 +432,7 @@ static LANG_COLLATION coll_Iso88591_en_cs = {
   lang_strmatch_byte,
   lang_next_alpha_char_iso88591,
   lang_split_key_iso,
-  lang_mht2str_default,
+  lang_mht2str_byte_en_cs,
   NULL,
   LANG_LOCKSTEP_NONE
 };
@@ -671,7 +726,7 @@ static LANG_COLLATION coll_Binary = {
   lang_strmatch_binary,
   lang_next_alpha_char_iso88591,
   lang_split_key_binary,
-  lang_mht2str_default,
+  lang_mht2str_binary,
   NULL,
   LANG_LOCKSTEP_NONE
 };
@@ -714,7 +769,7 @@ static LANG_COLLATION coll_Iso_binary = {
   lang_strmatch_byte,
   lang_next_alpha_char_iso88591,
   lang_split_key_iso,
-  lang_mht2str_default,
+  lang_mht2str_byte_en_cs,
   NULL,
   LANG_LOCKSTEP_NONE
 };
@@ -736,7 +791,7 @@ static LANG_COLLATION coll_Utf8_binary = {
   /* 'next' and 'split_point' functions must handle UTF-8 chars */
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
-  lang_mht2str_byte,
+  lang_mht2str_byte_en_cs,
   NULL,
   LANG_LOCKSTEP_NONE
 };
@@ -887,6 +942,11 @@ lang_init_builtin (void)
   for (i = 0; i < (int) (sizeof (built_In_collations) / sizeof (built_In_collations[0])); i++)
     {
       lang_set_byte_lockstep_like (built_In_collations[i]);
+
+#if !defined (NDEBUG)
+      /* assert what the hash functions assume of the weights the init functions write */
+      lang_verify_mht2str_weights (built_In_collations[i]);
+#endif
     }
 
   /* register all built-in locales allowed in current charset Support for multiple locales is required for switching
@@ -2948,37 +3008,8 @@ lang_strmatch_utf8 (const LANG_COLLATION * lang_coll, bool is_match, const unsig
 	    }
 	}
 
-      if (cp1 < (unsigned int) alpha_cnt)
-	{
-	  if (cp1 == SPACE)
-	    {
-	      w_cp1 = ZERO;
-	    }
-	  else
-	    {
-	      w_cp1 = weight_ptr[cp1];
-	    }
-	}
-      else
-	{
-	  w_cp1 = cp1;
-	}
-
-      if (cp2 < (unsigned int) alpha_cnt)
-	{
-	  if (cp2 == SPACE)
-	    {
-	      w_cp2 = ZERO;
-	    }
-	  else
-	    {
-	      w_cp2 = weight_ptr[cp2];
-	    }
-	}
-      else
-	{
-	  w_cp2 = cp2;
-	}
+      w_cp1 = lang_cp_to_weight_utf8 (cp1, weight_ptr, alpha_cnt);
+      w_cp2 = lang_cp_to_weight_utf8 (cp2, weight_ptr, alpha_cnt);
 
       if (w_cp1 != w_cp2)
 	{
@@ -3237,75 +3268,157 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
   return 0;
 }
 
-#define ADD_TO_HASH(pseudo_key, w)	    \
-  do {					    \
-    unsigned int i;			    \
-    pseudo_key = (pseudo_key << 4) + w;	    \
-    i = pseudo_key & 0xf0000000;	    \
-    if (i != 0)				    \
-      {					    \
-	pseudo_key ^= i >> 24;		    \
-	pseudo_key ^= i;		    \
-      }					    \
-  } while (0)
+/*
+ * lang_cp_to_weight_utf8 () - the weight of a code point, which lang_strmatch_utf8 () compares and lang_mht2str_utf8 ()
+ *   hashes
+ *   return: weight
+ *   cp(in): code point
+ *   weights(in): weight table of the collation
+ *   w_count(in): code points the table weighs
+ *
+ * Behavior:
+ *   A space weighs 0 whatever the table holds, and a code point past the table weighs itself.
+ */
+STATIC_INLINE unsigned int
+lang_cp_to_weight_utf8 (const unsigned int cp, const unsigned int *weights, const int w_count)
+{
+  if (cp >= (unsigned int) w_count)
+    {
+      return cp;
+    }
+  return (cp == SPACE) ? ZERO : weights[cp];
+}
 
 /*
- * lang_mht2str_utf8() - computes hash 2 style for a UTF-8 string having
- *			 collation without expansions
- *
+ * lang_mht2str_utf8 () - hash a UTF-8 string as lang_strcmp_utf8 () compares it
  *   return: hash value
- *   lang_coll(in) : collation data
+ *   lang_coll(in): collation without contractions and expansions
  *   str(in):
  *   size(in):
+ *
+ * Behavior:
+ *   - A code point weighs as the compare function weighs it (lang_cp_to_weight_utf8 ()):
+ *       + a built-in collation by weights_ti: weights differs from weights_ti only in the space, which
+ *         lang_cp_to_weight_utf8 () weighs 0 (lang_verify_mht2str_weights ())
+ *       + a loaded collation by weights
+ *   - Trailing weights 0 are not hashed, so strings that differ only in them hash alike.
+ *
+ * Steps:
+ *   Step 1: leave out the trailing spaces (a CHAR's pad) without decoding them, but the first
+ *           INTL_UTF8_MAX_CHAR_SIZE - 1 of them.
+ *   Step 2: read the weight of the next code point.
+ *   Step 3: hash the weight, holding a weight 0 back.
  */
 static unsigned int
 lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
 {
-  const unsigned char *str_end;
+  const COLL_DATA *coll_data = &(lang_coll->coll);
+  const unsigned int *weights = (lang_coll->built_in) ? coll_data->weights_ti : coll_data->weights;
+  const unsigned char *str_end = str + size;
   unsigned char *str_next;
-  unsigned int cp, w;
-  const COLL_DATA *coll = &(lang_coll->coll);
-  const int alpha_cnt = coll->w_count;
-  const unsigned int *weight_ptr = lang_coll->coll.weights;
-  unsigned int pseudo_key = 0;
+  unsigned int hash_key = MHT_FNV_OFFSET;
+  int zeros = 0;		/* weights 0 not hashed yet */
+  unsigned int cp, weight;
 
-  str_end = str + size;
-
-  for (; str < str_end;)
+  /* Step 1: leave out the trailing spaces; a UTF-8 byte 0x20 is a space, which weighs 0 */
+  while (str_end > str && str_end[-1] == ASCII_SPACE)
     {
-      assert (str_end - str > 0);
-
-      cp = intl_utf8_to_cp (str, CAST_BUFLEN (str_end - str), &str_next);
-
-      if (cp < (unsigned int) alpha_cnt)
-	{
-	  COLL_CONTRACTION *contr = NULL;
-
-	  if (coll->count_contr > 0 && str_end - str >= coll->contr_min_size && cp >= coll->cp_first_contr_offset
-	      && cp < (coll->cp_first_contr_offset + coll->cp_first_contr_count)
-	      && ((contr = lang_get_contr_for_string (coll, str, CAST_BUFLEN (str_end - str), cp)) != NULL))
-	    {
-	      assert (contr != NULL);
-
-	      w = contr->wv;
-	      str_next = (unsigned char *) str + contr->size;
-	    }
-	  else
-	    {
-	      w = weight_ptr[cp];
-	    }
-	}
-      else
-	{
-	  w = cp;
-	}
-
-      ADD_TO_HASH (pseudo_key, w);
-
-      str = str_next;
+      str_end--;
     }
 
-  return pseudo_key;
+  /* keep the first INTL_UTF8_MAX_CHAR_SIZE - 1 of them: a malformed lead byte before them reads them as its next bytes
+   * (intl_utf8_to_cp () does not check them), as the compare function does; a space read alone weighs 0 */
+  str_end = MIN (str_end + (INTL_UTF8_MAX_CHAR_SIZE - 1), str + size);
+
+  while (str < str_end)
+    {
+      /* Step 2: read the weight of the next code point */
+      cp = intl_utf8_to_cp (str, CAST_BUFLEN (str_end - str), &str_next);
+      str = str_next;
+      weight = lang_cp_to_weight_utf8 (cp, weights, coll_data->w_count);
+
+      /* Step 3: hash the weight, holding a weight 0 back */
+      lang_hash_weight (&hash_key, &zeros, weight, true);
+    }
+
+  return hash_key;
+}
+
+/*
+ * lang_mht2str_utf8_w_contr () - hash a UTF-8 string as lang_strcmp_utf8_w_contr () compares it
+ *   return: hash value
+ *   lang_coll(in): collation with contractions
+ *   str(in):
+ *   size(in):
+ *
+ * Behavior:
+ *   - A contraction weighs as one unit. Any other code point weighs as lang_strmatch_utf8_w_contr () weighs it: by
+ *     weights, a space included, and itself past the table.
+ *   - Trailing weights 0 are not hashed, so strings that differ only in them hash alike.
+ *   - The compare function reads the trailing weights without contractions (lang_str_utf8_trail_zero_weights ()). The
+ *     two readings agree because it assumes that no contraction starts at a code point of weight 0.
+ *
+ * Steps:
+ *   Step 1: read the weight of the next contraction or code point.
+ *   Step 2: hash the weight, holding a weight 0 back.
+ */
+static unsigned int
+lang_mht2str_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
+{
+  const COLL_DATA *coll_data = &(lang_coll->coll);
+  const unsigned char *str_end = str + size;
+  unsigned char *str_next;
+  unsigned int hash_key = MHT_FNV_OFFSET;
+  int zeros = 0;		/* weights 0 not hashed yet */
+  unsigned int weight;
+
+  while (str < str_end)
+    {
+      /* Step 1: read the weight of the next contraction or code point */
+      weight = lang_get_w_first_el (coll_data, str, CAST_BUFLEN (str_end - str), &str_next, false);
+      str = str_next;
+
+      /* Step 2: hash the weight, holding a weight 0 back */
+      lang_hash_weight (&hash_key, &zeros, weight, true);
+    }
+
+  return hash_key;
+}
+
+/*
+ * lang_hash_weight () - add a weight to the hash
+ *   hash_key(in/out): the hash
+ *   zeros(in/out): the weights 0 not hashed yet
+ *   weight(in): the weight
+ *   hold_zero(in): true to hold a weight 0 back, false to skip it
+ *
+ * Behavior:
+ *   - A weight 0 held back is hashed only when a nonzero weight follows it, so strings that differ only in trailing
+ *     weights 0 hash alike: a compare function that leaves them out finds the strings equal, and one that counts them
+ *     finds them apart, a collision.
+ *   - lang_mht2str_utf8_exp () passes false for a character other than a space, whose weights 0 the UCA compare
+ *     functions skip.
+ *
+ * Method:
+ *   A weight is one FNV-1a step, taken whole, not byte by byte; a weight 0 held back is the step (hash ^ 0) * prime.
+ */
+STATIC_INLINE void
+lang_hash_weight (unsigned int *hash_key, int *zeros, const unsigned int weight, const bool hold_zero)
+{
+  if (weight == 0)
+    {
+      if (hold_zero)
+	{
+	  (*zeros)++;
+	}
+      return;
+    }
+
+  for (; *zeros > 0; (*zeros)--)
+    {
+      *hash_key *= MHT_FNV_PRIME;
+    }
+  *hash_key = (*hash_key ^ weight) * MHT_FNV_PRIME;
 }
 
 /*
@@ -4000,125 +4113,6 @@ exit:
 }
 
 /*
- * lang_mht2str_utf8_exp() -
- *
- *   return: negative if str1 < str2, positive if str1 > str2, zero otherwise
- *   coll_data(in) : collation data
- *   level(in) : current UCA level to compare
- *   is_match(in) : true if match, otherwise is compare
- *   str1(in):
- *   size1(in):
- *   str2(in): this is the pattern string in case of match
- *   size2(in):
- *   escape(in): pointer to escape character (multi-byte allowed)
- *		 (used in context of LIKE)
- *   has_last_escape(in): true if it should check if last character is the
- *			  escape character
- *   offset_next_level(in/out) : offset in bytes from which to start the
- *				 compare; used to avoid compare between
- *				 binary identical part in consecutive compare
- *				 levels
- *   str1_match_size(out): size from str1 which is matched with str2
- */
-static unsigned int
-lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
-{
-  const unsigned char *str_end;
-  unsigned char *str_next;
-  const COLL_DATA *coll_data = &(lang_coll->coll);
-  UCA_L13_W *uca_w_l13 = NULL;
-  UCA_L4_W *uca_w_l4 = NULL;
-  int num_ce = 0;
-  int ce_index = 0;
-  unsigned int w, cp;
-  const int alpha_cnt = coll_data->w_count;
-  const int exp_num = coll_data->uca_exp_num;
-  unsigned int pseudo_key = 0;
-  unsigned int level;
-  int str_size;
-
-  str_end = str + size;
-
-  str_next = (unsigned char *) str;
-
-  for (;;)
-    {
-      if (num_ce == 0)
-	{
-	  str = str_next;
-	  if (str >= str_end)
-	    {
-	      break;
-	    }
-
-	  str_size = CAST_BUFLEN (str_end - str);
-	  cp = intl_utf8_to_cp (str, str_size, &str_next);
-
-	  if (cp < (unsigned int) alpha_cnt)
-	    {
-	      COLL_CONTRACTION *contr = NULL;
-
-	      if (coll_data->count_contr > 0 && str_size >= coll_data->contr_min_size
-		  && cp >= coll_data->cp_first_contr_offset
-		  && cp < (coll_data->cp_first_contr_offset + coll_data->cp_first_contr_count)
-		  && ((contr = lang_get_contr_for_string (coll_data, str, str_size, cp)) != NULL))
-		{
-		  assert (contr != NULL);
-		  uca_w_l13 = contr->uca_w_l13;
-		  if (coll_data->uca_opt.sett_strength >= TAILOR_QUATERNARY)
-		    {
-		      uca_w_l4 = contr->uca_w_l4;
-		    }
-		  num_ce = contr->uca_num;
-		  str_next = (unsigned char *) str + contr->size;
-		}
-	      else
-		{
-		  uca_w_l13 = &(coll_data->uca_w_l13[cp * exp_num]);
-		  if (coll_data->uca_opt.sett_strength >= TAILOR_QUATERNARY)
-		    {
-		      uca_w_l4 = &(coll_data->uca_w_l4[cp * exp_num]);
-		    }
-		  num_ce = coll_data->uca_num[cp];
-		  /* leave next pointer to the value returned by 'intl_utf8_to_cp' */
-		}
-	    }
-	  else
-	    {
-	      uca_w_l13 = &uca_l13_max_weight;
-	      if (coll_data->uca_opt.sett_strength >= TAILOR_QUATERNARY)
-		{
-		  uca_w_l4 = &uca_l4_max_weight;
-		}
-	      num_ce = 1;
-	      /* leave next pointer to the value returned by 'intl_utf8_to_cp' */
-	    }
-
-	  assert (num_ce > 0);
-
-	  ce_index = 0;
-	}
-
-      if (num_ce == 0 && str >= str_end)
-	{
-	  break;
-	}
-
-      for (level = 0; level < (unsigned int) coll_data->uca_opt.sett_strength; level++)
-	{
-	  w = GET_UCA_WEIGHT (level, ce_index, uca_w_l13, uca_w_l4);
-	  ADD_TO_HASH (pseudo_key, w);
-	}
-
-      ce_index++;
-      num_ce--;
-    }
-
-  return pseudo_key;
-}
-
-
-/*
  * lang_back_strmatch_utf8_uca_w_level() - string match or compare for UTF8
  *	collation employing full UCA weights (expansions and contractions)
  *
@@ -4551,6 +4545,140 @@ lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data, bool is_match, 
     }
 
   return 0;
+}
+
+/*
+ * lang_mht2str_utf8_exp () - hash a UTF-8 string as lang_strcmp_utf8_uca () compares it
+ *   return: hash value
+ *   lang_coll(in): collation with expansions
+ *   str(in):
+ *   size(in):
+ *
+ * Behavior:
+ *   - A weight 0 is skipped unless its character is a space, as the compare functions skip it.
+ *   - Trailing weights 0 are not hashed, so strings that differ only in them hash alike.
+ *   - An empty string is not returned early: it must hash as the strings of weights 0 only that equal it, whose levels'
+ *     hashes stay at the offset into Step 3. Step 1 reads nothing of it, and only Step 2, which starts at the last
+ *     character, leaves it out.
+ *
+ * Method:
+ *   Each level lang_strmatch_utf8_uca_w_coll_data () compares is hashed on its own, in the order the compare functions
+ *   read it: a backwards level 2 from the end, without the trailing spaces (lang_back_strmatch_utf8_uca_w_level ()).
+ *
+ * Steps:
+ *   Step 1: hash levels 1, 3 and 4, and a forward level 2, from the start.
+ *   Step 2: hash a backwards level 2 from the end.
+ *   Step 3: combine the levels' hashes.
+ */
+static unsigned int
+lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
+{
+  const COLL_DATA *coll_data = &(lang_coll->coll);
+  const unsigned char *str_end = str + size;
+  unsigned char *str_next;
+  unsigned int hash_key[4] = { MHT_FNV_OFFSET, MHT_FNV_OFFSET, MHT_FNV_OFFSET, MHT_FNV_OFFSET };	/* per level */
+  int zeros[4] = { 0, 0, 0, 0 };	/* weights 0 of spaces not hashed yet */
+  bool is_space;		/* the character is a space: its weights 0 are held, not skipped */
+
+  /*
+   * The collation elements (CE) of a character: a CE is one set of weights, one per level. Most characters have one CE
+   * and an expansion has more. num_ce counts them and ce_index is the one read.
+   */
+  UCA_L13_W *uca_w_l13 = NULL;
+  UCA_L4_W *uca_w_l4 = NULL;
+  unsigned int cp_contr;
+  int num_ce, num_ce_l4, ce_index;
+
+  /* a backwards level 2 reads from the string's end */
+  const unsigned char *str_start = str;
+
+  /* the levels compared: level 3 for a primary strength only with the case level */
+  const UCA_OPTIONS *opt = &(coll_data->uca_opt);
+  const bool l2 = (opt->sett_strength >= TAILOR_SECONDARY);
+  const bool l3 = (opt->sett_strength >= TAILOR_TERTIARY || (opt->sett_strength == TAILOR_PRIMARY
+							     && opt->sett_caseLevel));
+  const bool l4 = (opt->sett_strength >= TAILOR_QUATERNARY);
+  const bool l2_forward = l2 && !opt->sett_backwards;
+
+  /*
+   * Step 1: hash levels 1, 3 and 4, and a forward level 2, from the start
+   *
+   * Each character:
+   *   1. look up its num_ce collation elements, more than one for an expansion
+   *   2. hash each element's weights, each level into its own hash:
+   *
+   *      level  weight of element ce_index            hash         hashed if
+   *      1      UCA_GET_L1_W (uca_w_l13[ce_index])    hash_key[0]  always
+   *      2      UCA_GET_L2_W (uca_w_l13[ce_index])    hash_key[1]  l2_forward, a backwards one in Step 2
+   *      3      UCA_GET_L3_W (uca_w_l13[ce_index])    hash_key[2]  l3
+   *      4      uca_w_l4[ce_index]                    hash_key[3]  l4
+   */
+  while (str < str_end)
+    {
+      /* (1) the character's collation elements */
+      lang_get_uca_w_l13 (coll_data, true, str, CAST_BUFLEN (str_end - str), &uca_w_l13, &num_ce, &str_next, &cp_contr);
+      if (l4)
+	{
+	  lang_get_uca_w_l4 (coll_data, true, str, CAST_BUFLEN (str_end - str), &uca_w_l4, &num_ce_l4, &str_next,
+			     &cp_contr);
+	  assert (num_ce_l4 == num_ce);
+	}
+
+      /* (2) each element's weights, each level into its own hash */
+      is_space = (*str == ASCII_SPACE);
+      for (ce_index = 0; ce_index < num_ce; ce_index++)
+	{
+	  lang_hash_weight (&hash_key[0], &zeros[0], UCA_GET_L1_W (uca_w_l13[ce_index]), is_space);
+	  if (l2_forward)
+	    {
+	      lang_hash_weight (&hash_key[1], &zeros[1], UCA_GET_L2_W (uca_w_l13[ce_index]), is_space);
+	    }
+	  if (l3)
+	    {
+	      lang_hash_weight (&hash_key[2], &zeros[2], UCA_GET_L3_W (uca_w_l13[ce_index]), is_space);
+	    }
+	  if (l4)
+	    {
+	      lang_hash_weight (&hash_key[3], &zeros[3], uca_w_l4[ce_index], is_space);
+	    }
+	}
+
+      str = str_next;
+    }
+
+  /*
+   * Step 2: hash a backwards level 2 from the end
+   *
+   * Leave out the trailing spaces, then read the characters from the last one, str at the character's last byte:
+   *   - look up its num_ce collation elements, more than one for an expansion
+   *   - hash each element's weights from the last element, level 2 only:
+   *
+   *   level  weight of element ce_index            hash         hashed if
+   *   2      UCA_GET_L2_W (uca_w_l13[ce_index])    hash_key[1]  l2 and sett_backwards, a nonempty string
+   */
+  if (l2 && opt->sett_backwards)
+    {
+      /* leave out the trailing spaces: the compare function skips them before reading from the end */
+      while (str_end > str_start && str_end[-1] == ASCII_SPACE)
+	{
+	  str_end--;
+	}
+      if (str_end > str_start)
+	{
+	  for (str = str_end - 1; str >= str_start; str = str_next)
+	    {
+	      lang_get_uca_back_weight_l13 (coll_data, true, str_start, str, &uca_w_l13, &num_ce, &str_next, &cp_contr);
+	      is_space = (*str == ASCII_SPACE);
+	      for (ce_index = num_ce - 1; ce_index >= 0; ce_index--)
+		{
+		  lang_hash_weight (&hash_key[1], &zeros[1], UCA_GET_L2_W (uca_w_l13[ce_index]), is_space);
+		}
+	    }
+	}
+    }
+
+  /* Step 3: combine the levels' hashes */
+  return ((((hash_key[0] ^ hash_key[1]) * MHT_FNV_PRIME ^ hash_key[2]) * MHT_FNV_PRIME) ^ hash_key[3]) * MHT_FNV_PRIME;
 }
 
 /*
@@ -5742,42 +5870,261 @@ lang_strmatch_byte (const LANG_COLLATION * lang_coll, bool is_match, const unsig
 }
 
 /*
- * lang_mht2str_default () -
- *   return:
- *   lang_coll(in):
+ * lang_mht2str_byte () - hash a string as lang_fastcmp_byte () compares it by the case insensitive English weights
+ *   return: hash value
+ *   lang_coll(in): collation
  *   str(in):
  *   size(in):
  *
- */
-static unsigned int
-lang_mht2str_default (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
-{
-  return mht_2str_pseudo_key (str, size);
-}
-
-/*
- * lang_mht2str_byte () -
- *   return:
- *   lang_coll(in):
- *   str(in):
- *   size(in):
- *
+ * Behavior:
+ *   - A byte weighs itself, but 'a' to 'z' weigh as 'A' to 'Z', and a space and NUL weigh 0.
+ *   - Trailing weights 0 are not hashed, so strings that differ only in them hash alike.
  */
 static unsigned int
 lang_mht2str_byte (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
 {
-  const unsigned char *str_end = str + size;
-  unsigned int pseudo_key = 0;
-  unsigned int w;
+  return lang_hash_bytes (str, size, true, true);
+}
 
-  for (; str < str_end; str++)
+/*
+ * lang_mht2str_byte_en_cs () - hash a string as lang_fastcmp_byte () compares it by the case sensitive English weights
+ *   return: hash value
+ *   lang_coll(in): collation
+ *   str(in):
+ *   size(in):
+ *
+ * Behavior:
+ *   - A byte weighs itself, but a space and NUL weigh 0.
+ *   - Trailing weights 0 are not hashed, so strings that differ only in them hash alike.
+ */
+static unsigned int
+lang_mht2str_byte_en_cs (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
+{
+  return lang_hash_bytes (str, size, true, false);
+}
+
+/*
+ * lang_hash_bytes () - hash the bytes of a string, 8 bytes at a time
+ *   return: hash value
+ *   str(in):
+ *   size(in): size in bytes
+ *   nul_as_space(in): a NUL hashes as a space, both weighing 0, and the trailing spaces are left out too
+ *   to_upper(in): 'a' to 'z' hash as 'A' to 'Z'
+ *
+ * Steps:
+ *   Step 1: leave out the trailing NULs, and the trailing spaces with nul_as_space. The hash starts from the size left.
+ *   Step 2: hash each 8 bytes (lang_hash_u64_add ()).
+ *   Step 3: hash the bytes left, padded with NULs to 8 bytes; equal strings have the same size left, so the same
+ *           padding.
+ *   Step 4: fold the 64 bits into the 32 bits returned.
+ */
+STATIC_INLINE unsigned int
+lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_upper)
+{
+  UINT64 hash_key;
+  UINT64 chunk;
+  int offset;
+
+  /* Step 1: leave out the trailing NULs, and the trailing spaces with nul_as_space */
+  while (size > 0 && (str[size - 1] == 0 || (nul_as_space && str[size - 1] == ASCII_SPACE)))
     {
-      w = lang_coll->coll.weights[*str];
-      ADD_TO_HASH (pseudo_key, w);
+      size--;
+    }
+  hash_key = (UINT64) size;
+
+  /* Step 2: hash each 8 bytes */
+  for (offset = 0; offset + 8 <= size; offset += 8)
+    {
+      memcpy (&chunk, str + offset, sizeof (chunk));
+      hash_key = lang_hash_u64_add (hash_key, chunk, nul_as_space, to_upper);
     }
 
-  return pseudo_key;
+  /* Step 3: hash the bytes left, padded with NULs to 8 bytes */
+  if (offset < size)
+    {
+      chunk = 0;
+      memcpy (&chunk, str + offset, size - offset);
+      hash_key = lang_hash_u64_add (hash_key, chunk, nul_as_space, to_upper);
+    }
+
+  /* Step 4: fold the 64 bits into the 32 bits returned */
+  return (unsigned int) (hash_key ^ (hash_key >> 32));
 }
+
+/*
+ * lang_hash_u64_add () - add 8 bytes of a string to the hash by a folded multiply
+ *   return: hash value
+ *   hash_key(in): the hash of the bytes before
+ *   chunk(in): 8 bytes of a string
+ *   nul_as_space(in): as lang_hash_bytes () takes it
+ *   to_upper(in): as lang_hash_bytes () takes it
+ *
+ * Method:
+ *   The high half of the product, XORed into the low half, brings the high bits of a step down to where the next chunk
+ *   lands.
+ *
+ * Reason:
+ *   FxHasher's step, (rotl (hash, 5) ^ chunk) * K with the same K, is not used:
+ *     - its 64-bit multiply drops the high half of the product, and an input bit changes only the bits from it up
+ *     - it brings back only the top 5 bits: of the numbers 0 to 999999 zero-padded to 9 to 12, 17 to 21 or 25 to 28
+ *       bytes, 2.5 to 4% share a hash with another (the folded multiply: 0.01%, as a random hash does)
+ */
+STATIC_INLINE UINT64
+lang_hash_u64_add (UINT64 hash_key, UINT64 chunk, bool nul_as_space, bool to_upper)
+{
+  unsigned __int128 product;
+
+  if (nul_as_space)
+    {
+      chunk = lang_hash_u64_nul_as_space (chunk);
+    }
+  if (to_upper)
+    {
+      chunk = lang_hash_u64_upper (chunk);
+    }
+
+  product = (unsigned __int128) (hash_key ^ chunk) * MHT_FX_MULTIPLIER;
+  return (UINT64) product ^ (UINT64) (product >> 64);
+}
+
+/*
+ * lang_hash_u64_nul_as_space () - make each NUL byte of a chunk a space, 8 bytes at once
+ *   return: the chunk made
+ *   chunk(in): 8 bytes of a string
+ *
+ * Method:
+ *   In each byte b:
+ *     1. (b & 0x7f) + 0x7f sets bit 7 unless the low 7 bits are 0
+ *     2. OR-ing b sets bit 7 from 0x80
+ *     3. nul keeps 0x80 where neither step 1 nor step 2 sets it: only in a NUL byte
+ *     4. (nul >> 7) * ' ' puts 0x20 there
+ *
+ * Reason:
+ *   No sum passes 0xff (0x7f + 0x7f = 0xfe), so no byte carries into the next one.
+ *
+ * Note: nul is the test of "Determine if a word has a zero byte" in Bit Twiddling Hacks (Sean Eron Anderson).
+ */
+STATIC_INLINE UINT64
+lang_hash_u64_nul_as_space (UINT64 chunk)
+{
+  const UINT64 low7 = 0x7f7f7f7f7f7f7f7fULL;
+  /* 0x80 in exactly the bytes that are 0 */
+  const UINT64 nul = ~(((chunk & low7) + low7) | chunk | low7);
+
+  return chunk | ((nul >> 7) * ASCII_SPACE);
+}
+
+/*
+ * lang_hash_u64_upper () - make each byte 'a' to 'z' of a chunk 'A' to 'Z', 8 bytes at once
+ *   return: the chunk made
+ *   chunk(in): 8 bytes of a string
+ *
+ * Method:
+ *   In each byte, with b its low 7 bits:
+ *     1. bit 7 of b + add_from_a (0x80 - 'a' = 0x1f) is set from 'a' on
+ *     2. bit 7 of b + add_past_z (0x80 - 'z' - 1 = 0x05) is set past 'z'
+ *     3. lower keeps 0x80 where the bit of step 1 is set and that of step 2 is not, if bit 7 of the byte itself is
+ *        clear
+ *     4. chunk ^ (lower >> 2) clears 0x20 there: 'a' (0x61) to 'A' (0x41)
+ *
+ * Reason:
+ *   No sum passes 0xff (0x7f + 0x1f = 0x9e), so no byte carries into the next one. Bytes from 0x80 stay as they are.
+ *
+ * Note: lower is hasbetween () of "Determine if a word has a byte between m and n" in Bit Twiddling Hacks (Sean Eron
+ *       Anderson), its upper bound tested by an addition instead of a subtraction.
+ */
+STATIC_INLINE UINT64
+lang_hash_u64_upper (UINT64 chunk)
+{
+  const UINT64 low7 = 0x7f7f7f7f7f7f7f7fULL;
+  const UINT64 bit7 = 0x8080808080808080ULL;
+  const UINT64 add_from_a = 0x1f1f1f1f1f1f1f1fULL;
+  const UINT64 add_past_z = 0x0505050505050505ULL;
+  const UINT64 chunk_low7 = chunk & low7;
+  /* 0x80 in exactly the bytes from 'a' to 'z' */
+  const UINT64 lower = (chunk_low7 + add_from_a) & ~(chunk_low7 + add_past_z) & ~chunk & bit7;
+
+  return chunk ^ (lower >> 2);
+}
+
+#if !defined (NDEBUG)
+/*
+ * lang_verify_mht2str_weights () - assert that the hash function of a built-in collation hashes alike the strings its
+ *   weights and weights_ti compare equal
+ *   return: void
+ *   lang_coll(in): built-in collation with its weights filled
+ *
+ * Reason:
+ *   Two hash functions assume what the init function writes in the weights:
+ *     - lang_mht2str_utf8 () hashes by weights_ti only, so weights may differ from weights_ti only in the space, which
+ *       lang_cp_to_weight_utf8 () weighs 0
+ *     - lang_hash_bytes () hashes a NUL as a space, and for lang_mht2str_byte () 'a' to 'z' as 'A' to 'Z', so the bytes
+ *       of one weight must hash as one byte, and the bytes of weight 0, which it leaves out at the end, as a space
+ *
+ * Steps:
+ *   Step 1: assert that weights and weights_ti differ only in the space, for lang_mht2str_utf8 ().
+ *   Step 2: assert that the bytes of each weight hash as one byte, for lang_hash_bytes ().
+ */
+static void
+lang_verify_mht2str_weights (const LANG_COLLATION * lang_coll)
+{
+  const COLL_DATA *coll_data = &(lang_coll->coll);
+  const unsigned int *weight_tables[] = { coll_data->weights, coll_data->weights_ti };
+  int byte_of_weight[LANG_CHAR_COUNT_EN];	/* the byte the bytes of a weight hash as; -1 before the first */
+  bool to_upper;
+  unsigned int byte, weight, hashed_byte;
+  int cp, i;
+
+  /* Step 1: assert that weights and weights_ti differ only in the space */
+  if (lang_coll->mht2str == lang_mht2str_utf8)
+    {
+      for (cp = 0; cp < coll_data->w_count; cp++)
+	{
+	  assert (lang_cp_to_weight_utf8 (cp, coll_data->weights, coll_data->w_count)
+		  == lang_cp_to_weight_utf8 (cp, coll_data->weights_ti, coll_data->w_count));
+	}
+      return;
+    }
+
+  if (lang_coll->mht2str != lang_mht2str_byte && lang_coll->mht2str != lang_mht2str_byte_en_cs)
+    {
+      return;
+    }
+
+  /* Step 2: assert that the bytes of each weight hash as one byte; lang_fastcmp_byte () weighs every byte */
+  assert (coll_data->w_count >= LANG_CHAR_COUNT_EN);
+  to_upper = (lang_coll->mht2str == lang_mht2str_byte);
+  for (i = 0; i < (int) DIM (weight_tables); i++)
+    {
+      for (weight = 0; weight < LANG_CHAR_COUNT_EN; weight++)
+	{
+	  byte_of_weight[weight] = -1;
+	}
+      byte_of_weight[ZERO] = SPACE;
+
+      for (byte = 0; byte < LANG_CHAR_COUNT_EN; byte++)
+	{
+	  weight = lang_cp_to_weight_utf8 (byte, weight_tables[i], coll_data->w_count);
+	  hashed_byte = byte;
+	  if (byte == 0)
+	    {
+	      hashed_byte = SPACE;
+	    }
+	  else if (to_upper && byte >= 'a' && byte <= 'z')
+	    {
+	      hashed_byte = byte - ('a' - 'A');
+	    }
+
+	  assert (weight < LANG_CHAR_COUNT_EN);
+	  if (byte_of_weight[weight] == -1)
+	    {
+	      byte_of_weight[weight] = (int) hashed_byte;
+	    }
+	  assert (byte_of_weight[weight] == (int) hashed_byte);
+	}
+    }
+}
+#endif
 
 /*
  * lang_next_alpha_char_iso88591() - computes the next alphabetical char
@@ -6133,6 +6480,38 @@ lang_initloc_ko_euc (LANG_LOCALE_DATA * ld)
 }
 
 /*
+ * lang_tail_weight_ko () - the first nonzero weight in the rest of the longer EUC-KR string, as lang_fastcmp_ko ()
+ *   weighs it once the shorter one ends
+ *   return: weight; 0 if none
+ *   str(in): the rest of the string
+ *   str_end(in):
+ *   trail(in): the current character's trail bytes not read yet
+ *   weight(in): the collation's weights, for the weight of a space
+ *
+ * Behavior:
+ *   An ASCII or EUC space at a character's start weighs as the collation weighs a space (0 when trailing spaces are
+ *   ignored).
+ */
+static int
+lang_tail_weight_ko (const unsigned char *str, const unsigned char *str_end, int trail, const unsigned int *weight)
+{
+  unsigned int w = ZERO;
+
+  while (str < str_end && w == ZERO)
+    {
+      const unsigned char byte = *str;
+
+      w = lang_next_byte_weight_ko (&str, str_end, &trail);
+      if (w == ZERO && (byte == ASCII_SPACE || byte == EUC_SPACE))
+	{
+	  w = weight[SPACE];
+	}
+    }
+
+  return (int) w;
+}
+
+/*
  * lang_fastcmp_ko () - compare two EUC-KR character strings
  *
  * Arguments:
@@ -6157,6 +6536,7 @@ lang_fastcmp_ko (const LANG_COLLATION * lang_coll, const unsigned char *string1,
   const unsigned char *str1_end;
   const unsigned char *str2_end;
   const unsigned int *weight = (ignore_trailing_space) ? lang_coll->coll.weights_ti : lang_coll->coll.weights;
+  int str1_trail = 0, str2_trail = 0;	/* the current characters' trail bytes not read yet */
 
   assert (size1 >= 0 && size2 >= 0);
 
@@ -6165,27 +6545,8 @@ lang_fastcmp_ko (const LANG_COLLATION * lang_coll, const unsigned char *string1,
 
   for (cmp = 0; string1 < str1_end && string2 < str2_end && cmp == 0;)
     {
-      c1 = *string1++;
-      if (c1 == ASCII_SPACE)
-	{
-	  c1 = ZERO;
-	}
-      else if (c1 == EUC_SPACE && string1 < str1_end && *string1 == EUC_SPACE)
-	{
-	  c1 = ZERO;
-	  string1++;
-	}
-
-      c2 = *string2++;
-      if (c2 == ASCII_SPACE)
-	{
-	  c2 = ZERO;
-	}
-      else if (c2 == EUC_SPACE && string2 < str2_end && *string2 == EUC_SPACE)
-	{
-	  c2 = ZERO;
-	  string2++;
-	}
+      c1 = lang_next_byte_weight_ko (&string1, str1_end, &str1_trail);
+      c2 = lang_next_byte_weight_ko (&string2, str2_end, &str2_trail);
       cmp = c1 - c2;
     }
 
@@ -6204,104 +6565,12 @@ lang_fastcmp_ko (const LANG_COLLATION * lang_coll, const unsigned char *string1,
       return cmp;
     }
 
-  c1 = c2 = ZERO;
   if (size1 < size2)
     {
-      assert (size1 == 0 && size2 > 0);
-
-      for (; string2 < str2_end && c2 == ZERO;)
-	{
-	  c2 = *string2++;
-	  if (c2 == ASCII_SPACE)
-	    {
-	      c2 = weight[SPACE];
-	    }
-	  else if (c2 == EUC_SPACE && string2 < str2_end && *string2 == EUC_SPACE)
-	    {
-	      c2 = weight[SPACE];
-	      string2++;
-	    }
-	}
+      return -lang_tail_weight_ko (string2, str2_end, str2_trail, weight);
     }
-  else
-    {
-      assert (size1 > 0 && size2 == 0);
-
-      for (; string1 < str1_end && c1 == ZERO;)
-	{
-	  c1 = *string1++;
-	  if (c1 == ASCII_SPACE)
-	    {
-	      c1 = weight[SPACE];
-	    }
-	  else if (c1 == EUC_SPACE && string1 < str1_end && *string1 == EUC_SPACE)
-	    {
-	      c1 = weight[SPACE];
-	      string1++;
-	    }
-	}
-    }
-  return c1 - c2;
+  return lang_tail_weight_ko (string1, str1_end, str1_trail, weight);
 }
-
-/*
- * lang_mht2str_ko () -
- *
- * Arguments:
- *    lang_coll: collation data
- *      str: character string
- *        size: size of string
- *
- *
- */
-static unsigned int
-lang_mht2str_ko (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
-{
-  const unsigned char *str_end;
-  unsigned int pseudo_key = 0;
-  unsigned int w;
-
-  assert (size >= 0);
-
-  str_end = str + size;
-
-  /* the caller of hash function eliminated only trailing ASCII spaces */
-  /* eliminate the remaining both trailing EUC and ASCII spaces */
-  while (str_end > str)
-    {
-      if (*(str_end - 1) == ASCII_SPACE)
-	{
-	  str_end--;
-	  continue;
-	}
-      else if (str_end > str + 1 && *(str_end - 1) == EUC_SPACE && *(str_end - 2) == EUC_SPACE)
-	{
-	  str_end--;
-	  str_end--;
-	  continue;
-	}
-      break;
-    }
-
-  for (; str < str_end;)
-    {
-      w = *str++;
-      if (w == EUC_SPACE && str < str_end && *str == EUC_SPACE)
-	{
-	  w = ZERO;
-	  str++;
-	}
-      else if (w == ASCII_SPACE)
-	{
-	  w = ZERO;
-	}
-
-      ADD_TO_HASH (pseudo_key, w);
-    }
-
-  return pseudo_key;
-}
-
 
 /*
  * lang_strmatch_ko () - compare two EUC-KR character strings
@@ -6460,6 +6729,42 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match, const unsigne
 	}
     }
   return cmp;
+}
+
+/*
+ * lang_mht2str_ko () - hash an EUC-KR string as lang_fastcmp_ko () compares it
+ *   return: hash value
+ *   lang_coll(in): collation
+ *   str(in):
+ *   size(in):
+ *
+ * Behavior:
+ *   - A byte weighs as the compare function weighs it (lang_next_byte_weight_ko ()).
+ *   - Trailing weights 0 are not hashed, so strings that differ only in them hash alike.
+ *
+ * Steps:
+ *   Step 1: read the weight of the next byte.
+ *   Step 2: hash the weight, holding a weight 0 back.
+ */
+static unsigned int
+lang_mht2str_ko (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
+{
+  const unsigned char *str_end = str + size;
+  unsigned int hash_key = MHT_FNV_OFFSET;
+  int zeros = 0;		/* weights 0 not hashed yet */
+  unsigned int weight;
+  int trail = 0;		/* the current character's trail bytes not read yet */
+
+  while (str < str_end)
+    {
+      /* Step 1: read the weight of the next byte */
+      weight = lang_next_byte_weight_ko (&str, str_end, &trail);
+
+      /* Step 2: hash the weight, holding a weight 0 back */
+      lang_hash_weight (&hash_key, &zeros, weight, true);
+    }
+
+  return hash_key;
 }
 
 /*
@@ -6658,6 +6963,23 @@ lang_strmatch_binary (const LANG_COLLATION * lang_coll, bool is_match, const uns
 	}
     }
   return 0;
+}
+
+/*
+ * lang_mht2str_binary () - hash a string as lang_fastcmp_binary () compares it
+ *   return: hash value
+ *   lang_coll(in): collation
+ *   str(in):
+ *   size(in):
+ *
+ * Behavior:
+ *   - A byte weighs itself, so only a NUL weighs 0.
+ *   - Trailing weights 0 are not hashed, so strings that differ only in them hash alike.
+ */
+static unsigned int
+lang_mht2str_binary (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
+{
+  return lang_hash_bytes (str, size, false, false);
 }
 
 /*
@@ -7077,7 +7399,7 @@ lang_locale_data_load_from_lib (LANG_LOCALE_DATA * lld, void *lib_handle, const 
 	  lang_coll->strmatch = lang_strmatch_utf8_w_contr;
 	  lang_coll->next_coll_seq = lang_next_coll_seq_utf8_w_contr;
 	  lang_coll->split_key = lang_split_key_utf8;
-	  lang_coll->mht2str = lang_mht2str_utf8;
+	  lang_coll->mht2str = lang_mht2str_utf8_w_contr;
 	}
       else
 	{

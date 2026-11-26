@@ -28,6 +28,7 @@
 
 #include "dbtype_def.h"
 #include "memory_alloc.h"
+#include "porting_inline.hpp"
 #include "thread_compat.hpp"
 
 #include <stdio.h>
@@ -35,8 +36,21 @@
 #define ROTL32(x,r) \
   (((x) << (r)) | ((x) >> (32 - (r))))
 
+/*
+ * The standard 32-bit offset basis (0x811C9DC5) and prime (0x01000193) of the FNV-1a hash (Fowler-Noll-Vo, public
+ * domain): http://www.isthe.com/chongo/tech/comp/fnv/
+ */
+#define MHT_FNV_OFFSET 2166136261u
+#define MHT_FNV_PRIME 16777619u
+
+/*
+ * round (2^64 / pi), an odd number: the 64-bit multiplier of FxHasher (rustc-hash 1.x). lang_hash_u64_add () uses it
+ * in a folded multiply, which XORs the high half of the 128-bit product into the low half.
+ */
+#define MHT_FX_MULTIPLIER 0x517cc1b727220a95ULL
+
 #define MHT2STR_COLL(id, str, size) \
-  (lang_get_collation (id))->mht2str ((lang_get_collation (id)), (str), (size))
+  (LANG_GET_COLLATION (id))->mht2str ((LANG_GET_COLLATION (id)), (str), (size))
 
 /* Hash Table Entry - linked list */
 typedef struct hentry HENTRY;
@@ -85,16 +99,17 @@ extern unsigned int mht_4strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_5strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
 
-extern unsigned int mht_get_hash_number (const int unsigned ht_size, const DB_VALUE * val);
 extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size);
 extern unsigned int mht_valhash (const void *key, const unsigned int ht_size);
+STATIC_INLINE unsigned int mht_foldhash (unsigned int hash, unsigned int value_hash) __attribute__ ((ALWAYS_INLINE));
 extern int mht_compare_identifiers_equal (const void *key1, const void *key2);
 extern int mht_compare_strings_are_equal (const void *key1, const void *key2);
 extern int mht_compare_ints_are_equal (const void *key1, const void *key2);
 extern int mht_compare_logpageids_are_equal (const void *key1, const void *key2);
 extern int mht_compare_ptrs_are_equal (const void *key1, const void *key2);
 extern int mht_compare_dbvalues_are_equal (const void *key1, const void *key2);
-extern int mht_compare_dbvalues_are_identical (const void *key1, const void *key2);
+extern int mht_compare_strings_are_identical (const void *key1, const void *key2);
+extern int mht_compare_jsons_are_identical (const void *key1, const void *key2);
 
 extern MHT_TABLE *mht_create (const char *name, int est_size,
 			      unsigned int (*hash_func) (const void *key, unsigned int ht_size),
@@ -102,7 +117,6 @@ extern MHT_TABLE *mht_create (const char *name, int est_size,
 extern void mht_destroy (MHT_TABLE * ht);
 extern int mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args), void *func_args);
 extern void *mht_get (MHT_TABLE * ht, const void *key);
-extern void *mht_get_hash (MHT_TABLE * ht, const void *key, unsigned int hash);
 extern void *mht_get2 (const MHT_TABLE * ht, const void *key, void **last);
 extern const void *mht_put (MHT_TABLE * ht, const void *key, void *data);
 extern const void *mht_put_data (MHT_TABLE * ht, const void *key, void *data);
@@ -185,5 +199,21 @@ extern unsigned int mht_calculate_htsize (unsigned int ht_size);
 extern unsigned int mht_calculate_htsize_for_pow2 (unsigned int ht_size);
 extern unsigned int mht_hls_slot_count (int est_size);
 /* for HASH LIST SCAN (end) */
+
+/*
+ * mht_foldhash - fold the hash of one value into the hash of the values before it
+ *   return: hash value
+ *   hash(in): the hash of the values before it, 0 for the first
+ *   value_hash(in): the hash of the value
+ *
+ * Method:
+ *   Callers fold the hashes of several values in order (a key of columns, a SEQUENCE, a midxkey) with it. The rotation
+ *   makes the order of the values count, so (a, b) and (b, a) hash apart.
+ */
+STATIC_INLINE unsigned int
+mht_foldhash (unsigned int hash, unsigned int value_hash)
+{
+  return ROTL32 (hash, 13) ^ value_hash;
+}
 
 #endif /* _MEMORY_HASH_H_ */

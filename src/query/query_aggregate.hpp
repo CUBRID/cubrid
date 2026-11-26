@@ -73,6 +73,9 @@ namespace cubquery
     db_value **values;		/* value array */
     const tp_domain **compares;	/* the context's key_compares (NULL: the values compare): the keys mht compares
 				 * carry them */
+    unsigned int hash;		/* qdata_hash_agg_hkey (key, 0xffffffffu), set by the row path for the key it
+				 * looks up in the table and carried by the copies the table holds; the table's
+				 * bucket function reads it.  Other keys (rebuilt or loaded) leave it stale */
   };
 
 
@@ -186,9 +189,8 @@ int qdata_get_agg_hkey_size (cubquery::aggregate_hash_key *key);
 int qdata_get_agg_hvalue_size (cubquery::aggregate_hash_value *value, bool ret_delta);
 int qdata_free_agg_hentry (const void *key, void *data, void *args);
 unsigned int qdata_hash_agg_hkey (const void *key, unsigned int ht_size);
-/* the hash table's bucket function: the key's full-range hash, qdata_hash_agg_hkey (key, 0xffffffffu), modulo the
- * table's size -- so a caller that computes that hash once can look the key up with mht_get_hash () and feed the
- * sketch with it (qdata_key_sketch_add_hashed ()) */
+/* the hash table's bucket function: the key's stored full-range hash (aggregate_hash_key::hash) modulo the table's
+ * size -- so the table hashes no key values when it looks up, inserts, removes or rehashes */
 unsigned int qdata_hash_agg_hkey_bucket (const void *key, unsigned int ht_size);
 DB_VALUE_COMPARE_RESULT qdata_agg_hkey_compare (cubquery::aggregate_hash_key *ckey1,
     cubquery::aggregate_hash_key *ckey2, int *diff_pos);

@@ -93,9 +93,12 @@ typedef struct hashjoin_input_domain_info
 {
   TP_DOMAIN **domains;
   int *value_indexes;
+
   /* [key] the converter of this input's value into the key's common domain (coerce_domains), NULL none */
   TP_VALUE_CONVERTER *converters;
-  /* [key] the comparison of the two inputs' values once converted: tp_value_compare without coercion, decided */
+
+  /* [key] the comparison of the two inputs' values once converted, as domain_decide_hash_join_key () decided:
+   * with coercion for keys of two types and for JSON and collection keys, without it otherwise */
   DOMAIN_COMPARE *compares;
 } HASHJOIN_INPUT_DOMAIN_INFO;
 
@@ -419,6 +422,8 @@ TP_VALUE_CONVERTER hjoin_key_converter (int conv_kind, DB_TYPE source, const TP_
 int hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFILE_TUPLE_RECORD * tuple_record,
 		     HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, bool * need_skip_next);
 void hjoin_update_tuple_hash_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record, UINT32 hash_key);
+STATIC_INLINE UINT32 hjoin_get_partition_id (UINT32 hash_key, UINT32 part_cnt, bool has_null_fill_side)
+  __attribute__ ((ALWAYS_INLINE));
 int hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
 		     QFILE_TUPLE_RECORD * tuple_record);
 DB_LOGICAL hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_FETCH_INFO * build,
@@ -436,9 +441,6 @@ void hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_s
 UINT64 *hjoin_trace_get_worker_stats (HASHJOIN_MANAGER * manager, int index);
 void hjoin_trace_drain_worker_stats (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
 
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
 /* runtime filter: which input runs first (NULL: none) and which one the filter goes on */
 extern XASL_NODE *hjoin_rtf_first_input (XASL_NODE * hashjoin_xasl, XASL_NODE ** target);
 /* after the first input ran: build the filter from its list and put it on the target, when it is small enough */
@@ -470,6 +472,33 @@ extern void hjoin_prehash_arm (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xas
 extern void hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input);
 extern void hjoin_prehash_drop (XASL_NODE * input);
 extern void hjoin_prehash_release (THREAD_ENTRY * thread_p, HJOIN_PREHASH * prehash);
-#endif
+
+/*
+ * hjoin_get_partition_id () - the partition of a tuple whose join key has no NULL
+ *   return: partition index
+ *   hash_key(in): the tuple's hash key
+ *   part_cnt(in): the number of partitions
+ *   has_null_fill_side(in): the join NULL-fills a side; the last partition then holds the tuples with a NULL key
+ *
+ * Reason:
+ *   - The hash table of a partition takes the slot of a tuple from the low bits of the same hash key (hash & (size - 1)
+ *     in mht_put_hls ()), and probes linearly from there.
+ *   - hash_key % part_cnt would fix the low k bits within a partition when 2^k divides part_cnt: the tuples of a
+ *     partition would start probing from only 1 / 2^k of the slots.
+ *   - The partition comes from the high bits of the hash key instead, which leave the low bits free. mht_valhash ()
+ *     ends the hash of every key value with a mix (mht_mixhash () or mht_mixhash64_to_32 ()), so the high bits spread
+ *     as the low ones do.
+ */
+STATIC_INLINE UINT32
+hjoin_get_partition_id (UINT32 hash_key, UINT32 part_cnt, bool has_null_fill_side)
+{
+  UINT32 hash_part_cnt = (has_null_fill_side) ? part_cnt - 1 : part_cnt;
+
+  /* partition = (hash_key x hash_part_cnt) >> 32: hash_part_cnt equal ranges of the hash key, one per partition,
+   * without a division (Lemire's fast range reduction) */
+  return (UINT32) (((UINT64) hash_key * hash_part_cnt) >> 32);
+}
+
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #endif /* _QUERY_HASH_JOIN_H_ */

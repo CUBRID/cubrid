@@ -26,44 +26,46 @@
 
 #include "config.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <math.h>
-
 #include "object_primitive.h"
 
+#include <assert.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <utility>
+
 #include "area_alloc.h"
-#include "db_value_printer.hpp"
+#include "compressor.hpp"
 #include "db_json.hpp"
+#include "db_value_printer.hpp"
+#include "dbtype.h"
 #include "elo.h"
 #include "error_manager.h"
 #include "file_io.h"
-#include "compressor.hpp"
-#include "numeric_opfunc.h"
 #include "mem_block.hpp"
+#include "memory_private_allocator.hpp"
+#include "numeric_opfunc.h"
+#include "object_domain_convert.h"
 #include "object_representation.h"
 #include "set_object.h"
 #include "string_buffer.hpp"
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "tz_support.h"
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /* domain_compare_by_type_pair: the server compares two JSON scalars by the type pair comparison table */
 #include "domain_rules.h"
-#endif
-
-#include <utility>
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #if !defined (SERVER_MODE)
-#include "work_space.h"
-#include "virtual_object.h"
-#include "transform_cl.h"
 #include "dbi.h"
+#include "transform_cl.h"
+#include "virtual_object.h"
+#include "work_space.h"
 #endif /* !defined (SERVER_MODE) */
 
-#include "dbtype.h"
-#include "memory_private_allocator.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -878,6 +880,7 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_json (void *mem1, void *mem2, TP_
 						     int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 					       int *start_colp, int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2);
 /*
  * Value_area
  *    Area used for allocation of value containers that may be given out
@@ -15366,15 +15369,124 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	}
     }
 
-  /* the scalars' types are the documents' data: the server reads the key pair table, which holds the comparison of
-   * every pair of keys a value can have, resolved before any row */
+  /* of the scalar pairs a coercion converts, only an integer against a DOUBLE or a string that converts to one compares
+   * through a DOUBLE, which rounds an integer above 2^53.
+   *
+   * mr_cmpval_json_number () compares that pair by value and leaves the rest (DB_UNK) to the comparison below, which
+   * compares them as mht_hash_json () hashes them */
+  cmp_result = (do_coercion) ? mr_cmpval_json_number (&scalar_value1, &scalar_value2) : DB_UNK;
+  if (cmp_result == DB_UNK)
+    {
+      /* the scalars' types are the documents' data: the server reads the key pair table, which holds the comparison of
+       * every pair of keys a value can have, resolved before any row */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  cmp_result = domain_compare_by_type_pair (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+      cmp_result = domain_compare_by_type_pair (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
 #else
-  cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+      cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
 #endif
+    }
 
   pr_clear_value (&scalar_value1);
   pr_clear_value (&scalar_value2);
   return cmp_result;
+}
+
+/*
+ * mr_cmpval_json_number - compare by value a JSON integer and a DOUBLE or a string that converts to a DOUBLE
+ *   return: the comparison; DB_UNK to leave any other pair to the scalars' own comparison, which is exact for two
+ *	     integers (INTEGER, BIGINT) and for two DOUBLEs
+ *   value1(in): the first value mr_cmpval_json () compares: a scalar's SQL value, or an array's or object's body text
+ *   value2(in): the second value, of the same kind
+ *
+ * Reason:
+ *   The comparison through DOUBLE rounds an integer above 2^53 (2^62 + 1 equals 2^62.0), and mht_hash_json () hashes
+ *   an integer by its value, so two values equal through DOUBLE would not hash alike.
+ */
+static DB_VALUE_COMPARE_RESULT
+mr_cmpval_json_number (const DB_VALUE * value1, const DB_VALUE * value2)
+{
+  const bool is_discrete1 = TP_IS_DISCRETE_NUMBER_TYPE (DB_VALUE_TYPE (value1));
+  const bool is_discrete2 = TP_IS_DISCRETE_NUMBER_TYPE (DB_VALUE_TYPE (value2));
+  DB_BIGINT discrete;
+  double number, integral, fraction;
+  int sign;
+  DB_DATA_STATUS data_status;
+
+  if (is_discrete1 == is_discrete2)
+    {
+      return DB_UNK;
+    }
+
+  const DB_VALUE *discrete_value = (is_discrete1) ? value1 : value2;
+  const DB_VALUE *other_value = (is_discrete1) ? value2 : value1;
+
+  /* the other value is a DOUBLE or a string. A string is a number when tp_value_coerce () converts it to DOUBLE: read
+   * whole and without overflow ('1e0' = 1, '0x10' = 16), as mht_hash_json () reads it.
+   *
+   * tp_string_to_real () sets an error only when out of memory, so a string that does not convert leaves no error */
+  if (DB_VALUE_TYPE (other_value) == DB_TYPE_DOUBLE)
+    {
+      number = db_get_double (other_value);
+    }
+  else if (!TP_IS_CHAR_TYPE (DB_VALUE_TYPE (other_value))
+	   || tp_string_to_real (other_value, &number, &data_status) != NO_ERROR || data_status != DATA_STATUS_OK)
+    {
+      return DB_UNK;
+    }
+
+  /* NaN ('nan' read as a number) passes neither range check below and has no BIGINT. The comparison through DOUBLE
+   * orders it after every number, and mht_hash_json () hashes it as a DOUBLE */
+  if (isnan (number))
+    {
+      return DB_UNK;
+    }
+
+  switch (DB_VALUE_TYPE (discrete_value))
+    {
+    case DB_TYPE_SMALLINT:
+      discrete = db_get_short (discrete_value);
+      break;
+
+    case DB_TYPE_INTEGER:
+      discrete = db_get_int (discrete_value);
+      break;
+
+    case DB_TYPE_BIGINT:
+      discrete = db_get_bigint (discrete_value);
+      break;
+
+    default:
+      assert (false);
+      return DB_UNK;
+    }
+
+  /* the integral part of -2^63 <= number < 2^63 converts to a BIGINT exactly; any other number is past every BIGINT */
+  if (number >= 9223372036854775808.0)
+    {
+      sign = -1;
+    }
+  else if (number < -9223372036854775808.0)
+    {
+      sign = 1;
+    }
+  else
+    {
+      fraction = modf (number, &integral);
+      if (discrete != (DB_BIGINT) integral)
+	{
+	  sign = (discrete < (DB_BIGINT) integral) ? -1 : 1;
+	}
+      else
+	{
+	  /* the fraction decides */
+	  sign = (fraction > 0) ? -1 : (fraction < 0) ? 1 : 0;
+	}
+    }
+
+  /* sign is the discrete number against the number: flip it when the discrete number is value2 */
+  if (!is_discrete1)
+    {
+      sign = -sign;
+    }
+  return (sign < 0) ? DB_LT : (sign > 0) ? DB_GT : DB_EQ;
 }

@@ -109,6 +109,7 @@
 #include <set>
 #include <vector>
 #include "dblink_scan.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -871,12 +872,10 @@ struct connect_by_path_index
 /* spilling stops at half the limit, so a chunk is at most a quarter of it; the limit is floored at four buffers */
 #define CONNECT_BY_SPILL_CHUNKS_PER_LIMIT 4
 #define CONNECT_BY_NODE_ARRAY_INIT_CAPACITY 32
-#define CONNECT_BY_HASH_MULTIPLIER 31u
 #define CONNECT_BY_PATH_INDEX_NONE (-1)
 #define CONNECT_BY_PATH_INDEX_MIN_BUCKETS (1 << 6)
 #define CONNECT_BY_PATH_INDEX_FIB 2654435769u
 
-static unsigned int qexec_connect_by_hash_column (const DB_VALUE * dbval);
 static void qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash_out);
 static QFILE_TUPLE_RECORD *qexec_connect_by_bind_tuple (QFILE_TUPLE_RECORD * slot, QFILE_TUPLE tpl,
 							const QFILE_TUPLE_VALUE_TYPE_LIST * tpl_layout);
@@ -5267,11 +5266,14 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     {
       return rc;
     }
-  /* the key hashed once: the table takes its bucket (qdata_hash_agg_hkey_bucket ()), the sketch the hash */
+
+  /* the key hashed once: the table takes its bucket from the stored hash (qdata_hash_agg_hkey_bucket ()), the
+   * sketch the hash */
   h = qdata_hash_agg_hkey (key, 0xffffffffu);
+  key->hash = h;
 
   /* probe hash table */
-  value = (AGGREGATE_HASH_VALUE *) mht_get_hash (context->hash_table, (void *) key, h);
+  value = (AGGREGATE_HASH_VALUE *) mht_get (context->hash_table, (void *) key);
   if (value == NULL)
     {
       /* the sketch counts distinct keys and a key it has is a no-op: a group's key went in when the group was made
@@ -6201,14 +6203,12 @@ qexec_gby_order_reaches_result (const XASL_NODE * xasl)
   return true;
 }
 
-/* the partition of a key: its hash, mixed again so that it does not follow the tables' own buckets.  level 1 is
- * the split of the lists; level 2, the split of one partition again, mixes the hash another way, so that the
- * high bits it takes do not repeat the ones the first split fixed */
+/* the partition of a key by its hash h (qdata_hash_agg_hkey ()), mixed again so that it does not follow the tables'
+ * own buckets.  level 1 is the split of the lists; level 2, the split of one partition again, mixes the hash another
+ * way, so that the high bits it takes do not repeat the ones the first split fixed */
 static int
-qexec_gby_merge_part_of (AGGREGATE_HASH_KEY * key, int n_parts, int level)
+qexec_gby_merge_part_of (unsigned int h, int n_parts, int level)
 {
-  unsigned int h = qdata_hash_agg_hkey (key, 0xffffffffu);
-
   if (level == 1)
     {
       h ^= h >> 16;
@@ -6352,11 +6352,10 @@ qexec_gby_mtable_group_bytes (int n_keys, int n_funcs)
 		   + 8 * MAX_ALIGNMENT + 2 * sizeof (QEXEC_GBY_SLOT));
 }
 
+/* the merge table's hash of a key by its hash h (qdata_hash_agg_hkey ()) */
 static unsigned int
-qexec_gby_mtable_hash (AGGREGATE_HASH_KEY * key)
+qexec_gby_mtable_hash (unsigned int h)
 {
-  unsigned int h = qdata_hash_agg_hkey (key, 0xffffffffu);
-
   /* another mix than the partition's (qexec_gby_merge_part_of ()), whose high bits are one per partition */
   h ^= h >> 15;
   h *= 0x2c1b3c6du;
@@ -6698,7 +6697,7 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
 	  break;
 	}
       /* the key by its hash (0 is the empty mark): two keys of one hash count as one, rarely */
-      h = qexec_gby_mtable_hash (ctx->temp_key) | 1;
+      h = qexec_gby_mtable_hash (qdata_hash_agg_hkey (ctx->temp_key, 0xffffffffu)) | 1;
       for (i = h & mask; hashes[i] != 0 && hashes[i] != h; i = (i + 1) & mask)
 	;
       hashes[i] = h;
@@ -6793,7 +6792,7 @@ qexec_gby_merge_rows (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_GBY_
 	{
 	  (*n_read)++;
 	}
-      h = qexec_gby_mtable_hash (rd->temp_key);
+      h = qexec_gby_mtable_hash (qdata_hash_agg_hkey (rd->temp_key, 0xffffffffu));
       s = qexec_gby_mtable_find (t, rd->temp_key, h);
       if (s->key == NULL)
 	{
@@ -6879,7 +6878,7 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
 	{
 	  (*n_read)++;
 	}
-      h = qexec_gby_mtable_hash (rd->temp_part_key);
+      h = qexec_gby_mtable_hash (qdata_hash_agg_hkey (rd->temp_part_key, 0xffffffffu));
       s = qexec_gby_mtable_find (t, rd->temp_part_key, h);
       if (s->key == NULL && rd->no_first_tuple)
 	{
@@ -7023,14 +7022,17 @@ qexec_gby_merge_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QFIL
 	{
 	  rc = qdata_load_agg_hkey_from_tuple (thread_p, tpl.tpl, from->type_list.hdr_size, from->type_list.type_cnt,
 					       rd->temp_part_key, rd->ctx->key_domains, false);
-	  k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_part_key, n_parts, level) : 0;
+	  k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (qdata_hash_agg_hkey (rd->temp_part_key, 0xffffffffu), n_parts,
+							  level) : 0;
 	}
       else
 	{
 	  /* the key's nodes are positions (g_hk_sort_regu_list) reading the tuple itself: the row's other values are not
 	   * fetched here, the pass that aggregates the part fetches them */
 	  rc = qexec_build_agg_hkey (thread_p, rd->xasl_state, rd->hk_regu, &tpl, rd->temp_key);
-	  k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_key, n_parts, level) : 0;
+	  k =
+	    (rc == NO_ERROR) ? qexec_gby_merge_part_of (qdata_hash_agg_hkey (rd->temp_key, 0xffffffffu), n_parts,
+							level) : 0;
 	}
       if (rc == NO_ERROR)
 	{
@@ -7684,7 +7686,8 @@ qexec_gby_px_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_R
 	    {
 	      rc = qdata_load_agg_hkey_from_tuple (thread_p, tpl, from->type_list.hdr_size, from->type_list.type_cnt,
 						   rd->temp_part_key, rd->ctx->key_domains, false);
-	      k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_part_key, px->n_parts, 1) : 0;
+	      k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (qdata_hash_agg_hkey (rd->temp_part_key, 0xffffffffu),
+							      px->n_parts, 1) : 0;
 	    }
 	  else
 	    {
@@ -7692,7 +7695,9 @@ qexec_gby_px_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_R
 	      /* the key reads the tuple's positions only, as the serial split does */
 	      rc = qexec_build_agg_hkey (thread_p, rd->xasl_state, rd->hk_regu, &slot, rd->temp_key);
 	      /* a key the fetch did not build has unset values: not hashed (as the serial split does not) */
-	      k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_key, px->n_parts, 1) : 0;
+	      k =
+		(rc == NO_ERROR) ? qexec_gby_merge_part_of (qdata_hash_agg_hkey (rd->temp_key, 0xffffffffu),
+							    px->n_parts, 1) : 0;
 	    }
 	  if (rc == NO_ERROR)
 	    {
@@ -8367,12 +8372,16 @@ qexec_gby_aggs_follow_row_order (AGGREGATE_TYPE * agg_list)
  * qexec_gby_keys_hash_as_compared () - do the keys the comparison finds equal hash alike?
  *   return: false when two equal keys may hash apart
  *
- * The merge meets two groups only when their hashes are equal (qexec_gby_mtable_find (),
- * qexec_gby_merge_part_of ()), and where the group order does not reach the result it writes them out without the
- * sort that brings equal keys together.  A JSON key hashes its text while its comparison takes a scalar's value
- * (true as 'true', -0.0 as 0.0: mr_cmpval_json ()); a string of a collation with expansions hashes the weights its
- * comparison skips ('cafe' and 'café' of an accent-insensitive one: lang_mht2str_utf8_exp ()); and keys without
- * compiled comparisons compare by their values' own types: those keys keep the sort, as in develop.
+ * Behavior:
+ *   It returns false, so that the keys keep the sort, for:
+ *     - a string key without a loaded collation (lang_get_collation ()): it has no collation hash
+ *     - keys without compiled comparisons (g_hk_compares): they compare by their values' own types
+ *
+ * Reason:
+ *   The merge relies on equal keys hashing alike:
+ *     - it meets two groups only when their hashes are equal (qexec_gby_mtable_find (), qexec_gby_merge_part_of ())
+ *     - where the group order does not reach the result, it writes the groups out without the sort that brings equal
+ *       keys together
  */
 static bool
 qexec_gby_keys_hash_as_compared (const BUILDLIST_PROC_NODE * proc)
@@ -8387,18 +8396,9 @@ qexec_gby_keys_hash_as_compared (const BUILDLIST_PROC_NODE * proc)
     {
       const TP_DOMAIN *domain = proc->g_hk_compares[k];
 
-      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)
+      if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)) && lang_get_collation (TP_DOMAIN_COLLATION (domain)) == NULL)
 	{
 	  return false;
-	}
-      if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)))
-	{
-	  const LANG_COLLATION *coll = lang_get_collation (TP_DOMAIN_COLLATION (domain));
-
-	  if (coll == NULL || coll->coll.uca_exp_num > 1)
-	    {
-	      return false;
-	    }
 	}
     }
   return true;
@@ -8503,10 +8503,14 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
       return NO_ERROR;
     }
   order_free = !qexec_gby_order_reaches_result (xasl);
-  if (ctx->key_sketch_partial || ctx->state == HS_REJECT_ALL)
+
+  /* The key sketch holds only the keys of the rows the table took. The unsorted list is sampled instead when:
+   *   - the table stopped taking rows: the rows after that go to the list without passing the table
+   *   - the table took no row and its empty sketch estimates 0: a row with a set column, or one too big for a list
+   *     page, goes to the list without passing the table (qexec_end_one_iteration ()) */
+  groups = qdata_key_sketch_estimate (ctx->key_sketch);
+  if (ctx->key_sketch_partial || ctx->state == HS_REJECT_ALL || groups == 0)
     {
-      /* a table stopped taking rows (the rows after it go by the table without a call): their keys went by the
-       * sketch, so the unsorted list -- those rows themselves, mostly -- is sampled instead */
       qfile_close_list (thread_p, list_id);
       if (qexec_gby_merge_sample_groups (thread_p, gbstate, list_id, &groups) != NO_ERROR)
 	{
@@ -8514,10 +8518,7 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
 	  goto end;		/* an error is set there, or end: sets one */
 	}
     }
-  else
-    {
-      groups = qdata_key_sketch_estimate (ctx->key_sketch);
-    }
+
   if (thread_is_on_trace (thread_p))
     {
       xasl->groupby_stats.groupby_hash_groups = (INT64) groups;
@@ -24011,12 +24012,12 @@ qexec_bind_checksum (int count, const DB_VALUE * values)
       const DB_VALUE *value = &values[i];
       const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
       sum = sum * 31 + (unsigned int) type;
-      /* the types mht_get_hash_number hashes; it aborts on another (an SA client binds an object as its MOP), which
-       * counts by its type */
+      /* hashed: the types mht_valhash () hashes by value, and a LOB, which it hashes by the address of its DB_ELO; any
+       * other type (an SA client binds an object as its MOP) counts by its type alone */
       const bool hashed = (TP_IS_NUMERIC_TYPE (type) || TP_IS_CHAR_BIT_TYPE (type) || TP_IS_DATE_OR_TIME_TYPE (type)
 			   || TP_IS_SET_TYPE (type) || TP_IS_LOB_TYPE (type) || type == DB_TYPE_OID
 			   || type == DB_TYPE_VOBJ || type == DB_TYPE_ENUMERATION || type == DB_TYPE_JSON);
-      sum = sum * 31 + (DB_IS_NULL (value) || !hashed ? 1 : mht_get_hash_number (UINT_MAX, value));
+      sum = sum * 31 + ((DB_IS_NULL (value) || !hashed) ? 1 : mht_valhash (value, UINT_MAX));
     }
   return sum;
 }
@@ -26325,57 +26326,22 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD *
 }
 
 /*
- * qexec_connect_by_hash_column () - hash one cycle-key column for the cycle pre-filter
- *  return: hash value
- *  dbval(in):
- */
-static unsigned int
-qexec_connect_by_hash_column (const DB_VALUE * dbval)
-{
-  if (DB_IS_NULL (dbval))
-    {
-      return 0;
-    }
-
-  switch (DB_VALUE_DOMAIN_TYPE (dbval))
-    {
-    case DB_TYPE_SET:
-    case DB_TYPE_MULTISET:
-    case DB_TYPE_SEQUENCE:
-    case DB_TYPE_VOBJ:
-      /* the collection hash depends on whether the disk image is resident, which differs between a peeked
-       * scan value and a copied tuple value; leave these columns to the exact compare */
-      return 0;
-
-    case DB_TYPE_JSON:
-      /* the JSON compare converts scalars to SQL values ("true" = true, -0.0 = 0.0) but the hash uses the raw text */
-      return 0;
-
-    default:
-      break;
-    }
-
-  /* mht_get_hash_number hashes the raw bits, so a zero and a NaN are folded first, as a hash join folds them:
-   * the cycle compare finds -0.0 equal to +0.0 and a NaN equal to every other NaN */
-  return qdata_hash_scan_value (dbval, UINT_MAX);
-}
-
-/*
  * qexec_connect_by_hash_from_valptr () - hash the user columns of the current
  *    val_list values (same source as dbvalp2 in qexec_compare_valptr_with_tuple)
  *  outptr_list(in):
  *  hash_out(out):
  *
- *  Note: must fold the same columns, in the same order, with the same formula
- *  as qexec_connect_by_hash_from_tuple; non-TYPE_CONSTANT columns are skipped
- *  exactly like qexec_compare_valptr_with_tuple skips them.
+ * Behavior:
+ *   - A row hashes as qexec_connect_by_hash_from_tuple () hashes its stored tuple: the same columns, in the same order,
+ *     folded the same way (mht_foldhash () of mht_valhash ()).
+ *   - The non-TYPE_CONSTANT columns are skipped, as qexec_compare_valptr_with_tuple () skips them.
  */
 static void
 qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash_out)
 {
   REGU_VARIABLE_LIST regulist;
   DB_VALUE *dbvalp;
-  unsigned int h = 0, col_hash;
+  unsigned int h = 0;
   int i = 0;
 
   regulist = outptr_list->valptrp;
@@ -26385,8 +26351,7 @@ qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash
       if (regulist->value.type == TYPE_CONSTANT)
 	{
 	  dbvalp = regulist->value.value.dbvalptr;
-	  col_hash = qexec_connect_by_hash_column (dbvalp);
-	  h = h * CONNECT_BY_HASH_MULTIPLIER + col_hash;
+	  h = mht_foldhash (h, mht_valhash (dbvalp, UINT_MAX));
 	}
 
       regulist = regulist->next;
@@ -26417,8 +26382,9 @@ qexec_connect_by_bind_tuple (QFILE_TUPLE_RECORD * slot, QFILE_TUPLE tpl, const Q
  *  type_list(in):
  *  hash_out(out):
  *
- *  Note: deserialization mirrors qexec_compare_valptr_with_tuple so both hash
- *  paths produce the same value for equal tuples.
+ * Reason:
+ *   The columns are read as qexec_compare_valptr_with_tuple () reads them, so equal rows hash alike here and in
+ *   qexec_connect_by_hash_from_valptr ().
  */
 static int
 qexec_connect_by_hash_from_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD * tplrec,
@@ -26451,14 +26417,14 @@ qexec_connect_by_hash_from_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD 
 	    }
 	  else
 	    {
-	      col_hash = qexec_connect_by_hash_column (&dbval);
+	      col_hash = mht_valhash (&dbval, UINT_MAX);
 
 	      if (copy || DB_NEED_CLEAR (&dbval))
 		{
 		  pr_clear_value (&dbval);
 		}
 	    }
-	  h = h * CONNECT_BY_HASH_MULTIPLIER + col_hash;
+	  h = mht_foldhash (h, col_hash);
 	}
 
       regulist = regulist->next;

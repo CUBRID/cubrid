@@ -22233,6 +22233,11 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser, const PT_NOD
 	}
       break;
 
+    case PT_DATA_TYPE:
+      /* the data type of a collection element that is a collection: the caller, pt_get_collation_of_collection (),
+       * reads only its collation and codeset */
+      break;
+
     default:
       assert (!has_collation);
       coll_infer->coerc_level = PT_COLLATION_NOT_COERC;

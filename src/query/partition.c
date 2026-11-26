@@ -38,6 +38,7 @@
 #include "xasl.h"
 #include "xasl_predicate.hpp"
 #include "xasl_unpack_info.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -1366,7 +1367,7 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
 	  break;
 	}
 
-      idx = mht_get_hash_number (hash_size, key);
+      idx = mht_valhash (key, hash_size);
 
       /* Start from 1 because we're using position 0 for the master class */
       pruningset_add (pruned, idx);
@@ -1419,7 +1420,7 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
 		goto cleanup;
 	      }
 
-	    idx = mht_get_hash_number (hash_size, &col);
+	    idx = mht_valhash (&col, hash_size);
 	    pruningset_add (pruned, idx);
 
 	    pr_clear_value (&col);
@@ -2675,9 +2676,9 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 		partition_convert_value (term, left->domain, &old_collection_val, &casted_val, &attribute_value);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &old_collection_val, left->domain);
-
-		  pinfo->error_code = ER_FAILED;
+		  /* the expression has no value for one the attribute's type does not hold (70000 of a SMALLINT): the term
+		   * does not prune */
+		  er_clear ();
 		  goto cleanup;
 		}
 	      if (attribute_value == NULL)
@@ -2714,9 +2715,9 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 	  dom_status = partition_convert_value (term, left->domain, &val, &casted_val, &attribute_value);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &val, left->domain);
-
-	      pinfo->error_code = ER_FAILED;
+	      /* the expression has no value for one the attribute's type does not hold (70000 of a SMALLINT): the term
+	       * does not prune */
+	      er_clear ();
 	      goto cleanup;
 	    }
 	  if (attribute_value == NULL)
