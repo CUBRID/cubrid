@@ -3039,7 +3039,7 @@ file_type_to_string (FILE_TYPE fstruct_type)
     case FILE_OOS:
       return "OOS";
     case FILE_INTERNAL_LOB:
-      return "INTERNAL_LOB";
+      return "LOB";
     case FILE_UNKNOWN_TYPE:
       return "UNKNOWN";
     case FILE_HEAP_REUSE_SLOTS:
