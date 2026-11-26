@@ -3886,8 +3886,9 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 	{
 	  trace_json_object_set_new (hash_lookup, "time", trace_json_integer (TO_MSEC (hl_stats->lookup_time)));
 	}
-      trace_json_object_set_new (hash_lookup, "lookups", trace_json_integer (hl_stats->lookups));
-      trace_json_object_set_new (hash_lookup, "rows", trace_json_integer (hl_stats->rows));
+      trace_json_object_set_new (hash_lookup, "readrows", trace_json_integer (hl_stats->read_rows));
+      trace_json_object_set_new (hash_lookup, "readkeys", trace_json_integer (hl_stats->read_keys));
+      trace_json_object_set_new (hash_lookup, "rows", trace_json_integer (hl_stats->found_rows));
 
       if (hash_lookup_array == NULL)
 	{
@@ -4670,9 +4671,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       hash_temp = (hl_stats->method == HASH_METH_HYBRID) ? "hash temp(h)" : "hash temp(m)";
       qdump_hash_lookup_time_string (hl_stats, time_str, sizeof (time_str));
       fprintf (fp, "%*c", indent, ' ');
-      fprintf (fp, "HASH_LOOKUP (%s, build time: %d, time: %s, lookups: %llu, rows: %llu)\n", hash_temp,
-	       TO_MSEC (hl_stats->build_time), time_str, (unsigned long long) hl_stats->lookups,
-	       (unsigned long long) hl_stats->rows);
+      fprintf (fp, "HASH_LOOKUP (%s, build time: %d, time: %s, readrows: %llu, readkeys: %llu, rows: %llu)\n",
+	       hash_temp, TO_MSEC (hl_stats->build_time), time_str, (unsigned long long) hl_stats->read_rows,
+	       (unsigned long long) hl_stats->read_keys, (unsigned long long) hl_stats->found_rows);
     }
 
   if (xasl_p->sq_cache && XASL_IS_FLAGED (xasl_p, XASL_USES_SQ_CACHE) && SQ_CACHE_HIT (xasl_p) > 0)

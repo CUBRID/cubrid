@@ -48,8 +48,9 @@ struct hash_lookup_stats
   TSCTIMEVAL lookup_time_min;	/* PX scan: the shortest lookup_time of the workers */
   TSCTIMEVAL lookup_time_max;	/* PX scan: the longest lookup_time of the workers */
   UINT64 builds;		/* tables built over the subquery's list */
-  UINT64 lookups;		/* the lookups those tables answered */
-  UINT64 rows;			/* the list values those lookups gave the comparison */
+  UINT64 read_rows;		/* the lookups those tables answered, as a hash join counts its probe rows */
+  UINT64 read_keys;		/* the list values of those lookups' hash keys, given to the comparison */
+  UINT64 found_rows;		/* the lookups whose hash key found list values in the tables */
   int method;			/* the tables' HASH_METHOD (query_hash_scan.h) */
   int workers;			/* PX scan: the workers whose lookups hash_lookup_merge_stats merged */
 };

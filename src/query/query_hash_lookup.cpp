@@ -709,7 +709,7 @@ hash_lookup_start (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup, const DOMAIN_COM
     }
 
   qfile_slot_reset (&lookup->tuple_record);
-  lookup->stats.lookups++;
+  lookup->stats.read_rows++;
   return true;
 }
 
@@ -762,6 +762,10 @@ hash_lookup_next (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup, DB_VALUE **value)
   if (lookup->tuple_record.tpl == NULL)
     {
       entry = mht_get_hls (table->hash_table, &lookup->hash_key, &lookup->entry);
+      if (entry != NULL)
+	{
+	  lookup->stats.found_rows++;
+	}
     }
   else
     {
@@ -803,7 +807,7 @@ hash_lookup_next (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup, DB_VALUE **value)
   /* the list's NULLs are not in the table */
   assert (!is_null);
 
-  lookup->stats.rows++;
+  lookup->stats.read_keys++;
   *value = &lookup->value;
   return S_SUCCESS;
 }
@@ -1016,7 +1020,7 @@ hash_lookup_merge_stats (xasl_node *leader, const xasl_node *clone)
       return;
     }
 
-  if (clone->hash_lookup == NULL || clone->hash_lookup->stats.builds + clone->hash_lookup->stats.lookups == 0)
+  if (clone->hash_lookup == NULL || clone->hash_lookup->stats.builds + clone->hash_lookup->stats.read_rows == 0)
     {
       return;
     }
@@ -1048,8 +1052,9 @@ hash_lookup_merge_stats (xasl_node *leader, const xasl_node *clone)
 
   TSC_ADD_TIMEVAL (leader_stats->build_time, clone_stats->build_time);
   leader_stats->builds += clone_stats->builds;
-  leader_stats->lookups += clone_stats->lookups;
-  leader_stats->rows += clone_stats->rows;
+  leader_stats->read_rows += clone_stats->read_rows;
+  leader_stats->read_keys += clone_stats->read_keys;
+  leader_stats->found_rows += clone_stats->found_rows;
   if (clone_stats->builds > 0)
     {
       leader_stats->method = clone_stats->method;
