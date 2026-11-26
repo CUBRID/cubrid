@@ -679,6 +679,7 @@ thread_concurrency_slot_acquire (cubthread::entry *thread_p, cubthread::concurre
       holder->acquire_slot (thread_p);
 
       thread_p->m_status = old_status;
+      thread_p->stop_wait_clock ();
       thread_p->unlock ();
     }
 }
