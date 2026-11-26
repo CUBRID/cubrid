@@ -157,6 +157,7 @@ namespace test_thread
     std::atomic<bool> returned (false);
     std::atomic<bool> go_on (false);
     std::atomic<bool> done (false);
+    std::atomic<bool> late (false);
     thread_resume_suspend_status seen = THREAD_RESUME_NONE;
 
     std::thread t ([&] ()
@@ -175,6 +176,8 @@ namespace test_thread
 	{
 	  std::this_thread::sleep_for (std::chrono::milliseconds (1));
 	}
+      // without the interrupt sent, reading the status here would pass even before the fix
+      late = !go_on;
       thread_lock_entry (&waiter);
       seen = waiter.resume_status;
       thread_unlock_entry (&waiter);
@@ -229,6 +232,11 @@ namespace test_thread
     t.join ();
     waiter.m_status = cubthread::entry::status::TS_DEAD;
 
+    if (late)
+      {
+	std::cout << "  FAIL: the timed waiter read its status before the interrupt was sent" << std::endl;
+	return 1;
+      }
     if (seen != THREAD_PGBUF_RESUMED)
       {
 	std::cout << "  FAIL: timed waiter interrupted after the wait returned saw " << seen << " (expected "

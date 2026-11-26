@@ -815,9 +815,9 @@ thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status
     {
       /* The status may hold a decision a waker made for the thread (a resource handed over, or a retry) that the
        * thread has not read yet. Overwriting it would make the thread believe it got nothing and leave the resource
-       * without an owner. The interrupt is not lost: the sender also records it in the transaction table and sends
-       * it again, and the thread sees it at its next interrupt check or its next wait. No code sends SHUTDOWN now;
-       * it is a stop reason like INTERRUPT and kept the same. */
+       * without an owner. The interrupt is not lost: the sender also records it in the transaction table (and sends
+       * it again, see thread_wakeup ()), and the thread sees it at its next interrupt check or its next wait. No code
+       * sends SHUTDOWN now; it is a stop reason like INTERRUPT and kept the same. */
       if (had_mutex == false)
 	{
 	  thread_unlock_entry (thread_p);
@@ -873,7 +873,9 @@ thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
  *
  *   Note: an INTERRUPT or SHUTDOWN does not replace a *_RESUMED status the thread has not read yet (see
  *         thread_wakeup_internal). A sender of INTERRUPT must therefore also record it in the transaction table
- *         (logtb_set_tran_index_interrupt) and send it again until the thread acts on it.
+ *         (logtb_set_tran_index_interrupt). A sender that may find such a status must also send it again until the
+ *         thread acts on it, as css_stop_non_log_writer () and lock_suspend () do; a sender that wakes only a
+ *         *_SUSPENDED thread (net_server_wakeup_workers ()) sends once.
  */
 void
 thread_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason)
@@ -896,7 +898,9 @@ thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resum
  *
  *   Note: an INTERRUPT or SHUTDOWN does not replace a *_RESUMED status the thread has not read yet (see
  *         thread_wakeup_internal). A sender of INTERRUPT must therefore also record it in the transaction table
- *         (logtb_set_tran_index_interrupt) and send it again until the thread acts on it.
+ *         (logtb_set_tran_index_interrupt). A sender that may find such a status must also send it again until the
+ *         thread acts on it, as css_stop_non_log_writer () and lock_suspend () do; a sender that wakes only a
+ *         *_SUSPENDED thread (net_server_wakeup_workers ()) sends once.
  */
 void
 thread_wakeup_already_had_mutex (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason)
