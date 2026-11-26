@@ -198,6 +198,57 @@ static int fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, FHS_H
 /****************************************************************************/
 
 /*
+ * qdata_hash_scan_method () - the method a hash table over a list's tuples takes within mem_limit
+ *   returns: HASH_METH_IN_MEM (the tuples in memory), HASH_METH_HYBRID (their positions in memory),
+ *	     HASH_METH_HASH_FILE (a hash file) or HASH_METH_NOT_USE (no list or no tuples)
+ *   list_id(in): the list the table is built over, or NULL
+ *   mem_limit(in): the bytes the table may take in memory
+ */
+HASH_METHOD
+qdata_hash_scan_method (const QFILE_LIST_ID * list_id, const UINT64 mem_limit)
+{
+  INT64 tuple_cnt;
+  UINT64 slot_array_size, entries_size, payload_size, in_mem_size, hybrid_size;
+
+  if (list_id == NULL || list_id->tuple_cnt <= 0)
+    {
+      return HASH_METH_NOT_USE;
+    }
+
+  tuple_cnt = list_id->tuple_cnt;
+
+  /* the IN_MEM/HYBRID table is int-indexed */
+  if (tuple_cnt > INT_MAX)
+    {
+      return HASH_METH_HASH_FILE;
+    }
+
+  slot_array_size = (UINT64) mht_hls_slot_count ((int) tuple_cnt) * sizeof (MHT_HLS_SLOT);
+  entries_size = (UINT64) tuple_cnt *sizeof (MHT_HLS_ENTRY);
+
+  /* IN_MEM: slot array + one entry (header) per tuple + the list's pages, which hold the tuples */
+  payload_size = (UINT64) list_id->page_cnt * DB_PAGESIZE;
+  in_mem_size = slot_array_size + entries_size + payload_size;
+
+  /* HYBRID: slot array + one entry (header) per tuple + a tuple position per tuple; tuples stay on the temp file */
+  payload_size = (UINT64) tuple_cnt *sizeof (QFILE_TUPLE_SIMPLE_POS);
+  hybrid_size = slot_array_size + entries_size + payload_size;
+
+  if (in_mem_size <= mem_limit)
+    {
+      return HASH_METH_IN_MEM;
+    }
+  else if (hybrid_size <= mem_limit)
+    {
+      return HASH_METH_HYBRID;
+    }
+  else
+    {
+      return HASH_METH_HASH_FILE;
+    }
+}
+
+/*
  * qdata_alloc_hscan_key () - allocate new hash key
  *   returns: pointer to new structure or NULL on error
  *   thread_p(in): thread

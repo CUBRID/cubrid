@@ -38,6 +38,7 @@
 #include "object_primitive.h"
 #include "query_aggregate.hpp"
 #include "query_hash_join.h"
+#include "query_hash_lookup.hpp"
 #include "query_opfunc.h"
 #include "scope_exit.hpp"
 
@@ -125,6 +126,14 @@ namespace parallel_scan
 	/* trace: this worker's scan consults the filter (row_body (), or the page batch's leaf); merged into the
 	 * leader's node with the counters (hjoin_rtf_unbind_clone ()) */
 	m_xasl->rtf_applied = true;
+      }
+
+    /* after clone_xasl () made the clone and before the worker's scan evaluates a term, so every lookup of the clone
+     * reads the leader's list */
+    err_code = bind_lookup_lists (thread_ref);
+    if (err_code != NO_ERROR)
+      {
+	return err_code;
       }
 
     /* inject precomputed scalar values into the clone so predicate eval reads them instead of re-executing per worker; precomp_owner_regu aliases the clone's predicate operand (serialization preserves source-pointer aliasing); aptr_list only (correlated dptr_list never injected); one back-pointer serves all operands (same single_tuple->valp->val slot) via slot write + status=XASL_SUCCESS. */
@@ -667,6 +676,10 @@ namespace parallel_scan
     if (m_xasl != nullptr)
       {
 	hjoin_rtf_unbind_clone (m_xasl, m_orig_xasl);
+
+	/* after the scan above ended and before the clear below: qexec_clear_xasl () would free the leader's tables
+	 * with the clone's hashes, and the clone, back in the XASL cache, would read the leader's lists next time */
+	unbind_lookup_lists ();
       }
     if (!m_uses_xasl_clone)
       {
@@ -1387,6 +1400,103 @@ namespace parallel_scan
 	      }
 	    /* drain_slot_oids returns S_END at completion or S_ERROR with stop=true on terminal failure. */
 	    (void) drain_slot_oids (thread_ref, stop);
+	  }
+      }
+  }
+
+  /*
+   * bind_lookup_lists () - lend the leader's lists and hashes to the clone's list subqueries of IN or NOT IN terms
+   *   return: error code
+   *   thread_ref(in): the worker's thread entry
+   *
+   * Behavior:
+   *   - The leader executed each such subquery and built its hash (eval_hash_lookup_prepare ()).
+   *   - The clone reads both in place of executing the subquery and building a hash itself.
+   *   - unbind_lookup_lists () gives them back.
+   *
+   * Steps (each subquery):
+   *   Step 1: leave a subquery of no IN or NOT IN term, or one the leader did not execute.
+   *   Step 2: borrow the leader's table (hash_lookup_bind_clone ()).
+   *   Step 3: point the term at the leader's list and mark the subquery executed.
+   */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  int task<result_type, ST>::bind_lookup_lists (cubthread::entry &thread_ref)
+  {
+    assert (m_xasl != nullptr);
+    assert (m_orig_xasl != nullptr);
+
+    for (xasl_node *clone_node = m_xasl; clone_node != nullptr; clone_node = clone_node->scan_ptr)
+      {
+	for (xasl_node *clone_subquery = clone_node->aptr_list; clone_subquery != nullptr;
+	     clone_subquery = clone_subquery->next)
+	  {
+	    /* Step 1: a subquery of an IN or NOT IN term that the leader executed */
+	    if (clone_subquery->hash_lookup_term == nullptr)
+	      {
+		continue;
+	      }
+
+	    /* the clone is unpacked from the stream the leader's tree was, so a node keeps its header.id */
+	    xasl_node *leader_subquery = xasl_find_by_id (m_orig_xasl, clone_subquery->header.id);
+	    if (leader_subquery == nullptr || leader_subquery->status != XASL_SUCCESS)
+	      {
+		/* the leader did not execute it: the clone executes it as the term reads it */
+		continue;
+	      }
+
+	    /* Step 2: the leader's table */
+	    QFILE_SORTED_LIST_ID *term_list = clone_subquery->hash_lookup_term->elemset->value.srlist_id;
+	    /* the term reads the subquery's own list (pt_make_regu_subquery), which unbind_lookup_lists gives back */
+	    assert (term_list->list_id == clone_subquery->list_id);
+
+	    int err_code = hash_lookup_bind_clone (&thread_ref, clone_subquery, leader_subquery);
+	    if (err_code != NO_ERROR)
+	      {
+		return err_code;
+	      }
+
+	    /* Step 3: the leader's list */
+	    term_list->list_id = leader_subquery->list_id;
+
+	    /* mark executed so EXECUTE_REGU_VARIABLE_XASL's status guard skips re-execution */
+	    clone_subquery->status = XASL_SUCCESS;
+	  }
+      }
+
+    ASSERT_NO_ERROR_OR_INTERRUPTED ();
+    return NO_ERROR;
+  }
+
+  /*
+   * unbind_lookup_lists () - give the leader's lists and hashes back before the clone goes back to the XASL cache
+   *
+   * Reason:
+   *   A later execution of the clone fills the clone's own lists.
+   */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::unbind_lookup_lists ()
+  {
+    assert (m_xasl != nullptr);
+
+    for (xasl_node *clone_node = m_xasl; clone_node != nullptr; clone_node = clone_node->scan_ptr)
+      {
+	for (xasl_node *clone_subquery = clone_node->aptr_list; clone_subquery != nullptr;
+	     clone_subquery = clone_subquery->next)
+	  {
+	    if (clone_subquery->hash_lookup_term == nullptr)
+	      {
+		continue;
+	      }
+
+	    QFILE_SORTED_LIST_ID *term_list = clone_subquery->hash_lookup_term->elemset->value.srlist_id;
+	    if (term_list->list_id == clone_subquery->list_id)
+	      {
+		/* not bound */
+		continue;
+	      }
+
+	    hash_lookup_unbind_clone (clone_subquery);
+	    term_list->list_id = clone_subquery->list_id;
 	  }
       }
   }

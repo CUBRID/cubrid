@@ -153,6 +153,10 @@ namespace parallel_scan
       void add_scan_fixes (cubthread::entry &thread_ref, const scan_fixes &since);
       /* INDEX-only: after leaf supply exhausted, help drain remaining shared overflow chains. No-op otherwise. */
       void drain_late_joiner_chains (cubthread::entry &thread_ref, bool &stop);
+
+      /* the clone's list subqueries of IN or NOT IN terms: the leader's lists and hashes, lent and given back */
+      int bind_lookup_lists (cubthread::entry &thread_ref);
+      void unbind_lookup_lists ();
   };
 }
 
