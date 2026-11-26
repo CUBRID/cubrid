@@ -2531,41 +2531,41 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 }
 
 /*
- * qo_add_cross_dummy_join_terms () - add a dummy join term between a cross join node and the node before it when the
- *   two are in one partition already
+ * qo_add_cross_dummy_join_terms () - add a dummy join term between a cross join or comma node and the node before it
+ *   when the two are in one partition already
  *   return: void
  *   env(in): optimizer environment
  *
  * Behavior:
- *   - No term is added where it would merge two partitions, where a join edge joins the two already, or where no node
- *     of the partition comes after another node.
+ *   - No term is added where it would merge two partitions, where a join edge joins the node to a node before it
+ *     already, or where no node of the partition comes after another node.
  *
  * Reason:
  *   - planner_visit_node () grows a join order along join edges only, and a join order starts at one node.
  *     When a partition holds two nodes that can be placed only at the start of a join order, such as the first nodes
  *     of two outer join chains that a later inner join bridges, the planner finds no join order.
- *   - A cross join allows a cartesian product at its place in the FROM clause, so a term there gives the planner
- *     a join order without merging partitions.
+ *   - A cross join or a comma allows a cartesian product at its place in the FROM clause, so a term there gives
+ *     the planner a join order without merging partitions.
  *
  * Steps (for each node):
- *   Step 1: go on only when the node is a cross join node.
+ *   Step 1: go on only when the node is a cross join node or a table after a comma in the FROM clause.
  *   Step 2: go on only when the node is in the partition of the node before it.
  *   Step 3: go on only when the partition has a node that comes after another node.
- *   Step 4: go on only when no join edge joins the two.
+ *   Step 4: go on only when no join edge joins the node to a node before it.
  *   Step 5: add a dummy join term between the two.
  */
 static void
 qo_add_cross_dummy_join_terms (QO_ENV * env)
 {
   int node_idx, term_idx;
-  BITSET all_set, follower_set, partition_set, pair_set;
+  BITSET all_set, follower_set, partition_set, before_set;
   QO_NODE *node;
   QO_TERM *term;
 
   bitset_init (&all_set, env);
   bitset_init (&follower_set, env);
   bitset_init (&partition_set, env);
-  bitset_init (&pair_set, env);
+  bitset_init (&before_set, env);
 
   /* all_set = every node, as a partition follows every join edge.
    * follower_set = the nodes that come after another node */
@@ -2585,8 +2585,13 @@ qo_add_cross_dummy_join_terms (QO_ENV * env)
     {
       node = QO_ENV_NODE (env, node_idx);
 
-      /* Step 1: go on only when the node is a cross join node */
-      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_CROSS)
+      /* before_set = the nodes before node_idx */
+      bitset_add (&before_set, node_idx - 1);
+
+      /* Step 1: go on only when the node is a cross join node or a table after a comma in the FROM clause;
+       * a node of a path expression has no location in the FROM clause, though its join type is PT_JOIN_NONE */
+      if (QO_NODE_LOCATION (node) <= 0
+	  || (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_CROSS && QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_NONE))
 	{
 	  continue;
 	}
@@ -2606,14 +2611,13 @@ qo_add_cross_dummy_join_terms (QO_ENV * env)
 	  continue;
 	}
 
-      /* Step 4: go on only when no join edge joins the two */
-      BITSET_CLEAR (pair_set);
-      bitset_add (&pair_set, node_idx - 1);
-      bitset_add (&pair_set, node_idx);
+      /* Step 4: go on only when no join edge joins the node to a node before it;
+       * with one, a join order can go from the nodes before it to the node */
       for (term_idx = 0; term_idx < env->nterms; term_idx++)
 	{
 	  term = QO_ENV_TERM (env, term_idx);
-	  if (QO_IS_EDGE_TERM (term) && bitset_is_equivalent (&pair_set, &(QO_TERM_NODES (term))))
+	  if (QO_IS_EDGE_TERM (term) && BITSET_MEMBER (QO_TERM_NODES (term), node_idx)
+	      && bitset_intersects (&(QO_TERM_NODES (term)), &before_set))
 	    {
 	      break;
 	    }
@@ -2630,7 +2634,7 @@ qo_add_cross_dummy_join_terms (QO_ENV * env)
   bitset_delset (&all_set);
   bitset_delset (&follower_set);
   bitset_delset (&partition_set);
-  bitset_delset (&pair_set);
+  bitset_delset (&before_set);
 }
 
 /*
