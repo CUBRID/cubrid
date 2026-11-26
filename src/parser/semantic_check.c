@@ -4191,6 +4191,9 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	      data_default_list = result;
 	    }
 	  data_default = result;
+	  /* pt_semantic_type () may fold the default value into a constant and free the node read above;
+	   * the checks below must walk the value the node holds now, not the freed one. */
+	  default_value = data_default->info.data_default.default_value;
 	}
       else
 	{
