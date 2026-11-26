@@ -49,6 +49,7 @@
 #include "transaction_cl.h"
 #include "packer.hpp"		/* packing_packer */
 #include "network_callback_cl.hpp"
+#include "sp_context_rules.hpp"
 #endif
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -178,6 +179,8 @@ method_dispatch (packing_unpacker &unpacker)
 
   if (error == NO_ERROR)
     {
+      sp_depth_guard sql_guard (sp_In_sql_depth, sp_Sa_query_request);
+
       error = method_dispatch_internal (unpacker);
     }
 

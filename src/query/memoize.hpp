@@ -30,8 +30,6 @@
 namespace memoize
 {
   constexpr double MEMOIZE_HIT_RATIO_THRESHOLD = 0.5;
-  /* the hit ratio is judged only once the storage holds this share of its budget (the subquery cache waits for 60%) */
-  constexpr double MEMOIZE_HIT_RATIO_CHECK_SIZE = 0.6;
 
   template <typename T>
   using fixed_allocator = cubmem::fixed_size_alloc::allocator<T, false>;
@@ -90,6 +88,17 @@ namespace memoize
       static storage *new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl, bool match_only);
       void init (std::vector<DB_VALUE *> &key_ptr_src, std::vector<const TP_DOMAIN *> &key_domains);
       result_code get ();
+      /* is the key of the current outer row stored? Nothing is replayed and no hit or miss is counted */
+      bool has_key ();
+      /* the hash of the current outer row's key */
+      size_t key_hash ();
+      /* the rows put next are those of the current outer row's key, with no lookup counted (a row joined later
+       * than its key was looked up); true when the key is stored already */
+      bool begin_key ();
+      bool is_key_changed () const
+      {
+	return key_changed;
+      }
       result_code put();
       void start_timer();
       void stop_timer();

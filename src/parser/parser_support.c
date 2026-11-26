@@ -1480,6 +1480,56 @@ pt_is_method_call_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int 
 }
 
 /*
+ * pt_is_ddl_node_type () - test whether a statement type is DDL
+ *   return:
+ *   node_type(in):
+ */
+bool
+pt_is_ddl_node_type (PT_NODE_TYPE node_type)
+{
+  switch (node_type)
+    {
+    case PT_ALTER:
+    case PT_ALTER_INDEX:
+    case PT_ALTER_SERIAL:
+    case PT_ALTER_STORED_PROCEDURE:
+    case PT_ALTER_TRIGGER:
+    case PT_ALTER_USER:
+    case PT_CREATE_ENTITY:
+    case PT_CREATE_INDEX:
+    case PT_CREATE_SERIAL:
+    case PT_CREATE_STORED_PROCEDURE:
+    case PT_CREATE_TRIGGER:
+    case PT_CREATE_USER:
+    case PT_DROP:
+    case PT_DROP_INDEX:
+    case PT_DROP_SERIAL:
+    case PT_DROP_STORED_PROCEDURE:
+    case PT_DROP_TRIGGER:
+    case PT_DROP_USER:
+    case PT_GRANT:
+    case PT_RENAME:
+    case PT_REVOKE:
+    case PT_REMOVE_TRIGGER:
+    case PT_RENAME_TRIGGER:
+    case PT_UPDATE_STATS:
+      /* TODO: check it  */
+    case PT_CREATE_SERVER:
+    case PT_DROP_SERVER:
+    case PT_RENAME_SERVER:
+    case PT_ALTER_SERVER:
+    case PT_TRUNCATE:
+    case PT_ALTER_SYNONYM:
+    case PT_CREATE_SYNONYM:
+    case PT_DROP_SYNONYM:
+    case PT_RENAME_SYNONYM:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * pt_is_ddl_statement () - test PT_NODE statement types,
  * 			    without exposing internals
  *   return:
@@ -1488,50 +1538,7 @@ pt_is_method_call_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int 
 int
 pt_is_ddl_statement (const PT_NODE * node)
 {
-  if (node)
-    {
-      switch (node->node_type)
-	{
-	case PT_ALTER:
-	case PT_ALTER_INDEX:
-	case PT_ALTER_SERIAL:
-	case PT_ALTER_STORED_PROCEDURE:
-	case PT_ALTER_TRIGGER:
-	case PT_ALTER_USER:
-	case PT_CREATE_ENTITY:
-	case PT_CREATE_INDEX:
-	case PT_CREATE_SERIAL:
-	case PT_CREATE_STORED_PROCEDURE:
-	case PT_CREATE_TRIGGER:
-	case PT_CREATE_USER:
-	case PT_DROP:
-	case PT_DROP_INDEX:
-	case PT_DROP_SERIAL:
-	case PT_DROP_STORED_PROCEDURE:
-	case PT_DROP_TRIGGER:
-	case PT_DROP_USER:
-	case PT_GRANT:
-	case PT_RENAME:
-	case PT_REVOKE:
-	case PT_REMOVE_TRIGGER:
-	case PT_RENAME_TRIGGER:
-	case PT_UPDATE_STATS:
-	  /* TODO: check it  */
-	case PT_CREATE_SERVER:
-	case PT_DROP_SERVER:
-	case PT_RENAME_SERVER:
-	case PT_ALTER_SERVER:
-	case PT_TRUNCATE:
-	case PT_ALTER_SYNONYM:
-	case PT_CREATE_SYNONYM:
-	case PT_DROP_SYNONYM:
-	case PT_RENAME_SYNONYM:
-	  return true;
-	default:
-	  break;
-	}
-    }
-  return false;
+  return node != NULL && pt_is_ddl_node_type (node->node_type);
 }
 
 /*
@@ -4404,6 +4411,7 @@ pt_register_orphan_db_value (PARSER_CONTEXT * parser, const DB_VALUE * orphan)
 
   if (orphan)
     {
+      pr_clear_compressed_string ((DB_VALUE *) orphan);
       dummy = parser_new_node (parser, PT_VALUE);
       dummy->info.value.db_value_is_in_workspace = 1;
       dummy->info.value.db_value = *orphan;	/* structure copy */
@@ -9036,7 +9044,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                         ") "
         ") "
         "GROUP BY "
-                "[grantee_name], [unique_name], [is_grantable] ASC "
+                "[grantee_name], [object_type], [unique_name], [is_grantable] ASC "
         "ORDER BY 1;";
   // *INDENT-ON*
 

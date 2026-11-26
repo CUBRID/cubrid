@@ -1313,23 +1313,24 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
 	  log_lsa->pageid = NULL_PAGEID;
 	  log_recovery_resetlog (thread_p, &record_header_lsa, prev_lsa);
 	  *did_incom_recovery = true;
+
+	  return NO_ERROR;
 	}
     }
-  else
-    {
-      /*
-       * Need to read the start postpone record to set the postpone address
-       * of the transaction
-       */
-      tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 
-      /* Nothing to undo */
-      LSA_SET_NULL (&tdes->undo_nxlsa);
-      LSA_COPY (&tdes->tail_lsa, log_lsa);
-      tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+  /*
+   * Unless media recovery stops at this record, the transaction is committed and only its postpone remains. Set the
+   * postpone address of the transaction from the start postpone record, both in restart recovery and in media recovery.
+   */
+  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 
-      LSA_COPY (&tdes->posp_nxlsa, &start_posp->posp_lsa);
-    }
+  /* Nothing to undo */
+  LSA_SET_NULL (&tdes->undo_nxlsa);
+  /* log_lsa was advanced to the record body above; the runtime (prior_lsa_start_append) records the record start */
+  LSA_COPY (&tdes->tail_lsa, &record_header_lsa);
+  tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+
+  LSA_COPY (&tdes->posp_nxlsa, &start_posp->posp_lsa);
 
   return NO_ERROR;
 }
@@ -3424,7 +3425,7 @@ static void
 log_recovery_2pc_restore_tran_prev_versions (THREAD_ENTRY * thread_p, const LOG_TDES * tdes, LOG_PAGE * log_page)
 {
   HEAP_RV_PREV_VERSION_STATE state = { OID_INITIALIZER, LSA_INITIALIZER };
-  OID fwd_oid;
+  HEAP_FWD_RECORD_AREA fwd_area;
   LOG_LSA lsa;
 
   for (lsa = tdes->tail_lsa; !LSA_ISNULL (&lsa);)
@@ -3487,8 +3488,8 @@ log_recovery_2pc_restore_tran_prev_versions (THREAD_ENTRY * thread_p, const LOG_
 	  VPID_SET (&vpid, data.volid, data.pageid);
 	  if (data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	    {
-	      old_home.data = (char *) &fwd_oid;
-	      old_home.area_size = sizeof (fwd_oid);
+	      old_home.data = fwd_area.data;
+	      old_home.area_size = sizeof (fwd_area);
 	      /* the data header may end on the next log page; a larger image does not fit, but its type is read */
 	      if ((log_page->hdr.logical_pageid != lsa.pageid
 		   && logpb_fetch_page (thread_p, &lsa, LOG_CS_FORCE_USE, log_page) != NO_ERROR)

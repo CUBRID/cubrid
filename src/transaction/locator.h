@@ -194,8 +194,8 @@ typedef enum
   LC_FETCH_MVCC_VERSION = 0x02,	/* fetch MVCC - visible version */
   LC_FETCH_DIRTY_VERSION = 0x03,	/* fetch dirty version - S-locked */
   LC_FETCH_CURRENT_VERSION_NO_CHECK = 0x04,	/* fetch current version and not check server side */
-  LC_FETCH_CATALOG_VERSION = 0x05,	/* fetch the latest committed version - no lock, no transaction snapshot
-					 * (see mvcc_satisfies_committed) */
+  LC_FETCH_CATALOG_VERSION = 0x05,	/* fetch the version a catalog read snapshot sees - no lock, no
+					 * transaction snapshot (see logtb_get_catalog_read_snapshot) */
 } LC_FETCH_VERSION_TYPE;
 
 #define LC_FETCH_IS_MVCC_VERSION_NEEDED(fetch_type) \
@@ -250,6 +250,14 @@ typedef enum
 
 #define LC_ONEOBJ_HAS_PRIOR_VALUE(obj) \
   (((obj)->flag & LC_FLAG_HAS_PRIOR_VALUE) != 0)
+
+#define LC_FLAG_SERIAL_ISSUE 0x40	/* Used for replication: a _db_serial write that issued values */
+
+#define LC_ONEOBJ_SET_SERIAL_ISSUE(obj) \
+  (obj)->flag |= LC_FLAG_SERIAL_ISSUE
+
+#define LC_ONEOBJ_IS_SERIAL_ISSUE(obj) \
+  (((obj)->flag & LC_FLAG_SERIAL_ISSUE) != 0)
 
 typedef struct lc_copyarea_oneobj LC_COPYAREA_ONEOBJ;
 struct lc_copyarea_oneobj
