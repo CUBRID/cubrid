@@ -285,6 +285,18 @@ namespace cubregex
 	    break;
 	  }
 
+	if (match.empty () && match.data () < end_p && ((unsigned char) *match.data () & 0xC0) == 0x80)
+	  {
+	    // RE2's \b and \B look at ASCII bytes only, so they can report an empty match between the bytes of a
+	    // multibyte UTF-8 character. That is not a character boundary: skip it and search from the next one.
+	    current_p = (char *) match.data ();
+	    while (current_p < end_p && ((unsigned char) *current_p & 0xC0) == 0x80)
+	      {
+		current_p++;
+	      }
+	    continue;
+	  }
+
 	if (n == occurrence || occurrence == 0)
 	  {
 	    is_matched = true;
