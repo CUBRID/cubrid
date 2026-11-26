@@ -68,8 +68,9 @@ dblink_global_tran_errid (void)
 /*
  * dblink_global_tran_live_snapshot_start () - build the snapshot a heap scan of _db_global_tran reads rows under
  *
- * return: local, or NULL when the current transaction cannot have a snapshot (the scan then reads every version
- *	   in the heap, as it did before)
+ * return: local. Every caller runs on a worker transaction (the commit path, the daemon's delete and the restart
+ *	   recovery each have one), so NULL is not expected; a debug build asserts it. If it ever happens, the scan
+ *	   reads every version in the heap as it did before, and only the replay of deleted rows comes back.
  *
  *   thread_p(in): thread entry
  *   local(out): snapshot owned by the caller until dblink_global_tran_live_snapshot_end ()
@@ -85,12 +86,19 @@ dblink_global_tran_errid (void)
 static MVCC_SNAPSHOT *
 dblink_global_tran_live_snapshot_start (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local, bool * holds_vacuum)
 {
+  MVCC_SNAPSHOT *snapshot;
+
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
 
-  return logtb_get_catalog_read_snapshot (thread_p, local, holds_vacuum);
+  snapshot = logtb_get_catalog_read_snapshot (thread_p, local, holds_vacuum);
+
+  /* a system transaction gets no snapshot: the scan would silently fall back to reading deleted rows */
+  assert (snapshot != NULL);
+
+  return snapshot;
 }
 
 /*
