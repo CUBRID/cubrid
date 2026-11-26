@@ -2193,8 +2193,22 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
       entry->copy_from_first_phy_page = copy_from_first_phy_page;
       if (entry->status != LOGWR_STATUS_DELAY)
 	{
-	  entry->status = LOGWR_STATUS_WAIT;
-	  entry->start_copy_time = 0;
+	  /* The caller holds flush_start_mutex, so last_woken_eof_lsa does not change until this LWT waits.
+	   * If a flush woke up the LWTs while this one was sending, the log it flushed has not been sent yet:
+	   * read it now instead of waiting for the next flush, which may not come soon. */
+	  if (!LSA_ISNULL (&entry->last_sent_eof_lsa)
+	      && LSA_LT (&entry->last_sent_eof_lsa, &writer_info->last_woken_eof_lsa))
+	    {
+	      logwr_er_log ("logwr_register_writer_entry, missed flush: last_sent_eof_lsa(%lld|%d) < "
+			    "last_woken_eof_lsa(%lld|%d)\n", LSA_AS_ARGS (&entry->last_sent_eof_lsa),
+			    LSA_AS_ARGS (&writer_info->last_woken_eof_lsa));
+	      entry->status = LOGWR_STATUS_DELAY;
+	    }
+	  else
+	    {
+	      entry->status = LOGWR_STATUS_WAIT;
+	      entry->start_copy_time = 0;
+	    }
 	}
     }
 

@@ -3580,6 +3580,10 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  writer_info->last_writer_client_info.process_id = 0;
 	}
 
+      /* LWTs that are not waiting now (still sending the previous pages) miss this wakeup.
+       * Remember up to where this flush goes so that they send it without waiting for the next flush. */
+      writer_info->last_woken_eof_lsa = log_Gl.hdr.eof_lsa.load ();
+
       entry = writer_info->writer_list;
       while (entry)
 	{

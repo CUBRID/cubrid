@@ -167,6 +167,9 @@ struct logwr_info
   bool skip_flush;
   bool flush_completed;
   bool is_init;
+  /* eof_lsa of the last flush that woke up the waiting LWTs (protected by flush_start_mutex).
+   * An LWT that has sent less than this missed that flush while sending, and must not wait for the next one. */
+  LOG_LSA last_woken_eof_lsa;
 
   /* to measure the time spent by the last LWT delaying LFT */
   bool trace_last_writer;
@@ -186,6 +189,7 @@ struct logwr_info
     , skip_flush (false)
     , flush_completed (false)
     , is_init (false)
+    , last_woken_eof_lsa (NULL_LSA)
     , trace_last_writer (false)
     , last_writer_client_info ()
     , last_writer_elapsed_time (0)
