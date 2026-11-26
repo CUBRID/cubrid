@@ -4284,20 +4284,23 @@ pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid)
  *
  * Note: pgbuf_flush_all () skips a page that another thread is writing, because that thread clears the dirty flag when
  *       it copies the page. Without the double write buffer, it writes the copy only after it releases the BCB mutex,
- *       so the copy can still be on its way to the disk when pgbuf_flush_all () returns. This function waits for that
- *       write to end, and then writes the page again if it is dirty again. When it returns, every change made to a
- *       page before the call is written to its volume, or to the double write buffer.
+ *       so the copy can still be on its way to the disk when pgbuf_flush_all () returns. This function waits until no
+ *       thread writes the page, also for a write that another thread starts meanwhile, and then writes the page if it
+ *       is dirty again. When it returns, every change made to a page before the call is written to its volume, or to
+ *       the double write buffer.
  */
 int
 pgbuf_flush_all_and_wait_ongoing_writes (THREAD_ENTRY * thread_p, VOLID volid)
 {
   PGBUF_BCB *bufptr;
-  int i, error_code = NO_ERROR;
+  int i, flags, error_code = NO_ERROR;
 
   for (i = 0; i < pgbuf_Pool.num_buffers; i++)
     {
       bufptr = PGBUF_FIND_BCB_PTR (i);
-      if ((!pgbuf_bcb_is_dirty (bufptr) && !pgbuf_bcb_is_flushing (bufptr))
+      /* read the flags once: a write that fails turns "flushing" into "dirty", and two reads could see neither */
+      flags = bufptr->flags;
+      if ((flags & (PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_FLUSHING_TO_DISK_FLAG)) == 0
 	  || (volid != NULL_VOLID && volid != bufptr->vpid.volid))
 	{
 	  continue;
@@ -4305,9 +4308,12 @@ pgbuf_flush_all_and_wait_ongoing_writes (THREAD_ENTRY * thread_p, VOLID volid)
 
       PGBUF_BCB_LOCK (bufptr);
 #if defined (SERVER_MODE)
-      if (pgbuf_bcb_is_flushing (bufptr))
+      /* wait until no thread writes the page. another thread can start a new write of the page before we get the
+       * mutex back; it clears the dirty flag when it copies the page, so only the end of that write tells that the
+       * changes are written. */
+      while (pgbuf_bcb_is_flushing (bufptr))
 	{
-	  /* wait for the write of the other thread; pgbuf_block_bcb () releases the mutex */
+	  /* pgbuf_block_bcb () releases the mutex */
 	  error_code = pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_FLUSH, 0, false);
 	  if (error_code != NO_ERROR)
 	    {
@@ -4323,8 +4329,8 @@ pgbuf_flush_all_and_wait_ongoing_writes (THREAD_ENTRY * thread_p, VOLID volid)
 	  continue;
 	}
 
-      /* write the page if it is dirty. if another thread has started to write it since, this waits for that write,
-       * whose copy holds every change made before. */
+      /* no thread writes the page while we hold the mutex: write it if it is dirty. if a thread holds its write latch,
+       * this waits until that thread writes it. */
       error_code = pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, true);
       if (error_code != NO_ERROR)
 	{
