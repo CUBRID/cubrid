@@ -8786,7 +8786,8 @@ static bool update_check_having_meta_attr (PARSER_CONTEXT * parser, PT_NODE * as
 static int update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_started);
 static XASL_NODE *statement_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
 static int do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement);
-static int do_append_share_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement);
+static int do_append_share_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement,
+				PT_SHARE_GROUP * groups);
 static int is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs, int *has_uniques,
 				     int *const server_allowed, const PT_NODE * statement);
 static int delete_object_tuple (DB_OBJECT * obj);
@@ -16395,9 +16396,10 @@ do_collect_share_key (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
  *   variant key is: a query sharing a view result and one that does not may print alike, the views expanded and
  *   their constants turned into host variables, and must not use each other's plan
  * return : error code
+ *   groups(in): the share groups of statement, as mq_share_settle_groups () returns them
  */
 static int
-do_append_share_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement)
+do_append_share_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement, PT_SHARE_GROUP * groups)
 {
   DO_SHARE_KEY_INFO info = { NULL, NULL, 0, false };
   PT_SHARE_GROUP *group;
@@ -16409,7 +16411,7 @@ do_append_share_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NOD
       return NO_ERROR;
     }
 
-  info.groups = mq_share_settle_groups (parser, statement);
+  info.groups = groups;
   if (info.groups == NULL)
     {
       /* no share group: the hash text is as without sharing */
@@ -16472,6 +16474,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err = NO_ERROR;
   int au_save;
+  PT_SHARE_GROUP *share_groups = NULL;
 
   COMPILE_CONTEXT *contextp;
   XASL_STREAM stream;
@@ -16515,10 +16518,11 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
 
-  /* CBRD-27351: settle the share groups first, so that the hash text prints the select lists the plan reads */
+  /* CBRD-27351: settle the share groups first, so that the hash text prints the select lists the plan reads; the key
+   * names the groups (do_append_share_key ()) */
   if (PT_IS_QUERY (statement))
     {
-      (void) mq_share_settle_groups (parser, statement);
+      share_groups = mq_share_settle_groups (parser, statement);
     }
 
   PT_NODE_PRINT_TO_ALIAS (parser, statement, (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER));
@@ -16529,7 +16533,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       return err;
     }
-  err = do_append_share_key (parser, contextp, statement);
+  err = do_append_share_key (parser, contextp, statement, share_groups);
   if (err != NO_ERROR)
     {
       return err;

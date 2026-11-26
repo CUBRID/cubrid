@@ -484,7 +484,6 @@ static PT_NODE *mq_share_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, P
 static PT_NODE *mq_vspec_select_list (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 				      bool remove_sel_list);
 static bool mq_share_group_covers (PT_SHARE_GROUP * group, PT_NODE * cols);
-static int mq_share_keep_own_cols (PARSER_CONTEXT * parser, PT_NODE * statement, UINTPTR spec_id);
 static void mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node);
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -2899,15 +2898,6 @@ mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser, PT_NODE * state
 	{
 	  tmp_result = mq_remove_select_list_for_inline_view (parser, tmp_result, derived_spec, NULL, &new_spec);
 	  if (tmp_result == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-      else if (derived_spec->info.spec.share_group != NULL
-	       && mq_is_removable_select_list (parser, subquery, tmp_result) == PUSHABLE)
-	{
-	  /* CBRD-27351: keep the columns removed here as the ones it goes back to on leaving its group */
-	  if (mq_share_keep_own_cols (parser, tmp_result, derived_spec->info.spec.id) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
@@ -17336,43 +17326,6 @@ mq_share_group_covers (PT_SHARE_GROUP * group, PT_NODE * cols)
 	}
     }
   return true;
-}
-
-/*
- * mq_share_keep_own_cols () - keep as the columns a member goes back to on leaving its group the ones statement reads
- *   of its spec of spec_id, as mq_remove_select_list_for_inline_view () would leave
- */
-static int
-mq_share_keep_own_cols (PARSER_CONTEXT * parser, PT_NODE * statement, UINTPTR spec_id)
-{
-  PT_NODE *spec, *cols;
-
-  for (spec = statement->info.query.q.select.from; spec != NULL && spec->info.spec.id != spec_id; spec = spec->next)
-    {
-      ;
-    }
-  if (spec == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "share group spec not found");
-      return ER_FAILED;
-    }
-
-  cols = mq_get_references (parser, statement, spec);
-  for (PT_NODE * col = cols; col != NULL; col = col->next)
-    {
-      col->flag.is_hidden_column = 0;
-    }
-  if (cols == NULL)
-    {
-      /* case of constant attr. e.g.) count(*), count(1) */
-      cols = pt_make_integer_value (parser, 1);
-      if (cols == NULL)
-	{
-	  return ER_FAILED;
-	}
-    }
-  spec->info.spec.share_cols = cols;
-  return NO_ERROR;
 }
 
 /*
