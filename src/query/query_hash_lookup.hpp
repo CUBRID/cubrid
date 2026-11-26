@@ -31,6 +31,7 @@
 #include "dbtype_def.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
+#include "tsc_timer.h"
 
 struct DOMAIN_COMPARE;
 struct qfile_list_id;
@@ -42,8 +43,11 @@ typedef struct hash_lookup HASH_LOOKUP;
 typedef struct hash_lookup_stats HASH_LOOKUP_STATS;
 struct hash_lookup_stats
 {
+  TSCTIMEVAL build_time;	/* building the tables, measured while the query is traced */
+  TSCTIMEVAL lookup_time;	/* the lookups, from hash_lookup_start to hash_lookup_end, measured while traced */
   UINT64 builds;		/* tables built over the subquery's list */
   UINT64 lookups;		/* the lookups those tables answered */
+  UINT64 rows;			/* the list values those lookups gave the comparison */
   int method;			/* the tables' HASH_METHOD (query_hash_scan.h) */
 };
 
@@ -52,7 +56,8 @@ extern int hash_lookup_get (THREAD_ENTRY *thread_p, xasl_node *subquery, qfile_l
 			    const DOMAIN_COMPARE *compare, HASH_LOOKUP **lookup);
 
 /* the list values of one item, through the hash */
-extern bool hash_lookup_start (HASH_LOOKUP *lookup, const DOMAIN_COMPARE *compare, const DB_VALUE *item);
+extern bool hash_lookup_start (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup, const DOMAIN_COMPARE *compare,
+			       const DB_VALUE *item);
 extern bool hash_lookup_has_null (const HASH_LOOKUP *lookup);
 extern SCAN_CODE hash_lookup_next (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup, DB_VALUE **value);
 extern void hash_lookup_end (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup);

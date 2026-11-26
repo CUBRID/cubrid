@@ -1061,7 +1061,7 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
       return V_ERROR;
     }
 
-  if (lookup == NULL || !hash_lookup_start (lookup, compare, item))
+  if (lookup == NULL || !hash_lookup_start (thread_p, lookup, compare, item))
     {
       return eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd);
     }

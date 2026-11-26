@@ -84,6 +84,8 @@ struct hash_lookup
   DB_VALUE value;		/* that tuple's list value */
 
   HASH_LOOKUP_STATS stats;	/* kept until the subquery's XASL is cleared, past hash_lookup_release */
+  TSC_TICKS start_tick;		/* the start of the lookup hash_lookup_start started, while traced */
+  bool on_trace;		/* the lookup is timed: hash_lookup_end adds its time */
 };
 
 /* the hash of a value: the comparisons and the values it takes */
@@ -388,6 +390,9 @@ hash_lookup_create_table (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup, QFILE_LIS
 	  qdata_hash_scan_method (list_id, (UINT64) prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE));
   HL_HEAPID save_heap_id;
   HASH_LOOKUP_TABLE *table;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  bool on_trace;
   int error = NO_ERROR;
 
   assert (lookup != NULL && lookup->table == NULL);
@@ -410,7 +415,20 @@ hash_lookup_create_table (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup, QFILE_LIS
   /* Step 2: the hash table */
   if ((method == HASH_METH_IN_MEM || method == HASH_METH_HYBRID) && hash_lookup_comparable (compare))
     {
+      on_trace = thread_is_on_trace (thread_p);
+      if (on_trace)
+	{
+	  tsc_getticks (&start_tick);
+	}
+
       error = hash_lookup_build (thread_p, table, list_id, compare, method);
+
+      if (on_trace)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (lookup->stats.build_time, tv_diff);
+	}
     }
 
   /* Step 3: the hash lookup's table */
@@ -661,12 +679,13 @@ hash_lookup_get (THREAD_ENTRY *thread_p, xasl_node *subquery, QFILE_LIST_ID *lis
 /*
  * hash_lookup_start () - start the list values of an item's hash (hash_lookup_next ())
  *   return: false if the item has no hash in the type its comparison compares it in: the caller reads the list
+ *   thread_p(in): thread entry
  *   lookup(in/out): the hash lookup
  *   compare(in): the lookup's comparison, which compares the item with the list values hash_lookup_next () gives
  *   item(in): the row's item
  */
 bool
-hash_lookup_start (HASH_LOOKUP *lookup, const DOMAIN_COMPARE *compare, const DB_VALUE *item)
+hash_lookup_start (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup, const DOMAIN_COMPARE *compare, const DB_VALUE *item)
 {
   if (lookup == NULL || lookup->table == NULL || lookup->table->hash_table == NULL || compare == NULL || item == NULL)
     {
@@ -675,8 +694,17 @@ hash_lookup_start (HASH_LOOKUP *lookup, const DOMAIN_COMPARE *compare, const DB_
       return false;
     }
 
+  /* the time of a lookup runs from its hash key to hash_lookup_end, the comparisons of its list values included */
+  lookup->on_trace = thread_is_on_trace (thread_p);
+  if (lookup->on_trace)
+    {
+      tsc_getticks (&lookup->start_tick);
+    }
+
   if (!hash_lookup_key (compare, 0, item, &lookup->hash_key))
     {
+      /* the caller reads the list: no hash_lookup_end follows */
+      lookup->on_trace = false;
       return false;
     }
 
@@ -775,6 +803,7 @@ hash_lookup_next (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup, DB_VALUE **value)
   /* the list's NULLs are not in the table */
   assert (!is_null);
 
+  lookup->stats.rows++;
   *value = &lookup->value;
   return S_SUCCESS;
 }
@@ -791,6 +820,9 @@ hash_lookup_next (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup, DB_VALUE **value)
 void
 hash_lookup_end (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup)
 {
+  TSC_TICKS end_tick;
+  TSCTIMEVAL tv_diff;
+
   if (lookup == NULL)
     {
       assert (false);
@@ -812,6 +844,14 @@ hash_lookup_end (THREAD_ENTRY *thread_p, HASH_LOOKUP *lookup)
     }
 
   pr_clear_value (&lookup->value);
+
+  if (lookup->on_trace)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, lookup->start_tick);
+      TSC_ADD_TIMEVAL (lookup->stats.lookup_time, tv_diff);
+      lookup->on_trace = false;
+    }
 }
 
 /*
@@ -995,8 +1035,11 @@ hash_lookup_merge_stats (xasl_node *leader, const xasl_node *clone)
   clone_stats = &clone->hash_lookup->stats;
   leader_stats = &leader->hash_lookup->stats;
 
+  TSC_ADD_TIMEVAL (leader_stats->build_time, clone_stats->build_time);
+  TSC_ADD_TIMEVAL (leader_stats->lookup_time, clone_stats->lookup_time);
   leader_stats->builds += clone_stats->builds;
   leader_stats->lookups += clone_stats->lookups;
+  leader_stats->rows += clone_stats->rows;
   if (clone_stats->builds > 0)
     {
       leader_stats->method = clone_stats->method;
