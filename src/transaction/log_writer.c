@@ -2148,6 +2148,7 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
 {
   LOGWR_ENTRY *entry;
   int rv;
+  bool continue_checking = true;
   LOGWR_INFO *writer_info = log_Gl.writer_info;
 
   *wr_entry_p = NULL;
@@ -2198,9 +2199,11 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
 	   * If a flush woke up the LWTs while this one was sending, the log it flushed has not been sent yet:
 	   * read it now instead of waiting for the next flush, which may not come soon.
 	   * Only for an ASYNC client: a DELAY of a non-ASYNC client holds LOG_CS until the reply.
-	   * Not after an interrupt: entry->eof_lsa then caps what is sent, never reaching last_woken_eof_lsa. */
+	   * Not after an interrupt: entry->eof_lsa then caps what is sent, never reaching last_woken_eof_lsa.
+	   * Not when interrupted: only the WAIT path checks the interrupt, and a busy server would never take it. */
 	  if (orig_mode == LOGWR_MODE_ASYNC && LSA_ISNULL (&entry->eof_lsa) && !LSA_ISNULL (&entry->last_sent_eof_lsa)
-	      && LSA_LT (&entry->last_sent_eof_lsa, &writer_info->last_woken_eof_lsa))
+	      && LSA_LT (&entry->last_sent_eof_lsa, &writer_info->last_woken_eof_lsa)
+	      && !logtb_is_interrupted (thread_p, false, &continue_checking))
 	    {
 	      logwr_er_log ("logwr_register_writer_entry, missed flush: last_sent_eof_lsa(%lld|%d) < "
 			    "last_woken_eof_lsa(%lld|%d)\n", LSA_AS_ARGS (&entry->last_sent_eof_lsa),
