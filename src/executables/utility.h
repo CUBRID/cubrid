@@ -455,7 +455,8 @@ typedef enum
   UNLOADDB_MSG_PASSWORD_PROMPT = 49,
   UNLOADDB_MSG_EXCEED_MAX_LEN = 50,
   UNLOADDB_MSG_EXCEED_MAX_USER_LEN = 51,
-  UNLOADDB_MSG_CLASS_NOT_FOUND = 52
+  UNLOADDB_MSG_CLASS_NOT_FOUND = 52,
+  UNLOADDB_MSG_BINARY_ROW_TOO_LARGE = 53
 } MSGCAT_UNLOADDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_LOADDB */
@@ -520,7 +521,13 @@ typedef enum
   LOADDB_MSG_COMPAT_UNDER_11_2 = 124,
   LOADDB_MSG_COMPAT_UNDER_11_4 = 125,
   LOADDB_MSG_COMPAT_OFF = 126,
-  LOADDB_MSG_USAGE = 127
+  LOADDB_MSG_USAGE = 127,
+  LOADDB_MSG_INCOMPATIBLE_BINARY_FORMAT = 128,
+  LOADDB_MSG_TRUNCATED_BINARY_SECTION = 129,
+  LOADDB_MSG_INVALID_FORMAT_COMMAND = 130,
+  LOADDB_MSG_UNSUPPORTED_DATA_FORMAT = 131,
+  LOADDB_MSG_BINARY_ROW_TOO_LARGE = 132,
+  LOADDB_MSG_CORRUPTED_BINARY_BLOCK = 133
 } MSGCAT_LOADDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_MIGDB */
@@ -1491,6 +1498,8 @@ typedef struct _ha_config
 #define UNLOAD_SAMPLING_TEST_L                  "sampling-test"
 #define UNLOAD_ENHANCED_ESTIMATES_S             11927
 #define UNLOAD_ENHANCED_ESTIMATES_L             "enhanced-estimates"
+#define UNLOAD_DATA_FORMAT_S                    11928
+#define UNLOAD_DATA_FORMAT_L                    "data-format"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'
@@ -1879,6 +1888,10 @@ typedef struct _ha_config
 #else
 #define LIB_UTIL_CS_NAME                "libcubridcs.so"
 #define LIB_UTIL_SA_NAME                "libcubridsa.so"
+#if defined(LINUX)
+/* libcubridcs built with MULTI_CONN_TO_A_SERVER, for the utilities that use sub-clients (see cs/CMakeLists.txt) */
+#define LIB_UTIL_CS_MC_NAME             "libcubridcs_mc.so"
+#endif
 #endif
 
 #define UTILITY_GENERIC_MSG_FUNC_NAME	"utility_get_generic_message"

@@ -225,6 +225,22 @@ mvcctable::finalize ()
 void
 mvcctable::build_mvcc_info (log_tdes &tdes)
 {
+  build_snapshot (tdes.tran_index, tdes.mvccinfo.snapshot, true);
+
+  /* update lowest active mvccid computed for the most recent snapshot */
+  tdes.mvccinfo.recent_snapshot_lowest_active_mvccid = tdes.mvccinfo.snapshot.lowest_active_mvccid;
+}
+
+/*
+ * build_snapshot () - copy the active transactions into snapshot. The transaction's lowest visible MVCCID is
+ *		       registered for vacuum only when it is unset, and is cleared when the transaction ends or when the
+ *		       catalog read that registered it is done.
+ *
+ * return: true if this call registered the transaction's lowest visible MVCCID
+ */
+bool
+mvcctable::build_snapshot (int tran_index, mvcc_snapshot &snapshot, bool load_tran_stats)
+{
   MVCCID tx_lowest_active;
   MVCCID crt_status_lowest_active;
   size_t index;
@@ -238,7 +254,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
   UINT64 snapshot_wait_time;
   UINT64 snapshot_retry_count = 0;
 
-  assert (tdes.tran_index >= 0 && tdes.tran_index < logtb_get_number_of_total_tran_indices ());
+  assert (tran_index >= 0 && tran_index < logtb_get_number_of_total_tran_indices ());
 
   if (is_perf_tracking)
     {
@@ -246,9 +262,9 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
     }
 
   // make sure snapshot has allocated data
-  tdes.mvccinfo.snapshot.m_active_mvccs.initialize ();
+  snapshot.m_active_mvccs.initialize ();
 
-  tx_lowest_active = oldest_active_get (m_transaction_lowest_visible_mvccids[tdes.tran_index], tdes.tran_index,
+  tx_lowest_active = oldest_active_get (m_transaction_lowest_visible_mvccids[tran_index], tran_index,
 					oldest_active_event::BUILD_MVCC_INFO);
 
   // repeat steps until a trans_status can be read successfully without a version change
@@ -273,7 +289,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 	   *    - the VACUUM thread computes the threshold again and found a value (initial global lowest active MVCCID)
 	   * less than the previously threshold
 	   */
-	  oldest_active_set (m_transaction_lowest_visible_mvccids[tdes.tran_index], tdes.tran_index,
+	  oldest_active_set (m_transaction_lowest_visible_mvccids[tran_index], tran_index,
 			     MVCCID_ALL_VISIBLE, oldest_active_event::BUILD_MVCC_INFO);
 
 	  /*
@@ -282,7 +298,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 	   */
 	  crt_status_lowest_active = oldest_active_get (m_current_status_lowest_active_mvccid, 0,
 				     oldest_active_event::BUILD_MVCC_INFO);
-	  oldest_active_set (m_transaction_lowest_visible_mvccids[tdes.tran_index], tdes.tran_index,
+	  oldest_active_set (m_transaction_lowest_visible_mvccids[tran_index], tran_index,
 			     crt_status_lowest_active, oldest_active_event::BUILD_MVCC_INFO);
 	}
       else
@@ -297,10 +313,10 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
       const mvcc_trans_status &trans_status = m_trans_status_history[index];
 
       trans_status_version = trans_status.m_version.load ();
-      trans_status.m_active_mvccs.copy_to (tdes.mvccinfo.snapshot.m_active_mvccs,
+      trans_status.m_active_mvccs.copy_to (snapshot.m_active_mvccs,
 					   mvcc_active_tran::copy_safety::THREAD_UNSAFE);
 
-      if (logtb_load_global_statistics_to_tran (thread_get_thread_entry_info())!= NO_ERROR)
+      if (load_tran_stats && logtb_load_global_statistics_to_tran (thread_get_thread_entry_info ()) != NO_ERROR)
 	{
 	  /* just error setting without returning for further processing */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
@@ -315,25 +331,22 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 	{
 	  // a failed copy may break data validity; to make sure next copy is not affected, it is better to reset
 	  // bit area.
-	  tdes.mvccinfo.snapshot.m_active_mvccs.reset_active_transactions ();
+	  snapshot.m_active_mvccs.reset_active_transactions ();
 	}
     }
 
-  // tdes.mvccinfo.snapshot.m_active_mvccs was not checked because it was not safe; now it is
-  tdes.mvccinfo.snapshot.m_active_mvccs.check_valid ();
+  // snapshot.m_active_mvccs was not checked because it was not safe; now it is
+  snapshot.m_active_mvccs.check_valid ();
 
-  highest_completed_mvccid = tdes.mvccinfo.snapshot.m_active_mvccs.compute_highest_completed_mvccid ();
+  highest_completed_mvccid = snapshot.m_active_mvccs.compute_highest_completed_mvccid ();
   MVCCID_FORWARD (highest_completed_mvccid);
 
-  /* update lowest active mvccid computed for the most recent snapshot */
-  tdes.mvccinfo.recent_snapshot_lowest_active_mvccid = crt_status_lowest_active;
-
   /* update remaining snapshot data */
-  tdes.mvccinfo.snapshot.snapshot_fnc = mvcc_satisfies_snapshot;
-  tdes.mvccinfo.snapshot.lowest_active_mvccid = crt_status_lowest_active;
-  tdes.mvccinfo.snapshot.highest_completed_mvccid = highest_completed_mvccid;
-  tdes.mvccinfo.snapshot.valid = true;
-  tdes.mvccinfo.snapshot.build_serial++;
+  snapshot.snapshot_fnc = mvcc_satisfies_snapshot;
+  snapshot.lowest_active_mvccid = crt_status_lowest_active;
+  snapshot.highest_completed_mvccid = highest_completed_mvccid;
+  snapshot.valid = true;
+  snapshot.build_serial++;
 
   if (is_perf_tracking)
     {
@@ -350,6 +363,8 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 			    snapshot_retry_count - 1);
 	}
     }
+
+  return !MVCCID_IS_VALID (tx_lowest_active);
 }
 
 MVCCID
@@ -595,6 +610,17 @@ mvcctable::reset_transaction_lowest_active (int tran_index)
 {
   oldest_active_set (m_transaction_lowest_visible_mvccids[tran_index], tran_index, MVCCID_NULL,
 		     oldest_active_event::RESET);
+}
+
+/*
+ * reset_transaction_lowest_active () - clear the registration that build_snapshot () made for snapshot
+ */
+void
+mvcctable::reset_transaction_lowest_active (int tran_index, const mvcc_snapshot &snapshot)
+{
+  assert (oldest_active_get (m_transaction_lowest_visible_mvccids[tran_index], tran_index,
+			     oldest_active_event::RESET) == snapshot.lowest_active_mvccid);
+  reset_transaction_lowest_active (tran_index);
 }
 
 void

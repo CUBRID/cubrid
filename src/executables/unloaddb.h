@@ -27,6 +27,7 @@
 #ident "$Id$"
 
 #include "locator_cl.h"
+#include "load_common.hpp"
 
 struct extract_context;
 class print_output;
@@ -37,6 +38,7 @@ extern int g_pre_alloc_varchar_size;
 extern int g_parallel_process_cnt;
 extern int g_parallel_process_idx;
 extern int g_request_pages;
+extern int g_data_format;
 extern int page_size;
 extern int cached_pages;
 extern int64_t est_size;
@@ -95,7 +97,7 @@ extern int extract_triggers_to_file (extract_context & ctxt, const char *output_
 extern int extract_indexes_to_file (extract_context & ctxt, const char *output_filename);
 
 extern int extract_objects (extract_context & ctxt, const char *output_dirname, int nthreads, int sampling_records,
-			    bool enhanced_estimates);
+			    bool enhanced_estimates, int data_format);
 
 extern int create_filename_schema (const char *output_dirname, const char *output_prefix,
 				   char *output_filename_p, const size_t filename_size);

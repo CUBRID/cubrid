@@ -481,7 +481,8 @@ struct trace_json_t;
            (n)->info.expr.op == PT_RANDOM || \
            (n)->info.expr.op == PT_RAND || \
            (n)->info.expr.op == PT_SYS_GUID || \
-           (n)->info.expr.op == PT_UUID ))
+           (n)->info.expr.op == PT_UUID || \
+           (n)->info.expr.op == PT_CURRENT_VALUE_BY_OID ))
 
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
@@ -537,10 +538,14 @@ struct trace_json_t;
         } while (0)
 
 #define PT_IS_DBLINK_DML_QUERY(n) \
-	((n->node_type == PT_INSERT && n->info.insert.spec->info.spec.remote_server_name) \
-        || (n->node_type == PT_DELETE && n->info.delete_.spec->info.spec.remote_server_name) \
-        || (n->node_type == PT_UPDATE && n->info.update.spec->info.spec.remote_server_name) \
-        || (n->node_type == PT_MERGE && n->info.merge.into->info.spec.remote_server_name))
+	((n->node_type == PT_INSERT && n->info.insert.spec != NULL \
+	  && n->info.insert.spec->info.spec.remote_server_name) \
+        || (n->node_type == PT_DELETE && n->info.delete_.spec != NULL \
+	    && n->info.delete_.spec->info.spec.remote_server_name) \
+        || (n->node_type == PT_UPDATE && n->info.update.spec != NULL \
+	    && n->info.update.spec->info.spec.remote_server_name) \
+        || (n->node_type == PT_MERGE && n->info.merge.into != NULL \
+	    && n->info.merge.into->info.spec.remote_server_name))
 
 #define PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION(n) \
 	((n->info.dot.arg1->node_type == PT_NAME) \
@@ -1484,7 +1489,7 @@ typedef enum
   PT_SYS_TIME, PT_SYS_TIMESTAMP, PT_CURRENT_TIMESTAMP, PT_SYS_DATETIME,
   PT_CURRENT_DATETIME, PT_CURRENT_TIME, PT_CURRENT_DATE, PT_UTC_TIME,
   PT_UTC_DATE, PT_TO_TIME, PT_TO_TIMESTAMP, PT_TO_DATETIME,
-  PT_CURRENT_VALUE, PT_NEXT_VALUE,
+  PT_CURRENT_VALUE, PT_CURRENT_VALUE_BY_OID, PT_NEXT_VALUE,
   PT_INST_NUM, PT_ROWNUM, PT_ORDERBY_NUM,
   PT_CONNECT_BY_ISCYCLE, PT_CONNECT_BY_ISLEAF, PT_LEVEL,
   PT_SYS_CONNECT_BY_PATH,
@@ -1674,10 +1679,14 @@ typedef enum
   PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
   PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000,	/* this spec was originally a subquery but was resolved to a table
 					 * during dummy SELECT removal; invisible columns should be excluded from this spec */
-  PT_SPEC_FLAG_DBLINK_DML_SRC = 0x40000	/* the remote source spec of a DML statement, and the derived table
-					 * generated around it (pt_check_sub_query_spec ()). That derived table is not a scope the statement
-					 * asked for, so it must not hide the remote invisible columns the statement references - unlike
-					 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
+  PT_SPEC_FLAG_DBLINK_DML_SRC = 0x40000,	/* the remote source spec of a DML statement, and the derived table
+						 * generated around it (pt_check_sub_query_spec ()). That derived table is not a scope the statement
+						 * asked for, so it must not hide the remote invisible columns the statement references - unlike
+						 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
+  PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED = 0x80000,	/* a DML target left to the force-phase reevaluation; locked
+							 * at select as FOR UPDATE where the executor does not
+							 * reevaluate */
+  PT_SPEC_FLAG_BITMAP_HEAP_SCAN = 0x100000	/* the spec's index scan reads its heap rows through a bitmap */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2445,7 +2454,9 @@ struct pt_expr_info
 
 #define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the expression resulted from a GROUP BY ... LIMIT
 						 * statement */
-#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_auto_parameterize() */
+#define PT_EXPR_INFO_DO_NOT_AUTOPARAM 65536	/* don't auto parameterize expr at qo_auto_parameterize(). set on the
+						 * copy qo_reduce_equality_terms() adds for a derived constant column,
+						 * which is not copied again */
 #define PT_EXPR_INFO_CAST_WRAP 	131072	/* 0x20000, CAST is wrapped by compiling */
 #define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
 #define PT_EXPR_INFO_SP_NUMERIC 524288	/* 0x80000, CAST as NUMERIC for SP */
@@ -2470,6 +2481,10 @@ struct pt_expr_info
 						 * derived restrictions from; not a source again */
 #define PT_EXPR_INFO_OR_DERIVED_COLUMN 268435456	/* 0x10000000, an OR-derived key range on one column;
 							 * paired with its origin on its own node */
+#define PT_EXPR_INFO_LIMIT_SUM 536870912	/* 0x20000000, the offset + count a LIMIT rewrite builds: an overflow gives
+						 * the BIGINT maximum (REGU_VARIABLE_LIMIT_SUM) */
+#define PT_EXPR_INFO_FILTER_TERM 1073741824	/* 0x40000000, an AND or OR on the AND/OR spine of a search condition
+						 * (WHERE, ON, HAVING, ...), where UNKNOWN rejects the row as FALSE does */
   int flag;			/* flags */
 /* the largest OR factor pt_cnf_where () keeps whole and qo_extract_or_restrictions () derives from */
 #define PT_CNF_KEEP_MAX_DISJUNCTS 8
@@ -3007,6 +3022,8 @@ struct pt_select_info
 #define PT_SELECT_INFO_LENIENT_JOIN_HINT  0x040000	/* retry of an optimization that failed with the join method
 							 * hints: ignore one that cannot be applied to a join for
 							 * that join only (CBRD-28089) */
+#define PT_SELECT_INFO_HQ_ITERATION       0x080000	/* being planned as the scan a hierarchical query runs once a
+							 * parent row */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
@@ -3051,6 +3068,12 @@ struct pt_query_info
 				 * do_replan_statement_with_bind_peek ()) restore the level to 0
 				 * first, so the subquery keeps its XASL_ZERO_CORR_LEVEL
 				 * (uncorrelated, parallel-executable) marking. */
+    unsigned stays_query:1;	/* a set operation of a statement typed again with its bound values
+				 * (db_execute_and_keep_statement_local ()): it folds into an empty operand,
+				 * never into a value (pt_check_union_is_foldable ()) */
+    unsigned folded_distinct:1;	/* a SELECT DISTINCT from a derived table of the operand a set operation
+				 * without ALL folded to (pt_fold_union_as_derived ()): where only the set of
+				 * its rows counts, the operand takes its place (pt_fold_union_unwrap ()) */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
@@ -3495,6 +3518,8 @@ struct pt_execute_info
   int do_cache;			/* query uses result cache */
   int column_count;		/* select list column count */
   int oids_included;		/* OIDs included in select list */
+  int is_click_counter;		/* INCR/DECR (click counter) */
+  int is_method_on_target;	/* method call with a target (ON or the first argument) */
 };
 
 struct pt_stored_proc_param_info
@@ -3968,6 +3993,10 @@ struct parser_node
 					 * Set in do_prepare_select () -- the driver-neutral prepare path --
 					 * because the SQL-level PREPARE/EXECUTE consumer of that header flag
 					 * is not reached by CCI/JDBC prepared statements. */
+    unsigned has_sp_call:1;	/* the semantic check found a stored procedure call in this query, and the root of a
+				 * view cache or a statement also gets it from a view under it or from the
+				 * statement it is made from, which mq_mark_sp_call () and the stored procedure
+				 * checks read */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
@@ -4253,6 +4282,14 @@ struct parser_context
 					 * the values' format classes and ELT indexes */
     unsigned needs_bound_hostvar:1;	/* set to 1 when the compile failed because a host variable has no value yet
 					 * (UPDATE OBJECT ?, m () ON ?, TABLE (?)); see db_statement_needs_bound_values () */
+    unsigned view_has_sp_call:1;	/* the current mq_translate () expanded a view that calls a stored procedure,
+					 * and mq_translate () sets has_sp_call and cannot_prepare on the statement at
+					 * its end; while a view cache is built, has_sp_call on the view's root */
+    unsigned regu_has_sp_call:1;	/* a stored procedure regu variable was generated since
+					 * db_compile_statement_local () cleared it, so pt_add_read_class_oids () adds
+					 * the classes the statement reads to its XASL header. A parser compiled
+					 * elsewhere, such as that of a trigger action, keeps it, which only adds
+					 * classes to an XASL that pushes no frame */
   } flag;
 };
 

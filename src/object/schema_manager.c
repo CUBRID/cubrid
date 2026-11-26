@@ -4112,7 +4112,14 @@ sm_get_class_with_statistics (MOP classop)
 	}
     }
 
-  /* get the histogram of the class */
+  /* a cached histogram is valid only with the class statistics it was read with. Statistics sent again also count:
+   * the server sends them on every request while their time stamp is 0, and that 0 equals the 0 of the empty
+   * cache CREATE TABLE leaves, so comparing time stamps alone would keep the empty cache */
+  if (class_->histogram != NULL
+      && (updated || class_->histogram->class_stats_time_stamp != STATS_CLASS_TIME_STAMP (class_->stats)))
+    {
+      stats_free_histogram_and_init_and_set_null (class_->histogram);
+    }
   if (class_->histogram == NULL)
     {
       if (!OID_ISTEMP (WS_OID (classop)))
@@ -4129,22 +4136,6 @@ sm_get_class_with_statistics (MOP classop)
 	    {
 	      /* histogram is optional; a transient fetch failure (e.g. concurrent ANALYZE
 	       * rewriting _db_histogram) must not fail the query -- proceed without it */
-	      stats_free_histogram_and_init (class_->histogram);
-	      class_->histogram = NULL;
-	      er_clear ();
-	    }
-	}
-    }
-  else
-    {
-      if (updated)
-	{
-	  stats_free_histogram_and_init (class_->histogram);
-	  class_->histogram = NULL;
-	  int err = stats_get_histogram (classop, &class_->histogram);
-	  if (err != NO_ERROR)
-	    {
-	      /* optional; see above -- do not fail the query on a transient fetch error */
 	      stats_free_histogram_and_init (class_->histogram);
 	      class_->histogram = NULL;
 	      er_clear ();
@@ -13772,6 +13763,8 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 		  COPY_OID (&serial_obj_id, oidp);
 
 		  AU_SAVE_AND_DISABLE (save);
+		  /* before the delete takes the row's X lock, as in do_drop_serial () */
+		  (void) serial_decache (&serial_obj_id);
 		  error = obj_delete (att->auto_increment);
 		  AU_RESTORE (save);
 
@@ -15603,7 +15596,7 @@ sm_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool wit
   if (error == ER_BTREE_UNIQUE_FAILED)
     {
       /* Another session inserted this column's row while we were inserting ours.  The existence
-       * check above reads the latest committed version and takes no lock (CBRD-27369), so it
+       * check above reads under a catalog read snapshot and takes no lock (CBRD-27369), so it
        * cannot see a concurrent uncommitted insert -- this unique violation is the only place
        * that race shows, and any two sessions first-collecting the same column reach it.  The
        * unique insert waits for the other transaction, so by the time this error comes back that

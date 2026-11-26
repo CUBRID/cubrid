@@ -132,6 +132,7 @@ static void qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int 
 static void qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent);
 static void qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor,
 						trace_json_t * parent);
+static void qdump_print_px_subquery_stats_text (FILE * fp, parallel_query_execute::query_executor * px_executor);
 
 /*
  * qdump_print_xasl_type () -
@@ -516,6 +517,10 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
   if (spec_list_p->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN)
     {
       fprintf (foutput, ",no_parallel_scan");
+    }
+  if (spec_list_p->flags & ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN)
+    {
+      fprintf (foutput, ",bitmap_heap_scan");
     }
 
   if (IS_ANY_INDEX_ACCESS (spec_list_p->access))
@@ -1959,6 +1964,8 @@ qdump_arith_opcode_name (OPERATOR_TYPE opcode)
       return "T_TO_NUMBER";
     case T_CURRENT_VALUE:
       return "T_CURRENT_VALUE";
+    case T_CURRENT_VALUE_BY_OID:
+      return "T_CURRENT_VALUE_BY_OID";
     case T_NEXT_VALUE:
       return "T_NEXT_VALUE";
     case T_CAST:
@@ -3617,12 +3624,31 @@ qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_
 {
   trace_json_t *input;
   input = trace_json_object ();
-  trace_json_object_set_new (input, "parallel_workers", trace_json_integer (px_executor->get_parallelism () + 1));
+  if (px_executor->get_executed_parallelism () > 1)
+    {
+      trace_json_object_set_new (input, "parallel_workers",
+				 trace_json_integer (px_executor->get_executed_parallelism ()));
+    }
   trace_json_object_set_new (input, "time", trace_json_integer (TO_MSEC (px_executor->get_stats ().elapsed_time)));
   trace_json_object_set_new (input, "fetch", trace_json_integer (px_executor->get_stats ().fetches));
   trace_json_object_set_new (input, "fetch_time", trace_json_integer (px_executor->get_stats ().fetch_time));
   trace_json_object_set_new (input, "ioread", trace_json_integer (px_executor->get_stats ().ioreads));
   trace_json_object_set_new (parent, "parallel subquery execution", input);
+}
+
+/* the executor's statistics in parentheses; "parallel workers" only when other threads could run its jobs */
+static void
+qdump_print_px_subquery_stats_text (FILE * fp, parallel_query_execute::query_executor * px_executor)
+{
+  XASL_STATS stats = px_executor->get_stats ();
+
+  fprintf (fp, "(");
+  if (px_executor->get_executed_parallelism () > 1)
+    {
+      fprintf (fp, "parallel workers: %d, ", px_executor->get_executed_parallelism ());
+    }
+  fprintf (fp, "time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)", TO_MSEC (stats.elapsed_time),
+	   (long long int) stats.fetches, (long long int) stats.fetch_time, (long long int) stats.ioreads);
 }
 
 /*
@@ -4109,9 +4135,25 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		    {
 		      spec->s_id.s.pisid.trace_storage->dump_stats_text (fp, multi_spec_indent, class_name);
 		    }
+		  if (spec->s_id.scan_stats.bitmap_heap != 0)
+		    {
+		      /* the heap was read through a bitmap of the rows the index found: a second scan, under the
+		       * index scan */
+		      fprintf (fp, "\n%*cSCAN (bitmap heap lookup: %s), ", indent + 2, ' ',
+			       class_name != NULL ? class_name : "unknown");
+		      scan_print_bitmap_heap_stats_text (fp, &spec->s_id);
+		      spec->s_id.s.pisid.trace_storage->dump_bitmap_heap_stats_text (fp, multi_spec_indent + 2);
+		    }
 		  spec->s_id.s.pisid.trace_storage->~accumulative_trace_storage ();
 		  free (spec->s_id.s.pisid.trace_storage);
 		  spec->s_id.s.pisid.trace_storage = NULL;
+		}
+	      else if (spec->s_id.scan_stats.bitmap_heap != 0)
+		{
+		  /* a serial scan's heap step */
+		  fprintf (fp, "\n%*cSCAN (bitmap heap lookup: %s), ", indent + 2, ' ',
+			   class_name != NULL ? class_name : "unknown");
+		  scan_print_bitmap_heap_stats_text (fp, &spec->s_id);
 		}
 	    }
 #endif
@@ -4209,6 +4251,15 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		      spec->s_id.s.hsid.batch_why_not = curr_part->batch_why_not;
 		    }
 		  scan_print_stats_text (fp, &spec->s_id);
+#if defined (SERVER_MODE)
+		  if (scan_stats->bitmap_heap != 0)
+		    {
+		      /* the partition's heap was read through a bitmap: its heap step, as under the scan's own line */
+		      fprintf (fp, "\n%*cSCAN (bitmap heap lookup: %s), ", multi_spec_indent + 4, ' ',
+			       class_name != NULL ? class_name : "unknown");
+		      scan_print_bitmap_heap_stats_text (fp, &spec->s_id);
+		    }
+#endif
 
 		  if (class_name != NULL)
 		    {
@@ -4471,12 +4522,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       if (xasl_p->px_executor)
 	{
 	  int len = strlen (qdump_xasl_type_string (xasl_p));
-	  fprintf (fp, "%*c (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
-		   indent + len, ' ', xasl_p->px_executor->get_parallelism () + 1,
-		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
-		   (long long int) xasl_p->px_executor->get_stats ().fetches,
-		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
-		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
+	  fprintf (fp, "%*c ", indent + len, ' ');
+	  qdump_print_px_subquery_stats_text (fp, xasl_p->px_executor);
+	  fprintf (fp, "\n");
 	}
 
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
@@ -4494,12 +4542,8 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	}
       if (xasl_p->px_executor)
 	{
-	  fprintf (fp, " (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)",
-		   xasl_p->px_executor->get_parallelism () + 1,
-		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
-		   (long long int) xasl_p->px_executor->get_stats ().fetches,
-		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
-		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
+	  fprintf (fp, " ");
+	  qdump_print_px_subquery_stats_text (fp, xasl_p->px_executor);
 	}
       fprintf (fp, "\n");
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.outer_xasl, indent);
@@ -4734,13 +4778,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
 	  if (xasl_p->px_executor)
 	    {
-	      fprintf (fp,
-		       "%*c         (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
-		       indent, ' ', xasl_p->px_executor->get_parallelism () + 1,
-		       TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
-		       (long long int) xasl_p->px_executor->get_stats ().fetches,
-		       (long long int) xasl_p->px_executor->get_stats ().fetch_time,
-		       (long long int) xasl_p->px_executor->get_stats ().ioreads);
+	      fprintf (fp, "%*c         ", indent, ' ');
+	      qdump_print_px_subquery_stats_text (fp, xasl_p->px_executor);
+	      fprintf (fp, "\n");
 	    }
 	}
 
@@ -4996,13 +5036,9 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
       if (xasl_p->px_executor)
 	{
-	  fprintf (fp,
-		   "%*c         (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
-		   indent, ' ', xasl_p->px_executor->get_parallelism () + 1,
-		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
-		   (long long int) xasl_p->px_executor->get_stats ().fetches,
-		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
-		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
+	  fprintf (fp, "%*c         ", indent, ' ');
+	  qdump_print_px_subquery_stats_text (fp, xasl_p->px_executor);
+	  fprintf (fp, "\n");
 	}
 
       qdump_print_stats_text (fp, outer_xasl, indent);

@@ -51,13 +51,13 @@ namespace parallel_query
   }
 
   template<typename T>
-  void thread_safe_queue<T>::push (const T &value, const interrupt &interrupt_check)
+  bool thread_safe_queue<T>::push (const T &value, const interrupt &interrupt_check)
   {
     if (try_push_fast (value))
       {
-	return;
+	return true;
       }
-    push_slow (value, interrupt_check);
+    return push_slow (value, interrupt_check);
   }
 
   template<typename T>
@@ -271,20 +271,20 @@ namespace parallel_query
   }
 
   template<typename T>
-  void thread_safe_queue<T>::push_slow (const T &value, const interrupt &interrupt_check)
+  bool thread_safe_queue<T>::push_slow (const T &value, const interrupt &interrupt_check)
   {
     std::unique_lock<std::mutex> lock (m_mutex);
 
     if (m_push_completed.load (std::memory_order_acquire))
       {
-	return;
+	return false;
       }
 
     while (is_full())
       {
 	if (interrupt_check.get_code() != interrupt::interrupt_code::NO_INTERRUPT)
 	  {
-	    return;
+	    return false;
 	  }
 
 	m_not_full.wait (lock);
@@ -292,7 +292,7 @@ namespace parallel_query
 
     if (interrupt_check.get_code() != interrupt::interrupt_code::NO_INTERRUPT)
       {
-	return;
+	return false;
       }
 
     std::uint64_t pos = m_enqueue_pos.load (std::memory_order_acquire);
@@ -305,11 +305,11 @@ namespace parallel_query
       {
 	if (interrupt_check.get_code() != interrupt::interrupt_code::NO_INTERRUPT)
 	  {
-	    return;
+	    return false;
 	  }
 	if (m_push_completed.load (std::memory_order_acquire))
 	  {
-	    return;
+	    return false;
 	  }
 	pos = m_enqueue_pos.load (std::memory_order_acquire);
 	slot_index = pos % m_capacity;
@@ -328,6 +328,7 @@ namespace parallel_query
       }
 
     m_not_empty.notify_one();
+    return true;
   }
 
   template<typename T>

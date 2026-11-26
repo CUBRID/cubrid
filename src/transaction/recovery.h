@@ -209,7 +209,9 @@ typedef enum
   RVOOS_RECLAIM_POSTPONE = 142,	/* logical postpone: reclaim chains once the deciding unit commits */
   RVOOS_UPDATE_DROP_POSTPONE = 143,	/* logical postpone: append RVOOS_NOTIFY_VACUUM once an UPDATE commits */
   RVREPL_OOS_REUSE = 144,	/* OOS replication marker: the UPDATE reused this column's chain */
-  RV_LAST_LOGID = RVREPL_OOS_REUSE,
+  RVHF_SERIAL_DDL_UPDATE_UNDO = 145,
+
+  RV_LAST_LOGID = RVHF_SERIAL_DDL_UPDATE_UNDO,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -281,9 +283,11 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVPGBUF_DEALLOC \
    || (idx) == RVFL_TRACKER_HEAP_REUSE \
    || (idx) == RVHF_LOB_REMOVE_DIR \
-   || (idx) == RVFL_TRACKER_UNREGISTER)
+   || (idx) == RVFL_TRACKER_UNREGISTER \
+   || (idx) == RVHF_SERIAL_DDL_UPDATE_UNDO)
 #define RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL(idx) \
   ((idx) == RVFL_DEALLOC \
+   || (idx) == RVBT_NO_LOGGING_INDEX_DURABLE \
    || (idx) == RVHF_MARK_DELETED \
    || (idx) == RVHF_LOB_REMOVE_DIR \
    || (idx) == RVHF_APPEND_PAGES_TO_HEAP \

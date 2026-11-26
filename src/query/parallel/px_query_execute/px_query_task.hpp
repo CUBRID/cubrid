@@ -40,14 +40,15 @@ namespace parallel_query_execute
     public:
       THREAD_ENTRY *m_parent_thread_p;
       queue *m_job_execution_queue_p;
+      wake_event *m_wake_event_p;
       err_messages_with_lock *m_error_messages_p;
       interrupt *m_interrupt_p;
       worker_manager *m_worker_manager_p;
-      task_args (THREAD_ENTRY *parent_thread_p, queue *job_execution_queue_p, err_messages_with_lock *error_messages_p,
-		 interrupt *interrupt_p,
-		 worker_manager *worker_manager_p)
+      task_args (THREAD_ENTRY *parent_thread_p, queue *job_execution_queue_p, wake_event *wake_event_p,
+		 err_messages_with_lock *error_messages_p, interrupt *interrupt_p, worker_manager *worker_manager_p)
 	:m_parent_thread_p (parent_thread_p),
 	 m_job_execution_queue_p (job_execution_queue_p),
+	 m_wake_event_p (wake_event_p),
 	 m_error_messages_p (error_messages_p),
 	 m_interrupt_p (interrupt_p),
 	 m_worker_manager_p (worker_manager_p)
@@ -57,18 +58,6 @@ namespace parallel_query_execute
       }
   };
 
-  class task_local
-  {
-    public:
-      task_local()
-	:m_pop_job_ended (false)
-      {
-      }
-      ~task_local()
-      {
-      }
-      bool m_pop_job_ended;
-  };
   class task : public cubthread::entry_task
   {
       using queue = parallel_query::thread_safe_queue<job>;
@@ -76,16 +65,15 @@ namespace parallel_query_execute
       using worker_manager = parallel_query::worker_manager;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
     public:
-      task (THREAD_ENTRY *parent_thread_p, queue *job_execution_queue_p, err_messages_with_lock *error_messages_p,
-	    interrupt *interrupt_p, worker_manager *worker_manager_p);
+      task (THREAD_ENTRY *parent_thread_p, queue *job_execution_queue_p, wake_event *wake_event_p,
+	    err_messages_with_lock *error_messages_p, interrupt *interrupt_p, worker_manager *worker_manager_p);
       ~task();
       virtual void execute (cubthread::entry &thread_ref) override;
       virtual void retire () override;
     private:
       task_args m_args;
-      task_local m_local;
       void init (cubthread::entry &thread_ref);
-      job get_job();
+      bool is_ended() const;
       int execute_job (cubthread::entry &thread_ref, job &job);
       void end (cubthread::entry &thread_ref);
   };
