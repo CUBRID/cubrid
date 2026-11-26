@@ -36,6 +36,7 @@
 #include "resource_tracker.hpp"
 #if defined (SERVER_MODE)
 #include "concurrency_slot.hpp"
+#include "server_support.h"
 #endif
 
 #include <chrono>
@@ -672,6 +673,12 @@ thread_prepare_suspension (cubthread::entry *thread_p, cubthread::entry::status 
       switch (suspended_reason)
 	{
 	case THREAD_CSS_QUEUE_SUSPENDED:
+	  // the log writer keeps its slot: it can wait here holding LOG_CS or with the log flush waiting for it, and
+	  // reacquiring a slot behind the request threads that wait for either would deadlock
+	  if (thread_p->conn_entry != nullptr && thread_p->conn_entry->stop_phase == THREAD_STOP_LOGWR)
+	    {
+	      break;
+	    }
 	  // this entry belongs to an elastic worker pool
 	  holder = static_cast<void *> (thread_p->m_slot->get_holder_pool ());
 	  assert (holder);
