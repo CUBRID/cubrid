@@ -1368,7 +1368,8 @@ eb_cell_str_long (const EB_COL * col, int r, const unsigned char *d, int avail, 
 /* a VARCHAR or CHAR in the variable area (a CHAR padded to its precision): 1 its bytes, 0 NULL, -1 a cell the batch
  * does not read, -2 one it could not decompress (both the row path's chunk).  A value shorter than
  * OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION bytes is its length byte and its bytes; a longer one is in the long
- * format (eb_cell_str_long ()). */
+ * format (eb_cell_str_long ()).  An empty string is NULL under oracle_style_empty_string, as the row path reads it
+ * (db_make_db_char ()): such a value is on disk only when it was stored before the parameter was set. */
 static inline int
 eb_cell_str (const EB_COL * col, int r, const EB_LOC * loc, const HEAP_REC_LAYOUT * lay, const char **str, int *len)
 {
@@ -1388,6 +1389,10 @@ eb_cell_str (const EB_COL * col, int r, const EB_LOC * loc, const HEAP_REC_LAYOU
   if (d[0] + 1 > next_off - this_off)
     {
       return -1;
+    }
+  if (d[0] == 0 && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+    {
+      return 0;
     }
   *len = d[0];
   *str = (const char *) d + 1;
