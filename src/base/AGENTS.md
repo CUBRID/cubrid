@@ -38,7 +38,7 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 
 | File | Description |
 |------|-------------|
-| `error_code.h` | All error codes as `#define` negative integers (see [docs/error-codes.md](../../docs/error-codes.md) for the error-code update procedure) |
+| `error_code.h` | All error codes as `#define` negative integers (see [Adding a New Error Code](#adding-a-new-error-code)) |
 | `error_manager.c/h` | `er_set()`, error stack, error logging, severity levels, `ASSERT_ERROR()` macros |
 | `error_context.hpp/cpp` | C++ per-thread error context (`cuberr::context`) with stackable error levels |
 
@@ -166,13 +166,27 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 
 | Task | Primary File(s) |
 |------|-----------------|
-| Add error code | `error_code.h` (see [docs/error-codes.md](../../docs/error-codes.md) for the error-code update procedure) |
+| Add error code | `error_code.h` (see [Adding a New Error Code](#adding-a-new-error-code)) |
 | Fix memory leak | `memory_alloc.c`, `resource_tracker.hpp` |
 | Fix lock-free structure | `lockfree_hashmap.hpp` (modern), `lock_free.c` (legacy) |
 | Add system parameter | `system_parameter.c/h` — add `PRM_ID_*`, update `prm_Def`, `PRM_LAST_ID` |
 | Fix charset/collation | `intl_support.c`, `language_support.c`, `uca_support.c` |
 | Fix timezone | `tz_support.c` |
 | Add perf counter | `cubrid statdump` shows only `PSTAT_*` counters: add the ID to `PERF_STAT_ID` in `perf_monitor.h` and the entry at the same position in `pstat_Metadata[]` (`perf_monitor.c`). `perf_monitor.c` does not read `cubperf` (`perf.hpp`) statistics. |
+
+## Adding a New Error Code
+
+The procedure for adding an engine error code and its message.
+Read this before you add an `ER_*` code.
+
+`ER_LAST_ERROR` is a sentinel one below the newest code, and `er_set ()` rejects any code at or below it (`src/base/error_manager.c`).
+
+1. In `src/base/error_code.h`, define the new code with the current `ER_LAST_ERROR` value, then set `ER_LAST_ERROR` one lower. Add codes only there: `src/compat/dbi_compat.h` includes `error_code.h` and defines no `ER_*` macros.
+2. In both `msg/en_US.utf8/cubrid.msg` and `msg/ko_KR.utf8/cubrid.msg`, under `$set 5 MSGCAT_SET_ERROR`, the new message takes positive ID `-ER_CODE`, which is the ID of the current `Last Error` line (ko_KR: `마지막 에러`); move that line to ID `-ER_LAST_ERROR`.
+3. Check the text at runtime: the build compiles the catalogs with `gencat`, and the engine reads them from `$CUBRID/msg`, so install an assert-enabled build into a scratch `$CUBRID` (see [docs/build.md](../../docs/build.md#scratch-install)), raise the error once, and confirm that the message is yours, not `No error message available.`.
+4. If a client-facing error must also be exposed in CCI, open a separate PR in `CUBRID/cubrid-cci` for `src/cci/base_error_code.h`; do not modify files inside `cubrid-cci/` in an engine PR. The submodule bump PR normally comes from `.github/workflows/submodule-bump-receiver.yml`; check for an open bump PR before you bump the submodule by hand.
+
+How engine interfaces report errors (`er_set`, negative codes, no escaping C++ exceptions) is in [src/AGENTS.md](../AGENTS.md#resource-memory-and-error-handling).
 
 ## Conventions (base/-specific)
 

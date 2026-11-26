@@ -37,7 +37,7 @@ Executes deserialized XASL plans. Most files build in `SERVER_MODE`/`SA_MODE`, b
 | Window function | `query_analytic.cpp` |
 | Hash join | `query_hash_join.c`, `parallel/px_hash_join/` |
 | Sort / ORDER BY | `list_file.c` |
-| XASL layout or serialization | Follow [docs/xasl-changes.md](../../docs/xasl-changes.md) |
+| XASL layout or serialization | Follow [XASL Changes](../xasl/AGENTS.md#xasl-changes) in `src/xasl/AGENTS.md` |
 
 ## Adding an arithmetic opcode (new SQL function)
 

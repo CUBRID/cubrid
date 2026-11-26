@@ -6,7 +6,7 @@ CUBRID is an open-source C/C++17 RDBMS (Apache 2.0) with a Java PL engine for st
 
 Load subsystem guidance before changing code in that area:
 
-- **C/C++ engine (`src/`)** — including build modes, CMake source registration, memory/exception handling, and formatting: read [src/AGENTS.md](src/AGENTS.md) and the target module's `src/<module>/AGENTS.md` when present.
+- **C/C++ engine (`src/`)** — including build modes, CMake source registration, memory/exception handling, formatting, and the pointers to the error-code, recovery-index, and XASL checklists: read [src/AGENTS.md](src/AGENTS.md) and the target module's `src/<module>/AGENTS.md` when present.
 - **C/C++ unit tests (`unit_tests/`)**: for GoogleTest OOS tests, read [unit_tests/oos/AGENTS.md](unit_tests/oos/AGENTS.md) first; it overrides the Catch2 default of [unit_tests/AGENTS.md](unit_tests/AGENTS.md), which covers the other modules.
 - **Java PL engine (`pl_engine/`)**: read [pl_engine/AGENTS.md](pl_engine/AGENTS.md).
 - **Submodules (`cubrid-cci/`, `cubrid-jdbc/`, `cubridmanager/`)**: inspect `.gitmodules` and the submodule's own build and documentation before making changes.
@@ -15,9 +15,6 @@ Load subsystem guidance before changing code in that area:
 
 - Before you build, install, run unit tests, or change build presets, read [docs/build.md](docs/build.md).
 - Before you add a file, push, open or update a PR, comment `/run`, change testcases, or decide which checks to run, read [docs/pull-requests.md](docs/pull-requests.md).
-- Before you add an error code, read [docs/error-codes.md](docs/error-codes.md).
-- Before you add a recovery index (`LOG_RCVINDEX`, `RV_fun[]`), read [docs/recovery-index.md](docs/recovery-index.md).
-- Before you change an XASL node or its serialization, read [docs/xasl-changes.md](docs/xasl-changes.md).
 
 ## Conflicts
 

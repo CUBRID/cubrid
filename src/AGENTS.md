@@ -48,7 +48,7 @@ When adding a new source file under `src/`:
   - Engine interfaces use negative error codes in `src/base/error_code.h` (`NO_ERROR = 0`) and report errors with `er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CODE, ...)`. Do not let C++ exceptions escape across C-style engine interfaces.
   - Prefer `.cpp` files for new STL-heavy code. Whenever calling throwing STL operations (in `.cpp` or C++-compiled `.c`), catch exceptions at or before the C-interface boundary and translate them via `er_set (...)` and an error-code return (see `src/storage/heap_file.c`, `src/optimizer/histogram/histogram_sampler_sr.cpp`, and `src/query/string_regex_std.cpp`).
   - The error context is per thread (`cuberr::context`): an `er_set` on a worker thread is not visible to the thread answering the client. In parallel query workers (`src/query/parallel/`), propagate errors explicitly via `parallel_query::err_messages_with_lock::move_top_error_message_to_this ()` (`src/query/parallel/px_interrupt.hpp`), and swap them into the requester's context after `wait_workers ()`.
-- **Adding a new error code**: before you add an `ER_*` code, read [docs/error-codes.md](../docs/error-codes.md).
+- **Adding a new error code**: before you add an `ER_*` code, read [Adding a New Error Code](base/AGENTS.md#adding-a-new-error-code) in `src/base/AGENTS.md`.
 - **`ER_QPROC_INVALID_XASLNODE`** makes the client drop its `xasl_id` and recompile (`src/compat/db_vdb.c`); do not raise it for unrelated "cannot happen" checks.
 
 ## Formatting, Includes, and Static Checks
@@ -71,9 +71,9 @@ When adding a new source file under `src/`:
 
 ## Cross-Module Impact Checks
 
-- **XASL changes**: before you change an XASL node or its serialization, read [docs/xasl-changes.md](../docs/xasl-changes.md); it lists the four pipeline stages and their files.
+- **XASL changes**: before you change an XASL node or its serialization, read [XASL Changes](xasl/AGENTS.md#xasl-changes) in `src/xasl/AGENTS.md`; it lists the four pipeline stages and their files.
 - **Storage & transaction changes**: verify page latches vs. transaction locks, latch ordering, WAL/LSAs, crash redo/undo recovery, MVCC visibility, and vacuum (`src/query/vacuum.c`, `src/query/vacuum_oos.cpp`) together. See [src/storage/AGENTS.md](storage/AGENTS.md) and [src/transaction/AGENTS.md](transaction/AGENTS.md). Never bump `disk_compatibility_level` (`src/base/release_string.c`) in a feature PR; it is bumped once per incompatible release. Verify compatibility and flag breaking on-disk changes to release owners.
-  - **Adding a recovery index**: before you add a recovery index (`LOG_RCVINDEX`, `RV_fun[]`), read [docs/recovery-index.md](../docs/recovery-index.md).
+  - **Adding a recovery index**: before you add a recovery index (`LOG_RCVINDEX`, `RV_fun[]`), read [Adding a Recovery Index](transaction/AGENTS.md#adding-a-recovery-index) in `src/transaction/AGENTS.md`.
 - **Key coupling points** (workflow checklist, not an exhaustive include graph):
   - `src/base/` and `src/compat/` (`DB_VALUE`) underpin most targets.
   - `src/parser/` ↔ `src/optimizer/`: bidirectional compile/rewrite/planning; note `src/optimizer/histogram/` also builds in `SERVER_MODE`.
