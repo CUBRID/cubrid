@@ -707,34 +707,10 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
 	      *continue_walk = PT_LIST_WALK;	/* don't dive into */
 	      break;
 	    case PT_CAST:
-	      if (PT_HAS_COLLATION (name->type_enum) && tree_or_name->info.expr.op == PT_CAST
-		  && PT_HAS_COLLATION (tree_or_name->type_enum)
-		  && pt_name_equal (parser, name, tree_or_name->info.expr.arg1))
+	      if (pt_reduce_eq_keeps_cast (parser, tree->type_enum, name, tree_or_name))
 		{
-		  int cast_coll = LANG_SYS_COLLATION;
-		  int name_coll = LANG_SYS_COLLATION;
-
-		  name_coll = PT_GET_COLLATION_MODIFIER (name);
-
-		  if (!PT_HAS_COLLATION_MODIFIER (name) && name->data_type != NULL)
-		    {
-		      name_coll = name->data_type->info.data_type.collation_id;
-		    }
-
-		  if (PT_EXPR_INFO_IS_FLAGED (tree_or_name, PT_EXPR_INFO_CAST_COLL_MODIFIER))
-		    {
-		      cast_coll = PT_GET_COLLATION_MODIFIER (tree_or_name);
-		    }
-		  else if (tree_or_name->data_type != NULL)
-		    {
-		      cast_coll = tree_or_name->data_type->info.data_type.collation_id;
-		    }
-
-		  if (cast_coll != name_coll)
-		    {
-		      /* predicate evaluates with different collation */
-		      *continue_walk = PT_LIST_WALK;	/* don't dive into */
-		    }
+		  /* predicate evaluates with different collation */
+		  *continue_walk = PT_LIST_WALK;	/* don't dive into */
 		}
 	    default:
 	      break;
@@ -746,6 +722,52 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
     }
 
   return tree_or_name;
+}
+
+/*
+ * pt_reduce_eq_keeps_cast () - whether the reduce-equality substitution (pt_lambda_with_arg, type 1) of name by a
+ *				tree of tree_type leaves cast as it is: a cast of name to another collation
+ *   return: true if the substitution does not dive into cast
+ *   parser(in):
+ *   tree_type(in): type of the tree that replaces name
+ *   name(in):
+ *   cast(in):
+ */
+bool
+pt_reduce_eq_keeps_cast (PARSER_CONTEXT * parser, PT_TYPE_ENUM tree_type, PT_NODE * name, PT_NODE * cast)
+{
+  int cast_coll = LANG_SYS_COLLATION;
+  int name_coll = LANG_SYS_COLLATION;
+
+  if (tree_type != PT_TYPE_VARCHAR && tree_type != PT_TYPE_VARBIT)
+    {
+      return false;
+    }
+
+  if (cast == NULL || cast->node_type != PT_EXPR || cast->info.expr.op != PT_CAST
+      || !PT_HAS_COLLATION (name->type_enum) || !PT_HAS_COLLATION (cast->type_enum)
+      || !pt_name_equal (parser, name, cast->info.expr.arg1))
+    {
+      return false;
+    }
+
+  name_coll = PT_GET_COLLATION_MODIFIER (name);
+
+  if (!PT_HAS_COLLATION_MODIFIER (name) && name->data_type != NULL)
+    {
+      name_coll = name->data_type->info.data_type.collation_id;
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (cast, PT_EXPR_INFO_CAST_COLL_MODIFIER))
+    {
+      cast_coll = PT_GET_COLLATION_MODIFIER (cast);
+    }
+  else if (cast->data_type != NULL)
+    {
+      cast_coll = cast->data_type->info.data_type.collation_id;
+    }
+
+  return cast_coll != name_coll;
 }
 
 /*
@@ -4352,6 +4374,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "to_number ";
     case PT_CURRENT_VALUE:
       return "serial_current_value ";
+    case PT_CURRENT_VALUE_BY_OID:
+      return "serial_current_value_by_oid ";
     case PT_NEXT_VALUE:
       return "serial_next_value ";
     case PT_EXTRACT:
@@ -11037,6 +11061,13 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	  q = pt_append_nulstring (parser, q, ")");
 	}
+      break;
+
+    case PT_CURRENT_VALUE_BY_OID:
+      q = pt_append_nulstring (parser, q, "serial_current_value_by_oid(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
       break;
 
     case PT_NEXT_VALUE:

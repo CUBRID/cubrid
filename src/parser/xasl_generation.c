@@ -208,6 +208,7 @@ static int mmddyyyyhhmissms (const DB_DATETIME * datetime, char *buf, int buflen
 
 static char *host_var_name (unsigned int custom_print);
 #endif
+static bool pt_check_current_value_by_oid (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_table_compatible_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_info, int *continue_walk);
 static int pt_table_compatible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec);
 static TABLE_INFO *pt_table_info_alloc (void);
@@ -835,7 +836,9 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
       save_from = select_node->info.query.q.select.from->next;
       select_node->info.query.q.select.from->next = NULL;
 
+      PT_SELECT_INFO_SET_FLAG (select_node, PT_SELECT_INFO_HQ_ITERATION);
       xasl = pt_plan_single_table_hq_iterations (parser, select_node, xasl);
+      PT_SELECT_INFO_CLEAR_FLAG (select_node, PT_SELECT_INFO_HQ_ITERATION);
 
       select_node->info.query.q.select.where = save_where;
       select_node->info.query.q.select.from->next = save_from;
@@ -2197,7 +2200,15 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	  if (arg1 && arg2)
 	    {
 	      arg1->type_enum = PT_TYPE_INTEGER;
-	      if (node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i != 0)
+	      data_type = DB_TYPE_INTEGER;
+	      if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_NULL)
+		{
+		  /* a predicate folded to NULL, as one an equality substitution made constant under IS, NOT, XOR or
+		   * CAST: NULL = 1 is UNKNOWN there, where 0 = 1 (FALSE) is not the same as at the top of a filter */
+		  arg1->type_enum = PT_TYPE_NULL;
+		  data_type = DB_TYPE_NULL;
+		}
+	      else if (node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i != 0)
 		{
 		  arg1->info.value.data_value.i = 1;
 		}
@@ -2207,7 +2218,6 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		}
 	      arg2->type_enum = PT_TYPE_INTEGER;
 	      arg2->info.value.data_value.i = 1;
-	      data_type = DB_TYPE_INTEGER;
 
 	      regu_var1 = pt_to_regu_variable (parser, arg1, UNBOX_AS_VALUE);
 	      regu_var2 = pt_to_regu_variable (parser, arg2, UNBOX_AS_VALUE);
@@ -2397,6 +2407,7 @@ pt_factor_dnf_is_unsafe (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	case PT_DRANDOM:
 	case PT_SYS_GUID:
 	case PT_CURRENT_VALUE:
+	case PT_CURRENT_VALUE_BY_OID:
 	case PT_NEXT_VALUE:
 	case PT_INST_NUM:
 	case PT_ROWNUM:
@@ -7369,6 +7380,22 @@ pt_note_cte_null_reader (PARSER_CONTEXT * parser, const PT_NODE * spec, int pos,
   pt_Cte_null_readers = reader;
 }
 
+/* CBRD-28066: whether a domain and each of its element domains, nested included, fix the type and the collation of
+ * their values - what the plan's load check asks of them (stx_domain_is_decided) */
+static bool
+pt_domain_is_decided (const TP_DOMAIN * domain)
+{
+  for (; domain != NULL; domain = domain->next)
+    {
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE || domain->collation_flag != TP_DOMAIN_COLL_NORMAL
+	  || !pt_domain_is_decided (domain->setdomain))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
 /* CBRD-27583: a string domain whose collation type checking left to the values (LEAVE), in the collation decided
  * (collation); NULL for a domain that has its collation, or a decided one without */
 static TP_DOMAIN *
@@ -7407,6 +7434,12 @@ pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
       || (TP_DOMAIN_TYPE (producer) == DB_TYPE_NULL && TP_DOMAIN_COLLATION_FLAG (parse_tree) != TP_DOMAIN_COLL_NORMAL)
       || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != DB_TYPE_NULL
 	  && TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree)))
+    {
+      return producer;
+    }
+  /* CBRD-28066: so does a collection whose elements type checking left to the values (pt_add_type_to_set) */
+  if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (parse_tree)) && TP_DOMAIN_TYPE (producer) == TP_DOMAIN_TYPE (parse_tree)
+      && !pt_domain_is_decided (parse_tree) && pt_domain_is_decided (producer))
     {
       return producer;
     }
@@ -9675,6 +9708,135 @@ pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
   return NO_ERROR;
 }
 
+/*
+ * pt_decide_collection_domain () - CBRD-28066: a collection constructor (SET{}, an IN list, = ANY {}, a row value)
+ *   whose element domains type checking left to the values - an ENFORCE cast around a bind, a LEAVE default,
+ *   copied from the elements' data types (pt_add_type_to_set) - lists the domains of its operands instead, which
+ *   XASL generation has decided by now (pt_decide_function_collation and its siblings; a nested constructor is made
+ *   before the one it is an operand of), leaving out one alike an earlier one. A table function (SET, MULTISET or
+ *   LIST of a subquery) takes the values of every output column of its one operand (qdata_convert_table_to_set), so
+ *   its operands are those columns. When an operand is one whose type the value decides - a MAYBE one, as ? or
+ *   - ?, which type checking leaves out of the list - or is undecided, the constructor lists no element domain, so
+ *   that each value is stored with its own: a list without that operand's type stores its value without a domain
+ *   and reads it in another's (SET{?, 1} with 2.5 read the value as an INTEGER). Otherwise a decided domain stays as
+ *   it is.
+ *   return: NO_ERROR, ER_FAILED when a domain cannot be made
+ *   parser(in): parser context
+ *   function(in): the constructor's parse tree node
+ *   regu(in/out): the constructor's regu variable
+ */
+static int
+pt_decide_collection_domain (PARSER_CONTEXT * parser, const PT_NODE * function, REGU_VARIABLE * regu)
+{
+  if (regu == NULL || regu->type != TYPE_FUNC || regu->domain == NULL || regu->value.funcp == NULL
+      || !TP_IS_SET_TYPE (TP_DOMAIN_TYPE (regu->domain)))
+    {
+      return NO_ERROR;
+    }
+
+  const FUNC_CODE code = regu->value.funcp->ftype;
+  const bool table = (code == F_TABLE_SET || code == F_TABLE_MULTISET || code == F_TABLE_SEQUENCE);
+  const XASL_NODE *subquery = NULL;
+  int n_columns = 0;
+  if (table)
+    {
+      const REGU_VARIABLE_LIST op = regu->value.funcp->operand;
+      PT_NODE *query = function != NULL ? function->info.function.arg_list : NULL;
+      subquery = op != NULL && op->next == NULL ? op->value.xasl : NULL;
+      if (subquery == NULL || query == NULL || !PT_IS_QUERY_NODE_TYPE (query->node_type))
+	{
+	  return NO_ERROR;
+	}
+      n_columns = pt_length_of_select_list (pt_get_select_list (parser, query), EXCLUDE_HIDDEN_COLUMNS);
+    }
+
+  const bool was_decided = pt_domain_is_decided (regu->domain);
+  bool undecided = false;
+  if (function != NULL)
+    {
+      const PT_NODE *arg = function->info.function.arg_list;
+      for (arg = table ? pt_get_select_list (parser, (PT_NODE *) arg) : arg; arg != NULL && !undecided; arg = arg->next)
+	{
+	  undecided = (arg->type_enum == PT_TYPE_MAYBE);
+	}
+    }
+  TP_DOMAIN *elements = NULL, *last = NULL;
+  REGU_VARIABLE_LIST op = table ? NULL : regu->value.funcp->operand;
+  for (int pos = 0; !undecided && (table ? pos < n_columns : op != NULL); pos++, op = op != NULL ? op->next : NULL)
+    {
+      const TP_DOMAIN *domain = table ? domain_list_column_of (subquery, pos) : op->value.domain;
+      if (domain == NULL || domain->next != NULL || !pt_domain_is_decided (domain))
+	{
+	  undecided = true;
+	  break;
+	}
+      if (was_decided)
+	{
+	  continue;
+	}
+      const TP_DOMAIN *e = elements;
+      for (; e != NULL && !tp_domain_match (e, domain, TP_EXACT_MATCH); e = e->next)
+	;
+      if (e != NULL)
+	{
+	  continue;
+	}
+      /* a list of its own: a cached domain is shared and must not be linked */
+      TP_DOMAIN *copy = tp_domain_copy (domain, false);
+      if (copy == NULL)
+	{
+	  goto error;
+	}
+      if (last == NULL)
+	{
+	  elements = copy;
+	}
+      else
+	{
+	  last->next = copy;
+	}
+      last = copy;
+    }
+
+  if (undecided)
+    {
+      while (elements != NULL)
+	{
+	  TP_DOMAIN *next = elements->next;
+	  tp_domain_free (elements);
+	  elements = next;
+	}
+      if (regu->domain->setdomain == NULL)
+	{
+	  return NO_ERROR;
+	}
+    }
+  else if (was_decided)
+    {
+      return NO_ERROR;
+    }
+
+  {
+    TP_DOMAIN *decided = tp_domain_construct (TP_DOMAIN_TYPE (regu->domain), NULL, 0, 0, elements);
+    if (decided == NULL)
+      {
+	goto error;
+      }
+    decided->is_desc = regu->domain->is_desc;
+    regu->domain = tp_domain_cache (decided);
+  }
+  return NO_ERROR;
+
+error:
+  while (elements != NULL)
+    {
+      TP_DOMAIN *next = elements->next;
+      tp_domain_free (elements);
+      elements = next;
+    }
+  return ER_FAILED;
+}
+
 static REGU_VARIABLE *
 pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 {
@@ -9815,6 +9977,11 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	    {
 	      return NULL;
 	    }
+	  if (TP_IS_SET_TYPE (result_type) && pt_decide_collection_domain (parser, function, regu) != NO_ERROR)
+	    {
+	      PT_INTERNAL_ERROR (parser, "collection domain");
+	      return NULL;
+	    }
 	  if (DB_TYPE_VOBJ == pt_node_to_db_type (function) && function->info.function.function_type != F_VID)
 	    {
 	      regu = pt_make_vid (parser, function->data_type, regu);
@@ -9889,9 +10056,8 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
       else
 	{
 	  /* CBRD-27583: a list a type checking left variable, or whose collation it left to an enforced or bound one,
-	   * reads as its first column, as a single tuple does */
-	  if (regu->domain != NULL && (TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE
-				       || TP_DOMAIN_COLLATION_FLAG (regu->domain) != TP_DOMAIN_COLL_NORMAL))
+	   * reads as its first column, as a single tuple does; CBRD-28066: so does a collection whose elements it left */
+	  if (regu->domain != NULL && !pt_domain_is_decided (regu->domain))
 	    {
 	      regu->domain = pt_reader_domain (regu->domain, domain_list_column_of (xasl, 0));
 	    }
@@ -11146,6 +11312,44 @@ pt_remove_func_index_attrs (PARSER_CONTEXT * parser, QO_PLAN * plan, PT_FI_REMOV
     {
       bitset_delset (&scan_terms);
     }
+}
+
+/*
+ * pt_check_current_value_by_oid () - Checks that the argument of serial_current_value_by_oid is
+ *	  a _db_serial alias, so that the server reads only the rows of _db_serial
+ *	  The function is internal: only the db_serial and information_schema.tables view specs call it, with
+ *	  a _db_serial alias. Taking any other OID would need a check of the OID before the server fixes its page.
+ *	  It is checked here, after the rewrites, since a rewrite can replace the alias: s = (SELECT o FROM t)
+ *	  makes the argument the subquery's column.
+ *   return: true if the argument is a _db_serial alias; otherwise, false with an error set
+ *   parser(in):
+ *   node(in): the node to check
+ */
+static bool
+pt_check_current_value_by_oid (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *arg = node->info.expr.arg1;
+  PT_NODE *entity = NULL;
+
+  /* the server fixes the page of the OID without checking it, so take only an OID name: a FROM alias written as a
+   * value (s, not s.col), the OID of the row its scan has just read. An OID from elsewhere, such as an object column
+   * value or a host variable, can point at a deleted row whose page now holds something else. A dblink alias has no
+   * data_type. */
+  if (PT_IS_OID_NAME (arg) && arg->data_type != NULL)
+    {
+      entity = arg->data_type->info.data_type.entity;
+    }
+
+  /* the server reads the row as a _db_serial record, so the alias must scan _db_serial alone; one FROM item over
+   * several classes, such as (_db_serial, db_root) s, has more than one entity */
+  if (entity == NULL || entity->next != NULL || entity->info.name.db_object != sm_find_class (CT_SERIAL_NAME))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
+      PT_ERRORc (parser, node, er_msg ());
+      return false;
+    }
+
+  return true;
 }
 
 /*
@@ -12818,6 +13022,26 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    parser_free_tree (parser, data_type);
 		    break;
 		  }
+
+		case PT_CURRENT_VALUE_BY_OID:
+		  if (!pt_check_current_value_by_oid (parser, node))
+		    {
+		      break;
+		    }
+
+		  domain = pt_xasl_node_to_domain (parser, node);
+		  if (domain == NULL)
+		    {
+		      break;
+		    }
+
+		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_CURRENT_VALUE_BY_OID, domain);
+		  if (parser->parent_proc_xasl != NULL)
+		    {
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+		    }
+		  break;
 
 		case PT_TRIM:
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
@@ -16394,6 +16618,8 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
   /* 0 for now, see gen optimized plan for its computation */
   indx_infop->orderby_desc = 0;
   indx_infop->groupby_desc = 0;
+  indx_infop->analytic_sort_cols = 0;
+  indx_infop->analytic_desc_cols = 0;
 
   indx_infop->use_iss = 0;	/* init */
   if (qo_is_index_iss_scan (plan))
@@ -17256,6 +17482,11 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN))
 		    {
 		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+		    }
+		  if (access->access == ACCESS_METHOD_INDEX
+		      && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_BITMAP_HEAP_SCAN))
+		    {
+		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN);
 		    }
 		  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
 		    {
@@ -19714,6 +19945,27 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 		}
 	    }
 
+	  /* the order of the analytic evaluation that skips its sort, which the keys of a key list are read in. see
+	   * also scan_get_index_oidset() in scan_manager.c */
+	  if (xasl->spec_list && xasl->spec_list->indexptr && xasl->type == BUILDLIST_PROC
+	      && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT) && xasl->proc.buildlist.a_eval_list != NULL)
+	    {
+	      ANALYTIC_EVAL_TYPE *eval = xasl->proc.buildlist.a_eval_list;
+	      INDX_INFO *indx_info = xasl->spec_list->indexptr;
+	      SORT_LIST *sort;
+	      int i;
+
+	      assert (eval->covered_size <= INDX_INFO_ANALYTIC_MAX_SORT_COLS);
+	      indx_info->analytic_sort_cols = eval->covered_size;
+	      for (sort = eval->sort_list, i = 0; sort != NULL && i < eval->covered_size; sort = sort->next, i++)
+		{
+		  if (sort->s_order == S_DESC)
+		    {
+		      indx_info->analytic_desc_cols |= (1 << i);
+		    }
+		}
+	    }
+
 	  /* if the user asked for NO_HASH_LIST_SCAN, force it on all list scan */
 	  if (select_node->info.query.q.select.hint & PT_HINT_NO_HASH_LIST_SCAN)
 	    {
@@ -19727,6 +19979,16 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 		}
 	    }
 
+	  /* a session variable, a serial, a random number or a non-deterministic stored function is evaluated in the
+	   * order of the rows: a scan that held rows would evaluate its key before the rows ahead of it were output */
+	  if (xasl->scan_ptr != NULL && !pt_is_result_reuse_safe (parser, select_node))
+	    {
+	      XASL_NODE *ptr;
+	      for (ptr = xasl; ptr; ptr = ptr->scan_ptr)
+		{
+		  XASL_SET_FLAG (ptr, XASL_NO_ROW_BATCH);
+		}
+	    }
 	}
     }
 
@@ -26196,6 +26458,16 @@ exit_on_error:
     {
       PT_INTERNAL_ERROR (parser, "ODKU Info generation failed");
       error = ER_FAILED;
+    }
+  if (odku != NULL && odku->assignments != NULL)
+    {
+      for (i = 0; i < odku->num_assigns; i++)
+	{
+	  if (odku->assignments[i].constant != NULL)
+	    {
+	      pr_clear_value (odku->assignments[i].constant);
+	    }
+	}
     }
   if (pt_pred != NULL)
     {
@@ -35443,6 +35715,7 @@ pt_check_reuse_unsafe_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	case PT_RANDOM:
 	case PT_DRANDOM:
 	case PT_CURRENT_VALUE:
+	case PT_CURRENT_VALUE_BY_OID:
 	case PT_NEXT_VALUE:
 	case PT_INCR:
 	case PT_DECR:
@@ -35751,6 +36024,11 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 	{
 	  return 0;
 	}
+      /* the rows of a bitmap heap scan leave in file order */
+      if (qo_plan->plan_un.scan.bitmap_heap)
+	{
+	  return 0;
+	}
       if (QO_ENV_PT_TREE (env)->info.query.q.select.connect_by != NULL)
 	{
 	  return 0;
@@ -35783,7 +36061,8 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
   is_desc_index = qo_plan->info->env->pt_tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC;
 
   sort_list = eval->sort_list;
-  for (i = 0; i < index_entry->nsegs && sort_list; i++)
+  /* the order a key list is read in keeps one bit per sort column (INDX_INFO.analytic_desc_cols) */
+  for (i = 0; i < index_entry->nsegs && i < INDX_INFO_ANALYTIC_MAX_SORT_COLS && sort_list; i++)
     {
       seg_idx = (index_entry->seg_idxs[i]);
       if (seg_idx == -1)

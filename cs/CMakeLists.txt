@@ -568,7 +568,7 @@ SET_SOURCE_FILES_PROPERTIES(
   PROPERTIES LANGUAGE C
   )
 
-add_library(cubridcs SHARED
+set(CUBRIDCS_SOURCES
   ${EXECUTABLE_SOURCES}
   ${EXECUTABLE_HEADERS}
   ${COMPAT_SOURCES}
@@ -609,9 +609,42 @@ add_library(cubridcs SHARED
   ${HISTOGRAM_SOURCES}
   ${HISTOGRAM_HEADERS}
   )
-set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
-target_compile_definitions(cubridcs PRIVATE CS_MODE CUBRID_EXPORTING ${COMMON_DEFS})
+# Sets up a client library target built from CUBRIDCS_SOURCES. libcubridcs and libcubridcs_mc share it.
+function(cubrid_add_cs_library target)
+  add_library(${target} SHARED ${CUBRIDCS_SOURCES})
+  set_target_properties(${target} PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
+
+  target_compile_definitions(${target} PRIVATE CS_MODE CUBRID_EXPORTING ${COMMON_DEFS})
+  target_include_directories(${target} PRIVATE ${FLEX_INCLUDE_DIRS} ${EP_INCLUDES})
+  if(UNIX)
+    target_link_libraries(${target} LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
+    target_link_libraries(${target} PUBLIC stdc++fs)
+    target_link_libraries(${target} LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+    target_link_libraries(${target} LINK_PUBLIC rt)
+    target_link_options(${target} PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
+  else(UNIX)
+    target_link_libraries(${target} LINK_PRIVATE ${EP_LIBS})
+  endif(UNIX)
+  # for dblink
+  target_link_libraries(${target} PUBLIC cascci)
+
+  add_dependencies(${target} gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
+  add_dependencies(${target} ${EP_TARGETS})
+
+  if(ENABLE_SYSTEMTAP)
+    target_include_directories(${target} PRIVATE ${CMAKE_BINARY_DIR})
+    add_dependencies(${target} gen_probes)
+  endif(ENABLE_SYSTEMTAP)
+
+  install(TARGETS ${target}
+    RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Library
+    LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
+    )
+endfunction(cubrid_add_cs_library)
+
+# libcubridcs: the client library for all client programs, with one connection to a server per process.
+cubrid_add_cs_library(cubridcs)
 if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
   SET_SOURCE_FILES_PROPERTIES(
@@ -626,31 +659,16 @@ if(WIN32)
   target_link_libraries(cubridcs LINK_PRIVATE ws2_32)
   set_target_properties(cubridcs PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridcs/cubridcs.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
-target_include_directories(cubridcs PRIVATE ${FLEX_INCLUDE_DIRS} ${EP_INCLUDES})
-if(UNIX)
-  target_link_libraries(cubridcs LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
-  target_link_libraries(cubridcs PUBLIC stdc++fs)
-  target_link_libraries(cubridcs LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
-  target_link_libraries(cubridcs LINK_PUBLIC rt)
-  target_link_options(cubridcs PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
-else(UNIX)
-  target_link_libraries(cubridcs LINK_PRIVATE ${EP_LIBS})
-endif(UNIX)
-# for dblink
-target_link_libraries(cubridcs PUBLIC cascci)
 
-add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-add_dependencies(cubridcs ${EP_TARGETS})
-
-if(ENABLE_SYSTEMTAP)
-  target_include_directories(cubridcs PRIVATE ${CMAKE_BINARY_DIR})
-  add_dependencies(cubridcs gen_probes)
-endif(ENABLE_SYSTEMTAP)
-
-install(TARGETS cubridcs
-  RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Library
-  LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
-  )
+# libcubridcs_mc: the same sources built with MULTI_CONN_TO_A_SERVER, so that a process can open more connections
+# (sub-clients) to a server. The thread local variables and the checks for the session parameters of a sub-client
+# cost the other programs, so only the programs that use sub-clients should load it (for a utility run by cub_admin,
+# return LIB_UTIL_CS_MC_NAME from util_get_library_name () in util_admin.c). Never load both libraries in one process:
+# they export the same symbols.
+if(CMAKE_SYSTEM_NAME MATCHES "Linux")
+  cubrid_add_cs_library(cubridcs_mc)
+  target_compile_definitions(cubridcs_mc PRIVATE MULTI_CONN_TO_A_SERVER)
+endif()
 
 # install pdb files for debugging on windows
 if(WIN32)

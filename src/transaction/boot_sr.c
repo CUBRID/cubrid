@@ -3136,8 +3136,10 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #ifdef CCI_XA
   dblink_2pc_daemon_stop ();
 #endif /* CCI_XA */
-  pgbuf_daemons_destroy ();
+  /* a CDC producer that fixes a page while no buffer is free wakes the page flush daemon; stop it before
+   * pgbuf_daemons_destroy deletes that daemon */
   cdc_daemons_destroy ();
+  pgbuf_daemons_destroy ();
   pl_server_destroy ();
   parallel_query::worker_manager_global::get_manager ().destroy ();
 #endif
@@ -6163,10 +6165,10 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 
   int error_code = NO_ERROR;
 
-  assert (log_check_system_op_is_started (thread_p));
-
   if (voltype == DB_PERMANENT_VOLTYPE)
     {
+      /* the volume addition is logged; a temporary volume is not, so it is added outside a system operation */
+      assert (log_check_system_op_is_started (thread_p));
       assert (boot_Db_parm->nvols >= 0);
       if (volid != boot_Db_parm->last_volid + 1)
 	{

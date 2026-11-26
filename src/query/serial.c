@@ -193,6 +193,9 @@ ATTR_ID serial_Attrs_id[SERIAL_ATTR_MAX_INDEX];
 int serial_Num_attrs = -1;
 
 static int xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp);
+static bool serial_cache_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * oid_p);
+static SCAN_CODE serial_read_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp);
+static void serial_set_fetch_error (const OID * serial_oidp);
 static int xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp,
 					    int num_alloc, SERIAL_CACHE_ENTRY * claimed_entry);
 static int serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc,
@@ -253,7 +256,6 @@ int
 xserial_get_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * oid_p, int cached_num)
 {
   int ret = NO_ERROR;
-  SERIAL_CACHE_ENTRY *entry;
 
   assert (oid_p != NULL);
   assert (result_num != NULL);
@@ -266,17 +268,7 @@ xserial_get_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const
   else
     {
       /* used serial cache */
-      OID key = *oid_p;
-      bool cached = false;
-
-      entry = serial_Cache_hashmap.find (thread_p, key);
-      if (entry != NULL)
-	{
-	  cached = serial_entry_current_value (entry, result_num);
-	  serial_Cache_hashmap.unlock (thread_p, entry);
-	}
-
-      if (!cached)
+      if (!serial_cache_current_value (thread_p, result_num, oid_p))
 	{
 	  /* a GONE entry reads the row, as an erased one does */
 	  ret = xserial_get_current_value_internal (thread_p, result_num, oid_p);
@@ -284,6 +276,64 @@ xserial_get_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const
     }
 
   return ret;
+}
+
+/*
+ * xserial_get_current_value_by_oid () - the current value of the serial of a _db_serial row, or NULL when the row
+ *   no longer exists
+ *   return: NO_ERROR, or ER_code
+ *   result_num(out)    :
+ *   oid_p(in)    : OID of a _db_serial row its scan read without a lock
+ */
+int
+xserial_get_current_value_by_oid (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * oid_p)
+{
+  SCAN_CODE scan;
+  int error;
+
+  /* the serial varies per row, so whether it has a cache is not known: look in the cache first */
+  if (serial_cache_current_value (thread_p, result_num, oid_p))
+    {
+      return NO_ERROR;
+    }
+
+  scan = serial_read_current_value (thread_p, result_num, oid_p);
+  if (scan == S_DOESNT_EXIST)
+    {
+      er_clear ();
+      db_make_null (result_num);
+      return NO_ERROR;
+    }
+  if (scan != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * serial_cache_current_value () - the current value of a serial from its serial cache entry
+ *   return: false when the serial has no entry, or a GONE one; its _db_serial row holds the current value then
+ *   result_num(out)    :
+ *   oid_p(in)    : OID of the _db_serial row
+ */
+static bool
+serial_cache_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * oid_p)
+{
+  OID key = *oid_p;
+  SERIAL_CACHE_ENTRY *entry;
+  bool cached = false;
+
+  entry = serial_Cache_hashmap.find (thread_p, key);
+  if (entry != NULL)
+    {
+      cached = serial_entry_current_value (entry, result_num);
+      serial_Cache_hashmap.unlock (thread_p, entry);
+    }
+
+  return cached;
 }
 
 /*
@@ -383,6 +433,33 @@ exit_on_error:
 static int
 xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp)
 {
+  SCAN_CODE scan;
+  int error;
+
+  scan = serial_read_current_value (thread_p, result_num, serial_oidp);
+  if (scan == S_DOESNT_EXIST)
+    {
+      serial_set_fetch_error (serial_oidp);
+    }
+  if (scan != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * serial_read_current_value () - read the current value from a _db_serial row
+ *   return: S_SUCCESS, S_DOESNT_EXIST when the row does not exist (the serial fetch error is not set for it), or
+ *           S_ERROR
+ *   result_num(out)    :
+ *   serial_oidp(in)    :
+ */
+static SCAN_CODE
+serial_read_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp)
+{
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
@@ -399,17 +476,14 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
   scan =
     heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN,
 			      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+  if (scan == S_DOESNT_EXIST)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+      return S_DOESNT_EXIST;
+    }
   if (scan != S_SUCCESS)
     {
-      if (er_errid () == ER_PB_BAD_PAGEID)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, serial_oidp->volid, serial_oidp->pageid,
-		  serial_oidp->slotid);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
-	}
+      serial_set_fetch_error (serial_oidp);
       goto exit_on_error;
     }
 
@@ -441,7 +515,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
 
   heap_scancache_end (thread_p, &scan_cache);
 
-  return NO_ERROR;
+  return S_SUCCESS;
 
 exit_on_error:
 
@@ -452,8 +526,25 @@ exit_on_error:
 
   heap_scancache_end (thread_p, &scan_cache);
 
-  ret = (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
-  return ret;
+  return S_ERROR;
+}
+
+/*
+ * serial_set_fetch_error () - set the error for a _db_serial row that could not be read
+ *   serial_oidp(in)    :
+ */
+static void
+serial_set_fetch_error (const OID * serial_oidp)
+{
+  if (er_errid () == ER_PB_BAD_PAGEID)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, serial_oidp->volid, serial_oidp->pageid,
+	      serial_oidp->slotid);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
+    }
 }
 
 /*
@@ -1611,7 +1702,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 
   new_recdesc.set_external_buffer (copyarea);
 
-  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc);
+  /* the row is logged redo-only, so it must not write anything a rollback undoes, such as a new OOS chain */
+  scan = heap_attrinfo_transform_to_disk_keep_form (thread_p, attr_info, recdesc, &new_recdesc);
   if (scan != S_SUCCESS)
     {
       assert (false);
@@ -2154,7 +2246,9 @@ serial_repl_rebuild_image (THREAD_ENTRY * thread_p, const OID * serial_oidp, REC
     {
       goto end;
     }
-  if (heap_attrinfo_transform_to_disk (thread_p, &row_info, &row, rebuilt) == S_SUCCESS)
+  /* keep this node's storage form: a _db_serial row that holds an OOS stub would write a new chain on
+   * every replicated NEXT VALUE and break HA apply after failover */
+  if (heap_attrinfo_transform_to_disk_keep_form (thread_p, &row_info, &row, rebuilt) == S_SUCCESS)
     {
       error = NO_ERROR;
     }
@@ -2477,8 +2571,10 @@ serial_row_write_keep_value (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, 
     {
       error = heap_attrinfo_set (serial_oidp, started_id, old_started, &write->new_info);
     }
+  /* keep the client's storage form, which is inline for a system class: a _db_serial row that holds an OOS stub
+   * replicates as an image the HA applier cannot apply, and every later NEXT VALUE would keep that stub */
   if (error == NO_ERROR
-      && heap_attrinfo_transform_to_disk (thread_p, &write->new_info, new_recdes, merged) != S_SUCCESS)
+      && heap_attrinfo_transform_to_disk_keep_form (thread_p, &write->new_info, new_recdes, merged) != S_SUCCESS)
     {
       ASSERT_ERROR_AND_SET (error);
     }

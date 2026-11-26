@@ -28,6 +28,8 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$script_dir/oos_db_common.sh"
 
 db_name="${1:?database name required}"
+shift
+# Remaining arguments go to createdb, e.g. --db-page-size=4K for a binary that needs small pages.
 
 oos_require_env
 
@@ -53,6 +55,6 @@ mkdir -p "$CUBRID_DATABASES"
 # A receipt for a vanished database cannot authorize a new, possibly failed creation.
 rm -f "$(oos_database_receipt "$db_name")"
 mkdir -p "$db_dir"
-cubrid createdb --db-volume-size=20M --log-volume-size=20M "$db_name" en_US.utf8 -F "$db_dir"
+cubrid createdb --db-volume-size=20M --log-volume-size=20M "$@" "$db_name" en_US.utf8 -F "$db_dir"
 
 oos_database_claim "$db_name"
