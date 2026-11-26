@@ -39,6 +39,7 @@
 #include <stdlib.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <new>
 #include <vector>
@@ -89,6 +90,17 @@ static bool la_Gate_routing = true;
  * unit that had no worker yet may follow it. Only equality matters, not the values. */
 static UINT64 la_Gate_completion_version = 0;
 static UINT64 la_Gate_dispatch_version = 0;
+
+/* The earliest unfinished position of every owner, as la_gate_route last read it from the heaps above. The
+ * coordinator routes the parked tasks one after another while nothing on the ring changes, and each route asked
+ * every owner's heap again; under dependencies that park most tasks that was most of the coordinator's time. The
+ * values hold while la_Gate_state_version stays the same: it moves whenever a unit enters the ring, gets a worker,
+ * completes, or the frontier passes units. LA_GATE_NO_POSITION stands for an owner with no unfinished unit. */
+#define LA_GATE_NO_POSITION INT64_MAX
+static UINT64 la_Gate_state_version = 0;
+static UINT64 la_Gate_earliest_version = UINT64_MAX;	/* state version the values below were read at */
+static std::int64_t la_Gate_earliest_undispatched = LA_GATE_NO_POSITION;
+static std::vector<std::int64_t> la_Gate_earliest_of_worker;
 
 static LA_GATE_ORDER *la_gate_order_at (int pos);
 static LA_GATE_ORDER *la_gate_order_find (const LOG_LSA *commit_lsa);
@@ -184,6 +196,50 @@ la_gate_earliest_unfinished (int owner, std::int64_t *pos)
 }
 
 /*
+ * la_gate_read_earliest() - read the earliest unfinished position of every owner unless nothing changed since
+ *   the last read (la_Gate_state_version)
+ *
+ * Note: an out-of-memory resize leaves the values unread, so the next route reads them again; bad_alloc does not
+ *       leave this function.
+ */
+static void
+la_gate_read_earliest (void)
+{
+  std::int64_t earliest;
+
+  if (la_Gate_earliest_version == la_Gate_state_version)
+    {
+      return;
+    }
+
+  la_Gate_earliest_undispatched =
+	  la_gate_earliest_unfinished (LA_GATE_UNDISPATCHED, &earliest) ? earliest : LA_GATE_NO_POSITION;
+
+  if (la_Gate_earliest_of_worker.size () != la_Gate_unfinished.size ())
+    {
+      try
+	{
+	  la_Gate_earliest_of_worker.resize (la_Gate_unfinished.size ());
+	}
+      catch (const std::bad_alloc &)
+	{
+	  /* every worker reads as holding a unit at the start: the route waits, and the next one reads again */
+	  la_Gate_earliest_of_worker.assign (la_Gate_earliest_of_worker.size (), 0);
+	  la_Gate_earliest_undispatched = 0;
+	  la_Gate_earliest_version = UINT64_MAX;
+	  return;
+	}
+    }
+
+  for (int w = 0; w < (int) la_Gate_unfinished.size (); w++)
+    {
+      la_Gate_earliest_of_worker[w] = la_gate_earliest_unfinished (w, &earliest) ? earliest : LA_GATE_NO_POSITION;
+    }
+
+  la_Gate_earliest_version = la_Gate_state_version;
+}
+
+/*
  * la_gate_init() - reset the gate before the workers start
  *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY when the commit-order ring cannot be allocated
  *   commit_order_capacity(in): size of the commit-order ring (see LA_COMMIT_ORDER_CAPACITY)
@@ -221,6 +277,7 @@ la_gate_init (int commit_order_capacity)
   la_Gate_undispatched.clear ();
   la_Gate_unfinished.clear ();
   la_Gate_routing = true;
+  la_Gate_state_version++;
 
   return NO_ERROR;
 }
@@ -396,6 +453,7 @@ la_gate_order_push (const LOG_LSA *commit_lsa)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (std::int64_t));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  la_Gate_state_version++;
 
   return NO_ERROR;
 }
@@ -436,6 +494,7 @@ la_gate_advance_frontier (void)
 	    }
 	}
       la_Gate_completion_version++;
+      la_Gate_state_version++;
       LA_DEBUG_LOG (ARG_FILE_LINE, "ws_gate frontier advanced by %d -> %lld|%d (ring=%d)\n", advanced,
 		    LSA_AS_ARGS (&la_Gate_frontier), la_Gate_order_count);
     }
@@ -462,6 +521,7 @@ la_gate_mark_completed (const LOG_LSA *commit_lsa)
 	{
 	  /* its position leaves the owner's heap when it reaches the top (la_gate_earliest_unfinished) */
 	  la_Gate_completion_version++;
+	  la_Gate_state_version++;
 	}
       entry->completed = true;
     }
@@ -585,6 +645,7 @@ la_gate_set_owner (const LOG_LSA *commit_lsa, int worker)
 	}
       /* the copy in the old owner's heap is dropped when it reaches the top (la_gate_earliest_unfinished) */
       la_Gate_dispatch_version++;
+      la_Gate_state_version++;
     }
   entry->owner = worker;
 
@@ -642,14 +703,14 @@ la_gate_route (const LOG_LSA *dependency_lsa, int *worker, int *wait_reason)
    * none of the units before this one: those it was given are committed and gone from the set. */
   std::int64_t dependency_pos = la_gate_lsa_to_int (dependency_lsa);
 
+  la_gate_read_earliest ();
+
   /* an earlier unit has no worker yet, so there is no worker to follow */
-  std::int64_t earliest;
+  undispatched = (la_Gate_earliest_undispatched <= dependency_pos);
 
-  undispatched = (la_gate_earliest_unfinished (LA_GATE_UNDISPATCHED, &earliest) && earliest <= dependency_pos);
-
-  for (int w = 0; w < (int) la_Gate_unfinished.size (); w++)
+  for (int w = 0; w < (int) la_Gate_earliest_of_worker.size (); w++)
     {
-      if (!la_gate_earliest_unfinished (w, &earliest) || earliest > dependency_pos)
+      if (la_Gate_earliest_of_worker[w] > dependency_pos)
 	{
 	  continue;
 	}

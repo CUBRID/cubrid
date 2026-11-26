@@ -411,3 +411,36 @@ TEST_CASE ("gate follows a unit to its new worker and forgets the old one", "[lo
   la_gate_advance_frontier ();
   REQUIRE (la_gate_route (&l30, &worker, &reason) == LA_GATE_ROUTE_ANY);
 }
+
+TEST_CASE ("gate routes again by the current owners after a unit completes out of order with no frontier move",
+	   "[log_applier_gate]")
+{
+  LOG_LSA l10 = test_lsa (10), l20 = test_lsa (20), l30 = test_lsa (30), l40 = test_lsa (40);
+  int worker, wait_reason;
+
+  REQUIRE (la_gate_init (8) == NO_ERROR);
+  la_gate_set_initial_frontier (&l10);
+  REQUIRE (la_gate_order_push (&l20) == NO_ERROR);
+  REQUIRE (la_gate_order_push (&l30) == NO_ERROR);
+  REQUIRE (la_gate_order_push (&l40) == NO_ERROR);
+  la_gate_set_owner (&l20, 0);
+  la_gate_set_owner (&l30, 1);
+
+  /* asked twice with nothing changed in between: the same answer */
+  REQUIRE (la_gate_route (&l30, &worker, &wait_reason) == LA_GATE_ROUTE_WAIT);
+  REQUIRE (wait_reason == 2);
+  REQUIRE (la_gate_route (&l30, &worker, &wait_reason) == LA_GATE_ROUTE_WAIT);
+  REQUIRE (wait_reason == 2);
+
+  /* 30 completes before 20: the frontier stays at 10, but only worker 0 still holds a unit through 30 */
+  la_gate_mark_completed (&l30);
+  REQUIRE (la_gate_route (&l30, &worker, &wait_reason) == LA_GATE_ROUTE_WORKER);
+  REQUIRE (worker == 0);
+
+  /* a new unit entering the ring is undispatched: a dependency on it waits */
+  REQUIRE (la_gate_route (&l40, &worker, &wait_reason) == LA_GATE_ROUTE_WAIT);
+  REQUIRE (wait_reason == 1);
+  la_gate_set_owner (&l40, 0);
+  REQUIRE (la_gate_route (&l40, &worker, &wait_reason) == LA_GATE_ROUTE_WORKER);
+  REQUIRE (worker == 0);
+}
