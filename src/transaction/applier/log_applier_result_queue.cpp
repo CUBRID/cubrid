@@ -231,6 +231,43 @@ la_result_queue_try_pop (LA_RESULT *result)
 }
 
 /*
+ * la_result_queue_try_pop_many() - take up to max of the oldest results without waiting
+ *   return: NO_ERROR when at least one result was taken, ER_FAILED when the queue is empty
+ *   results(out): the dequeued results, oldest first
+ *   max(in): room in results
+ *   count(out): how many were taken
+ *
+ * Note: one lock for all the results a collection takes, as la_result_queue_push_many does on the worker side.
+ */
+int
+la_result_queue_try_pop_many (LA_RESULT *results, int max, int *count)
+{
+  int n;
+
+  assert (results != NULL && count != NULL && max > 0);
+
+  pthread_mutex_lock (&la_Shared_result_mutex);
+
+  n = MIN (la_Shared_result_queue.count, max);
+  for (int i = 0; i < n; i++)
+    {
+      results[i] = la_Shared_result_queue.results[la_Shared_result_queue.head];
+      la_Shared_result_queue.head = (la_Shared_result_queue.head + 1) % la_Shared_result_queue.capacity;
+    }
+  la_Shared_result_queue.count -= n;
+
+  if (n > 0)
+    {
+      pthread_cond_signal (&la_Shared_result_not_full);
+    }
+  pthread_mutex_unlock (&la_Shared_result_mutex);
+
+  *count = n;
+
+  return (n > 0) ? NO_ERROR : ER_FAILED;
+}
+
+/*
  * la_result_queue_wait_for_result() - wait at most timeout_msec for a worker to queue a result, without dequeuing it
  *   return: true when a result is queued or the queue is shutting down, false on timeout
  *   timeout_msec(in): longest time to wait

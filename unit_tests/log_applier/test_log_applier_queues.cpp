@@ -400,3 +400,67 @@ TEST_CASE ("result queue push_many queues a commit's results in order and report
 
   REQUIRE (la_result_queue_init (8) == NO_ERROR);
 }
+
+TEST_CASE ("task queue push without a waiting worker still leaves every task for the next take",
+	   "[log_applier_queues]")
+{
+  LA_TASK out[8];
+  int count = 0;
+
+  REQUIRE (la_task_queue_init (1) == NO_ERROR);
+  for (int i = 0; i < 3; i++)
+    {
+      LA_TASK task = test_task (100 + i, test_lsa (1 + i), test_null_lsa ());
+      REQUIRE (la_task_queue_push (&task, 0) == NO_ERROR);
+    }
+
+  /* no worker waited, so no wakeup was sent; a waiting take still returns at once with all three in order */
+  REQUIRE (la_task_queue_pop_many (out, 8, &count, 0, true, 0, 0) == NO_ERROR);
+  REQUIRE (count == 3);
+  for (int i = 0; i < 3; i++)
+    {
+      REQUIRE (out[i].tranid == 100 + i);
+    }
+
+  /* a worker that waits on the empty queue is woken by the next push */
+  std::atomic<int> got (-1);
+  std::thread worker ([&got] ()
+  {
+    LA_TASK one[1];
+    int n = 0;
+    if (la_task_queue_pop_many (one, 1, &n, 0, true, 0, 0) == NO_ERROR && n == 1)
+      {
+	got = one[0].tranid;
+      }
+  });
+  std::this_thread::sleep_for (std::chrono::milliseconds (50));
+  LA_TASK task = test_task (200, test_lsa (10), test_null_lsa ());
+  REQUIRE (la_task_queue_push (&task, 0) == NO_ERROR);
+  worker.join ();
+  REQUIRE (got == 200);
+  la_task_queue_final ();
+}
+
+TEST_CASE ("result queue try_pop_many takes the oldest results under one lock", "[log_applier_queues]")
+{
+  LA_RESULT out[2];
+  int count = -1;
+
+  REQUIRE (la_result_queue_init (4) == NO_ERROR);
+  REQUIRE (la_result_queue_try_pop_many (out, 2, &count) == ER_FAILED);
+  REQUIRE (count == 0);
+  for (UINT64 s = 0; s < 3; s++)
+    {
+      LA_RESULT r = test_result (s);
+      REQUIRE (la_result_queue_push (&r) == NO_ERROR);
+    }
+
+  REQUIRE (la_result_queue_try_pop_many (out, 2, &count) == NO_ERROR);
+  REQUIRE (count == 2);
+  REQUIRE (out[0].dispatch_seq == 0);
+  REQUIRE (out[1].dispatch_seq == 1);
+  REQUIRE (la_result_queue_try_pop_many (out, 2, &count) == NO_ERROR);
+  REQUIRE (count == 1);
+  REQUIRE (out[0].dispatch_seq == 2);
+  REQUIRE (la_result_queue_get_count () == 0);
+}

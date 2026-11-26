@@ -103,6 +103,9 @@ static std::atomic<bool> la_Coordinator_waiting_results (false);	/* blocked unti
  * collects results */
 #define LA_COORDINATOR_ROOM_WAIT_MSEC 100
 
+/* results la_coordinator_collect_results takes under one lock of the result queue */
+#define LA_COORDINATOR_COLLECT_BATCH 64
+
 static int la_coordinator_drain_ready (void);
 static int la_coordinator_wait_for_commit_order_slot (void);
 static int la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status, int worker);
@@ -698,15 +701,20 @@ la_coordinator_collect_and_retire (void)
 static int
 la_coordinator_collect_results (void)
 {
-  LA_RESULT result;
+  /* taken a few at a time under one lock; a worker queues the results of a whole commit at once */
+  LA_RESULT results[LA_COORDINATOR_COLLECT_BATCH];
+  int count;
   int error;
 
-  while (la_result_queue_try_pop (&result) == NO_ERROR)
+  while (la_result_queue_try_pop_many (results, LA_COORDINATOR_COLLECT_BATCH, &count) == NO_ERROR)
     {
-      error = la_coordinator_record_result (&result);
-      if (error != NO_ERROR)
+      for (int i = 0; i < count; i++)
 	{
-	  return error;
+	  error = la_coordinator_record_result (&results[i]);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
 	}
     }
 

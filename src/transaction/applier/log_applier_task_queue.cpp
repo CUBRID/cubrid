@@ -53,6 +53,7 @@ struct la_task_queue
   int count;
   std::atomic<int> queued;	/* count, published for la_task_queue_get_queued to read without the lock */
   pthread_cond_t not_empty;
+  int waiters;			/* workers waiting on not_empty; a push signals only when there is one */
   pthread_cond_t not_full;	/* the coordinator waits on it for room (la_task_queue_wait_room) */
 };
 
@@ -94,6 +95,7 @@ la_task_queue_init (int worker_count)
       la_Task_queues[i].tail = 0;
       la_Task_queues[i].count = 0;
       la_Task_queues[i].queued.store (0);
+      la_Task_queues[i].waiters = 0;
       la_cond_init_monotonic (&la_Task_queues[i].not_empty);
       la_cond_init_monotonic (&la_Task_queues[i].not_full);
     }
@@ -169,7 +171,12 @@ la_task_queue_push (const LA_TASK *task, int worker)
   la_Task_queue_total++;
   la_Task_queue_max_total = MAX (la_Task_queue_max_total, la_Task_queue_total);
 
-  pthread_cond_signal (&queue->not_empty);
+  /* a worker taking tasks without waiting needs no wakeup; signalling every push woke the worker for one task at a
+   * time and made it take the mutex as often as the coordinator */
+  if (queue->waiters > 0)
+    {
+      pthread_cond_signal (&queue->not_empty);
+    }
   pthread_mutex_unlock (&la_Task_queue_mutex);
 
   return NO_ERROR;
@@ -333,7 +340,9 @@ la_task_queue_pop_many (LA_TASK *tasks, int max, int *count, int worker, bool wa
     {
       while (queue->count == 0 && la_Task_queue_shutdown == false)
 	{
+	  queue->waiters++;
 	  pthread_cond_wait (&queue->not_empty, &la_Task_queue_mutex);
+	  queue->waiters--;
 	}
     }
   else if (hold_nsec > 0 && queue->count == 0 && la_Task_queue_shutdown == false)
@@ -344,7 +353,12 @@ la_task_queue_pop_many (LA_TASK *tasks, int max, int *count, int worker, bool wa
       la_monotonic_deadline (hold_nsec, &abstime);
       while (queue->count == 0 && la_Task_queue_shutdown == false && la_Task_queue_wake_seq == wake_seq)
 	{
-	  if (pthread_cond_timedwait (&queue->not_empty, &la_Task_queue_mutex, &abstime) != 0)
+	  int rc;
+
+	  queue->waiters++;
+	  rc = pthread_cond_timedwait (&queue->not_empty, &la_Task_queue_mutex, &abstime);
+	  queue->waiters--;
+	  if (rc != 0)
 	    {
 	      break;
 	    }
