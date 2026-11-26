@@ -1,96 +1,44 @@
-# pl_engine/ — Java PL (Procedural Language) Engine
+# pl_engine/ — Java PL (Procedural Language) Server
 
-Gradle-based Java project. Runs as separate process, communicates with `cub_server` via Unix domain sockets.
+Gradle (Kotlin DSL) project that builds `pl_server.jar`: the Java SP runtime and the PL/CSQL compiler. The `cub_pl` process loads it (the engine starts and monitors `cub_pl`). It talks to `cub_server` over a Unix domain socket on Linux by default, or TCP to `127.0.0.1` on Windows or when `stored_procedure_uds` is off. Engine side: [src/sp/AGENTS.md](../src/sp/AGENTS.md).
 
-## Structure
+## Layout
 
-```
-pl_engine/
-├── CMakeLists.txt          # CMake integration (builds via Gradle)
-├── settings.gradle.kts     # Gradle settings
-├── pl_server/
-│   ├── build.gradle.kts    # Dependencies, ANTLR, JUnit 5
-│   └── src/
-│       ├── main/
-│       │   ├── antlr/      # ANTLR 4.9.3 grammar files (PL/CSQL parsing)
-│       │   ├── java/com/cubrid/jsp/  # Main Java sources
-│       │   └── resources/  # Configuration files
-│       └── test/           # JUnit 5 tests
-```
+| Path | Content |
+|------|---------|
+| `CMakeLists.txt` | CMake targets that drive Gradle |
+| `pl_server/build.gradle.kts` | Dependencies, ANTLR, Java toolchain, fat jar |
+| `pl_server/src/main/antlr/` | PL/CSQL grammars (`PlcLexer.g4`, `PlcParser.g4`, `StaticSqlWithRecords.g4`) |
+| `pl_server/src/main/java/com/cubrid/jsp/` | SP runtime: `Server` (main class), `protocol/`, `data/` (`CUBRIDPacker`, `CUBRIDUnpacker`), `value/`, `jdbc/` (server-side JDBC), `classloader/`, `compiler/`, ... |
+| `pl_server/src/main/java/com/cubrid/plcsql/` | PL/CSQL compiler (`compiler/`, `builtin/`, `predefined/sp/`) |
+| `pl_server/src/test/java/` | JUnit 5 tests |
 
-## Java Package Structure
+## Build and Test
 
-```
-com.cubrid.jsp/                   # SP runtime
-├── Server                        # Main entry point
-├── data/                         # Data handling
-├── value/                        # Value conversion (SQL ↔ Java)
-├── jdbc/                         # Internal JDBC for SP SQL execution
-├── protocol/                     # Wire protocol with cub_server
-├── code/                         # Code management
-├── classloader/                  # SP class loading
-├── impl/                         # SP implementation dispatch
-├── context/                      # Execution context
-├── compiler/                     # SP compilation
-└── exception/                    # Error handling
-
-com.cubrid.plcsql/                # PL/CSQL compiler
-├── compiler/
-│   ├── ast/                      # Abstract syntax tree nodes
-│   │   └── loopOpt/              # Loop optimization
-│   ├── visitor/                  # AST visitors
-│   ├── type/                     # Type system
-│   ├── serverapi/                # Server API interface
-│   ├── error/                    # Compiler errors
-│   └── annotation/               # Compiler annotations
-├── builtin/                      # Built-in PL/CSQL functions
-└── predefined/sp/                # Predefined stored procedures
-```
-
-## Build
+Use the CMake targets in a configured build directory (see the root [AGENTS.md](../AGENTS.md) for configuring):
 
 ```bash
-# Via CMake (integrated)
-ninja pl_server          # Build PL engine
-ninja pl_unittest        # Run PL engine tests
-
-# Via Gradle directly
-cd pl_engine && ./gradlew build
-cd pl_engine && ./gradlew test
+cmake --build <build-dir> --target pl_build      # part of ALL; runs gradlew build -x test
+cmake --build <build-dir> --target pl_unittest   # runs gradlew cleanTest test; depends on pl_build
 ```
 
-## Dependencies
+- `pl_build` writes to `<build-dir>/pl_engine` (`-PbuildDir=`). `pl_unittest` passes `-DbuildDir=` instead, which Gradle does not read as the build directory, so its test build lands in the source tree (`pl_engine/pl_server/build/`, gitignored). When the `cubrid-jdbc` submodule is present, `pl_build` copies its jar and passes `-PcubridJdbcPath=<build-dir>/pl_engine/lib`.
+- The Gradle toolchain is pinned to Java 8, so Gradle must find a JDK 8: an installed one, or a download through the foojay resolver (`settings.gradle.kts`). `pl_install_jdk` downloads a JDK 8 into `<build-dir>/vm/jdk8` for packaging.
+- `install` copies `pl_server.jar`, `logging.properties`, and the bundled `jdk8` into the `vm` directory of the install prefix. Install into a scratch prefix for a runtime check (root [AGENTS.md](../AGENTS.md)).
+- A direct `./gradlew build` run differs from the CMake build:
+  - It runs the tests.
+  - It writes into the source tree (`build/`, gitignored).
+  - Without `-PcubridJdbcPath`, it resolves `cubrid-jdbc:latest.integration` from `http://maven.cubrid.org/` over plain HTTP. The result is not the pinned submodule jar, and the network fetch is insecure.
+  - Prefer the CMake targets. If you must run Gradle directly, pass `-PcubridJdbcPath=<build-dir>/pl_engine/lib` after a CMake `pl_build`.
+- CI does not run `pl_unittest` or Gradle tests. The test tree is small, and the PL/CSQL library tests are disabled (`*.java.disable`). To verify a behavior change, add a JUnit test and also exercise the procedure through SQL (a SQL regression test or a scratch server).
 
-- **JDK 1.8+** (toolchain set to Java 8)
-- **ANTLR 4.9.3** — PL/CSQL grammar parsing
-- **junixsocket 2.8.3** — Unix domain socket communication
-- **CUBRID JDBC** — for internal SQL execution from stored procedures
-- **Apache Commons** — text, collections, lang3, io, compress
-- **Netty 4.1.115** — buffer management
-- **JUnit Jupiter 5.9.1** — testing
+## Formatting (CI `code-style` check)
 
-## Where to Look
+CI formats each changed `.java` file with google-java-format **1.7** in AOSP style (`-a`, 4-space indent) on Java 8 (`.github/workflows/codestyle.sh`, `.github/workflows/check.yml`). Another version, or the default Google style, reformats whole files and fails the check. To match it locally, download `google-java-format-1.7-all-deps.jar` from the URL in `check.yml` into `.github/workflows/`, then run `.github/workflows/codestyle.sh <file>` from the repository root.
 
-| Task | File/Dir |
-|------|----------|
-| Fix PL engine startup | `com.cubrid.jsp.Server` |
-| Fix PL/CSQL parsing | `src/main/antlr/` grammars |
-| Fix SP execution | `com.cubrid.jsp/` handler classes |
-| Fix type conversion | Type mapping classes in `com.cubrid.jsp/` |
-| Fix communication | Socket handling classes |
-| Add tests | `src/test/` — JUnit 5 |
+## Rules
 
-## Conventions
-
-- Java code formatted with `google-java-format` (CI-enforced)
-- Gradle Kotlin DSL (`build.gradle.kts`)
-- Fat JAR packaging (all dependencies bundled via `tasks.jar`)
-- ANTLR generates visitor + listener patterns
-
-## Gotchas
-
-- PL engine must be running before stored procedures can execute
-- JDBC dependency resolved from local submodule path or CUBRID's Maven repo
-- ANTLR grammar changes require `./gradlew generateGrammarSource`
-- Java 8 target — do not use Java 9+ APIs
-
+- Use only Java 8 APIs: the toolchain is pinned to 8 (`build.gradle.kts`).
+- Wire format: `CUBRIDPacker` / `CUBRIDUnpacker` must stay in sync with `dbvalue_java` (`src/method/method_struct_value.cpp`). Change both sides in the same commit. Protocol messages in `com.cubrid.jsp.protocol` pair with the C side in `src/sp/`.
+- Grammar edits need no manual step. The Gradle `antlr` plugin regenerates sources (`generateGrammarSource`, with `-listener -visitor`) before `compileJava`.
+- The jar bundles all runtime dependencies (`tasks.jar`). A new dependency ships inside `pl_server.jar`.

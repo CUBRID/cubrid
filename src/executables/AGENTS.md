@@ -1,60 +1,46 @@
 # src/executables/ — Binary Entry Points & Utilities
 
-All CUBRID binary programs start here.
+Entry points of the CUBRID programs and the admin utilities (`cubrid <utility>`). Follow [src/AGENTS.md](../AGENTS.md) for build modes and CMake registration.
 
-## Key Files
+## Binaries
 
-| File | Role |
-|------|------|
-| `server.c` | `cub_server` entry point — database server process |
-| `csql.c` | `csql` interactive SQL shell |
-| `csql_launcher.c` | csql command-line argument parsing |
-| `csql_result.c` | csql query result display |
-| `csql_session.c` | csql session management |
-| `unloaddb.c` | `unloaddb` data export entry point |
-| `compactdb.c` | `compactdb` space reclamation |
-| `util_service.c` | `cubrid` service command (start/stop/status) |
-| `util_cs.c` | Client-server utility functions |
-| `util_sa.c` | Standalone utility functions |
-| `util_common.c` | Shared utility helpers |
-| `master.c` | `cub_master` — master process (manages server processes) |
-| `master_heartbeat.c` | HA heartbeat in master process |
-| `commdb.c` | Master communication utility |
+Every executable is defined in `util/CMakeLists.txt`.
+
+| Binary | Entry file | Notes |
+|--------|-----------|-------|
+| `cub_server` | `server.c` | Links `libcubrid` (`SERVER_MODE`) |
+| `cub_master` | `master.c` (+ `master_heartbeat.c` on Unix) | Manages the server processes on a host and the HA node heartbeat; not a database server |
+| `cubrid` (target `cubrid-bin`) | `util_service.c` | Front end: `service`/`server`/`broker`/`heartbeat`/... commands; runs `cub_admin` for admin utilities |
+| `cub_admin` | `util_admin.c` | Loads `libcubridsa` or `libcubridcs` at run time and calls the utility function |
+| `csql` | `csql_launcher.c` | Loads `libcubridsa` (`-S`) or `libcubridcs` (`-C`); the shell itself (`csql.c`, `csql_session.c`, `csql_result.c`) is in both libraries |
+| `cub_commdb` | `commdb.c` | Sends status and control requests to `cub_master` |
+
+`loaddb`, `unloaddb`, `compactdb`, and the other admin utilities are not separate binaries. They are functions in `libcubridsa`/`libcubridcs` that `cub_admin` calls.
+
+## Admin Utilities
+
+`cubrid <name>` → `us_Service_map[]` (`util_service.c`) → exec `cub_admin` → `ua_Utility_Map[]` (`util_admin.c`) → load a library and call `function_name` from the map entry. The `utility_type` field selects the library:
+
+- `SA_ONLY` → `libcubridsa`; `CS_ONLY` → `libcubridcs`.
+- `SA_CS` → `libcubridcs` with `-C`, `libcubridsa` with `-S`. With neither, `libcubridcs`, except `vacuumdb` and `tde`, which default to `libcubridsa` (`util_get_library_name ()`). Examples: `loaddb` (function `loaddb_user` in `src/loaddb/load_db.c`), `unloaddb` (`unloaddb.c`), `compactdb` (`compactdb.c` in SA, `compactdb_cl.c` in CS). A change to an `SA_CS` utility must build and work in both modes.
+
+`util_common.c` holds shared helpers only (option access, name checks). It has no registration table.
+
+### Adding an Admin Utility
+
+1. `utility.h`: add the index to `UTIL_INDEX` just before `LOGFILEDUMP` (the last enumerator, which has no map entry), the name `#define UTIL_OPTION_<NAME> "<name>"`, option letter/long-name defines, and a message set `MSGCAT_UTIL_SET_<NAME>` with its message ids.
+2. `util_admin.c`: add the `GETOPT_LONG` and `UTIL_ARG_MAP` option arrays and an entry in `ua_Utility_Map[]` at the array position equal to its `UTIL_INDEX` value (just before the `{-1, ...}` terminator when added as in step 1); `util_admin.c` indexes the map by the enum value.
+3. `util_service.c`: add `{ADMIN, UTIL_OPTION_<NAME>, MASK_ADMIN}` to `us_Service_map[]`. Without it, `cubrid <name>` does not reach `cub_admin`.
+4. Implement `int <function_name> (UTIL_FUNCTION_ARG *arg)` in a source that builds into each library the type needs: `util_sa.c` is SA-only; `util_cs.c` builds into both `libcubridcs` and `libcubridsa`. On Windows, also export it in `win/cubridsa/cubridsa.def` and/or `win/cubridcs/cubridcs.def`.
+5. Add the usage and messages to `msg/en_US.utf8/utils.msg` and `msg/ko_KR.utf8/utils.msg` under `$set <n> MSGCAT_UTIL_SET_<NAME>`.
 
 ## Where to Look
 
 | Task | File |
 |------|------|
-| Fix server startup | `server.c` |
-| Fix csql behavior | `csql.c`, `csql_session.c`, `csql_result.c` |
-| Fix loaddb/unloaddb | `src/loaddb/` (loaddb code), `unloaddb.c` |
-| Fix service commands | `util_service.c` |
-| Fix HA/heartbeat | `master_heartbeat.c` |
-| Add new utility | Create entry point here + add to CMakeLists.txt |
-
-## Binary → Source Map
-
-| Binary | Entry File | Build Target |
-|--------|-----------|--------------|
-| `cub_server` | `server.c` | `cubrid/CMakeLists.txt` |
-| `csql` | `csql_launcher.c` → `csql.c` | `cs/CMakeLists.txt` |
-| `loaddb` | `src/loaddb/` (standalone loader) | `sa/CMakeLists.txt` |
-| `unloaddb` | `unloaddb.c` | `sa/CMakeLists.txt` |
-| `compactdb` | `compactdb.c` | `sa/CMakeLists.txt` |
-| `cub_master` | `master.c` | top-level CMake |
-| `cubrid` | `util_service.c` | top-level CMake |
-
-## Conventions
-
-- Utility programs: parse args → call into engine libraries → exit
-- Standalone utilities (`loaddb`, `unloaddb`, `compactdb`) link `cubridsa` (SA_MODE)
-- Client-server utilities link `cubridcs` (CS_MODE)
-- `csql` functions prefixed `csql_` — self-contained subsystem within this dir
-- Utility registration in `util_common.c` — defines available subcommands
-
-## Gotchas
-
-- `loaddb` can run in standalone or client-server mode — different code paths
-- `csql` has its own mini-framework (session, result display, input handling)
-- `master.c` manages all database server processes on a host — not a database server itself
-
+| Server startup | `server.c` |
+| csql behavior | `csql.c`, `csql_session.c`, `csql_result.c` |
+| `cubrid service/server/broker/heartbeat` commands | `util_service.c` |
+| Admin utility options and dispatch | `util_admin.c`, `utility.h` |
+| Admin utility bodies | `util_sa.c`, `util_cs.c`, `unloaddb.c`, `compactdb*.c`; loaddb in [src/loaddb/](../loaddb/AGENTS.md) |
+| HA node heartbeat, failover | `master_heartbeat.c` |

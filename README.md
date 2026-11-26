@@ -36,8 +36,10 @@ Follow tutorials at:
 
 On Linux:
 ```
-./build.sh
+./build.sh -m release build
 ```
+This builds in `build_x86_64_release` without packaging. Without a target (`build` above), `./build.sh` runs `clean build dist`:
+it first deletes everything in the build and install directories, then creates all packages.
 To see usage, run `./build.sh -h`
 
 On Windows:

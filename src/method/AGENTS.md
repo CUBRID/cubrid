@@ -1,56 +1,45 @@
-# src/method/ — Method & SP Invocation from Queries
+# src/method/ — Method Scans, Client Callbacks, and the DB_VALUE Wire Packer
 
-Handles method calls and stored procedure invocation during query execution.
+This module does three jobs:
+- It runs C methods (instance/class methods) called from queries.
+- It serves the SQL that a running stored procedure sends back to the client.
+- It holds `dbvalue_java`, the C side of the `DB_VALUE` wire format shared with the PL server.
+
+Java and PL/CSQL stored procedures called in expressions do not go through a method scan: see [src/sp/AGENTS.md](../sp/AGENTS.md).
+
+## Call Paths
+
+```
+C method in a query (S_METHOD_SCAN):
+  scan_manager.c scan_open_method_scan () → method_scan.cpp
+    → src/sp/method_invoke_group.cpp (asserts PL_TYPE_IS_METHOD)
+    → xs_callback_send_args () / xs_callback_send_and_receive () to the client
+    → query_method.cpp method_dispatch () runs the method on the client (CS_MODE and SA_MODE variants)
+
+Java / PL/CSQL SP in an expression (TYPE_SP regu variable):
+  src/query/fetch.c → src/sp/pl_executor.cpp → cub_pl
+
+SQL from a running SP (server-side JDBC):
+  cub_pl → cub_server → client callback → method_callback.cpp (callback_handler)
+    → method_query_handler.cpp / method_oid_handler.cpp
+```
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `method_scan.cpp/hpp` | Method scan for query executor — calls methods during scan |
-| `query_method.cpp/hpp` | Query-level method invocation |
-| `method_query_handler.cpp/hpp` | Method query result handling |
-| `method_query_result.cpp/hpp` | Method query result processing |
-| `method_query_util.cpp/hpp` | Method query utility functions |
-| `method_struct_invoke.cpp/hpp` | Method invocation structure definitions |
-| `method_struct_value.cpp/hpp` | Method argument/result value handling |
-| `method_struct_oid_info.cpp/hpp` | OID info for method invocation |
-| `method_struct_parameter_info.cpp/hpp` | Parameter info structures |
-| `method_struct_query.cpp/hpp` | Query structures for method invocation |
-| `method_struct_schema_info.cpp/hpp` | Schema info structures for methods |
-| `method_schema_info.cpp/hpp` | Schema information handling |
-| `method_oid_handler.cpp/hpp` | OID handler for method results |
-| `method_callback.cpp/hpp` | Method callback handling |
-| `method_error.cpp/hpp` | Method error handling |
+| `method_scan.cpp/hpp` | Method scan used by the executor |
+| `query_method.cpp/hpp` | Client side of method calls (`method_dispatch ()`, one variant each for `CS_MODE` and `SA_MODE`) |
+| `method_callback.cpp/hpp` | `cubmethod::callback_handler`: entry point for requests from server-side JDBC in a running SP |
+| `method_query_handler.cpp/hpp`, `method_query_result.cpp/hpp`, `method_oid_handler.cpp/hpp` | Prepare/execute/fetch and OID requests from those callbacks |
+| `method_struct_value.cpp/hpp` | `dbvalue_java`: `DB_VALUE` packing for the PL protocol |
+| `method_struct_invoke.cpp/hpp` | Invoke request structures |
+| `method_struct_*.cpp/hpp` (others) | Packable structures for queries, OIDs, parameters, and schema info |
+| `method_error.cpp/hpp` | Error handling |
 
-## Where to Look
+Mode membership differs per file (for example `method_scan.cpp` is not in `CS_MODE`, and `method_callback.cpp` is not in `SERVER_MODE`). Check `cubrid/`, `sa/`, and `cs/CMakeLists.txt` before you move code between files.
 
-| Task | File |
-|------|------|
-| Fix method call in query | `method_scan.cpp`, `query_method.cpp` |
-| Fix method query handling | `method_query_handler.cpp`, `method_query_result.cpp` |
-| Fix method argument passing | `method_struct_value.cpp`, `method_struct_invoke.cpp` |
-| Fix method error handling | `method_error.cpp` |
-| Fix method callback | `method_callback.cpp` |
+## Rules
 
-## Architecture
-
-```
-query_executor.c → scan_manager.c (METHOD_SCAN)
-  → method_scan.cpp → query_method.cpp
-    → method_struct_invoke.cpp (dispatch)
-    → src/sp/ → PL Engine (for Java SP)
-```
-
-## Conventions
-
-- Functions prefixed `method_`
-- Method scan integrates with query executor via `SCAN_TYPE_METHOD`
-- Java methods route through `src/sp/` to PL engine
-- Built-in methods execute in-process
-
-## Gotchas
-
-- Method calls during scans can be expensive — each row triggers invocation
-- Java method calls involve cross-process communication — timeout handling critical
-- Method results must be properly converted to `DB_VALUE` for query engine
-
+- `dbvalue_java` must stay in sync with `CUBRIDPacker.java` / `CUBRIDUnpacker.java` (`pl_engine/pl_server/src/main/java/com/cubrid/jsp/data/`). Change both sides in the same commit.
+- A method scan invokes the method once per row. In `CS_MODE` each call is a network round-trip to the client.

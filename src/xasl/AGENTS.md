@@ -1,46 +1,31 @@
 # src/xasl/ — XASL Node Type Definitions
 
-Defines XASL plan structures used by both parser (client) and executor (server).
+Shared XASL plan types. The client generates and serializes them, and the server deserializes and executes them. The main node, `XASL_NODE`, is in `src/query/xasl.h`. `REGU_VARIABLE` is in `src/query/regu_var.hpp`.
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `xasl_unpack_info.hpp` | XASL deserialization context |
-| `xasl_predicate.hpp` | Predicate expression types (`PRED_EXPR`, `COMP_EVAL_TERM`) |
-| `xasl_aggregate.hpp` | Aggregate node definitions |
-| `xasl_analytic.hpp` | Analytic/window function node definitions |
-| `xasl_stream.hpp` | XASL stream (serialization format) constants |
-| `xasl_sp.hpp` | XASL stored procedure types |
-
-## Role in Pipeline
-
-```
-parser/ generates → XASL_NODE trees → serialized via query/xasl_to_stream.c
-  → deserialized via query/stream_to_xasl.c → executed by query/query_executor.c
-```
-
-This module defines the **shared types** used at serialization and execution boundaries.
+| `xasl_predicate.hpp` | `PRED_EXPR`, `COMP_EVAL_TERM` |
+| `xasl_aggregate.hpp`, `xasl_analytic.hpp` | Aggregate and analytic nodes |
+| `access_spec.hpp` | Access on tables, lists, and indexes |
+| `xasl_sp.hpp` | Stored procedure call nodes |
+| `xasl_stream.hpp`, `xasl_stream.cpp` | Stream constants and shared `stx_*` helpers |
+| `xasl_unpack_info.hpp`, `xasl_unpack_info.cpp` | Deserialization context (buffers and allocation), not the per-node unpack code |
+| `xasl_spawner.hpp`, `xasl_spawner.cpp` | Deep copies of XASL parts (regu variables, `outptr_list`, `val_list`, ...) for parallel hash join workers |
+| `xasl_iteration.hpp`, `xasl_iteration.cpp` | `iterate_xasl_tree ()` / `iterate_regu_var ()` walkers used by parallel query and memoize |
 
 ## Where to Look
 
 | Task | File |
 |------|------|
-| Modify predicate structure | `xasl_predicate.hpp` |
-| Modify aggregate node | `xasl_aggregate.hpp` |
-| Modify analytic node | `xasl_analytic.hpp` |
-| Fix XASL stream format | `xasl_stream.hpp` |
-| Fix XASL deserialization | `xasl_unpack_info.hpp` |
+| Predicate structure | `xasl_predicate.hpp` |
+| Aggregate or analytic node | `xasl_aggregate.hpp`, `xasl_analytic.hpp` |
+| Per-node serialization | `src/query/xasl_to_stream.c` (`xts_process_*` and the matching `xts_sizeof_*`) |
+| Per-node deserialization | `src/query/stream_to_xasl.c` (`stx_build_*`, for example `stx_build_xasl_node ()`) |
 
-## Conventions
+## Rules
 
-- Header-only or header-heavy module — mostly type definitions
-- Structures must match between client (serializer) and server (deserializer)
-- Changes here typically require coordinated changes in `parser/xasl_generation.c`, `query/xasl_to_stream.c`, and `query/stream_to_xasl.c`
-
-## Gotchas
-
-- Adding fields to XASL structures requires updating serialization AND deserialization — mismatches cause crashes
-- Shared between `CS_MODE` (client) and `SERVER_MODE` — no mode-specific guards allowed
-- `REGU_VARIABLE` is the most complex type — deeply nested unions
-
+- Any change to a serialized member follows the "XASL changes" checklist in [src/AGENTS.md](../AGENTS.md). It covers generation, `xts_process_*` / `xts_sizeof_*`, deserialization, execution, the catalog-stored filter and function-index streams, and the clone reset in `qexec_clear_xasl ()`.
+- Mode guards: a serialized member must sit outside every mode guard, so its layout is the same in all modes. A server-only runtime member that is not serialized goes inside `#if defined (SERVER_MODE) || defined (SA_MODE)` (see the "not serialized" members in `src/query/xasl.h`). Keep the existing guards.
+- If parallel hash join workers read a new pointer, regu, or predicate member, copy it in `xasl_spawner.cpp`. If the tree walkers must visit it, update `xasl_iteration.cpp`.

@@ -1,69 +1,53 @@
-# src/sp/ — Stored Procedure JNI Bridge
+# src/sp/ — Stored Procedures: Engine Side of the PL Server
 
-Bridges C server ↔ Java PL engine for stored procedures.
+The engine side of Java and PL/CSQL stored procedures: DDL and catalog, execution, and the socket protocol to the PL server process. The Java side is [pl_engine/AGENTS.md](../../pl_engine/AGENTS.md).
+
+## Architecture
+
+```
+cub_server / SA process                         cub_pl process (PL_MODE)
+  pl_sr.cpp: forks and monitors cub_pl  ──→      src/executables/pl.cpp + pl_sr_jvm.cpp
+  pl_executor.cpp: packs args, reads result      starts the JVM in-process (JNI_CreateJavaVM)
+  pl_connection.cpp: connection pool             runs pl_server.jar (pl_engine/)
+  pl_comm.c ── socket ─────────────────────→
+```
+
+- `cub_server` has no JNI. `pl_sr_jvm.cpp` builds only into `cub_pl` (`util/CMakeLists.txt`). SP call latency is socket round-trips, not JNI.
+- Transport (`pl_connect_server ()` in `pl_comm.c`): a Unix domain socket on Linux by default. TCP to `127.0.0.1` on Windows, or when `stored_procedure_uds` is off (then `stored_procedure_port` is used). There is no remote PL server.
+- The engine starts `cub_pl` and restarts it after a failure (`server_monitor_task` in `pl_sr.cpp`). Do not start `cub_pl` by hand or add a startup step. SP calls fail while it is (re)starting.
+- SQL that a running procedure executes, and its COMMIT/ROLLBACK, come back to the client as callbacks (`src/method/method_callback.cpp`); the client checks them against `sp_context_rules.cpp`.
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `sp_catalog.cpp/hpp` | SP catalog management (create/drop/alter stored procedures) |
-| `sp_code.cpp/hpp` | SP code management (source storage, compilation) |
-| `sp_constants.hpp` | SP-related constants |
-| `jsp_cl.cpp/h` | Client-side SP API |
-| `pl_sr.cpp/h` | Server-side SP invocation entry points |
-| `pl_sr_jvm.cpp/h` | JVM-specific server-side SP support |
-| `pl_comm.c/h` | Socket communication with Java PL engine |
-| `pl_file.c/h` | SP file operations (JAR upload/management) |
-| `pl_connection.cpp/hpp` | Connection to PL engine process |
-| `pl_executor.cpp/hpp` | PL execution orchestration |
-| `pl_session.cpp/hpp` | PL session management |
-| `pl_signature.cpp/hpp` | SP signature parsing and handling |
-| `pl_execution_stack_context.cpp/hpp` | PL execution stack context |
-| `pl_query_cursor.cpp/hpp` | Query cursor management in PL execution |
-| `pl_compile_handler.cpp/hpp` | PL compile handler |
-| `pl_struct_compile.cpp/hpp` | PL compile structure definitions |
-| `method_invoke_group.cpp/hpp` | Grouped method invocation (shared with `src/method/`) |
-
-## Architecture
-
-```
-cub_server (C) ──→ JNI/Unix socket ──→ PL Engine (Java)
-     │                                       │
-  pl_executor.cpp                     pl_engine/
-  pl_signature.cpp (marshal)          (see pl_engine/AGENTS.md)
-```
+| `jsp_cl.cpp/h` | Client entry points for SP DDL and CALL: `jsp_create_stored_procedure ()`, `jsp_alter_stored_procedure ()`, `jsp_drop_stored_procedure ()`, `jsp_call_stored_procedure ()` |
+| `sp_catalog.cpp/hpp` | Catalog insert helpers (`sp_add_stored_procedure ()`, ...), called from `jsp_cl.cpp` |
+| `sp_code.cpp/hpp` | Stored SP source/code |
+| `sp_context_rules.cpp/hpp` | What a procedure may do, checked against where it was invoked |
+| `pl_sr.cpp/h` | Server side: PL server manager and monitor, connection pool access |
+| `pl_executor.cpp/hpp` | SP execution: argument packing and result unpacking with `cubmethod::dbvalue_java` |
+| `pl_signature.cpp/hpp` | Signature metadata (`pl_signature`, `pl_arg`: modes, type ids, defaults); no value marshalling |
+| `pl_struct_compile.cpp/hpp` | PL/CSQL compile protocol (`compile_request`, `compile_response`, `sql_semantics`) |
+| `pl_compile_handler.cpp/hpp` | PL/CSQL compile requests |
+| `pl_session.cpp/hpp`, `pl_execution_stack_context.cpp/hpp`, `pl_query_cursor.cpp/hpp` | Session, nested call stack, and cursors of SP SQL |
+| `pl_comm.c/h`, `pl_connection.cpp/hpp` | Socket I/O and connection pool |
+| `pl_file.c/h` | PL server info file (`PL_SERVER_INFO`: pid, port), not JAR files |
+| `pl_sr_jvm.cpp/h` | JVM startup inside `cub_pl` only |
+| `method_invoke_group.cpp/hpp` | Method scan invocation for C methods (see [src/method/AGENTS.md](../method/AGENTS.md)) |
 
 ## Where to Look
 
 | Task | File |
 |------|------|
-| Fix SP creation/drop | `sp_catalog.cpp` |
-| Fix SP execution | `pl_executor.cpp`, `pl_sr.cpp` |
-| Fix SP argument passing | `pl_signature.cpp`, `pl_struct_compile.cpp` |
-| Fix PL engine connection | `pl_connection.cpp`, `pl_comm.c` |
-| Fix JAR management | `pl_file.c` |
-| Fix SP signature parsing | `pl_signature.cpp` |
+| CREATE / ALTER / DROP PROCEDURE or FUNCTION | `jsp_cl.cpp`, then `sp_catalog.cpp` |
+| SP call in a query (`TYPE_SP` regu variable) | `src/query/fetch.c` → `pl_executor.cpp` |
+| Argument or return value conversion | `pl_executor.cpp`, `src/method/method_struct_value.cpp` (`dbvalue_java`), and `CUBRIDPacker.java` / `CUBRIDUnpacker.java` in `pl_engine/pl_server/src/main/java/com/cubrid/jsp/data/` |
+| PL server start, restart, connection | `pl_sr.cpp`, `pl_connection.cpp`, `pl_comm.c` |
+| JAR loading (`loadjava`) | `src/executables/loadjava.cpp` |
 
-## Type Mapping
+## Rules
 
-SQL types are mapped to Java types via `pl_signature.cpp` and `pl_struct_compile.cpp`:
-- `DB_INT` ↔ `int/Integer`
-- `DB_STRING` ↔ `String`
-- `DB_NUMERIC` ↔ `BigDecimal`
-- `DB_DATE` ↔ `java.sql.Date`
-- Result sets ↔ `java.sql.ResultSet`
-
-## Conventions
-
-- Functions prefixed `sp_` (catalog/execution), `jsp_` (JNI/communication), `pl_` (PL engine protocol)
-- DB_VALUE marshalling: `pl_signature.cpp` converts between C DB_VALUE and Java representations
-- Communication: Unix domain sockets (primary) or TCP for remote PL engine
-- Error propagation: Java exceptions → `er_set()` error codes on C side
-
-## Gotchas
-
-- PL engine is a separate Java process — must be running for SP execution
-- JNI calls have JVM overhead — SP calls are significantly slower than native SQL functions
-- Type mismatches between SQL and Java are common bug source — check `pl_signature.cpp` mappings
-- Connection pooling to PL engine managed in `pl_connection.cpp` — connection leaks cause hangs
-
+- **Wire format**: the C packer (`dbvalue_java` in `src/method/method_struct_value.cpp`) and the Java `CUBRIDPacker` / `CUBRIDUnpacker` must change together, in the same commit. Any other protocol change also needs the matching change in `com.cubrid.jsp.protocol`.
+- Java exceptions come back as error codes on the C side and are reported with `er_set ()`.
+- Take PL server connections from the pool with `connection_pool::claim ()` and hold them in the returned `connection_view` (a `std::unique_ptr` whose deleter gives the connection back). A connection kept outside a view can leak and hang later calls.

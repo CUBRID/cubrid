@@ -11,6 +11,9 @@
 
 ## Linux (Fedora/RHEL/CentOS)
 
+These commands run as root and install into `/usr` and `/opt`. Use them to set up a disposable container or CI image,
+not a shared host.
+
 ```sh
 
 yum install -y centos-release-scl
@@ -26,8 +29,8 @@ yum install -y java-1.8.0-openjdk-devel
 
 # install build tools
 export CMAKE_VERSION=3.26.3
-curl -L https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION/cmake-$CMAKE_VERSION-linux-x86_64.tar.gz | tar xzvf - \
-    && yes | cp -fR cmake-$CMAKE_VERSION-linux-x86_64/* /usr
+curl -L https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION/cmake-$CMAKE_VERSION-linux-x86_64.tar.gz | tar xzvf - -C /opt \
+    && ln -sf /opt/cmake-$CMAKE_VERSION-linux-x86_64/bin/* /usr/local/bin/
 
 export NINJA_VERSION=1.11.1
 source scl_source enable devtoolset-8 \
@@ -45,7 +48,7 @@ yum install -y flex
 export BISON_VERSION=3.0.5
 curl -L https://ftp.gnu.org/gnu/bison/bison-$BISON_VERSION.tar.gz | tar xzvf - \
      && cd bison-$BISON_VERSION && ./configure --prefix=/usr && make all install \
-     && rm -rf bison-$BISON_VERSION && cd ..
+     && cd .. && rm -rf bison-$BISON_VERSION
 
 ```
 

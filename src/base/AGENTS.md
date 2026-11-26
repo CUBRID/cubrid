@@ -109,7 +109,7 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 
 | File | Description |
 |------|-------------|
-| `system_parameter.c/h` | **Largest file in base.** ~400 `PRM_ID_*` parameters, reads `cubrid.conf` |
+| `system_parameter.c/h` | **Largest file in base.** `PRM_ID_*` parameters, reads `cubrid.conf` |
 | `databases_file.c/h` | `databases.txt` parser and database registry |
 | `environment_variable.c/h` | `$CUBRID` path resolution and directory helpers |
 | `release_string.c/h` | Version info, disk/network/log compatibility checks |
@@ -144,7 +144,7 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 | `xml_parser.c/h` | XML parser wrapper around expat (used for LDML locale, timezone data) |
 | `util_func.c/h` | General utilities: hashing, filepath comparison, signal handling, string splitting |
 | `hide_password.cpp`, `hide_password.h` | Password hiding in SQL strings for logging |
-| `xserver_interface.h` | Server-mode-only function declarations (boot, locator, log, heap, btree, query) |
+| `xserver_interface.h` | `x*` server function declarations (boot, locator, log, heap, btree, query) for `SERVER_MODE` and `SA_MODE` |
 | `server_interface.h` | Server interface constants |
 
 ## Key Architecture Patterns
@@ -172,13 +172,13 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 | Add system parameter | `system_parameter.c/h` — add `PRM_ID_*`, update `prm_Def`, `PRM_LAST_ID` |
 | Fix charset/collation | `intl_support.c`, `language_support.c`, `uca_support.c` |
 | Fix timezone | `tz_support.c` |
-| Add perf counter | `perf_monitor.c` (legacy) or `perf.hpp` (modern) |
+| Add perf counter | `cubrid statdump` shows only `PSTAT_*` counters: add the ID to `PERF_STAT_ID` in `perf_monitor.h` and the entry at the same position in `pstat_Metadata[]` (`perf_monitor.c`). `perf_monitor.c` does not read `cubperf` (`perf.hpp`) statistics. |
 
 ## Conventions (base/-specific)
 
 ### Error Handling
 - `er_set()` always needs `ARG_FILE_LINE` as 2nd arg — macro expands to `__FILE__, __LINE__`
-- Severity ordering: `ER_FATAL_ERROR_SEVERITY` > `ER_ERROR_SEVERITY` > `ER_SYNTAX_ERROR_SEVERITY` > `ER_WARNING_SEVERITY` > `ER_NOTIFICATION_SEVERITY`
+- Severity enum (`er_severity` in `error_manager.h`): a lower value is more severe, from `ER_FATAL_ERROR_SEVERITY` (0) through `ER_ERROR_SEVERITY`, `ER_SYNTAX_ERROR_SEVERITY`, `ER_WARNING_SEVERITY` to `ER_NOTIFICATION_SEVERITY`. Test "error or worse" with `severity <= ER_ERROR_SEVERITY`
 - Check with `ASSERT_ERROR()` or `ASSERT_ERROR_AND_SET(error_code)` after operations that should set errors
 
 ### Lock-Free Rules

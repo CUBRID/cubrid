@@ -1,75 +1,53 @@
 # src/parser/ — SQL Parsing & Analysis
 
-Client-side only (`#if !defined(SERVER_MODE)`).
+Builds client-side only (`CS_MODE`/`SA_MODE`). `parse_tree.h`, `parser.h`, and `xasl_generation.h` raise `#error` in `SERVER_MODE`, so there is no `THREAD_ENTRY` and no server-only API here.
 
 ## Key Files
 
-| File | Size | Role |
-|------|------|------|
-| `csql_grammar.y` | 646KB | Bison grammar — all SQL syntax defined here |
-| `csql_lexer.l` | — | Flex lexer — tokenization |
-| `parse_tree.h` | — | `PT_NODE` definition, all `PT_*` enums, macros |
-| `parse_tree_cl.c` | — | Parse tree construction, `parser_create_parser()`, `parser_new_node()` |
-| `name_resolution.c` | — | Identifier → schema object resolution |
-| `semantic_check.c` | — | Type checking, validation, semantic analysis |
-| `type_checking.c` | — | Expression type inference, function signatures |
-| `xasl_generation.c` | — | PT_NODE tree → XASL_NODE tree conversion |
-| `view_transform.c` | — | View expansion and rewriting |
-| `compile.c` | — | Statement compilation orchestration |
-| `show_meta.c` | — | `SHOW` statement metadata |
-| `method_transform.c` | — | Method call transformation |
-| `double_byte_support.c` | — | Multi-byte character handling in lexer |
+| File | Role |
+|------|------|
+| `csql_grammar.y` | Bison grammar (`%glr-parser`) for all SQL syntax. Very large: use symbol search |
+| `csql_lexer.l` | Flex lexer: returns keyword tokens |
+| `keyword.c` | `keywords[]` (reserved/unreserved keyword table) and `functions[]` (function name → `PT_*` op for `parser_keyword_func ()`) |
+| `parse_tree.h` | `PT_NODE`, `PT_*` enums, macros |
+| `parse_tree.c` | `parser_create_parser ()`, `parser_free_parser ()`, `pt_append_string ()` |
+| `parse_tree_cl.c` | `parser_new_node ()`, `parser_append_node ()`, `parser_copy_tree ()`, `parser_walk_tree ()`, `parser_free_tree ()` |
+| `name_resolution.c` | Identifier → schema object resolution |
+| `semantic_check.c` | Semantic validation |
+| `type_checking.c` | Expression type inference, function signatures |
+| `view_transform.c` | View expansion; calls `mq_rewrite ()` (`src/optimizer/rewriter/`) |
+| `xasl_generation.c` | `PT_NODE` → `XASL_NODE`; `pt_to_regu_variable ()` maps `PT_*` ops to `T_*` opcodes |
+| `xasl_regu_alloc.cpp` | XASL node allocation; `regu_init ()` sets non-zero defaults |
+| `compile.c` | Statement compilation orchestration |
+| `show_meta.c` | `SHOW` statement metadata |
 
-## Pipeline (this module's portion)
+## Pipeline
 
 ```
-SQL text → csql_lexer.l → csql_grammar.y → PT_NODE tree
-  → name_resolution.c → semantic_check.c → type_checking.c
-  → xasl_generation.c → XASL_NODE (handed to query/ for execution)
+SQL text → csql_lexer.l → csql_grammar.y → PT_NODE
+  → name_resolution.c → semantic_check.c / type_checking.c → view_transform.c
+  → xasl_generation.c (+ src/optimizer/) → XASL_NODE
 ```
 
 ## Where to Look
 
 | Task | File |
 |------|------|
-| Add SQL keyword/syntax | `csql_grammar.y` (careful — 646KB, bison regen is slow) |
-| Add built-in function | `csql_grammar.y` → `type_checking.c` → `xasl_generation.c` → `query/` |
-| Fix name resolution | `name_resolution.c` |
-| Fix type mismatch | `type_checking.c` |
-| Fix view rewriting | `view_transform.c` |
-| Add SHOW variant | `show_meta.c` |
-
-## Core API
-
-```c
-PARSER_CONTEXT *parser = parser_create_parser ();
-PT_NODE *node = parser_new_node (parser, PT_SELECT);
-list = parser_append_node (new_node, list);
-copy = parser_copy_tree (parser, original);
-parser_walk_tree (parser, node, pre_func, pre_arg, post_func, post_arg);
-parser_free_tree (parser, tree);
-parser_free_parser (parser);
-```
-
-## PT_NODE Structure
-
-Union-based linked list. Key fields:
-- `node_type`: `PT_SELECT`, `PT_NAME`, `PT_SPEC`, `PT_EXPR`, `PT_VALUE`, etc.
-- `info`: Union — access via `node->info.select`, `node->info.name`, etc.
-- `next`: Sibling list pointer
-- `data_type`: Type info node
-- `line_number`, `column_number`: Source location
+| New reserved keyword | `%token` and rules in `csql_grammar.y`; a lexer rule in `csql_lexer.l`; an entry in `keywords[]` in `keyword.c` (third field nonzero = unreserved). An unreserved keyword must also be added to the `identifier` rule in the grammar |
+| New built-in function called as `name (args)` | A `PT_*` op in `parse_tree.h` (printed by `pt_show_binopcode ()` and the other `PT_*` switches in `parse_tree_cl.c`); `functions[]` in `keyword.c` and its case in `parser_keyword_func ()` in `csql_grammar.y`; `type_checking.c`; `xasl_generation.c`; then the query side ([src/query/AGENTS.md](../query/AGENTS.md) "Adding an arithmetic opcode") |
+| Name resolution | `name_resolution.c` |
+| Type mismatch | `type_checking.c` |
+| View rewriting | `view_transform.c` |
+| SHOW variant | `show_meta.c` |
 
 ## Conventions
 
-- Memory: `parser_alloc(parser, size)` — freed when parser is destroyed, never manually
-- String duplication: `pt_append_string()` or `parser_alloc` + copy
-- Tree walking: always use `parser_walk_tree()` with pre/post callbacks, not manual recursion
-- All identifier comparison: `intl_identifier_casecmp()` (case-insensitive)
+- Memory: `parser_alloc (parser, size)` lives as long as the parser context. Never free it by hand.
+- Walk trees with `parser_walk_tree ()` (pre/post callbacks).
+- Compare identifiers case-insensitively with the existing helpers: `intl_identifier_casecmp ()`, `pt_name_equal ()`, or `pt_str_compare (..., CASE_INSENSITIVE)`. Some sites compare with `CASE_SENSITIVE` on purpose; keep them.
+- `PT_NODE.info` is a union. Access only the member that matches `node_type`.
 
-## Gotchas
+## Grammar Gotchas
 
-- `csql_grammar.y` at 646KB is one of the largest bison grammars — edits need extreme care
-- Parser runs **client-side** — no `THREAD_ENTRY *` available, no server-side APIs
-- Bison shift/reduce conflicts: check `y.output` after grammar changes
-- `PT_NODE` unions: accessing wrong `info` member = undefined behavior
+- Bison runs at build time with `-r all` on a copy rewritten by `cmake/upgrade_bison_grammar.cmake`. The conflict report is `csql_grammar.output` in the CMake build directory, next to the generated `csql_grammar.c`.
+- The grammar is a GLR parser with no `%expect`, so it has conflicts on purpose. Compare the report before and after your change, and explain any new conflict.

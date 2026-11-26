@@ -1,78 +1,84 @@
 # src/transaction/ — MVCC, WAL, Locking, Recovery, Boot
 
-Server-side. Largest module by scope.
+Follow [src/AGENTS.md](../AGENTS.md) for build modes, error handling, CMake registration, and the storage and
+transaction change checklist. This file adds transaction-specific navigation and rules.
 
-## Key Files
+Before you add a recovery index (`LOG_RCVINDEX`, `RV_fun[]`), follow "Adding a recovery index" under "Storage & transaction changes" in
+[src/AGENTS.md](../AGENTS.md#cross-module-impact-checks). This file does not repeat it.
 
-| File | Role |
-|------|------|
-| `lock_manager.c` | Lock acquisition, release, escalation, deadlock detection |
-| `wait_for_graph.c` | Deadlock detection via wait-for graph |
-| `mvcc.c/h` | MVCC snapshot, visibility: `mvcc_satisfies_snapshot()` |
-| `log_append.cpp` | WAL log record writing |
-| `log_recovery.c` | Crash recovery: analysis, redo, undo phases (ARIES) |
-| `log_manager.c` | Log buffer management, checkpoints |
-| `log_page_buffer.c` | Log page I/O, archive management |
-| `log_record.hpp` | `LOG_RECORD_HEADER`, record types, LSN |
-| `log_comm.c` | Log communication (replication support) |
-| `log_compress.c` | Log record compression (LZ4) |
-| `boot_sr.c` | Server boot sequence, database creation |
-| `boot_cl.c` | Client-side boot, database connection |
-| `log_tran_table.c` | Transaction table management |
-| `transaction_sr.c` | Server-side transaction ops: commit, abort, savepoint |
-| `transaction_cl.c` | Client-side transaction control |
+## Build Modes
+
+Most files build only in `SERVER_MODE`/`SA_MODE`. A client subset also builds into `cubridcs` (`TRANSACTION_SOURCES` in
+`cs/CMakeLists.txt`): `boot_cl.c`, `client_credentials.cpp`, `flashback_cl.c`, `locator.c`, `locator_cl.c`,
+`lock_table.c`, `log_comm.c`, `log_compress.c`, `log_lsa.cpp`, `log_writer.c`, `transaction_cl.c`, and on UNIX
+`log_applier.c` and `log_applier_sql_log.c`. Of these, `flashback_cl.c`, `log_applier.c`, and `log_applier_sql_log.c`
+build only in `cubridcs`, and `boot_cl.c`, `locator_cl.c`, and `transaction_cl.c` also build in `cubridsa` but not in
+`cubrid`. Code in these files outside `SERVER_MODE`/`SA_MODE` guards must build in `CS_MODE`.
 
 ## Where to Look
 
-| Task | File |
-|------|------|
-| Fix deadlock | `lock_manager.c`, `wait_for_graph.c` |
-| Fix MVCC visibility | `mvcc.c` — `mvcc_satisfies_snapshot()` |
-| Fix WAL/logging | `log_append.cpp` (write), `log_recovery.c` (redo/undo) |
-| Fix crash recovery | `log_recovery.c` — ARIES: analysis → redo → undo |
-| Fix checkpoint | `log_manager.c` — `logpb_checkpoint()` |
-| Fix vacuum/GC | `src/query/vacuum.c` (NOT in this directory) |
-| Fix boot/startup | `boot_sr.c` (server), `boot_cl.c` (client) |
-| Fix commit/abort | `transaction_sr.c` |
+| Task | Start here |
+|------|------------|
+| Lock acquire, release, escalation | `lock_manager.c`: `lock_object()`, `lock_escalate_if_needed()` |
+| Deadlock detection | `lock_manager.c`: `lock_detect_local_deadlock()`, run by the daemon from `lock_deadlock_detect_daemon_init()` |
+| Lock modes and compatibility | `LOCK` in `lock_table.h`; `lock_Comp` and `lock_Conv` in `lock_table.c` |
+| MVCC visibility | `mvcc.c`: `mvcc_satisfies_snapshot()` |
+| Snapshot build, oldest visible MVCCID | `mvcc_table.cpp` (`mvcctable::build_mvcc_info()`, `mvcctable::compute_oldest_visible_mvccid()`), `mvcc_active_tran.cpp`; callers get a snapshot from `logtb_get_mvcc_snapshot()` (`log_tran_table.c`) |
+| Append a log record | Declared in `log_manager.h`, defined in `log_manager.c`: `log_append_undoredo_data*()`, `log_append_undo_data*()`, `log_append_redo_data*()`, `log_append_compensate()`. `log_append.cpp` is the prior-list layer under them (`prior_lsa_*`, LSA assignment) |
+| System operations | `log_manager.c`: `log_sysop_start()`, `log_sysop_commit()`, `log_sysop_abort()` |
+| Recovery index and redo/undo function table | `recovery.h` (`LOG_RCVINDEX`, `struct rvfun`), `recovery.c` (`RV_fun[]`) |
+| Crash recovery | `log_recovery.c`: `log_recovery()` calls `log_recovery_analysis()`, `log_recovery_redo()`, `log_recovery_undo()`; redo workers in `log_recovery_redo*.cpp` |
+| Log record types | `log_record.hpp` (`LOG_RECTYPE`, `LOG_RECORD_HEADER`); the log address type is in `log_lsa.hpp` |
+| Checkpoint | `log_page_buffer.c`: `logpb_checkpoint()`; daemon and trigger in `log_manager.c` (`log_checkpoint_execute()`) |
+| Log page I/O, archives | `log_page_buffer.c` |
+| Commit, abort | `log_manager.c`: `log_commit()`, `log_abort()`, `log_complete()`. `transaction_sr.c` holds the `xtran_*` request entry points and `tran_server_unilaterally_abort*()` |
+| Transaction table | `log_tran_table.c` (`logtb_*`) |
+| Object insert/update/delete from client requests | `locator_sr.c`: `xlocator_force()`, `locator_insert_force()`, `locator_update_force()`, `locator_delete_force()` |
+| Replication, HA log apply | `replication.c`, `log_applier.c` |
+| Vacuum | `src/query/vacuum.c`, `src/query/vacuum_oos.cpp` (outside this directory) |
+| Boot | `boot_sr.c` (`boot_restart_server()`, `xboot_initialize_server()`), `boot_cl.c` (client) |
 
-## MVCC Model
+`wait_for_graph.c/h` is compiled out in full (`#if defined(ENABLE_UNUSED_FUNCTION)`). Fix deadlock behavior in
+`lock_manager.c`.
 
-- Each row version has `insert_id` and `delete_id` (MVCC IDs)
-- `mvcc_satisfies_snapshot()` checks visibility against transaction's snapshot
-- Snapshot contains: lowest active MVCC ID, bit array of active transactions
-- Vacuum reclaims rows invisible to all active snapshots
+## MVCC
 
-## WAL Protocol (ARIES-based)
+- The row header is `MVCC_REC_HEADER` (`mvcc.h`): `mvcc_ins_id`, `mvcc_del_id`, and `prev_version_lsa`.
+- For snapshot contents, read `struct mvcc_snapshot` (`mvcc.h`). Visibility uses `lowest_active_mvccid`,
+  `highest_completed_mvccid`, and the active set `m_active_mvccs`.
+- `MVCCID` is 64-bit (`UINT64`, `storage_common.h`). It is not the transaction index: `tran_index` is a slot in the
+  transaction table.
+- Vacuum daemons run concurrently with transactions and reclaim versions that no snapshot can see.
 
-- **Write-ahead**: Log record written before data page flush
-- **Log records**: Identified by `LOG_LSN` (page + offset)
-- **Undo/Redo**: Each record has undo data, redo data, or both
-- **Recovery phases**: Analysis → Redo (from checkpoint) → Undo (losers)
-- **Compensation**: CLR records prevent repeated undo during nested recovery
+## WAL and Recovery
 
-## Lock Hierarchy
+- The log address type is `LOG_LSA` (`log_lsa.hpp`: `pageid` + `offset`).
+- A data page is flushed only after the log up to its page LSA is flushed. See
+  [buffer-io-durability.md](../storage/docs/buffer-io-durability.md) for the page-buffer side.
+- `LOG_DATA_ADDR` (`log_append.hpp`) names the target of a record: `vfid`, `pgptr`, and `offset`.
+- Rollback writes `LOG_COMPENSATE` records, so undo that repeats after a crash does not undo a change twice.
 
-```
-Database → Table (SCH-S/SCH-M/IX/IS/S/X) → Row (S/X)
-```
+## Locks
 
-- Intent locks (`IX`, `IS`) on table before row locks
-- Schema locks (`SCH-S`, `SCH-M`) for DDL
-- Deadlock detection runs periodically via wait-for graph
-- Lock escalation: many row locks → table lock
+- `LOCK` (`lock_table.h`) lists every mode, including `NULL_LOCK`, `BU_LOCK`, and `SIX_LOCK`. Its values index
+  `lock_Comp` and `lock_Conv`. Keep the enum order and both tables in step.
+- A class lock is taken on the class OID with `oid_Root_class_oid` as its class. An instance lock is taken on the
+  object OID with its class OID.
+- Plain MVCC reads take no row locks; they use the snapshot. MVCC heap insert, delete, and update take the transaction's
+  MVCCID self-lock (`logtb_ensure_mvccid_self_lock()`) before they stamp the record, and later writers wait on it.
+- `lock_escalate_if_needed()` replaces many instance locks with one class lock.
 
 ## Conventions
 
-- `THREAD_ENTRY *thread_p` first parameter everywhere
-- Transaction index (`tran_index`) identifies active transactions — not MVCC ID
-- Log records use `LOG_DATA_ADDR` to identify target page + offset
-- Boot functions prefixed `boot_` (client: `_cl`, server: `_sr`)
+- Server functions that use per-thread state (latches, locks, private heap, error context) take
+  `THREAD_ENTRY *thread_p` first. Pure helpers and client code do not; C++ code may take `cubthread::entry &`. Follow
+  the surrounding file.
+- Client boot code is in `boot_cl.c` and server boot code is in `boot_sr.c`. Function names carry no `_cl`/`_sr`
+  suffix. Server request handlers are named `xboot_*`.
 
 ## Gotchas
 
-- `lock_manager.c` and `log_recovery.c` are each ~15K+ lines
-- MVCC IDs are 64-bit, monotonically increasing — never reused
-- Vacuum is concurrent — runs as daemon, must handle races with active transactions
-- Recovery code must handle partially-written log pages (torn writes)
-- Boot sequence has strict ordering — server must initialize subsystems in correct order
-
+- `log_manager.c`, `locator_sr.c`, `lock_manager.c`, and `log_page_buffer.c` are very large. Use `rg` on function
+  names instead of reading them top to bottom.
+- `boot_restart_server()` and `xboot_initialize_server()` initialize subsystems in dependency order. Put a new
+  subsystem's initialization after everything it uses.

@@ -1,78 +1,41 @@
 # src/compat/ — Client API & DB_VALUE
 
-Public API layer — bridges client and server sides.
+The public `db_*` client API and the `DB_VALUE` container. Mode membership: see "Build-Mode Boundaries" in [src/AGENTS.md](../AGENTS.md).
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `db_macro.c` | `db_make_*()` functions — construct DB_VALUE from C types |
-| `db_value_printer.cpp` | DB_VALUE → string formatting |
-| `db_set.c` | Set/multiset/sequence DB_VALUE operations |
-| `db_obj.c` | Object-level API (find, create, put, get) |
-| `db_admin.c` | Database admin API (create, start, shutdown) |
-| `db_query.c` | Query execution API |
-| `db_vdb.c` | Virtual database (view) support API |
-| `db_date.c` | Date/time DB_VALUE operations |
-| `db_json.cpp` | JSON DB_VALUE support |
-| `db_elo.c` | LOB (External Large Object) API |
-| `dbi_compat.h` | Client-visible error codes (mirrors `error_code.h`) |
-| `dbtype_def.h` | `DB_VALUE` union definition, `DB_TYPE` enum |
-| `dbtype_function.h` | DB_VALUE accessor/mutator declarations |
-| `db_set_function.h` | Set operation function declarations |
+| `dbtype_def.h` | `struct db_value`, the `DB_TYPE` enum (`DB_TYPE_INTEGER`, `DB_TYPE_STRING`, ...), and per-type value typedefs (`DB_DATE`, `DB_NUMERIC`, `DB_JSON`, ...) |
+| `dbtype_function.h` | Public declarations of `db_make_*` / `db_get_*` and the other value functions |
+| `dbtype_function.i` | Definitions of `db_make_*` / `db_get_*`: inlined where `dbtype.h` includes the file; `dbtype_function.c` compiles the exported copies |
+| `db_macro.c` | `db_value_domain_init`, `db_value_put`, `db_value_clear`, and the `db_value_coerce` wrapper |
+| `db_vdb.c` | SQL statement API: `db_open_buffer`, `db_compile_statement`, `db_execute_statement`, and the recompile after `ER_QPROC_INVALID_XASLNODE` |
+| `db_value_printer.cpp` | `DB_VALUE` → string formatting |
+| `db_set.c` | Set/multiset/sequence operations |
+| `db_date.c`, `db_json.cpp`, `db_elo.c` | Date/time, JSON, and LOB values |
+| `dbi_compat.h` | Public client header (installed as `dbi.h`). It includes `error_code.h` and defines no `ER_*` macros |
 
 ## Where to Look
 
 | Task | File |
 |------|------|
-| Add DB_VALUE constructor | `db_macro.c` — follow `db_make_*()` pattern |
-| Fix type conversion | `db_macro.c`, `dbtype_def.h` |
-| Fix date/time value | `db_date.c` |
-| Fix JSON handling | `db_json.cpp` |
-| Fix LOB API | `db_elo.c` |
-| Fix set operations | `db_set.c`, `db_set_function.h` |
-| Add client-visible error | `dbi_compat.h` (must mirror `error_code.h`) |
+| Add a `db_make_*` / `db_get_*` function | `dbtype_function.i`: a `STATIC_INLINE ... __attribute__ ((ALWAYS_INLINE))` declaration in the `#if !defined (_NO_INLINE_DBTYPE_FUNCTION_)` block and the definition below it; plus an `extern` declaration in `dbtype_function.h`. Follow a neighbouring function |
+| Fix type conversion, CAST, or coercion | `src/object/object_domain.c` (`tp_value_coerce`, `tp_value_cast`, `tp_value_auto_cast`) and `src/object/object_domain_convert.cpp` |
+| Fix the client compile/execute path | `db_vdb.c` |
+| Add an error code | Only `src/base/error_code.h` and the message catalogs. Follow "Adding a new error code" in [src/AGENTS.md](../AGENTS.md) |
 
-## DB_VALUE Structure
+## DB_VALUE
 
 ```c
-/* Union-based value container — used EVERYWHERE */
-typedef struct db_value DB_VALUE;
-/* Key fields: */
-/*   db_type: DB_INT, DB_STRING, DB_FLOAT, DB_DATE, DB_JSON, etc. */
-/*   data: union of typed values */
-/*   need_clear: whether data needs deallocation */
-```
+struct db_value { DB_DOMAIN_INFO domain; DB_DATA data; need_clear_type need_clear; };
 
-## DB_VALUE Patterns
-
-```c
-/* Construction */
 db_make_int (&val, 42);
-db_make_string (&val, "hello");
-db_make_null (&val);
-
-/* Access */
+DB_TYPE t = DB_VALUE_DOMAIN_TYPE (&val);   /* compare with DB_TYPE_INTEGER, not DB_INT or DB_DATE */
 int i = db_get_int (&val);
-const char *s = db_get_string (&val);
-DB_TYPE t = DB_VALUE_DOMAIN_TYPE (&val);
-
-/* Cleanup */
-db_value_clear (&val);     /* Free internal data if need_clear is set */
-pr_clear_value (&val);     /* Alias used in server-side code */
+db_value_clear (&val);                     /* calls pr_clear_value () */
 ```
 
-## Conventions
-
-- Functions prefixed `db_` (public API), `pr_` (primitive, internal)
-- `db_make_*()` for construction, `db_get_*()` for access
-- Always `db_value_clear()` after done with non-trivial DB_VALUES (strings, sets, JSON)
-- `dbi_compat.h` and `error_code.h` must stay in sync — add errors to both
-
-## Gotchas
-
-- `DB_VALUE` is used on both client and server — but access patterns differ
-- `need_clear` flag: if set, `db_value_clear()` frees data; if not, data is borrowed
-- Some `db_make_*()` copy data, others reference — check per type
-- LOB values require special handling: external storage, not inline in DB_VALUE
-
+- `need_clear` set: `db_value_clear ()` frees `data`. Not set: the data is borrowed.
+- Constructors differ in ownership: `db_make_string ()` borrows the caller's buffer (`need_clear` false), `db_make_string_copy ()` copies it, and `db_make_json ()` takes an explicit `need_clear` argument. Check the constructor before you free the source.
+- Clear every value that may own memory (strings, sets, JSON, LOB locators) on all paths, including error returns.

@@ -1,46 +1,31 @@
-# src/monitor/ — Performance Statistics
+# src/monitor/ — Statistic Primitives (`cubmonitor`)
 
-Centralized performance-statistics collection and export. Provides statistic primitives (accumulator, gauge, max/min), per-transaction sheet tracking, a global registry for named statistics, and a server-only VACUUM overflow-page threshold monitor.
+C++ statistic primitives (accumulator, gauge, max/min, timers), per-transaction sheets, a `monitor` registry, and the server-only VACUUM overflow-page threshold monitor.
+
+## Read This First
+
+The `cubmonitor::monitor` registry (`get_global_monitor ()`, `register_statistics ()`, `register_to_monitor ()`) has no caller in the engine; only `unit_tests/monitor/` uses it. A statistic registered there is never fetched or shown by `cubrid statdump`.
+
+- To add a counter that `cubrid statdump` shows, use `src/base/perf_monitor.h` / `perf_monitor.c`: a `PSTAT_*` id in `PERF_STAT_ID` (before `PSTAT_COUNT`) and the entry at the same position in `pstat_Metadata[]`. `perfmon_initialize ()` asserts that each entry's position matches its id. See [src/base/AGENTS.md](../base/AGENTS.md).
+- Use the primitives in this directory as building blocks. Example: `src/base/lockfree_hashmap.hpp` uses `cubmonitor::atomic_counter_timer_stat` from `monitor_collect.hpp`.
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `monitor_definition.hpp` | Core types: `statistic_value` (uint64), clock aliases, `fetch_mode` constants |
-| `monitor_statistic.cpp/.hpp` | Statistic primitives and templates: `primitive`, `atomic_primitive`, `accumulator`, `gauge`, `max`/`min` |
-| `monitor_transaction.cpp/.hpp` | `transaction_sheet_manager` (per-transaction sheet lifecycle) and `transaction_statistic<S>` wrapper |
-| `monitor_collect.cpp/.hpp` | Grouped-statistics helpers: `timer_statistic`, `counter_timer_statistic`, name-builder utilities |
-| `monitor_registration.cpp/.hpp` | Global `monitor` registry: `register_statistics()`, `fetch_global_statistics()`, `get_global_monitor()` |
-| `monitor_vacuum_ovfp_threshold.cpp/.hpp` | Server-only VACUUM overflow-page threshold monitor (`ovfp_threshold_mgr`) |
-
-## Where to Look
-
-| Task | File |
-|------|------|
-| Add a new statistic | Create statistic object → `monitor_registration.hpp` (`register_statistics()`) |
-| Fix per-transaction stats | `monitor_transaction.cpp` (`transaction_sheet_manager`) |
-| Fix statistic fetch/export | `monitor_registration.cpp` (fetch loop) |
-| Fix VACUUM OVFP monitoring | `monitor_vacuum_ovfp_threshold.cpp` (server-only) |
-
-## Public API
-
-- `get_global_monitor()` — returns the global `monitor` instance
-- `monitor::register_statistics(count, fetch_function, names)` — register named statistics
-- `monitor::fetch_global_statistics(buf)` / `fetch_transaction_statistics(buf)` — snapshot all statistics
-- `monitor::allocate_statistics_buffer()` — allocate buffer sized for all registered statistics
-- `transaction_sheet_manager::start_watch()` / `end_watch()` / `get_sheet()` — per-transaction sheet lifecycle
+| `monitor_definition.hpp` | `statistic_value` (uint64), clock aliases, `fetch_mode` (`FETCH_GLOBAL`, `FETCH_TRANSACTION_SHEET`) |
+| `monitor_statistic.cpp/.hpp` | `primitive`, `atomic_primitive`, and `accumulator_`/`gauge_`/`max_`/`min_statistic` (plain and `_atomic_` variants) |
+| `monitor_collect.cpp/.hpp` | Grouped statistics: `timer_statistic`, `counter_timer_statistic`, `atomic_counter_timer_stat` |
+| `monitor_transaction.cpp/.hpp` | `transaction_sheet_manager`, `transaction_statistic<S>` |
+| `monitor_registration.cpp/.hpp` | `monitor` registry (unused by the engine; see above) |
+| `monitor_vacuum_ovfp_threshold.cpp/.hpp` | `ovfp_threshold_mgr`, used by `src/query/vacuum.c` |
 
 ## Build Integration
 
-- **Core files** (`monitor_collect`, `monitor_registration`, `monitor_statistic`, `monitor_transaction`): compiled into Server and SA builds (not part of the CS build; `cs/CMakeLists.txt` does not list these sources)
-- **`monitor_vacuum_ovfp_threshold.*`**: server-only component, included only in the Server build (guarded with `#if defined(SERVER_MODE)`)
+- `monitor_collect`, `monitor_registration`, `monitor_statistic`, `monitor_transaction`: server and SA libraries (`cubrid/`, `sa/CMakeLists.txt`), not CS.
+- `monitor_vacuum_ovfp_threshold`: server only (`cubrid/CMakeLists.txt`), guarded with `SERVER_MODE`.
 
 ## Conventions
 
-- Namespace: `cubmonitor`
-- Types/functions: `snake_case` (e.g., `transaction_sheet_manager`, `register_statistics`)
-- Member fields: `m_` prefix (e.g., `m_all_names`, `m_total_statistics_count`)
-- `statistic_value` is the universal wire type (uint64)
-- `fetch_mode`: `FETCH_GLOBAL` or `FETCH_TRANSACTION_SHEET`
-- `fetch_function` signature: `std::function<void(statistic_value*, fetch_mode)>`
-
+- Namespace `cubmonitor`; `snake_case` names; member fields `m_`.
+- `fetch_function` signature: `std::function<void (statistic_value *, fetch_mode)>`.
