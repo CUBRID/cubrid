@@ -180,7 +180,7 @@ au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE
   int error = NO_ERROR;
   int exists;
   MOP user;
-  bool has_password  = false;
+  bool has_password = false;
   const char *tmp = NULL;
 
   if (name != NULL && DB_IS_STRING (name) && !DB_IS_NULL (name) && ((tmp = db_get_string (name)) != NULL))
@@ -193,13 +193,13 @@ au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE
 	  return;
 	}
 
-      has_password  = (password != NULL && DB_IS_STRING (password) && !DB_IS_NULL (password)
-		       && (tmp = db_get_string (password)));
+      has_password = (password != NULL && DB_IS_STRING (password) && !DB_IS_NULL (password)
+		      && (tmp = db_get_string (password)));
       /*
        * although au_set_password_encrypt will check this, check it out here before
        * we bother creating the user object
        */
-      if (has_password  && strlen (tmp) > AU_MAX_PASSWORD_CHARS)
+      if (has_password && strlen (tmp) > AU_MAX_PASSWORD_CHARS)
 	{
 	  error = ER_AU_PASSWORD_OVERFLOW;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -209,7 +209,7 @@ au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE
        * check the complexity policy before creating the user object too: a method call is not rolled back as a
        * statement, so a user created here and refused its password later would stay without a password
        */
-      else if (has_password  && prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY)
+      else if (has_password && prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY)
 	       && (error = au_check_password_policy (db_get_string (name), tmp)) != NO_ERROR)
 	{
 	  db_make_error (returnval, error);
