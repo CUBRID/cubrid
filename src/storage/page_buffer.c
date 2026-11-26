@@ -858,6 +858,10 @@ struct pgbuf_buffer_pool
 
   PGBUF_DISCARD_REDO_BOUND discard_redo_bound;
   PGBUF_RV_UNRESERVED_SECTORS rv_unreserved_sectors;
+
+  /* true between pgbuf_initialize_mutexes and pgbuf_finalize_mutexes; pgbuf_finalize may run on a partially
+   * initialized pool and may run twice, so it destroys the mutexes above only while this is true. */
+  bool is_mutex_initialized;
 };
 
 /* victim candidate list */
@@ -1128,6 +1132,8 @@ static int pgbuf_initialize_lock_table (void);
 static int pgbuf_initialize_lru_list (void);
 static int pgbuf_initialize_aout_list (void);
 static int pgbuf_initialize_invalid_list (void);
+static void pgbuf_initialize_mutexes (void);
+static void pgbuf_finalize_mutexes (void);
 static int pgbuf_initialize_page_quota_parameters (void);
 static int pgbuf_initialize_page_quota (void);
 static int pgbuf_initialize_page_monitor (void);
@@ -1671,7 +1677,7 @@ pgbuf_initialize (void)
   memset (&pgbuf_Pool.show_status_snapshot, 0, sizeof (PGBUF_STATUS_SNAPSHOT));
 
 #if defined (SERVER_MODE)
-  memset (&pgbuf_Pool.direct_victims, 0, sizeof (PGBUF_VICTIM_CANDIDATE_LIST));
+  memset (&pgbuf_Pool.direct_victims, 0, sizeof (pgbuf_Pool.direct_victims));
 #endif
 
   /* Initialize monitor - C++ members need special handling */
@@ -1688,9 +1694,6 @@ pgbuf_initialize (void)
   pgbuf_Pool.thrd_holder_info = NULL;
   pgbuf_Pool.thrd_reserved_holder = NULL;
 
-#if defined(SERVER_MODE)
-  pgbuf_Pool.free_holder_set_mutex = PTHREAD_MUTEX_INITIALIZER;
-#endif
   pgbuf_Pool.free_holder_set = NULL;
   pgbuf_Pool.free_index = 0;
 
@@ -1706,9 +1709,9 @@ pgbuf_initialize (void)
   pgbuf_Pool.big_private_lrus_with_victims = NULL;
   pgbuf_Pool.shared_lrus_with_victims = NULL;
 
-#if defined (SERVER_MODE)
-  pgbuf_Pool.show_status_mutex = PTHREAD_MUTEX_INITIALIZER;
-#endif
+  /* after the memsets above, which clear the lists holding invalid_mutex and Aout_mutex, and before the first
+   * goto error, so that every path into pgbuf_finalize sees these mutexes initialized exactly once */
+  pgbuf_initialize_mutexes ();
 
   pgbuf_Pool.num_buffers = prm_get_integer_value (PRM_ID_PB_NBUFFERS);
   if (pgbuf_Pool.num_buffers < PGBUF_MINIMUM_BUFFERS)
@@ -1891,11 +1894,6 @@ pgbuf_initialize (void)
       goto error;
     }
 
-#if defined(SERVER_MODE)
-  pthread_mutex_init (&pgbuf_Pool.show_status_mutex, NULL);
-#endif
-
-  pthread_mutex_init (&pgbuf_Pool.discard_redo_bound.mutex, NULL);
   {
     int iv_idx;
 
@@ -1908,7 +1906,6 @@ pgbuf_initialize (void)
       }
   }
 
-  pthread_mutex_init (&pgbuf_Pool.rv_unreserved_sectors.mutex, NULL);
   pgbuf_Pool.rv_unreserved_sectors.sectors = NULL;
   pgbuf_Pool.rv_unreserved_sectors.count = 0;
   pgbuf_Pool.rv_unreserved_sectors.capacity = 0;
@@ -1984,9 +1981,6 @@ pgbuf_finalize (void)
       free_and_init (pgbuf_Pool.buf_LRU_list);
     }
 
-  /* final task for invalid BCB list */
-  pthread_mutex_destroy (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
-
   /* final task for thrd_holder_info */
   if (pgbuf_Pool.thrd_holder_info != NULL)
     {
@@ -1999,7 +1993,6 @@ pgbuf_finalize (void)
     }
 
   /* final task for free holder set */
-  pthread_mutex_destroy (&pgbuf_Pool.free_holder_set_mutex);
   while (pgbuf_Pool.free_holder_set != NULL)
     {
       holder_set = pgbuf_Pool.free_holder_set;
@@ -2027,8 +2020,6 @@ pgbuf_finalize (void)
 
       pgbuf_Pool.buf_AOUT_list.num_hashes = 0;
     }
-
-  pthread_mutex_destroy (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
 
   pgbuf_Pool.buf_AOUT_list.aout_buf_ht = NULL;
   pgbuf_Pool.buf_AOUT_list.Aout_bottom = NULL;
@@ -2104,19 +2095,14 @@ pgbuf_finalize (void)
       pgbuf_Pool.shared_lrus_with_victims = NULL;
     }
 
-#if defined(SERVER_MODE)
-  pthread_mutex_destroy (&pgbuf_Pool.show_status_mutex);
-#endif
-
-  pthread_mutex_destroy (&pgbuf_Pool.discard_redo_bound.mutex);
-
   if (pgbuf_Pool.rv_unreserved_sectors.sectors != NULL)
     {
       free_and_init (pgbuf_Pool.rv_unreserved_sectors.sectors);
     }
   pgbuf_Pool.rv_unreserved_sectors.count = 0;
   pgbuf_Pool.rv_unreserved_sectors.capacity = 0;
-  pthread_mutex_destroy (&pgbuf_Pool.rv_unreserved_sectors.mutex);
+
+  pgbuf_finalize_mutexes ();
 
   thread_clear_all_holder_anchor ();
 }
@@ -6495,8 +6481,6 @@ pgbuf_initialize_aout_list (void)
   list->bufarray = NULL;
   list->aout_buf_ht = NULL;
 
-  pthread_mutex_init (&list->Aout_mutex, NULL);
-
   if (aout_ratio <= 0)
     {
       /* not using Aout list */
@@ -6571,10 +6555,59 @@ error_return:
       free_and_init (list->aout_buf_ht);
     }
 
-  pthread_mutex_destroy (&list->Aout_mutex);
-
   return ER_FAILED;
 #undef PGBUF_LIMIT_AOUT_BUFFERS
+}
+
+/*
+ * pgbuf_initialize_mutexes () - Initialize the mutexes of the buffer pool that are not part of an allocated array
+ *   return: void
+ *
+ * Note: The mutexes of the hash table, BCB and LRU arrays are initialized right after each array is allocated and
+ *       are destroyed only for an allocated array, so they are not here.
+ */
+static void
+pgbuf_initialize_mutexes (void)
+{
+  assert (!pgbuf_Pool.is_mutex_initialized);
+
+#if defined(SERVER_MODE)
+  pthread_mutex_init (&pgbuf_Pool.buf_invalid_list.invalid_mutex, NULL);
+  pthread_mutex_init (&pgbuf_Pool.buf_AOUT_list.Aout_mutex, NULL);
+  pthread_mutex_init (&pgbuf_Pool.free_holder_set_mutex, NULL);
+  pthread_mutex_init (&pgbuf_Pool.show_status_mutex, NULL);
+#endif /* SERVER_MODE */
+  pthread_mutex_init (&pgbuf_Pool.discard_redo_bound.mutex, NULL);
+  pthread_mutex_init (&pgbuf_Pool.rv_unreserved_sectors.mutex, NULL);
+
+  pgbuf_Pool.is_mutex_initialized = true;
+}
+
+/*
+ * pgbuf_finalize_mutexes () - Destroy the mutexes initialized by pgbuf_initialize_mutexes
+ *   return: void
+ *
+ * Note: Does nothing if they are not initialized: pgbuf_finalize also runs when pgbuf_initialize was never called,
+ *       and runs again when the caller of a failed pgbuf_initialize finalizes the buffer pool.
+ */
+static void
+pgbuf_finalize_mutexes (void)
+{
+  if (!pgbuf_Pool.is_mutex_initialized)
+    {
+      return;
+    }
+
+#if defined(SERVER_MODE)
+  pthread_mutex_destroy (&pgbuf_Pool.buf_invalid_list.invalid_mutex);
+  pthread_mutex_destroy (&pgbuf_Pool.buf_AOUT_list.Aout_mutex);
+  pthread_mutex_destroy (&pgbuf_Pool.free_holder_set_mutex);
+  pthread_mutex_destroy (&pgbuf_Pool.show_status_mutex);
+#endif /* SERVER_MODE */
+  pthread_mutex_destroy (&pgbuf_Pool.discard_redo_bound.mutex);
+  pthread_mutex_destroy (&pgbuf_Pool.rv_unreserved_sectors.mutex);
+
+  pgbuf_Pool.is_mutex_initialized = false;
 }
 
 /*
@@ -6585,7 +6618,6 @@ static int
 pgbuf_initialize_invalid_list (void)
 {
   /* initialize the invalid BCB list */
-  pthread_mutex_init (&pgbuf_Pool.buf_invalid_list.invalid_mutex, NULL);
   pgbuf_Pool.buf_invalid_list.invalid_top = PGBUF_FIND_BCB_PTR (0);
   pgbuf_Pool.buf_invalid_list.invalid_cnt = pgbuf_Pool.num_buffers;
 
@@ -6663,7 +6695,6 @@ pgbuf_initialize_thrd_holder (void)
     }
 
   /* phase 3: initialize free BCB holder list shared by all threads */
-  pthread_mutex_init (&pgbuf_Pool.free_holder_set_mutex, NULL);
   pgbuf_Pool.free_holder_set = NULL;
   pgbuf_Pool.free_index = -1;	/* -1 means that there is no free holder entry */
 
@@ -14939,14 +14970,20 @@ pgbuf_initialize_page_quota (void)
       goto exit;
     }
 
-  quota->private_lru_session_cnt =
-    (int *) malloc (PGBUF_PRIVATE_LRU_COUNT * sizeof (quota->private_lru_session_cnt[0]));
-  if (quota->private_lru_session_cnt == NULL)
+  /* no array without private lists (SA_MODE, or pb_num_private_chains = 0): every user checks the private count
+   * first, and malloc (0) may return NULL */
+  quota->private_lru_session_cnt = NULL;
+  if (PGBUF_PRIVATE_LRU_COUNT > 0)
     {
-      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-	      1, (PGBUF_TOTAL_LRU_COUNT * sizeof (quota->private_lru_session_cnt[0])));
-      goto exit;
+      quota->private_lru_session_cnt =
+	(int *) malloc (PGBUF_PRIVATE_LRU_COUNT * sizeof (quota->private_lru_session_cnt[0]));
+      if (quota->private_lru_session_cnt == NULL)
+	{
+	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, (PGBUF_PRIVATE_LRU_COUNT * sizeof (quota->private_lru_session_cnt[0])));
+	  goto exit;
+	}
     }
 
   /* initialize the quota data for each LRU */
