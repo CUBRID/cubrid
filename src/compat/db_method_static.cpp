@@ -177,7 +177,7 @@ void db_install_static_methods ()
 static void
 au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE *password)
 {
-  int error;
+  int error = NO_ERROR;
   int exists;
   MOP user;
   bool has_password  = false;
