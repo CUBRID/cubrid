@@ -301,7 +301,8 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	}
       else
 	{
-	  log_sysop_abort (thread_p);
+	  /* the operation's undo may erase heap stamps */
+	  log_sysop_abort_and_defer_wake (thread_p, topop_lsa);
 	  state = TRAN_UNACTIVE_ABORTED;
 	}
       if (drop_transient_class)

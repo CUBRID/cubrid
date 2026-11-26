@@ -34,6 +34,7 @@
 #include "transaction_cl.h"
 #include "virtual_object.h"
 #include "schema_system_catalog.hpp" /* sm_is_system_class () */
+#include "sp_context_rules.hpp"
 
 #define UNIQUE_SAVEPOINT_CHANGE_OWNER_WITH_RENAME "cHANGEoWNERwITHrENAME"
 #define IS_CATALOG_CLASS(name) sm_is_system_class (std::string_view (name))
@@ -380,6 +381,15 @@ fetch_class (MOP op, MOP *return_mop, SM_CLASS **return_class, AU_FETCHMODE fetc
   if (op == NULL)
     {
       return ER_FAILED;
+    }
+
+  if ((fetchmode == AU_FETCH_WRITE || fetchmode == AU_FETCH_UPDATE) && sp_In_sql_depth > 0)
+    {
+      error = sp_check_object_write (op);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   classmop = NULL;
@@ -791,6 +801,15 @@ fetch_instance (MOP op, MOBJ *obj_ptr, AU_FETCHMODE fetchmode, LC_FETCH_VERSION_
       error = ER_OBJ_INVALID_TEMP_OBJECT;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       return error;
+    }
+
+  if ((fetchmode == AU_FETCH_WRITE || fetchmode == AU_FETCH_UPDATE) && sp_In_sql_depth > 0)
+    {
+      error = sp_check_object_write (op);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   /* DO NOT PUT ANY RETURNS FROM HERE UNTIL THE AU_RESTORE */

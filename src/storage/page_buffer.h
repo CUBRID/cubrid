@@ -428,7 +428,7 @@ extern void pgbuf_force_to_check_for_interrupts (void);
 extern bool pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p);
 extern int pgbuf_force_latch_wait (THREAD_ENTRY * thread_p);
 extern void pgbuf_unfix_all (THREAD_ENTRY * thread_p);
-extern void pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count);
+extern int pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count);
 extern void pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern bool pgbuf_is_lsa_temporary (PAGE_PTR pgptr);
@@ -493,6 +493,8 @@ extern int pgbuf_rv_init_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 /* what pgbuf_dealloc_page does with the contents; also the offset of its RVPGBUF_DEALLOC record */
 #define PGBUF_DEALLOC_KEEP_CONTENTS	0	/* the page may come back to life with its contents */
 #define PGBUF_DEALLOC_CLEAR_CONTENTS	1	/* the deallocation is final: clear the body and the tde bits */
+#define PGBUF_DEALLOC_SAVE_CONTENTS	2	/* the same system operation reuses the page at once: log the body, so that
+						 * the page comes back to life with it */
 
 extern void pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc, int contents);
 extern int pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

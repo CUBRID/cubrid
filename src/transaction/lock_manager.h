@@ -50,7 +50,8 @@ enum
   LK_NOTGRANTED_DUE_ERROR = 5,
   LK_GRANTED_PUSHINSET_LOCKONE = 6,
   LK_GRANTED_PUSHINSET_RELOCKALL = 7,
-  LK_NOTGRANTED_HELD_BY_WRITERS = 8	/* by lock_object_ahead_of_waiters (), locator_lock_object_unless_ours () */
+  LK_NOTGRANTED_HELD_BY_WRITERS = 8,	/* by lock_object_ahead_of_waiters (), locator_lock_object_unless_ours () */
+  LK_NOTGRANTED_DUE_RECHECK = 9	/* lock_wait_transaction_mvccid () only: read the stamp again */
 };
 
 enum
@@ -68,6 +69,35 @@ enum
 
 enum
 { LK_UNCOND_LOCK, LK_COND_LOCK };
+
+/* the row a self-lock wait is about, for the lock wait diagnostics: the row whose stamp named the owner */
+typedef struct lk_wait_target LK_WAIT_TARGET;
+struct lk_wait_target
+{
+  OID oid;
+  OID class_oid;
+  LOCK mode;			/* the lock the statement asks for on that row */
+};
+
+/* what a self-lock waiter saw: the owner a stamp named, the wake generation read with that stamp, and the row it was
+ * on */
+typedef struct lk_stamp_seen LK_STAMP_SEEN;
+struct lk_stamp_seen
+{
+  MVCCID owner;			/* the MVCCID to wait out, or MVCCID_NULL */
+  UINT64 wake_gen;		/* lock_get_tran_wake_generation (), read as that function says */
+  LK_WAIT_TARGET target;
+};
+
+/* the row a self-lock waiter holds X while it waits: the owner may be handed it (lock_wait_transaction_mvccid ()) */
+typedef struct lk_held_row LK_HELD_ROW;
+struct lk_held_row
+{
+  const OID *oid;
+  const OID *class_oid;
+  bool transient;		/* the row lock request was counted transient */
+  bool lost;			/* out: handed to the owner and not had back */
+};
 
 typedef enum
 {
@@ -98,7 +128,8 @@ struct lk_entry
   int ngranules;		/* number of finer granules */
   int bind_index_in_tran;
   XASL_ID xasl_id;
-  int transient_count;		/* requests on this entry that the statement gives up before commit */
+  int transient_count;		/* requests on this entry the scope at transient_scope gives up when it ends */
+  int transient_scope;		/* depth of the statement scope that counted them, 0 when none did */
   bool shared_requested;	/* a request on this entry asked for S: the holder read the object and decided */
   LOCK escalated_from;		/* class mode before this statement's escalation, to lower back to; else NULL_LOCK */
 #else				/* not SERVER_MODE */
@@ -237,12 +268,17 @@ extern void lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * o
 extern bool lock_transient_scope_is_outermost (THREAD_ENTRY * thread_p);
 extern bool lock_transient_scope_start (THREAD_ENTRY * thread_p);
 extern void lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release);
-extern void lock_release_transient_object_locks (THREAD_ENTRY * thread_p);
-extern void lock_forget_transient_object_locks (THREAD_ENTRY * thread_p);
 extern int lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int cond_flag);
 extern void lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
 extern int lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
 extern bool lock_is_transaction_mvccid_held (THREAD_ENTRY * thread_p, MVCCID mvccid);
+extern UINT64 lock_get_tran_wake_generation (void);
+extern int lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen, LK_HELD_ROW * held);
+extern void lock_reset_request_state (THREAD_ENTRY * thread_p);
+extern void lock_deferred_wake_mark (THREAD_ENTRY * thread_p, int tran_index);
+extern void lock_deferred_wake_clear (THREAD_ENTRY * thread_p, int tran_index);
+extern void lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p);
+extern void lock_deferred_wake_on_request_end (THREAD_ENTRY * thread_p);
 extern bool lock_has_xlock_or_self_lock (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid);
 extern int lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * superclass_oid, LOCK lock,
 			  int cond_flag);

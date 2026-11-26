@@ -271,7 +271,7 @@ static PT_NODE *pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, v
 static PT_NODE *pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list);
 static PT_NODE *pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_list,
 					    PT_NODE * select_list);
-static PT_NODE *pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list);
+static PT_NODE *pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list, PT_NODE * select_list);
 static PT_NODE *pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_filter_index_expr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
@@ -1174,6 +1174,17 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
   if (arg1->node_type == PT_EXPR && arg1->info.expr.op == PT_CAST)
     {
       /* arg1 is a cast, so arg1.type_enum is not yet set; pull type from expression's cast type */
+      if (arg1->info.expr.cast_type == NULL)
+	{
+	  /* arg1 is a COLLATE modifier whose type could not be resolved (e.g. COLLATE on a non-string value).
+	   * Type checking does not stop at that error inside a collection constructor or an IN list, so the outer
+	   * CAST still comes here; the error is already set. */
+	  if (!pt_has_error (parser))
+	    {
+	      PT_INTERNAL_ERROR (parser, "null cast type");
+	    }
+	  return false;
+	}
       arg_type = arg1->info.expr.cast_type->type_enum;
     }
   else
@@ -11614,6 +11625,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (node->info.method_call.call_or_expr == PT_IS_MTHD_EXPR)
 	{
 	  pt_check_method (parser, node);
+	  if (top_node != NULL)
+	    {
+	      /* a statement that calls a procedure in an expression; a view whose query does carries this up to the
+	       * statements that read it */
+	      top_node->flag.has_sp_call = 1;
+	    }
 	}
       else if (node->info.method_call.call_or_expr == PT_IS_CALL_STMT)
 	{
@@ -12831,6 +12848,10 @@ pt_bind_remote_dml_subq (PARSER_CONTEXT * parser, PT_NODE * subq, SEMANTIC_CHK_I
 	}
     }
 
+  if (subq != NULL && subq->flag.has_sp_call && saved_top != NULL)
+    {
+      saved_top->flag.has_sp_call = 1;
+    }
   sc_info_ptr->top_node = saved_top;
 
   return pt_has_error (parser) ? NULL : subq;
@@ -17456,14 +17477,16 @@ pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * s
  *   return: new list, after filtering sort specs
  *   parser(in): parser context
  *   list(in): spec list
+ *   select_list(in): statement's select list, for PT_VALUE lookup
  * Note:
  *  This call remove useless sort specs like NULL and constant expressions
- *  (e.g.: order by null, order by 1 + 5, etc)
+ *  (e.g.: order by null, order by 1 + 5, etc), and the position of a constant
+ *  or a constant expression in the select list (e.g.: select 7, ... over (order by 1))
  */
 static PT_NODE *
-pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list)
+pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list, PT_NODE * select_list)
 {
-  PT_NODE *item, *expr, *save_next;
+  PT_NODE *item, *expr, *col, *save_next;
 
   /* check nulls */
   if (parser == NULL)
@@ -17501,6 +17524,13 @@ pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list)
       else if (expr->node_type == PT_EXPR && pt_is_const_expr_node (expr))
 	{
 	  /* order by constant which is not place holder, get rid of it */
+	  parser_free_tree (parser, item);
+	}
+      else if (expr->node_type == PT_VALUE && expr->type_enum == PT_TYPE_INTEGER
+	       && (col = pt_get_node_from_list (select_list, expr->info.value.data_value.i - 1)) != NULL
+	       && pt_is_const_expr_node (col))
+	{
+	  /* place holder of a constant in the select list (e.g. select 7, ... or select -7, ...), get rid of it */
 	  parser_free_tree (parser, item);
 	}
       else
@@ -17590,13 +17620,14 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func, void *arg, 
     }
 
   /* remove NULL specs */
+  select_list = query->info.query.q.select.list;
   func->info.function.analytic.partition_by =
-    pt_remove_unusable_sort_specs (parser, func->info.function.analytic.partition_by);
-  func->info.function.analytic.order_by = pt_remove_unusable_sort_specs (parser, func->info.function.analytic.order_by);
+    pt_remove_unusable_sort_specs (parser, func->info.function.analytic.partition_by, select_list);
+  func->info.function.analytic.order_by =
+    pt_remove_unusable_sort_specs (parser, func->info.function.analytic.order_by, select_list);
 
   partition_by = func->info.function.analytic.partition_by;
   order_by = func->info.function.analytic.order_by;
-  select_list = query->info.query.q.select.list;
 
   /* order_by sort direction has priority over partition_by direction */
   if (order_by != NULL && partition_by != NULL)

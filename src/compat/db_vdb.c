@@ -61,6 +61,7 @@
 #include "util_func.h"
 #include "xasl.h"
 #include "query_cl.h"
+#include "sp_context_rules.hpp"
 
 #define BUF_SIZE 1024
 
@@ -108,6 +109,8 @@ static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, i
 static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list);
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static void db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
+static int db_do_statement_with_savepoint (PARSER_CONTEXT * parser, PT_NODE * statement,
+					   int (*do_func) (PARSER_CONTEXT *, PT_NODE *));
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
 							DB_QUERY_RESULT ** result);
 static int do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -1668,6 +1671,7 @@ db_compile_statement_local (DB_SESSION * session)
   statement = session->statements[stmt_ndx];
   statement->flag.use_plan_cache = 0;
   parser->flag.needs_bound_hostvar = 0;
+  parser->flag.regu_has_sp_call = 0;
   statement->flag.use_query_cache = 0;
 
   statement->flag.is_system_generated_stmt = parser->flag.is_system_generated_stmt;
@@ -3201,6 +3205,42 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 }
 
 /*
+ * db_do_statement_with_savepoint () - run a statement, inside the statement savepoint when
+ *				      sp_statement_needs_savepoint () says so
+ *   return: error code
+ *   parser(in): parser context
+ *   statement(in): the statement
+ *   do_func(in): do_statement () or do_execute_statement ()
+ */
+static int
+db_do_statement_with_savepoint (PARSER_CONTEXT * parser, PT_NODE * statement,
+				int (*do_func) (PARSER_CONTEXT *, PT_NODE *))
+{
+  int err;
+
+  if (!sp_statement_needs_savepoint (statement))
+    {
+      return do_func (parser, statement);
+    }
+
+  err = tran_system_savepoint (SP_STATEMENT_SAVEPOINT_NAME);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  sp_statement_savepoint_guard savepoint_guard;
+
+  err = do_func (parser, statement);
+  if (err < NO_ERROR && err != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (SP_STATEMENT_SAVEPOINT_NAME);
+    }
+
+  return err;
+}
+
+/*
  * db_mark_set_operations_stay_queries() - mark the set operations a statement typed again with its bound values is made
  *					    of, to fold into an empty operand instead of a value
  *   return: void
@@ -3245,6 +3285,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   DB_VALUE *val;
   int err = NO_ERROR;
   int server_info_bits;
+  int stmt_type;
 
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   DB_CLASS_MODIFICATION_STATUS cls_status = DB_CLASS_NOT_MODIFIED;
@@ -3336,6 +3377,16 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 
   /* forget about any previous compilation errors, if any */
   pt_reset_error (parser);
+
+  stmt_type = db_get_statement_type (session, stmt_ndx + 1);
+  if (sp_stmt_category_of (statement, (PT_NODE_TYPE) stmt_type) == SP_STMT_TCL)
+    {
+      err = sp_check_statement_allowed (SP_STMT_TCL, stmt_type);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+    }
 
   /* get sys_date, sys_time, sys_timestamp, sys_datetime values from the server */
   server_info_bits = 0;		/* init */
@@ -3551,7 +3602,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	}
 
       /* now, execute the statement by calling do_execute_statement() */
-      err = do_execute_statement (parser, statement);
+      err = db_do_statement_with_savepoint (parser, statement, do_execute_statement);
       if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE
 	    || err == ER_QPROC_RESULT_CACHE_INVALID) && session->stage[stmt_ndx] == StatementPreparedStage)
 	  || (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && session->stage[stmt_ndx] == StatementExecutedStage))
@@ -3589,7 +3640,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		      /* the variant's remembered XASL_ID was stale; keep the fresh one */
 		      db_bind_variant_remember (statement);
 		    }
-		  err = do_execute_statement (parser, statement);
+		  err = db_do_statement_with_savepoint (parser, statement, do_execute_statement);
 		}
 	    }
 	  else if (cls_status == DB_CLASS_MODIFIED)
@@ -3677,7 +3728,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	    }
 	}
 
-      err = do_statement (parser, statement);
+      err = db_do_statement_with_savepoint (parser, statement, do_statement);
     }
 
   do_Trigger_involved = false;
@@ -4265,6 +4316,14 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
 
       /* set result cache */
       prepare_info.do_cache = prepared_stmt->info.query.flag.do_cache;
+
+      /* set click counter */
+      prepare_info.is_click_counter = prepared_stmt->flag.is_click_counter;
+    }
+  else if (prepared_stmt->node_type == PT_METHOD_CALL)
+    {
+      /* set method call with a target */
+      prepare_info.is_method_on_target = (prepared_stmt->info.method_call.on_call_target != NULL);
     }
 
   err = set_prepare_info_into_list (&prepare_info, prepared_stmt);
@@ -4400,6 +4459,8 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   statement->info.execute.recompile = prepare_info.recompile;
   statement->info.execute.do_cache = prepare_info.do_cache;
   statement->info.execute.oids_included = prepare_info.oids_included;
+  statement->info.execute.is_click_counter = prepare_info.is_click_counter;
+  statement->info.execute.is_method_on_target = prepare_info.is_method_on_target;
 
   XASL_ID_COPY (&statement->info.execute.xasl_id, &xasl_id);
   statement->info.execute.plan_at_execute = prepare_info.stmt_type == CUBRID_STMT_SELECT && XASL_ID_IS_NULL (&xasl_id);
@@ -6419,9 +6480,6 @@ db_get_parser (DB_SESSION * session)
  * db_get_statement() - This function returns session's statement for id
  * arguments: session (IN): compilation session
  * returns: PT_NODE
- *
- * note : This is a debugging function only.
- *
  */
 DB_NODE *
 db_get_statement (DB_SESSION * session, int id)

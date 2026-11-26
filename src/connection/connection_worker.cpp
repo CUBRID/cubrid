@@ -592,19 +592,14 @@ namespace cubconn::connection
 	assert_release (false);
       }
 
-    /* timer */
+    /* timer: eventfd_addtimer () takes the first base time from m_timens */
+    m_timens = this->get_time_ns (CLOCK_MONOTONIC);
     for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
       {
 	m_timer_handler[i].valid = false;
 	m_timer_handler[i].latency = timer_latency::NA;
 	m_timer_handler[i].function = nullptr;
 	m_timer_handler[i].last_time = this->get_time_ns (CLOCK_MONOTONIC);
-      }
-    if (!this->eventfd_addtimer (timer_type::HIBERNATE, timer_latency::MEDIUM_LATENCY,
-				 std::bind (&worker::hibernate_check, this)))
-      {
-	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to add timer\n");
-	assert_release (false);
       }
     if (!this->eventfd_addtimer (timer_type::STATISTICS, timer_latency::MEDIUM_LATENCY,
 				 std::bind (&worker::statistics_metrics_to_coordinator, this)))
@@ -669,8 +664,7 @@ namespace cubconn::connection
     assert ((item.conn ? (item.conn->fd != -1) : false) ||
 	    (item.ctx ? (item.ctx->m_conn ? item.ctx->m_conn->fd != -1 : false) : false) ||
 	    (item.id > 0) ||
-	    (item.type == message_type::START || item.type == message_type::SHUTDOWN ||
-	     item.type == message_type::HIBERNATE || item.type == message_type::AWAKEN));
+	    (item.type == message_type::START || item.type == message_type::SHUTDOWN));
 
 #if !defined (NDEBUG)
     item.message_id = message_counter++;
@@ -1167,28 +1161,6 @@ retry:
     return true;
   }
 
-  bool worker::hibernate_check ()
-  {
-    if (m_status != status::HIBERNATING || !m_context.empty ())
-      {
-	return true;
-      }
-
-    if (!this->eventfd_stoptimer ())
-      {
-	er_log_conn (__FILE__, __LINE__, "connection::worker->hibernate_check: failed to stop the timer\n");
-	assert_release (false);
-      }
-
-    assert (m_context.empty ());
-    assert (m_exhausted.empty ());
-
-    /* reset counters so resumed workers don't report stale totals */
-    m_stats.reset ();
-
-    return true;
-  }
-
   bool worker::ha_close_all_connections ()
   {
     /* HA msut continue to check */
@@ -1318,30 +1290,6 @@ retry:
 	return true;
       }
     return false;
-  }
-
-  bool worker::eventfd_starttimer ()
-  {
-    timer_latency min;
-    std::size_t i;
-
-    min = timer_latency::NA;
-    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
-      {
-	if (m_timer_handler[i].valid)
-	  {
-	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
-	      {
-		min = m_timer_handler[i].latency;
-	      }
-	  }
-      }
-
-    if (min != timer_latency::NA)
-      {
-	return this->eventfd_settimer (m_timerfd, min);
-      }
-    return this->eventfd_stoptimer ();
   }
 
   bool worker::eventfd_stoptimer ()
@@ -1652,18 +1600,6 @@ retry:
     er_log_conn (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
 
     m_stats.add (statistics::worker::CLIENT_NUM, 1);
-
-    /* The condition below theoretically cannot be true, so there is no need to start the timer. */
-    /* But if the concurrency queue gets out of sync and the MQ processing order is disrupted,	 */
-    /* we must start the timer.									 */
-    if (m_status == status::HIBERNATING)
-      {
-	if (!this->eventfd_starttimer ())
-	  {
-	    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: failed to start the timer\n");
-	    assert_release (false);
-	  }
-      }
   }
 
   void worker::handle_message_queue_handoff_client (message &item)
@@ -1793,19 +1729,6 @@ respond:
 		 m_index);
 
     m_stats.add (statistics::worker::CLIENT_NUM, 1);
-
-    /* The condition below theoretically cannot be true, so there is no need to start the timer. */
-    /* But if the concurrency queue gets out of sync and the MQ processing order is disrupted,	 */
-    /* we must start the timer.									 */
-    if (m_status == status::HIBERNATING)
-      {
-	if (!this->eventfd_starttimer ())
-	  {
-	    er_log_conn (__FILE__, __LINE__,
-			 "connection::worker->handle_message_queue_takeover_client: failed to start the timer\n");
-	    assert_release (false);
-	  }
-      }
   }
 
   void worker::handle_message_queue_shutdown_client (message &item)
@@ -1867,22 +1790,6 @@ respond:
     this->wakeup_blocked_worker (item.waiter_handle);
   }
 
-  void worker::handle_message_queue_hibernate (message &item)
-  {
-    m_status = status::HIBERNATING;
-  }
-
-  void worker::handle_message_queue_awaken (message &item)
-  {
-    if (!this->eventfd_starttimer ())
-      {
-	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_awaken: failed to start the timer\n");
-	assert_release (false);
-      }
-
-    m_status = status::RUNNING;
-  }
-
   void worker::handle_message_queue_shutdown (message &item)
   {
     m_status = status::TERMINATING;
@@ -1897,8 +1804,6 @@ respond:
     {
       {
 	/* START	   */ { &worker::handle_message_queue_start,		statistics::worker::NA },
-	/* HIBERNATE	   */ { &worker::handle_message_queue_hibernate,	statistics::worker::NA },
-	/* AWAKEN	   */ { &worker::handle_message_queue_awaken,		statistics::worker::NA },
 	/* SHUTDOWN	   */ { &worker::handle_message_queue_shutdown,		statistics::worker::NA },
 	/* NEW_CLIENT	   */ { &worker::handle_message_queue_new_client,	statistics::worker::MQ_NEW_CLIENT },
 	/* HANDOFF_CLIENT  */ { &worker::handle_message_queue_handoff_client,	statistics::worker::MQ_HANDOFF_CLIENT },
@@ -1912,7 +1817,7 @@ respond:
 
     static_assert (static_cast<int> (message_type::START) == 0, "message_type must start at 0");
     static_assert (static_cast<int> (message_type::TYPE_COUNT) == handler.size (), "handler table size must match");
-    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 9, "this must be modified");
+    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 7, "this must be modified");
 
     i = 0;
     size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);
@@ -2670,8 +2575,6 @@ respond:
 		break;
 
 	      case message_type::START:
-	      case message_type::HIBERNATE:
-	      case message_type::AWAKEN:
 	      case message_type::SHUTDOWN:
 	      case message_type::HANDOFF_CLIENT:
 	      case message_type::RELEASE_PACKET:
