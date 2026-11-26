@@ -111,6 +111,8 @@ static int la_coordinator_wait_for_commit_order_slot (void);
 static int la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status, int worker);
 static bool la_coordinator_route (const LA_TASK *task, int *worker);
 static bool la_coordinator_queue_has_room (int worker);
+static bool la_coordinator_any_queue_has_room (void);
+static int la_coordinator_release_parked (LA_TASK *task, int worker);
 static void la_coordinator_trace_schedule (const LA_TASK *task, LA_SCHED_STATUS sched_status, UINT64 dispatch_seq);
 static int la_coordinator_collect_results (void);
 static int la_coordinator_record_result (LA_RESULT *result);
@@ -303,8 +305,6 @@ la_coordinator_pending_may_release (void)
 static int
 la_coordinator_drain_ready (void)
 {
-  LA_TASK task;
-  int worker;
   int error;
 
   /* la_coordinator_pending_may_release compares what the parked tasks wait for (completions, dispatches, queue
@@ -317,32 +317,23 @@ la_coordinator_drain_ready (void)
 
   la_pending_mark_ready (la_monotonic_now_ns ());
 
-  while (true)
+  /* the route calls of this pass record what the tasks left parked wait for */
+  la_Coordinator_pending_waits_dispatch = false;
+  la_Coordinator_pending_room_workers = 0;
+  error = la_pending_release_routable (la_coordinator_route, la_coordinator_any_queue_has_room,
+				       la_coordinator_release_parked);
+  if (error != NO_ERROR)
     {
-      /* the route calls of this pass record what the tasks left parked wait for */
-      la_Coordinator_pending_waits_dispatch = false;
-      la_Coordinator_pending_room_workers = 0;
-      if (!la_pending_pop_routable (&task, &worker, la_coordinator_route))
-	{
-	  /* nothing was dispatched in this pass, so the counters are the ones it scanned with */
-	  la_Coordinator_pending_seen_completion = la_gate_get_completion_version ();
-	  la_Coordinator_pending_seen_dispatch = la_gate_get_dispatch_version ();
-	  la_Coordinator_pending_scan_valid = true;
-	  break;
-	}
-
-      error = la_coordinator_enqueue_task (&task, LA_SCHED_RELEASED, worker);
-      if (error != NO_ERROR)
-	{
-	  if (task.apply != NULL)
-	    {
-	      la_Coordinator_config.discard_task (la_Coordinator_config.context, &task);
-	    }
-	  return error;
-	}
+      return error;
     }
 
   la_coordinator_set_hold_flag (&la_Coordinator_tasks_parked, !la_pending_is_empty ());
+
+  /* a task left parked waits for a completion, for queue room, or for the dispatch of an earlier task that is
+   * itself still parked; none of them changes before the next pass, so the counters now are the ones to compare */
+  la_Coordinator_pending_seen_completion = la_gate_get_completion_version ();
+  la_Coordinator_pending_seen_dispatch = la_gate_get_dispatch_version ();
+  la_Coordinator_pending_scan_valid = true;
 
   return NO_ERROR;
 }
@@ -471,6 +462,54 @@ static bool
 la_coordinator_queue_has_room (int worker)
 {
   return la_task_queue_get_queued (worker) < LA_TASK_QUEUE_CAPACITY;
+}
+
+/*
+ * la_coordinator_any_queue_has_room - check whether some live worker's queue has room for one more task
+ *
+ * return: true when at least one live worker can take a task
+ *
+ * Note: a released task always goes into a queue, so with every queue full a pass over the parked tasks stops.
+ *       The tasks it did not reach wait for room, like those la_coordinator_route finds with every queue full.
+ */
+static bool
+la_coordinator_any_queue_has_room (void)
+{
+  for (int k = 0; k < la_Coordinator_live_worker_count; k++)
+    {
+      if (la_coordinator_queue_has_room (la_Coordinator_live_workers[k]))
+	{
+	  return true;
+	}
+    }
+
+  for (int k = 0; k < la_Coordinator_live_worker_count; k++)
+    {
+      la_Coordinator_pending_room_workers |= LA_COORDINATOR_WORKER_BIT (la_Coordinator_live_workers[k]);
+    }
+
+  return false;
+}
+
+/*
+ * la_coordinator_release_parked - dispatch a parked task that la_coordinator_route let go
+ *
+ * return: NO_ERROR or an error code
+ *
+ *   task(in/out): the released task; dropped when it cannot be queued
+ *   worker(in): the worker route chose
+ */
+static int
+la_coordinator_release_parked (LA_TASK *task, int worker)
+{
+  int error = la_coordinator_enqueue_task (task, LA_SCHED_RELEASED, worker);
+
+  if (error != NO_ERROR && task->apply != NULL)
+    {
+      la_Coordinator_config.discard_task (la_Coordinator_config.context, task);
+    }
+
+  return error;
 }
 
 /*

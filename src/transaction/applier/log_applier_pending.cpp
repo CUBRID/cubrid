@@ -52,6 +52,17 @@ static LA_PENDING_NODE *la_Pending_tail = NULL;
 static int la_Pending_count = 0;
 static int la_Pending_max_count = 0;
 
+/* Nodes of released tasks, kept for the next park instead of being freed: with several workers about half of the
+ * tasks pass through the list, and a malloc and a free for each showed in the coordinator's profile. At most
+ * LA_PENDING_SPARE_MAX are kept; la_pending_clear frees them. */
+#define LA_PENDING_SPARE_MAX 4096
+static LA_PENDING_NODE *la_Pending_spare = NULL;
+static int la_Pending_spare_count = 0;
+
+static void la_pending_put_spare (LA_PENDING_NODE *node);
+static void la_pending_take_out (LA_PENDING_NODE *prev, LA_PENDING_NODE *cur);
+static void la_pending_note_ready (LA_TASK *task);
+
 void
 la_pending_reset (void)
 {
@@ -72,11 +83,20 @@ la_pending_push (const LA_TASK *task)
 
   assert (task != NULL);
 
-  node = (LA_PENDING_NODE *) malloc (sizeof (LA_PENDING_NODE));
-  if (node == NULL)
+  if (la_Pending_spare != NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_PENDING_NODE));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      node = la_Pending_spare;
+      la_Pending_spare = node->next;
+      la_Pending_spare_count--;
+    }
+  else
+    {
+      node = (LA_PENDING_NODE *) malloc (sizeof (LA_PENDING_NODE));
+      if (node == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_PENDING_NODE));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
     }
 
   node->task = *task;
@@ -141,38 +161,71 @@ la_pending_pop_routable (LA_TASK *task, int *worker, bool (*route) (const LA_TAS
 
   for (cur = la_Pending_head; cur != NULL; prev = cur, cur = cur->next)
     {
+      la_pending_note_ready (&cur->task);
       if (!route (&cur->task, worker))
 	{
 	  continue;
 	}
 
-      if (cur->task.ready_ns == 0 && la_gate_is_satisfied (&cur->task.dependency_lsa))
-	{
-	  cur->task.ready_ns = la_monotonic_now_ns ();
-	}
-
-      if (prev == NULL)
-	{
-	  la_Pending_head = cur->next;
-	}
-      else
-	{
-	  prev->next = cur->next;
-	}
-      if (cur == la_Pending_tail)
-	{
-	  la_Pending_tail = prev;
-	}
-
       *task = cur->task;
-      free_and_init (cur);
-      assert (la_Pending_count > 0);
-      la_Pending_count--;
+      la_pending_take_out (prev, cur);
 
       return true;
     }
 
   return false;
+}
+
+/*
+ * la_pending_release_routable() - release, in one pass in parking order, every parked task that may run now
+ *   return: NO_ERROR, or the error of release (the task it failed on is already out of the list)
+ *   route(in): decides for one parked task whether it may run now and on which worker
+ *   can_route(in): false when no task can be routed now (every worker queue is full); the pass stops there
+ *   release(in): dispatches one released task to its worker
+ *
+ * Note: one pass gives the same result as taking one task at a time from the head: a parked task waits only for
+ *       earlier tasks (they come before it in the list and are released first in the pass), for completions (none
+ *       arrive during the pass), or for queue room (a release only uses room up). Starting again from the head
+ *       after every release scanned the tasks still waiting at the front once per released task.
+ */
+int
+la_pending_release_routable (bool (*route) (const LA_TASK *task, int *worker), bool (*can_route) (void),
+			     int (*release) (LA_TASK *task, int worker))
+{
+  LA_PENDING_NODE *prev = NULL;
+  LA_PENDING_NODE *cur = la_Pending_head;
+  LA_PENDING_NODE *next;
+  LA_TASK task;
+  int worker;
+  int error;
+
+  assert (route != NULL && can_route != NULL && release != NULL);
+
+  while (cur != NULL && can_route ())
+    {
+      next = cur->next;
+
+      la_pending_note_ready (&cur->task);
+      if (!route (&cur->task, &worker))
+	{
+	  prev = cur;
+	  cur = next;
+	  continue;
+	}
+
+      task = cur->task;
+      la_pending_take_out (prev, cur);
+
+      error = release (&task, worker);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      cur = next;
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -198,6 +251,73 @@ la_pending_clear (void)
       la_Pending_count--;
     }
   la_Pending_tail = NULL;
+
+  while (la_Pending_spare != NULL)
+    {
+      node = la_Pending_spare;
+      la_Pending_spare = node->next;
+      free_and_init (node);
+    }
+  la_Pending_spare_count = 0;
+}
+
+/*
+ * la_pending_take_out() - unlink a node and keep it as a spare
+ *   prev(in): the node before cur, NULL when cur is the head
+ *   cur(in): the node to take out; its task must have been copied out already
+ */
+static void
+la_pending_take_out (LA_PENDING_NODE *prev, LA_PENDING_NODE *cur)
+{
+  if (prev == NULL)
+    {
+      la_Pending_head = cur->next;
+    }
+  else
+    {
+      prev->next = cur->next;
+    }
+  if (cur == la_Pending_tail)
+    {
+      la_Pending_tail = prev;
+    }
+
+  la_pending_put_spare (cur);
+  assert (la_Pending_count > 0);
+  la_Pending_count--;
+}
+
+/*
+ * la_pending_note_ready() - timestamp a parked task whose dependency has become satisfied
+ *   task(in/out): a task a release pass visits
+ *
+ * Note: readiness keeps dependency wait apart from worker-capacity wait in the statistics.
+ */
+static void
+la_pending_note_ready (LA_TASK *task)
+{
+  if (task->ready_ns == 0 && la_gate_is_satisfied (&task->dependency_lsa))
+    {
+      task->ready_ns = la_monotonic_now_ns ();
+    }
+}
+
+/*
+ * la_pending_put_spare() - keep a released node for the next park, or free it when enough are kept
+ *   node(in): a node already out of the list
+ */
+static void
+la_pending_put_spare (LA_PENDING_NODE *node)
+{
+  if (la_Pending_spare_count >= LA_PENDING_SPARE_MAX)
+    {
+      free_and_init (node);
+      return;
+    }
+
+  node->next = la_Pending_spare;
+  la_Pending_spare = node;
+  la_Pending_spare_count++;
 }
 
 /*

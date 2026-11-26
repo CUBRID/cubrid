@@ -167,3 +167,75 @@ TEST_CASE ("pending list clear drops every parked task and the list is usable ag
   REQUIRE (out.tranid == 9);
   REQUIRE (la_pending_is_empty ());
 }
+
+static std::vector<int> test_released;
+static int test_release_room = 100;
+
+static bool
+test_can_route (void)
+{
+  return test_release_room > 0;
+}
+
+static int
+test_release (LA_TASK *task, int worker)
+{
+  REQUIRE (worker == task->tranid % 4);
+  test_released.push_back (task->tranid);
+  test_release_room--;
+  return NO_ERROR;
+}
+
+TEST_CASE ("pending list releases every routable task in one pass, in parking order", "[log_applier_pending]")
+{
+  LOG_LSA l10 = test_lsa (10), l20 = test_lsa (20), l5 = test_lsa (5), nul = test_null_lsa ();
+
+  test_reset (&l10);
+  REQUIRE (la_gate_order_push (&l20) == NO_ERROR);	/* the predecessor of tasks 1 and 3, still running */
+
+  LA_TASK a = test_task (1, test_lsa (30), l20);
+  LA_TASK b = test_task (2, test_lsa (31), l5);
+  LA_TASK c = test_task (3, test_lsa (32), l20);
+  LA_TASK d = test_task (4, test_lsa (33), nul);
+  REQUIRE (la_pending_push (&a) == NO_ERROR);
+  REQUIRE (la_pending_push (&b) == NO_ERROR);
+  REQUIRE (la_pending_push (&c) == NO_ERROR);
+  REQUIRE (la_pending_push (&d) == NO_ERROR);
+
+  test_released.clear ();
+  test_release_room = 100;
+  REQUIRE (la_pending_release_routable (test_route_satisfied, test_can_route, test_release) == NO_ERROR);
+  REQUIRE (test_released == std::vector<int> ({2, 4}));
+  REQUIRE (la_pending_get_count () == 2);
+
+  la_gate_mark_completed (&l20);
+  la_gate_advance_frontier ();
+  test_released.clear ();
+  REQUIRE (la_pending_release_routable (test_route_satisfied, test_can_route, test_release) == NO_ERROR);
+  REQUIRE (test_released == std::vector<int> ({1, 3}));
+  REQUIRE (la_pending_is_empty ());
+}
+
+TEST_CASE ("pending list pass stops when no worker queue has room", "[log_applier_pending]")
+{
+  LOG_LSA l10 = test_lsa (10), nul = test_null_lsa ();
+
+  test_reset (&l10);
+  for (int i = 1; i <= 4; i++)
+    {
+      LA_TASK t = test_task (i, test_lsa (20 + i), nul);
+      REQUIRE (la_pending_push (&t) == NO_ERROR);
+    }
+
+  test_released.clear ();
+  test_release_room = 2;
+  REQUIRE (la_pending_release_routable (test_route_satisfied, test_can_route, test_release) == NO_ERROR);
+  REQUIRE (test_released == std::vector<int> ({1, 2}));
+  REQUIRE (la_pending_get_count () == 2);
+
+  test_release_room = 100;
+  test_released.clear ();
+  REQUIRE (la_pending_release_routable (test_route_satisfied, test_can_route, test_release) == NO_ERROR);
+  REQUIRE (test_released == std::vector<int> ({3, 4}));
+  REQUIRE (la_pending_is_empty ());
+}
