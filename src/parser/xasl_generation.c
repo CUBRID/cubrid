@@ -16168,6 +16168,30 @@ pt_key_domains_alike (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs)
 }
 
 /*
+ * pt_key_bounds_compare_as_column () - CBRD-28227: whether two search key bounds of a VARCHAR key column compare as
+ *   the column's values, not as their own domains
+ *   return: true if the two bounds' comparison must be the key column's
+ *   lhs(in): a bound's domain
+ *   rhs(in): the other bound's domain
+ *   column(in): the key column's domain
+ *
+ * Note: two CHARs compare ignoring trailing spaces (CBRD-24149), but each CHAR bound compares with a VARCHAR key as
+ *       VARCHAR, in the key's collation: bounds 'a' and 'a  ' select different keys. Compared as two CHARs, they are
+ *       equal, and merging the key ranges or removing duplicate keys loses the keys of one of them.
+ */
+static bool
+pt_key_bounds_compare_as_column (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs, const TP_DOMAIN * column)
+{
+  if (column == NULL || TP_DOMAIN_TYPE (column) != DB_TYPE_VARCHAR || !pt_key_domain_is_fixed (column))
+    {
+      return false;
+    }
+  return pt_key_domain_is_fixed (lhs) && pt_key_domain_is_fixed (rhs) && TP_DOMAIN_TYPE (lhs) == DB_TYPE_CHAR
+    && TP_DOMAIN_TYPE (rhs) == DB_TYPE_CHAR && TP_DOMAIN_CODESET (lhs) == TP_DOMAIN_CODESET (column)
+    && TP_DOMAIN_CODESET (rhs) == TP_DOMAIN_CODESET (column);
+}
+
+/*
  * pt_decide_key_compares () - CBRD-27583: how an index scan's search key bounds compare, decided from the
  *   domains their columns' values have (a multi-column bound's, those of the domain its key is written with; a
  *   single-column bound's, its element's) and the index's key domain: the comparison a predicate makes of the two
@@ -16288,9 +16312,17 @@ pt_decide_key_compares (INDX_INFO * indx_infop)
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto end;
 	    }
+	  const TP_DOMAIN *column = domain_key_column (key_type, c);
 	  for (int i = 0; i < n * n && error == NO_ERROR; i++)
 	    {
-	      error = pt_decide_key_compare (classes[c * n_bounds + i / n], classes[c * n_bounds + i % n], &table[i]);
+	      const TP_DOMAIN *lhs = classes[c * n_bounds + i / n];
+	      const TP_DOMAIN *rhs = classes[c * n_bounds + i % n];
+	      if (pt_key_bounds_compare_as_column (lhs, rhs, column))
+		{
+		  /* CBRD-28227: two CHAR bounds as each compares with the VARCHAR keys, not as two CHARs */
+		  lhs = rhs = column;
+		}
+	      error = pt_decide_key_compare (lhs, rhs, &table[i]);
 	    }
 	  if (error != NO_ERROR)
 	    {

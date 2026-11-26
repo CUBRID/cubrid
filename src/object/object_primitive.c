@@ -7738,13 +7738,14 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		    int *start_colp, int *diff_column, bool * dom_is_desc, int *result_size)
 {
   return pr_midxkey_compare_resolved (mul1, mul2, do_coercion, total_order, num_index_term, start_colp, diff_column,
-				      dom_is_desc, result_size, NULL, NULL);
+				      dom_is_desc, result_size, false, NULL, NULL);
 }
 
 DB_VALUE_COMPARE_RESULT
 pr_midxkey_compare_resolved (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order,
 			     int num_index_term, int *start_colp, int *diff_column, bool * dom_is_desc,
-			     int *result_size, PR_MIDXKEY_ELEMENT_COMPARE element_compare, const void *element_context)
+			     int *result_size, bool compare_same_domains, PR_MIDXKEY_ELEMENT_COMPARE element_compare,
+			     const void *element_context)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i;
@@ -7912,8 +7913,9 @@ pr_midxkey_compare_resolved (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coerci
 	{
 	  if (or_multi_is_not_null (nullmap_ptr2, i))
 	    {
-	      /* check for val1 and val2 same domain */
-	      if (dom1 == dom2 || tp_domain_match (dom1, dom2, TP_EXACT_MATCH))
+	      /* check for val1 and val2 same domain, unless the caller compares those too */
+	      if ((dom1 == dom2 || tp_domain_match (dom1, dom2, TP_EXACT_MATCH))
+		  && !(compare_same_domains && element_compare != NULL))
 		{
 		  c = dom1->type->index_cmpdisk (mem1, mem2, dom1, do_coercion, total_order, NULL);
 		}

@@ -1168,6 +1168,37 @@ scan_key_compare (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, DB_VALUE * v
 }
 
 /*
+ * scan_key_ranges_compare_elements () - CBRD-28227: whether two multi-column search keys compare a column of one
+ *   domain other than as that domain does, so that its elements must go through the column's decided comparison
+ *   return: true if a column's decided comparison is not its elements' domain's cmpval
+ *   pair(in): the two keys' comparisons
+ *   midxkey1(in):
+ *   midxkey2(in):
+ *
+ * Note: two CHAR bounds of a VARCHAR key column compare as VARCHARs, as each compares with the keys
+ *       (pt_decide_key_compares); compared by their CHAR domain, 'a' and 'a  ' are equal and a range is lost.
+ */
+static bool
+scan_key_ranges_compare_elements (const DOMAIN_KEY_RANGES_PAIR * pair, const DB_MIDXKEY * midxkey1,
+				  const DB_MIDXKEY * midxkey2)
+{
+  const TP_DOMAIN *dom1 = midxkey1->domain != NULL ? midxkey1->domain->setdomain : NULL;
+  const TP_DOMAIN *dom2 = midxkey2->domain != NULL ? midxkey2->domain->setdomain : NULL;
+
+  for (int c = 0; c < pair->ranges->n_columns && dom1 != NULL && dom2 != NULL;
+       c++, dom1 = dom1->next, dom2 = dom2->next)
+    {
+      const int n = pair->ranges->n_classes[c];
+      const DOMAIN_COMPARE *compare = pair->ranges->tables[c] + pair->classes[0][c] * n + pair->classes[1][c];
+      if (compare->method == DOMAIN_COMPARE_DIRECT && (compare->cmp != dom1->type || compare->cmp != dom2->type))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
  * scan_key_compare_column () - compare two search keys, as scan_key_compare (), and tell the first column they differ at
  *   return: DB_LT, DB_EQ, DB_GT or DB_UNK
  *   num_index_term(in):
@@ -1211,9 +1242,12 @@ scan_key_compare_column (DB_VALUE * val1, const DOMAIN_KEY_BOUND * bound1, DB_VA
       const DOMAIN_KEY_RANGES_PAIR pair = { ranges, {bound1->classes, bound2->classes} };
       if (DB_VALUE_DOMAIN_TYPE (val1) == DB_TYPE_MIDXKEY)
 	{
+	  DB_MIDXKEY *midxkey1 = db_get_midxkey (val1);
+	  DB_MIDXKEY *midxkey2 = db_get_midxkey (val2);
 	  rc =
-	    pr_midxkey_compare_resolved (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL,
-					 diff_column, NULL, NULL, domain_key_ranges_element_compare, &pair);
+	    pr_midxkey_compare_resolved (midxkey1, midxkey2, 1, 1, num_index_term, NULL, diff_column, NULL, NULL,
+					 scan_key_ranges_compare_elements (&pair, midxkey1, midxkey2),
+					 domain_key_ranges_element_compare, &pair);
 	}
       else
 	{

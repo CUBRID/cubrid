@@ -3602,6 +3602,39 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
 }
 
 /*
+ * qo_range_strings_as_column () - make two string constants of the terms on a column into the values the column's
+ *				   predicates compare them as
+ *   return: true if str1 and str2 are made; false if the constants compare as they are
+ *   column(in): the terms' column
+ *   val1(in):
+ *   val2(in):
+ *   str1(out): val1's string as a VARCHAR of the column's collation; nothing is copied
+ *   str2(out): val2's string, likewise
+ *
+ * Note: a string constant is CHAR, and two CHARs compare ignoring trailing spaces (CBRD-24149). A VARCHAR column
+ *       compares with a CHAR constant as VARCHAR, in the column's collation: 'a' and 'a  ' select different rows of
+ *       it. Compared as two CHARs, the constants of "v = 'a' or v = 'a  '" are equal and one of the terms is lost.
+ */
+static bool
+qo_range_strings_as_column (const PT_NODE * column, DB_VALUE * val1, DB_VALUE * val2, DB_VALUE * str1, DB_VALUE * str2)
+{
+  PT_COLL_INFER coll_infer;
+
+  if (column == NULL || column->type_enum != PT_TYPE_VARCHAR || val1 == NULL || val2 == NULL || DB_IS_NULL (val1)
+      || DB_IS_NULL (val2) || !TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (val1))
+      || !TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (val2)) || !pt_get_collation_info (column, &coll_infer))
+    {
+      return false;
+    }
+
+  db_make_varchar (str1, DB_MAX_VARCHAR_PRECISION, db_get_string (val1), db_get_string_size (val1),
+		   db_get_string_codeset (val1), coll_infer.coll_id);
+  db_make_varchar (str2, DB_MAX_VARCHAR_PRECISION, db_get_string (val2), db_get_string_size (val2),
+		   db_get_string_codeset (val2), coll_infer.coll_id);
+  return true;
+}
+
+/*
  * qo_reduce_comp_pair_terms () - Convert a pair of comparison terms to one
  *			       BETWEEN term
  *   return:
@@ -3620,6 +3653,7 @@ qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
   PT_NODE *node, *pair, *lower, *upper, *prev, *next, *arg1, *arg2;
   int location;
   DB_VALUE *lower_val, *upper_val;
+  DB_VALUE lower_str, upper_str;
   DB_VALUE_COMPARE_RESULT cmp;
 
   /* traverse CNF list */
@@ -3707,6 +3741,11 @@ qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	{
 	  lower_val = pt_value_to_db (parser, lower);
 	  upper_val = pt_value_to_db (parser, upper);
+	  if (qo_range_strings_as_column (node->info.expr.arg1, lower_val, upper_val, &lower_str, &upper_str))
+	    {
+	      lower_val = &lower_str;
+	      upper_val = &upper_str;
+	    }
 	  cmp = (DB_VALUE_COMPARE_RESULT) db_value_compare (lower_val, upper_val);
 	  if (cmp == DB_GT
 	      || (cmp == DB_EQ
@@ -4974,15 +5013,18 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
  * qo_compare_dbvalue_with_optype () - compare two DB_VALUEs specified
  *					by range operator
  *   return:
+ *   column(in): the range's column; its predicates' comparison rule compares the values
  *   val1(in):
  *   op1(in):
  *   val2(in):
  *   op2(in):
  */
 static COMP_DBVALUE_WITH_OPTYPE_RESULT
-qo_compare_dbvalue_with_optype (DB_VALUE * val1, PT_OP_TYPE op1, DB_VALUE * val2, PT_OP_TYPE op2)
+qo_compare_dbvalue_with_optype (const PT_NODE * column, DB_VALUE * val1, PT_OP_TYPE op1, DB_VALUE * val2,
+				PT_OP_TYPE op2)
 {
   DB_VALUE_COMPARE_RESULT rc;
+  DB_VALUE str1, str2;
 
   switch (op1)
     {
@@ -5028,6 +5070,11 @@ qo_compare_dbvalue_with_optype (DB_VALUE * val1, PT_OP_TYPE op1, DB_VALUE * val2
       return (op2 == op1) ? CompResultEqual : CompResultLess;
     }
 
+  if (qo_range_strings_as_column (column, val1, val2, &str1, &str2))
+    {
+      val1 = &str1;
+      val2 = &str2;
+    }
   rc = tp_value_compare (val1, val2, 1, 1);
   if (rc == DB_EQ)
     {
@@ -5292,14 +5339,14 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_EMPTY_RANGE);
 	  /* check if the two range specs are mergable */
-	  cmp1 = qo_compare_dbvalue_with_optype (r_lv, r_lop, s_lv, s_lop);
-	  cmp2 = qo_compare_dbvalue_with_optype (r_lv, r_lop, s_uv, s_uop);
-	  cmp3 = qo_compare_dbvalue_with_optype (r_uv, r_uop, s_lv, s_lop);
-	  cmp4 = qo_compare_dbvalue_with_optype (r_uv, r_uop, s_uv, s_uop);
+	  cmp1 = qo_compare_dbvalue_with_optype (node->info.expr.arg1, r_lv, r_lop, s_lv, s_lop);
+	  cmp2 = qo_compare_dbvalue_with_optype (node->info.expr.arg1, r_lv, r_lop, s_uv, s_uop);
+	  cmp3 = qo_compare_dbvalue_with_optype (node->info.expr.arg1, r_uv, r_uop, s_lv, s_lop);
+	  cmp4 = qo_compare_dbvalue_with_optype (node->info.expr.arg1, r_uv, r_uop, s_uv, s_uop);
 
 	  /* make more compare to detect something like "a>1 or a between 1 and 0" */
-	  cmp5 = qo_compare_dbvalue_with_optype (r_lv, r_lop, r_uv, r_uop);
-	  cmp6 = qo_compare_dbvalue_with_optype (s_lv, s_lop, s_uv, s_uop);
+	  cmp5 = qo_compare_dbvalue_with_optype (node->info.expr.arg1, r_lv, r_lop, r_uv, r_uop);
+	  cmp6 = qo_compare_dbvalue_with_optype (node->info.expr.arg1, s_lv, s_lop, s_uv, s_uop);
 
 	  if (cmp1 == CompResultError || cmp2 == CompResultError || cmp3 == CompResultError || cmp4 == CompResultError)
 	    {
@@ -5455,7 +5502,7 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	      return DNF_RANGE_ALWAYS_TRUE;
 	    }
 	  /* check if the range is invalid, that is, lower bound is greater than upper bound */
-	  cmp1 = qo_compare_dbvalue_with_optype (r_lv, r_lop, r_uv, r_uop);
+	  cmp1 = qo_compare_dbvalue_with_optype (node->info.expr.arg1, r_lv, r_lop, r_uv, r_uop);
 	  if (cmp1 == CompResultGreaterAdj || cmp1 == CompResultGreater)
 	    {
 	      /* this is always false */
@@ -5847,10 +5894,10 @@ qo_apply_range_intersection_helper (PARSER_CONTEXT * parser, PT_NODE * node1, PT
 
 	  PT_EXPR_INFO_CLEAR_FLAG (sibling, PT_EXPR_INFO_EMPTY_RANGE);
 	  /* check if the two range specs are mergable */
-	  cmp1 = qo_compare_dbvalue_with_optype (r_lv, r_lop, s_lv, s_lop);
-	  cmp2 = qo_compare_dbvalue_with_optype (r_lv, r_lop, s_uv, s_uop);
-	  cmp3 = qo_compare_dbvalue_with_optype (r_uv, r_uop, s_lv, s_lop);
-	  cmp4 = qo_compare_dbvalue_with_optype (r_uv, r_uop, s_uv, s_uop);
+	  cmp1 = qo_compare_dbvalue_with_optype (node1->info.expr.arg1, r_lv, r_lop, s_lv, s_lop);
+	  cmp2 = qo_compare_dbvalue_with_optype (node1->info.expr.arg1, r_lv, r_lop, s_uv, s_uop);
+	  cmp3 = qo_compare_dbvalue_with_optype (node1->info.expr.arg1, r_uv, r_uop, s_lv, s_lop);
+	  cmp4 = qo_compare_dbvalue_with_optype (node1->info.expr.arg1, r_uv, r_uop, s_uv, s_uop);
 	  if (cmp1 == CompResultError || cmp2 == CompResultError || cmp3 == CompResultError || cmp4 == CompResultError)
 	    {
 	      /* somthine wrong; continue to next range spec */
@@ -5939,7 +5986,8 @@ qo_apply_range_intersection_helper (PARSER_CONTEXT * parser, PT_NODE * node1, PT
 			{
 			  new_lv = pt_value_to_db (parser, new_range->info.expr.arg1);
 			  new_uv = pt_value_to_db (parser, new_range->info.expr.arg2);
-			  new_cmp = qo_compare_dbvalue_with_optype (new_lv, new_lop, new_uv, new_uop);
+			  new_cmp =
+			    qo_compare_dbvalue_with_optype (node1->info.expr.arg1, new_lv, new_lop, new_uv, new_uop);
 			  if (new_cmp == CompResultGreater || new_cmp == CompResultGreaterAdj)
 			    {
 			      /* they are not disjoint; remove empty range */
@@ -6190,7 +6238,7 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 		  r_lv = pt_value_to_db (parser, range->info.expr.arg1);
 		  r_uv = pt_value_to_db (parser, range->info.expr.arg2);
 		  /* check if the range spec is valid */
-		  cmp = qo_compare_dbvalue_with_optype (r_lv, r_lop, r_uv, r_uop);
+		  cmp = qo_compare_dbvalue_with_optype (node->info.expr.arg1, r_lv, r_lop, r_uv, r_uop);
 		  if (cmp == CompResultGreaterAdj || cmp == CompResultGreater)
 		    {
 		      /* the range is invalid, that is, lower bound is greater than upper bound */

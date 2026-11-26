@@ -25060,8 +25060,8 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
       int dummy_diff_column;
       c =
 	pr_midxkey_compare_resolved (db_get_midxkey (key1), db_get_midxkey (key2), do_coercion, total_order, -1,
-				     start_colp, &dummy_diff_column, dom_is_desc, NULL, btree_compare_own_element,
-				     key_domain);
+				     start_colp, &dummy_diff_column, dom_is_desc, NULL, false,
+				     btree_compare_own_element, key_domain);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
       if (dom_is_desc[0])
@@ -25161,7 +25161,8 @@ btree_compare_bound_key (const BTID_INT * btid, DB_VALUE * key1, const DOMAIN_KE
       int dummy_diff_column;
       c =
 	pr_midxkey_compare_resolved (db_get_midxkey (key1), db_get_midxkey (key2), 1, 1, -1, start_colp,
-				     &dummy_diff_column, dom_is_desc, NULL, domain_key_bound_element_compare, compares);
+				     &dummy_diff_column, dom_is_desc, NULL, false, domain_key_bound_element_compare,
+				     compares);
       is_desc = dom_is_desc[0];
     }
   if (is_desc)
