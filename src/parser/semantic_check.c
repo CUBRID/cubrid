@@ -12811,7 +12811,7 @@ pt_dblink_dml_corr_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
 /*
  * pt_bind_remote_dml_subq () - Bind a local subquery that a remote DML sink (INSERT SELECT / DELETE
- *   local-subquery) evaluates stand-alone: run the same steps a top-level SELECT receives
+ *   local-subquery / MERGE local source) evaluates stand-alone: run the same steps a top-level SELECT receives
  *   (pt_resolve_names -> pt_check_where -> pt_mark_union_leaf_nodes -> pt_semantic_check_local ->
  *   mq_translate), since the remote DML path breaks out of the normal query semantic check before this
  *   subquery would otherwise be processed as one. Without this, WHERE / GROUP BY / HAVING / ORDER BY /
@@ -12819,7 +12819,8 @@ pt_dblink_dml_corr_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
  *   "generate order_by" system error, LIMIT is ignored).
  *   return: the translated subquery, or NULL on failure (parser error already set)
  *   parser(in)         : parser context
- *   subq(in)            : the local subquery to bind (SELECT for INSERT; WHERE right-hand side for DELETE)
+ *   subq(in)            : the local subquery to bind (SELECT for INSERT; WHERE right-hand side for DELETE;
+ *                         the source SELECT for MERGE)
  *   sc_info_ptr(in/out) : semantic check info; top_node is set to subq for the duration, then restored
  *   fail_msg(in)        : PT_INTERNAL_ERROR message if mq_translate returns NULL without setting an error
  *                         (its contract, like the canonical db_vdb.c caller, treats that as a failure too)
@@ -13181,6 +13182,83 @@ pt_dblink_update_fold_driving_values (PARSER_CONTEXT * parser, PT_NODE * subq)
   return wrapped;
 }
 
+/* the SELECT list pt_dblink_merge_add_select_col builds */
+typedef struct pt_dblink_merge_select_cols PT_DBLINK_MERGE_SELECT_COLS;
+struct pt_dblink_merge_select_cols
+{
+  PT_NODE *list;
+  bool out_of_memory;
+};
+
+/* A pt_dblink_merge_walk_binds callback. It appends the source column to the SELECT list being
+ * built, by its name alone. The list is bound over a copy of the source, so the column's own
+ * resolution does not carry over. */
+static void
+pt_dblink_merge_add_select_col (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg)
+{
+  PT_DBLINK_MERGE_SELECT_COLS *cols = (PT_DBLINK_MERGE_SELECT_COLS *) arg;
+  PT_NODE *name = pt_name (parser, value->info.name.original);
+
+  if (name == NULL)
+    {
+      cols->out_of_memory = true;
+      return;
+    }
+  cols->list = parser_append_node (name, cols->list);
+}
+
+/*
+ * pt_dblink_merge_source_select () - Build and bind the SELECT a remote MERGE with a local source
+ *   scans. It reads FROM a copy of the USING source taken before name resolution. It has one column
+ *   per bound source column, in pt_dblink_merge_walk_binds () order.
+ *   return: the bound SELECT, or NULL on failure (parser error set)
+ *   parser(in): parser context
+ *   merge(in): the statement's remote_stmt_as_written
+ *   from(in): the copy of the USING spec
+ *   sc_info_ptr(in/out): semantic check info, passed through to pt_bind_remote_dml_subq
+ *
+ * Note: The source alone is in the SELECT's FROM, so a column found by its name is the source's.
+ *   A column the walk reports was resolved to the source, so the name is found there again.
+ */
+static PT_NODE *
+pt_dblink_merge_source_select (PARSER_CONTEXT * parser, PT_NODE * merge, PT_NODE * from,
+			       SEMANTIC_CHK_INFO * sc_info_ptr)
+{
+  PT_DBLINK_MERGE_SELECT_COLS cols = { NULL, false };
+  PT_NODE *select;
+
+  (void) pt_dblink_merge_walk_binds (parser, merge, pt_dblink_merge_add_select_col, &cols);
+  if (pt_has_error (parser))
+    {
+      goto error_exit;
+    }
+  if (cols.out_of_memory)
+    {
+      PT_ERRORm (parser, merge, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      goto error_exit;
+    }
+  if (cols.list == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: no value to bind from the source");
+      goto error_exit;
+    }
+  select = parser_new_node (parser, PT_SELECT);
+  if (select == NULL)
+    {
+      PT_ERRORm (parser, merge, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      goto error_exit;
+    }
+  select->info.query.q.select.list = cols.list;
+  select->info.query.q.select.from = from;
+
+  return pt_bind_remote_dml_subq (parser, select, sc_info_ptr, "remote MERGE: failed to translate the source");
+
+error_exit:
+  /* the list is not in a SELECT yet. from stays the caller's. */
+  parser_free_tree (parser, cols.list);
+  return NULL;
+}
+
 /*
  * pt_check_with_info () -  do name resolution & semantic checks on this tree
  *   return:  statement if no errors, NULL otherwise
@@ -13196,9 +13274,10 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   SEMANTIC_CHK_INFO *sc_info_ptr = info;
   bool save_donot_fold = false;
-  /* Set for a remote MERGE with a local source, only on the statement's first check, so the steps
-   * it guards run once. */
-  bool merge_sink_first_check = false;
+  /* The copy of the USING that the source SELECT of a remote MERGE with a local source reads,
+   * taken before name resolution. It is set only on the statement's first check, so the steps it
+   * guards run once. */
+  PT_NODE *merge_src_from = NULL;
 
   assert (parser != NULL);
 
@@ -13467,7 +13546,13 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 			  break;
 			}
 		      pt_gather_dblink_cols_in_merge_target (parser, node);
-		      merge_sink_first_check = true;
+
+		      merge_src_from = parser_copy_tree (parser, node->info.merge.using_clause);
+		      if (merge_src_from == NULL)
+			{
+			  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+			  break;
+			}
 		    }
 		  resolve_whole = true;
 		}
@@ -13541,7 +13626,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
 	  node = parser_walk_tree (parser, node, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
 
-	  if (merge_sink_first_check && !pt_has_error (parser))
+	  if (merge_src_from != NULL && !pt_has_error (parser))
 	    {
 	      /* A remote MERGE with a local source. Its gate reads the clauses as written. Type
 	       * checking below wraps a value in a CUBRID cast, turns a SET literal into a CUBRID
@@ -13565,14 +13650,18 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		}
 	    }
 
-	  if (merge_sink_first_check && node != NULL && !pt_has_error (parser))
+	  if (merge_src_from != NULL && node != NULL && !pt_has_error (parser))
 	    {
 	      /* A remote MERGE with a local source. The keys are checked on the statement, where
 	       * type checking marks a key that compares with a conversion. The gate reads the
-	       * clauses as written. */
-	      if (pt_dblink_merge_check_key_types (parser, node) == NO_ERROR)
+	       * clauses as written, and the source SELECT is laid out from them too. So the bound
+	       * columns are the ones those clauses name. */
+	      if (pt_dblink_merge_check_key_types (parser, node) == NO_ERROR
+		  && pt_dblink_merge_is_inscope (parser, node->info.merge.remote_stmt_as_written))
 		{
-		  (void) pt_dblink_merge_is_inscope (parser, node->info.merge.remote_stmt_as_written);
+		  node->info.merge.remote_source_select =
+		    pt_dblink_merge_source_select (parser, node->info.merge.remote_stmt_as_written, merge_src_from,
+						   sc_info_ptr);
 		}
 	    }
 	}

@@ -13237,7 +13237,8 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
  * pt_check_with_info () calls two checks here, after the statement's semantic check:
  *   - pt_dblink_merge_check_key_types () on the type-checked statement
  *   - pt_dblink_merge_is_inscope (), the shape gate, on the copy from before type checking
- * The walk over the ON below serves both.
+ * The walk over the ON below serves both and the source SELECT. The walk over the bound columns
+ * serves the source SELECT.
  * ============================================================================================= */
 
 /* The two specs of a remote MERGE with a local source */
@@ -13321,7 +13322,7 @@ typedef bool (*PT_DBLINK_MERGE_TERM_FN) (PARSER_CONTEXT * parser, PT_NODE * term
 					 PT_NODE * source_col, void *arg);
 
 /* The one walk over the ON's terms, in the order written. Every pass over the ON goes through it,
- * so they all meet the keys in the same order. */
+ * so they all meet the keys in the same order. That order is the order the keys are bound in. */
 static bool
 pt_dblink_merge_walk_on (PARSER_CONTEXT * parser, PT_NODE * cond, PT_DBLINK_MERGE_REFS * refs,
 			 PT_DBLINK_MERGE_TERM_FN fn, void *arg)
@@ -13357,6 +13358,113 @@ pt_dblink_merge_init_refs (PT_NODE * merge, PT_DBLINK_MERGE_REFS * refs)
 {
   refs->target_id = merge->info.merge.into->info.spec.id;
   refs->source_id = merge->info.merge.using_clause->info.spec.id;
+}
+
+/* The source columns a statement binds, in the order of its one-row USING. Each occurrence of a
+ * source column is one bound value. Everything else is sent as written. A value is sent only when
+ * it is columns, literals and + - * / over them. So only an expression's operands are looked
+ * into. */
+typedef struct pt_dblink_merge_binds PT_DBLINK_MERGE_BINDS;
+struct pt_dblink_merge_binds
+{
+  PT_DBLINK_MERGE_REFS refs;
+  PT_DBLINK_MERGE_BIND_FN fn;
+  void *arg;
+  int count;
+};
+
+/* expr alone, not the list it heads */
+static void
+pt_dblink_merge_bind_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool is_key, PT_DBLINK_MERGE_BINDS * binds)
+{
+  if (expr == NULL)
+    {
+      return;
+    }
+
+  switch (pt_dblink_merge_value_leaf (expr, &binds->refs))
+    {
+    case PT_DBLINK_LEAF_LOCAL:
+      binds->fn (parser, expr, is_key, binds->arg);
+      binds->count++;
+      return;
+    case PT_DBLINK_LEAF_REMOTE:
+      return;
+    default:
+      break;
+    }
+
+  if (expr->node_type == PT_EXPR)
+    {
+      pt_dblink_merge_bind_expr (parser, expr->info.expr.arg1, is_key, binds);
+      pt_dblink_merge_bind_expr (parser, expr->info.expr.arg2, is_key, binds);
+    }
+}
+
+/* the same over a list, a VALUES row */
+static void
+pt_dblink_merge_bind_list (PARSER_CONTEXT * parser, PT_NODE * list, PT_DBLINK_MERGE_BINDS * binds)
+{
+  for (; list != NULL; list = list->next)
+    {
+      pt_dblink_merge_bind_expr (parser, list, false, binds);
+    }
+}
+
+/* A pt_dblink_merge_walk_on callback. The source column of a key is bound as a key. The gate lets
+ * no other term into the ON. */
+static bool
+pt_dblink_merge_bind_on_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col, PT_NODE * source_col,
+			      void *arg)
+{
+  if (source_col != NULL)
+    {
+      pt_dblink_merge_bind_expr (parser, source_col, true, (PT_DBLINK_MERGE_BINDS *) arg);
+    }
+  return true;
+}
+
+/*
+ * pt_dblink_merge_walk_binds () - Call fn once per source column a remote MERGE with a local source
+ *   binds. The order is that of the one-row USING's columns: ON, SET and VALUES. The gate refuses
+ *   a WHERE and a DELETE in the clauses. The source SELECT is laid out from this walk over the
+ *   statement's copy from before type checking.
+ *   return: the number of values
+ *   parser(in): parser context
+ *   merge(in): a name-resolved PT_MERGE whose target is in the derived dblink table shape
+ *   fn(in): called with each source column and whether it is the source side of an ON key
+ *   arg(in): passed to fn
+ *
+ * Note: A source column is reported as an ON key's source side, or under arg1 and arg2 of the
+ *   expressions in the other clauses. One in an ON term that is not a key, under arg3, or in a
+ *   function or a subquery is not reported. The caller refuses those shapes before it walks.
+ */
+int
+pt_dblink_merge_walk_binds (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_BIND_FN fn, void *arg)
+{
+  PT_MERGE_INFO *info = &merge->info.merge;
+  PT_DBLINK_MERGE_BINDS binds;
+  PT_NODE *assign;
+
+  memset (&binds, 0, sizeof (binds));
+  pt_dblink_merge_init_refs (merge, &binds.refs);
+  binds.fn = fn;
+  binds.arg = arg;
+
+  pt_dblink_merge_walk_on (parser, info->search_cond, &binds.refs, pt_dblink_merge_bind_on_term, &binds);
+
+  for (assign = info->update.assignment; assign != NULL; assign = assign->next)
+    {
+      /* the LHS is a target column, sent as written */
+      pt_dblink_merge_bind_expr (parser, assign->info.expr.arg2, false, &binds);
+    }
+
+  if (info->insert.value_clauses != NULL)
+    {
+      pt_dblink_merge_bind_list (parser, info->insert.value_clauses->info.node_list.list, &binds);
+    }
+
+  return binds.count;
 }
 
 /* what pt_dblink_merge_check_key_types carries over the walk */
@@ -13873,7 +13981,8 @@ pt_dblink_merge_check_keys_kept (PARSER_CONTEXT * parser, PT_MERGE_INFO * merge,
  * Note: the checks run in clause order and the first reason found is raised. Whether the clauses
  *   keep the ON keys is checked last, as it needs keys and clauses of an admitted shape. The key
  *   types are checked before the gate, on the type-checked statement
- *   (pt_dblink_merge_check_key_types).
+ *   (pt_dblink_merge_check_key_types). The walk that builds the source SELECT reports only the
+ *   source columns of the shapes admitted here.
  *
  *   The gate reads the clauses as written. Type checking folds some INSERT values it can compute
  *     here. ROW_COUNT () becomes this session's count, for one. The folded value would pass the
@@ -13887,7 +13996,8 @@ pt_dblink_merge_is_inscope (PARSER_CONTEXT * parser, PT_NODE * merge)
   PT_DBLINK_MERGE_VERDICT verdict;
 
   /* Only mq_translate () fills check_where and insert.class_where, from a view's check option and
-   * WHERE, and a remote DML skips it (db_vdb.c). So the gate need not look at them. */
+   * WHERE, and a remote DML skips it (db_vdb.c). So the gate and the bind walk need not look at
+   * them. */
   assert (info->check_where == NULL && info->insert.class_where == NULL);
 
   memset (&reads, 0, sizeof (reads));
