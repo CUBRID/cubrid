@@ -277,6 +277,26 @@ typedef struct
   int item_count;
 } ARV_LOG_PAGE_INFO_TABLE;
 
+/* The log of the database that restoredb is about to write over, read before the log manager starts: the active log
+ * through the descriptor that logpb_find_header_parameters () mounted, the archives one at a time. */
+typedef struct logpb_restore_log_scan LOGPB_RESTORE_LOG_SCAN;
+struct logpb_restore_log_scan
+{
+  LOG_HEADER hdr;		/* header of the active log */
+  LOG_PAGE *page;		/* the page read last */
+  int arv_vdes;			/* the archive opened last, or NULL_VOLDES */
+  LOG_ARV_HEADER arv_hdr;	/* the header of that archive */
+};
+
+/* a barrier postpone of a no-logging index build (RVBT_NO_LOGGING_INDEX_DURABLE) whose transaction has not ended yet in
+ * the scanned log */
+typedef struct logpb_restore_barrier LOGPB_RESTORE_BARRIER;
+struct logpb_restore_barrier
+{
+  TRANID trid;
+  LOG_LSA lsa;
+};
+
 
 #define LOG_MAX_LOGINFO_LINE (PATH_MAX * 4)
 
@@ -348,6 +368,13 @@ static void logpb_dump_runtime (FILE * outfp);
 static void logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg);
 
 static int logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_t backup_time);
+static bool logpb_restore_scan_open_archive (THREAD_ENTRY * thread_p, LOGPB_RESTORE_LOG_SCAN * scan, int arv_num);
+static bool logpb_restore_scan_fetch_page (THREAD_ENTRY * thread_p, LOGPB_RESTORE_LOG_SCAN * scan, LOG_PAGEID pageid);
+static bool logpb_restore_scan_read_body (THREAD_ENTRY * thread_p, LOGPB_RESTORE_LOG_SCAN * scan,
+					  const LOG_LSA * rec_lsa, void *body, size_t body_size);
+static int logpb_restore_check_no_logging_index (THREAD_ENTRY * thread_p, const char *db_fullname,
+						 const LOG_LSA * top_level_start_log_end_lsa, INT64 db_creation,
+						 time_t stopat);
 static void logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p);
 static int logpb_add_archive_page_info (THREAD_ENTRY * thread_p, int arv_num, LOG_PAGEID start_page,
 					LOG_PAGEID end_page);
@@ -9148,6 +9175,454 @@ logpb_mark_restore_incomplete (THREAD_ENTRY * thread_p, int vdes, const char *vl
 }
 
 /*
+ * logpb_restore_scan_open_archive () - open one archive of the log that restoredb is about to write over
+ *
+ * return: true if it is open and belongs to the same database
+ * thread_p(in): thread entry
+ * scan(in/out): the scan; the archive opened before is closed
+ * arv_num(in): number of the archive
+ */
+static bool
+logpb_restore_scan_open_archive (THREAD_ENTRY * thread_p, LOGPB_RESTORE_LOG_SCAN * scan, int arv_num)
+{
+  char arv_name[PATH_MAX];
+  char hdr_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *hdr_pgptr = (LOG_PAGE *) PTR_ALIGN (hdr_pgbuf, MAX_ALIGNMENT);
+  LOG_ARV_HEADER *arv_hdr = (LOG_ARV_HEADER *) hdr_pgptr->area;
+
+  if (scan->arv_vdes != NULL_VOLDES)
+    {
+      fileio_close (scan->arv_vdes);
+      scan->arv_vdes = NULL_VOLDES;
+    }
+
+  if (arv_num < 0 || arv_num >= scan->hdr.nxarv_num)
+    {
+      return false;
+    }
+
+  fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, arv_num);
+  if (!fileio_is_volume_exist (arv_name))
+    {
+      return false;
+    }
+
+  scan->arv_vdes = fileio_open (arv_name, O_RDONLY, 0);
+  if (scan->arv_vdes == NULL_VOLDES)
+    {
+      return false;
+    }
+
+  if (fileio_read (thread_p, scan->arv_vdes, hdr_pgptr, 0, LOG_PAGESIZE) == NULL
+      || arv_hdr->arv_num != arv_num || difftime64 ((time_t) arv_hdr->db_creation, (time_t) scan->hdr.db_creation) != 0)
+    {
+      fileio_close (scan->arv_vdes);
+      scan->arv_vdes = NULL_VOLDES;
+      return false;
+    }
+
+  scan->arv_hdr = *arv_hdr;
+  return true;
+}
+
+/*
+ * logpb_restore_scan_fetch_page () - read one page of the log that restoredb is about to write over
+ *
+ * return: true if the page is read; false if it cannot be read here: no archive holds it, a read fails, the active
+ *	   log has no such page (anymore), its checksum is wrong, or it is encrypted with TDE, whose keys are not
+ *	   loaded yet
+ * thread_p(in): thread entry
+ * scan(in/out): the scan; scan->page holds the page
+ * pageid(in): logical page
+ *
+ * NOTE: Like media recovery before the server has restarted (logpb_read_page_from_file ()), a page before the next
+ *	 archive page is read from its archive, not from the active log.
+ */
+static bool
+logpb_restore_scan_fetch_page (THREAD_ENTRY * thread_p, LOGPB_RESTORE_LOG_SCAN * scan, LOG_PAGEID pageid)
+{
+  LOG_PHY_PAGEID phy_pageid;
+  bool is_corrupted = true;
+  int arv_num;
+
+  if (scan->page->hdr.logical_pageid == pageid && pageid != NULL_PAGEID)
+    {
+      return true;
+    }
+  scan->page->hdr.logical_pageid = NULL_PAGEID;
+
+  if (pageid < 0)
+    {
+      return false;
+    }
+
+  if (pageid >= scan->hdr.nxarv_pageid)
+    {
+      /* the active log: the same mapping as logpb_to_physical_pageid () */
+      LOG_PAGEID tmp_pageid = (pageid - scan->hdr.fpageid) % scan->hdr.npages;
+
+      if (tmp_pageid < 0)
+	{
+	  tmp_pageid += scan->hdr.npages;
+	}
+      phy_pageid = (LOG_PHY_PAGEID) (tmp_pageid + 1);
+      if (fileio_read (thread_p, log_Gl.append.vdes, scan->page, phy_pageid, LOG_PAGESIZE) == NULL)
+	{
+	  scan->page->hdr.logical_pageid = NULL_PAGEID;
+	  return false;
+	}
+    }
+  else
+    {
+      if (scan->arv_vdes == NULL_VOLDES || pageid < scan->arv_hdr.fpageid
+	  || pageid >= scan->arv_hdr.fpageid + scan->arv_hdr.npages)
+	{
+	  if (scan->arv_vdes != NULL_VOLDES && pageid >= scan->arv_hdr.fpageid + scan->arv_hdr.npages)
+	    {
+	      /* the scan goes forward: the next archive */
+	      arv_num = scan->arv_hdr.arv_num + 1;
+	      if (!logpb_restore_scan_open_archive (thread_p, scan, arv_num))
+		{
+		  return false;
+		}
+	    }
+	  else
+	    {
+	      /* the first archive page of the scan: search back from the last archive */
+	      for (arv_num = scan->hdr.nxarv_num - 1; arv_num >= 0; arv_num--)
+		{
+		  if (!logpb_restore_scan_open_archive (thread_p, scan, arv_num))
+		    {
+		      return false;
+		    }
+		  if (scan->arv_hdr.fpageid <= pageid)
+		    {
+		      break;
+		    }
+		}
+	    }
+
+	  if (scan->arv_vdes == NULL_VOLDES || pageid < scan->arv_hdr.fpageid
+	      || pageid >= scan->arv_hdr.fpageid + scan->arv_hdr.npages)
+	    {
+	      return false;
+	    }
+	}
+
+      phy_pageid = (LOG_PHY_PAGEID) (pageid - scan->arv_hdr.fpageid + 1);
+      if (fileio_read (thread_p, scan->arv_vdes, scan->page, phy_pageid, LOG_PAGESIZE) == NULL)
+	{
+	  scan->page->hdr.logical_pageid = NULL_PAGEID;
+	  return false;
+	}
+    }
+
+  if (scan->page->hdr.logical_pageid != pageid || logpb_get_tde_algorithm (scan->page) != TDE_ALGORITHM_NONE
+      || logpb_page_check_corruption (thread_p, scan->page, &is_corrupted) != NO_ERROR || is_corrupted)
+    {
+      scan->page->hdr.logical_pageid = NULL_PAGEID;
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * logpb_restore_scan_read_body () - copy the fixed part that follows a log record header, read as
+ *   LOG_READ_ADD_ALIGN () and LOG_READ_ADVANCE_WHEN_DOESNT_FIT () read it
+ *
+ * return: true if read
+ * thread_p(in): thread entry
+ * scan(in/out): the scan
+ * rec_lsa(in): LSA of the record
+ * body(out): where to copy the fixed part
+ * body_size(in): its size
+ */
+static bool
+logpb_restore_scan_read_body (THREAD_ENTRY * thread_p, LOGPB_RESTORE_LOG_SCAN * scan, const LOG_LSA * rec_lsa,
+			      void *body, size_t body_size)
+{
+  LOG_LSA lsa = *rec_lsa;
+
+  lsa.offset = DB_ALIGN (lsa.offset + (int) sizeof (LOG_RECORD_HEADER), DOUBLE_ALIGNMENT);
+  while (lsa.offset >= (int) LOGAREA_SIZE)
+    {
+      lsa.pageid++;
+      lsa.offset = DB_ALIGN (lsa.offset - (int) LOGAREA_SIZE, DOUBLE_ALIGNMENT);
+    }
+  if (lsa.offset + (int) body_size >= (int) LOGAREA_SIZE)
+    {
+      lsa.pageid++;
+      lsa.offset = 0;
+    }
+
+  if (!logpb_restore_scan_fetch_page (thread_p, scan, lsa.pageid))
+    {
+      return false;
+    }
+
+  memcpy (body, scan->page->area + lsa.offset, body_size);
+  return true;
+}
+
+/*
+ * logpb_restore_check_no_logging_index () - refuse, before restoredb writes any file over the database, a restore whose
+ *   media recovery would replay past a no-logging index build that the restored backup does not hold
+ *
+ * return: NO_ERROR, or ER_LOG_RESTORE_REFUSED_NO_LOGGING_INDEX
+ * thread_p(in): thread entry
+ * db_fullname(in): full name of the database
+ * top_level_start_log_end_lsa(in): where the restored backup level with the highest number started copying pages
+ * db_creation(in): creation time of the database of the backup
+ * stopat(in): the time where media recovery stops (restoredb -d), or -1
+ *
+ * NOTE: Media recovery replays the log from the backup's checkpoint, and stops at the first commit or abort later than
+ *   stopat (log_rv_analysis_commit_with_postpone (), log_rv_analysis_complete ()), or where it cannot read the log.
+ *   It refuses a committed build when the barrier record is not covered by the backup
+ *   (log_rv_no_logging_index_is_covered_by_backup ()): the replay runs the barrier postpone of the build, or redoes
+ *   the marker that the postpone left, both after the commit record of the build. A barrier before
+ *   top_level_start_log_end_lsa is covered, so the scan starts there and stops where media recovery stops. It refuses
+ *   when a transaction that logged a barrier postpone reaches its commit record before that point. The replay does
+ *   not run a postpone of a system operation that was rolled back, nor one before the first postpone that the commit
+ *   runs, so those do not count.
+ *   The scan reads the log that the replay will read. Where it cannot (no active log, an archive that is not there,
+ *   a page encrypted with TDE), it stops without a refusal, and the replay still refuses at the build.
+ */
+static int
+logpb_restore_check_no_logging_index (THREAD_ENTRY * thread_p, const char *db_fullname,
+				      const LOG_LSA * top_level_start_log_end_lsa, INT64 db_creation, time_t stopat)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOGPB_RESTORE_LOG_SCAN scan;
+  LOGPB_RESTORE_BARRIER *barriers = NULL, *new_barriers;
+  int num_barriers = 0, max_barriers = 0, i, j;
+  LOG_RECORD_HEADER rec;
+  LOG_LSA lsa, refused_lsa;
+  LOG_REC_REDO redo;
+  LOG_REC_SYSOP_END sysop_end;
+  LOG_REC_START_POSTPONE start_posp;
+  LOG_REC_DONETIME donetime;
+  INT64 at_time;
+  bool is_end = false;
+  int error_code = NO_ERROR;
+
+  LSA_SET_NULL (&refused_lsa);
+
+  if (log_Gl.append.vdes == NULL_VOLDES || top_level_start_log_end_lsa == NULL
+      || LSA_ISNULL (top_level_start_log_end_lsa))
+    {
+      /* no log to read here, or a backup header from before the field */
+      return NO_ERROR;
+    }
+
+  scan.page = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  scan.arv_vdes = NULL_VOLDES;
+
+  if (fileio_read (thread_p, log_Gl.append.vdes, scan.page, LOGPB_PHYSICAL_HEADER_PAGE_ID, LOG_PAGESIZE) == NULL
+      || scan.page->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID)
+    {
+      er_clear ();
+      return NO_ERROR;
+    }
+  memcpy ((void *) &scan.hdr, scan.page->area, sizeof (scan.hdr));
+  scan.page->hdr.logical_pageid = NULL_PAGEID;
+  if (difftime64 ((time_t) scan.hdr.db_creation, (time_t) db_creation) != 0 || scan.hdr.npages <= 0)
+    {
+      /* the active log of another database; the replay does not read it */
+      return NO_ERROR;
+    }
+
+  lsa = *top_level_start_log_end_lsa;
+  while (!is_end)
+    {
+      if (lsa.offset != NULL_OFFSET && lsa.offset + (int) sizeof (LOG_RECORD_HEADER) >= (int) LOGAREA_SIZE)
+	{
+	  /* the start is the log end when the backup started; as the append does, a record header that does not fit
+	   * in the rest of the page starts the next page */
+	  lsa.pageid++;
+	  lsa.offset = 0;
+	}
+
+      if (!logpb_restore_scan_fetch_page (thread_p, &scan, lsa.pageid))
+	{
+	  break;
+	}
+
+      if (lsa.offset == NULL_OFFSET)
+	{
+	  /* a record that was not complete when its page was archived: the page tells where the next one starts */
+	  lsa.offset = scan.page->hdr.offset;
+	  if (lsa.offset == NULL_OFFSET)
+	    {
+	      if (lsa.pageid < scan.hdr.nxarv_pageid)
+		{
+		  lsa.pageid++;
+		  continue;
+		}
+	      break;
+	    }
+	}
+
+      if (lsa.offset < 0 || lsa.offset + (int) sizeof (LOG_RECORD_HEADER) >= (int) LOGAREA_SIZE)
+	{
+	  break;
+	}
+      memcpy (&rec, scan.page->area + lsa.offset, sizeof (rec));
+      if (rec.type <= LOG_SMALLER_LOGREC_TYPE || rec.type >= LOG_LARGER_LOGREC_TYPE)
+	{
+	  /* not a log record */
+	  break;
+	}
+
+      switch (rec.type)
+	{
+	case LOG_POSTPONE:
+	  if (!logpb_restore_scan_read_body (thread_p, &scan, &lsa, &redo, sizeof (redo)))
+	    {
+	      is_end = true;
+	      break;
+	    }
+	  if (redo.data.rcvindex == RVBT_NO_LOGGING_INDEX_DURABLE)
+	    {
+	      if (num_barriers == max_barriers)
+		{
+		  max_barriers = (max_barriers == 0) ? 8 : max_barriers * 2;
+		  new_barriers = (LOGPB_RESTORE_BARRIER *) realloc (barriers, max_barriers * sizeof (*barriers));
+		  if (new_barriers == NULL)
+		    {
+		      /* the replay still refuses at the build */
+		      is_end = true;
+		      break;
+		    }
+		  barriers = new_barriers;
+		}
+	      barriers[num_barriers].trid = rec.trid;
+	      barriers[num_barriers].lsa = lsa;
+	      num_barriers++;
+	    }
+	  break;
+
+	case LOG_SYSOP_END:
+	  if (!logpb_restore_scan_read_body (thread_p, &scan, &lsa, &sysop_end, sizeof (sysop_end)))
+	    {
+	      is_end = true;
+	      break;
+	    }
+	  if (sysop_end.type == LOG_SYSOP_END_ABORT)
+	    {
+	      /* the postpones logged in the rolled back system operation never run */
+	      for (i = 0, j = 0; i < num_barriers; i++)
+		{
+		  if (barriers[i].trid != rec.trid || LSA_LE (&barriers[i].lsa, &sysop_end.lastparent_lsa))
+		    {
+		      barriers[j++] = barriers[i];
+		    }
+		}
+	      num_barriers = j;
+	    }
+	  break;
+
+	case LOG_COMMIT_WITH_POSTPONE:
+	case LOG_COMMIT:
+	case LOG_ABORT:
+	  if (rec.type == LOG_COMMIT_WITH_POSTPONE)
+	    {
+	      if (!logpb_restore_scan_read_body (thread_p, &scan, &lsa, &start_posp, sizeof (start_posp)))
+		{
+		  is_end = true;
+		  break;
+		}
+	      at_time = start_posp.at_time;
+	    }
+	  else
+	    {
+	      if (!logpb_restore_scan_read_body (thread_p, &scan, &lsa, &donetime, sizeof (donetime)))
+		{
+		  is_end = true;
+		  break;
+		}
+	      at_time = donetime.at_time;
+	    }
+
+	  if (stopat != (time_t) (-1) && difftime (stopat, (time_t) at_time) < 0)
+	    {
+	      /* media recovery stops here */
+	      is_end = true;
+	      break;
+	    }
+
+	  for (i = 0, j = 0; i < num_barriers; i++)
+	    {
+	      if (barriers[i].trid != rec.trid)
+		{
+		  barriers[j++] = barriers[i];
+		}
+	      else if (rec.type == LOG_COMMIT_WITH_POSTPONE && LSA_GE (&barriers[i].lsa, &start_posp.posp_lsa)
+		       && !log_rv_no_logging_index_is_covered_by_backup (top_level_start_log_end_lsa, &barriers[i].lsa))
+		{
+		  /* the replay runs this postpone */
+		  LSA_COPY (&refused_lsa, &barriers[i].lsa);
+		}
+	    }
+	  num_barriers = j;
+	  if (!LSA_ISNULL (&refused_lsa))
+	    {
+	      is_end = true;
+	    }
+	  break;
+
+	case LOG_END_OF_LOG:
+	  is_end = true;
+	  break;
+
+	default:
+	  break;
+	}
+
+      if (is_end)
+	{
+	  break;
+	}
+
+      /* the next record; stop at the end of the log, and where the log does not go forward */
+      if (LSA_ISNULL (&rec.forw_lsa) || rec.forw_lsa.pageid < lsa.pageid
+	  || (rec.forw_lsa.pageid == lsa.pageid && rec.forw_lsa.offset <= lsa.offset))
+	{
+	  break;
+	}
+      lsa = rec.forw_lsa;
+    }
+
+  if (scan.arv_vdes != NULL_VOLDES)
+    {
+      fileio_close (scan.arv_vdes);
+    }
+  if (barriers != NULL)
+    {
+      free_and_init (barriers);
+    }
+
+  /* a log that cannot be read is not an error here */
+  er_clear ();
+
+  er_log_debug (ARG_FILE_LINE,
+		"logpb_restore_check_no_logging_index: scanned the log from %lld|%d to %lld|%d (stopat %lld)"
+		", refused at barrier %lld|%d\n", LSA_AS_ARGS (top_level_start_log_end_lsa), LSA_AS_ARGS (&lsa),
+		(long long) stopat, LSA_AS_ARGS (&refused_lsa));
+
+  if (!LSA_ISNULL (&refused_lsa))
+    {
+      char lsa_string[64];
+
+      snprintf (lsa_string, sizeof (lsa_string), "%lld|%d", LSA_AS_ARGS (&refused_lsa));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_RESTORE_REFUSED_NO_LOGGING_INDEX, 2, db_fullname, lsa_string);
+      error_code = ER_LOG_RESTORE_REFUSED_NO_LOGGING_INDEX;
+    }
+
+  return error_code;
+}
+
+/*
  * logpb_restore - Restore volume from its backup
  *
  * return: NO_ERROR if all OK, ER status otherwise
@@ -9425,6 +9900,21 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
       /* hand where this level started copying pages to media recovery, which judges no-logging index builds */
       log_recovery_set_restore_backup_level ((int) try_level, &session->bkup.bkuphdr->start_log_end_lsa);
+
+      if (first_time)
+	{
+	  /* the first level is the one with the highest number: judge the builds before any file is written over the
+	   * database, so that a refused restore leaves the database as it was */
+	  error_code = logpb_restore_check_no_logging_index (thread_p, db_fullname,
+							     &session->bkup.bkuphdr->start_log_end_lsa,
+							     session->bkup.bkuphdr->db_creation, r_args->stopat);
+	  if (error_code != NO_ERROR)
+	    {
+	      LOG_CS_EXIT (thread_p);
+	      error_expected = true;
+	      goto error;
+	    }
+	}
 
       if (first_time)
 	{

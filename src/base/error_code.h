@@ -1829,8 +1829,9 @@
 #define ER_SES_LOGIN_NOT_RESTORED                   -1422
 
 #define ER_LOG_RESTORE_INCOMPLETE                   -1423
+#define ER_LOG_RESTORE_REFUSED_NO_LOGGING_INDEX     -1424
 
-#define ER_LAST_ERROR                               -1424
+#define ER_LAST_ERROR                               -1425
 
 /*
  * CAUTION!
