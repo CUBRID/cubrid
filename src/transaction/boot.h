@@ -42,18 +42,22 @@
          || (client_type) == DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY \
          || (client_type) == DB_CLIENT_TYPE_LOADDB_UTILITY)
 
-/* the client types a client may register as; 18 was an admin csql type, no longer used */
+/* the client types a client may register as */
 #define BOOT_IS_DEFINED_CLIENT_TYPE(client_type) \
         ((client_type) >= DB_CLIENT_TYPE_DEFAULT \
          && (client_type) < DB_CLIENT_TYPE_MAX \
-         && (client_type) != 18)
+         && (client_type) != DB_CLIENT_TYPE_OBSOLETE_ADMIN_CSQL_REBUILD_CATALOG)
 
-/* client types that must prove the declared user's password before the server registers them,
- * wherever they connect from. An admin or log replicator client is let in without one only from
- * this host or from an HA node; any other client type, including one added later, must prove it */
+/* client types the server lets in without the declared user's password proof, but only from this
+ * host or from an HA node */
+#define BOOT_PROOF_EXEMPT_CLIENT_TYPE(client_type) \
+        (BOOT_ADMIN_CLIENT_TYPE (client_type) \
+         || BOOT_LOG_REPLICATOR_TYPE (client_type))
+
+/* client types that must prove the declared user's password wherever they connect from; any
+ * client type added later is one of them */
 #define BOOT_PASSWORD_PROOF_CLIENT_TYPE(client_type) \
-        (!BOOT_ADMIN_CLIENT_TYPE (client_type) \
-         && !BOOT_LOG_REPLICATOR_TYPE (client_type))
+        (!BOOT_PROOF_EXEMPT_CLIENT_TYPE (client_type))
 
 #define BOOT_READ_ONLY_CLIENT_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_READ_ONLY_CSQL \

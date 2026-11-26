@@ -1433,6 +1433,37 @@ util_get_table_list_from_file (char *fname, dynamic_array * darray)
 
 #if !defined (SERVER_MODE)
 /*
+ * util_login_as_dba () - log in as DBA and restart the client
+ *   return: NO_ERROR, or the error the restart ended with
+ *   program_name(in): the utility's name
+ *   db_name(in): the database
+ *   password(in): the DBA password, or NULL for none
+ */
+static int
+util_login_as_dba (const char *program_name, const char *db_name, const char *password)
+{
+  int error;
+
+  /* a password given is checked even where none is needed, so that a wrong one is never taken */
+  if (password == NULL)
+    {
+      AU_DISABLE_PASSWORDS ();
+    }
+  else
+    {
+      AU_ENABLE_PASSWORDS ();
+    }
+
+  error = db_login ("DBA", password);
+  if (error == NO_ERROR)
+    {
+      error = db_restart (program_name, TRUE, db_name);
+    }
+
+  return error;
+}
+
+/*
  * util_restart_as_dba () - log in as DBA and restart the client of an admin utility
  *   return: NO_ERROR, or the error the restart ended with
  *   program_name(in): the utility's name
@@ -1442,64 +1473,48 @@ util_get_table_list_from_file (char *fname, dynamic_array * darray)
  *
  * Note: the server takes an admin utility without the DBA password only from
  *   its own host or an HA node; from anywhere else it needs the password. When
- *   none was given, it is asked for on the terminal, once per process; with no
- *   terminal, the error is returned at once.
+ *   none was given, it is asked for on the terminal, once per process while
+ *   the server takes it; with no terminal, the error is returned at once.
  */
 int
 util_restart_as_dba (const char *program_name, const char *db_name, const char *dba_password, int client_type)
 {
+  /* a password typed on the terminal that the server took, for the next connection of this process */
   static char typed_password[AU_MAX_PASSWORD_BUF + 1] = { '\0' };
-  static bool password_typed = false;
   char entered[AU_MAX_PASSWORD_BUF + 1] = { '\0' };
   const char *password;
+  char *prompted;
   int error;
 
-  if (dba_password != NULL && dba_password[0] == '\0')
-    {
-      dba_password = NULL;
-    }
-  if (dba_password == NULL && password_typed)
+  password = (dba_password != NULL && dba_password[0] != '\0') ? dba_password : NULL;
+  if (password == NULL && typed_password[0] != '\0')
     {
       /* a utility that connects again, such as applyinfo -i, does not ask twice */
-      dba_password = typed_password;
+      password = typed_password;
     }
 
-  /* a password given is checked even where none is needed, so that a wrong one is never taken */
-  if (dba_password == NULL)
-    {
-      AU_DISABLE_PASSWORDS ();
-    }
-  else
-    {
-      AU_ENABLE_PASSWORDS ();
-    }
   db_set_client_type (client_type);
-
-  error = db_login ("DBA", dba_password);
-  if (error == NO_ERROR)
+  error = util_login_as_dba (program_name, db_name, password);
+  if (error != NO_ERROR && password == typed_password)
     {
-      error = db_restart (program_name, TRUE, db_name);
+      /* refused now: forget it, so that a later connection asks again */
+      memset (typed_password, 0, sizeof (typed_password));
     }
 
-  if (error == ER_AU_REJECT_LOGIN && use_console_password && dba_password == NULL && isatty (fileno (stdin)))
+  if (error == ER_AU_REJECT_LOGIN && use_console_password && password == NULL && isatty (fileno (stdin)))
     {
-      password = getpass (utility_get_generic_message (MSGCAT_UTIL_GENERIC_DBA_PASSWORD));
-      if (password != NULL && password[0] != '\0')
+      prompted = getpass (utility_get_generic_message (MSGCAT_UTIL_GENERIC_DBA_PASSWORD));
+      if (prompted != NULL && prompted[0] != '\0')
 	{
-	  strncpy_bufsize (entered, password);
-	  dba_password = entered;
-	  AU_ENABLE_PASSWORDS ();
+	  strncpy_bufsize (entered, prompted);
+	  memset (prompted, 0, strlen (prompted));
+	  password = entered;
 	}
-      error = db_login ("DBA", dba_password);
-      if (error == NO_ERROR)
-	{
-	  error = db_restart (program_name, TRUE, db_name);
-	}
-      if (error == NO_ERROR && dba_password == entered)
+      error = util_login_as_dba (program_name, db_name, password);
+      if (error == NO_ERROR && password == entered)
 	{
 	  /* only a password the server took is kept for the next connection */
 	  strncpy_bufsize (typed_password, entered);
-	  password_typed = true;
 	}
       memset (entered, 0, sizeof (entered));
     }
