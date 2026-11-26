@@ -189,8 +189,6 @@ static void get_term_rank (QO_ENV * env, QO_TERM * term);
 static PT_NODE *check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static bool is_local_name (QO_ENV * env, PT_NODE * expr);
 static void get_local_subqueries (QO_ENV * env, PT_NODE * tree);
-static void qo_detach_link (QO_ENV * env, QO_DETACHED_LINK * link, PT_NODE ** slot);
-static void qo_reattach_link (QO_ENV * env, QO_DETACHED_LINK * link);
 static PT_NODE *get_local_subqueries_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void get_rank (QO_ENV * env);
 static PT_NODE *get_referenced_attrs (PT_NODE * entity);
@@ -6304,7 +6302,7 @@ qo_abort (QO_ENV * env, const char *file, int line)
  *	 back. The statement then ran without a plan and without the conjuncts after the cut. A link
  *	 cut where qo_abort() may be reached before it is put back is to be cut here.
  */
-static void
+void
 qo_detach_link (QO_ENV * env, QO_DETACHED_LINK * link, PT_NODE ** slot)
 {
   link->slot = slot;
@@ -6321,7 +6319,7 @@ qo_detach_link (QO_ENV * env, QO_DETACHED_LINK * link, PT_NODE ** slot)
  *   env(in):
  *   link(in):
  */
-static void
+void
 qo_reattach_link (QO_ENV * env, QO_DETACHED_LINK * link)
 {
   assert (env->detached_links == link);
@@ -10714,7 +10712,8 @@ qo_term_clear (QO_ENV * env, int idx)
 static void
 qo_discover_sort_limit_nodes (QO_ENV * env)
 {
-  PT_NODE *query, *orderby, *sort_col, *select_list, *col, *save_next;
+  PT_NODE *query, *orderby, *sort_col, *select_list, *col;
+  QO_DETACHED_LINK col_link;
   int i, pos_spec, limit_max_count;
   QO_NODE *node;
   BITSET order_nodes, dep_nodes, expr_segs, tmp_bitset;
@@ -10812,12 +10811,11 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
 	  goto abandon_stop_limit;
 	}
 
-      save_next = col->next;
-      col->next = NULL;
+      qo_detach_link (env, &col_link, &col->next);
       if (pt_has_analytic (QO_ENV_PARSER (env), col) || pt_has_aggregate (QO_ENV_PARSER (env), col))
 	{
 	  /* abandon search because these expressions cannot be evaluated during SORT_LIMIT evaluation */
-	  col->next = save_next;
+	  qo_reattach_link (env, &col_link);
 	  goto abandon_stop_limit;
 	}
 
@@ -10832,7 +10830,7 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       bitset_delset (&expr_segs);
       bitset_delset (&tmp_bitset);
 
-      col->next = save_next;
+      qo_reattach_link (env, &col_link);
     }
 
   for (i = bitset_iterate (&order_nodes, &bi); i != -1; i = bitset_next_member (&bi))

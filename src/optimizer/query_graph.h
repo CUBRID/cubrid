@@ -1127,6 +1127,8 @@ struct qo_xasl_index_info
 
 
 extern void qo_env_free (QO_ENV *);
+extern void qo_detach_link (QO_ENV * env, QO_DETACHED_LINK * link, PT_NODE ** slot);
+extern void qo_reattach_link (QO_ENV * env, QO_DETACHED_LINK * link);
 extern void qo_seg_fprint (QO_SEGMENT *, FILE *);
 extern void qo_node_fprint (QO_NODE *, FILE *);
 extern void qo_term_fprint (QO_TERM *, FILE *);
