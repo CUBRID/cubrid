@@ -709,7 +709,7 @@ qo_optimize_helper (QO_ENV * env)
     }
 
   /* Add the dummy join terms after qo_classify_outerjoin_terms (), which demotes a QO_TC_JOIN term whose node
-   * an outer join null-pads to QO_TC_AFTER_JOIN or QO_TC_DURING_JOIN. Neither is a join edge,
+   * an outer join null-pads to QO_TC_AFTER_JOIN. QO_TC_AFTER_JOIN is no join edge,
    * so an earlier run would count the term as one and leave out a dummy join term the graph needs.
    *
    * Add them before qo_generate_implied_join_terms (), which stops when env->Nterms runs out.
@@ -2186,10 +2186,10 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
  *
  * Behavior:
  *   - The term stands for no ON clause: location 0 keeps QO_ON_COND_TERM () false, and JOIN_INNER keeps
- *     QO_OUTER_JOIN_TERM () false.
+ *     QO_OUTER_JOIN_TERM () false. It adds no node to a dependency set.
  *   - qo_add_dummy_join_term () makes the dummy join term of an ANSI join node instead. It gives the term the location
- *     and the join type of the node. It adds the node before it to the dependency set of a right outer, semi or anti
- *     join node, and of a left outer join node that has no outer join term.
+ *     of the node, and it adds the node before it to the dependency set of a right outer, semi or anti join node,
+ *     and of a left outer join node that has no outer join term.
  */
 static QO_TERM *
 qo_add_inner_dummy_join_term (QO_ENV * env, QO_NODE * head_node, QO_NODE * tail_node)
@@ -2233,8 +2233,8 @@ qo_add_inner_dummy_join_term (QO_ENV * env, QO_NODE * head_node, QO_NODE * tail_
  * Behavior:
  *   - The terms are for the nodes that come after a node their ON clause reads: an outer, semi or anti join node, and
  *     an inner join node whose ON clause reads a node an earlier outer join null-pads.
- *   - Each dummy join term links one group of the nodes the ON clause reads to the connected ones.
- *     The nodes in between that the ON clause does not read get no term.
+ *   - Each dummy join term joins one more group of joined nodes to the nodes already joined to the first node
+ *     the ON clause reads. The nodes in between that the ON clause does not read get no term.
  *
  * Reason:
  *   - planner_visit_node () grows a join order along join edges only. When only the node of an ON clause connects
@@ -2265,7 +2265,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
   bitset_init (&target_set, env);
   bitset_init (&supplier_set, env);
 
-  /* Take one node at a time.
+  /* The Step comments below follow this query.
    *
    * e.g. select count(*)
    *        from ta
@@ -2281,7 +2281,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
       /* Step 1: add the node before on_node to visitable_set.
        *
        * visitable_set = { i : 0 <= i < on_node_idx }.
-       * One node enters it per iteration, before the body can skip the node, so it stays complete.
+       * One node enters it at the top of each iteration, before any continue, so it holds every node before on_node.
        *
        * Only join edges inside visitable_set count.
        * The planner cannot go through on_node to reach a node on_node comes after.
@@ -2303,6 +2303,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
        *
        *      The rewrite turns it into ta cross join tb semi join tc
        *      on tc.ca = cast (1 as varchar) and (cast (1 as varchar) = cast (1 as varchar) or ta.cb = ta.cb).
+       *
        *      No term joins tc with ta, and qo_optimize_helper () adds a dummy join term from tb to tc,
        *      so tc comes after ta and tb. */
       if (!QO_NODE_IS_OUTER_JOIN (on_node) && !QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
@@ -2347,6 +2348,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 
       /* A right outer join preserves its rows against the whole join expression to its left,
        * not only against the nodes its ON clause reads.
+       *
        * qo_optimize_helper () walks that chain to record the order;
        * walk the same chain here so dependent_set covers it.
        * A cross join keeps the join expression; only a comma closes it.
@@ -2451,8 +2453,9 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 	  /* unconnected_idx < on_node_idx: dependent_set still has a node outside connected_set,
 	   * its index is below on_node_idx, and unconnected_idx does not pass it.
 	   *
-	   * dependent_set has no node at or after on_node_idx: a path entity is the only node indexed after
-	   * the spec it hangs off, and a join condition does not accept a path expression. */
+	   * dependent_set has no node at or after on_node_idx. An ON clause reads only the specs up to its own.
+	   * Path entity nodes come after every spec, but no ON clause reads one: a join condition rejects a path
+	   * expression, and a subquery with one is not unnested. */
 	  QO_ASSERT (env, unconnected_idx < on_node_idx);
 
 	  /* If the node right after the connected nodes is in target_set, link it to the node before it,
@@ -2499,9 +2502,8 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
  *   env(in): optimizer environment
  *
  * Behavior:
- *   - No term is added where no node before the node is in its partition, where a join edge joins the node to a node
- *     before it already, or where the planner can visit every node of the partition already.
- *   - The nodes in between that are in another partition get no term.
+ *   - The term goes to the nearest node before the node in its partition. A term to a node of another partition would
+ *     merge two partitions, so the nodes in between that are in another partition get no term.
  *
  * Reason:
  *   - planner_visit_node () grows a join order along join edges only, and a join order starts at one node.
@@ -2553,9 +2555,6 @@ qo_add_cross_dummy_join_terms (QO_ENV * env)
       /* Step 2: go on only when a node before the node is in its partition.
        * partition_set = the nodes joined to node_idx
        * link_idx = max { i : i < node_idx, i in partition_set }
-       *
-       * A term to a node of another partition would merge two partitions,
-       * so the nodes in between that are in another partition get no term.
        *
        * e.g. ta right join tb on tb.ca = ta.ca cross join tx cross join tc left join td on td.ca = tc.ca
        *        inner join te on te.ca = td.ca where te.cb = tb.cb
@@ -2616,8 +2615,8 @@ qo_add_cross_dummy_join_terms (QO_ENV * env)
  * Behavior:
  *   - A join edge is a term QO_IS_EDGE_TERM () accepts. The direction of the edge and the dependency sets of its
  *     nodes are not looked at.
- *   - A term can come before the one that reaches its nodes, so the scan over the terms repeats until no node enters
- *     node_set.
+ *   - A term can come before the term that brings its first node into node_set, so the scan over the terms repeats
+ *     until no node enters node_set.
  */
 static void
 qo_get_joined_nodes (QO_ENV * env, BITSET * scope_set, int node_idx, BITSET * node_set)
@@ -2655,8 +2654,8 @@ qo_get_joined_nodes (QO_ENV * env, BITSET * scope_set, int node_idx, BITSET * no
  *     a join edge joins the node to a visited node (planner_visit_node ()).
  *   - The planner can visit a SEMI join node read with its duplicates removed before the nodes its ON clause reads,
  *     and it also follows the join edges that qo_generate_implied_join_terms () adds after this check.
- *     This check takes neither, so it can return false where the planner visits every node, and a dummy join term
- *     the planner does not need is added.
+ *     This check follows neither, so it can return false where the planner visits every node, and then a dummy join
+ *     term the planner does not need is added.
  *
  * Method:
  *   Both conditions hold for more nodes as more nodes are visited, so visiting any node that can come next until none

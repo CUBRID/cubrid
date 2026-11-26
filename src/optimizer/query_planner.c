@@ -13571,6 +13571,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		 *
 		 *      tb has the left outer dummy join term ta-tb, as its ON clause reads tb alone,
 		 *      and the inner dummy join term tb-tc, as the ON clause of td reads tb and tc.
+		 *
 		 *      te connects ta and tc, so tb can join after both,
 		 *      and tb-tc must not turn the left outer join of tb into an inner join. */
 		join_type = QO_TERM_JOIN_TYPE (term);
