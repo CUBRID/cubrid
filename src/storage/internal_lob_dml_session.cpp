@@ -439,7 +439,7 @@ internal_lob_dml_staging_context::consume_lob_slot (THREAD_ENTRY *thread_p, int 
 	    }
 	  if (!VFID_EQ (&lob_vfid, &slot->direct_writer.lob_vfid))
 	    {
-	      return stream_session_set_error ("internal LOB file of the target class changed while streaming");
+	      return stream_session_set_error ("LOB file of the target class changed while streaming");
 	    }
 
 	  error = internal_lob_repl_tracking_restore (thread_p, slot->direct_tracking);

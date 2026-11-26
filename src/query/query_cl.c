@@ -479,7 +479,7 @@ query_initialize_internal_lob_dml_input (const DB_VALUE * value, INTERNAL_LOB_DM
 	if (current_size > DB_MAX_INTERNAL_LOB_LENGTH)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOB input",
-		    "source exceeds the 4 GiB internal LOB limit");
+		    "source exceeds the 4 GiB LOB limit");
 	    return ER_ES_GENERAL;
 	  }
 	/* a prepared statement reuses the marker made at prepare: read the file as it is now, as develop does */
@@ -805,7 +805,7 @@ check_client_internal_lob_dml_params (int var_cnt, const DB_VALUE * varptr, cons
     {
       /* The client object path (trigger, view or object-level DML) assigns through obj_assign_value (), which
        * refuses an unresolved Internal LOB envelope, so fail here before any payload is sent. */
-      error = stream_session_set_error ("Internal LOB payload cannot be written through the client object path; a "
+      error = stream_session_set_error ("LOB payload cannot be written through the client object path; a "
 					"trigger, a view, or object-level DML forces that path");
     }
 
@@ -869,7 +869,7 @@ execute_query_with_internal_lob_dml (const XASL_ID * xasl_id, QUERY_ID * query_i
 	{
 	  if ((used_vars == NULL || used_vars[i]) && query_is_internal_lob_file_source (&varptr[i]))
 	    {
-	      return stream_session_set_error ("generated keys are not supported with Internal LOB file sources");
+	      return stream_session_set_error ("generated keys are not supported with LOB file sources");
 	    }
 	}
 

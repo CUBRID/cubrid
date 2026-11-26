@@ -1043,7 +1043,7 @@ fprint_internal_lob_ref_if_locator (TEXT_OUTPUT * tout, DB_VALUE * value, bool *
 	  goto exit;
 	}
       /* the row keeps its other columns; the value that could not be read becomes NULL and is logged */
-      util_log_write_errstr ("internal LOB %.*s could not be unloaded, written as NULL: %s\n", key_len, key,
+      util_log_write_errstr ("LOB %.*s could not be unloaded, written as NULL: %s\n", key_len, key,
 			     er_msg () != NULL ? er_msg () : "");
       CHECK_PRINT_ERROR (text_print (tout, "NULL", 4, NULL));
       *printed = true;

@@ -680,7 +680,7 @@ obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
       char detail[SM_MAX_IDENTIFIER_LENGTH + 128];
 
       snprintf (detail, sizeof (detail),
-		"Internal LOB payload for attribute \"%s\" cannot be written through the client object path;"
+		"LOB payload for attribute \"%s\" cannot be written through the client object path;"
 		" a trigger, a view, or object-level DML forces that path", att->header.name);
       return stream_session_set_error (detail);
     }

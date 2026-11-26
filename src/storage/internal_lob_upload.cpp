@@ -83,7 +83,7 @@ internal_lob_upload_store::begin (DB_TYPE type, DB_BIGINT data_length, DB_BIGINT
   if (m_payloads.size () >= INTERNAL_LOB_UPLOAD_MAX_PENDING
       || (data_length > 0 && m_staged_bytes > INTERNAL_LOB_UPLOAD_MAX_STAGED_BYTES - data_length))
     {
-      return stream_session_set_error ("too many internal LOB uploads pending in this session; execute or close them");
+      return stream_session_set_error ("too many LOB uploads pending in this session; execute or close them");
     }
 
   token = m_next_token++;
@@ -120,7 +120,7 @@ internal_lob_upload_store::append (INT64 token, const char *data, int data_size)
     }
   if (m_staged_bytes > INTERNAL_LOB_UPLOAD_MAX_STAGED_BYTES - data_size)
     {
-      return stream_session_set_error ("too many internal LOB uploads pending in this session; execute or close them");
+      return stream_session_set_error ("too many LOB uploads pending in this session; execute or close them");
     }
 
   error = found->second.spool.append (thread_get_thread_entry_info (), data, data_size);

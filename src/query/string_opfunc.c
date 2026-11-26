@@ -18369,8 +18369,7 @@ lobfile_validate_streaming_size (INT64 file_size)
 
   if (file_size > DB_MAX_INTERNAL_LOB_LENGTH)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOB input",
-	      "source exceeds the 4 GiB internal LOB limit");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOB input", "source exceeds the 4 GiB LOB limit");
       return ER_ES_GENERAL;
     }
 

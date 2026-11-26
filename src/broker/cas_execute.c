@@ -3844,7 +3844,7 @@ ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **ar
 	  /* as on develop: db_put writes through the object, which takes no internal LOB; drop the upload */
 	  hm_internal_lob_upload_release (upload_token);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
-		  "an internal LOB cannot be written through an updatable result set; use UPDATE");
+		  "a LOB cannot be written through an updatable result set; use UPDATE");
 	  err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
 	  goto cursor_update_error;
 	}

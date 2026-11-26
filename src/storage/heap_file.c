@@ -15038,8 +15038,7 @@ heap_internal_lob_insert_file_source (THREAD_ENTRY * thread_p, const OID * class
   /* a prepared statement reuses the marker made at prepare: read the file as it is now, as develop does */
   if (current_size > DB_MAX_INTERNAL_LOB_LENGTH)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOB input",
-	      "source exceeds the 4 GiB internal LOB limit");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOB input", "source exceeds the 4 GiB LOB limit");
       return ER_ES_GENERAL;
     }
 

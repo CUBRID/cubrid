@@ -15346,7 +15346,7 @@ sinternal_lob_dml_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
   if (session != NULL && kind != STREAM_KIND_INTERNAL_LOB_DML)
     {
       /* any other kind ends with sstream_end (); its session stays open */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "not an internal LOB DML stream session");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "not a LOB DML stream session");
       error_code = ER_STREAM_INVALID_USE;
     }
   else if (session != NULL)

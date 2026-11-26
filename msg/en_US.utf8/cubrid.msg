@@ -1554,10 +1554,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1422 Cannot restore the login user %2$s of session %1$u. Open a new connection.
 
-1423 The unload file's internal LOB charset (%1$s) differs from this database (%2$s); load aborted.
-1424 Internal LOB locator is not authorized for the current user or session.
-1425 The internal LOB sidecar file is missing, or a reference in the load file is not in it.
-1426 The internal LOB value this locator refers to no longer exists; fetch the row again.
+1423 The unload file's LOB charset (%1$s) differs from this database (%2$s); load aborted.
+1424 LOB locator is not authorized for the current user or session.
+1425 The LOB sidecar file is missing, or a reference in the load file is not in it.
+1426 The LOB value this locator refers to no longer exists; fetch the row again.
 1427 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
