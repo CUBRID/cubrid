@@ -40,6 +40,8 @@
 #include <string.h>
 #include <time.h>
 
+#include <atomic>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -65,6 +67,10 @@ typedef enum
 static pthread_mutex_t la_Worker_start_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t la_Worker_start_cond = PTHREAD_COND_INITIALIZER;	/* on CLOCK_MONOTONIC from la_worker_start */
 static LA_WORKER_START_STATE la_Worker_start_state[LA_MAX_WORKER_COUNT];
+
+/* the commit interval in milliseconds: LA_WORKER_CONFIG.batch_max_msec at start, then what the coordinator adapts it
+ * to (la_worker_set_commit_interval); read by every worker for its open transaction */
+static std::atomic<int> la_Worker_commit_interval_msec (0);
 
 /* how often la_worker_wait_started looks at the shutdown request while a worker is still starting */
 #define LA_WORKER_START_WAIT_MSEC 100
@@ -131,11 +137,11 @@ la_worker_start (LA_WORKER *workers, int count, const LA_WORKER_CONFIG *config)
   assert (workers != NULL && config != NULL);
   assert (config->run_task != NULL && config->commit_batch != NULL && config->abort_batch != NULL
 	  && config->request_shutdown != NULL && config->shutdown_requested != NULL && config->end_context != NULL);
-  assert (config->keep_batch_open != NULL && config->tasks_parked != NULL && config->batch_max_msec > 0
-	  && config->batch_max_tasks > 0);
+  assert (config->batch_max_msec > 0 && config->batch_max_tasks > 0);
   assert (count > 0 && count <= LA_MAX_WORKER_COUNT);
 
   la_Worker_config = *config;
+  la_Worker_commit_interval_msec.store (config->batch_max_msec);
   la_Worker_count = count;
   la_Live_worker_count = count;
 
@@ -466,50 +472,44 @@ struct la_worker_batch
 };
 
 /*
- * la_worker_batch_is_due() - tell whether the open batch has been open long enough to commit with tasks still queued
- *   return: true to commit now
- *   batch(in): the open batch
+ * la_worker_set_commit_interval() - set the interval the workers commit their open transactions at
+ *   msec(in): the interval; the coordinator adapts it to the apply delay as the serial applier does
  *
- * Note: the limit is the commit interval, or LA_WORKER_BATCH_PARKED_MAX_MSEC while a task waits on the coordinator's
- *       pending list: that task may wait for this worker's commit, and a worker whose queue never runs dry would
- *       otherwise hold it for the whole interval.
+ * Note: called by the coordinator. A shorter interval wakes the workers waiting on an empty queue, so a transaction
+ *       held for the longer one is committed by the new deadline.
  */
-static bool
-la_worker_batch_is_due (const LA_WORKER_BATCH *batch)
+void
+la_worker_set_commit_interval (int msec)
 {
-  UINT64 open_nsec = la_monotonic_now_ns () - batch->begin_ns;
+  int old_msec = la_Worker_commit_interval_msec.exchange (MAX (msec, 0));
 
-  if (open_nsec >= (UINT64) la_Worker_config.batch_max_msec * 1000000ULL)
+  if (msec < old_msec)
     {
-      return true;
+      la_task_queue_wake_holding ();
     }
+}
 
-  return open_nsec >= (UINT64) LA_WORKER_BATCH_PARKED_MAX_MSEC * 1000000ULL && la_Worker_config.tasks_parked ();
+/*
+ * la_worker_batch_deadline_ns() - when the open batch is due for its commit
+ *   return: monotonic nanoseconds
+ *   batch(in): the open batch
+ */
+static UINT64
+la_worker_batch_deadline_ns (const LA_WORKER_BATCH *batch)
+{
+  return batch->begin_ns + (UINT64) la_Worker_commit_interval_msec.load () * 1000000ULL;
 }
 
 /*
  * la_worker_empty_hold_nsec() - how long an open batch may wait on an empty queue before it is committed
  *   return: nanoseconds to wait for another task, 0 to commit now
  *   batch(in): the open batch
- *
- * Note: while the coordinator is still reading log and no task waits for another to commit, the batch waits on an
- *       empty queue until the commit interval ends. Otherwise it is committed on an empty queue once it has been
- *       open LA_WORKER_BATCH_EMPTY_HOLD_USEC.
  */
 static UINT64
 la_worker_empty_hold_nsec (const LA_WORKER_BATCH *batch)
 {
-  UINT64 now_ns, deadline_ns;
-
-  if (la_Worker_config.keep_batch_open ())
-    {
-      deadline_ns = batch->begin_ns + (UINT64) la_Worker_config.batch_max_msec * 1000000ULL;
-    }
-  else
-    {
-      deadline_ns = batch->begin_ns + (UINT64) LA_WORKER_BATCH_EMPTY_HOLD_USEC * 1000ULL;
-    }
-  now_ns = la_monotonic_now_ns ();
+  UINT64 now_ns = la_monotonic_now_ns ();
+  UINT64 deadline_ns = la_worker_batch_deadline_ns (batch);
 
   return (now_ns < deadline_ns) ? deadline_ns - now_ns : 0;
 }
@@ -578,8 +578,8 @@ la_worker_commit_and_report (LA_APPLY_WORKER_CONTEXT *context, LA_WORKER_BATCH *
  *
  * Note:
  *   The worker applies the tasks it takes into one open slave transaction and commits them together when
- *   la_worker_batch_is_due says it has been open long enough, when it holds batch_max_tasks of them, or when
- *   no task is waiting in the queue for as long as la_worker_empty_hold_nsec allows. Each task's marker is in the
+ *   it has been open for the commit interval (la_worker_set_commit_interval), whether or not more tasks are queued,
+ *   or when it holds batch_max_tasks of them. Each task's marker is in the
  *   same transaction as its changes, so a restart skips exactly the tasks that were committed. A task with a
  *   statement item is applied in a transaction of its own: the statement takes la_sql_compile_mutex, and the
  *   worker must not hold a lock of another task then (see la_sql_compile_mutex in log_applier.c).
@@ -647,7 +647,13 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 
 	      if (taken_count == 0)
 		{
-		  /* nothing to add: commit rather than hold their locks */
+		  if (la_monotonic_now_ns () < la_worker_batch_deadline_ns (&batch))
+		    {
+		      /* woken by a shorter commit interval before its deadline: hold again until the new one */
+		      continue;
+		    }
+
+		  /* nothing came during the interval: commit rather than hold their locks */
 		  error = la_worker_commit_and_report (context, &batch, *worker_applied_item_count, &queue_closed);
 		  next_begin_ns = 0;
 		  if (error != NO_ERROR || queue_closed)
@@ -771,7 +777,8 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 	  limit_noted = true;
 	}
 
-      if (task->has_statement || batch.count >= la_Worker_config.batch_max_tasks || la_worker_batch_is_due (&batch))
+      if (task->has_statement || batch.count >= la_Worker_config.batch_max_tasks
+	  || la_monotonic_now_ns () >= la_worker_batch_deadline_ns (&batch))
 	{
 	  error = la_worker_commit_and_report (context, &batch, *worker_applied_item_count, &queue_closed);
 	  next_begin_ns = 0;

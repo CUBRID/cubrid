@@ -714,40 +714,6 @@ TEST_CASE ("a taskless boundary releases dependents only after the preceding gap
   REQUIRE (la_coordinator_drain_complete ());
 }
 
-TEST_CASE ("the coordinator tells the workers when to stop keeping batches open and wakes the holding ones",
-	   "[log_applier_coordinator]")
-{
-  TEST_COORDINATOR_CONTEXT context;
-  LOG_LSA restart_lsa = test_lsa (10);
-  LA_TASK task = test_task (1, test_lsa (20), test_null_lsa ());
-  UINT64 seq;
-
-  test_initialize_coordinator (&context, &restart_lsa);
-  REQUIRE (la_coordinator_keep_batch_open ());
-  REQUIRE_FALSE (la_coordinator_tasks_parked ());
-
-  /* the end of the log: commit on an empty queue, and wake a worker already holding */
-  seq = la_task_queue_get_wake_seq ();
-  la_coordinator_set_log_drained (true);
-  REQUIRE_FALSE (la_coordinator_keep_batch_open ());
-  REQUIRE (la_task_queue_get_wake_seq () > seq);
-
-  /* no new wakeup while it stays set */
-  seq = la_task_queue_get_wake_seq ();
-  la_coordinator_set_log_drained (true);
-  REQUIRE (la_task_queue_get_wake_seq () == seq);
-  la_coordinator_set_log_drained (false);
-  REQUIRE (la_coordinator_keep_batch_open ());
-  REQUIRE (la_task_queue_get_wake_seq () == seq);
-
-  /* waiting for results: same, until the coordinator submits again */
-  la_coordinator_note_waiting_results ();
-  REQUIRE_FALSE (la_coordinator_keep_batch_open ());
-  REQUIRE (la_task_queue_get_wake_seq () > seq);
-  REQUIRE (la_coordinator_submit_task (&task) == NO_ERROR);
-  REQUIRE (la_coordinator_keep_batch_open ());
-}
-
 TEST_CASE ("with one worker the coordinator waiting for queue room stops on a shutdown request",
 	   "[log_applier_coordinator]")
 {

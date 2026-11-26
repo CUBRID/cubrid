@@ -26,6 +26,9 @@
 #include "log_applier_task.hpp"		/* LA_TASK */
 
 #define LA_TASK_QUEUE_CAPACITY      1024	/* tasks one worker's queue holds: dispatched but not yet taken */
+/* a worker that takes its queue down to this many wakes the coordinator waiting for results, so the coordinator
+ * refills it with parked tasks before it runs dry (la_result_queue_wake_waiter) */
+#define LA_TASK_QUEUE_ROOM_WAKE_QUEUED (LA_TASK_QUEUE_CAPACITY / 2)
 
 extern int la_task_queue_init (int worker_count);
 extern void la_task_queue_final (void);

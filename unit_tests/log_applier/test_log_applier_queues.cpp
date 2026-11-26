@@ -464,3 +464,45 @@ TEST_CASE ("result queue try_pop_many takes the oldest results under one lock", 
   REQUIRE (out[0].dispatch_seq == 2);
   REQUIRE (la_result_queue_get_count () == 0);
 }
+
+TEST_CASE ("a worker taking its queue down to half wakes the coordinator waiting for results", "[log_applier_queues]")
+{
+  LA_TASK out[LA_TASK_QUEUE_CAPACITY];
+  int count = -1;
+
+  REQUIRE (la_task_queue_init (1) == NO_ERROR);
+  REQUIRE (la_result_queue_init (16) == NO_ERROR);
+  for (int t = 0; t < LA_TASK_QUEUE_CAPACITY; t++)
+    {
+      LA_TASK task = test_task (t, test_lsa (t + 1), test_null_lsa ());
+      REQUIRE (la_task_queue_push (&task, 0) == NO_ERROR);
+    }
+
+  /* taking tasks while more than half stay queued does not wake the coordinator: its wait times out */
+  REQUIRE (la_task_queue_pop_many (out, 10, &count, 0, false, 0, la_task_queue_get_wake_seq ()) == NO_ERROR);
+  REQUIRE (count == 10);
+  auto start = std::chrono::steady_clock::now ();
+  REQUIRE_FALSE (la_result_queue_wait_for_result (200));
+  auto waited = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::steady_clock::now () - start);
+  REQUIRE (waited.count () >= 150);
+
+  /* the take that brings the queue down to half wakes it without a result */
+  int pop_error = ER_FAILED;
+  std::thread worker ([&out, &count, &pop_error] ()
+  {
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+    pop_error = la_task_queue_pop_many (out, LA_TASK_QUEUE_CAPACITY / 2, &count, 0, false, 0,
+					la_task_queue_get_wake_seq ());
+  });
+  start = std::chrono::steady_clock::now ();
+  REQUIRE_FALSE (la_result_queue_wait_for_result (5000));
+  waited = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::steady_clock::now () - start);
+  worker.join ();
+  REQUIRE (pop_error == NO_ERROR);
+  REQUIRE (la_task_queue_get_queued (0) <= LA_TASK_QUEUE_ROOM_WAKE_QUEUED);
+  REQUIRE (waited.count () < 1000);
+  REQUIRE (la_result_queue_get_count () == 0);
+
+  la_result_queue_signal_shutdown ();
+  la_task_queue_final ();
+}

@@ -41,21 +41,17 @@
 
 /* A worker applies the tasks it takes into one open slave transaction and commits them together, so a
  * transaction on the master does not cost a commit and a log flush on the slave. It commits when:
- *   - the transaction has been open for the commit interval (LA_WORKER_CONFIG.batch_max_msec, which is
- *     ha_applylogdb_max_commit_interval_in_msecs, the interval the serial applier commits at)
+ *   - the transaction has been open for the commit interval, whether tasks are still queued or the queue is empty.
+ *     The interval is the one the serial applier commits at: the coordinator adapts it to the apply delay up to
+ *     ha_applylogdb_max_commit_interval_in_msecs (la_get_adaptive_time_commit_interval) and hands it to the
+ *     workers (la_worker_set_commit_interval), so a slave that has caught up commits as soon as the serial
+ *     applier would and a slave behind commits once per maximum interval
  *   - the transaction holds LA_WORKER_CONFIG.batch_max_tasks tasks, a memory bound (la_worker_batch_max_tasks) that
  *     a backlog should not reach before the commit interval
- *   - no task is waiting once the transaction has been open LA_WORKER_BATCH_EMPTY_HOLD_USEC, unless the coordinator
- *     is still reading log, no task waits for another to commit and the coordinator is not waiting for results
- *     (LA_WORKER_CONFIG.keep_batch_open); the coordinator wakes a worker waiting on an empty queue when that changes
- *   - a task waits on the coordinator's pending list and the transaction has been open
- *     LA_WORKER_BATCH_PARKED_MAX_MSEC (LA_WORKER_CONFIG.tasks_parked)
- * The first condition bounds how late the changes show on the slave and how long their locks are held. While a
- * backlog is read, a worker whose queue runs dry for a moment keeps its transaction open, so the slave commits about
- * as often as the serial applier did: a commit costs a log flush, and on a device with slow syncs small commits
- * made the backlog apply at half the serial applier's rate. Once the coordinator has read to the end of the log,
- * or a task waits for another to commit, an empty queue ends the transaction after the short hold, so the changes
- * of a lightly loaded master show without the interval's delay.
+ *   - a statement task comes, which runs in a transaction of its own
+ * The interval bounds how late the changes show on the slave and how long their locks are held, as in the serial
+ * applier; a commit costs a log flush, and on a device with slow syncs small commits made the backlog apply at half
+ * the serial applier's rate.
  *
  * The task limit only bounds memory: every task a worker has not committed keeps a result in the worker's batch,
  * an in-flight entry and a slot in the result queue and on the commit-order ring until it retires. A fixed count
@@ -63,7 +59,6 @@
  * pair, so workers committed twice as often as the serial applier), so the limit is derived from
  * ha_apply_max_mem_size instead and set once at start (la_worker_batch_max_tasks).
  */
-#define LA_WORKER_BATCH_EMPTY_HOLD_USEC 500
 /* share of ha_apply_max_mem_size, in percent, for the bookkeeping of tasks not committed yet */
 #define LA_WORKER_BATCH_MEM_PERCENT 30
 /* bounds of the per-worker task limit derived from it */
@@ -72,9 +67,6 @@
 /* bookkeeping bytes per uncommitted task: its result in the batch, in the result queue and in the in-flight entry,
  * plus the entry's own fields and the commit-order ring slot */
 #define LA_WORKER_TASK_BOOKKEEPING_BYTES (3 * sizeof (LA_RESULT) + 64)
-/* while a task is parked, a worker commits its open transaction after this long even if its queue keeps receiving
- * tasks (la_worker_batch_is_due) */
-#define LA_WORKER_BATCH_PARKED_MAX_MSEC 100
 
 /* Size of the gate's commit-order ring: the most apply units read from the log that the gap-free frontier has
  * not passed yet, whether parked, queued, running, or finished but waiting behind an earlier one. Each worker may
@@ -126,13 +118,6 @@ typedef bool (*LA_WORKER_SHUTDOWN_REQUESTED_FUNC) (void);
 /* Releases what run_task kept in the context; called while the worker's connection is still open. */
 typedef void (*LA_WORKER_END_CONTEXT_FUNC) (LA_APPLY_WORKER_CONTEXT *context);
 
-/* Tells whether a worker with an open transaction may keep it open through an empty queue: the coordinator has
- * more log to read and no task waits for another to commit. Owned by the coordinator; called by worker threads. */
-typedef bool (*LA_WORKER_KEEP_BATCH_OPEN_FUNC) (void);
-
-/* Tells whether a task waits on the coordinator's pending list. Owned by the coordinator; called by worker threads. */
-typedef bool (*LA_WORKER_TASKS_PARKED_FUNC) (void);
-
 /* The class the task being applied wrote rows of, for the worker's trace; NULL when none or more than one. Owned by
  * log_applier.c and kept per worker thread, not in the result, which crosses to the coordinator for every task. May
  * be left NULL in the config. */
@@ -150,14 +135,14 @@ struct la_worker_config
   LA_WORKER_REQUEST_SHUTDOWN_FUNC request_shutdown;
   LA_WORKER_SHUTDOWN_REQUESTED_FUNC shutdown_requested;
   LA_WORKER_END_CONTEXT_FUNC end_context;
-  LA_WORKER_KEEP_BATCH_OPEN_FUNC keep_batch_open;
-  LA_WORKER_TASKS_PARKED_FUNC tasks_parked;
   LA_WORKER_TASK_CLASS_FUNC task_class;
-  int batch_max_msec;		/* commit interval: ha_applylogdb_max_commit_interval_in_msecs, read once at start */
+  int batch_max_msec;		/* commit interval until la_worker_set_commit_interval sets another:
+				 * ha_applylogdb_max_commit_interval_in_msecs */
   int batch_max_tasks;		/* memory bound on an open transaction: la_worker_batch_max_tasks */
 };
 
 extern int la_worker_batch_max_tasks (int max_mem_size_mb, int worker_count);
+extern void la_worker_set_commit_interval (int msec);
 extern int la_worker_start (LA_WORKER *workers, int count, const LA_WORKER_CONFIG *config);
 extern int la_worker_wait_started (const LA_WORKER *workers, int count, int *live, int *live_count);
 extern void la_worker_join (LA_WORKER *workers, int count);

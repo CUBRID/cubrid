@@ -59,6 +59,8 @@ static pthread_cond_t la_Shared_result_not_empty = PTHREAD_COND_INITIALIZER;	/* 
 										 * on CLOCK_MONOTONIC from init */
 static pthread_cond_t la_Shared_result_not_full = PTHREAD_COND_INITIALIZER;	/* workers wait for a free slot */
 static bool la_Shared_result_shutdown = false;
+/* la_result_queue_wake_waiter was called since the coordinator last waited; ends its wait without a result */
+static bool la_Shared_result_woken = false;
 
 /*
  * la_result_queue_init() - allocate the queue for the commit-order capacity
@@ -91,6 +93,7 @@ la_result_queue_init (int capacity)
   la_Shared_result_queue.tail = 0;
   la_Shared_result_queue.count = 0;
   la_Shared_result_shutdown = false;
+  la_Shared_result_woken = false;
 
   return NO_ERROR;
 }
@@ -269,8 +272,10 @@ la_result_queue_try_pop_many (LA_RESULT *results, int max, int *count)
 
 /*
  * la_result_queue_wait_for_result() - wait at most timeout_msec for a worker to queue a result, without dequeuing it
- *   return: true when a result is queued or the queue is shutting down, false on timeout
+ *   return: true when a result is queued or the queue is shutting down, false on timeout or a wakeup without result
  *   timeout_msec(in): longest time to wait
+ *
+ * Note: la_result_queue_wake_waiter also ends the wait.
  */
 bool
 la_result_queue_wait_for_result (int timeout_msec)
@@ -282,18 +287,35 @@ la_result_queue_wait_for_result (int timeout_msec)
 
   pthread_mutex_lock (&la_Shared_result_mutex);
 
-  while (la_Shared_result_queue.count == 0 && la_Shared_result_shutdown == false)
+  while (la_Shared_result_queue.count == 0 && la_Shared_result_shutdown == false && la_Shared_result_woken == false)
     {
       if (pthread_cond_timedwait (&la_Shared_result_not_empty, &la_Shared_result_mutex, &abstime) == ETIMEDOUT)
 	{
 	  break;
 	}
     }
+  la_Shared_result_woken = false;
 
   available = (la_Shared_result_queue.count > 0 || la_Shared_result_shutdown);
   pthread_mutex_unlock (&la_Shared_result_mutex);
 
   return available;
+}
+
+/*
+ * la_result_queue_wake_waiter() - end the coordinator's wait for a result although no result came
+ *
+ * Note: called by a worker whose task queue has room again. The coordinator waits for results while its parked tasks
+ *       wait for queue room, and a worker reports results only when it commits, so without this the parked tasks
+ *       stayed parked until the wait timed out while the worker ran out of tasks.
+ */
+void
+la_result_queue_wake_waiter (void)
+{
+  pthread_mutex_lock (&la_Shared_result_mutex);
+  la_Shared_result_woken = true;
+  pthread_cond_signal (&la_Shared_result_not_empty);
+  pthread_mutex_unlock (&la_Shared_result_mutex);
 }
 
 /*

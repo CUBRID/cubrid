@@ -30,6 +30,7 @@
 #include "config.h"
 
 #include "log_applier_task_queue.hpp"
+#include "log_applier_result_queue.hpp"
 #include "log_applier_clock.hpp"
 #include "error_manager.h"
 #include "memory_alloc.h"	/* free_and_init */
@@ -327,6 +328,7 @@ la_task_queue_pop_many (LA_TASK *tasks, int max, int *count, int worker, bool wa
 {
   LA_TASK_QUEUE *queue;
   int n;
+  bool room_opened;
 
   assert (tasks != NULL && count != NULL && max > 0);
   assert (worker >= 0 && worker < la_Task_queue_count);
@@ -372,6 +374,8 @@ la_task_queue_pop_many (LA_TASK *tasks, int max, int *count, int worker, bool wa
     }
 
   n = MIN (queue->count, max);
+  /* the coordinator refills a queue once it is down to half (LA_COORDINATOR_ROOM_RESCAN_QUEUED); wake it then */
+  room_opened = (queue->count > LA_TASK_QUEUE_ROOM_WAKE_QUEUED && queue->count - n <= LA_TASK_QUEUE_ROOM_WAKE_QUEUED);
   for (int i = 0; i < n; i++)
     {
       tasks[i] = queue->tasks[queue->head];
@@ -386,6 +390,11 @@ la_task_queue_pop_many (LA_TASK *tasks, int max, int *count, int worker, bool wa
     }
 
   pthread_mutex_unlock (&la_Task_queue_mutex);
+
+  if (room_opened)
+    {
+      la_result_queue_wake_waiter ();
+    }
 
   *count = n;
 
