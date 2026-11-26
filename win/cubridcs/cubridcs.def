@@ -62,6 +62,7 @@ EXPORTS
     db_add_resolution
     db_add_super
     db_add_user
+    db_add_user_with_password
     db_attribute_class
     db_attribute_comment
     db_attribute_default

@@ -227,6 +227,7 @@ EXPORTS
     db_add_shared_attribute
     db_add_super
     db_add_user
+    db_add_user_with_password
     db_add_volume
     db_add_volume_ex
     db_alloc_query_format

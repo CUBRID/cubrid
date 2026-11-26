@@ -552,17 +552,19 @@ au_password_satisfies_policy (const char *user_name, const char *password)
  *   return: NO_ERROR, or ER_AU_PASSWORD_NOT_ALLOWED (set with er_set) whichever rule it breaks; the error does not
  *           tell which rule, so it gives no hint for guessing a password
  *   user_name(in): name of the user whose password it is; NULL skips the user name rule
- *   password(in): plain text password, not NULL; an empty one is not checked
+ *   password(in): plain text password; NULL or an empty one is refused, since the policy does not let a user be
+ *                 without a password
  *
  * The caller calls it only when enable_complexity_policy is on.
  */
 int
 au_check_password_policy (const char *user_name, const char *password)
 {
-  assert (prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY) && password != NULL);
-  if (password[0] == '\0')
+  assert (prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY));
+  if (password == NULL || password[0] == '\0')
     {
-      return NO_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_PASSWORD_NOT_ALLOWED, 0);
+      return ER_AU_PASSWORD_NOT_ALLOWED;
     }
 
   if (strlen (password) > AU_MAX_PASSWORD_BUF)
@@ -631,20 +633,27 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 	}
     }
 
-  /* a plain text password must satisfy the complexity policy; an encoded one (unloaddb output) cannot be checked */
-  if (password != NULL && encode && prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY))
+  /*
+   * with the complexity policy on, a password cannot be removed (NULL or empty), and a plain text password must
+   * satisfy the policy; an encoded one (unloaddb output) cannot be checked
+   */
+  if ((password == NULL || encode) && prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY))
     {
       DB_VALUE nm_value;
       const char *user_name = NULL;
 
-      error = obj_get (user, "name", &nm_value);
-      if (error != NO_ERROR)
+      db_make_null (&nm_value);
+      if (password != NULL)
 	{
-	  goto end;
-	}
-      if (DB_IS_STRING (&nm_value) && !DB_IS_NULL (&nm_value))
-	{
-	  user_name = db_get_string (&nm_value);
+	  error = obj_get (user, "name", &nm_value);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  if (DB_IS_STRING (&nm_value) && !DB_IS_NULL (&nm_value))
+	    {
+	      user_name = db_get_string (&nm_value);
+	    }
 	}
 
       error = au_check_password_policy (user_name, password);
