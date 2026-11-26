@@ -13628,9 +13628,10 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
 	  if (merge_src_from != NULL && !pt_has_error (parser))
 	    {
-	      /* A remote MERGE with a local source. Its gate reads the clauses as written. Type
-	       * checking below wraps a value in a CUBRID cast, turns a SET literal into a CUBRID
-	       * literal of the column type, and computes a constant expression ahead. */
+	      /* A remote MERGE with a local source sends its clauses as written. Type checking
+	       * below wraps a value in a CUBRID cast, turns a SET literal into a CUBRID literal
+	       * of the column type, and computes a constant expression ahead. Another vendor
+	       * may not take the result. */
 	      node->info.merge.remote_stmt_as_written = parser_copy_tree (parser, node);
 	      if (node->info.merge.remote_stmt_as_written == NULL)
 		{
@@ -13654,8 +13655,9 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	    {
 	      /* A remote MERGE with a local source. The keys are checked on the statement, where
 	       * type checking marks a key that compares with a conversion. The gate reads the
-	       * clauses as written, and the source SELECT is laid out from them too. So the bound
-	       * columns are the ones those clauses name. */
+	       * clauses as they are sent, and the source SELECT is laid out from them too, as
+	       * XASL generation lays out the remote text. So the bound columns are the ones those
+	       * clauses name. */
 	      if (pt_dblink_merge_check_key_types (parser, node) == NO_ERROR
 		  && pt_dblink_merge_is_inscope (parser, node->info.merge.remote_stmt_as_written))
 		{

@@ -3280,8 +3280,8 @@ struct pt_merge_info
    * this side. Its row holds the values bound per MERGE, in pt_dblink_merge_walk_binds () order.
    * pt_apply_merge () walks it.
    * remote_stmt_as_written is the statement before type checking, its clauses as written. The gate
-   * reads it. No walk visits it, so a copy of the statement made after it is set points to the
-   * same tree. It is only read after it is made. */
+   * reads it, and the remote text is printed from it. No walk visits it, so a copy of the statement
+   * made after it is set points to the same tree. It is only read after it is made. */
   PT_NODE *remote_source_select;
   PT_NODE *remote_stmt_as_written;
 #define PT_MERGE_INFO_HAS_UNIQUE  1	/* has unique constraints */

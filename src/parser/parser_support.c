@@ -13231,14 +13231,16 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
 /* ===============================================================================================
  * remote MERGE + local source.
  *
- * The sink sends the statement once per source row, with the source columns it reads bound as one
- * row of values. The clauses are name-resolved, so a column belongs to the spec its spec_id names.
+ * The statement is sent once per source row. Its USING becomes one row of bound values, one per
+ * source column it reads. Every expression is sent as text, and the remote computes it. A source
+ * column in that text stands for its placeholder. The clauses are name-resolved, so a column
+ * belongs to the spec its spec_id names.
  *
  * pt_check_with_info () calls two checks here, after the statement's semantic check:
  *   - pt_dblink_merge_check_key_types () on the type-checked statement
  *   - pt_dblink_merge_is_inscope (), the shape gate, on the copy from before type checking
  * The walk over the ON below serves both and the source SELECT. The walk over the bound columns
- * serves the source SELECT.
+ * serves the source SELECT and the remote text.
  * ============================================================================================= */
 
 /* The two specs of a remote MERGE with a local source */
@@ -13428,7 +13430,8 @@ pt_dblink_merge_bind_on_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE *
  * pt_dblink_merge_walk_binds () - Call fn once per source column a remote MERGE with a local source
  *   binds. The order is that of the one-row USING's columns: ON, SET and VALUES. The gate refuses
  *   a WHERE and a DELETE in the clauses. The source SELECT is laid out from this walk over the
- *   statement's copy from before type checking.
+ *   statement's copy from before type checking. XASL generation lays out the remote text from the
+ *   same copy and checks that the two report as many columns and keys.
  *   return: the number of values
  *   parser(in): parser context
  *   merge(in): a name-resolved PT_MERGE whose target is in the derived dblink table shape
@@ -13727,7 +13730,8 @@ pt_dblink_merge_scan (PARSER_CONTEXT * parser, PT_NODE * expr, PT_DBLINK_MERGE_R
 }
 
 /* Can expr stand in the remote statement as a value? Unlike UPDATE, a source column may sit inside
- * an expression (T.v + L.x). */
+ * an expression (T.v + L.x). The operator stays in the text and only the column is bound. So
+ * nothing is dropped. */
 static PT_DBLINK_MERGE_VERDICT
 pt_dblink_merge_check_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_DBLINK_MERGE_READS * reads)
 {
@@ -13984,9 +13988,9 @@ pt_dblink_merge_check_keys_kept (PARSER_CONTEXT * parser, PT_MERGE_INFO * merge,
  *   (pt_dblink_merge_check_key_types). The walk that builds the source SELECT reports only the
  *   source columns of the shapes admitted here.
  *
- *   The gate reads the clauses as written. Type checking folds some INSERT values it can compute
- *     here. ROW_COUNT () becomes this session's count, for one. The folded value would pass the
- *     gate, while the call is not a shape it admits.
+ *   The gate reads the clauses as they are sent. Type checking folds some INSERT values it can
+ *     compute here. ROW_COUNT () becomes this session's count, for one. The folded value would pass
+ *     the gate, while the call is not a shape it admits.
  */
 bool
 pt_dblink_merge_is_inscope (PARSER_CONTEXT * parser, PT_NODE * merge)
