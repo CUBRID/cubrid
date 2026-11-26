@@ -659,8 +659,6 @@ hash_lookup_get (THREAD_ENTRY *thread_p, xasl_node *subquery, QFILE_LIST_ID *lis
 	  return error;
 	}
       subquery_lookup->scan_open = true;
-
-      /* PX scan workers read the leader's list by positions in any order: read latches, as PX list scans take */
       subquery_lookup->list_scan.is_read_only = true;
 
       qfile_slot_set_layout (&subquery_lookup->tuple_record, &subquery_lookup->list_scan.list_id.type_list);

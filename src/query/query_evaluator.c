@@ -80,7 +80,8 @@ static DB_LOGICAL eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item,
 static DB_LOGICAL eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
 					 REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd,
 					 XASL_NODE * subquery);
-static bool eval_is_hash_lookup_candidate (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id);
+STATIC_INLINE bool eval_is_hash_lookup_candidate (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id)
+  __attribute__ ((ALWAYS_INLINE));
 static DB_LOGICAL eval_all_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
 				      REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd,
 				      XASL_NODE * subquery);
@@ -967,7 +968,6 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
     {
       return V_ERROR;
     }
-  /* PX scan workers read the leader's list too (hash_lookup_bind_clone): read latches, as PX list scans take */
   s_id.is_read_only = true;
 
   pr_type = list_id->type_list.domp[0]->type;
@@ -1104,7 +1104,7 @@ eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID *
  *   - hash_lookup_get () decides by the comparison.
  *   - A PX hash join worker evaluates no term with a subquery: plan_generation.c keeps it out of the join's predicates.
  */
-static bool
+STATIC_INLINE bool
 eval_is_hash_lookup_candidate (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id)
 {
   assert (subquery != NULL);
