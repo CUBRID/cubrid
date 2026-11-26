@@ -3624,6 +3624,7 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 		{
 		  /* take "cvalue == null" case into account */
 		  new_->comment = db_get_string (&cvalue);
+		  pr_clear_compressed_string (&cvalue);
 		}
 	      else
 		{

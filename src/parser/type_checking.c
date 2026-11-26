@@ -7359,8 +7359,7 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
   int line, column;
   const char *alias_print;
   PT_SELECT_INFO *subq;
-  int col_cnt, i;
-  PT_NODE *col, *set, *spec;
+  PT_NODE *col, *set, *spec, *old_list, *old_col;
 
   if (node->info.query.flag.has_outer_spec == 1 || node->info.query.flag.is_sort_spec
       || node->info.query.flag.is_insert_select)
@@ -7375,26 +7374,29 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 
       subq = &(node->info.query.q.select);
 
-      /* rewrite SELECT list */
-      col_cnt = pt_length_of_select_list (subq->list, EXCLUDE_HIDDEN_COLUMNS);
-
-      parser_free_tree (parser, subq->list);
+      /* rewrite SELECT list, hidden columns too: a derived table takes them into its columns
+       * (pt_get_attr_list_of_derived_table ()), and an ORDER BY kept below refers to them by position */
+      old_list = subq->list;
       subq->list = NULL;
 
-      for (i = 0; i < col_cnt; i++)
+      for (old_col = old_list; old_col != NULL; old_col = old_col->next)
 	{
 	  col = parser_new_node (parser, PT_VALUE);
 	  if (col)
 	    {
 	      col->type_enum = PT_TYPE_NULL;
+	      col->flag.is_hidden_column = old_col->flag.is_hidden_column;
 	      subq->list = parser_append_node (subq->list, col);
 	    }
 	  else
 	    {
+	      parser_free_tree (parser, old_list);
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      return NULL;
 	    }
 	}
+
+      parser_free_tree (parser, old_list);
 
       /* rewrite FROM list */
       set = parser_new_node (parser, PT_VALUE);
@@ -7424,6 +7426,22 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	  return NULL;
+	}
+
+      /* rewrite WHERE as false unless it is: the query may be false by another clause (HAVING, a folded derived
+       * table or CTE in its FROM), and the WHERE it had then refers to the FROM list removed above */
+      if (!pt_false_search_condition (parser, subq->where))
+	{
+	  parser_free_tree (parser, subq->where);
+	  subq->where = parser_new_node (parser, PT_VALUE);
+	  if (subq->where == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return NULL;
+	    }
+	  subq->where->type_enum = PT_TYPE_LOGICAL;
+	  subq->where->info.value.data_value.i = 0;
+	  (void) pt_value_to_db (parser, subq->where);
 	}
 
       /* clear unnecessary node info */
@@ -7480,6 +7498,12 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       subq->hint = PT_HINT_NONE;
+
+      /* neither an aggregate or analytic function nor GROUP BY is left. A query still taken as an aggregate one
+       * (pt_has_aggregate ()) would return a row for its empty input, and one taken as an analytic one
+       * (pt_has_analytic ()) finds no function to evaluate and fails */
+      PT_SELECT_INFO_CLEAR_FLAG (node, PT_SELECT_INFO_HAS_AGG);
+      PT_SELECT_INFO_CLEAR_FLAG (node, PT_SELECT_INFO_HAS_ANALYTIC);
     }
   else
     {
