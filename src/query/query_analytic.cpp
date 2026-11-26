@@ -944,6 +944,12 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	}
     }
 
+  /* the only distinct value is not converted through addition */
+  if (func_p->function == PT_SUM)
+    {
+      numeric_db_value_to_float_domain (func_p->value, func_p->domain);
+    }
+
   if (is_same_group)
     {
       /* this is the end of a partition; save accumulator */

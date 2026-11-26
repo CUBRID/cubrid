@@ -388,7 +388,7 @@ namespace parallel_scan
     result |= check<is_outptr_list> (arg->pred);
     /* also listed in qo_check_serial_block_expr () (query_planner.c) */
     if (arg->opcode == T_TRACE_STATS || arg->opcode == T_EVALUATE_VARIABLE || arg->opcode == T_DEFINE_VARIABLE
-	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_NEXT_VALUE)
+	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_CURRENT_VALUE_BY_OID || arg->opcode == T_NEXT_VALUE)
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
@@ -511,8 +511,10 @@ namespace parallel_scan
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* keylimit: global cap incompatible with per-worker page split. */
-		if (arg->indexptr->key_info.is_user_given_keylimit)
+		/* the workers walk the leaf pages without the key limit, so a KEYLIMIT hint or any key limit keeps the
+		 * scan serial. This includes the one made from a ROWNUM predicate or LIMIT, which drops that predicate. */
+		if (arg->indexptr->key_info.is_user_given_keylimit || arg->indexptr->key_info.key_limit_l != NULL
+		    || arg->indexptr->key_info.key_limit_u != NULL)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }

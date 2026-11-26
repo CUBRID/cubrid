@@ -367,6 +367,68 @@ error_exit:
   return error_status;
 }
 
+/*
+ * fetch_int_as_bigint () - an integer value widened to BIGINT
+ *   return: true for SHORT, INTEGER and BIGINT, false for any other type
+ *   value(in):
+ *   result(out):
+ */
+static bool
+fetch_int_as_bigint (const DB_VALUE * value, DB_BIGINT * result)
+{
+  switch (DB_VALUE_TYPE (value))
+    {
+    case DB_TYPE_SHORT:
+      *result = db_get_short (value);
+      return true;
+    case DB_TYPE_INTEGER:
+      *result = db_get_int (value);
+      return true;
+    case DB_TYPE_BIGINT:
+      *result = db_get_bigint (value);
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * fetch_limit_sum_ovf () - the BIGINT maximum, or minimum for a negative sum, for the offset + count of a LIMIT
+ *                          rewrite whose integers overflow
+ *   return: true when the sum overflows and holds the bound, false to leave the sum to its operator
+ *   a(in/out): the T_ADD flagged REGU_VARIABLE_LIMIT_SUM
+ *
+ * Note: Checked before the operator adds, so that the overflow raises no error. Only integers are checked: the sum of
+ *       integers is BIGINT, NUMERIC does not overflow and DOUBLE only beyond any number of rows.
+ */
+static bool
+fetch_limit_sum_ovf (FETCH_ARITH_ARGS * a)
+{
+  DB_BIGINT left, right, sum;
+
+  if (a->peek_left == NULL || a->peek_right == NULL || DB_IS_NULL (a->peek_left) || DB_IS_NULL (a->peek_right)
+      || !fetch_int_as_bigint (a->peek_left, &left) || !fetch_int_as_bigint (a->peek_right, &right))
+    {
+      return false;
+    }
+
+  if (!__builtin_add_overflow (left, right, &sum))
+    {
+      return false;
+    }
+
+  if (a->domain != NULL && TP_DOMAIN_TYPE (a->domain) != DB_TYPE_BIGINT
+      && TP_DOMAIN_TYPE (a->domain) != DB_TYPE_VARIABLE)
+    {
+      return false;
+    }
+
+  /* operands of one sign only overflow, so the left one's sign is the sum's */
+  pr_clear_value (a->arithptr->value);
+  db_make_bigint (a->arithptr->value, (left < 0) ? DB_BIGINT_MIN : DB_BIGINT_MAX);
+  return true;
+}
+
 /* ---- the operators: the arms of the former compute switch, one function per arm group ---- */
 
 /* T_ADD */
@@ -380,6 +442,11 @@ fetch_op_add (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN *domain = a->domain;
 
   bool check_empty_string;
+
+  if (REGU_VARIABLE_IS_FLAGED (a->regu_var, REGU_VARIABLE_LIMIT_SUM) && fetch_limit_sum_ovf (a))
+    {
+      return NO_ERROR;
+    }
 
   check_empty_string = (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) ? true : false);
 
@@ -3142,6 +3209,25 @@ fetch_op_current_value (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 }
 
 
+/* T_CURRENT_VALUE_BY_OID */
+static int
+fetch_op_current_value_by_oid (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+  DB_VALUE *peek_left = a->peek_left;
+
+  if (DB_IS_NULL (peek_left))
+    {
+      PRIM_SET_NULL (arithptr->value);
+    }
+  else if (xserial_get_current_value_by_oid (thread_p, arithptr->value, db_get_oid (peek_left)) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
+
 /* T_NEXT_VALUE */
 static int
 fetch_op_next_value (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
@@ -5178,6 +5264,8 @@ fetch_arith_op (OPERATOR_TYPE opcode)
       return fetch_op_to_number;
     case T_CURRENT_VALUE:
       return fetch_op_current_value;
+    case T_CURRENT_VALUE_BY_OID:
+      return fetch_op_current_value_by_oid;
     case T_NEXT_VALUE:
       return fetch_op_next_value;
     case T_CAST:

@@ -2103,8 +2103,8 @@ eb_build_filter_interpreted (EB_BUILD * b)
     {
       if (info[i].or_src != NULL)
 	{
-	  EXPR_RAW_LEAF_INFO sub[32];
-	  int len[16], nd;
+	  EXPR_RAW_LEAF_INFO sub[PRED_OR_RAW_MAX_LEAVES];
+	  int len[PRED_OR_RAW_MAX_DISJUNCTS], nd;
 
 	  nd = expr_pred_or_raw_leaves (info[i].or_src, b->in->vd, sub, (int) DIM (sub), len, (int) DIM (len));
 	  if (nd < 0)
@@ -2170,8 +2170,8 @@ eb_build_filter (EB_BUILD * b)
 	}
       else
 	{
-	  EXPR_RAW_LEAF_INFO sub[32];
-	  int len[16], nd;
+	  EXPR_RAW_LEAF_INFO sub[PRED_OR_RAW_MAX_LEAVES];
+	  int len[PRED_OR_RAW_MAX_DISJUNCTS], nd;
 
 	  nd = expr_scan_pred_kid_or_leaves (b->in->scan_pred_compiled, i, b->in->vd, sub, (int) DIM (sub), len,
 					     (int) DIM (len));
@@ -5097,7 +5097,7 @@ eb_share_snapshot (EXPR_BATCH_PLAN * plan, int kid, int r, DB_LOGICAL ev)
 	      int prec, scale;
 	      bool is_float;
 
-	      db_get_numeric_precision_and_scale (src, &prec, &scale, &is_float);
+	      db_get_numeric_precision_and_scale (src, &prec, &scale, NULL, &is_float);
 	      v->precs[r] = (unsigned char) (is_float ? (EB_PREC_FLOAT | prec) : prec);
 	    }
 	    break;
@@ -5653,8 +5653,9 @@ eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r, DB_VALUE *
 		buf[i] = (unsigned char) (c & 0xFF);
 		c >>= 8;
 	      }
-	    db_make_numeric (out, buf, precision & ~EB_PREC_FLOAT, scale, DB_NUMERIC_BUF_SIZE, num->is_negative,
-			     is_float);
+	    precision &= ~EB_PREC_FLOAT;
+	    db_make_numeric (out, buf, precision, scale, DB_NUMERIC_BUF_SIZE, num->is_negative,
+			     is_float ? precision : numeric_get_precision_digits (buf), is_float);
 	  }
 	else
 	  {
