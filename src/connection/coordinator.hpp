@@ -59,7 +59,7 @@ namespace cubconn::connection
 	/* sum of contexts */
 	statistics::metrics<statistics::context, double> m_sum;
 
-	/* first: accumulated */
+	/* first: EWMA of the per-ms rate */
 	/* second: previous */
 	std::pair<statistics::metrics<statistics::worker, double>, statistics::metrics<statistics::worker>> m_worker;
 	std::unordered_map<uint64_t, std::pair<statistics::metrics<statistics::context, double>, statistics::metrics<statistics::context>>>
