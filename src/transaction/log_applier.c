@@ -400,6 +400,13 @@ struct la_ovf_page_list
   LA_OVF_PAGE_LIST *next;	/* next page */
 };
 
+typedef struct la_recdes_extra LA_RECDES_EXTRA;
+struct la_recdes_extra
+{
+  RECDES recdes;		/* its db page size area follows this struct */
+  LA_RECDES_EXTRA *next;
+};
+
 typedef struct la_recdes_pool LA_RECDES_POOL;
 struct la_recdes_pool
 {
@@ -408,6 +415,9 @@ struct la_recdes_pool
   int next_idx;
   int db_page_size;
   int num_recdes;
+  int num_assigned;		/* recdes assigned since the last flush, failed items included;
+				 * repl objects may still point to them */
+  LA_RECDES_EXTRA *extras;	/* recdes assigned after all num_recdes are taken, freed after the flush */
   bool is_initialized;
 };
 
@@ -516,7 +526,9 @@ static bool la_retry_on_error (int errid);
 
 static int la_init_recdes_pool (int page_size, int num_recdes);
 static RECDES *la_assign_recdes_from_pool (void);
+static RECDES *la_assign_extra_recdes (void);
 static int la_realloc_recdes_data (RECDES * recdes, int data_size);
+static void la_release_recdes_pool (void);
 static void la_clear_recdes_pool (void);
 
 static LA_CACHE_PB *la_init_cache_pb (void);
@@ -2376,6 +2388,8 @@ la_clear_recdes_pool (void)
       return;
     }
 
+  la_release_recdes_pool ();
+
   if (la_recdes_pool.recdes_arr != NULL)
     {
       for (i = 0; i < la_recdes_pool.num_recdes; i++)
@@ -2439,10 +2453,11 @@ la_realloc_recdes_data (RECDES * recdes, int data_size)
 
 /*
  * la_assign_recdes_from_pool() - get a recdes from pool
- *   return: a recdes having area with size of db page size
+ *   return: a recdes having area with size of db page size, or NULL
  *
  * Note: if a recdes that is about to be assigned has an area
  * greater than db page size, then it first frees the area.
+ * When every recdes of the pool was assigned since the last flush, the recdes comes from outside the pool.
  */
 static RECDES *
 la_assign_recdes_from_pool (void)
@@ -2452,6 +2467,15 @@ la_assign_recdes_from_pool (void)
   if (la_recdes_pool.is_initialized == false)
     {
       return NULL;
+    }
+
+  if (la_recdes_pool.num_assigned >= la_recdes_pool.num_recdes)
+    {
+      /* The repl objects added since the last flush may point to every recdes of the pool:
+       * la_flush_repl_items () does not flush between OOS items and the heap record that follows them,
+       * even past LA_MAX_UNFLUSHED_REPL_ITEMS, and failed items take a recdes without counting in
+       * la_Info.num_unflushed. Reusing a recdes here would overwrite an unflushed item. */
+      return la_assign_extra_recdes ();
     }
 
   recdes = &la_recdes_pool.recdes_arr[la_recdes_pool.next_idx];
@@ -2469,8 +2493,65 @@ la_assign_recdes_from_pool (void)
   recdes->length = 0;
   la_recdes_pool.next_idx++;
   la_recdes_pool.next_idx %= la_recdes_pool.num_recdes;
+  la_recdes_pool.num_assigned++;
 
   return recdes;
+}
+
+/*
+ * la_assign_extra_recdes() - get a recdes from outside the pool
+ *   return: a recdes having area with size of db page size, or NULL
+ *
+ * Note: the recdes is freed by la_release_recdes_pool () after the flush.
+ */
+static RECDES *
+la_assign_extra_recdes (void)
+{
+  LA_RECDES_EXTRA *extra;
+  size_t size = sizeof (LA_RECDES_EXTRA) + la_recdes_pool.db_page_size;
+
+  extra = (LA_RECDES_EXTRA *) malloc (size);
+  if (extra == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      return NULL;
+    }
+
+  /* same as a recdes of the pool, so that la_realloc_recdes_data () frees only the area it allocated */
+  extra->recdes.data = (char *) (extra + 1);
+  extra->recdes.area_size = la_recdes_pool.db_page_size;
+  extra->recdes.length = 0;
+
+  extra->next = la_recdes_pool.extras;
+  la_recdes_pool.extras = extra;
+
+  return &extra->recdes;
+}
+
+/*
+ * la_release_recdes_pool() - make every recdes of the pool assignable again
+ *
+ * Note: call it only when no repl object points to a recdes of the pool, as after a flush.
+ */
+static void
+la_release_recdes_pool (void)
+{
+  LA_RECDES_EXTRA *extra;
+
+  while (la_recdes_pool.extras != NULL)
+    {
+      extra = la_recdes_pool.extras;
+      la_recdes_pool.extras = extra->next;
+
+      if (extra->recdes.area_size > la_recdes_pool.db_page_size)
+	{
+	  /* recdes.data was realloced by previous operation */
+	  free_and_init (extra->recdes.data);
+	}
+      free_and_init (extra);
+    }
+
+  la_recdes_pool.num_assigned = 0;
 }
 
 /*
@@ -2487,6 +2568,9 @@ la_init_recdes_pool (int page_size, int num_recdes)
   RECDES *recdes;
 
   assert (page_size >= IO_MIN_PAGE_SIZE && page_size <= IO_MAX_PAGE_SIZE);
+
+  /* before db_page_size changes: it tells which extra recdes area was realloced */
+  la_release_recdes_pool ();
 
   if (la_recdes_pool.is_initialized == false)
     {
@@ -5763,6 +5847,8 @@ la_flush_repl_items (bool immediate)
 
   if (la_Info.num_unflushed == 0)
     {
+      /* no repl object is left; only failed items may have taken recdes since the last flush */
+      la_release_recdes_pool ();
       return NO_ERROR;
     }
 
@@ -5875,6 +5961,7 @@ la_flush_repl_items (bool immediate)
       la_Info.num_unflushed = 0;
       la_Info.pending_oos_flush = false;
       __gv_loc_repl.ws_clear_all_repl_objs ();
+      la_release_recdes_pool ();
     }
 
   return error;
@@ -6149,6 +6236,11 @@ la_apply_update_log (LA_ITEM * item)
     }
 
   recdes = la_assign_recdes_from_pool ();
+  if (recdes == NULL)
+    {
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+      goto end;
+    }
 
   /* retrieve the target record description */
   error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, false);
@@ -6378,6 +6470,11 @@ la_apply_oos_insert_log (LA_APPLY * apply, LA_ITEM * item)
     }
 
   recdes = la_assign_recdes_from_pool ();
+  if (recdes == NULL)
+    {
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+      goto end;
+    }
 
   if (rebuild_oos)
     {
@@ -6597,6 +6694,11 @@ la_apply_insert_log (LA_ITEM * item)
     }
 
   recdes = la_assign_recdes_from_pool ();
+  if (recdes == NULL)
+    {
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+      goto end;
+    }
   is_mvcc_class = la_is_mvcc_class (ws_oid (class_obj));
 
   /* get the target log page */
