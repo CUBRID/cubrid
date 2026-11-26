@@ -208,6 +208,7 @@ static int mmddyyyyhhmissms (const DB_DATETIME * datetime, char *buf, int buflen
 
 static char *host_var_name (unsigned int custom_print);
 #endif
+static bool pt_check_current_value_by_oid (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_table_compatible_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_info, int *continue_walk);
 static int pt_table_compatible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec);
 static TABLE_INFO *pt_table_info_alloc (void);
@@ -835,7 +836,9 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
       save_from = select_node->info.query.q.select.from->next;
       select_node->info.query.q.select.from->next = NULL;
 
+      PT_SELECT_INFO_SET_FLAG (select_node, PT_SELECT_INFO_HQ_ITERATION);
       xasl = pt_plan_single_table_hq_iterations (parser, select_node, xasl);
+      PT_SELECT_INFO_CLEAR_FLAG (select_node, PT_SELECT_INFO_HQ_ITERATION);
 
       select_node->info.query.q.select.where = save_where;
       select_node->info.query.q.select.from->next = save_from;
@@ -2404,6 +2407,7 @@ pt_factor_dnf_is_unsafe (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	case PT_DRANDOM:
 	case PT_SYS_GUID:
 	case PT_CURRENT_VALUE:
+	case PT_CURRENT_VALUE_BY_OID:
 	case PT_NEXT_VALUE:
 	case PT_INST_NUM:
 	case PT_ROWNUM:
@@ -11311,6 +11315,44 @@ pt_remove_func_index_attrs (PARSER_CONTEXT * parser, QO_PLAN * plan, PT_FI_REMOV
 }
 
 /*
+ * pt_check_current_value_by_oid () - Checks that the argument of serial_current_value_by_oid is
+ *	  a _db_serial alias, so that the server reads only the rows of _db_serial
+ *	  The function is internal: only the db_serial and information_schema.tables view specs call it, with
+ *	  a _db_serial alias. Taking any other OID would need a check of the OID before the server fixes its page.
+ *	  It is checked here, after the rewrites, since a rewrite can replace the alias: s = (SELECT o FROM t)
+ *	  makes the argument the subquery's column.
+ *   return: true if the argument is a _db_serial alias; otherwise, false with an error set
+ *   parser(in):
+ *   node(in): the node to check
+ */
+static bool
+pt_check_current_value_by_oid (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *arg = node->info.expr.arg1;
+  PT_NODE *entity = NULL;
+
+  /* the server fixes the page of the OID without checking it, so take only an OID name: a FROM alias written as a
+   * value (s, not s.col), the OID of the row its scan has just read. An OID from elsewhere, such as an object column
+   * value or a host variable, can point at a deleted row whose page now holds something else. A dblink alias has no
+   * data_type. */
+  if (PT_IS_OID_NAME (arg) && arg->data_type != NULL)
+    {
+      entity = arg->data_type->info.data_type.entity;
+    }
+
+  /* the server reads the row as a _db_serial record, so the alias must scan _db_serial alone; one FROM item over
+   * several classes, such as (_db_serial, db_root) s, has more than one entity */
+  if (entity == NULL || entity->next != NULL || entity->info.name.db_object != sm_find_class (CT_SERIAL_NAME))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
+      PT_ERRORc (parser, node, er_msg ());
+      return false;
+    }
+
+  return true;
+}
+
+/*
  * pt_to_regu_variable () - converts a parse expression tree to regu_variables
  *   return:
  *   parser(in):
@@ -12980,6 +13022,26 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    parser_free_tree (parser, data_type);
 		    break;
 		  }
+
+		case PT_CURRENT_VALUE_BY_OID:
+		  if (!pt_check_current_value_by_oid (parser, node))
+		    {
+		      break;
+		    }
+
+		  domain = pt_xasl_node_to_domain (parser, node);
+		  if (domain == NULL)
+		    {
+		      break;
+		    }
+
+		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_CURRENT_VALUE_BY_OID, domain);
+		  if (parser->parent_proc_xasl != NULL)
+		    {
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+		    }
+		  break;
 
 		case PT_TRIM:
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
@@ -17421,6 +17483,11 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		    {
 		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
 		    }
+		  if (access->access == ACCESS_METHOD_INDEX
+		      && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_BITMAP_HEAP_SCAN))
+		    {
+		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN);
+		    }
 		  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
 		    {
 		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
@@ -19912,6 +19979,16 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 		}
 	    }
 
+	  /* a session variable, a serial, a random number or a non-deterministic stored function is evaluated in the
+	   * order of the rows: a scan that held rows would evaluate its key before the rows ahead of it were output */
+	  if (xasl->scan_ptr != NULL && !pt_is_result_reuse_safe (parser, select_node))
+	    {
+	      XASL_NODE *ptr;
+	      for (ptr = xasl; ptr; ptr = ptr->scan_ptr)
+		{
+		  XASL_SET_FLAG (ptr, XASL_NO_ROW_BATCH);
+		}
+	    }
 	}
     }
 
@@ -35638,6 +35715,7 @@ pt_check_reuse_unsafe_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	case PT_RANDOM:
 	case PT_DRANDOM:
 	case PT_CURRENT_VALUE:
+	case PT_CURRENT_VALUE_BY_OID:
 	case PT_NEXT_VALUE:
 	case PT_INCR:
 	case PT_DECR:
@@ -35943,6 +36021,11 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
     {
     case QO_PLANTYPE_SCAN:
       if (!(qo_is_iscan (qo_plan) || qo_is_iscan_from_analytic (qo_plan)) || (env = (qo_plan->info)->env) == NULL)
+	{
+	  return 0;
+	}
+      /* the rows of a bitmap heap scan leave in file order */
+      if (qo_plan->plan_un.scan.bitmap_heap)
 	{
 	  return 0;
 	}
