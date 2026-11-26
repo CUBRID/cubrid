@@ -1733,6 +1733,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   VACUUM_HEAP_HELPER helper;	/* Vacuum heap helper. */
   HEAP_PAGE_VACUUM_STATUS page_vacuum_status;	/* Current page vacuum status. */
   int error_code = NO_ERROR;	/* Error code. */
+  int record_error = NO_ERROR;	/* First error of a record left unvacuumed while the page goes on. */
   int obj_index = 0;		/* Index used to iterate the object array. */
 
   VACUUM_OOS_EMPTIED_PAGES oos_emptied_pages;
@@ -1939,6 +1940,13 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 		}
 	      else
 		{
+		  /* The page goes on with the next record. Keep the error so the block stays unfinished and this record
+		   * is vacuumed again; the next record would otherwise overwrite it. */
+		  if (record_error == NO_ERROR)
+		    {
+		      record_error = error_code;
+		    }
+		  error_code = NO_ERROR;
 		  continue;
 		}
 	    }
@@ -2077,6 +2085,13 @@ end:
 	{
 	  vacuum_check_shutdown_interruption (thread_p, error_code);
 	}
+    }
+
+  /* Return a kept record error only after the reclaim: the records vacuumed before it are not vacuumed again, so
+   * their emptied OOS pages are not collected again. */
+  if (error_code == NO_ERROR)
+    {
+      error_code = record_error;
     }
 
   return error_code;
