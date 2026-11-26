@@ -7023,7 +7023,8 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
       er_log_debug (ARG_FILE_LINE, "pgbuf_latch_bcb_upon_fix: WRITE fix on page %d|%d this thread holds READ-latched\n",
 		    VPID_AS_ARGS (&bufptr->vpid));
       /* release builds go on to Sub-case 2-2 below: a sole holder is switched to WRITE in place and the fix is
-       * counted; with other readers the READ fixes are dropped and the request waits behind earlier waiters. */
+       * counted; with other readers a conditional request fails keeping the READ fixes, and an unconditional one
+       * drops them and waits behind earlier waiters. */
       assert_release (request_mode != PGBUF_LATCH_WRITE);
     }
 // *INDENT-OFF*
@@ -7118,8 +7119,10 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 			}
 		      else
 			{
-			  /* Other readers exist - drop holder's READ fixes and wait behind earlier waiters.
-			   * unlike pgbuf_promote_read_latch (), the page may change before WRITE is granted. */
+			  /* Other readers exist - a conditional request fails keeping the READ fixes; an unconditional
+			   * one drops them and waits behind earlier waiters. unlike pgbuf_promote_read_latch (), the
+			   * page may change before WRITE is granted, and the READ fixes are not restored if the wait
+			   * fails. */
 			  if (condition == PGBUF_CONDITIONAL_LATCH)
 			    {
 			      /* Conditional latch fails */
