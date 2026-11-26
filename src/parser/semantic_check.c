@@ -13541,6 +13541,18 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
 	  node = parser_walk_tree (parser, node, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
 
+	  if (merge_sink_first_check && !pt_has_error (parser))
+	    {
+	      /* A remote MERGE with a local source. Its gate reads the clauses as written. Type
+	       * checking below wraps a value in a CUBRID cast, turns a SET literal into a CUBRID
+	       * literal of the column type, and computes a constant expression ahead. */
+	      node->info.merge.remote_stmt_as_written = parser_copy_tree (parser, node);
+	      if (node->info.merge.remote_stmt_as_written == NULL)
+		{
+		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		}
+	    }
+
 	  if (!pt_has_error (parser))
 	    {
 	      /* remove unnecessary variable */
@@ -13556,8 +13568,12 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	  if (merge_sink_first_check && node != NULL && !pt_has_error (parser))
 	    {
 	      /* A remote MERGE with a local source. The keys are checked on the statement, where
-	       * type checking marks a key that compares with a conversion. */
-	      (void) pt_dblink_merge_check_key_types (parser, node);
+	       * type checking marks a key that compares with a conversion. The gate reads the
+	       * clauses as written. */
+	      if (pt_dblink_merge_check_key_types (parser, node) == NO_ERROR)
+		{
+		  (void) pt_dblink_merge_is_inscope (parser, node->info.merge.remote_stmt_as_written);
+		}
 	    }
 	}
 
