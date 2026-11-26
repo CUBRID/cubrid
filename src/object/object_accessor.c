@@ -3372,10 +3372,26 @@ find_unique_key_matches (const DB_VALUE * value, const TP_DOMAIN * domain)
 }
 
 /*
+ * index_keys_attribute_values () - is the key of every row the whole values of the index's attributes? A function
+ *   index keys the function's result, a prefix length index keys the value cut to the prefix, and a filter index has
+ *   no key for a row outside its condition; a search with the attributes' values misses a row there, or finds another
+ *   row whose value starts with the same prefix.
+ *   return: true if a search with the attributes' values finds every row
+ *   cons(in): the index
+ */
+static bool
+index_keys_attribute_values (const SM_CLASS_CONSTRAINT * cons)
+{
+  return (cons->func_index_info == NULL && (cons->attrs_prefix_length == NULL || cons->attrs_prefix_length[0] == -1)
+	  && cons->filter_predicate == NULL);
+}
+
+/*
  * find_unique_index () - find an index of the given type whose key is the attribute's own value: an index of this one
- *   attribute, not a function index. The attribute's constraint cache also lists the multi-column indexes and the
- *   function indexes that include the attribute; their keys are a multi-column key or the function's result, so a
- *   search with the attribute's value would send a key of another shape than the index's.
+ *   attribute whose key is the attribute's whole value (index_keys_attribute_values ()). The attribute's constraint
+ *   cache also lists the multi-column indexes and the function indexes that include the attribute; their keys are a
+ *   multi-column key or the function's result, so a search with the attribute's value would send a key of another
+ *   shape than the index's.
  *   return: true if found
  *   class_(in): the class of the attribute
  *   att(in): the attribute
@@ -3396,7 +3412,8 @@ find_unique_index (SM_CLASS * class_, SM_ATTRIBUTE * att, SM_CONSTRAINT_TYPE typ
 	}
 
       cons = classobj_find_class_constraint_by_btid (class_->constraints, type, c->index);
-      if (cons != NULL && cons->attributes[0] != NULL && cons->attributes[1] == NULL && cons->func_index_info == NULL)
+      if (cons != NULL && cons->attributes[0] != NULL && cons->attributes[1] == NULL
+	  && index_keys_attribute_values (cons))
 	{
 	  BTID_COPY (btid, &c->index);
 	  return true;
@@ -3805,8 +3822,8 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
 
   for (cons = class_->constraints; cons; cons = cons->next)
     {
-      /* a function index keys the function's result, not the values of its attributes */
-      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) && cons->func_index_info == NULL)
+      /* only an index whose key is the whole values of its attributes */
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) && index_keys_attribute_values (cons))
 	{
 	  attp = cons->attributes;
 	  namep = attr_names;
