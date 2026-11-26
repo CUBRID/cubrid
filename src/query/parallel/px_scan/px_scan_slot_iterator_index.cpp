@@ -31,8 +31,16 @@ namespace parallel_scan
   slot_iterator_index::slot_iterator_index ()
     : m_input_handler (nullptr),
       m_slot_walker (),
-      m_drain_fsm ()
+      m_drain_fsm (),
+      m_bm_worker (nullptr),
+      m_bm_heap_step (false),
+      m_bm_page_on (false),
+      m_bm_unfixed (false),
+      m_bm_next_slot (0),
+      m_bm_words (nullptr),
+      m_bm_single (-1)
   {
+    VPID_SET_NULL (&m_bm_vpid);
     /* FSM pokes walker fields via friendship; wire pointer up-front. */
     m_drain_fsm.wire_owner (&m_slot_walker);
   }
@@ -51,6 +59,17 @@ namespace parallel_scan
   int
   slot_iterator_index::finalize (THREAD_ENTRY *thread_p)
   {
+    if (m_bm_page_on)
+      {
+	/* the scan stopped inside a page of the heap step */
+	m_slot_walker.release_bitmap_page (thread_p);
+	m_bm_page_on = false;
+      }
+    if (m_bm_worker != nullptr)
+      {
+	m_input_handler->bitmap ().close_worker (thread_p, m_bm_worker);
+	m_bm_worker = nullptr;
+      }
     m_drain_fsm.cleanup_on_reset (thread_p);
     m_slot_walker.cleanup_on_reset (thread_p);
     m_slot_walker.unwire ();
@@ -74,6 +93,16 @@ namespace parallel_scan
   SCAN_CODE
   slot_iterator_index::next_qualified_slot_with_peek (THREAD_ENTRY *thread_p)
   {
+    if (m_bm_page_on)
+      {
+	return next_bitmap_row (thread_p);
+      }
+    if (m_bm_heap_step)
+      {
+	/* a page that was deallocated since the scan started */
+	return S_END;
+      }
+
     /* If a drain is in progress, continue it; otherwise walk leaf slots. */
     if (!m_drain_fsm.is_idle ())
       {
@@ -89,5 +118,107 @@ namespace parallel_scan
 	  }
       }
     return m_slot_walker.scan_next_slot (thread_p);
+  }
+
+  int
+  slot_iterator_index::set_bitmap_page (THREAD_ENTRY *thread_p, const VPID *vpid, const std::uint64_t *words,
+					int single_slot)
+  {
+    m_bm_words = words;
+    m_bm_single = single_slot;
+    m_bm_vpid = *vpid;
+    m_bm_next_slot = 0;
+    m_bm_heap_step = true;
+    m_bm_page_on = true;
+    m_bm_unfixed = false;
+
+    /* a page vacuum deallocated since the scan started is passed here */
+    int error_code = m_slot_walker.fix_bitmap_page (thread_p, &m_bm_vpid, &m_bm_page_on);
+    if (error_code != NO_ERROR)
+      {
+	m_bm_page_on = false;
+	return error_code;
+      }
+    return NO_ERROR;
+  }
+
+  SCAN_CODE
+  slot_iterator_index::next_bitmap_row (THREAD_ENTRY *thread_p)
+  {
+    while (true)
+      {
+	int slot = -1;
+
+	if (m_bm_words == nullptr)
+	  {
+	    slot = m_bm_next_slot <= m_bm_single ? m_bm_single : -1;
+	  }
+	else
+	  {
+	    for (int bit = m_bm_next_slot; bit < SCAN_BITMAP_WORDS * 64;)
+	      {
+		const std::uint64_t word = m_bm_words[bit >> 6] >> (bit & 63);
+
+		if (word != 0)
+		  {
+		    slot = bit + __builtin_ctzll (word);
+		    break;
+		  }
+		bit = ((bit >> 6) + 1) << 6;
+	      }
+	  }
+
+	if (slot < 0)
+	  {
+	    m_slot_walker.release_bitmap_page (thread_p);
+	    m_bm_page_on = false;
+	    return S_END;
+	  }
+	m_bm_next_slot = slot + 1;
+
+	OID oid;
+
+	oid.volid = m_bm_vpid.volid;
+	oid.pageid = m_bm_vpid.pageid;
+	oid.slotid = (PGSLOTID) slot;
+
+	if (m_bm_unfixed)
+	  {
+	    /* the page was let go with the row before this one */
+	    bool is_fixed = false;
+
+	    if (m_slot_walker.fix_bitmap_page (thread_p, &m_bm_vpid, &is_fixed) != NO_ERROR)
+	      {
+		m_bm_page_on = false;
+		return S_ERROR;
+	      }
+	    if (!is_fixed)
+	      {
+		/* vacuum deallocated the page meanwhile: no row of it is visible */
+		m_bm_page_on = false;
+		return S_END;
+	      }
+	    m_bm_unfixed = false;
+	  }
+
+	SCAN_CODE scan = m_slot_walker.process_bitmap_row (thread_p, &oid);
+	if (scan == S_END)
+	  {
+	    /* not visible or filtered out */
+	    continue;
+	  }
+	if (scan == S_ERROR)
+	  {
+	    m_slot_walker.release_bitmap_page (thread_p);
+	    m_bm_page_on = false;
+	  }
+	else if (!m_slot_walker.keeps_bitmap_page ())
+	  {
+	    /* the row was copied: no page stays fixed while a block that may fix other pages works on it */
+	    m_slot_walker.release_bitmap_page (thread_p);
+	    m_bm_unfixed = true;
+	  }
+	return scan;
+      }
   }
 }
