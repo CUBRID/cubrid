@@ -740,7 +740,9 @@ static int la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * appl
 static void la_free_repl_items_by_tranid (int tranid);
 static int la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
 static LA_APPLY *la_detach_sysop_fragment (LA_APPLY * outer, const LOG_LSA * fragment_lsa);
-static int la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final);
+static int la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
+static int la_get_sysop_end_postpone (LOG_PAGE * pgptr, LOG_LSA * lsa, bool *logical_run_postpone,
+				      bool *sysop_postpone);
 static bool la_coordinator_set_commit_dependency (LA_TASK * task);
 static int la_coordinator_process_commit (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
 static bool la_is_done_state (int ha_server_state);
@@ -9856,18 +9858,67 @@ la_detach_sysop_fragment (LA_APPLY * outer, const LOG_LSA * fragment_lsa)
 }
 
 /*
+ * la_get_sysop_end_postpone() - read whether a LOG_SYSOP_END ends a run postpone of an outer system operation
+ *   return: NO_ERROR or error code
+ *   pgptr(in): the log page holding the record header
+ *   lsa(in): LSA of the record
+ *   logical_run_postpone(out): the end type is LOG_SYSOP_END_LOGICAL_RUN_POSTPONE
+ *   sysop_postpone(out): for that type, the run postpone belongs to the postpone of a system operation
+ */
+static int
+la_get_sysop_end_postpone (LOG_PAGE * pgptr, LOG_LSA * lsa, bool *logical_run_postpone, bool *sysop_postpone)
+{
+  int error = NO_ERROR;
+  LOG_REC_SYSOP_END *sysop_end;
+  LOG_PAGEID pageid;
+  PGLENGTH offset;
+  LOG_PAGE *pg;
+
+  *logical_run_postpone = false;
+  *sysop_postpone = false;
+
+  pageid = lsa->pageid;
+  offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
+  pg = pgptr;
+
+  LA_LOG_READ_ALIGN (error, offset, pageid, pg);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, SSIZEOF (*sysop_end), offset, pageid, pg);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  sysop_end = (LOG_REC_SYSOP_END *) ((char *) pg->area + offset);
+  if (sysop_end->type == LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+    {
+      *logical_run_postpone = true;
+      *sysop_postpone = sysop_end->run_postpone.is_sysop_postpone;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * la_coordinator_process_sysop_end() - handle a LOG_SYSOP_END record read from the log
  *   return: NO_ERROR or error code
  *   lrec(in): the LOG_SYSOP_END record header
  *   final(in): LSA of the record
+ *   pg_ptr(in): the log page holding the record header
  *
  * Note:
  *   Buffered items become a fragment that the outer commit waits for. Without a label, as in logs written
  *   before writesets, or when a long fragment includes outer items, it runs in commit order.
+ *   An unlabeled end of a run postpone inside an outer system operation's postpone leaves the items for that
+ *   operation's own end, which comes after it (la_wset_label_sysop_end_keeps_items).
  *   A labeled end without items is only marked completed on the commit-order ring; an unlabeled one is ignored.
  */
 static int
-la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
+la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr)
 {
   int error = NO_ERROR;
   bool labeled;
@@ -9877,6 +9928,25 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
       LA_APPLY *sysop_apply = la_find_apply_list (lrec->trid);
 
       labeled = la_wset_label_matches (lrec->trid);
+      if (sysop_apply != NULL && sysop_apply->head != NULL && !labeled)
+	{
+	  bool logical_run_postpone, sysop_postpone;
+
+	  error = la_get_sysop_end_postpone (pg_ptr, final, &logical_run_postpone, &sysop_postpone);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  if (la_wset_label_sysop_end_keeps_items (labeled, logical_run_postpone, sysop_postpone))
+	    {
+	      /* rare (an independent operation whose items reached the log before its postpone): traced at level 1 */
+	      LA_WSET_TRACE (1, "coordinator sysop_end trid=%d sysop_lsa=%lld|%d items=%d "
+			     "action=keep_for_outer_sysop\n", lrec->trid, LSA_AS_ARGS (final), sysop_apply->num_items);
+	      return NO_ERROR;
+	    }
+	}
+
       if (sysop_apply != NULL && sysop_apply->head != NULL)
 	{
 	  LA_APPLY *fragment = la_detach_sysop_fragment (sysop_apply, final);
@@ -10199,7 +10269,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       break;
 
     case LOG_SYSOP_END:
-      error = la_coordinator_process_sysop_end (lrec, final);
+      error = la_coordinator_process_sysop_end (lrec, final, pg_ptr);
       if (error != NO_ERROR)
 	{
 	  la_applier_need_shutdown = true;

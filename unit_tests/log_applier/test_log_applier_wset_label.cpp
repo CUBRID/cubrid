@@ -69,3 +69,20 @@ TEST_CASE ("a reset drops the pending writeset label", "[log_applier_wset_label]
   REQUIRE_FALSE (la_wset_label_take (12, &taken));
   REQUIRE (LSA_ISNULL (&taken));
 }
+
+TEST_CASE ("only an unlabeled run postpone end inside a system operation's postpone keeps the buffered items",
+	   "[log_applier_wset_label]")
+{
+  /* the run postpone of an independent system operation: its own labeled end comes later and takes the items */
+  REQUIRE (la_wset_label_sysop_end_keeps_items (false, true, true));
+
+  /* a labeled end applies what it wrote, whatever its type */
+  REQUIRE_FALSE (la_wset_label_sysop_end_keeps_items (true, true, true));
+
+  /* a run postpone of the transaction's own postpone: the transaction is already committed */
+  REQUIRE_FALSE (la_wset_label_sysop_end_keeps_items (false, true, false));
+
+  /* any other end type, unlabeled or not */
+  REQUIRE_FALSE (la_wset_label_sysop_end_keeps_items (false, false, false));
+  REQUIRE_FALSE (la_wset_label_sysop_end_keeps_items (true, false, false));
+}

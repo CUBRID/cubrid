@@ -111,3 +111,24 @@ la_wset_label_reset (void)
   la_Wset_label_tranid = 0;
   LSA_SET_NULL (&la_Wset_label_dependency_lsa);
 }
+
+/*
+ * la_wset_label_sysop_end_keeps_items - tell whether a SYSOP_END leaves the transaction's buffered items in place
+ *
+ * return: true to leave them for a later boundary, false to make them a fragment of this SYSOP_END
+ *
+ *   labeled(in): a label came right before this SYSOP_END
+ *   logical_run_postpone(in): the SYSOP_END ends a logical run postpone (LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+ *   sysop_postpone(in): that run postpone belongs to the postpone of an outer system operation
+ *
+ * Note: an independent system operation that committed with postpone runs its postpone first and only then writes
+ *       its label and its own SYSOP_END (log_sysop_commit_internal: log_sysop_do_postpone, then repl_finish_sysop).
+ *       The unlabeled run postpone operations inside it end before that, so the items the outer operation wrote
+ *       before its postpone are taken by its labeled end and ordered by its keys, instead of being split off by the
+ *       first run postpone end and applied in commit order.
+ */
+bool
+la_wset_label_sysop_end_keeps_items (bool labeled, bool logical_run_postpone, bool sysop_postpone)
+{
+  return !labeled && logical_run_postpone && sysop_postpone;
+}
