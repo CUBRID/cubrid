@@ -24833,6 +24833,7 @@ heap_mvcc_log_redistribute (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA
   int n_redo_crumbs = 0, data_copy_offset = 0;
   LOG_CRUMB redo_crumbs[HEAP_LOG_MVCC_REDISTRIBUTE_MAX_REDO_CRUMBS];
   MVCCID delid;
+  char packed_delid[OR_MVCCID_SIZE];
   MVCC_REC_HEADER mvcc_rec_header;
   HEAP_PAGE_VACUUM_STATUS vacuum_status;
 
@@ -24858,13 +24859,16 @@ heap_mvcc_log_redistribute (THREAD_ENTRY * thread_p, RECDES * p_recdes, LOG_DATA
     {
       or_mvcc_get_header (p_recdes, &mvcc_rec_header);
       assert (MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_DELID));
+      delid = MVCC_GET_DELID (&mvcc_rec_header);
+      /* heap_rv_mvcc_redo_redistribute reads it with OR_GET_MVCCID, so log it in the same disk byte order. */
+      OR_PUT_MVCCID (packed_delid, &delid);
 
       /* Add representation ID and flags field */
       redo_crumbs[n_redo_crumbs].length = OR_INT_SIZE;
       redo_crumbs[n_redo_crumbs++].data = p_recdes->data;
 
       redo_crumbs[n_redo_crumbs].length = OR_MVCCID_SIZE;
-      redo_crumbs[n_redo_crumbs++].data = &delid;
+      redo_crumbs[n_redo_crumbs++].data = packed_delid;
 
       /* Set data copy offset after the record header */
       data_copy_offset = OR_HEADER_SIZE (p_recdes->data);
