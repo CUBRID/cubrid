@@ -926,8 +926,8 @@ jsp_evaluate_arguments (PARSER_CONTEXT *parser, PT_NODE *statement,
 	  pt_evaluate_tree_having_serial (parser, vc, db_value, 1);
 	  if (pt_has_error (parser))
 	    {
-	      /* to maintain the list to free all the allocated */
 	      db_value_clear (db_value);
+	      free (db_value);
 	      goto exit_on_error;
 	    }
 	}
@@ -940,9 +940,20 @@ jsp_evaluate_arguments (PARSER_CONTEXT *parser, PT_NODE *statement,
 
 exit_on_error:
 
+  vc = statement->info.method_call.arg_list;
   for (DB_VALUE &val : args)
     {
-      db_value_clear (&val);
+      if (PT_IS_CONST (vc))
+	{
+	  /* the value belongs to the parse tree or the host variables, so free only the buffer packing it attached */
+	  pr_clear_compressed_string (&val);
+	}
+      else
+	{
+	  db_value_clear (&val);
+	  free (&val);
+	}
+      vc = vc->next;
     }
   args.clear ();
 
@@ -2546,8 +2557,6 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
 	/* semantic check */
 	int directive = db_get_int (&entry.vals[INDEX_SP_ATTR_DIRECTIVE]);
-	const char *auth_name = (! (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_RIGHTS_CALLER) ? jsp_get_owner_name (
-					 name, user_name_buffer, DB_MAX_USER_LENGTH) : au_get_current_user_name ());
 
 	int result_type = db_get_int (&entry.vals[INDEX_SP_ATTR_RETURN_TYPE]);
 	error = jsp_check_return_type_supported ((DB_TYPE) result_type);
@@ -2566,7 +2575,6 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	  }
 
 #if defined (CS_MODE)
-	sig.auth = db_private_strdup (NULL, auth_name);
 	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_PARALLEL_ENABLE)
 	  {
 	    sig.is_parallel_enabled = true;
@@ -2665,6 +2673,8 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 
 	for (int i = 0; i < NUM_SP_ARG_ATTR; i++)
 	  {
+	    /* the previous parameter left its attribute here */
+	    pr_clear_value (&entry.vals[i]);
 	    error = obj_get (arg_mop_p, sp_args_get_entry_name (i).data (), &entry.vals[i]);
 	    if (error != NO_ERROR)
 	      {
