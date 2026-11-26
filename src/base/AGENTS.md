@@ -2,7 +2,7 @@
 
 Foundational layer used by every other CUBRID engine module. Provides memory management, error handling, lock-free data structures, platform abstraction, internationalization, serialization, performance monitoring, and general utilities.
 
-For project-wide coding style, anti-patterns, and error handling conventions, see the root [AGENTS.md](../../AGENTS.md).
+For engine-wide coding style, memory/exception handling, and error-code conventions, see [src/AGENTS.md](../AGENTS.md) (and [the root AGENTS.md](../../AGENTS.md) for repo-wide build and CI rules).
 
 ## Subsystems
 
@@ -38,7 +38,7 @@ For project-wide coding style, anti-patterns, and error handling conventions, se
 
 | File | Description |
 |------|-------------|
-| `error_code.h` | All error codes as `#define` negative integers (~1700 codes). Adding new codes requires 6-place update (see root AGENTS.md) |
+| `error_code.h` | All error codes as `#define` negative integers (see [src/AGENTS.md](../AGENTS.md) for the error-code update procedure) |
 | `error_manager.c/h` | `er_set()`, error stack, error logging, severity levels, `ASSERT_ERROR()` macros |
 | `error_context.hpp/cpp` | C++ per-thread error context (`cuberr::context`) with stackable error levels |
 
@@ -49,7 +49,7 @@ For project-wide coding style, anti-patterns, and error handling conventions, se
 | `porting.c/h` | Master platform abstraction: timeval, atomic ops, POSIX↔Win32 function mapping |
 | `process_util.c/h` | Cross-platform process creation/termination |
 | `dynamic_load.c/h` | Dynamic shared library loading (`dlopen`/`dlsym` on Linux, `shl_load` on HP-UX) |
-| `cubrid_getopt_long.c/h` | CUBRID's own `getopt_long` implementation |
+| `cubrid_getopt_long.c`, `cubrid_getopt.h` | CUBRID's own `getopt_long` implementation |
 
 ### 5. Internationalization, Locale & Character Set
 
@@ -143,7 +143,7 @@ For project-wide coding style, anti-patterns, and error handling conventions, se
 | `compressor.hpp` | LZ4 compression wrapper (`cubcompress` namespace) |
 | `xml_parser.c/h` | XML parser wrapper around expat (used for LDML locale, timezone data) |
 | `util_func.c/h` | General utilities: hashing, filepath comparison, signal handling, string splitting |
-| `hide_password.c/h` | Password hiding in SQL strings for logging |
+| `hide_password.cpp`, `hide_password.h` | Password hiding in SQL strings for logging |
 | `xserver_interface.h` | Server-mode-only function declarations (boot, locator, log, heap, btree, query) |
 | `server_interface.h` | Server interface constants |
 
@@ -166,7 +166,7 @@ For project-wide coding style, anti-patterns, and error handling conventions, se
 
 | Task | Primary File(s) |
 |------|-----------------|
-| Add error code | `error_code.h` (see root AGENTS.md for 6-place procedure) |
+| Add error code | `error_code.h` (see [src/AGENTS.md](../AGENTS.md) for the error-code update procedure) |
 | Fix memory leak | `memory_alloc.c`, `resource_tracker.hpp` |
 | Fix lock-free structure | `lockfree_hashmap.hpp` (modern), `lock_free.c` (legacy) |
 | Add system parameter | `system_parameter.c/h` — add `PRM_ID_*`, update `prm_Def`, `PRM_LAST_ID` |
