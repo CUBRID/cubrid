@@ -1450,6 +1450,7 @@ util_restart_as_dba (const char *program_name, const char *db_name, const char *
 {
   static char typed_password[AU_MAX_PASSWORD_BUF + 1] = { '\0' };
   static bool password_typed = false;
+  char entered[AU_MAX_PASSWORD_BUF + 1] = { '\0' };
   const char *password;
   int error;
 
@@ -1463,7 +1464,15 @@ util_restart_as_dba (const char *program_name, const char *db_name, const char *
       dba_password = typed_password;
     }
 
-  AU_DISABLE_PASSWORDS ();
+  /* a password given is checked even where none is needed, so that a wrong one is never taken */
+  if (dba_password == NULL)
+    {
+      AU_DISABLE_PASSWORDS ();
+    }
+  else
+    {
+      AU_ENABLE_PASSWORDS ();
+    }
   db_set_client_type (client_type);
 
   error = db_login ("DBA", dba_password);
@@ -1477,15 +1486,22 @@ util_restart_as_dba (const char *program_name, const char *db_name, const char *
       password = getpass (utility_get_generic_message (MSGCAT_UTIL_GENERIC_DBA_PASSWORD));
       if (password != NULL && password[0] != '\0')
 	{
-	  strncpy_bufsize (typed_password, password);
-	  password_typed = true;
-	  dba_password = typed_password;
+	  strncpy_bufsize (entered, password);
+	  dba_password = entered;
+	  AU_ENABLE_PASSWORDS ();
 	}
       error = db_login ("DBA", dba_password);
       if (error == NO_ERROR)
 	{
 	  error = db_restart (program_name, TRUE, db_name);
 	}
+      if (error == NO_ERROR && dba_password == entered)
+	{
+	  /* only a password the server took is kept for the next connection */
+	  strncpy_bufsize (typed_password, entered);
+	  password_typed = true;
+	}
+      memset (entered, 0, sizeof (entered));
     }
 
   return error;

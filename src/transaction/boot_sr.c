@@ -3189,32 +3189,43 @@ xboot_get_server_session_key (void)
  * Note: the client type is the client's own word. An admin or log replicator
  *   client goes without proving the password only from this host or from an HA
  *   node. From anywhere else an admin client proves it as any other client does,
- *   and a log replicator client is refused even with the password proven: only
- *   where it connects from lets it in.
+ *   and one that writes on a standby must also be DBA or in the DBA group; a log
+ *   replicator client is refused even with the password proven: only where it
+ *   connects from lets it in.
  */
 static int
 boot_check_client_proof (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_credential)
 {
   CSS_CONN_ENTRY *conn = thread_p->conn_entry;
   int client_type = client_credential->client_type;
-  bool proven;
+  bool proven, proven_dba_group;
+  bool writes_on_standby = BOOT_ADMIN_CLIENT_TYPE (client_type) && BOOT_WRITE_ON_STANDY_CLIENT_TYPE (client_type);
 
   if (!BOOT_IS_DEFINED_CLIENT_TYPE (client_type))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      /* a value no client sends: refused as a wrong password is, so as to tell nothing more */
+      er_log_debug (ARG_FILE_LINE, "boot_check_client_proof: undefined client type %d\n", client_type);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_PASSWORD, 0);
+      return ER_AU_INVALID_PASSWORD;
     }
 
-  proven = css_consume_auth_proof (conn, client_credential->get_db_user ());
-  if (proven && !BOOT_LOG_REPLICATOR_TYPE (client_type))
+  proven = css_consume_auth_proof (conn, client_credential->get_db_user (), &proven_dba_group);
+  if (proven && !BOOT_LOG_REPLICATOR_TYPE (client_type) && (!writes_on_standby || proven_dba_group))
     {
       return NO_ERROR;
     }
 
   if (!BOOT_PASSWORD_PROOF_CLIENT_TYPE (client_type) && conn != NULL
-      && (css_is_local_socket (conn->fd) || css_is_ha_node_address (conn->fd)))
+      && (css_peer_is_this_host (conn->fd) || css_is_ha_node_address (conn->fd)))
     {
       return NO_ERROR;
+    }
+
+  if (proven && writes_on_standby)
+    {
+      /* the password is right, but lifting the standby's read-only state is for the DBA group alone */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "write on standby");
+      return ER_AU_DBA_ONLY;
     }
 
   if (BOOT_LOG_REPLICATOR_TYPE (client_type))

@@ -203,13 +203,14 @@ css_sockopt (SOCKET sd)
 }
 
 /*
- * css_hostname_to_ip()
+ * css_hostname_to_ip_internal()
  *   return:
  *   host(in):
  *   ip_addr(out):
+ *   set_error(in): whether a host that is not found sets the error
  */
-int
-css_hostname_to_ip (const char *host, unsigned char *ip_addr)
+static int
+css_hostname_to_ip_internal (const char *host, unsigned char *ip_addr, bool set_error)
 {
   in_addr_t in_addr;
 
@@ -233,7 +234,10 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host, HOSTS_FILE);
+	  if (set_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host, HOSTS_FILE);
+	    }
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -244,7 +248,10 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host, HOSTS_FILE);
+	  if (set_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host, HOSTS_FILE);
+	    }
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -254,7 +261,10 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host, HOSTS_FILE);
+	  if (set_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host, HOSTS_FILE);
+	    }
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -269,7 +279,10 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host, HOSTS_FILE);
+	  if (set_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host, HOSTS_FILE);
+	    }
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
@@ -278,6 +291,31 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * css_hostname_to_ip()
+ *   return:
+ *   host(in):
+ *   ip_addr(out):
+ */
+int
+css_hostname_to_ip (const char *host, unsigned char *ip_addr)
+{
+  return css_hostname_to_ip_internal (host, ip_addr, true);
+}
+
+/*
+ * css_hostname_to_ip_quiet() - css_hostname_to_ip () that leaves no error behind
+ *   when the host is not found, for a caller to whom that is no error
+ *   return: NO_ERROR, or ER_BO_UNABLE_TO_FIND_HOSTNAME
+ *   host(in):
+ *   ip_addr(out):
+ */
+int
+css_hostname_to_ip_quiet (const char *host, unsigned char *ip_addr)
+{
+  return css_hostname_to_ip_internal (host, ip_addr, false);
 }
 
 /*
@@ -1644,13 +1682,21 @@ css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
 }
 
 /*
- * css_is_local_socket() - do both ends of the socket sit on this host?
+ * css_peer_is_this_host() - does the peer of a socket sit on this host?
  *   return: true for a unix domain socket, a loopback peer, or a peer whose
  *           address is the socket's own address
  *   sockfd(in): a connected socket
+ *
+ * Note: cub_master's css_peer_is_local_host () also takes a peer from any other
+ *   address of this host, and css_check_accessibility () only a unix domain or
+ *   127.0.0.1 peer. This differs from the former only for a client on this host
+ *   that binds a source address of its own before it connects, which a CUBRID
+ *   client does not do: the kernel gives a connection to an address of this
+ *   host that same address as its source. The latter decides only whether the
+ *   access list applies.
  */
 bool
-css_is_local_socket (SOCKET sockfd)
+css_peer_is_this_host (SOCKET sockfd)
 {
   union
   {

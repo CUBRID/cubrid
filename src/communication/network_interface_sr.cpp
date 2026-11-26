@@ -9851,7 +9851,7 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
 	  || (current_user != NULL && intl_identifier_casecmp (current_user, db_user_upper) == 0))
 	{
 	  /* no switch, but spend a proof made for it so none is left on the connection */
-	  (void) css_consume_auth_proof (thread_p->conn_entry, db_user_upper);
+	  (void) css_consume_auth_proof (thread_p->conn_entry, db_user_upper, NULL);
 	}
       /* same rule as slogin_user () */
       else if (auth_may_switch_user (thread_p, db_user_upper))
@@ -12098,7 +12098,7 @@ auth_may_switch_user (THREAD_ENTRY *thread_p, const char *user_name)
   bool is_dba_group = false;
   bool found;
 
-  if (css_consume_auth_proof (thread_p->conn_entry, user_name))
+  if (css_consume_auth_proof (thread_p->conn_entry, user_name, NULL))
     {
       return true;
     }
@@ -12216,7 +12216,7 @@ sau_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
   int error = ER_AU_INVALID_PASSWORD;
 
   /* a new attempt spends whatever this connection proved before */
-  css_set_auth_proof (thread_p->conn_entry, NULL);
+  css_set_auth_proof (thread_p->conn_entry, NULL, false);
 
   /* request: user | nonce | issued_at | tag | answer */
   ptr = (request != NULL) ? cdc_flashback_unpack_bounded_string (request, request, reqlen, &user_name) : NULL;
@@ -12254,7 +12254,7 @@ sau_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
   else
     {
       error = NO_ERROR;
-      css_set_auth_proof (thread_p->conn_entry, user_name);
+      css_set_auth_proof (thread_p->conn_entry, user_name, is_dba);
     }
   memset (stored, 0, sizeof (stored));
 

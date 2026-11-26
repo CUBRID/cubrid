@@ -61,10 +61,11 @@ extern int css_tcp_client_open_with_timeout (const char *host, int port, int tim
 extern int css_ping (SOCKET sd, struct sockaddr_in *sa_send, int timeout);
 extern bool css_peer_alive (SOCKET sd, int timeout);
 extern int css_hostname_to_ip (const char *host, unsigned char *ip_addr);
+extern int css_hostname_to_ip_quiet (const char *host, unsigned char *ip_addr);
 #endif /* !WINDOWS */
 
 extern int css_get_peer_name (SOCKET sockfd, char *hostname, size_t len);
 extern int css_get_sock_name (SOCKET sockfd, char *hostname, size_t len);
-extern bool css_is_local_socket (SOCKET sockfd);
+extern bool css_peer_is_this_host (SOCKET sockfd);
 extern int css_get_peer_ipv4 (SOCKET sockfd, unsigned char *ip_addr);
 #endif /* _TCP_H_ */

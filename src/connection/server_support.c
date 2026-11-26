@@ -1963,10 +1963,9 @@ css_ip_in_ha_list (const char *list, const unsigned char *ip_addr)
   strncpy_bufsize (hosts, at + 1);
   for (host = strtok_r (hosts, " ,:", &save); host != NULL; host = strtok_r (NULL, " ,:", &save))
     {
-      if (css_hostname_to_ip (host, node_ip) != NO_ERROR)
+      /* a node that does not resolve is simply not this peer, which is no error to log */
+      if (css_hostname_to_ip_quiet (host, node_ip) != NO_ERROR)
 	{
-	  /* a node that does not resolve is simply not this peer */
-	  er_clear ();
 	  continue;
 	}
       if (memcmp (ip_addr, node_ip, sizeof (node_ip)) == 0)
@@ -1984,11 +1983,14 @@ css_ip_in_ha_list (const char *list, const unsigned char *ip_addr)
  *           ha_node_list or ha_replica_list
  *   fd(in): the client connection socket
  *
- * Note: the server loads the lists once, while cubrid heartbeat reload lets
- *   the nodes take a node added to or removed from the parameter files later,
- *   so the files are what count, read by the loader's rules. When the HA
- *   configuration file cannot be read, no peer is taken for a node: the lists
- *   loaded at startup may still have a node removed since.
+ * Note: the lists are read as sysprm_read_ha_node_lists () has them now, not
+ *   taken from what cub_master applied: the server loads them once at startup,
+ *   while cubrid heartbeat reload lets the nodes take a node added to or
+ *   removed from the files later. When they cannot be read, no peer is taken
+ *   for a node: the lists loaded at startup may still have a node removed
+ *   since. The hosts are resolved on each call, as cub_master's
+ *   hb_check_request_eligibility () does, so that a node whose address
+ *   changed is followed at once.
  */
 bool
 css_is_ha_node_address (SOCKET fd)

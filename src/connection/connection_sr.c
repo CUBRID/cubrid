@@ -278,6 +278,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->cdc_auth_busy = 0;
   conn->auth_user[0] = '\0';
   conn->auth_verified = false;
+  conn->auth_dba_group = false;
   conn->reset_on_commit = false;
   conn->stop_talk = false;
   conn->ignore_repl_delay = false;
@@ -2843,9 +2844,10 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 /*
  * css_set_auth_proof () - record that this connection has just proven
  *   user_name's password, or forget any proof when user_name is NULL.
+ *   is_dba_group(in): whether user_name is DBA or a member of the DBA group
  */
 void
-css_set_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name)
+css_set_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name, bool is_dba_group)
 {
   int r;
 
@@ -2857,10 +2859,12 @@ css_set_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name)
       strncpy (conn->auth_user, user_name, DB_MAX_USER_LENGTH);
       conn->auth_user[DB_MAX_USER_LENGTH] = '\0';
       conn->auth_verified = true;
+      conn->auth_dba_group = is_dba_group;
     }
   else
     {
       conn->auth_verified = false;
+      conn->auth_dba_group = false;
     }
 
   r = rmutex_unlock (NULL, &conn->rmutex);
@@ -2870,13 +2874,19 @@ css_set_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name)
 /*
  * css_consume_auth_proof () - has this connection just proven user_name's
  *   password? The proof is spent either way.
+ *   is_dba_group(out): whether the account proved is DBA or a member of the
+ *                      DBA group, false when not proven; may be NULL
  */
 bool
-css_consume_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name)
+css_consume_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name, bool * is_dba_group)
 {
   bool proven;
   int r;
 
+  if (is_dba_group != NULL)
+    {
+      *is_dba_group = false;
+    }
   if (conn == NULL)
     {
       return false;
@@ -2886,7 +2896,12 @@ css_consume_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name)
   assert (r == NO_ERROR);
 
   proven = (conn->auth_verified && user_name != NULL && intl_identifier_casecmp (conn->auth_user, user_name) == 0);
+  if (proven && is_dba_group != NULL)
+    {
+      *is_dba_group = conn->auth_dba_group;
+    }
   conn->auth_verified = false;
+  conn->auth_dba_group = false;
 
   r = rmutex_unlock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);

@@ -3660,6 +3660,10 @@ spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit
 #undef UNIT_STR
 }
 
+/* the server refused the login: a wrong or missing password, or an account that may not log in */
+#define APPLYINFO_LOGIN_REFUSED(error) \
+  ((error) == ER_AU_REJECT_LOGIN || (error) == ER_AU_INVALID_PASSWORD || (error) == ER_AU_LOGIN_DISABLED)
+
 /*
  * applyinfo() - ApplyInfo main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -3833,6 +3837,10 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  if (APPLYINFO_LOGIN_REFUSED (error))
+	    {
+	      goto login_refused;
+	    }
 	  check_applied_info_temp = false;
 	  error = NO_ERROR;
 	}
@@ -3887,6 +3895,10 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  if (APPLYINFO_LOGIN_REFUSED (error))
+	    {
+	      goto login_refused;
+	    }
 	  check_master_info_temp = false;
 	  error = NO_ERROR;
 	}
@@ -3941,6 +3953,14 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   while (interval > 0 && !is_Sigint_caught);
 
   return EXIT_SUCCESS;
+
+login_refused:
+  /* unlike a server that is down, a refused login fails the run, so that a script sees it */
+  if (BOOT_IS_CLIENT_RESTARTED ())
+    {
+      (void) db_shutdown ();
+    }
+  return EXIT_FAILURE;
 
 print_applyinfo_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_USAGE),

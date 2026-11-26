@@ -181,6 +181,7 @@ class EXPORT_IMPORT authenticate_context
     int is_loginable_user (MOP user);
 
     void disable_passwords (void); // au_disable_passwords ()
+    void enable_passwords (void);
 
     // checks
     int check_user (void);
