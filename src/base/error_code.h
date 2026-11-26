@@ -1828,9 +1828,7 @@
 #define ER_SES_SESSION_RENEWED                      -1421
 #define ER_SES_LOGIN_NOT_RESTORED                   -1422
 
-#define ER_TM_END_IN_PARALLEL_SECTION               -1423
-
-#define ER_LAST_ERROR                               -1424
+#define ER_LAST_ERROR                               -1423
 
 /*
  * CAUTION!

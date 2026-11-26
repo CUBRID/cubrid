@@ -45,26 +45,31 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-static bool xtran_end_is_held_by_parallel_section (THREAD_ENTRY * thread_p, int tran_index, TRAN_STATE * state);
+static bool xtran_end_is_held_by_parallel_section (THREAD_ENTRY * thread_p, int tran_index, const char *stmt_name,
+						   TRAN_STATE * state);
 
 /*
  * xtran_end_is_held_by_parallel_section () - a commit or 2PC prepare the transaction's parallel section holds back
  *   return: true with *state the request's result: the section is still open, or it closed with an abort deferred
  *	     (lock_group_defer_abort ()), which is done here instead
+ *   stmt_name(in): the statement, for the error message
  *
- * Note: an open section's owner is still joining its workers, so the caller is another thread of the transaction.
- *	 It may not end the transaction under them, nor can it wait: a commit is not deferred, as the caller goes on
- *	 as if it were done.
+ * Note: an open section's owner is still joining its workers, so the caller is another thread of the transaction,
+ *	 serving a request sent while a query of it runs. It may not end the transaction under them, nor can it wait:
+ *	 a commit is not deferred, as the caller goes on as if it were done. The client refuses such a statement first,
+ *	 but a request that skips that check can still get here, so this is a refusal with the client's error, not an
+ *	 assertion.
  */
 static bool
-xtran_end_is_held_by_parallel_section (THREAD_ENTRY * thread_p, int tran_index, TRAN_STATE * state)
+xtran_end_is_held_by_parallel_section (THREAD_ENTRY * thread_p, int tran_index, const char *stmt_name,
+				       TRAN_STATE * state)
 {
   const char *prog_name, *user_name, *host_name;
   int pid;
 
   if (lock_group_has_open_section (tran_index))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TM_END_IN_PARALLEL_SECTION, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TCL_DDL_IN_QUERY, 1, stmt_name);
       *state = logtb_find_state (tran_index);
       return true;
     }
@@ -114,7 +119,7 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  if (xtran_end_is_held_by_parallel_section (thread_p, tran_index, &state))
+  if (xtran_end_is_held_by_parallel_section (thread_p, tran_index, "COMMIT", &state))
     {
       return state;
     }
@@ -535,7 +540,8 @@ xtran_server_2pc_prepare (THREAD_ENTRY * thread_p)
 {
   TRAN_STATE state;
 
-  if (xtran_end_is_held_by_parallel_section (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), &state))
+  if (xtran_end_is_held_by_parallel_section
+      (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), "PREPARE TO COMMIT", &state))
     {
       return state;
     }
@@ -616,7 +622,8 @@ xtran_server_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int global_tranid
 {
   TRAN_STATE state;
 
-  if (xtran_end_is_held_by_parallel_section (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), &state))
+  if (xtran_end_is_held_by_parallel_section
+      (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), "PREPARE TO COMMIT", &state))
     {
       return state;
     }

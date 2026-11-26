@@ -1554,9 +1554,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1422 Cannot restore the login user %2$s of session %1$u. Open a new connection.
 
-1423 The transaction cannot be committed or prepared while a parallel query of it is running.
-
-1424 Last Error
+1423 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
