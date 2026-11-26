@@ -23626,7 +23626,8 @@ pt_plan_query_summary (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
 /*
  * pt_plan_semi_anti_type () - plan a copy of the query with a SEMI / ANTI JOIN spec in a type
- *   return: the cost of the plan, or -1.0 if the copy has no plan
+ *   return: the cost of the plan and of building its derived tables unnested from subqueries, or -1.0 if the copy has
+ *	     no plan
  *   parser(in): context
  *   select_node(in): of PT_SELECT type
  *   spec(in): the SEMI / ANTI JOIN spec of select_node
@@ -23635,9 +23636,9 @@ pt_plan_query_summary (PARSER_CONTEXT * parser, PT_NODE * select_node)
 static double
 pt_plan_semi_anti_type (PARSER_CONTEXT * parser, PT_NODE * select_node, PT_NODE * spec, SEMI_ANTI_TYPE type)
 {
-  PT_NODE *query, *with, *node = NULL, *subq = NULL;
+  PT_NODE *query, *with, *from, *node = NULL, *subq = NULL;
   QO_PLAN *plan;
-  double cost = -1.0;
+  double cost = -1.0, cpu_cost, io_cost;
 
   /* the copy reads the CTEs of the query, whose XASL is made, rather than copies of them */
   with = select_node->info.query.with;
@@ -23687,6 +23688,17 @@ pt_plan_semi_anti_type (PARSER_CONTEXT * parser, PT_NODE * select_node, PT_NODE 
 	{
 	  cost = plan->fixed_cpu_cost + plan->fixed_io_cost + plan->variable_cpu_cost + plan->variable_io_cost;
 	  qo_plan_discard (plan);
+
+	  /* a derived table unnested from a subquery is built once whatever the join order: its cost tells the types
+	   * apart, not the plans of one type, and is charged here rather than in the plan */
+	  for (from = query->info.query.q.select.from; from != NULL; from = from->next)
+	    {
+	      if (from->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)
+		{
+		  qo_plan_compute_subquery_cost (from->info.spec.derived_table, &cpu_cost, &io_cost);
+		  cost += cpu_cost + io_cost;
+		}
+	    }
 	}
     }
   parser_free_tree (parser, query);

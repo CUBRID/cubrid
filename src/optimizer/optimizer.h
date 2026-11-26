@@ -229,6 +229,7 @@ extern bool qo_is_spec_in_hint (PT_NODE * node, PT_NODE * spec, PT_HINT_ENUM hin
 extern bool qo_is_distinct_inner_join_eligible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec);
 extern PT_NODE *qo_rewrite_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR spec_id,
 					   SEMI_ANTI_TYPE type);
+extern void qo_plan_compute_subquery_cost (PT_NODE * subquery, double *subq_cpu_cost, double *subq_io_cost);
 extern PT_NODE *mq_rewrite (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 #if 0
