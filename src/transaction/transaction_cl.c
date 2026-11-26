@@ -100,6 +100,11 @@ static CUB_THREAD_LOCAL QUERY_TIMEOUT_INFO tm_Query_timeout_info = { 0, 0 };
 
 static CUB_THREAD_LOCAL int tm_libcas_depth = 0;
 
+#if !defined (NDEBUG)
+/* the client is handling a callback the server sent with no reply */
+static CUB_THREAD_LOCAL bool tm_in_no_reply_callback = false;
+#endif
+
 /* this is a local list of user-defined savepoints.  It may be updated upon
  * the following calls:
  *    tran_savepoint()		-> tm_add_savepoint()
@@ -1413,6 +1418,29 @@ tran_get_libcas_depth (void)
 {
   return tm_libcas_depth;
 }
+
+#if !defined (NDEBUG)
+/*
+ * tran_set_in_no_reply_callback() -
+ *   return: void
+ *   in(in):
+ */
+void
+tran_set_in_no_reply_callback (bool in)
+{
+  tm_in_no_reply_callback = in;
+}
+
+/*
+ * tran_is_in_no_reply_callback() -
+ *   return: bool
+ */
+bool
+tran_is_in_no_reply_callback (void)
+{
+  return tm_in_no_reply_callback;
+}
+#endif
 
 /*
  * tran_set_check_interrupt() -
