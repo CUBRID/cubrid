@@ -98,6 +98,7 @@
 #include "log_applier_clock.hpp"
 
 
+#include <atomic>
 #include <vector>
 
 #if defined(AIX)
@@ -528,6 +529,22 @@ static bool la_applier_stop_by_worker = false;
 static volatile int la_Worker_exit_error = NO_ERROR;
 static thread_local LA_PINNED_PAGE_BUFFER *la_Pinned_page_buffers = NULL;
 static thread_local int la_Pinned_page_buffer_count = 0;
+
+/* Replication items are allocated by the coordinator as it reads the log and were freed by the worker that applied
+ * them. glibc frees a chunk of another thread's arena under that arena's lock, so every free in a worker contended
+ * with the coordinator's next malloc. A worker therefore hands its spent items back in groups (la_Item_return_*) and
+ * the coordinator frees them (la_free_returned_items), so the chunks go back to the thread that allocates them. Only
+ * what the worker made itself (the unpacked key) is released in the worker. */
+#define LA_ITEM_RETURN_GROUP 256
+static thread_local bool la_Item_free_deferred = false;	/* this thread is a worker */
+static thread_local LA_ITEM *la_Item_return_head = NULL;	/* this worker's spent items, not handed back yet */
+static thread_local LA_ITEM *la_Item_return_tail = NULL;
+static thread_local int la_Item_return_count = 0;
+static pthread_mutex_t la_Item_returned_mutex = PTHREAD_MUTEX_INITIALIZER;
+static LA_ITEM *la_Item_returned = NULL;	/* handed back by the workers, for the coordinator to free */
+/* *INDENT-OFF* */
+static std::atomic<bool> la_Item_returned_any (false);
+/* *INDENT-ON* */
 static thread_local int la_Pinned_page_buffer_capacity = 0;
 static bool la_applier_shutdown_by_signal = false;
 static char la_slave_db_name[DB_MAX_IDENTIFIER_LENGTH + 1];
@@ -643,6 +660,9 @@ static int la_unpack_repl_string (char **ptr, char **value);
 static int la_copy_serial_prior_value (LA_ITEM * item, char *ptr, const char *end);
 static void la_unlink_repl_item (LA_APPLY * apply, LA_ITEM * item);
 static void la_free_repl_item (LA_APPLY * apply, LA_ITEM * item);
+static void la_free_repl_item_memory (LA_ITEM * item);
+static void la_return_items_flush (void);
+static void la_free_returned_items (void);
 static void la_free_all_repl_items_except_head (LA_APPLY * apply);
 static void la_free_all_repl_items (LA_APPLY * apply);
 static void la_free_and_add_next_repl_item (LA_APPLY * apply, LA_ITEM * next_item, LOG_LSA * lsa);
@@ -869,6 +889,9 @@ la_coordinator_release_apply_slot (LA_INFLIGHT_ENTRY * entry)
 {
   LA_APPLY *apply = la_inflight_entry_get_apply (entry);
 
+  /* the items the workers applied so far go back to this thread, which allocated them */
+  la_free_returned_items ();
+
   if (apply == NULL)
     {
       /* a commit without replicated items has no slot */
@@ -1028,6 +1051,9 @@ la_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace
   assert (result != NULL);
   assert (worker_applied_item_count != NULL);
   assert (task->rectype == LOG_COMMIT || task->rectype == LOG_SYSOP_END);
+
+  /* the items of the task go back to the coordinator that allocated them (la_free_repl_item) */
+  la_Item_free_deferred = true;
 
   gettimeofday (&begin, NULL);
   if (task->has_items)
@@ -1445,6 +1471,7 @@ la_worker_end_context (LA_APPLY_WORKER_CONTEXT * context)
 {
   la_free_pinned_page_buffers ();
   la_release_oos_thread_state ();
+  la_return_items_flush ();
 }
 
 /*
@@ -5351,12 +5378,43 @@ la_free_repl_item (LA_APPLY * apply, LA_ITEM * item)
   assert (item);
 
   la_unlink_repl_item (apply, item);
+  la_clear_repl_item_key (item);
 
+  if (la_Item_free_deferred)
+    {
+      /* a worker: hand the item back to the coordinator that allocated it */
+      item->next = NULL;
+      item->prev = NULL;
+      if (la_Item_return_tail == NULL)
+	{
+	  la_Item_return_head = item;
+	}
+      else
+	{
+	  la_Item_return_tail->next = item;
+	}
+      la_Item_return_tail = item;
+      if (++la_Item_return_count >= LA_ITEM_RETURN_GROUP)
+	{
+	  la_return_items_flush ();
+	}
+      return;
+    }
+
+  la_free_repl_item_memory (item);
+}
+
+/*
+ * la_free_repl_item_memory () - free an item already out of its list, and what it holds
+ *   item(in): the item; its key is already cleared (la_clear_repl_item_key)
+ */
+static void
+la_free_repl_item_memory (LA_ITEM * item)
+{
   if (item->class_name != NULL)
     {
       free_and_init (item->class_name);
     }
-  la_clear_repl_item_key (item);
 
   if (item->db_user != NULL)
     {
@@ -5379,8 +5437,58 @@ la_free_repl_item (LA_APPLY * apply, LA_ITEM * item)
     }
 
   free_and_init (item);
+}
 
-  return;
+/*
+ * la_return_items_flush () - hand this worker's spent items to the coordinator
+ *
+ * Note: one lock for a group; called when a group is full and when the worker ends (la_worker_end_context).
+ */
+static void
+la_return_items_flush (void)
+{
+  if (la_Item_return_head == NULL)
+    {
+      return;
+    }
+
+  pthread_mutex_lock (&la_Item_returned_mutex);
+  la_Item_return_tail->next = la_Item_returned;
+  la_Item_returned = la_Item_return_head;
+  la_Item_returned_any.store (true, std::memory_order_release);
+  pthread_mutex_unlock (&la_Item_returned_mutex);
+
+  la_Item_return_head = NULL;
+  la_Item_return_tail = NULL;
+  la_Item_return_count = 0;
+}
+
+/*
+ * la_free_returned_items () - free the items the workers handed back
+ *
+ * Note: called by the coordinator, which allocated them, when it retires a task and when the applier shuts down.
+ */
+static void
+la_free_returned_items (void)
+{
+  LA_ITEM *list, *next;
+
+  if (!la_Item_returned_any.load (std::memory_order_acquire))
+    {
+      return;
+    }
+
+  pthread_mutex_lock (&la_Item_returned_mutex);
+  list = la_Item_returned;
+  la_Item_returned = NULL;
+  la_Item_returned_any.store (false, std::memory_order_relaxed);
+  pthread_mutex_unlock (&la_Item_returned_mutex);
+
+  for (; list != NULL; list = next)
+    {
+      next = list->next;
+      la_free_repl_item_memory (list);
+    }
 }
 
 static void
@@ -11016,6 +11124,7 @@ la_shutdown (void)
 
   /* the workers are joined, so nothing waits on the queues any more */
   la_coordinator_finalize ();
+  la_free_returned_items ();
 
   /* clean up */
   if (la_Info.arv_log.log_vdes != NULL_VOLDES)
