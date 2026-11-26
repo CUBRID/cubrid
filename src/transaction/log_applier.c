@@ -523,6 +523,8 @@ static LA_CACHE_PB *la_init_cache_pb (void);
 static unsigned int log_pageid_hash (const void *key, unsigned int htsize);
 static int la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size);
 static int la_fetch_log_hdr (LA_ACT_LOG * act_log);
+static int la_open_active_log (LA_ACT_LOG * act_log);
+static bool la_is_active_log_replaced (const LA_ACT_LOG * act_log);
 static int la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbname, bool check_charset);
 static bool la_apply_pre (void);
 static int la_does_page_exist (LOG_PAGEID pageid);
@@ -2629,16 +2631,16 @@ la_fetch_log_hdr (LA_ACT_LOG * act_log)
   return error;
 }
 
+/*
+ * la_open_active_log () - open the active log, waiting until copylogdb creates it
+ *   return: NO_ERROR, or ER_LOG_MOUNT_FAIL if the applier is shut down while waiting
+ *   act_log(in/out): act_log->path is the file to open, act_log->log_vdes gets the descriptor
+ */
 static int
-la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbname, bool check_charset)
+la_open_active_log (LA_ACT_LOG * act_log)
 {
   int error = NO_ERROR;
 
-  /* set active log name */
-  fileio_make_log_active_name (act_log->path, logpath, dbname);
-
-  /* read active log file to get the io page size */
-  /* wait until act_log is opened */
   do
     {
       act_log->log_vdes = fileio_open (act_log->path, O_RDONLY, 0);
@@ -2659,6 +2661,44 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
     }
   while (la_applier_need_shutdown == false);
 
+  return error;
+}
+
+/*
+ * la_is_active_log_replaced () - whether the path no longer names the file opened as the active log
+ *   return: true if the file was removed or another file took the path
+ *   act_log(in): act_log->log_vdes is the opened file, act_log->path its path
+ *
+ * Note: copylogdb removes an active log whose header page is only formatted and creates a new one at the same path.
+ *       A descriptor opened before the removal never sees the new header.
+ */
+static bool
+la_is_active_log_replaced (const LA_ACT_LOG * act_log)
+{
+  struct stat opened_stat, path_stat;
+
+  if (fstat (act_log->log_vdes, &opened_stat) != 0)
+    {
+      return false;
+    }
+  if (stat (act_log->path, &path_stat) != 0)
+    {
+      return true;
+    }
+  return opened_stat.st_dev != path_stat.st_dev || opened_stat.st_ino != path_stat.st_ino;
+}
+
+static int
+la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbname, bool check_charset)
+{
+  int error = NO_ERROR;
+
+  /* set active log name */
+  fileio_make_log_active_name (act_log->path, logpath, dbname);
+
+  /* read active log file to get the io page size */
+  /* wait until act_log is opened */
+  error = la_open_active_log (act_log);
   if (error != NO_ERROR)
     {
       return error;
@@ -2699,6 +2739,20 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 	  er_log_debug (ARG_FILE_LINE, "Active log file(%s) isn't prepared. waiting...", act_log->path);
 
 	  LA_SLEEP (0, 200 * 1000);
+
+	  if (la_is_active_log_replaced (act_log))
+	    {
+	      /* copylogdb removed this file because its header page was only formatted. Open the new one. */
+	      er_log_debug (ARG_FILE_LINE, "Active log file(%s) was replaced. opening it again...", act_log->path);
+	      fileio_close (act_log->log_vdes);
+	      act_log->log_vdes = NULL_VOLDES;
+
+	      error = la_open_active_log (act_log);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
 	  continue;
 	}
 

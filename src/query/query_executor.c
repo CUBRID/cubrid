@@ -547,6 +547,7 @@ struct qexec_settle_state
   private_vector<int> rows;		/* per row of the list, see qexec_settle_row () */
   private_vector<DB_VALUE> values;	/* the assignments the wait pass computed again */
   private_vector<OID> marked_rows;	/* the rows whose keys the write pass will delete-mark */
+  size_t n_writes = 0;			/* how many rows the write pass writes */
   size_t next = 0;			/* the write pass's position in rows */
   bool started = false;
 
@@ -16792,6 +16793,11 @@ scan_targets:
 	}
       wait_pass = false;
       base_lock_policy = LOCATOR_LOCK_AT_SELECT;
+      /* the rows written, not those of the list, decide how unique keys are checked, as when the select locks them */
+      if (settle.n_writes <= 1)
+	{
+	  op_type = SINGLE_ROW_UPDATE;
+	}
       /* the write pass */
       goto scan_targets;
     }
@@ -17633,6 +17639,8 @@ exit_on_error:
  *	 A delete-marked key and the children its actions lock make other writers wait on the statement. Locking row
  *	 by row, it would wait on the writer of a later row holding them, so it settles every row and waits out the
  *	 children's writers first. A single row holds nothing while it waits and stays on the force path.
+ *	 Also started when an UPDATE assigns an attribute of a unique index: the rows it writes, not those the select
+ *	 found, decide whether its keys are checked row by row.
  */
 // *INDENT-OFF*
 qexec_settle_state::qexec_settle_state (THREAD_ENTRY *thread_p)
@@ -17668,12 +17676,18 @@ qexec_settle_state::start (LOCATOR_LOCK_POLICY base_lock_policy, UPDDEL_CLASS_IN
     }
   error = locator_start_referenced_key (thread_p, &lock_info->class_oid, upd_cls != NULL ? upd_cls->att_id : NULL,
 					upd_cls != NULL ? upd_cls->num_attrs : 0, &key);
-  if (error != NO_ERROR || key.pk_i < 0)
+  started = (key.pk_i >= 0);
+  if (error == NO_ERROR && !started && upd_cls != NULL && upd_cls->has_uniques)
     {
+      error = locator_assigns_unique_key (thread_p, &lock_info->class_oid, upd_cls->att_id, upd_cls->num_attrs,
+					  &started);
+    }
+  if (error != NO_ERROR || !started)
+    {
+      started = false;
       locator_end_referenced_key (thread_p, &key);
       return error;
     }
-  started = true;
   rows.reserve (tuple_cnt);
   return NO_ERROR;
 }
@@ -17700,7 +17714,7 @@ qexec_settle_row (THREAD_ENTRY * thread_p, QEXEC_SETTLE_STATE * settle, UPDDEL_C
   RECDES recdes = RECDES_INITIALIZER;
   OID locked_class_oid;
   SCAN_CODE scan;
-  bool marked = true;
+  bool marked = (settle->key.pk_i >= 0);
   int i, error;
 
   settle->rows.push_back (-1);
@@ -17735,7 +17749,7 @@ qexec_settle_row (THREAD_ENTRY * thread_p, QEXEC_SETTLE_STATE * settle, UPDDEL_C
       return NO_ERROR;
     }
 
-  if (upd_cls != NULL)
+  if (upd_cls != NULL && marked)
     {
       error = locator_key_changes (thread_p, &settle->key, oid, &recdes, &internal_class->attr_info, &marked);
       if (error != NO_ERROR)
@@ -17749,6 +17763,7 @@ qexec_settle_row (THREAD_ENTRY * thread_p, QEXEC_SETTLE_STATE * settle, UPDDEL_C
     }
 
   settle->rows.back () = 0;
+  settle->n_writes++;
   if (upd_cls != NULL && upddel->recomputed)
     {
       for (i = 0; i < upd_cls->num_attrs; i++)
@@ -34748,7 +34763,7 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       pr_clear_value (&db_str_precision);
       pr_clear_value (pprec_scale_arg1);
 
-      if (scale >= 0)
+      if (id == DB_TYPE_NUMERIC)
 	{
 	  db_make_int (&db_int_scale, scale);
 	  db_make_null (&db_str_scale);
