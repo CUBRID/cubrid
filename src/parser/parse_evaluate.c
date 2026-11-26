@@ -197,6 +197,9 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in, DB_VALUE * d
 
 	  while (error >= 0 && cursor_status == DB_CURSOR_SUCCESS)
 	    {
+	      /* the collection has copied the values of the previous tuple */
+	      pr_clear_value_array (vals, degree);
+
 	      error = cursor_get_tuple_value_list (&cursor_id, degree, vals);
 
 	      for (e_val = vals, col = 0; error >= 0 && col < degree; e_val++, col++, idx++)
@@ -470,6 +473,9 @@ pt_get_one_tuple_from_list_id (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE
 	    }
 
 	  PT_ERRORmf (parser, select_list, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_YIELDS_GT_ONE_ROW, query_prefix);
+
+	  /* the caller does not take the values of the first tuple when more than one row is returned */
+	  pr_clear_value_array (vals, cnt);
 	}
       else
 	{

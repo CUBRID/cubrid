@@ -2035,6 +2035,23 @@ pr_clear_value_vector (std::vector<DB_VALUE> &value_vector)
 /* *INDENT-ON* */
 
 /*
+ * pr_clear_value_array - clear an array of db_values
+ *    return: void
+ *    values(in/out): array of values
+ *    count(in): number of values in the array
+ */
+void
+pr_clear_value_array (DB_VALUE * values, int count)
+{
+  int i;
+
+  for (i = 0; i < count; i++)
+    {
+      pr_clear_value (&values[i]);
+    }
+}
+
+/*
  * pr_free_value - free an internval value container any anything that it
  * references
  *    return: NO_ERROR if successful, error code otherwise
