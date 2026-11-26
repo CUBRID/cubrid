@@ -408,6 +408,9 @@ static TP_DOMAIN *tp_Domains[] = {
   NULL
 };
 
+/* tp_Domains[type] for every DB_TYPE comes before the NULL marker */
+static_assert (sizeof (tp_Domains) / sizeof (tp_Domains[0]) > DB_TYPE_LAST + 1, "tp_Domains is indexed by DB_TYPE");
+
 /*
  * Lists for MIDXKEY domain cache.
  * They are hashed by the length of setdomain to decrease congestion on
@@ -558,8 +561,6 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   NULL,				/* DB_TYPE_TABLE */
   tp_Bigint_conv,		/* DB_TYPE_BIGINT */
   NULL,				/* DB_TYPE_DATETIME */
-  NULL,				/* DB_TYPE_BFILE */
-  NULL,				/* DB_TYPE_CFILE */
   tp_Lob_conv,			/* DB_TYPE_BLOB */
   tp_Lob_conv,			/* DB_TYPE_CLOB */
   NULL,				/* DB_TYPE_ENUMERATION */
@@ -567,8 +568,13 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   NULL,				/* DB_TYPE_TIMESTAMPLTZ */
   NULL,				/* DB_TYPE_DATETIMETZ */
   NULL,				/* DB_TYPE_DATETIMELTZ */
-  NULL				/* DB_TYPE_JSON */
+  NULL,				/* DB_TYPE_JSON */
+  NULL,				/* DB_TYPE_BFILE */
+  NULL				/* DB_TYPE_CFILE */
 };
+
+static_assert (sizeof (tp_Domain_conversion_matrix) / sizeof (tp_Domain_conversion_matrix[0]) == DB_TYPE_LAST + 1,
+	       "tp_Domain_conversion_matrix is indexed by DB_TYPE");
 
 #if defined (SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
 /* lock for domain list cache */

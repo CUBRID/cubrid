@@ -1868,6 +1868,9 @@ const PR_TYPE *tp_Type_id_map[] = {
   &tp_Cfile,
 };
 
+static_assert (sizeof (tp_Type_id_map) / sizeof (tp_Type_id_map[0]) == DB_TYPE_LAST + 1,
+	       "tp_Type_id_map is indexed by DB_TYPE");
+
 const PR_TYPE tp_ResultSet = {
   "resultset", DB_TYPE_RESULTSET, 0, sizeof (DB_RESULTSET), sizeof (DB_RESULTSET), 4,
   mr_initmem_resultset,
