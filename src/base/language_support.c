@@ -4591,7 +4591,6 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
 
   /* a backwards level 2 reads from the string's end */
   const unsigned char *str_start = str;
-  const unsigned char *str_last;
 
   /* the levels compared: level 3 for a primary strength only with the case level */
   const UCA_OPTIONS *opt = &(coll_data->uca_opt);
@@ -4657,21 +4656,23 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
    *   level  weight of element ce_index            hash         hashed if
    *   2      UCA_GET_L2_W (uca_w_l13[ce_index])    hash_key[1]  l2 and sett_backwards, a nonempty string
    */
-  if (l2 && opt->sett_backwards && size > 0)
+  if (l2 && opt->sett_backwards)
     {
       /* leave out the trailing spaces: the compare function skips them before reading from the end */
-      str_last = str_end - 1;
-      while (str_last >= str_start && *str_last == ASCII_SPACE)
+      while (str_end > str_start && str_end[-1] == ASCII_SPACE)
 	{
-	  str_last--;
+	  str_end--;
 	}
-      for (str = str_last; str >= str_start; str = str_next)
+      if (str_end > str_start)
 	{
-	  lang_get_uca_back_weight_l13 (coll_data, true, str_start, str, &uca_w_l13, &num_ce, &str_next, &cp_contr);
-	  is_space = (*str == ASCII_SPACE);
-	  for (ce_index = num_ce - 1; ce_index >= 0; ce_index--)
+	  for (str = str_end - 1; str >= str_start; str = str_next)
 	    {
-	      lang_hash_weight (&hash_key[1], &zeros[1], UCA_GET_L2_W (uca_w_l13[ce_index]), is_space);
+	      lang_get_uca_back_weight_l13 (coll_data, true, str_start, str, &uca_w_l13, &num_ce, &str_next, &cp_contr);
+	      is_space = (*str == ASCII_SPACE);
+	      for (ce_index = num_ce - 1; ce_index >= 0; ce_index--)
+		{
+		  lang_hash_weight (&hash_key[1], &zeros[1], UCA_GET_L2_W (uca_w_l13[ce_index]), is_space);
+		}
 	    }
 	}
     }
