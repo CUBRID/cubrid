@@ -40,6 +40,7 @@ static int sp_load_sp_code_attribute_info (THREAD_ENTRY *thread_p);
 static void sp_code_attr_init ();
 static int sp_get_attrid (THREAD_ENTRY *thread_p, int attr_index, ATTR_ID &attrid);
 static int sp_get_attr_idx (const std::string &attr_name);
+static int sp_get_pkg_code_attrid (THREAD_ENTRY *thread_p, const std::string &attr_name, ATTR_ID &attrid);
 
 using sp_code_attr_map_type = std::unordered_map <std::string, int>;
 static sp_code_attr_map_type attr_idx_map;
@@ -82,7 +83,17 @@ sp_get_code_attr (THREAD_ENTRY *thread_p, const std::string &attr_name, const OI
   ATTR_ID attrid;
   DB_VALUE *cur_val;
   OID *sp_class_oid = oid_Sp_code_class_oid;
+  OID code_class_oid;
+  bool is_pkg_code = false;
   int idx = -1;
+
+  // a package member has no code row of its own: sp_oidp is then the code row of its package
+  if (heap_get_class_oid (thread_p, sp_oidp, &code_class_oid) == S_SUCCESS
+      && OID_EQ (&code_class_oid, oid_Pkg_code_class_oid))
+    {
+      sp_class_oid = oid_Pkg_code_class_oid;
+      is_pkg_code = true;
+    }
 
   heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, sp_class_oid);
   /* get record into record desc */
@@ -102,15 +113,25 @@ sp_get_code_attr (THREAD_ENTRY *thread_p, const std::string &attr_name, const OI
     }
 
   /* retrieve attribute */
-  idx = sp_get_attr_idx (attr_name);
-  if (idx == -1)
+  if (is_pkg_code)
     {
-      goto exit_on_error;
+      if (sp_get_pkg_code_attrid (thread_p, attr_name, attrid) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
     }
-
-  if (sp_get_attrid (thread_p, idx, attrid) != NO_ERROR)
+  else
     {
-      goto exit_on_error;
+      idx = sp_get_attr_idx (attr_name);
+      if (idx == -1)
+	{
+	  goto exit_on_error;
+	}
+
+      if (sp_get_attrid (thread_p, idx, attrid) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
     }
 
   assert (attrid != -1);
@@ -172,6 +193,47 @@ sp_get_attrid (THREAD_ENTRY *thread_p, int attr_index, ATTR_ID &attrid)
       attrid = spcode_Attrs_id[attr_index];
     }
   return NO_ERROR;
+}
+
+/*
+ * sp_get_pkg_code_attrid () - find the id of an attribute of the package code class
+ *   return: error code
+ *   attr_name(in): attribute name
+ *   attrid(out): attribute id
+ *
+ * Note: unlike the code of a standalone routine, the code of a package is read only when a package member is called
+ *       directly from SQL, which loads it once for a session, so the id is not cached.
+ */
+static int
+sp_get_pkg_code_attrid (THREAD_ENTRY *thread_p, const std::string &attr_name, ATTR_ID &attrid)
+{
+  HEAP_SCANCACHE scan;
+  RECDES class_record;
+  int error;
+
+  attrid = NULL_ATTRID;
+
+  error = heap_scancache_quick_start_with_class_oid (thread_p, &scan, oid_Pkg_code_class_oid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (heap_get_class_record (thread_p, oid_Pkg_code_class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
+    {
+      heap_scancache_end (thread_p, &scan);
+      return ER_FAILED;
+    }
+
+  error = or_get_attrid (&class_record, attr_name.c_str (), &attrid);
+  heap_scancache_end (thread_p, &scan);
+
+  if (error == NO_ERROR && attrid == NULL_ATTRID)
+    {
+      error = ER_FAILED;
+    }
+
+  return error;
 }
 
 static int
