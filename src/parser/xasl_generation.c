@@ -23709,7 +23709,8 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
   SEMI_ANTI_TYPE types[3];
   PT_NODE *spec, *next_spec, *node, *subq;
   TABLE_INFO *table_info;
-  double cost, best_cost;
+  QO_SUMMARY *summary;
+  double cost, best_cost, prev_best_cost, build_cost;
   int n_types, best_idx, i;
   bool can_distinct_inner, is_merge_hinted;
 
@@ -23722,6 +23723,7 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
     }
 
+  prev_best_cost = -1.0;
   for (spec = select_node->info.query.q.select.from; spec != NULL && !pt_has_error (parser); spec = next_spec)
     {
       /* a spec put in its type is freed or moves into a derived table */
@@ -23733,30 +23735,39 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
 
       n_types = 0;
+      build_cost = 0.0;
       can_distinct_inner = qo_is_distinct_inner_join_eligible (parser, select_node, spec);
       /* there is no semi merge join: USE_MERGE naming the spec leaves it the INNER JOIN */
       is_merge_hinted = (can_distinct_inner
 			 && qo_is_spec_in_hint (select_node, spec, PT_HINT_USE_MERGE,
 						select_node->info.query.q.select.use_merge));
-      if (!is_merge_hinted)
-	{
-	  types[n_types++] = SEMI_ANTI_JOIN;
-	}
-      if (can_distinct_inner)
-	{
-	  types[n_types++] = SEMI_ANTI_DISTINCT;
-	}
 
-      /* the [NOT] EXISTS of a derived table unnested from a subquery, compared with the derived table planned */
+      /* the [NOT] EXISTS of a derived table unnested from a subquery, compared with the derived table planned.  It is
+       * planned first: the other types are not planned when it costs less than building the derived table does */
       if (!is_merge_hinted && (spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)
 	  && spec->info.spec.derived_table->info.query.q.select.qo_summary != NULL
 	  && spec != select_node->info.query.q.select.from)
 	{
 	  types[n_types++] = SEMI_ANTI_EXISTS;
+	  /* not with INDEX_LS, which may build the DISTINCT derived table for less */
+	  if (!(spec->info.spec.derived_table->info.query.q.select.hint & PT_HINT_INDEX_LS))
+	    {
+	      summary = (QO_SUMMARY *) spec->info.spec.derived_table->info.query.q.select.qo_summary;
+	      build_cost = (summary->fixed_cpu_cost + summary->fixed_io_cost + summary->variable_cpu_cost
+			    + summary->variable_io_cost);
+	    }
+	}
+      if (can_distinct_inner)
+	{
+	  types[n_types++] = SEMI_ANTI_DISTINCT;
+	}
+      if (!is_merge_hinted)
+	{
+	  types[n_types++] = SEMI_ANTI_JOIN;
 	}
 
       best_idx = -1;
-      best_cost = 0.0;
+      best_cost = -1.0;
       if (n_types == 1)
 	{
 	  /* one type: nothing to compare */
@@ -23766,14 +23777,31 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  for (i = 0; i < n_types && !pt_has_error (parser); i++)
 	    {
-	      cost = pt_plan_semi_anti_type (parser, select_node, spec, types[i]);
-	      if (cost >= 0.0 && (best_idx < 0 || cost < best_cost))
+	      if (types[i] == SEMI_ANTI_JOIN && prev_best_cost >= 0.0)
+		{
+		  /* the query as it is was planned in the type chosen for the spec before */
+		  cost = prev_best_cost;
+		}
+	      else
+		{
+		  cost = pt_plan_semi_anti_type (parser, select_node, spec, types[i]);
+		}
+	      /* at the same cost the later type is kept: the SEMI / ANTI JOIN rather than the INNER JOIN, and either
+	       * rather than the [NOT] EXISTS */
+	      if (cost >= 0.0 && (best_idx < 0 || cost <= best_cost))
 		{
 		  best_cost = cost;
 		  best_idx = i;
 		}
+	      /* the other types read the derived table: they cost no less than building it does */
+	      if (types[i] == SEMI_ANTI_EXISTS && cost >= 0.0 && cost < build_cost)
+		{
+		  break;
+		}
 	    }
 	}
+      /* the query put in the type chosen costs what its copy did */
+      prev_best_cost = best_cost;
 
       if (best_idx < 0 || types[best_idx] == SEMI_ANTI_JOIN || pt_has_error (parser))
 	{
@@ -23783,6 +23811,7 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
       node = qo_rewrite_semi_anti_join (parser, select_node, spec->info.spec.id, types[best_idx]);
       if (node == NULL)
 	{
+	  prev_best_cost = -1.0;
 	  continue;
 	}
 
@@ -23820,9 +23849,9 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
       /* the copies for the specs after this one read the rows and the cost of the subquery from its summary; the query
        * itself plans it again for its XASL */
-      if (subq != NULL)
+      if (subq != NULL && !pt_plan_query_summary (parser, subq))
 	{
-	  (void) pt_plan_query_summary (parser, subq);
+	  prev_best_cost = -1.0;
 	}
     }
 }
