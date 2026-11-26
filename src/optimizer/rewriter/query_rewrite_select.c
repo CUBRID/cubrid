@@ -47,6 +47,10 @@ static bool qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, 
 						       QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
+static PT_NODE *qo_get_right_outer_join_after (PT_NODE * spec);
+static bool qo_has_term_at (PT_NODE * where, PT_NODE * skip_point_list, int location);
+static bool qo_is_reducible_before_right_outer_join (PT_NODE * query, QO_REDUCE_REFERENCE_INFO * reduce_reference_info,
+						     PT_NODE * prev_pk_spec);
 static bool qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons);
 static void qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query);
 static PT_NODE *qo_check_unmatchable_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -2701,7 +2705,8 @@ end:
  *       that references the primary key. There must be no references to the table to be removed
  *       other than join predicates. This is because the relationship between a primary key and a foreign key
  *       replaces a data filter of a join. If a table with a primary key is removed, a predicate for IS NOT NULL
- *       may be added, as it cannot filter on NULL.
+ *       may be added, as it cannot filter on NULL. When a RIGHT OUTER JOIN follows either table in its join chain,
+ *       the table is removed only if no term moves past that join.
  *
  *    e.g. drop if exists child, parent;
  *         create table parent (c1 int primary key, c2 int);
@@ -2780,7 +2785,8 @@ qo_reduce_joined_tbls_ref_by_fk (PARSER_CONTEXT * parser, PT_NODE * query)
 
 	      reduce_reference_info.fk_spec = curr_fk_spec;
 
-	      if (qo_check_fks_ref_pk_in_child_spec (parser, query, &reduce_reference_info))
+	      if (qo_check_fks_ref_pk_in_child_spec (parser, query, &reduce_reference_info)
+		  && qo_is_reducible_before_right_outer_join (query, &reduce_reference_info, prev_pk_spec))
 		{
 		  break;
 		}
@@ -2927,7 +2933,7 @@ qo_is_exclude_spec (PT_NODE * exclude_spec_point_list, PT_NODE * spec)
  * 
  *       In the following cases, add to the exclude_pk_spec_point_list.
  *         1. Access to hierarchical tables.
- *         2. Not an inner join or natural join, or followed by a RIGHT OUTER JOIN in its join chain.
+ *         2. Not an inner join or natural join.
  *         3. CTEs or derived tables.
  *         4. No primary key.
  *         5. No foreign key referencing the primary key.
@@ -2989,12 +2995,6 @@ qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
     case PT_JOIN_FULL_OUTER:
     case PT_JOIN_UNION:
     default:
-      goto exit_on_fail_with_exclude;
-    }
-
-  /* the IS NOT NULL put on the foreign key in place of the join would drop the rows a later RIGHT OUTER JOIN keeps */
-  if (mq_is_outer_join_spec (parser, curr_pk_spec))
-    {
       goto exit_on_fail_with_exclude;
     }
 
@@ -3951,8 +3951,10 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
     {
       for (curr_pred = query->info.query.q.select.where; curr_pred != NULL; curr_pred = curr_pred->next)
 	{
+	  /* one in an ON does not filter the rows an outer join NULL-fills or keeps, nor does one in an OR */
 	  if (PT_NODE_IS_EXPR (curr_pred) && PT_EXPR_OP (curr_pred) == PT_IS_NOT_NULL
-	      && PT_NODE_IS_NAME (PT_EXPR_ARG1 (curr_pred)))
+	      && PT_NODE_IS_NAME (PT_EXPR_ARG1 (curr_pred)) && curr_pred->info.expr.location == 0
+	      && curr_pred->or_next == NULL)
 	    {
 	      curr_pred_arg = PT_EXPR_ARG1 (curr_pred);
 	      curr_append_pred_arg = PT_EXPR_ARG1 (curr_append_pred);
@@ -3996,6 +3998,191 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
     }
 
   return;
+}
+
+/*
+ * qo_get_right_outer_join_after () - get the first RIGHT OUTER JOIN behind the spec in its join chain
+ *   return: the RIGHT OUTER JOIN spec, or NULL
+ *   spec(in): spec to check
+ *
+ * Note: the chain ends at a comma or a CROSS JOIN, as in mq_is_outer_join_spec ()
+ */
+static PT_NODE *
+qo_get_right_outer_join_after (PT_NODE * spec)
+{
+  PT_NODE *ns;
+
+  for (ns = spec->next; ns && ns->info.spec.join_type != PT_JOIN_NONE && ns->info.spec.join_type != PT_JOIN_CROSS;
+       ns = ns->next)
+    {
+      if (ns->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	{
+	  return ns;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * qo_has_term_at () - is there a WHERE term with the location other than the ones to skip?
+ *   return: bool
+ *   where(in): WHERE terms
+ *   skip_point_list(in): pointers to the terms to skip
+ *   location(in): location the terms are compared with
+ */
+static bool
+qo_has_term_at (PT_NODE * where, PT_NODE * skip_point_list, int location)
+{
+  PT_NODE *term, *skip_point, *skip_term;
+  int term_location;
+
+  for (term = where; term != NULL; term = term->next)
+    {
+      switch (term->node_type)
+	{
+	case PT_EXPR:
+	  term_location = term->info.expr.location;
+	  break;
+	case PT_VALUE:
+	  term_location = term->info.value.location;
+	  break;
+	case PT_NAME:
+	  term_location = term->info.name.location;
+	  break;
+	default:
+	  continue;
+	}
+
+      if (term_location != location)
+	{
+	  continue;
+	}
+
+      for (skip_point = skip_point_list; skip_point != NULL; skip_point = skip_point->next)
+	{
+	  skip_term = skip_point;
+	  CAST_POINTER_TO_NODE (skip_term);
+
+	  if (skip_term == term)
+	    {
+	      break;
+	    }
+	}
+
+      if (skip_point == NULL)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_is_reducible_before_right_outer_join () - can the primary key table be removed when a RIGHT OUTER JOIN follows
+ *      the primary key or the foreign key table in its join chain?
+ *   return: bool
+ *   query(in): query to check
+ *   reduce_reference_info(in): the tables and the join terms checked for the removal
+ *   prev_pk_spec(in): the spec in front of the primary key table in FROM, or NULL if it is the first one
+ *
+ * Note: the removal must not move a term behind the RIGHT OUTER JOIN, drop a term that rejected the rows it
+ *   NULL-fills, or put the chain in front of the primary key table on the preserved side of it.
+ */
+static bool
+qo_is_reducible_before_right_outer_join (PT_NODE * query, QO_REDUCE_REFERENCE_INFO * reduce_reference_info,
+					 PT_NODE * prev_pk_spec)
+{
+  PT_NODE *pk_spec, *pk_right_spec, *fk_right_spec, *next_spec, *on_spec;
+  PT_NODE *join_pred_point_list, *join_pred_point, *join_pred;
+  PT_NODE *where;
+  bool has_not_null_pred;
+  int location;
+
+  pk_spec = reduce_reference_info->pk_spec;
+  join_pred_point_list = reduce_reference_info->join_pred_point_list;
+  has_not_null_pred = (reduce_reference_info->append_not_null_pred_list != NULL);
+  where = query->info.query.q.select.where;
+
+  pk_right_spec = qo_get_right_outer_join_after (pk_spec);
+  fk_right_spec = qo_get_right_outer_join_after (reduce_reference_info->fk_spec);
+
+  if (pk_right_spec == NULL && fk_right_spec == NULL)
+    {
+      return true;
+    }
+
+  /* the child term matched for a parent term is not checked to be in the same ON */
+  if (reduce_reference_info->parent_pred_point_list != NULL)
+    {
+      return false;
+    }
+
+  /* the IS NOT NULL put in place of the join goes to WHERE */
+  if (pk_right_spec != NULL && has_not_null_pred)
+    {
+      return false;
+    }
+
+  for (join_pred_point = join_pred_point_list; join_pred_point != NULL; join_pred_point = join_pred_point->next)
+    {
+      join_pred = join_pred_point;
+      CAST_POINTER_TO_NODE (join_pred);
+
+      location = join_pred->info.expr.location;
+
+      /* a join term after the RIGHT OUTER JOIN rejected the rows it NULL-fills */
+      if (pk_right_spec != NULL && location > pk_right_spec->info.spec.location)
+	{
+	  return false;
+	}
+
+      if (fk_right_spec != NULL && location > fk_right_spec->info.spec.location && !has_not_null_pred)
+	{
+	  return false;
+	}
+
+      for (on_spec = query->info.query.q.select.from; on_spec != NULL; on_spec = on_spec->next)
+	{
+	  if (on_spec->info.spec.location == location)
+	    {
+	      break;
+	    }
+	}
+
+      if (on_spec == NULL
+	  || (on_spec->info.spec.join_type != PT_JOIN_INNER && on_spec->info.spec.join_type != PT_JOIN_NATURAL
+	      && on_spec->info.spec.join_type != PT_JOIN_RIGHT_OUTER))
+	{
+	  return false;
+	}
+    }
+
+  next_spec = pk_spec->next;
+
+  if (PT_SPEC_JOIN_TYPE (pk_spec) == PT_JOIN_NONE)
+    {
+      /* the next spec takes the place of the primary key table: it joins the chain in front or its ON becomes WHERE */
+      if (prev_pk_spec != NULL
+	  || (next_spec->info.spec.join_type != PT_JOIN_INNER && next_spec->info.spec.join_type != PT_JOIN_NATURAL)
+	  || qo_has_term_at (where, join_pred_point_list, next_spec->info.spec.location))
+	{
+	  return false;
+	}
+    }
+  else if (qo_has_term_at (where, join_pred_point_list, pk_spec->info.spec.location))
+    {
+      /* the rest of the ON of the primary key table moves to the ON of the next spec */
+      if (next_spec == NULL
+	  || (next_spec->info.spec.join_type != PT_JOIN_INNER && next_spec->info.spec.join_type != PT_JOIN_NATURAL
+	      && next_spec->info.spec.join_type != PT_JOIN_RIGHT_OUTER))
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /*
