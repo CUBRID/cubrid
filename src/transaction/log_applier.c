@@ -530,6 +530,16 @@ static volatile int la_Worker_exit_error = NO_ERROR;
 static thread_local LA_PINNED_PAGE_BUFFER *la_Pinned_page_buffers = NULL;
 static thread_local int la_Pinned_page_buffer_count = 0;
 
+/* The class of the rows the current task of this worker applied, for its trace and the block-class test hook. Kept
+ * here rather than in the task's result, which is copied to the coordinator for every task. */
+static thread_local char la_Task_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+static thread_local bool la_Task_multi_class = false;	/* rows of more than one class were applied */
+
+/* wall clock minus CLOCK_MONOTONIC, refreshed every LA_WALL_OFFSET_TASKS tasks (la_wall_time_from_monotonic) */
+#define LA_WALL_OFFSET_TASKS 1024
+static thread_local INT64 la_Wall_minus_monotonic_ns = 0;
+static thread_local int la_Wall_offset_tasks_left = 0;
+
 /* Replication items are allocated by the coordinator as it reads the log and were freed by the worker that applied
  * them. glibc frees a chunk of another thread's arena under that arena's lock, so every free in a worker contended
  * with the coordinator's next malloc. A worker therefore hands its spent items back in groups (la_Item_return_*) and
@@ -790,6 +800,8 @@ static bool la_worker_shutdown_requested (void);
 /* Worker callbacks and helpers for applying one task. */
 static void la_request_shutdown (int error);
 static void la_stat_note_class (LA_STATS * stats, const char *class_name);
+static const char *la_worker_task_class (void);
+static void la_wall_time_from_monotonic (UINT64 monotonic_ns, struct timeval *tv);
 static void la_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
 				  unsigned long long *worker_applied_item_count, LA_RESULT * result);
 static void la_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
@@ -1019,12 +1031,60 @@ la_coordinator_shutdown_requested (void *context)
 static void
 la_stat_note_class (LA_STATS * stats, const char *class_name)
 {
-  if (stats->last_class_name[0] != '\0' && strcmp (stats->last_class_name, class_name) != 0)
+  (void) stats;
+
+  /* most rows of a task are of the class before them: compare first, and copy only on a change */
+  if (la_Task_class_name[0] != '\0' && strcmp (la_Task_class_name, class_name) == 0)
     {
-      stats->multi_class = true;
+      return;
     }
 
-  snprintf (stats->last_class_name, sizeof (stats->last_class_name), "%s", class_name);
+  if (la_Task_class_name[0] != '\0')
+    {
+      la_Task_multi_class = true;
+    }
+  snprintf (la_Task_class_name, sizeof (la_Task_class_name), "%s", class_name);
+}
+
+/*
+ * la_worker_task_class() - the class the current task of this worker wrote rows of
+ *   return: the class name, or NULL when the task wrote none or rows of more than one class
+ */
+static const char *
+la_worker_task_class (void)
+{
+  return (!la_Task_multi_class && la_Task_class_name[0] != '\0') ? la_Task_class_name : NULL;
+}
+
+/*
+ * la_wall_time_from_monotonic() - the wall-clock time of a CLOCK_MONOTONIC reading, for the statistics
+ *   monotonic_ns(in): the reading
+ *   tv(out): its wall-clock time
+ *
+ * Note: reads the wall clock once every LA_WALL_OFFSET_TASKS calls instead of on every task; a clock step in between
+ *       shows in the statistics only until the next read.
+ */
+static void
+la_wall_time_from_monotonic (UINT64 monotonic_ns, struct timeval *tv)
+{
+  INT64 wall_ns;
+
+  if (la_Wall_offset_tasks_left <= 0)
+    {
+      struct timeval now;
+      UINT64 now_monotonic_ns;
+
+      gettimeofday (&now, NULL);
+      now_monotonic_ns = la_monotonic_now_ns ();
+      la_Wall_minus_monotonic_ns = ((INT64) now.tv_sec * 1000000000LL + (INT64) now.tv_usec * 1000LL)
+	- (INT64) now_monotonic_ns;
+      la_Wall_offset_tasks_left = LA_WALL_OFFSET_TASKS;
+    }
+  la_Wall_offset_tasks_left--;
+
+  wall_ns = (INT64) monotonic_ns + la_Wall_minus_monotonic_ns;
+  tv->tv_sec = (time_t) (wall_ns / 1000000000LL);
+  tv->tv_usec = (suseconds_t) ((wall_ns % 1000000000LL) / 1000LL);
 }
 
 /*
@@ -1054,8 +1114,10 @@ la_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace
 
   /* the items of the task go back to the coordinator that allocated them (la_free_repl_item) */
   la_Item_free_deferred = true;
+  la_Task_class_name[0] = '\0';
+  la_Task_multi_class = false;
 
-  gettimeofday (&begin, NULL);
+  la_wall_time_from_monotonic (result->apply_begin_ns, &begin);
   if (task->has_items)
     {
       la_stat_worker_begin (context->worker_idx, task, &begin, result->apply_begin_ns);
@@ -1064,7 +1126,7 @@ la_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace
   la_worker_apply_task (context, task, trace_level, worker_applied_item_count, result);
 
   result->apply_end_ns = la_monotonic_now_ns ();
-  gettimeofday (&result->apply_end_time, NULL);
+  la_wall_time_from_monotonic (result->apply_end_ns, &result->apply_end_time);
   if (result->apply_end_ns >= result->apply_begin_ns)
     {
       result->busy_usec = (result->apply_end_ns - result->apply_begin_ns) / 1000ULL;
@@ -1265,7 +1327,7 @@ la_worker_abort_batch (LA_APPLY_WORKER_CONTEXT * context)
  * la_worker_test_block_before_commit() - crash-injection test hook that stalls one class before commit
  *   context(in): the worker's apply context
  *   task(in): transaction being applied
- *   stats(in): the transaction's apply statistics; last_class_name selects the stalled class
+ *   stats(in): the transaction's apply statistics; the class of the task's rows selects the stalled class
  *
  * Note:
  *   Inert unless CUBRID_HA_TEST_BLOCK_CLASS names the last applied class. Holding that class while
@@ -1284,8 +1346,8 @@ la_worker_test_block_before_commit (LA_APPLY_WORKER_CONTEXT * context, const LA_
   const char *block_msec_str;
   int block_msec;
 
-  if (block_class == NULL || block_class[0] == '\0' || stats->last_class_name[0] == '\0'
-      || strcmp (block_class, stats->last_class_name) != 0)
+  if (block_class == NULL || block_class[0] == '\0' || la_Task_class_name[0] == '\0'
+      || strcmp (block_class, la_Task_class_name) != 0)
     {
       return;
     }
@@ -1299,7 +1361,7 @@ la_worker_test_block_before_commit (LA_APPLY_WORKER_CONTEXT * context, const LA_
 
   _er_log_debug (ARG_FILE_LINE,
 		 "ws_marker TEST block before commit worker=%d trid=%d class=%s commit_lsa=%lld|%d block_msec=%d\n",
-		 context->worker_idx, task->tranid, stats->last_class_name, (long long) task->commit_lsa.pageid,
+		 context->worker_idx, task->tranid, la_Task_class_name, (long long) task->commit_lsa.pageid,
 		 (int) task->commit_lsa.offset, block_msec);
   usleep ((useconds_t) block_msec * 1000);
 }
@@ -1431,6 +1493,7 @@ la_start_apply_workers (void)
   config.end_context = la_worker_end_context;
   config.keep_batch_open = la_coordinator_keep_batch_open;
   config.tasks_parked = la_coordinator_tasks_parked;
+  config.task_class = la_worker_task_class;
   config.batch_max_msec = MAX (1, prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS));
   config.batch_max_tasks = la_Info.batch_max_tasks;
 

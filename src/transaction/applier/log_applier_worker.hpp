@@ -133,6 +133,11 @@ typedef bool (*LA_WORKER_KEEP_BATCH_OPEN_FUNC) (void);
 /* Tells whether a task waits on the coordinator's pending list. Owned by the coordinator; called by worker threads. */
 typedef bool (*LA_WORKER_TASKS_PARKED_FUNC) (void);
 
+/* The class the task being applied wrote rows of, for the worker's trace; NULL when none or more than one. Owned by
+ * log_applier.c and kept per worker thread, not in the result, which crosses to the coordinator for every task. May
+ * be left NULL in the config. */
+typedef const char *(*LA_WORKER_TASK_CLASS_FUNC) (void);
+
 typedef struct la_worker_config LA_WORKER_CONFIG;
 struct la_worker_config
 {
@@ -147,6 +152,7 @@ struct la_worker_config
   LA_WORKER_END_CONTEXT_FUNC end_context;
   LA_WORKER_KEEP_BATCH_OPEN_FUNC keep_batch_open;
   LA_WORKER_TASKS_PARKED_FUNC tasks_parked;
+  LA_WORKER_TASK_CLASS_FUNC task_class;
   int batch_max_msec;		/* commit interval: ha_applylogdb_max_commit_interval_in_msecs, read once at start */
   int batch_max_tasks;		/* memory bound on an open transaction: la_worker_batch_max_tasks */
 };

@@ -89,7 +89,7 @@ static int la_worker_test_fail_startup (const LA_WORKER *worker);
  *       LA_WORKER_TASK_BOOKKEEPING_BYTES, after every worker's full task queue is counted in. The result is the
  *       per-worker limit the commit-order ring is sized with (LA_COMMIT_ORDER_CAPACITY), so the ring, the in-flight
  *       list, the result queue and the batches stay within that share. With the default 500 MB and one worker it is
- *       about 105,000 tasks, more than a backlog applies within the commit interval on the test pair.
+ *       about 220,000 tasks, more than a backlog applies within the commit interval on the test pair.
  */
 int
 la_worker_batch_max_tasks (int max_mem_size_mb, int worker_count)
@@ -600,6 +600,8 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
   LA_TASK taken[LA_WORKER_TAKE_MAX_TASKS];	/* taken from the queue at once, applied from taken_next on */
   int taken_count;
   int taken_next;
+  UINT64 taken_ns;
+  UINT64 next_begin_ns;
   bool queue_closed = false;
   bool limit_noted = false;	/* the memory bound ended a transaction once already; logged only the first time */
   int error = NO_ERROR;
@@ -615,6 +617,10 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
   batch.begin_ns = 0;
   taken_count = 0;
   taken_next = 0;
+  /* clock readings shared by the tasks taken together: when they were taken, and where the next one starts (the end
+   * of the one before it, or 0 after a commit, whose time must not count as the next task's) */
+  taken_ns = 0;
+  next_begin_ns = 0;
 
   while (true)
     {
@@ -643,6 +649,7 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 		{
 		  /* nothing to add: commit rather than hold their locks */
 		  error = la_worker_commit_and_report (context, &batch, *worker_applied_item_count, &queue_closed);
+		  next_begin_ns = 0;
 		  if (error != NO_ERROR || queue_closed)
 		    {
 		      break;
@@ -657,6 +664,11 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 	    }
 	}
 
+      if (taken_next == 0)
+	{
+	  taken_ns = la_monotonic_now_ns ();
+	  next_begin_ns = taken_ns;
+	}
       task = &taken[taken_next++];
 
       worker->busy = true;
@@ -664,6 +676,7 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
       if (task->has_statement && batch.count > 0)
 	{
 	  error = la_worker_commit_and_report (context, &batch, *worker_applied_item_count, &queue_closed);
+	  next_begin_ns = 0;
 	  if (error != NO_ERROR || queue_closed)
 	    {
 	      /* the task taken is dropped with the queued ones; it was never retired */
@@ -674,7 +687,7 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
       /* the result is built in its slot of the batch, so taking it into the batch needs no copy */
       result = &batch.results[batch.count];
       la_result_init (result, task, context->worker_idx);
-      result->dequeue_ns = la_monotonic_now_ns ();
+      result->dequeue_ns = taken_ns;
 
       /* A task without replicated items (an empty commit) is not traced: it applies nothing and would only
        * add lines. */
@@ -689,14 +702,16 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 			    (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq);
 	}
 
-      result->apply_begin_ns = la_monotonic_now_ns ();
+      result->apply_begin_ns = (next_begin_ns != 0) ? next_begin_ns : la_monotonic_now_ns ();
       la_Worker_config.run_task (context, task, trace_level, worker_applied_item_count, result);
+      next_begin_ns = result->apply_end_ns;
 
       if (trace_task)
 	{
 	  UINT64 elapsed_usec = 0;
 	  /* the table is named only when the transaction touched exactly one; otherwise trid identifies it */
-	  bool one_class = (!result->stats.multi_class && result->stats.last_class_name[0] != '\0');
+	  const char *class_name = (la_Worker_config.task_class != NULL) ? la_Worker_config.task_class () : NULL;
+	  bool one_class = (class_name != NULL);
 
 	  LA_TIME_ACCUM_USEC (task_begin, elapsed_usec);
 	  LA_WSET_TRACE_IF (trace_task,
@@ -706,7 +721,7 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 			    task->rectype, (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq,
 			    result->error,
 			    (unsigned long long) elapsed_usec, batch.count + 1, one_class ? " class=" : "",
-			    one_class ? result->stats.last_class_name : "");
+			    one_class ? class_name : "");
 	}
 
       if (result->error != NO_ERROR)
@@ -759,6 +774,7 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
       if (task->has_statement || batch.count >= la_Worker_config.batch_max_tasks || la_worker_batch_is_due (&batch))
 	{
 	  error = la_worker_commit_and_report (context, &batch, *worker_applied_item_count, &queue_closed);
+	  next_begin_ns = 0;
 	  if (error != NO_ERROR || queue_closed)
 	    {
 	      break;

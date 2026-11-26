@@ -490,9 +490,10 @@ TEST_CASE ("the per-worker task limit follows ha_apply_max_mem_size and the work
   int one = la_worker_batch_max_tasks (500, 1);
   int ten = la_worker_batch_max_tasks (500, 10);
 
-  /* 30% of 500 MB over about 1.5 KB per task, less one queue */
+  /* 30% of 500 MB over the bookkeeping of one task, less one queue */
+  UINT64 per_worker = (UINT64) 500 * ONE_M * LA_WORKER_BATCH_MEM_PERCENT / 100 / LA_WORKER_TASK_BOOKKEEPING_BYTES;
   CHECK (one > 50000);
-  CHECK (one < 200000);
+  CHECK ((UINT64) one == MIN (per_worker - LA_TASK_QUEUE_CAPACITY, (UINT64) LA_WORKER_BATCH_LIMIT_TASKS));
   /* ten workers share the same memory */
   CHECK (ten < one / 5);
   CHECK (la_worker_batch_max_tasks (4096, 1) > one);

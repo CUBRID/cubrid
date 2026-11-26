@@ -44,8 +44,6 @@ struct la_stats
   int last_error_code;		/* the last error counted in fail_counter, for _db_ha_apply_worker_stat; 0 if none */
   time_t last_error_time;	/* when it happened */
   int num_unflushed;
-  char last_class_name[DB_MAX_IDENTIFIER_LENGTH];	/* last applied class, for logs and the block-class test hook */
-  bool multi_class;		/* rows of more than one class were applied; the done trace then names none */
 };
 
 typedef struct la_result LA_RESULT;
