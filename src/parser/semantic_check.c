@@ -203,7 +203,8 @@ static PT_UNION_COMPATIBLE pt_check_vclass_attr_qspec_compatible (PARSER_CONTEXT
 static PT_NODE *pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrs, const char *self,
 					    const bool do_semantic_check);
 static PT_NODE *pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrs);
-static PT_NODE *pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrs);
+static PT_NODE *pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrs,
+						    PT_NODE * own_attrs);
 static void pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static void pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_create_user (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -8057,7 +8058,7 @@ pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE 
  * In both cases, each attribute in attrs will correspond to the column in the select list at the same index
  */
 static PT_NODE *
-pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrs)
+pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrs, PT_NODE * own_attrs)
 {
   PT_NODE *attr, *col;
   PT_NODE *columns = pt_get_select_list (parser, qry);
@@ -8066,11 +8067,16 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   PT_NODE *spec, *entity_name;
   DB_OBJECT *obj;
   DB_ATTRIBUTE *col_attr;
+  bool is_inherited = (attrs != own_attrs);
 
   /* Import default value and on update default expr from referenced table
    * for those attributes in the the view that don't have them. */
   for (attr = attrs, col = columns; attr && col; attr = attr->next, col = col->next)
     {
+      if (attr == own_attrs)
+	{
+	  is_inherited = false;
+	}
       if (attr->info.attr_def.data_default != NULL && attr->info.attr_def.on_update != DB_DEFAULT_NONE)
 	{
 	  /* default values are overwritten */
@@ -8109,7 +8115,9 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 	  attr->info.attr_def.on_update = col_attr->on_update_default_expr;
 	}
 
-      if (attr->info.attr_def.data_default == NULL)
+      /* an inherited attribute takes its default from the super view, and its node is not in the statement, which
+       * would never free a default made for it (pt_number_of_attributes ()) */
+      if (attr->info.attr_def.data_default == NULL && !is_inherited)
 	{
 	  if (DB_IS_NULL (&col_attr->default_value.value)
 	      && (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE))
@@ -8390,7 +8398,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
       crt_qry = result_stmt;
 
-      all_attrs = pt_check_default_vclass_query_spec (parser, crt_qry, all_attrs);
+      all_attrs = pt_check_default_vclass_query_spec (parser, crt_qry, all_attrs, *attr_def_list_ptr);
       if (pt_has_error (parser))
 	{
 	  return;

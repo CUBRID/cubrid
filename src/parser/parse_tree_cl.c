@@ -6169,6 +6169,8 @@ pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
     case PT_REMOVE_PARTITION:
       break;
     case PT_ADD_PARTITION:
+      /* info is the MAXVALUE of the last partition, set by pt_check_alter_partition () */
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.partition.info, arg);
       PT_APPLY_WALK (parser, p->info.alter.alter_clause.partition.parts, arg);
       break;
     case PT_ADD_HASHPARTITION:
