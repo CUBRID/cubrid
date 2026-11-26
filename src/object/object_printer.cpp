@@ -136,6 +136,7 @@ void object_printer::describe_partition_parts (const sm_partition &parts, class_
 	  if (set_get_element (parts.values, i, &ele) == NO_ERROR)
 	    {
 	      obj_print.describe_value (&ele);
+	      pr_clear_value (&ele);
 	    }
 	}
       m_buf (")");
