@@ -466,6 +466,15 @@ assign_null_value (MOP op, SM_ATTRIBUTE * att, char *mem)
 
   if (mem == NULL)
     {
+      /* a set of a class or shared attribute is connected to the class, which keeps the clear below from freeing it */
+      if (TP_IS_SET_TYPE (DB_VALUE_TYPE (&att->default_value.value)))
+	{
+	  SETREF *current_set = db_get_set (&att->default_value.value);
+	  if (current_set != NULL)
+	    {
+	      set_disconnect (current_set);
+	    }
+	}
       pr_clear_value (&att->default_value.value);
     }
   else
@@ -581,8 +590,7 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
       else
 	{
 	  /*
-	   * remove ownership information in the current set,
-	   * need to be able to free this !!!
+	   * remove ownership information in the current set
 	   */
 	  current_set = db_get_set (&att->default_value.value);
 	  if (current_set != NULL)
@@ -617,9 +625,16 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 		  db_make_null (&att->default_value.value);
 		}
 
-	      if (new_set != NULL)
+	      /* a copy made by set_change_owner () already has the reference of the class */
+	      if (new_set != NULL && new_set == setref)
 		{
 		  new_set->ref_count++;
+		}
+
+	      /* release the reference of the class to the replaced set */
+	      if (current_set != NULL)
+		{
+		  set_free (current_set);
 		}
 	    }
 	}
