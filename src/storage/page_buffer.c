@@ -11606,7 +11606,8 @@ pgbuf_remove_private_from_aout_list (const int lru_idx)
 /*
  * pgbuf_bcb_flush_with_wal () - write a buffer page to disk.
  *
- * return                    : error code
+ * return                    : error code. on error, the bcb is locked, no longer flushing, dirty again if it was dirty
+ *                             and the threads waiting for the flush are woken up.
  * thread_p (in)             : thread entry
  * bufptr (in)               : bcb
  * is_page_flush_thread (in) : true if caller is page flush thread. false otherwise.
@@ -11838,7 +11839,8 @@ copy_unflushed_lsa:
   return NO_ERROR;
 
 error_locked:
-  /* the page was not flushed. give the bcb back the state it had before pgbuf_bcb_mark_is_flushing. */
+  /* the page was not flushed. clear flushing and give back the dirty flag and oldest_unflush_lsa. the async flush
+   * request cleared by pgbuf_bcb_mark_is_flushing is not restored; the page is dirty again, so it is flushed later. */
   assert (*is_bcb_locked);
   PGBUF_BCB_CHECK_OWN (bufptr);
   assert (error != NO_ERROR);
