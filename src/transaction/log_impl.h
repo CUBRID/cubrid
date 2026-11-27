@@ -58,6 +58,7 @@
 #include "tde.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "transaction_exec_token.hpp"
 #include "transaction_transient.hpp"
 #include "lockfree_circular_queue.hpp"
 
@@ -573,6 +574,14 @@ struct log_tdes
 
   char *ddl_sql_user_text;	/* SQL user text for the transaction */
 
+#if defined (SERVER_MODE)
+  tx_exec_token exec_token;	/* one request at a time runs the transaction (logtb_exec_begin ()) */
+  // *INDENT-OFF*
+  /* its abort is left to the request that ends it: its parallel section's opener or a PL callback's caller */
+  std::atomic<bool> abort_deferred;
+  // *INDENT-ON*
+#endif
+
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 
@@ -1066,6 +1075,7 @@ extern void logpb_push_backup_read_task (cubthread::entry_task * task);
 extern void logpb_destroy_backup_read_worker_pool ();
 extern int logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			  const char *prefix_logname, bo_restart_arg * r_args);
+extern int logpb_mark_restore_incomplete (THREAD_ENTRY * thread_p, int vdes, const char *vlabel);
 extern int logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *to_db_fullname,
 				const char *to_logpath, const char *to_prefix_logname, const char *toext_path,
 				const char *fileof_vols_and_copypaths);
@@ -1166,6 +1176,15 @@ extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * co
 extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index);
 extern bool logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid);
 extern bool logtb_is_current_active (THREAD_ENTRY * thread_p);
+extern void logtb_exec_begin (THREAD_ENTRY * thread_p);
+extern void logtb_exec_end (THREAD_ENTRY * thread_p);
+extern bool logtb_exec_yield (THREAD_ENTRY * thread_p);
+extern void logtb_exec_resume (THREAD_ENTRY * thread_p, bool yielded);
+extern bool logtb_exec_try_take (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+extern void logtb_exec_untake (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+extern void logtb_exec_switch (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+extern bool logtb_is_abort_deferred (int tran_index);
+extern int logtb_fail_if_abort_deferred (int tran_index);
 extern bool logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid);
 extern void logtb_disable_update (THREAD_ENTRY * thread_p);
 extern void logtb_enable_update (THREAD_ENTRY * thread_p);

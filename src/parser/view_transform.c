@@ -129,6 +129,20 @@ typedef struct check_pushable_info
   bool method_found;
 } CHECK_PUSHABLE_INFO;
 
+/* which columns of a subquery mq_is_numbering_column_referenced () looks for */
+typedef enum
+{
+  MQ_COL_NUMBERING,		/* holds INST_NUM()/ORDERBY_NUM()/GROUPBY_NUM() */
+  MQ_COL_SORT_NUMBERING,	/* holds ORDERBY_NUM()/GROUPBY_NUM(), known only after the sort */
+  MQ_COL_NOT_SORT_NUMBERING	/* any other column, ROWNUM included */
+} MQ_COL_KIND;
+
+typedef struct mq_column_ref_info
+{
+  PT_NODE *specs;		/* FROM list whose columns are looked for */
+  bool found;			/* set when a column of one of the specs is found */
+} MQ_COLUMN_REF_INFO;
+
 typedef struct attr_ref_info
 {
   UINTPTR spec_id;		/* spec id of the attribute to look for */
@@ -241,6 +255,8 @@ static PT_NODE *mq_substitute_inline_view_in_statement (PARSER_CONTEXT * parser,
 							PT_NODE * subquery, PT_NODE * derived_spec, PT_NODE * order_by);
 static PT_NODE *mq_substitute_spec_in_method_and_hints (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 							int *continue_walk);
+static PT_NODE *mq_change_name_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
+static int mq_keep_check_option_of_derived_vclass (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_spec);
 static PT_NODE *mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
 						     PT_NODE * class_, PT_NODE * order_by, int what_for);
 static PT_NODE *mq_substitute_subquery_list_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
@@ -278,6 +294,14 @@ static bool mq_is_attr_referenced (PARSER_CONTEXT * parser, PT_NODE * node, ATTR
 static bool mq_is_sort_dependent_column (PARSER_CONTEXT * parser, PT_NODE * column);
 static bool mq_is_sort_dependent_column_used_in_expr (PARSER_CONTEXT * parser, PT_NODE * subquery,
 						      PT_NODE * mainquery, PT_NODE * class_spec, PT_NODE * class_);
+static bool mq_is_numbering_column_referenced (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * node,
+					       PT_NODE * class_spec, PT_NODE * class_, MQ_COL_KIND kind);
+static bool mq_is_numbering_column_read_by_query (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
+						  PT_NODE * class_spec, PT_NODE * class_, MQ_COL_KIND kind);
+static PT_NODE *mq_find_attr_in_nested_query (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
+					      int *continue_walk);
+static bool mq_is_numbering_column_read_in_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
+						     PT_NODE * class_spec, PT_NODE * class_);
 static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
 					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by,
 					      PT_NODE * class_);
@@ -459,6 +483,12 @@ static PT_NODE *mq_replace_virtual_oid_with_real_oid (PARSER_CONTEXT * parser, P
 
 static void mq_copy_view_error_msgs (PARSER_CONTEXT * parser, PARSER_CONTEXT * query_cache);
 static void mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_query);
+static PT_NODE *mq_find_column_reference (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
+static bool mq_has_column_of_specs (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * specs);
+static bool mq_numbering_term_skips_rows (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * specs);
+static bool mq_numbering_terms_skip_rows (PARSER_CONTEXT * parser, PT_NODE * terms, PT_NODE * specs);
+static bool mq_numbering_column_terms_skip_rows (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * where,
+						 PT_NODE * class_spec, PT_NODE * class_);
 static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by,
 					 PT_NODE * subquery, PT_NODE * class_);
 static bool mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * subquery,
@@ -472,6 +502,11 @@ static bool mq_check_outer_join_select_list (PARSER_CONTEXT * parser, PT_NODE * 
 
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select_list,
 						   PT_NODE * old_select_list);
+static PT_NODE *mq_remove_constant_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list, PT_NODE * select_list);
+static void mq_remove_analytic_constant_sort_specs (PARSER_CONTEXT * parser, PT_NODE * node_list,
+						    PT_NODE * select_list);
+static PT_NODE *mq_resolve_n_check_using_index (PARSER_CONTEXT * parser, PT_NODE * statement,
+						bool aggregate_rewrote_as_derived);
 static int mq_update_analytic_pos (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * new_select_list,
 				   PT_NODE * old_select_list);
 
@@ -2116,6 +2151,229 @@ mq_is_sort_dependent_column_used_in_expr (PARSER_CONTEXT * parser, PT_NODE * sub
 }
 
 /*
+ * mq_is_numbering_column_referenced () - check whether a tree reads a column of the subquery of the given kind
+ *   return: true if such a column is read
+ *   parser(in): parser context
+ *   subquery(in): subquery(or view query spec) to be merged
+ *   node(in): tree of the main query to search. its 'next' list is searched, too
+ *   class_spec(in): spec of the subquery in the main query
+ *   class_(in): view name node, NULL for an inline view
+ *   kind(in): which columns of the subquery to look for
+ */
+static bool
+mq_is_numbering_column_referenced (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * node,
+				   PT_NODE * class_spec, PT_NODE * class_, MQ_COL_KIND kind)
+{
+  PT_NODE *attributes, *attr, *col, *save_next;
+  ATTR_REF_INFO info;
+  bool has_numbering;
+
+  assert (PT_IS_SELECT (subquery));
+
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  /* get the attributes of the spec, which are matched with the select list of the subquery by position */
+  if (class_ != NULL)
+    {
+      attributes = mq_fetch_attributes (parser, class_);
+      info.spec_id = class_->info.name.spec_id;
+    }
+  else
+    {
+      attributes = class_spec->info.spec.as_attr_list;
+      info.spec_id = class_spec->info.spec.id;
+    }
+
+  for (attr = attributes, col = subquery->info.query.q.select.list; attr != NULL && col != NULL;
+       attr = attr->next, col = col->next)
+    {
+      if (attr->node_type != PT_NAME || attr->info.name.original == NULL)
+	{
+	  continue;
+	}
+
+      /* cut off next to check this column only */
+      save_next = col->next;
+      col->next = NULL;
+      has_numbering = false;
+      (void) parser_walk_tree (parser, col, pt_is_inst_or_inst_num_node, &has_numbering,
+			       pt_is_inst_or_orderby_num_node_post, &has_numbering);
+      col->next = save_next;
+
+      switch (kind)
+	{
+	case MQ_COL_NUMBERING:
+	  if (!has_numbering)
+	    {
+	      continue;
+	    }
+	  break;
+	case MQ_COL_SORT_NUMBERING:
+	  if (!has_numbering || !mq_is_sort_dependent_column (parser, col))
+	    {
+	      continue;
+	    }
+	  break;
+	case MQ_COL_NOT_SORT_NUMBERING:
+	  if (has_numbering && mq_is_sort_dependent_column (parser, col))
+	    {
+	      continue;
+	    }
+	  break;
+	}
+
+      info.name = attr->info.name.original;
+      if (mq_is_attr_referenced (parser, node, &info))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * mq_is_numbering_column_read_by_query () - check whether the clauses of the main query read a column of the
+ *                                           subquery which holds a numbering, or a column which does not
+ *   return: true if such a column is read
+ *   parser(in): parser context
+ *   subquery(in): subquery(or view query spec) to be merged
+ *   mainquery(in): query the subquery is to be merged into
+ *   class_spec(in): spec of the subquery in the main query
+ *   class_(in): view name node, NULL for an inline view
+ *   kind(in): which columns of the subquery to look for
+ *
+ * NOTE: the FROM clause is not searched: the spec itself holds the names of its attributes.
+ */
+static bool
+mq_is_numbering_column_read_by_query (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
+				      PT_NODE * class_spec, PT_NODE * class_, MQ_COL_KIND kind)
+{
+  assert (PT_IS_SELECT (mainquery));
+
+  return (mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.list, class_spec,
+					     class_, kind)
+	  || mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.where, class_spec,
+						class_, kind)
+	  || mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.group_by, class_spec,
+						class_, kind)
+	  || mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.having, class_spec,
+						class_, kind));
+}
+
+/*
+ * mq_find_attr_in_nested_query () - look for a reference to a given attribute inside a query nested in a tree
+ *   return: node (unchanged)
+ *   parser(in): parser context
+ *   node(in): node to check
+ *   void_arg(in/out): ATTR_REF_INFO *
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+mq_find_attr_in_nested_query (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
+{
+  ATTR_REF_INFO *infop = (ATTR_REF_INFO *) void_arg;
+  PT_NODE *save_next;
+  bool found;
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      /* search this query only, not the nodes after it */
+      save_next = node->next;
+      node->next = NULL;
+      found = mq_is_attr_referenced (parser, node, infop);
+      node->next = save_next;
+
+      infop->found = found;
+      *continue_walk = found ? PT_STOP_WALK : PT_LIST_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * mq_is_numbering_column_read_in_subquery () - check whether a query nested in a clause of the main query reads a
+ *                                              numbering column of the subquery
+ *   return: true if one does
+ *   parser(in): parser context
+ *   subquery(in): subquery(or view query spec) to be merged
+ *   mainquery(in): query the subquery is to be merged into
+ *   class_spec(in): spec of the subquery in the main query
+ *   class_(in): view name node, NULL for an inline view
+ *
+ * NOTE:
+ *   Merging puts the numbering itself where the column is read. Inside a nested query it is the numbering of that
+ *   query, not of the rows of the subquery.
+ */
+static bool
+mq_is_numbering_column_read_in_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
+					 PT_NODE * class_spec, PT_NODE * class_)
+{
+  PT_NODE *attributes, *attr, *col, *save_next;
+  PT_NODE *clauses[5];
+  ATTR_REF_INFO info;
+  bool has_numbering;
+  int i;
+
+  assert (PT_IS_SELECT (subquery) && PT_IS_SELECT (mainquery));
+
+  clauses[0] = mainquery->info.query.q.select.list;
+  clauses[1] = mainquery->info.query.q.select.where;
+  clauses[2] = mainquery->info.query.q.select.group_by;
+  clauses[3] = mainquery->info.query.q.select.having;
+  clauses[4] = mainquery->info.query.order_by;
+
+  if (class_ != NULL)
+    {
+      attributes = mq_fetch_attributes (parser, class_);
+      info.spec_id = class_->info.name.spec_id;
+    }
+  else
+    {
+      attributes = class_spec->info.spec.as_attr_list;
+      info.spec_id = class_spec->info.spec.id;
+    }
+
+  for (attr = attributes, col = subquery->info.query.q.select.list; attr != NULL && col != NULL;
+       attr = attr->next, col = col->next)
+    {
+      if (attr->node_type != PT_NAME || attr->info.name.original == NULL)
+	{
+	  continue;
+	}
+
+      /* cut off next to check this column only */
+      save_next = col->next;
+      col->next = NULL;
+      has_numbering = false;
+      (void) parser_walk_tree (parser, col, pt_is_inst_or_inst_num_node, &has_numbering,
+			       pt_is_inst_or_orderby_num_node_post, &has_numbering);
+      col->next = save_next;
+
+      if (!has_numbering)
+	{
+	  continue;
+	}
+
+      info.name = attr->info.name.original;
+      for (i = 0; i < 5; i++)
+	{
+	  info.found = false;
+	  (void) parser_walk_tree (parser, clauses[i], mq_find_attr_in_nested_query, &info, NULL, NULL);
+	  if (info.found)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * mq_is_pushable_subquery () - check if a subquery is pushable
  *  returns: true if pushable, false otherwise
  *   parser(in): parser context
@@ -2292,8 +2550,11 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   if (!is_only_spec && (mq_is_outer_join_spec (parser, class_spec) || MQ_IS_OUTER_JOIN_SPEC (class_spec)))
     {
-      /* view for single table + left outer join can be merged */
+      /* view for single table + left outer join can be merged. The inner of a semi/anti join is not such a view even
+       * when a left outer join follows it (MQ_IS_LEFT_JOIN_SPEC also looks at the next spec): its WHERE clause would
+       * move to the WHERE clause of the main query and filter the result of the semi/anti join. */
       if (pt_length_of_list (subquery->info.query.q.select.from) != 1 || !MQ_IS_LEFT_JOIN_SPEC (class_spec)
+	  || class_spec->info.spec.join_type == PT_JOIN_SEMI || class_spec->info.spec.join_type == PT_JOIN_ANTI
 	  || mq_is_right_outer_join_spec (parser, class_spec) || pt_has_path_expr (parser, subquery)
 	  || !mq_check_keep_join_pred (parser, class_spec, mainquery, subquery, class_))
 	{
@@ -2436,11 +2697,63 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 	  return NON_PUSHABLE;
 	}
 
+      /* The subquery drops leading rows by its own numbering ('LIMIT n, m' without ORDER BY becomes such terms of its
+       * WHERE). A numbering of the main query would become the same counter, counted before those rows are dropped. */
+      if (PT_IS_SELECT (mainquery)
+	  && (mainquery->info.query.limit != NULL || pt_has_inst_in_where_and_select_list (parser, mainquery))
+	  && mq_numbering_terms_skip_rows (parser, subquery->info.query.q.select.where,
+					   subquery->info.query.q.select.from))
+	{
+	  return NON_PUSHABLE;
+	}
+
       /* Even for a single spec, merging is given up when the main query embeds a numbering column of the subquery
        * into an expression, since such a column is not evaluated until the subquery's sort is done. (CBRD-27189) */
       if (mq_is_sort_dependent_column_used_in_expr (parser, subquery, mainquery, class_spec, class_))
 	{
 	  return NON_PUSHABLE;
+	}
+
+      /* The same for a numbering column read by a query nested in the main query: once merged, the numbering there
+       * would count the rows of that nested query. */
+      if (PT_IS_SELECT (mainquery)
+	  && mq_is_numbering_column_read_in_subquery (parser, subquery, mainquery, class_spec, class_))
+	{
+	  return NON_PUSHABLE;
+	}
+
+      /* A numbering column of the subquery becomes the numbering of the merged query, which is not the same value
+       *  - when the main query numbers or limits its own rows after its WHERE has dropped leading rows by that column
+       *    (anything but an upper bound): the two numberings become one, counted before the filter,
+       *  - when the ORDER BY of the subquery is removed (main query with DISTINCT or an aggregate) and the main query
+       *    reads an ORDERBY_NUM() column with another column of the subquery: the rows are numbered in another order.
+       *    The numbers alone are the same set of values, and ROWNUM is given before the sort anyway,
+       *  - when the main query groups by it. */
+      if (PT_IS_SELECT (mainquery)
+	  && mq_is_numbering_column_read_by_query (parser, subquery, mainquery, class_spec, class_, MQ_COL_NUMBERING))
+	{
+	  if (mainquery->info.query.q.select.group_by != NULL)
+	    {
+	      return NON_PUSHABLE;
+	    }
+
+	  if ((mainquery->info.query.limit != NULL || mainquery->info.query.orderby_for != NULL
+	       || pt_has_inst_in_where_and_select_list (parser, mainquery))
+	      && mq_numbering_column_terms_skip_rows (parser, subquery, mainquery->info.query.q.select.where,
+						      class_spec, class_))
+	    {
+	      return NON_PUSHABLE;
+	    }
+
+	  if (subquery->info.query.order_by != NULL
+	      && (pt_is_distinct (mainquery) || pt_has_aggregate (parser, mainquery))
+	      && mq_is_numbering_column_read_by_query (parser, subquery, mainquery, class_spec, class_,
+						       MQ_COL_SORT_NUMBERING)
+	      && mq_is_numbering_column_read_by_query (parser, subquery, mainquery, class_spec, class_,
+						       MQ_COL_NOT_SORT_NUMBERING))
+	    {
+	      return NON_PUSHABLE;
+	    }
 	}
     }
 
@@ -2963,6 +3276,96 @@ exit_on_error:
 }
 
 /*
+ * mq_change_name_spec_id () - change the spec id of the names of a spec
+ *   return: node
+ *   parser(in): parser context
+ *   node(in): node to check
+ *   void_arg(in): PT_RESOLVE_METHOD_NAME_INFO *, the spec id to replace and the one to replace it with
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+mq_change_name_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
+{
+  PT_RESOLVE_METHOD_NAME_INFO *info = (PT_RESOLVE_METHOD_NAME_INFO *) void_arg;
+
+  if (node->node_type == PT_NAME && node->info.name.spec_id == info->old_id)
+    {
+      node->info.name.spec_id = info->new_id;
+    }
+
+  return node;
+}
+
+/*
+ * mq_keep_check_option_of_derived_vclass () - keep the check option of a view which an UPDATE reads as a derived
+ *                                             table
+ *   return: NO_ERROR or error code
+ *   parser(in): parser context
+ *   statement(in/out): UPDATE statement
+ *   class_spec(in): spec of the view, rewritten as a derived table and already expanded
+ *
+ * NOTE:
+ *   When the view is not merged, its check option stays in the query of the derived table (check_where), where
+ *   nothing evaluates it. An UPDATE evaluates the conditions of info.update.check_where on each object it has
+ *   updated through a spec (see init_update_data () and update_object_tuple ()), so the condition is added there
+ *   for the derived spec, with its columns read as columns of that spec.
+ */
+static int
+mq_keep_check_option_of_derived_vclass (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_spec)
+{
+  PT_NODE *derived_table, *inner_spec, *check_part, *cw;
+  PT_RESOLVE_METHOD_NAME_INFO info;
+
+  assert (statement->node_type == PT_UPDATE);
+
+  derived_table = class_spec->info.spec.derived_table;
+  if (derived_table == NULL || !PT_IS_SELECT (derived_table) || derived_table->info.query.q.select.check_where == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  /* the updated object is an instance of the class the view reads, and the condition names its attributes */
+  inner_spec = derived_table->info.query.q.select.from;
+  if (inner_spec == NULL || inner_spec->next != NULL || inner_spec->info.spec.derived_table != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  check_part = parser_copy_tree_list (parser, derived_table->info.query.q.select.check_where);
+  if (check_part == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  info.old_id = inner_spec->info.spec.id;
+  info.new_id = class_spec->info.spec.id;
+  check_part = parser_walk_tree (parser, check_part, mq_change_name_spec_id, &info, NULL, NULL);
+
+  for (cw = statement->info.update.check_where; cw != NULL; cw = cw->next)
+    {
+      if (cw->info.check_option.spec_id == class_spec->info.spec.id)
+	{
+	  break;
+	}
+    }
+  if (cw == NULL)
+    {
+      cw = parser_new_node (parser, PT_CHECK_OPTION);
+      if (cw == NULL)
+	{
+	  parser_free_tree (parser, check_part);
+	  return ER_FAILED;
+	}
+      cw->info.check_option.spec_id = class_spec->info.spec.id;
+      statement->info.update.check_where = parser_append_node (cw, statement->info.update.check_where);
+    }
+
+  cw->info.check_option.expr = parser_append_node (check_part, cw->info.check_option.expr);
+
+  return NO_ERROR;
+}
+
+/*
  * mq_substitute_subquery_in_statement() - This takes a subquery expansion of
  *      a class_, in the form of a select, or union of selects,
  *      and a parse tree containing references to the class and its attributes,
@@ -3124,6 +3527,12 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	      goto exit_on_error;
 	    }
 
+	  if (tmp_result->node_type == PT_UPDATE
+	      && mq_keep_check_option_of_derived_vclass (parser, tmp_result, class_spec) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+
 	  if (PT_IS_QUERY (derived_table))
 	    {
 	      if (query_spec->info.query.all_distinct == PT_DISTINCT)
@@ -3145,6 +3554,8 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	}
       else
 	{
+	  PT_NODE *query_spec_copy = NULL, *merge_spec = query_spec;
+
 	  /* expand vclass_query in parent statement */
 	  mq_copy_sql_hint (parser, tmp_result, query_spec);
 
@@ -3152,11 +3563,25 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	    {
 	      if (!order_by && query_spec->info.query.order_by)
 		{
+		  bool skip_adding_hidden_col = pt_is_distinct (tmp_result) || pt_has_aggregate (parser, tmp_result);
+
+		  if (skip_adding_hidden_col)
+		    {
+		      /* mq_update_order_by () rewrites ORDERBY_NUM() in the select list of query_spec when it removes
+		       * the whole ORDER BY. query_spec is the cached definition of the view, which later uses of the
+		       * view read again and which outlives this parser's nodes, so a copy is merged instead. */
+		      query_spec_copy = parser_copy_tree (parser, query_spec);
+		      if (query_spec_copy == NULL)
+			{
+			  goto exit_on_error;
+			}
+		      merge_spec = query_spec_copy;
+		    }
+
 		  /* update the position number of order by clause and add a hidden column into the output list if
 		   * necessary. */
 		  tmp_result =
-		    mq_update_order_by (parser, tmp_result, query_spec, class_, NULL,
-					pt_is_distinct (tmp_result) || pt_has_aggregate (parser, tmp_result));
+		    mq_update_order_by (parser, tmp_result, merge_spec, class_, NULL, skip_adding_hidden_col);
 		  if (tmp_result == NULL)
 		    {
 		      goto exit_on_error;
@@ -3164,7 +3589,12 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 		}
 	    }
 
-	  result = mq_substitute_select_in_statement (parser, tmp_result, query_spec, class_);
+	  result = mq_substitute_select_in_statement (parser, tmp_result, merge_spec, class_);
+
+	  if (query_spec_copy != NULL)
+	    {
+	      parser_free_tree (parser, query_spec_copy);
+	    }
 	}
 
       /* set query id # */
@@ -4446,7 +4876,7 @@ pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query
     case PT_SELECT:
       {
 	CHECK_PUSHABLE_INFO cinfo;
-	PT_NODE *list;
+	PT_NODE *list, *save_next;
 	int i;
 
 	cinfo.check_query = true;
@@ -4484,6 +4914,19 @@ pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query
 		parser_walk_leaves (parser, list, pt_check_pushable, &cinfo, NULL, NULL);
 		break;
 	      }			/* switch (list->node_type) */
+
+	    if (!cinfo.query_found && !cinfo.method_found)
+	      {
+		/* a term pushed into the query holds a copy of this item, which would assign the session variable once
+		 * more for each row */
+		save_next = list->next;
+		list->next = NULL;
+		if (pt_has_define_vars (parser, list))
+		  {
+		    cinfo.method_found = true;
+		  }
+		list->next = save_next;
+	      }
 
 	    /* check for subquery, method does not pushable in select_list of subquery */
 	    if (cinfo.query_found || cinfo.method_found)
@@ -4894,6 +5337,231 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 }
 
 /*
+ * mq_find_column_reference () - look for a column of the given specs
+ *   return: node (unchanged)
+ *   parser(in): parser context
+ *   node(in): node to check
+ *   void_arg(in/out): MQ_COLUMN_REF_INFO *
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+mq_find_column_reference (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
+{
+  MQ_COLUMN_REF_INFO *info = (MQ_COLUMN_REF_INFO *) void_arg;
+  PT_NODE *spec;
+
+  if (node->node_type == PT_NAME)
+    {
+      for (spec = info->specs; spec != NULL; spec = spec->next)
+	{
+	  if (node->info.name.spec_id == spec->info.spec.id)
+	    {
+	      info->found = true;
+	      break;
+	    }
+	}
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      if (node->info.query.correlation_level != 0)
+	{
+	  /* a correlated subquery may read a column of the specs */
+	  info->found = true;
+	}
+      else
+	{
+	  /* an uncorrelated subquery is a constant here */
+	  *continue_walk = PT_LIST_WALK;
+	}
+    }
+
+  if (info->found)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * mq_has_column_of_specs () - check whether a tree reads a column of the given specs
+ *   return: true if it does
+ *   parser(in): parser context
+ *   node(in): tree to search. its 'next' list is searched, too
+ *   specs(in): FROM list. A column of another query (an outer query of a correlated subquery) does not change from
+ *              row to row of these specs, so it is not looked for
+ */
+static bool
+mq_has_column_of_specs (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * specs)
+{
+  MQ_COLUMN_REF_INFO info;
+
+  info.specs = specs;
+  info.found = false;
+  (void) parser_walk_tree (parser, node, mq_find_column_reference, &info, NULL, NULL);
+
+  return info.found;
+}
+
+/*
+ * mq_numbering_term_skips_rows () - check whether a term on INST_NUM()/ORDERBY_NUM() can drop a row and keep a
+ *                                   later one
+ *   return: true if it can
+ *   parser(in): parser context
+ *   term(in): a single term. its 'next' list is not searched
+ *   specs(in): FROM list whose columns change from row to row
+ *
+ * NOTE:
+ *   A numbering counts the rows which reach it. When a subquery which filters by its own numbering is merged into a
+ *   main query which numbers its rows too, or the main query filters by a numbering column of the subquery under its
+ *   own numbering, both numberings become one counter. That keeps their values only while no term drops a row and
+ *   keeps a later one, that is while every such term is an upper bound (num < c, num <= c, c > num, c >= num) with
+ *   the same c for every row. 'LIMIT n, m' without ORDER BY is the AND of a lower and an upper bound.
+ */
+static bool
+mq_numbering_term_skips_rows (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * specs)
+{
+  PT_NODE *save_next, *num, *bound;
+  bool has_numbering = false;
+
+  save_next = term->next;
+  term->next = NULL;
+  (void) parser_walk_tree (parser, term, pt_is_inst_or_inst_num_node, &has_numbering,
+			   pt_is_inst_or_orderby_num_node_post, &has_numbering);
+  term->next = save_next;
+
+  if (!has_numbering)
+    {
+      return false;
+    }
+
+  if (!PT_IS_EXPR_NODE (term))
+    {
+      return true;
+    }
+
+  switch (term->info.expr.op)
+    {
+    case PT_AND:
+      return (mq_numbering_term_skips_rows (parser, term->info.expr.arg1, specs)
+	      || mq_numbering_term_skips_rows (parser, term->info.expr.arg2, specs));
+
+    case PT_LT:
+    case PT_LE:
+      num = term->info.expr.arg1;
+      bound = term->info.expr.arg2;
+      break;
+
+    case PT_GT:
+    case PT_GE:
+      num = term->info.expr.arg2;
+      bound = term->info.expr.arg1;
+      break;
+
+    default:
+      return true;
+    }
+
+  if (!PT_IS_INSTNUM (num) && !PT_IS_ORDERBYNUM (num))
+    {
+      return true;
+    }
+
+  /* the bound must be the same for every row */
+  has_numbering = false;
+  (void) parser_walk_tree (parser, bound, pt_is_inst_or_inst_num_node, &has_numbering,
+			   pt_is_inst_or_orderby_num_node_post, &has_numbering);
+
+  return has_numbering || mq_has_column_of_specs (parser, bound, specs);
+}
+
+/*
+ * mq_numbering_terms_skip_rows () - check whether a term of a CNF list can drop a row by a numbering and keep a later
+ *                                   one
+ *   return: true if one can
+ *   parser(in): parser context
+ *   terms(in): CNF list of terms
+ *   specs(in): FROM list whose columns change from row to row
+ */
+static bool
+mq_numbering_terms_skip_rows (PARSER_CONTEXT * parser, PT_NODE * terms, PT_NODE * specs)
+{
+  PT_NODE *term;
+
+  for (term = terms; term != NULL; term = term->next)
+    {
+      if (mq_numbering_term_skips_rows (parser, term, specs))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * mq_numbering_column_terms_skip_rows () - check whether a term of the main query on a numbering column of the
+ *                                          subquery can drop a row and keep a later one
+ *   return: true if one can
+ *   parser(in): parser context
+ *   subquery(in): subquery(or view query spec) to be merged
+ *   where(in): CNF list of terms of the main query
+ *   class_spec(in): spec of the subquery in the main query
+ *   class_(in): view name node, NULL for an inline view
+ */
+static bool
+mq_numbering_column_terms_skip_rows (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * where,
+				     PT_NODE * class_spec, PT_NODE * class_)
+{
+  PT_NODE *attributes, *attr, *col, *term, *save_next, *copy;
+  UINTPTR spec_id;
+  bool skips = false;
+
+  if (class_ != NULL)
+    {
+      attributes = mq_fetch_attributes (parser, class_);
+      spec_id = class_->info.name.spec_id;
+    }
+  else
+    {
+      attributes = class_spec->info.spec.as_attr_list;
+      spec_id = class_spec->info.spec.id;
+    }
+
+  for (attr = attributes, col = subquery->info.query.q.select.list; attr != NULL && col != NULL;
+       attr = attr->next, col = col->next)
+    {
+      /* set spec_id for mq_lambda */
+      attr->info.name.spec_id = spec_id;
+    }
+
+  for (term = where; term != NULL && !skips; term = term->next)
+    {
+      save_next = term->next;
+      term->next = NULL;
+
+      if (mq_is_numbering_column_referenced (parser, subquery, term, class_spec, class_, MQ_COL_NUMBERING))
+	{
+	  /* read the term as merging would write it */
+	  copy = parser_copy_tree (parser, term);
+	  if (copy != NULL)
+	    {
+	      copy = mq_lambda (parser, copy, attributes, subquery->info.query.q.select.list);
+	    }
+	  skips = (copy == NULL || mq_numbering_term_skips_rows (parser, copy, subquery->info.query.q.select.from));
+	  if (copy != NULL)
+	    {
+	      parser_free_tree (parser, copy);
+	    }
+	}
+
+      term->next = save_next;
+    }
+
+  return skips;
+}
+
+/*
  * mq_is_rownum_only_predicate () - check if predicates only have rownum
  *   return: bool
  *   parser(in):
@@ -4902,7 +5570,12 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
  *
  * Note:
  *                arg1            op             arg2
- *              rownum          '= > <'        no restriction
+ *              rownum          '= > <'        no column of the subquery
+ *
+ *   Merging moves these terms to the numbering predicate of the merged query, which the executor evaluates as a
+ *   scan range (it stops at the first false after a true) and not on the values of each row. A term comparing
+ *   the numbering with a column which changes from row to row is therefore not a rownum only predicate. A column of
+ *   an outer query (in a correlated subquery) is the same for every row.
  */
 bool
 mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by,
@@ -5020,6 +5693,14 @@ mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * 
 
       /* check rownum and constant */
       if (!(PT_IS_INSTNUM (arg1) || PT_IS_INSTNUM (arg2) || PT_IS_ORDERBYNUM (arg1) || PT_IS_ORDERBYNUM (arg2)))
+	{
+	  result = false;
+	  break;
+	}
+
+      /* the other operand must not read a column of the subquery */
+      if (mq_has_column_of_specs (parser, (PT_IS_INSTNUM (arg1) || PT_IS_ORDERBYNUM (arg1)) ? arg2 : arg1,
+				  subquery->info.query.q.select.from))
 	{
 	  result = false;
 	  break;
@@ -7363,6 +8044,13 @@ mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
 
 	  /* reset IDs and recompile paths */
 	  mq_reset_ids_in_statement (parser, select_statement);
+
+	  /* the USING INDEX clause stays in the derived table, where mq_translate_local () does not look for it */
+	  if (select_statement != NULL && !pt_has_error (parser)
+	      && mq_resolve_n_check_using_index (parser, select_statement, true) == NULL)
+	    {
+	      return NULL;
+	    }
 	}
     }
 
@@ -7373,6 +8061,12 @@ mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
        * and keep the parent statement for the analytics */
       mq_rewrite_aggregate_as_derived (parser, select_statement);
       mq_reset_ids_in_statement (parser, select_statement);
+
+      /* the USING INDEX clause moved to the derived table, where mq_translate_local () does not look for it */
+      if (!pt_has_error (parser) && mq_resolve_n_check_using_index (parser, select_statement, true) == NULL)
+	{
+	  return NULL;
+	}
     }
 
   return select_statement;
@@ -8346,7 +9040,9 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
  * mq_resolve_n_check_using_index () - check and resolve the using index clause
  *   return: PT_NODE *
  *   parser(in): parser environment
- *   aggregate_rewrote_as_derived(in): 
+ *   aggregate_rewrote_as_derived(in): the statement was rewritten to select from a derived table, which keeps the
+ *                                     USING INDEX clause (mq_rewrite_aggregate_as_derived (),
+ *                                     mq_rewrite_order_dependent_query ())
  *   statement(in): 
  */
 static PT_NODE *
@@ -12573,6 +13269,21 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 
   if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
     {
+      /* The check option part is not a join condition: in the ON clause it would only filter the rows to join and
+       * a row which is updated to violate it would be stored. Keep it as a check, as for the other join types. */
+      if (check_where_part)
+	{
+	  if (class_check_part && class_check_part->node_type == PT_EXPR)
+	    {
+	      class_check_part->info.expr.paren_type = 1;
+	    }
+	  if ((*check_where_part) && (*check_where_part)->node_type == PT_EXPR)
+	    {
+	      (*check_where_part)->info.expr.paren_type = 1;
+	    }
+	  *check_where_part = parser_append_node (parser_copy_tree_list (parser, class_check_part), *check_where_part);
+	}
+
       /* handle is a where parts of view sub-querys */
       if (specptr)
 	{
@@ -12629,12 +13340,6 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 				parser_append_node (parser_copy_tree_list (parser, class_where_part),
 						    newspec->info.spec.on_cond);
 			    }
-			}
-		      if (check_where_part)
-			{
-			  newspec->info.spec.on_cond =
-			    parser_append_node (parser_copy_tree_list (parser, class_check_part),
-						newspec->info.spec.on_cond);
 			}
 		      spec->info.spec.on_cond = NULL;
 		      parser_walk_tree (parser, newspec->info.spec.on_cond, mq_mark_location,
@@ -13744,6 +14449,97 @@ mq_lambda_node_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int
 
 
 /*
+ * mq_remove_constant_sort_specs() - remove the sort specs of an analytic function that became a constant
+ *   return: the list without them
+ *   parser(in):
+ *   list(in): PARTITION BY or ORDER BY list of an analytic function
+ *   select_list(in): select list of the analytic function's query
+ *
+ * NOTE: pt_check_analytic_function () replaced the sort expressions which match a select list item with the position
+ * of the item, a PT_VALUE with pos_descr.pos_no set. A PT_VALUE without a position is a constant column of a view or
+ * a derived table, substituted for its name; the select list item of a position can be one too, or a constant
+ * expression. A constant does not order the rows, and the first would be read as a position.
+ */
+static PT_NODE *
+mq_remove_constant_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list, PT_NODE * select_list)
+{
+  PT_NODE *item, *next, *expr, *col;
+  PT_NODE *head = NULL, *tail = NULL;
+
+  for (item = list; item != NULL; item = next)
+    {
+      next = item->next;
+      item->next = NULL;
+
+      expr = (item->node_type == PT_SORT_SPEC) ? item->info.sort_spec.expr : NULL;
+      if (expr != NULL && expr->node_type == PT_VALUE)
+	{
+	  if (item->info.sort_spec.pos_descr.pos_no <= 0)
+	    {
+	      parser_free_tree (parser, item);
+	      continue;
+	    }
+
+	  col = pt_get_node_from_list (select_list, item->info.sort_spec.pos_descr.pos_no - 1);
+	  if (col != NULL && pt_is_const_expr_node (col))
+	    {
+	      parser_free_tree (parser, item);
+	      continue;
+	    }
+	}
+
+      if (tail == NULL)
+	{
+	  head = item;
+	}
+      else
+	{
+	  tail->next = item;
+	}
+      tail = item;
+    }
+
+  return head;
+}
+
+/*
+ * mq_remove_analytic_constant_sort_specs() - remove the constant sort specs of the analytic functions found in
+ *                                            node_list
+ *   return:
+ *   parser(in):
+ *   node_list(in): nodes in which analytic functions are searched for
+ *   select_list(in): select list of the query
+ *
+ * NOTE: An analytic function can be nested in an expression or a function, as mq_update_analytic_pos () searches.
+ */
+static void
+mq_remove_analytic_constant_sort_specs (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * select_list)
+{
+  PT_NODE *col;
+
+  for (col = node_list; col != NULL; col = col->next)
+    {
+      if (PT_IS_ANALYTIC_NODE (col))
+	{
+	  col->info.function.analytic.partition_by =
+	    mq_remove_constant_sort_specs (parser, col->info.function.analytic.partition_by, select_list);
+	  col->info.function.analytic.order_by =
+	    mq_remove_constant_sort_specs (parser, col->info.function.analytic.order_by, select_list);
+	}
+      else if (PT_IS_EXPR_NODE (col))
+	{
+	  mq_remove_analytic_constant_sort_specs (parser, col->info.expr.arg1, select_list);
+	  mq_remove_analytic_constant_sort_specs (parser, col->info.expr.arg2, select_list);
+	  mq_remove_analytic_constant_sort_specs (parser, col->info.expr.arg3, select_list);
+	}
+      else if (PT_IS_FUNCTION (col))
+	{
+	  mq_remove_analytic_constant_sort_specs (parser, col->info.function.arg_list, select_list);
+	}
+    }
+}
+
+/*
  * mq_lambda_node() - applies the lambda test to the node passed to it,
  *             and conditionally substitutes a copy of its corresponding tree
  *   return:
@@ -13906,6 +14702,12 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 	{
 	  parser_free_tree (parser, result->data_type);
 	  result->data_type = parser_copy_tree_list (parser, dt2);
+	}
+      /* a constant substituted for a name is not a sort key of an analytic function */
+      if (PT_SELECT_INFO_IS_FLAGED (result, PT_SELECT_INFO_HAS_ANALYTIC))
+	{
+	  mq_remove_analytic_constant_sort_specs (parser, result->info.query.q.select.list,
+						  result->info.query.q.select.list);
 	}
       /* pop the extra spec frame and add any extra specs to the from list */
       spec_frame = lambda_arg->spec_frames;
@@ -16508,28 +17310,30 @@ static void
 mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_query)
 {
   bool is_index_ss, is_index_ls, is_use_hash, is_no_use_hash;
+  PT_HINT_ENUM src_hint;
 
   if (dest_query->node_type == PT_SELECT)
     {
       is_index_ss = dest_query->info.query.q.select.hint & PT_HINT_INDEX_SS;
       is_index_ls = dest_query->info.query.q.select.hint & PT_HINT_INDEX_LS;
 
+      /* src_query can be the cached definition of a view, which later uses of the view read again. Hints are dropped
+       * from a local copy, never from src_query itself. */
+      src_hint = src_query->info.query.q.select.hint;
+
       /* remove some hints if there are multiple tables.  */
       if (dest_query->info.query.q.select.from->next != NULL)
 	{
 	  /* ignore ordered hint */
-	  if (src_query->info.query.q.select.hint & PT_HINT_ORDERED)
-	    {
-	      src_query->info.query.q.select.hint &= ~PT_HINT_ORDERED;
-	    }
-	  if (src_query->info.query.q.select.hint & PT_HINT_LEADING
-	      && dest_query->info.query.q.select.hint & PT_HINT_LEADING)
+	  src_hint = (PT_HINT_ENUM) (src_hint & ~PT_HINT_ORDERED);
+
+	  if (dest_query->info.query.q.select.hint & PT_HINT_LEADING)
 	    {
 	      /* ignore leading hint */
-	      src_query->info.query.q.select.hint &= ~PT_HINT_LEADING;
+	      src_hint = (PT_HINT_ENUM) (src_hint & ~PT_HINT_LEADING);
 	    }
 	}
-      if (src_query->info.query.q.select.hint & PT_HINT_LEADING)
+      if (src_hint & PT_HINT_LEADING)
 	{
 	  dest_query->info.query.q.select.leading =
 	    parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.leading),
@@ -16537,8 +17341,7 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
 	}
 
       /* merge HINT of vclass spec */
-      dest_query->info.query.q.select.hint =
-	(PT_HINT_ENUM) (dest_query->info.query.q.select.hint | src_query->info.query.q.select.hint);
+      dest_query->info.query.q.select.hint = (PT_HINT_ENUM) (dest_query->info.query.q.select.hint | src_hint);
 
       dest_query->info.query.q.select.use_nl =
 	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_nl),

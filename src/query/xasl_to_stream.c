@@ -3695,6 +3695,7 @@ xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_pr
   ptr = or_pack_int (ptr, build_list_proc->g_hash_eligible);
 
   ptr = or_pack_int (ptr, build_list_proc->g_first_tuple);
+  ptr = or_pack_int (ptr, build_list_proc->g_order_free);
   ptr = or_pack_int (ptr, build_list_proc->g_hkey_size);
 
   offset = xts_save_regu_variable_list (build_list_proc->g_hk_scan_regu_list);
@@ -5229,6 +5230,10 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
   ptr = or_pack_int (ptr, indx_info->orderby_skip);
 
   ptr = or_pack_int (ptr, indx_info->groupby_skip);
+
+  ptr = or_pack_int (ptr, indx_info->analytic_sort_cols);
+
+  ptr = or_pack_int (ptr, indx_info->analytic_desc_cols);
 
   ptr = or_pack_int (ptr, indx_info->use_iss);
 
@@ -6905,6 +6910,7 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
 	   + OR_INT_SIZE	/* g_with_rollup */
 	   + OR_INT_SIZE	/* g_hash_eligible */
 	   + OR_INT_SIZE	/* g_first_tuple */
+	   + OR_INT_SIZE	/* g_order_free */
 	   + OR_INT_SIZE	/* g_hkey_size */
 	   + OR_INT_SIZE	/* g_func_count */
 	   + PTR_SIZE		/* g_agg_list */
@@ -7669,6 +7675,8 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 	   + OR_INT_SIZE	/* use_desc_index */
 	   + OR_INT_SIZE	/* orderby_skip */
 	   + OR_INT_SIZE	/* groupby_skip */
+	   + OR_INT_SIZE	/* analytic_sort_cols */
+	   + OR_INT_SIZE	/* analytic_desc_cols */
 	   + OR_INT_SIZE	/* use_iss boolean (int) */
 	   + OR_INT_SIZE	/* ils_prefix_len (int) */
 	   + OR_INT_SIZE	/* func_idx_col_id (int) */

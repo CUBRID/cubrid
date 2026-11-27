@@ -363,6 +363,7 @@ extern int net_server_start (const char *name);
 /* Misc */
 extern const char *get_capability_string (int cap, int cap_type);
 extern const char *get_net_request_name (int request);
+extern bool net_request_is_no_reply (int request);
 
 typedef enum
 {
