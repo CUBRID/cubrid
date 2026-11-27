@@ -6907,43 +6907,6 @@ pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, D
 }
 
 /*
- * pt_range_join_to_eq () - turn a key range of one '=' on another column back into '='
- *   return: void
- *   parser(in):
- *   term(in/out): the disjunct pt_fold_const_expr () left alone when the ones before it folded to false
- *
- * Note: the rewrites do not make a RANGE of a lone '=' term (qo_convert_to_range ()), but make one of a disjunct of
- *	 an OR. When the disjuncts before it fold to false, (3 = 2 or w2.c range (x.c =)) leaves w2.c range (x.c =),
- *	 which the planner takes for an equi-join term (QO_TERM_EQUAL_OP) while the hash keys of a hash join or of a
- *	 hash list scan are made from the operands of '=' only. A bound that is a constant is left as it is: a key
- *	 range on one column, not a join term.
- *	 This fold is the only known way such a term is made. A rewrite that leaves a lone join RANGE in another way
- *	 fails the same: "generate var" in release, the assert of qo_init_projection_info () in debug.
- */
-static void
-pt_range_join_to_eq (PARSER_CONTEXT * parser, PT_NODE * term)
-{
-  PT_NODE *range;
-
-  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (term, PT_RANGE) || term->or_next != NULL)
-    {
-      return;
-    }
-
-  range = term->info.expr.arg2;
-  if (range == NULL || range->or_next != NULL || !PT_IS_EXPR_NODE_WITH_OPERATOR (range, PT_BETWEEN_EQ_NA)
-      || range->info.expr.arg1 == NULL || PT_IS_CONST (range->info.expr.arg1))
-    {
-      return;
-    }
-
-  term->info.expr.op = PT_EQ;
-  term->info.expr.arg2 = range->info.expr.arg1;
-  range->info.expr.arg1 = NULL;
-  parser_free_tree (parser, range);
-}
-
-/*
  * pt_where_type () - Test for constant folded where clause,
  * 		      and fold as necessary
  *   return:
@@ -19565,7 +19528,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  has_error = true;
 		  goto end;
 		}
-	      pt_range_join_to_eq (parser, result);
 	    }
 	}
     }
@@ -19600,10 +19562,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    }
 
 	  result = parser_copy_tree_list (parser, result);
-	  if (result != NULL)
-	    {
-	      pt_range_join_to_eq (parser, result);
-	    }
 	}
 
 #if 0

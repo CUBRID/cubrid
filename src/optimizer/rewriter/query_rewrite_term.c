@@ -2108,8 +2108,9 @@ qo_unmark_substituted_function_index (PARSER_CONTEXT * parser, PT_NODE * node, v
  *   location(in): the location of the term; 0 for WHERE, n for the ON condition of the n-th spec
  *
  * Note: the spec is the null-supplying side of an outer join when it is the inner of a LEFT OUTER, or when a spec
- *	 after it opens a RIGHT OUTER; the first such join pads it. The ON condition of that join, and of the joins
- *	 before it, still reads its real rows; the WHERE clause and the ON conditions after it may read the NULL row.
+ *	 after it in the same join tree opens a RIGHT OUTER; the first such join pads it. A comma ends the join tree
+ *	 (mq_is_outer_join_spec () stops there too). The ON condition of that join, and of the joins before it, still
+ *	 reads its real rows; the WHERE clause and the ON conditions after it may read the NULL row.
  */
 static bool
 qo_null_padded_at (PT_NODE * spec, short location)
@@ -2125,6 +2126,10 @@ qo_null_padded_at (PT_NODE * spec, short location)
     {
       for (next_spec = spec->next; next_spec != NULL; next_spec = next_spec->next)
 	{
+	  if (next_spec->info.spec.join_type == PT_JOIN_NONE)
+	    {
+	      break;
+	    }
 	  if (next_spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER
 	      || next_spec->info.spec.join_type == PT_JOIN_FULL_OUTER)
 	    {
@@ -2322,13 +2327,16 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		}
 
 	      /* if arg2 is derived alias col, get its corresponding constant column from derived-table. the term is
-	       * dropped for its copy with the constant in place of the column, which is right only where the column
-	       * holds the constant: not where an outer join may give the column a NULL (y.c = y.c would become
-	       * 5 = 5, true for the NULL row it must filter out) */
+	       * dropped for its copy with the constant in place of the column. where an outer join may give the column
+	       * a NULL, only a term on a column of another spec keeps its NULL test: the copy is saved as a join term
+	       * in its first form below (t1.c2 = y.c2 stays, next to t1.c2 = 5). a term on the derived table alone
+	       * loses it (y.c = y.c would become 5 = 5, true for the NULL row it must filter out) */
 	      if (spec && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
 		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT
 		  && !derived_table->info.query.q.select.single_table_opt
-		  && !qo_null_padded_at (spec, expr->info.expr.location))
+		  && !(qo_null_padded_at (spec, expr->info.expr.location)
+		       && !(expr->info.expr.op == PT_EQ && pt_is_attr (arg1)
+			    && pt_get_end_path_node (arg1)->info.name.spec_id != spec->info.spec.id)))
 		{
 		  /* traverse as_attr_list */
 		  for (attr = spec->info.spec.as_attr_list, idx = 0; attr; attr = attr->next, idx++)
