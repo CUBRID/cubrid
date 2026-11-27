@@ -1280,7 +1280,7 @@ static void btree_print_space (FILE * fp, int n);
 static int btree_delete_meta_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, int slot_id);
 static int btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R);
 static int btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R,
-			     INT16 p_slot_id, VPID * child_vpid, BTREE_MERGE_STATUS status);
+			     PAGE_PTR next_page, INT16 p_slot_id, VPID * child_vpid, BTREE_MERGE_STATUS status);
 static int btree_node_size_uncompressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
 static BTREE_MERGE_STATUS btree_node_mergeable (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR L, PAGE_PTR R);
 static DB_VALUE *btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, int *mid_slot,
@@ -12391,7 +12391,7 @@ exit_on_error:
  *   P(in): Page pointer for the parent page of page Q
  *   Q(in): Page pointer for the child page of P that will be merged
  *   R(in): Page pointer for the left or right sibling of page Q
- *   next_page(in):
+ *   next_page(in): the leaf after the right page, WRITE latched by the caller; NULL when there is none
  *   P_vpid(in): Page identifier for page P
  *   Q_vpid(in): Page identifier for page Q
  *   R_vpid(in): Page identifier for page R
@@ -12408,7 +12408,7 @@ exit_on_error:
  */
 static int
 btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR left_pg, PAGE_PTR right_pg,
-		  INT16 p_slot_id, VPID * child_vpid, BTREE_MERGE_STATUS status)
+		  PAGE_PTR next_page, INT16 p_slot_id, VPID * child_vpid, BTREE_MERGE_STATUS status)
 {
   int left_cnt, right_cnt;
   int i, ret = NO_ERROR;
@@ -12437,8 +12437,6 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   int merge_idx = 0;
 
   PGSLOTID sp_id;
-
-  PAGE_PTR next_page_after_merged = NULL;
 
   BTREE_NODE_HEADER *left_header = NULL;
   BTREE_NODE_HEADER *right_header = NULL;
@@ -12898,20 +12896,10 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
    ***  STEP 12: update link for next leaf node after the
    ***		 merged nodes to point to the left page.
    ***********************************************************/
-  ret = btree_get_next_page (thread_p, left_pg, &next_page_after_merged);
-  if (ret != NO_ERROR)
-    {
-      /* the merge is not committed with the next leaf still linked to the freed page */
-      goto exit_on_error;
-    }
-  if (next_page_after_merged != NULL)
+  if (next_page != NULL)
     {
       /* Update previous link. */
-#if !defined (NDEBUG)
-      (void) pgbuf_check_page_ptype (thread_p, next_page_after_merged, PAGE_BTREE);
-#endif /* !NDEBUG */
-      ret = btree_set_vpid_previous_vpid (thread_p, btid, next_page_after_merged, left_vpid);
-      pgbuf_unfix_and_init (thread_p, next_page_after_merged);
+      ret = btree_set_vpid_previous_vpid (thread_p, btid, next_page, left_vpid);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -25015,8 +25003,8 @@ btree_get_next_page_vpid (THREAD_ENTRY * thread_p, PAGE_PTR leaf_page, VPID * ne
  *
  * NOTE: a caller must not go on after a failed fix: the next leaf's previous link would stay on the old neighbor, and
  *       a descending scan stops there with ER_BTREE_CORRUPT_PREV_LINK (CBRD-28426).
- *       The fix waits also in a transaction that does not wait (lock timeout 0): its caller, a split or a merge, has
- *       changed its pages already and could only undo them on a refusal.
+ *       The fix waits also in a transaction that does not wait (lock timeout 0): a split has changed its pages
+ *       already and could only undo them on a refusal, and a merge would be skipped for every scan on the next leaf.
  */
 static int
 btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PAGE_PTR * next_page)
@@ -36899,6 +36887,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   VPID child_vpid;		/* VPID of next child by following key argument. */
   VPID child_vpid_after_merge;	/* VPID of next by following key argument after merge is done. */
   PAGE_PTR child_page = NULL;	/* Next page by following key argument. */
+  PAGE_PTR next_page = NULL;	/* Leaf after the right page to merge. */
   BTREE_MERGE_STATUS merge_status;	/* Status that tells when nodes can be merged. */
   bool need_root_merge = false;	/* Set to true when root can be merged. */
   bool force_root_merge = false;	/* Set to true when root must be merged. */
@@ -37331,7 +37320,25 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 		    }
 		}
 	      /* Are all pages successfully write latched? */
-	      if (error_code == ER_PAGE_LATCH_PROMOTE_FAIL)
+	      if (error_code == NO_ERROR && *crt_page != NULL && child_page != NULL && right_page != NULL)
+		{
+		  /* The merge sets the previous link of the leaf after the right page. That leaf is fixed here, before
+		   * anything is changed: a latch that is not given in time then costs the merge only, as a latch that
+		   * is not promoted does. Fixed after the changes, it undid them and failed the removal of the key,
+		   * which vacuum does not try again (CBRD-28426). */
+		  error_code = btree_get_next_page (thread_p, right_page, &next_page);
+		  if (error_code == ER_LK_PAGE_TIMEOUT || error_code == ER_LK_UNILATERALLY_ABORTED)
+		    {
+		      er_clear ();
+		      error_code = NO_ERROR;
+		      merge_status = BTREE_MERGE_NO;
+		    }
+		}
+	      if (merge_status == BTREE_MERGE_NO)
+		{
+		  /* The next leaf is busy. Merge is skipped. Fall through. */
+		}
+	      else if (error_code == ER_PAGE_LATCH_PROMOTE_FAIL)
 		{
 		  /* Failed to promote all latches to exclusive. */
 		  if (merge_status != BTREE_MERGE_TRY)
@@ -37377,12 +37384,16 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
 		  /* Merge children and update parent. */
 		  error_code =
-		    btree_merge_node (thread_p, btid_int, *crt_page, child_page, right_page, search_key->slotid + 1,
-				      &child_vpid_after_merge, merge_status);
+		    btree_merge_node (thread_p, btid_int, *crt_page, child_page, right_page, next_page,
+				      search_key->slotid + 1, &child_vpid_after_merge, merge_status);
 		  if (error_code != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
 		      goto error;
+		    }
+		  if (next_page != NULL)
+		    {
+		      pgbuf_unfix_and_init (thread_p, next_page);
 		    }
 
 		  btree_delete_log (delete_helper, "Merged nodes into left. \n"
@@ -37401,14 +37412,16 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 		  (void) spage_check_num_slots (thread_p, child_page);
 #endif
 
-		  /* Deallocate right page. */
-		  pgbuf_unfix_and_init (thread_p, right_page);
+		  /* Deallocate right page. The page stays latched until file_dealloc () has returned: an abort of this
+		   * system operation restores the next leaf's previous link before the right page's level, and a
+		   * descending scan that reads the link between the two must wait for the page, not see it marked. */
 		  error_code = file_dealloc (thread_p, &btid_int->sys_btid->vfid, &right_vpid, FILE_BTREE);
 		  if (error_code != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
 		      goto error;
 		    }
+		  pgbuf_unfix_and_init (thread_p, right_page);
 
 		  log_sysop_commit (thread_p);
 		  is_system_op_started = false;
@@ -37453,6 +37466,10 @@ error:
   if (right_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, right_page);
+    }
+  if (next_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, next_page);
     }
   if (child_page != NULL)
     {
