@@ -6611,7 +6611,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 {
   PARSER_CONTEXT *parser;
   PT_NODE *term_expr, *pred_node;
-  PT_NODE *outer_part, *inner_part;
+  PT_NODE *outer_part, *inner_part, *left_part, *right_part;
   PT_NODE *name_list;
   PT_NODE *hash_key = NULL;
 
@@ -6718,24 +6718,28 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 
 	  term_expr = QO_TERM_PT_EXPR (term);
 
+	  /* besides '=', the mergeable terms include a RANGE of one equality range (expr_is_mergable ()),
+	   * whose right part is the bound of the range */
+	  left_part = pt_left_part (term_expr);
+	  right_part = pt_right_part (term_expr);
 	  if (term_expr->info.expr.op == PT_RANGE)
 	    {
-	      /* impossible case */
-	      assert_release_error (false);
-	      goto error_exit;
+	      assert (right_part != NULL && right_part->or_next == NULL
+		      && right_part->info.expr.op == PT_BETWEEN_EQ_NA);
+	      right_part = right_part->info.expr.arg1;
 	    }
 
-	  qo_expr_segs (env, pt_left_part (term_expr), &temp_segs_set);
+	  qo_expr_segs (env, left_part, &temp_segs_set);
 
 	  if (bitset_intersects (&temp_segs_set, &outer_plan->info->projected_segs))
 	    {
-	      outer_part = pt_left_part (term_expr);
-	      inner_part = pt_right_part (term_expr);
+	      outer_part = left_part;
+	      inner_part = right_part;
 	    }
 	  else if (bitset_intersects (&temp_segs_set, &inner_plan->info->projected_segs))
 	    {
-	      inner_part = pt_left_part (term_expr);
-	      outer_part = pt_right_part (term_expr);
+	      inner_part = left_part;
+	      outer_part = right_part;
 	    }
 	  else
 	    {

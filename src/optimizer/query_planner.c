@@ -12206,10 +12206,20 @@ qo_can_hash_terms (QO_ENV * env, BITSET * terms)
 	  return false;
 	}
 
+      /* besides '=', the mergeable terms include a RANGE of one equality range (expr_is_mergable ()),
+       * whose right part is the bound of the range */
+      PT_NODE *left_part = expr->info.expr.arg1;
+      PT_NODE *right_part = expr->info.expr.arg2;
+      if (expr->info.expr.op == PT_RANGE)
+	{
+	  assert (right_part->or_next == NULL && right_part->info.expr.op == PT_BETWEEN_EQ_NA);
+	  right_part = right_part->info.expr.arg1;
+	}
+
       /* an OBJECT's values are OIDs on the server */
       const TP_DOMAIN *domain[2] = {
-	domain_key_value_domain (pt_xasl_node_to_domain (parser, expr->info.expr.arg1)),
-	domain_key_value_domain (pt_xasl_node_to_domain (parser, expr->info.expr.arg2))
+	domain_key_value_domain (pt_xasl_node_to_domain (parser, left_part)),
+	domain_key_value_domain (pt_xasl_node_to_domain (parser, right_part))
       };
       if (domain[0] == NULL || domain[1] == NULL)
 	{
@@ -12225,9 +12235,9 @@ qo_can_hash_terms (QO_ENV * env, BITSET * terms)
 	   *     collection type is not known to hash alike */
 	  bool has_collection = false;
 
-	  (void) parser_walk_tree (parser, expr->info.expr.arg1, qo_skip_subquery, NULL, qo_check_collection_type,
+	  (void) parser_walk_tree (parser, left_part, qo_skip_subquery, NULL, qo_check_collection_type,
 				   &has_collection);
-	  (void) parser_walk_tree (parser, expr->info.expr.arg2, qo_skip_subquery, NULL, qo_check_collection_type,
+	  (void) parser_walk_tree (parser, right_part, qo_skip_subquery, NULL, qo_check_collection_type,
 				   &has_collection);
 	  if (has_collection)
 	    {

@@ -3619,8 +3619,15 @@ pt_split_hash_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE *
 	      save_next = node->next;
 	      node->next = NULL;
 
+	      /* besides '=', the hash join terms include a RANGE of one equality range (expr_is_mergable ()),
+	       * whose right part is the bound of the range */
 	      arg1 = node->info.expr.arg1;
 	      arg2 = node->info.expr.arg2;
+	      if (node->info.expr.op == PT_RANGE)
+		{
+		  assert (arg2 != NULL && arg2->or_next == NULL && arg2->info.expr.op == PT_BETWEEN_EQ_NA);
+		  arg2 = arg2->info.expr.arg1;
+		}
 	      assert (arg1 != NULL && arg2 != NULL);
 
 	      UINTPTR spec_id[2], spec_id2[2];
