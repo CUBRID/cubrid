@@ -85,6 +85,8 @@ struct ws_repl_obj
   OID class_oid;
   char *packed_pkey_value;
   int packed_pkey_value_length;
+  char *rk_metadata;		/* points inside packed_pkey_value */
+  int rk_metadata_length;
   bool has_index;
   int operation;
   RECDES *recdes;
@@ -694,8 +696,9 @@ public:
    ~ws_repl ();
 
   int ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
-			       RECDES * recdes, int operation, bool has_index, char *packed_prior_value,
-			       int packed_prior_value_length, bool serial_issue);
+			       const char *rk_metadata, int rk_metadata_length, RECDES * recdes, int operation,
+			       bool has_index, char *packed_prior_value, int packed_prior_value_length,
+			       bool serial_issue);
   void ws_init_repl_objs (void);
   void ws_clear_all_repl_objs (void);
   void ws_free_repl_obj (WS_REPL_OBJ * obj);

@@ -1675,6 +1675,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   LOCK lock_mode = NULL_LOCK;
   bool own_sysop;
   bool flush_mark;
+  bool flush_mark_started = false;
 
   assert_release (serial_class_oidp != NULL && !OID_ISNULL (serial_class_oidp));
 
@@ -1698,6 +1699,9 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   flush_mark = own_sysop && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
   if (flush_mark)
     {
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+      /* Leave an existing flush mark to its owner. */
+      flush_mark_started = tdes != NULL && tdes->fl_mark_repl_recidx == -1;
       repl_start_flush_mark (thread_p);
     }
 
@@ -1728,20 +1732,33 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
       goto exit_on_error;
     }
 
+#if defined (SERVER_MODE)
   /* make replication log for the special type of update for serial */
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
+      const OR_INDEX *serial_index = NULL;
+      for (int i = 0; i < attr_info->last_classrepr->n_indexes; i++)
+	{
+	  const OR_INDEX *index = &attr_info->last_classrepr->indexes[i];
+	  if (BTID_IS_EQUAL (&index->btid, &serial_Cached_btid))
+	    {
+	      serial_index = index;
+	      break;
+	    }
+	}
+
       if (prior_val == NULL)
 	{
-	  repl_log_insert_serial_issue (thread_p, serial_class_oidp, serial_oidp, key_val);
+	  repl_log_insert_serial_issue (thread_p, serial_class_oidp, serial_oidp, key_val, serial_index);
 	}
       else
 	{
-	  repl_log_insert_serial_write_back (thread_p, serial_oidp, key_val, prior_val);
+	  repl_log_insert_serial_write_back (thread_p, serial_oidp, key_val, serial_index, prior_val);
 	}
     }
+#endif /* SERVER_MODE */
 
-  if (flush_mark)
+  if (flush_mark_started)
     {
       repl_end_flush_mark (thread_p, false);
     }
@@ -1755,7 +1772,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 
 exit_on_error:
 
-  if (flush_mark)
+  if (flush_mark_started)
     {
       repl_end_flush_mark (thread_p, true);
     }

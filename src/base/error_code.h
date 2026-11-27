@@ -1828,7 +1828,13 @@
 #define ER_SES_SESSION_RENEWED                      -1421
 #define ER_SES_LOGIN_NOT_RESTORED                   -1422
 
-#define ER_LAST_ERROR                               -1423
+#define ER_HA_REPLICATION_KEY_REQUIRED                      -1423
+#define ER_HA_REPLICATION_OPTION_CHANGE_NOT_ALLOWED         -1424
+#define ER_HA_FK_CONSTRAINT_VIOLATION                       -1425
+#define ER_HA_REPLICATION_CONSTRAINT_VIOLATION              -1426
+#define ER_HA_REPLICATION_CONSTRAINT_VIOLATION_IN_SUBCLASS  -1427
+
+#define ER_LAST_ERROR                               -1428
 
 /*
  * CAUTION!
