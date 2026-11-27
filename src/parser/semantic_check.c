@@ -19185,9 +19185,9 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
 
   if (fold_as == STATEMENT_SET_FOLD_AS_NULL && union_node->info.query.flag.stays_query)
     {
-      /* A set operation of a statement typed again with its bound values is not folded into a value, which would
-       * leave nothing to execute (db_execute_and_keep_statement_local ()). It folds into an empty operand instead,
-       * which returns no row; a SELECT with a false WHERE on top is not even sent to the server
+      /* A set operation of a statement, as compiled or typed again with its bound values, is not folded into a
+       * value, which would leave nothing to execute (db_mark_set_operations_stay_queries ()). It folds into an empty
+       * operand instead, which returns no row; a SELECT with a false WHERE on top is not even sent to the server
        * (do_select_internal ()). An operand already folded into a value cannot take its place. */
       if (arg1_is_null && PT_IS_QUERY_NODE_TYPE (arg1->node_type))
 	{
@@ -19690,6 +19690,21 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       SEMAN_COMPATIBLE_INFO *cinfo = NULL;
       int cinfo_cnt = 0;
       bool keep_distinct, as_derived;
+
+      /* The operand takes the place of the set operation, so its columns take the set operation's types, as they do
+       * when no operand is folded away (pt_eval_type ()): left as they are, an empty set operation that stays a
+       * query, or one left with an operand of other types, returned the types of that operand (CBRD-28385). A
+       * VALUES operand is typed with its rows and keeps its types, as before. */
+      if (PT_IS_QUERY_NODE_TYPE (union_node->info.query.q.union_.arg1->node_type)
+	  && PT_IS_QUERY_NODE_TYPE (union_node->info.query.q.union_.arg2->node_type)
+	  && !PT_IS_VALUE_QUERY (union_node->info.query.q.union_.arg1)
+	  && !PT_IS_VALUE_QUERY (union_node->info.query.q.union_.arg2))
+	{
+	  if (pt_check_union_compatibility (parser, union_node) == NULL)
+	    {
+	      return NULL;
+	    }
+	}
 
       if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
 	{

@@ -1799,6 +1799,13 @@ db_compile_statement_local (DB_SESSION * session)
    * shares one plan), before type checking types the binds */
   parser->host_var_classified = n_markers > 0 ? statement : NULL;
 
+  /* CBRD-28385: a set operation of the statement whose operands are all empty from constant conditions would fold into
+   * a value, which leaves no query to execute: csql reported Execute OK and a driver's executeQuery () refused the
+   * statement. Marked like the set operations of a statement typed again with its bound values, it folds into one of
+   * its empty operands, which returns no row (pt_check_union_is_foldable ()). Only the statement's own set operations
+   * are marked: one in a subquery, a derived table or an INSERT folds into a value as before (CBRD-27957). */
+  db_mark_set_operations_stay_queries (statement);
+
   /* do semantic check for the statement */
   statement_result = pt_compile (parser, statement);
   /* every planned statement resolves its names */
@@ -3241,10 +3248,15 @@ db_do_statement_with_savepoint (PARSER_CONTEXT * parser, PT_NODE * statement,
 }
 
 /*
- * db_mark_set_operations_stay_queries() - mark the set operations a statement typed again with its bound values is made
- *					    of, to fold into an empty operand instead of a value
+ * db_mark_set_operations_stay_queries() - mark the set operations and SELECTs a statement is made of, to fold into
+ *					    an empty operand instead of a value
  *   return: void
  *   node(in): the statement, or one of its operands
+ *
+ * Note: called when the statement is compiled (db_compile_statement_local (), CBRD-28385) and again on the copy that is
+ *	 typed with its bound values (db_execute_and_keep_statement_local ()): a statement left as a value is not a
+ *	 query, and nothing executes it. It does not go into a SELECT, so the set operations of its subqueries and
+ *	 derived tables are not marked.
  *
  * Note: the operands of the statement's set operations are PT_IS_UNION_QUERY (mq_set_union_query ()), so typing does
  *	 not fold a SELECT operand into a value. It folds a set operation whose operands are all empty, which would
@@ -3258,6 +3270,14 @@ db_mark_set_operations_stay_queries (PT_NODE * node)
       node->info.query.flag.stays_query = 1;
       db_mark_set_operations_stay_queries (node->info.query.q.union_.arg2);
       node = node->info.query.q.union_.arg1;
+    }
+
+  /* A SELECT in parentheses is typed as a subquery, which folds into a value when its WHERE turns out false only
+   * after its CTE is folded (pt_eval_type ()): the statement, or the operand its set operation folds into, would be
+   * left without a query. */
+  if (node != NULL && node->node_type == PT_SELECT)
+    {
+      node->info.query.flag.stays_query = 1;
     }
 }
 
