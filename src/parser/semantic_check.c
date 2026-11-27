@@ -11539,7 +11539,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 		  break;
 		}
 
-	      if (entity->info.spec.derived_table != NULL)
+	      /* The target of a remote sink has the derived shape, to take its columns. */
+	      if (entity->info.spec.derived_table != NULL
+		  && !PT_DBLINK_DML_IS_SINK (entity->info.spec.remote_server_name))
 		{
 		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DELETE_DERIVED_TABLE);
 		  break;
@@ -11931,7 +11933,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	      break;
 	    }
 
-	  if (entity->info.spec.derived_table != NULL || PT_SPEC_IS_CTE (entity))
+	  /* The target of a remote sink has the derived shape, to take its columns. */
+	  if ((entity->info.spec.derived_table != NULL && !PT_DBLINK_DML_IS_SINK (entity->info.spec.remote_server_name))
+	      || PT_SPEC_IS_CTE (entity))
 	    {
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
 	      break;
