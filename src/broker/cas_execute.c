@@ -12166,9 +12166,7 @@ refuse_stream_client_cannot_carry (T_BROKER_VERSION client_version, char flag)
 
   (void) stream_from_abort ();
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_SUPPORTED, 1,
-	  cas_shard_flag == ON ? "a statement that opens a stream cannot run through a SHARD broker"
-	  : "a statement that takes its data from the client, such as COPY ... FROM STDIN, runs only through the "
-	  "driver's call for it (CUBRIDCopyLoader in JDBC, cci_execute () with CCI_EXEC_STREAM in CCI)");
+	  cas_shard_flag == ON ? "a SHARD broker cannot carry a stream" : "the execute did not request the stream");
   return true;
 }
 
