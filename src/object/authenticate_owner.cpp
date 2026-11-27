@@ -34,6 +34,7 @@
 #include "schema_manager.h" /* sm_downcase_name */
 #include "object_primitive.h" /* pr_clear_value */
 #include "authenticate_access_auth.hpp" /* au_object_revoke_all_privileges */
+#include "network_interface_cl.h" /* serial_decache */
 
 #define UNIQUE_SAVEPOINT_CHANGE_TRIGGER_OWNER "cHANGEtRIGGERoWNER"
 
@@ -117,6 +118,9 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
    * then refetch it from server again.
    */
   assert (WS_ISDIRTY (serial_mop) == false);
+
+  /* before the row takes its new name, as in do_update_auto_increment_serial_on_rename () */
+  (void) serial_decache (ws_oid (serial_mop));
 
   ws_decache (serial_mop);
 
