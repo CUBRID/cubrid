@@ -1309,7 +1309,7 @@ static double qo_having_pred_selectivity (QO_HAVING_ENV * henv, PT_NODE * pred);
 static double
 qo_having_disjunct_selectivity (QO_HAVING_ENV * henv, PT_NODE * pred)
 {
-  PT_NODE *save_next, *save_or_next;
+  QO_DETACHED_LINK next_link, or_next_link;
   double p;
   int found = 0;
 
@@ -1320,10 +1320,8 @@ qo_having_disjunct_selectivity (QO_HAVING_ENV * henv, PT_NODE * pred)
     }
 
   /* look at this disjunct only; the walk and the WHERE estimate would follow next and or_next */
-  save_next = pred->next;
-  save_or_next = pred->or_next;
-  pred->next = NULL;
-  pred->or_next = NULL;
+  qo_detach_link (henv->env, &next_link, &pred->next);
+  qo_detach_link (henv->env, &or_next_link, &pred->or_next);
 
   (void) parser_walk_tree (QO_ENV_PARSER (henv->env), pred, qo_has_aggregate_pre, &found, NULL, NULL);
   if (found & QO_HAVING_HAS_GROUPBY_NUM)
@@ -1357,8 +1355,8 @@ qo_having_disjunct_selectivity (QO_HAVING_ENV * henv, PT_NODE * pred)
       p = (p < 0.0) ? QO_HAVING_DEFAULT_SELECTIVITY : MIN (MAX (p, DEFAULT_EQUAL_SELECTIVITY), 1.0);
     }
 
-  pred->next = save_next;
-  pred->or_next = save_or_next;
+  qo_reattach_link (henv->env, &or_next_link);
+  qo_reattach_link (henv->env, &next_link);
 
   return p;
 }
