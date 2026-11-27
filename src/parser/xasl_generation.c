@@ -7148,8 +7148,14 @@ pt_decide_position_collation (PARSER_CONTEXT * parser, int index, TP_DOMAIN * co
   if ((value == NULL || TP_DOMAIN_TYPE (value) == DB_TYPE_NULL) && !parser->flag.set_host_var)
     {
       /* a bound NULL is NULL at every execution of this plan; an unbound value is not: the plan of a PREPARE runs with
-       * the values of the later executions, which the client casts into the user position's domain first */
-      value = pt_host_var_position_domain (parser, user);
+       * the values of the later executions, which the client casts into a context-typed user position's domain first.
+       * A LEAVE string keeps the collation of the value, unknown before it comes: no stand-in */
+      const TP_DOMAIN *expected =
+	parser->host_var_expected_domains != NULL ? parser->host_var_expected_domains[user] : NULL;
+      if (pt_host_var_is_context_typed (expected) && !pt_host_var_is_leave_typed (expected))
+	{
+	  value = pt_host_var_position_domain (parser, user);
+	}
     }
   if (value == NULL || TP_DOMAIN_TYPE (value) == DB_TYPE_NULL || TP_DOMAIN_TYPE (value) == DB_TYPE_VARIABLE
       || TP_DOMAIN_TYPE (value) == DB_TYPE_UNKNOWN)
