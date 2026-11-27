@@ -56,6 +56,10 @@ struct la_task
   LOG_LSA dependency_lsa;	/* master's dependency from LOG_DUMMY_WSET_LABEL before COMMIT or independent
 				 * SYSOP_END; parallel dispatch waits until frontier reaches this LSA.
 				 * NULL = no dependency */
+  LOG_LSA prev_unit_lsa;	/* commit_lsa of the task submitted just before this one, set by
+				 * la_coordinator_submit_task; NULL for the first. A worker that applied that task
+				 * last in its open transaction knows no other worker applies anything between them,
+				 * so one marker range covers both. Units without items are never submitted. */
 
   /* Monotonic timestamps used only for parallel-apply statistics. */
   UINT64 created_ns;		/* coordinator assembled the task */

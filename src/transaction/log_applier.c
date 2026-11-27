@@ -581,9 +581,9 @@ static thread_local int la_sql_compile_depth = 0;
  * workers' statements waiting too: wait a bounded time, then abort and store the apply info at the next interval. */
 #define LA_COORDINATOR_WAIT_MSECS 1000
 
-/* commit LSAs the previous run marked as applied above last_committed_lsa, sorted; set at startup, read-only
- * while the workers run (see LA_APPLIED_TX_MARKER_NAME) */
-static LOG_LSA *la_Applied_tx_markers = NULL;
+/* ranges of commit LSAs the previous run marked as applied above last_committed_lsa, sorted by their first LSA and
+ * not overlapping; set at startup, read-only while the workers run (see LA_APPLIED_TX_MARKER_NAME) */
+static LA_LSA_RANGE *la_Applied_tx_markers = NULL;
 static int la_Applied_tx_marker_count = 0;
 /* every commit at or below it was applied by the previous run: the largest range marker loaded; NULL when none */
 static LOG_LSA la_Applied_tx_upto_lsa = LSA_INITIALIZER;
@@ -633,10 +633,10 @@ static int la_load_applied_tx_markers (void);
 static void la_free_applied_tx_markers (void);
 static bool la_applied_tx_marker_exists (const LOG_LSA * commit_lsa);
 static int la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * key_lsa,
-				     const LOG_LSA * lsas, int lsa_count, LA_STATS * stats);
+				     const LA_LSA_RANGE * ranges, int range_count, LA_STATS * stats);
 static void la_worker_end_context (LA_APPLY_WORKER_CONTEXT * context);
 static int la_delete_applied_tx_markers (const LOG_LSA * upto_lsa);
-static int la_batch_marker_append (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * lsa);
+static int la_batch_marker_append (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task);
 static int la_add_batch_markers (LA_APPLY_WORKER_CONTEXT * context, LA_STATS * stats);
 
 static bool la_ignore_on_error (int errid);
@@ -1180,7 +1180,8 @@ la_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int tra
    * commits, so they exist exactly when the data does (see LA_APPLIED_TX_MARKER_NAME). A single worker takes the
    * tasks in commit order (they are dispatched without parking or merging) and commits them all or none, so one
    * range marker up to the last task that applied a row covers its transaction. With several workers the tasks of
-   * one transaction are not consecutive, so each commit is listed. */
+   * one transaction need not be consecutive, so the commits are listed, as ranges of tasks that were submitted one
+   * right after the other (la_batch_marker_append). */
   if (result->error == NO_ERROR && total_rows > 0)
     {
       if (la_Info.worker_count == 1)
@@ -1190,8 +1191,14 @@ la_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int tra
 	}
       else
 	{
-	  result->error = la_batch_marker_append (context, &task->commit_lsa);
+	  result->error = la_batch_marker_append (context, task);
 	}
+    }
+  else
+    {
+      /* a task that applied nothing, or was skipped as already applied, is not listed; the next task starts a new
+       * range so that a range never covers it */
+      LSA_SET_NULL (&context->batch_run_last);
     }
 
   if (result->error != NO_ERROR)
@@ -1297,7 +1304,8 @@ la_worker_commit_batch (LA_APPLY_WORKER_CONTEXT * context, int task_count, unsig
     }
 
   context->batch_has_rows = false;
-  context->batch_lsa_count = 0;
+  context->batch_range_count = 0;
+  LSA_SET_NULL (&context->batch_run_last);
   context->tran_applied_tasks = 0;
 
   return NO_ERROR;
@@ -1315,7 +1323,8 @@ static void
 la_worker_abort_batch (LA_APPLY_WORKER_CONTEXT * context)
 {
   context->batch_has_rows = false;
-  context->batch_lsa_count = 0;
+  context->batch_range_count = 0;
+  LSA_SET_NULL (&context->batch_run_last);
   context->tran_applied_tasks = 0;
 
   (void) db_abort_transaction ();
@@ -3721,9 +3730,13 @@ la_delete_ha_apply_info (void)
  *   - a range marker (applied_lsas NULL): that commit and every commit before it. A single worker writes one per
  *     slave commit. It takes the commits in commit order and commits them all or none, so when its transaction
  *     commits, every commit up to the last one it applied is on the slave.
- *   - a list marker (applied_lsas set): exactly the commit LSAs in applied_lsas, written as "pageid:offset," in
- *     ascending order, at most LA_MARKER_MAX_LSAS_PER_ROW of them. Several workers write these: the commits in one
- *     worker's transaction are not consecutive, as other workers apply the ones in between.
+ *   - a list marker (applied_lsas set): exactly the commits in applied_lsas, in ascending order, at most
+ *     LA_MARKER_MAX_LSAS_PER_ROW LSAs of them. An entry is "pageid:offset," for one commit, or
+ *     "pageid:offset-pageid:offset," for every apply unit from the first LSA to the second: units the coordinator
+ *     submitted one right after the other and one worker applied in this transaction, so no other worker applied
+ *     anything between them (a unit without items is not submitted and has nothing to skip). Several workers write
+ *     these: the commits in one worker's transaction need not be consecutive, as other workers may apply the ones
+ *     in between. A chain that stays on one worker (one serial, one row) takes one range per slave commit.
  * Markers whose key is at or below the stored committed_lsa are deleted in bounded batches; any remaining ones are
  * ignored when loading markers.
  *
@@ -3741,8 +3754,8 @@ la_delete_ha_apply_info (void)
  */
 #define LA_APPLIED_TX_MARKER_NAME CT_HA_APPLIED_TX_MARKER_NAME
 
-/* Commit LSAs in one list marker. One is at most 27 characters of text (19 digits, ':', 5 digits, ','), so a row
- * stays well inside the smallest database page (4 KB). */
+/* LSAs in one list marker, a range counting two. One is at most 27 characters of text (19 digits, ':', 5 digits, and
+ * ',' or '-'), so a row stays well inside the smallest database page (4 KB). */
 #define LA_MARKER_MAX_LSAS_PER_ROW 100
 #define LA_MARKER_LSA_TEXT_MAX 27
 
@@ -3755,37 +3768,48 @@ la_lsa_compare (const void *a, const void *b)
   return LSA_LT (x, y) ? -1 : (LSA_EQ (x, y) ? 0 : 1);
 }
 
+/* orders LA_LSA_RANGE by the first LSA */
+static int
+la_lsa_range_compare (const void *a, const void *b)
+{
+  return la_lsa_compare (&((const LA_LSA_RANGE *) a)->first, &((const LA_LSA_RANGE *) b)->first);
+}
+
 /*
- * la_applied_tx_marker_set_add() - add one commit LSA to the loaded marker set, growing it as needed
+ * la_applied_tx_marker_set_add() - add one range of commits to the loaded marker set, growing it as needed
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
- *   lsa(in): commit LSA marked applied
+ *   first(in): first commit LSA of the range marked applied
+ *   last(in): last commit LSA of the range; equal to first for one commit
  *   capacity(in/out): allocated slots of la_Applied_tx_markers
  */
 static int
-la_applied_tx_marker_set_add (const LOG_LSA * lsa, int *capacity)
+la_applied_tx_marker_set_add (const LOG_LSA * first, const LOG_LSA * last, int *capacity)
 {
   if (la_Applied_tx_marker_count == *capacity)
     {
       int new_capacity = (*capacity == 0) ? 1024 : *capacity * 2;
-      LOG_LSA *grown = (LOG_LSA *) realloc (la_Applied_tx_markers, sizeof (LOG_LSA) * new_capacity);
+      LA_LSA_RANGE *grown = (LA_LSA_RANGE *) realloc (la_Applied_tx_markers, sizeof (LA_LSA_RANGE) * new_capacity);
 
       if (grown == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_LSA) * new_capacity);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_LSA_RANGE) * new_capacity);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       la_Applied_tx_markers = grown;
       *capacity = new_capacity;
     }
 
-  LSA_COPY (&la_Applied_tx_markers[la_Applied_tx_marker_count++], lsa);
+  LSA_COPY (&la_Applied_tx_markers[la_Applied_tx_marker_count].first, first);
+  LSA_COPY (&la_Applied_tx_markers[la_Applied_tx_marker_count].last, last);
+  la_Applied_tx_marker_count++;
 
   return NO_ERROR;
 }
 
 /*
- * la_applied_tx_marker_set_add_list() - add the commit LSAs of a list marker to the loaded marker set
- *   return: NO_ERROR, ER_OUT_OF_VIRTUAL_MEMORY, or ER_FAILED when the text is not a list of "pageid:offset,"
+ * la_applied_tx_marker_set_add_list() - add the commits of a list marker to the loaded marker set
+ *   return: NO_ERROR, ER_OUT_OF_VIRTUAL_MEMORY, or ER_SM_CORRUPTED when the text is not a list of
+ *           "pageid:offset," and "pageid:offset-pageid:offset," entries
  *   text(in): applied_lsas of the row
  *   capacity(in/out): allocated slots of la_Applied_tx_markers
  */
@@ -3800,18 +3824,39 @@ la_applied_tx_marker_set_add_list (const char *text, int *capacity)
       long long pageid;
       int offset;
       int consumed = 0;
-      LOG_LSA lsa;
+      LOG_LSA first, last;
 
-      if (sscanf (p, "%lld:%d,%n", &pageid, &offset, &consumed) != 2 || consumed == 0)
+      if (sscanf (p, "%lld:%d%n", &pageid, &offset, &consumed) != 2 || consumed == 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
 	  return ER_SM_CORRUPTED;
 	}
       p += consumed;
+      first.pageid = pageid;
+      first.offset = offset;
+      LSA_COPY (&last, &first);
 
-      lsa.pageid = pageid;
-      lsa.offset = offset;
-      error = la_applied_tx_marker_set_add (&lsa, capacity);
+      if (*p == '-')
+	{
+	  consumed = 0;
+	  if (sscanf (p + 1, "%lld:%d%n", &pageid, &offset, &consumed) != 2 || consumed == 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+	      return ER_SM_CORRUPTED;
+	    }
+	  p += 1 + consumed;
+	  last.pageid = pageid;
+	  last.offset = offset;
+	}
+
+      if (*p != ',' || LSA_LT (&last, &first))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+	  return ER_SM_CORRUPTED;
+	}
+      p++;
+
+      error = la_applied_tx_marker_set_add (&first, &last, capacity);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -3825,7 +3870,7 @@ la_applied_tx_marker_set_add_list (const char *text, int *capacity)
  * la_load_applied_tx_markers() - load the commits of this copied log marked applied above last_committed_lsa
  *   return: NO_ERROR or error code
  *
- * Note: runs at startup, before the workers start. The set of listed commits is sorted, and with the
+ * Note: runs at startup, before the workers start. The set of listed ranges is sorted, and with the
  *       largest range marker it is not changed until shutdown, so the workers read it without a lock
  *       (la_applied_tx_marker_exists). A row of a list marker may list commits at or below last_committed_lsa;
  *       they are skipped either way.
@@ -3932,12 +3977,12 @@ la_load_applied_tx_markers (void)
 
   if (la_Applied_tx_marker_count > 1)
     {
-      qsort (la_Applied_tx_markers, la_Applied_tx_marker_count, sizeof (LOG_LSA), la_lsa_compare);
+      qsort (la_Applied_tx_markers, la_Applied_tx_marker_count, sizeof (LA_LSA_RANGE), la_lsa_range_compare);
     }
 
   if (rows > 0)
     {
-      er_log_debug (ARG_FILE_LINE, "applied-tx markers loaded: %d rows, %d listed commits, range up to %lld|%d\n",
+      er_log_debug (ARG_FILE_LINE, "applied-tx markers loaded: %d rows, %d listed ranges, range up to %lld|%d\n",
 		    rows, la_Applied_tx_marker_count, LSA_AS_ARGS (&la_Applied_tx_upto_lsa));
     }
 
@@ -3960,7 +4005,8 @@ la_free_applied_tx_markers (void)
 
 /*
  * la_applied_tx_marker_exists() - whether the previous run committed this commit on the slave
- *   return: true if a range marker loaded at startup covers commit_lsa or a single or list marker names it
+ *   return: true if a range marker loaded at startup covers commit_lsa or a list marker names it or a range of it
+ *           holds it
  *   commit_lsa(in): commit LSA of the transaction
  */
 static bool
@@ -3968,23 +4014,21 @@ la_applied_tx_marker_exists (const LOG_LSA * commit_lsa)
 {
   int low = 0;
   int high = la_Applied_tx_marker_count - 1;
+  int found = -1;
 
   if (!LSA_ISNULL (&la_Applied_tx_upto_lsa) && LSA_LE (commit_lsa, &la_Applied_tx_upto_lsa))
     {
       return true;
     }
 
+  /* the last range that starts at or before commit_lsa; the ranges do not overlap, so only it can hold it */
   while (low <= high)
     {
       int mid = low + (high - low) / 2;
 
-      if (LSA_EQ (&la_Applied_tx_markers[mid], commit_lsa))
+      if (LSA_LE (&la_Applied_tx_markers[mid].first, commit_lsa))
 	{
-	  return true;
-	}
-
-      if (LSA_LT (&la_Applied_tx_markers[mid], commit_lsa))
-	{
+	  found = mid;
 	  low = mid + 1;
 	}
       else
@@ -3993,33 +4037,49 @@ la_applied_tx_marker_exists (const LOG_LSA * commit_lsa)
 	}
     }
 
-  return false;
+  return found >= 0 && LSA_LE (commit_lsa, &la_Applied_tx_markers[found].last);
 }
 
 /*
- * la_batch_marker_append() - remember a commit applied in the worker's open slave transaction for its list marker
+ * la_batch_marker_append() - remember a task applied in the worker's open slave transaction for its list marker
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
  *   context(in/out): the worker's apply context
- *   lsa(in): commit or SYSOP_END LSA that applied a row
+ *   task(in): the task that applied a row; its commit_lsa is the commit or SYSOP_END LSA
+ *
+ * Note: the task extends the last range when the task submitted just before it (prev_unit_lsa) is the last task
+ *       this worker applied in the transaction: no task was submitted between them, so no other worker applied
+ *       anything between them either. Otherwise it starts a range of its own.
  */
 static int
-la_batch_marker_append (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * lsa)
+la_batch_marker_append (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task)
 {
-  if (context->batch_lsa_count == context->batch_lsa_capacity)
+  if (context->batch_range_count > 0 && !LSA_ISNULL (&context->batch_run_last)
+      && LSA_EQ (&task->prev_unit_lsa, &context->batch_run_last))
     {
-      int capacity = context->batch_lsa_capacity == 0 ? 128 : context->batch_lsa_capacity * 2;
-      LOG_LSA *lsas = (LOG_LSA *) realloc (context->batch_lsas, sizeof (LOG_LSA) * capacity);
+      LSA_COPY (&context->batch_ranges[context->batch_range_count - 1].last, &task->commit_lsa);
+      LSA_COPY (&context->batch_run_last, &task->commit_lsa);
 
-      if (lsas == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_LSA) * capacity);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      context->batch_lsas = lsas;
-      context->batch_lsa_capacity = capacity;
+      return NO_ERROR;
     }
 
-  LSA_COPY (&context->batch_lsas[context->batch_lsa_count++], lsa);
+  if (context->batch_range_count == context->batch_range_capacity)
+    {
+      int capacity = context->batch_range_capacity == 0 ? 128 : context->batch_range_capacity * 2;
+      LA_LSA_RANGE *ranges = (LA_LSA_RANGE *) realloc (context->batch_ranges, sizeof (LA_LSA_RANGE) * capacity);
+
+      if (ranges == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_LSA_RANGE) * capacity);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      context->batch_ranges = ranges;
+      context->batch_range_capacity = capacity;
+    }
+
+  LSA_COPY (&context->batch_ranges[context->batch_range_count].first, &task->commit_lsa);
+  LSA_COPY (&context->batch_ranges[context->batch_range_count].last, &task->commit_lsa);
+  context->batch_range_count++;
+  LSA_COPY (&context->batch_run_last, &task->commit_lsa);
 
   return NO_ERROR;
 }
@@ -4029,9 +4089,9 @@ la_batch_marker_append (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * lsa)
  *   return: NO_ERROR or error code
  *   context(in/out): worker whose record pool owns the marker image until flush
  *   key_lsa(in): the largest commit LSA the row covers
- *   lsas(in): for a list marker, the commit LSAs in ascending order with key_lsa last; NULL for a range marker,
- *             covering every commit up to key_lsa
- *   lsa_count(in): number of lsas, at most LA_MARKER_MAX_LSAS_PER_ROW
+ *   ranges(in): for a list marker, the ranges of commits in ascending order with key_lsa ending the last; NULL for
+ *               a range marker, covering every commit up to key_lsa
+ *   range_count(in): number of ranges; they hold at most LA_MARKER_MAX_LSAS_PER_ROW LSAs, a range counting two
  *   stats(in/out): data-row statistics, excluding the internal marker
  *
  * Note: INSERT does not look up a row by key, so its unused lookup value is NULL. A marker flush error is fatal
@@ -4039,8 +4099,8 @@ la_batch_marker_append (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * lsa)
  *       record-pool slot.
  */
 static int
-la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * key_lsa, const LOG_LSA * lsas,
-			  int lsa_count, LA_STATS * stats)
+la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * key_lsa, const LA_LSA_RANGE * ranges,
+			  int range_count, LA_STATS * stats)
 {
   MOP class_mop;
   SM_CLASS *class_;
@@ -4058,26 +4118,35 @@ la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * key
   bool has_index;
 
   assert (context != NULL && key_lsa != NULL && stats != NULL);
-  assert (lsas == NULL || (lsa_count > 0 && lsa_count <= LA_MARKER_MAX_LSAS_PER_ROW));
+  assert (ranges == NULL || (range_count > 0 && range_count <= LA_MARKER_MAX_LSAS_PER_ROW));
 
   for (int i = 0; i < 4; i++)
     {
       db_make_null (&values[i]);
     }
 
-  if (lsas != NULL)
+  if (ranges != NULL)
     {
-      text = (char *) malloc (lsa_count * LA_MARKER_LSA_TEXT_MAX + 1);
+      text = (char *) malloc (2 * range_count * LA_MARKER_LSA_TEXT_MAX + 1);
       if (text == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  lsa_count * LA_MARKER_LSA_TEXT_MAX + 1);
+		  2 * range_count * LA_MARKER_LSA_TEXT_MAX + 1);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      for (int i = 0; i < lsa_count; i++)
+      for (int i = 0; i < range_count; i++)
 	{
-	  text_length += snprintf (text + text_length, LA_MARKER_LSA_TEXT_MAX + 1, "%lld:%d,",
-				   (long long) lsas[i].pageid, (int) lsas[i].offset);
+	  if (LSA_EQ (&ranges[i].first, &ranges[i].last))
+	    {
+	      text_length += snprintf (text + text_length, LA_MARKER_LSA_TEXT_MAX + 1, "%lld:%d,",
+				       (long long) ranges[i].first.pageid, (int) ranges[i].first.offset);
+	    }
+	  else
+	    {
+	      text_length += snprintf (text + text_length, 2 * LA_MARKER_LSA_TEXT_MAX + 1, "%lld:%d-%lld:%d,",
+				       (long long) ranges[i].first.pageid, (int) ranges[i].first.offset,
+				       (long long) ranges[i].last.pageid, (int) ranges[i].last.offset);
+	    }
 	}
     }
 
@@ -4183,30 +4252,49 @@ end:
  * Note: a single worker writes one range marker keyed by the last task that applied a row. A task it skipped as
  *       already applied may come after that one, but its LSA may be the key of a list marker an earlier run with
  *       several workers left, and a range marker with the same key would violate the unique key. With several
- *       workers, the commits the worker remembered are sorted and written LA_MARKER_MAX_LSAS_PER_ROW to a row as
- *       list markers, each row keyed by its largest commit. A commit is listed by the one worker that applied it
- *       and no run lists a commit it skipped, so the keys do not repeat.
+ *       workers, the ranges the worker remembered are sorted and written up to LA_MARKER_MAX_LSAS_PER_ROW LSAs to
+ *       a row as list markers, each row keyed by the last LSA of its last range. A commit is listed by the one
+ *       worker that applied it, a range never holds a task that applied nothing or was skipped, and no run lists a
+ *       commit it skipped, so the keys do not repeat.
  */
 static int
 la_add_batch_markers (LA_APPLY_WORKER_CONTEXT * context, LA_STATS * stats)
 {
   int error = NO_ERROR;
+  int i = 0;
 
   if (context->batch_has_rows)
     {
       error = la_add_applied_tx_marker (context, &context->batch_upto_lsa, NULL, 0, stats);
     }
 
-  if (error == NO_ERROR && context->batch_lsa_count > 1)
+  if (error == NO_ERROR && context->batch_range_count > 1)
     {
-      qsort (context->batch_lsas, context->batch_lsa_count, sizeof (LOG_LSA), la_lsa_compare);
+      qsort (context->batch_ranges, context->batch_range_count, sizeof (LA_LSA_RANGE), la_lsa_range_compare);
     }
 
-  for (int i = 0; error == NO_ERROR && i < context->batch_lsa_count; i += LA_MARKER_MAX_LSAS_PER_ROW)
+  while (error == NO_ERROR && i < context->batch_range_count)
     {
-      int n = MIN (LA_MARKER_MAX_LSAS_PER_ROW, context->batch_lsa_count - i);
+      int n = 0;
+      int lsas = 0;
 
-      error = la_add_applied_tx_marker (context, &context->batch_lsas[i + n - 1], &context->batch_lsas[i], n, stats);
+      /* a range takes two LSAs of the row, one commit one */
+      while (i + n < context->batch_range_count)
+	{
+	  const LA_LSA_RANGE *range = &context->batch_ranges[i + n];
+	  int need = LSA_EQ (&range->first, &range->last) ? 1 : 2;
+
+	  if (lsas + need > LA_MARKER_MAX_LSAS_PER_ROW)
+	    {
+	      break;
+	    }
+	  lsas += need;
+	  n++;
+	}
+
+      error = la_add_applied_tx_marker (context, &context->batch_ranges[i + n - 1].last, &context->batch_ranges[i], n,
+					stats);
+      i += n;
     }
 
   return error;

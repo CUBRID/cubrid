@@ -52,6 +52,15 @@ struct la_recdes_pool
   bool is_initialized;
 };
 
+/* Commit LSAs first..last of apply units read one right after the other: a marker covers every unit between them
+ * (see LA_APPLIED_TX_MARKER_NAME in log_applier.c). first == last for a single unit. */
+typedef struct la_lsa_range LA_LSA_RANGE;
+struct la_lsa_range
+{
+  LOG_LSA first;
+  LOG_LSA last;
+};
+
 /* State used by one worker while it reconstructs and applies records. Each worker owns one instance. */
 typedef struct la_apply_worker_context LA_APPLY_WORKER_CONTEXT;
 struct la_apply_worker_context
@@ -65,9 +74,13 @@ struct la_apply_worker_context
   /* markers of the open slave transaction, written just before it commits (la_add_batch_markers) */
   LOG_LSA batch_upto_lsa;	/* single worker: commit LSA of the last task that applied a row */
   bool batch_has_rows;		/* single worker: a task in the transaction applied a row */
-  LOG_LSA *batch_lsas;		/* commit LSAs to list, one per task that applied a row; used with several workers */
-  int batch_lsa_count;
-  int batch_lsa_capacity;
+  /* several workers: ranges of tasks that applied a row. A task joins the last range when the task submitted just
+   * before it is the last one this worker applied in the transaction. */
+  LA_LSA_RANGE *batch_ranges;
+  int batch_range_count;
+  int batch_range_capacity;
+  LOG_LSA batch_run_last;	/* commit LSA of the last task applied in the transaction, when it ends the last range;
+				 * NULL after a task that applied nothing, so the next task starts a new range */
   /* tasks that applied at least one item into the open slave transaction, the current one included; reset when
    * that transaction commits or rolls back. When the server rolls the transaction back on its own, these are the
    * tasks whose changes were lost with it. */

@@ -101,6 +101,9 @@ static_assert (LA_MAX_WORKER_COUNT <= 64, "la_Coordinator_pending_room_workers k
 /* the worker the last la_coordinator_route call had to send its task to but found with a full queue; -1 otherwise */
 static int la_Coordinator_route_full_worker = -1;
 
+/* commit_lsa of the last submitted task; the next one carries it as prev_unit_lsa */
+static LOG_LSA la_Coordinator_last_submitted_lsa = LSA_INITIALIZER;
+
 /* results la_coordinator_collect_results takes under one lock of the result queue */
 #define LA_COORDINATOR_COLLECT_BATCH 64
 
@@ -160,6 +163,7 @@ la_coordinator_initialize (const LA_COORDINATOR_CONFIG *config)
   la_Coordinator_live_worker_count = config->worker_count;
   la_Coordinator_next_worker = 0;
   la_Coordinator_pending_scan_valid = false;
+  LSA_SET_NULL (&la_Coordinator_last_submitted_lsa);
   la_Coordinator_pending_room_workers = 0;
 
   error = la_result_queue_init (config->commit_order_capacity);
@@ -1040,6 +1044,9 @@ la_coordinator_submit_task (LA_TASK *task, bool commit_order)
     {
       return error;
     }
+
+  LSA_COPY (&task->prev_unit_lsa, &la_Coordinator_last_submitted_lsa);
+  LSA_COPY (&la_Coordinator_last_submitted_lsa, &task->commit_lsa);
 
   if (commit_order)
     {
