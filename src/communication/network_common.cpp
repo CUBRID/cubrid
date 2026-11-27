@@ -57,6 +57,16 @@ get_net_request_name (int request)
 }
 
 /*
+ * net_request_is_no_reply () - whether the client sends the request with no reply
+ *   request(in): request constant
+ */
+bool
+net_request_is_no_reply (int request)
+{
+  return request == NET_SERVER_LOG_SET_INTERRUPT || request == NET_SERVER_LD_INTERRUPT;
+}
+
+/*
  * get_capability_string - for the purpose of error logging,
  *                         it translate cap into a word
  *
