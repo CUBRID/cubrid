@@ -3267,7 +3267,9 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
 
       if (DB_IS_NULL (&attrs[i].value))
 	{
-	  or_advance (buf_p, (*tp_Type_id_map[data_type]).disksize);
+	  /* write zeros: the record buffer is not initialized, so skipping the place would put
+	   * whatever the buffer held before into the row, on disk and in the log */
+	  or_pad (buf_p, (*tp_Type_id_map[data_type]).disksize);
 	  OR_CLEAR_BOUND_BIT (bound_bits, i);
 	}
       else
