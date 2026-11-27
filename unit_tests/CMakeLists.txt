@@ -47,6 +47,7 @@ option (UNIT_TEST_STREAM_SESSION "Unit testing: byte-stream transport consumer r
 option (UNIT_TEST_RADIX_SORT "Unit testing: radix run sorter")
 option (UNIT_TEST_SCOPE_EXIT "Unit testing: scope_exit guard")
 option (UNIT_TEST_BTREE_SORT_MERGE "Unit testing: merge run sorter")
+option (UNIT_TEST_CONNECTION "Unit testing: connection placement")
 
 message("  unit_tests/...")
 
@@ -152,6 +153,11 @@ if (UNIT_TESTS OR UNIT_TEST_BTREE_SORT_MERGE)
   message("    btree_sort_merge")
   add_subdirectory(btree_sort_merge)
 endif(UNIT_TESTS OR UNIT_TEST_BTREE_SORT_MERGE)
+
+if (UNIT_TESTS OR UNIT_TEST_CONNECTION)
+  message("    connection")
+  add_subdirectory(connection)
+endif(UNIT_TESTS OR UNIT_TEST_CONNECTION)
 
 #[[
 TODO compilation fails
