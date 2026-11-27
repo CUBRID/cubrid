@@ -446,8 +446,8 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
       break;
     case RVREPL_DATA_UPDATE:
       /*
-       * for the update case, this function is called before the heap
-       * file update, so we don't need to LSA for update log here.
+       * for the update case, the target LSA is not known yet; it is filled
+       * when the whole update has succeeded (see repl_add_update_lsa ()).
        */
       LSA_SET_NULL (&repl_rec->lsa);
       break;
