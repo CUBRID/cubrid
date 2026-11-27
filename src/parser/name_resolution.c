@@ -5251,8 +5251,9 @@ pt_dblink_remote_col_type (const S_REMOTE_COL_ATTR * attr)
 }
 
 /* A remote column of this type cannot be read through DBLink.
- * The scan has no conversion for its values. */
-static bool
+ * The scan has no conversion for its values.
+ * A remote DML sink refuses a key column of these types too (pt_dblink_dml_check_sink). */
+bool
 pt_dblink_type_is_unreadable (PT_TYPE_ENUM type)
 {
   switch (type)

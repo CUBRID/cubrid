@@ -794,6 +794,7 @@ extern "C"
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
   extern int pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name);
   extern PT_DBLINK_VALUE_CLASS pt_dblink_dml_classify_value (PT_NODE * value, PT_NODE * target, PT_NODE * source);
+  extern bool pt_dblink_type_is_unreadable (PT_TYPE_ENUM type);
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }
