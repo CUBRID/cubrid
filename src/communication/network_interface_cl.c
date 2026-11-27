@@ -6562,9 +6562,14 @@ update_histogram_for_all_classes (int with_fullscan, int random_seed, MOP * skip
 	    {
 	      /* another transaction dropped the class after the list was taken and before its turn: it has no
 	       * statistics left to update, so it is skipped as a NO HISTOGRAM class is, instead of failing the run
-	       * with the error of the lookup of its name (CBRD-28234). Any other failure stops the run as before. */
+	       * with the error of the lookup of its name (CBRD-28234). Any other failure stops the run as before. A
+	       * class of the skip list counts as excluded, or the warning below would call it not a top-level class. */
 	      er_clear ();
 	      error = NO_ERROR;
+	      if (excluded)
+		{
+		  n_excluded++;
+		}
 	      continue;
 	    }
 	  AU_RESTORE (save);
