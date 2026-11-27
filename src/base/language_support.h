@@ -389,7 +389,6 @@ STATIC_INLINE unsigned char
 lang_next_byte_weight_ko (const unsigned char **str, const unsigned char *str_end, int *trail)
 {
   unsigned char weight = *(*str)++;
-  int char_size;
 
   if (*trail > 0)
     {
@@ -406,8 +405,7 @@ lang_next_byte_weight_ko (const unsigned char **str, const unsigned char *str_en
     }
   else
     {
-      (void) intl_nextchar_euc (*str - 1, &char_size);
-      *trail = char_size - 1;
+      *trail = intl_char_length_euc (weight) - 1;
     }
 
   return weight;

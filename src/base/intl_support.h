@@ -47,6 +47,7 @@
 #endif
 
 #include "dbtype_def.h"
+#include "porting_inline.hpp"
 #include "locale_support.h"
 
 #ifndef MB_LEN_MAX
@@ -62,6 +63,14 @@
 #define LC_MESSAGES          LC_ALL
 #endif /* !LC_MESSAGE */
 #endif /* WINDOWS */
+
+/* the high bit of a byte (0x80) is set: 0x41 'A' gives 0, 0xB0 gives 1 */
+#define IS_8BIT(c)              ((c) >> 7)
+
+/* Special values for EUC encodings */
+#ifndef SS3
+#define SS3                     0x8F
+#endif
 
 /* next UTF-8 char */
 #define INTL_NEXTCHAR_UTF8(c) \
@@ -199,6 +208,7 @@ extern "C"
   extern int intl_tolower_iso8859 (unsigned char *s, int length);
   extern int intl_toupper_iso8859 (unsigned char *s, int length);
 
+  STATIC_INLINE int intl_char_length_euc (const unsigned char lead) __attribute__ ((ALWAYS_INLINE));
   extern const unsigned char *intl_nextchar_euc (const unsigned char *s, int *curr_length);
   extern const unsigned char *intl_prevchar_euc (const unsigned char *s, const unsigned char *s_start,
 						 int *prev_length);
@@ -348,4 +358,16 @@ extern "C"
 }
 #endif
 
-#endif				/* _INTL_SUPPORT_H_ */
+/*
+ * intl_char_length_euc() - returns the length of the EUC character that a lead byte starts
+ *   return: 1 for an ASCII byte, 3 for SS3 (Code Set 3), otherwise 2
+ *   lead(in): first byte of the character
+ */
+STATIC_INLINE int
+intl_char_length_euc (const unsigned char lead)
+{
+  /* ASCII, Code Set 3, otherwise CS1 or CS2 */
+  return (!IS_8BIT (lead)) ? 1 : (lead == SS3) ? 3 : 2;
+}
+
+#endif /* _INTL_SUPPORT_H_ */

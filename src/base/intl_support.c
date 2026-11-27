@@ -45,12 +45,6 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-#define IS_8BIT(c)              ((c) >> 7)
-/* Special values for EUC encodings */
-#ifndef SS3
-#define SS3                     143
-#endif
-
 #define LOCALE_C        "C"
 #if defined(AIX)
 #define LOCALE_KOREAN   "ko_KR.IBM-eucKR"
@@ -770,18 +764,7 @@ intl_nextchar_euc (const unsigned char *s, int *curr_char_length)
 {
   assert (s != NULL);
 
-  if (!IS_8BIT (*s))		/* Detected ASCII character */
-    {
-      *curr_char_length = 1;
-    }
-  else if (*s == SS3)		/* Detected Code Set 3 character */
-    {
-      *curr_char_length = 3;
-    }
-  else				/* Detected 2 byte character (CS1 or CS2) */
-    {
-      *curr_char_length = 2;
-    }
+  *curr_char_length = intl_char_length_euc (*s);
 
   return (s + (*curr_char_length));
 }
