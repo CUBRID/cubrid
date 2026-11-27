@@ -23484,13 +23484,14 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
     }
 
   if (xasl != NULL && !parser->flag.set_host_var && parser->host_var_count > 0
-      && histogram_stmt_has_hv_predicate (parser, select_node))
+      && (histogram_stmt_has_hv_predicate (parser, select_node) || qo_plan_priced_limit_guess (plan)))
     {
       /* the plan was chosen with unbound host-variable predicate markers (default
        * selectivity), e.g. at PREPARE. The first EXECUTE detects this flag and replans
        * once under the actual bind values; the value-bound regeneration runs with
        * set_host_var on, so its plan does not carry the flag and later executions reuse
-       * the fixed plan. */
+       * the fixed plan. A LIMIT the compilation saw no value of and priced by its guess
+       * (qo_plan_priced_limit_guess (), CBRD-28454) is planned again the same way. */
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
 

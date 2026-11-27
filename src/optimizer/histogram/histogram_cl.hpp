@@ -103,6 +103,8 @@ int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_
 bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
 /* true if HAVING compares an aggregate the planner prices with a value against a host variable (CBRD-27811) */
 bool histogram_stmt_has_having_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
+/* true if a LIMIT or an ORDERBY_NUM () bound of the statement holds a host variable (CBRD-28454) */
+bool histogram_stmt_has_limit_hv (PARSER_CONTEXT *parser, PT_NODE *statement);
 
 /*===========================================================================*/
 /* bind-value plans (per-predicate fingerprint)

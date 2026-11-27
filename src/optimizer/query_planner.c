@@ -464,6 +464,7 @@ static PT_NODE *qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_N
 static double qo_analytic_sort_cost (QO_PLAN * plan);
 static QO_PLAN *qo_plan_top_scan (QO_PLAN * plan);
 static double qo_limit_rows (QO_ENV * env);
+static void qo_price_limit_guess (QO_ENV * env);
 static double qo_orderby_limit_fraction (QO_ENV * env);
 static bool qo_scan_has_join_term (QO_PLAN * plan);
 static double qo_scan_limit_fraction (QO_PLAN * plan);
@@ -6589,6 +6590,36 @@ qo_limit_rows (QO_ENV * env)
 }
 
 /*
+ * qo_price_limit_guess () - note that a cost charged a scan or a join by the guessed LIMIT
+ *   return: void
+ *   env(in):
+ *
+ * Note: CBRD-28454. The compilation of a bind type signature (CBRD-27583) sees no value of a host variable it does
+ *	 not show, like the ROWNUM bound of a paging query that becomes an ORDERBY_NUM () bound only in the rewrite.
+ *	 Such a plan is chosen under GUESSED_BIND_LIMIT_CARD; qo_plan_priced_limit_guess () tells the XASL
+ *	 generation to mark it, so that the first execution plans it again under the values.
+ */
+static void
+qo_price_limit_guess (QO_ENV * env)
+{
+  if (env->limit_guessed)
+    {
+      env->limit_guess_priced = true;
+    }
+}
+
+/*
+ * qo_plan_priced_limit_guess () - was the plan chosen under a guessed LIMIT
+ *   return: true when a cost charged a scan or a join by GUESSED_BIND_LIMIT_CARD (qo_price_limit_guess ())
+ *   plan(in):
+ */
+bool
+qo_plan_priced_limit_guess (QO_PLAN * plan)
+{
+  return plan != NULL && plan->info != NULL && plan->info->env != NULL && plan->info->env->limit_guess_priced;
+}
+
+/*
  * qo_orderby_limit_fraction () - the share of its rows a plan that reads them in the ORDER BY order and stops at the
  *				  LIMIT reads
  *   return: LIMIT rows (GUESSED_BIND_LIMIT_CARD for a host variable) over the estimated rows of the query, at most 1;
@@ -6619,6 +6650,7 @@ qo_orderby_limit_fraction (QO_ENV * env)
     }
 
   limit = qo_limit_rows (env);
+  env->limit_guessed = DB_IS_NULL (&QO_ENV_LIMIT_VALUE (env)) || db_get_bigint (&QO_ENV_LIMIT_VALUE (env)) <= 0;
 
   rows = 1.0;
   for (i = 0; i < env->Nnodes; i++)
@@ -6720,13 +6752,20 @@ qo_scan_limit_fraction (QO_PLAN * plan)
 	}
       ranges = plan->iscan_range_rows * ni_entry->cum_stats.pkeys[sort_col - 1]
 	/ (double) QO_NODE_NCARD (plan->plan_un.scan.node);
+      qo_price_limit_guess (plan->info->env);
       rows = MAX (1.0, ranges) * qo_limit_rows (plan->info->env);
       return MIN (1.0, rows / MAX (1.0, (plan->info)->cardinality));
     }
 
-  if (planner->orderby_limit_fraction < 1.0 && qo_plan_is_orderby_skip_candidate (plan))
+  if ((planner->orderby_limit_fraction < 1.0 || plan->info->env->limit_guessed)
+      && qo_plan_is_orderby_skip_candidate (plan))
     {
-      return planner->orderby_limit_fraction;
+      /* a guessed LIMIT also prices the scan when its share comes out whole: a smaller LIMIT would discount it */
+      qo_price_limit_guess (plan->info->env);
+      if (planner->orderby_limit_fraction < 1.0)
+	{
+	  return planner->orderby_limit_fraction;
+	}
     }
 
   if (planner->groupby_limit_groups > 0.0 && qo_plan_is_groupby_skip_candidate (plan))
@@ -6734,6 +6773,7 @@ qo_scan_limit_fraction (QO_PLAN * plan)
       rows_per_group = qo_groupby_skip_rows_per_group (plan, QO_ENV_PT_TREE (plan->info->env));
       if (rows_per_group < DBL_MAX)
 	{
+	  qo_price_limit_guess (plan->info->env);
 	  /* the rows of the key range read for the LIMIT groups: rows_per_group counts the rows of a group before
 	   * the filters, and a group is one of the LIMIT only when a row of it passes them */
 	  range_rows = MAX (1.0, plan->iscan_range_rows);
@@ -6793,6 +6833,7 @@ qo_groupby_limit_groups (QO_ENV * env)
     }
   if (DB_IS_NULL (&limit_val))
     {
+      env->limit_guessed = true;
       return GUESSED_BIND_LIMIT_CARD;
     }
 
@@ -7863,11 +7904,20 @@ qo_nljoin_cost (QO_PLAN * planp)
 	   * GROUP BY does not bound in rows */
 	  limit_val = planp->info->planner->groupby_limit_groups * rows_per_group;
 	  limit_rows = DBL_MAX;
+	  qo_price_limit_guess (planp->info->env);
 	}
       else
 	{
-	  limit_val = QO_PLAN_HAS_CONSTANT_LIMIT (planp)
-	    ? (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (planp->info->env)) : GUESSED_BIND_LIMIT_CARD;
+	  if (QO_PLAN_HAS_CONSTANT_LIMIT (planp))
+	    {
+	      limit_val = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (planp->info->env));
+	    }
+	  else
+	    {
+	      limit_val = GUESSED_BIND_LIMIT_CARD;
+	      planp->info->env->limit_guessed = true;
+	      qo_price_limit_guess (planp->info->env);
+	    }
 	  limit_rows = limit_val;
 	}
 

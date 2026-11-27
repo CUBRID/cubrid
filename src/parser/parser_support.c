@@ -11248,6 +11248,20 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
     {
       pt_evaluate_tree_having_serial (parser, rhs, &limit, 1);
     }
+  else if (pt_is_const_expr_node (rhs) && !pt_has_error (parser))
+    {
+      /* CBRD-28454: a bound computed from constants and host variables, like the ? + ? of a ROWNUM paging query,
+       * has a value once they are bound. One that fails to evaluate (a division by zero) is an unusable bound, not
+       * an error of the query. */
+      pt_evaluate_tree_having_serial (parser, rhs, &limit, 1);
+      if (pt_has_error (parser))
+	{
+	  pt_reset_error (parser);
+	  parser->flag.has_internal_error = 0;
+	  pr_clear_value (&limit);
+	  db_make_null (&limit);
+	}
+    }
 
   /* the rows the comparison keeps: floor (n) for <= n, ceil (n) - 1 for < n */
   if (DB_IS_NULL (&limit)

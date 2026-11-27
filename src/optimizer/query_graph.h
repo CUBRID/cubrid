@@ -992,6 +992,11 @@ struct qo_env
   /* stopping cardinality for the plan (LIMIT, ORDERBY_FOR, etc) */
   DB_VALUE limit_value;
 
+  /* CBRD-28454: the LIMIT of an ORDER BY or GROUP BY skip is a host variable this compilation sees no value of
+   * (GUESSED_BIND_LIMIT_CARD stands in), and a cost charged a scan or a join by that guess */
+  bool limit_guessed;
+  bool limit_guess_priced;
+
   /* true if we should consider generating SORT-LIMIT plans */
   QO_SORT_LIMIT_USE use_sort_limit;
   /*
