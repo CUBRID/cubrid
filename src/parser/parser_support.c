@@ -13776,25 +13776,44 @@ pt_dblink_dml_has_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node)
   return found;
 }
 
-/* sink-subtree remote-server count delta (same sub_sel_server_cnt as INSERT SELECT).
- * May overlap the caller's full walk. Harmless: server_cnt is only tested for having changed, local_cnt for
- * being nonzero, and distinct_cnt (tested == 1) cannot be inflated -- pt_get_server_name_list skips the
- * increment when the name is already stored. */
-static int
-pt_dblink_dml_subq_servers (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, int server_cnt_before)
+/* Walks the source subtrees of an INSERT, DELETE or UPDATE, the ones a sink reads locally. Counting
+ * the source servers and converting the same-server remote specs both go through here, so the two
+ * always look at the same trees. */
+static void
+pt_dblink_dml_walk_source (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTION pre_function,
+			   SERVER_NAME_LIST * snl)
 {
-  PT_NODE *cond, *assigns;
+  PT_NODE *cond, *assigns, *list;
+
+  if (node->node_type == PT_INSERT)
+    {
+      for (list = node->info.insert.value_clauses->info.node_list.list; list != NULL; list = list->next)
+	{
+	  parser_walk_tree (parser, list, pre_function, snl, NULL, NULL);
+	}
+      return;
+    }
 
   pt_dblink_dml_sink_trees (node, &cond, &assigns);
 
   if (cond != NULL && cond->node_type == PT_EXPR)
     {
-      parser_walk_tree (parser, cond->info.expr.arg2, pt_get_server_name_list, snl, NULL, NULL);
+      parser_walk_tree (parser, cond->info.expr.arg2, pre_function, snl, NULL, NULL);
     }
   if (assigns != NULL)
     {
-      parser_walk_tree (parser, assigns, pt_get_server_name_list, snl, NULL, NULL);
+      parser_walk_tree (parser, assigns, pre_function, snl, NULL, NULL);
     }
+}
+
+/* sink-subtree remote-server count delta. It is the sub_sel_server_cnt of a remote INSERT SELECT,
+ * DELETE or UPDATE. May overlap the caller's full walk. That is harmless. server_cnt is only tested
+ * for having changed, and local_cnt for being nonzero. distinct_cnt (tested == 1) cannot be
+ * inflated, as pt_get_server_name_list skips the increment when the name is already stored. */
+static int
+pt_dblink_dml_subq_servers (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, int server_cnt_before)
+{
+  pt_dblink_dml_walk_source (parser, node, pt_get_server_name_list, snl);
 
   return snl->server_cnt - server_cnt_before;
 }
@@ -13935,16 +13954,17 @@ pt_dblink_update_set_is_inscope (PARSER_CONTEXT * parser, PT_NODE * node, int *n
   return true;
 }
 
-/* Same-server mixed sink subquery: rewrite embedded remote specs to dblink derived tables. No runtime
- * change is needed -- the sink's aptr already compiles whatever subquery it is handed, generically.
- * Same idea as INSERT SELECT; walk covers the sink subtrees only. Clears sink_kind when not local-mixed. */
+/* Same-server mixed sink subquery. Rewrites the embedded remote specs to dblink derived tables.
+ * INSERT SELECT, DELETE and UPDATE all convert here. No runtime change is needed. The sink's aptr
+ * already compiles whatever subquery it is handed. For INSERT SELECT, the mq_translate run on the
+ * SELECT subquery in pt_semantic_check (semantic_check.c) marks the derived queries as sub-queries,
+ * so XASL generation runs them. Clears sink_kind when the source is not local-mixed. An INSERT
+ * SELECT that reads one shared remote server then takes the serialized pushdown, and a cross-server
+ * mix falls to the existing rejections. */
 static void
 pt_dblink_dml_convert_specs (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
-  PT_NODE *cond, *assigns;
   bool had_dblink_before;
-
-  pt_dblink_dml_sink_trees (node, &cond, &assigns);
 
   if (!(snl->local_cnt > 0 && snl->distinct_cnt == 1))
     {
@@ -13954,17 +13974,11 @@ pt_dblink_dml_convert_specs (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAM
 
   had_dblink_before = snl->has_dblink_query;
 
-  if (cond != NULL && cond->node_type == PT_EXPR)
-    {
-      parser_walk_tree (parser, cond->info.expr.arg2, pt_check_sub_query_spec, snl, NULL, NULL);
-    }
-  if (assigns != NULL)
-    {
-      parser_walk_tree (parser, assigns, pt_check_sub_query_spec, snl, NULL, NULL);
-    }
+  pt_dblink_dml_walk_source (parser, node, pt_check_sub_query_spec, snl);
 
-  /* Rewrite flips has_dblink_query (derived dblink looks like dblink()). Restore unless one was already present;
-   * DELETE is not exempt from the caller's has_dblink_query rejection (INSERT SELECT is). */
+  /* Rewrite flips has_dblink_query, as a derived dblink looks like dblink (). Restore it unless one
+   * was already present. DELETE and UPDATE are not exempt from the caller's has_dblink_query
+   * rejection. */
   if (!had_dblink_before)
     {
       snl->has_dblink_query = false;
@@ -14179,6 +14193,7 @@ pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 }
 
 /* Settle carve-out: convert same-server mix, keep sink only if no remote left, then diagnose.
+ * INSERT SELECT takes the convert step only. The keep and diagnose steps are for DELETE and UPDATE.
  * After counter walks, before generic local-mixed-remote rejection.
  * return: true if an error was raised */
 static bool
@@ -14188,7 +14203,7 @@ pt_dblink_dml_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_
   bool shape_driving_pred;	/* unused -- the gate below is asked for its verdict, not its track */
 
   /* Same-server mixed sink subquery: convert the embedded remote specs first. */
-  if (pt_dblink_dml_is_local_subq_sink (snl) && sub_sel_server_cnt > 0)
+  if (snl->sink_kind != DBLINK_REMOTE_SINK_NONE && sub_sel_server_cnt > 0)
     {
       pt_dblink_dml_convert_specs (parser, node, snl);
     }
@@ -14511,8 +14526,6 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   int odku_local_cnt = 0;	/* local table count found in the ON DUPLICATE KEY UPDATE clause */
   unsigned int save_custom_print;
 
-  PT_NODE *sub_sel = NULL;	/* for select sub-query */
-  PT_NODE *list = NULL;		/* for insert select list */
   PT_NODE *into_spec = NULL, *upd_spec = NULL, *server;
 
   PARSER_VARCHAR *comment = NULL, *dml;
@@ -14521,19 +14534,17 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
     {
     case PT_INSERT:
       into_spec = node->info.insert.spec;
-      sub_sel = node->info.insert.value_clauses;
-      for (list = sub_sel->info.node_list.list; list; list = list->next)
+      if (local_upd > 0)
 	{
-	  if (local_upd > 0)
-	    {
-	      parser_walk_tree (parser, list, pt_check_sub_query_spec, snl, NULL, NULL);
-	    }
-	  else
-	    {
-	      parser_walk_tree (parser, list, pt_get_server_name_list, snl, NULL, NULL);
-	    }
+	  /* A local target reads its remote sources through dblink scans.
+	   * So they are converted right away. */
+	  pt_dblink_dml_walk_source (parser, node, pt_check_sub_query_spec, snl);
+	  sub_sel_server_cnt = snl->server_cnt - tmp_server_cnt;
 	}
-      sub_sel_server_cnt = snl->server_cnt - tmp_server_cnt;
+      else
+	{
+	  sub_sel_server_cnt = pt_dblink_dml_subq_servers (parser, node, snl, tmp_server_cnt);
+	}
 
       /* An ON DUPLICATE KEY UPDATE assignment can hold a subquery, so a table reference lives here too.
        * Its local specs still go into local_cnt and are also counted on their own in odku_local_cnt: a sink
@@ -14549,8 +14560,6 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	  parser_walk_tree (parser, node->info.insert.odku_assignments, pt_get_server_name_list, snl, NULL, NULL);
 	  odku_local_cnt = snl->local_cnt - local_cnt_before;
 	}
-
-      sub_sel = NULL;
       break;
     case PT_DELETE:
       upd_spec = node->info.delete_.spec;
@@ -14598,36 +14607,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  /* A remote SELECT source means this is not the remote<-local sink (CCI streaming) case.
-   * Drop the flag and defer to the serialized pushdown path below (qstr is set, then
-   * pt_to_xasl_for_dblink): a single shared remote server pushes the whole INSERT ... SELECT
-   * down to that server, while local-mixed and multi-remote sources fall through to their
-   * existing rejections. */
-  if (snl->sink_kind == DBLINK_REMOTE_SINK_INSERT_SELECT && sub_sel_server_cnt > 0)
-    {
-      if (snl->local_cnt > 0 && snl->distinct_cnt == 1)
-	{
-	  /* Same-server mixed source (local + remote, all on the target server). Full pushdown is
-	   * impossible (the remote server has no local table) but the CCI sink can run it: rewrite
-	   * the remote source spec(s) into dblink scans. The derived sub-queries are marked as
-	   * sub-queries (so XASL generation gathers them into aptr_list and executes them) by the
-	   * canonical mq_translate run on the SELECT subquery in pt_semantic_check (semantic_check.c).
-	   * Cross-server / multi-remote mixed sources are left to the existing rejections below
-	   * (distinct_cnt >= 2). */
-	  PT_NODE *vlist;
-	  for (vlist = node->info.insert.value_clauses->info.node_list.list; vlist != NULL; vlist = vlist->next)
-	    {
-	      parser_walk_tree (parser, vlist, pt_check_sub_query_spec, snl, NULL, NULL);
-	    }
-	}
-      else
-	{
-	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
-	}
-    }
-
-  /* Settle the remote DELETE carve-out -- convert, keep or clear, and diagnose -- in one place, before the
-   * generic rejections below. */
+  /* Settle the sink in one place, before the generic rejections below. */
   if (pt_dblink_dml_settle_sink (parser, node, snl, upd_spec, sub_sel_server_cnt, local_upd, remote_upd))
     {
       return;
@@ -14663,32 +14643,14 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  /* remote DELETE + pure-local subquery: set up the value-push sink. Like the INSERT SELECT sink, skip the
-   * DML text serialization (qstr stays NULL) and preserve the WHERE subquery (delete_.search_cond) for XASL
-   * generation; the runtime evaluates the subquery locally and pushes per-row DELETEs via CCI bind. */
-  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
+  /* A sink statement skips the DML text serialization (qstr stays NULL), which would ship the local
+   * side to the remote server. The runtime evaluates the local side and pushes per-row statements
+   * via CCI bind. */
+  if (snl->sink_kind != DBLINK_REMOTE_SINK_NONE)
     {
       node->flag.cannot_prepare = 0;
-      pt_setup_dblink_sink_spec (parser, node, upd_spec, snl);
-      return;
-    }
-
-  /* remote UPDATE + local subquery: do not serialize a pushdown qstr -- that would ship the local subquery to
-   * the remote server. Set up the DML sink (qstr left NULL) and keep the WHERE / SET trees for the later
-   * value-push path, same as the DELETE sink above. */
-  if (snl->sink_kind == DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ)
-    {
-      node->flag.cannot_prepare = 0;
-      pt_setup_dblink_sink_spec (parser, node, upd_spec, snl);
-      return;
-    }
-
-  /* INSERT SELECT: skip DML text serialization; preserve value_clauses for XASL generation.
-   * Set up connection info (ct + pt_resolve_server_names) — runtime inserts via CCI bind. */
-  if (snl->sink_kind == DBLINK_REMOTE_SINK_INSERT_SELECT)
-    {
-      node->flag.cannot_prepare = 0;
-      pt_setup_dblink_sink_spec (parser, node, into_spec, snl);
+      pt_setup_dblink_sink_spec (parser, node,
+				 (snl->sink_kind == DBLINK_REMOTE_SINK_INSERT_SELECT) ? into_spec : upd_spec, snl);
       return;
     }
 
