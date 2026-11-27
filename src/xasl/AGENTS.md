@@ -13,7 +13,7 @@ Shared XASL plan types. The client generates and serializes them, and the server
 | `xasl_stream.hpp`, `xasl_stream.cpp` | Stream constants and shared `stx_*` helpers |
 | `xasl_unpack_info.hpp`, `xasl_unpack_info.cpp` | Deserialization context (buffers and allocation), not the per-node unpack code |
 | `xasl_spawner.hpp`, `xasl_spawner.cpp` | Deep copies of XASL parts (regu variables, `outptr_list`, `val_list`, ...) for parallel hash join workers |
-| `xasl_iteration.hpp`, `xasl_iteration.cpp` | `iterate_xasl_tree ()` / `iterate_regu_var ()` walkers used by parallel query and memoize |
+| `xasl_iteration.hpp`, `xasl_iteration.cpp` | `iterate_xasl_tree ()` / `iterate_regu_var ()` walker templates (`.hpp`) used by parallel query and memoize; helpers such as `xasl_find_by_id ()` (`.cpp`) |
 
 ## Where to Look
 
@@ -28,7 +28,7 @@ Shared XASL plan types. The client generates and serializes them, and the server
 
 - Any change to a serialized member follows the checklist in [XASL Changes](#xasl-changes) below. It covers generation, `xts_process_*` / `xts_sizeof_*`, deserialization, execution, the catalog-stored filter and function-index streams, and the clone reset in `qexec_clear_xasl ()`.
 - Mode guards: a serialized member must sit outside every mode guard, so its layout is the same in all modes. A server-only runtime member that is not serialized goes inside `#if defined (SERVER_MODE) || defined (SA_MODE)` (see the "not serialized" members in `src/query/xasl.h`). Keep the existing guards.
-- If parallel hash join workers read a new pointer, regu, or predicate member, copy it in `xasl_spawner.cpp`. If the tree walkers must visit it, update `xasl_iteration.cpp`.
+- If parallel hash join workers read a new pointer, regu, or predicate member, copy it in `xasl_spawner.cpp`. If the tree walkers must visit it, update `iterate_xasl_tree ()` / `iterate_regu_var ()` in `xasl_iteration.hpp`.
 
 ## XASL Changes
 
@@ -49,7 +49,7 @@ Module guidance: [src/parser/AGENTS.md](../parser/AGENTS.md), [src/optimizer/AGE
 
 ### Checklist
 
-- Each `xts_sizeof_*` must count every byte that its matching `xts_process_*` writes (`src/query/xasl_to_stream.c`), and the `stx_*` reader (`src/query/stream_to_xasl.c`) must read the same fields in the same order. Only assert-enabled builds check the size (`assert (buf <= buf_p + size)` in `xts_save_*`), so run a query that uses the new member on `debug` or `optdebug`.
+- Each `xts_sizeof_*` must count every byte that its matching `xts_process_*` writes (`src/query/xasl_to_stream.c`), and the `stx_*` reader (`src/query/stream_to_xasl.c`) must read the same fields in the same order. Only some `xts_save_*` functions check the size (`assert (buf <= buf_p + size)`, assert-enabled builds only). If the `xts_save_*` that writes the changed node has no such assert, add one, then run a query that uses the new member on `debug` or `optdebug`.
 - The stream has no version, and nothing rejects a mismatched layout: `rel_get_net_compatible ()` (`src/base/release_string.c`) lets a client from another patch release of the same major.minor connect unless `net_incompatible_versions[]` lists it. A change to the serialized layout therefore breaks client/server compatibility; say so in the PR. `SA_MODE` compiles both `xasl_to_stream.c` and `stream_to_xasl.c`, so standalone runs use the same pack/unpack path.
 - Parallel hash join workers copy parts of a node through `cubxasl::spawner` (`src/xasl/xasl_spawner.cpp`, `SERVER_MODE` only). If workers read the new member (a pointer, regu variable, value list, or predicate), add it to the spawner copy.
 - Stream layout is also an on-disk format: filter-index predicates (`pred_stream`) and function-index expressions (`expr_stream`) are stored in the catalog and read back with `stx_map_stream_to_filter_pred ()` / `stx_map_stream_to_func_pred ()`.

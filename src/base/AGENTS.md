@@ -172,7 +172,7 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 | Add system parameter | `system_parameter.c/h` — add `PRM_ID_*`, update `prm_Def`, `PRM_LAST_ID` |
 | Fix charset/collation | `intl_support.c`, `language_support.c`, `uca_support.c` |
 | Fix timezone | `tz_support.c` |
-| Add perf counter | `cubrid statdump` shows only `PSTAT_*` counters: add the ID to `PERF_STAT_ID` in `perf_monitor.h` and the entry at the same position in `pstat_Metadata[]` (`perf_monitor.c`). `perf_monitor.c` does not read `cubperf` (`perf.hpp`) statistics. |
+| Add perf counter | `cubrid statdump` shows only `PSTAT_*` counters: add the ID to `PERF_STAT_ID` in `perf_monitor.h` and the entry at the same position in `pstat_Metadata[]` (`perf_monitor.c`); a non-complex entry goes before the first complex (`PSTAT_METADATA_INIT_COMPLEX`) entry. A `cubperf` (`perf.hpp`) statset reaches statdump only when `perfmon_server_calc_stats ()` copies it into a complex `PSTAT_*` entry, as `perfmon_peek_thread_daemon_stats ()` does for `PSTAT_THREAD_DAEMON_STATS`; add that copy for a new statset. |
 
 ## Adding a New Error Code
 

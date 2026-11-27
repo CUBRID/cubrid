@@ -6,7 +6,7 @@ Read this before you add a file, push, open or update a PR, comment `/run`, chan
 ## PR Title, License Headers, and CLA
 
 - Format PR titles to match `^\[[A-Z]+-[0-9]+\] .+` (`.github/actions/check-pr-title/action.yml`).
-- Keep an accepted Apache 2.0 header (`.github/workflows/license_headers/`) on checked extensions (`.c`, `.h`, `.cpp`, `.hpp`, `.C`, `.H`, `.CPP`, `.HPP`, `.ipp`, `.sh`, `.bat`, `.y`, `.l`, `.msg`).
+- Keep an accepted Apache 2.0 header (`.github/workflows/license_headers/`) on checked extensions (`.c`, `.h`, `.cpp`, `.hpp`, `.C`, `.H`, `.CPP`, `.HPP`, `.ipp`, `.sh`, `.bat`, `.y`, `.l`, `.msg`). List a third-party file that keeps its own license in `.github/workflows/license_headers/license_check_ignore_files.txt`.
 - Satisfy the CLA before merge.
 
 ## PR Static Checks
@@ -40,5 +40,5 @@ CTP cleanup runs `pkill cub` and then `kill -9` on every process of the invoking
 
 ## Proportional Verification
 
-- For docs-only edits, check that every relative link target exists (no link checker is configured) and run `git diff --check` rather than full engine regression suites.
+- For docs-only edits, check that every relative link target exists and that every `#anchor` in a relative link matches a heading in its target file (GitHub heading slug); no link checker is configured. When you rename a heading, search the repository for links to its old anchor. Run `git diff --check` rather than full engine regression suites.
 - For code edits, build affected targets, run relevant local unit tests (see [build.md](build.md#unit-tests)), and run regression suites via PR `/run` (outward-facing; confirm first) or isolated CTP only.

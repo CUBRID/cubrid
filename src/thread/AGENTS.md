@@ -37,4 +37,4 @@ Thread manager, worker pools, daemon threads, the per-thread context `THREAD_ENT
 ## Gotchas
 
 - `THREAD_ENTRY *thread_p` is passed to nearly every server function. It carries `private_heap_id` (for `db_private_alloc`), `tran_index`, `interrupted`, the error context (`m_error`), latch/lock wait state, and the CS tracker. A layout change affects the whole server.
-- Adding a critical section: add `CSECT_*` before `CSECT_LAST` in `critical_section.h` and its name at the same position in `csect_Names[]` in `critical_section.c`. The tracker asserts on illegal re-entry and reader/writer misuse. It does not check lock order.
+- Adding a critical section: add `CSECT_*` before `CSECT_LAST` in `critical_section.h` and its name at the same position in `csect_Names[]` in `critical_section.c`. The tracker (debug `SERVER_MODE` only) asserts on illegal re-entry and reader/writer misuse. The only lock order it checks is in `check_csect_interdependencies ()`; if the new section must not be entered while another is held, add that check there.

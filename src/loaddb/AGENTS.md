@@ -6,8 +6,8 @@ The `cubrid loaddb` utility: a Bison/Flex grammar for the loaddb object-file for
 
 `cubrid loaddb` is an `SA_CS` utility. Its entry function is `loaddb_user ()` in `load_db.c`, which builds into both `libcubridsa` and `libcubridcs`. A change can affect either path, so build and check both.
 
-- **Standalone** (`-S`, `libcubridsa`): `ldr_sa_load ()` in `load_sa_loader.cpp` parses and loads in the utility process.
-- **Client-server** (`-C`, the default; `libcubridcs`): `ldr_server_load ()` in `load_db.c` sends the input to `cub_server`. The server parses it with `load_driver` and loads it in parallel with `load_session`, `load_worker_manager`, and `load_server_loader` (server-only files).
+- **Standalone** (`-S`, the default; `libcubridsa`): `ldr_sa_load ()` in `load_sa_loader.cpp` parses and loads in the utility process. `ua_Load_Option_Map` (`util_admin.c`) defaults `-S` on, so `cubrid loaddb` runs SA unless `-C` is given.
+- **Client-server** (`-C`; `libcubridcs`): `ldr_server_load ()` in `load_db.c` sends the input to `cub_server`. The server parses it with `load_driver` and loads it in parallel with `load_session`, `load_worker_manager`, and `load_server_loader` (server-only files).
 
 | File | Server (`cubrid/`) | CS (`cs/`) | SA (`sa/`) |
 |------|:--:|:--:|:--:|

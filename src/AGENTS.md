@@ -33,7 +33,7 @@ When adding a new source file under `src/`:
 1. Search top-level `CMakeLists.txt` files for sibling files in the same module to identify every target that must compile it.
 2. Add the file (and tracked headers where listed) to each owning target's `CMakeLists.txt`, ensuring `PROPERTIES LANGUAGE CXX` is set in every owning directory for C++-compiled `.c` files.
 3. If the file is listed in `cubrid/CMakeLists.txt`, satisfy the `memory_wrapper.hpp` include check below.
-4. If its extension is one the license check covers, give it an accepted Apache 2.0 license header ([docs/pull-requests.md](../docs/pull-requests.md#pr-title-license-headers-and-cla)); keep third-party files under their own license.
+4. If its extension is one the license check covers, give it an accepted Apache 2.0 license header ([docs/pull-requests.md](../docs/pull-requests.md#pr-title-license-headers-and-cla)). A third-party file keeps its own license: add its repository-relative path to `.github/workflows/license_headers/license_check_ignore_files.txt`, or the `license` job fails.
 5. Build every affected target (`libcubrid`/`cub_server`, `libcubridsa`, `libcubridcs`, utilities, broker, or unit tests).
 
 ## Resource, Memory, and Error Handling

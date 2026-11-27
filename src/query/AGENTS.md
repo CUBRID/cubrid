@@ -50,6 +50,7 @@ An opcode that has no body in `fetch_arith_op ()` silently keeps the cleared val
 5. `expr_compile.c`: add the opcode to `expr_generic_operand_spec ()` with the same operand fetch rule as step 3. If you leave it out, the node stays interpreted.
 6. `domain_rules.c`: check its opcode switches. For example, `domain_character_rule ()` must list every operator that returns one of its operands.
 7. `query_dump.c`: the opcode name.
+8. `regu_var.hpp`: if the result can change while the operands stay the same (a random value, a serial, a session variable, a statistic, or `CONNECT BY` state), add the opcode to `fetch_opcode_caches ()` so that it returns false. Otherwise a node whose operands are all constant (or absent) is flagged `REGU_VARIABLE_FETCH_ALL_CONST` after its first evaluation, the expression compiler computes it once per execution, and every row gets the first value.
 
 ## Conventions
 

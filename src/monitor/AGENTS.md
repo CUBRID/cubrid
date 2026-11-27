@@ -6,7 +6,7 @@ C++ statistic primitives (accumulator, gauge, max/min, timers), per-transaction 
 
 The `cubmonitor::monitor` registry (`get_global_monitor ()`, `register_statistics ()`, `register_to_monitor ()`) has no caller in the engine; only `unit_tests/monitor/` uses it. A statistic registered there is never fetched or shown by `cubrid statdump`.
 
-- To add a counter that `cubrid statdump` shows, use `src/base/perf_monitor.h` / `perf_monitor.c`: a `PSTAT_*` id in `PERF_STAT_ID` (before `PSTAT_COUNT`) and the entry at the same position in `pstat_Metadata[]`. `perfmon_initialize ()` asserts that each entry's position matches its id. See [src/base/AGENTS.md](../base/AGENTS.md).
+- To add a counter that `cubrid statdump` shows, use `src/base/perf_monitor.h` / `perf_monitor.c`: a `PSTAT_*` id in `PERF_STAT_ID` and the entry at the same position in `pstat_Metadata[]`. Put a non-complex statistic (single, counter-timer, or computed ratio) before the first complex entry (the "Complex statistics" group), not just before `PSTAT_COUNT`: the statdump loops stop at the first `PSTAT_COMPLEX_VALUE` entry and call `f_dump_in_file` / `f_dump_in_buffer` on every entry after it, and those pointers are NULL for non-complex entries. `perfmon_initialize ()` asserts that each entry's position matches its id. See [src/base/AGENTS.md](../base/AGENTS.md).
 - Use the primitives in this directory as building blocks. Example: `src/base/lockfree_hashmap.hpp` uses `cubmonitor::atomic_counter_timer_stat` from `monitor_collect.hpp`.
 
 ## Key Files

@@ -22,7 +22,7 @@ Every binary below is defined in `util/CMakeLists.txt`. `gen_timezone` (`generat
 `cubrid <name>` → `us_Service_map[]` (`util_service.c`) → exec `cub_admin` → `ua_Utility_Map[]` (`util_admin.c`) → load a library and call `function_name` from the map entry. The `utility_type` field selects the library:
 
 - `SA_ONLY` → `libcubridsa`; `CS_ONLY` → `libcubridcs`.
-- `SA_CS` → `libcubridcs` with `-C`, `libcubridsa` with `-S`. With neither, `libcubridcs`, except `vacuumdb` and `tde`, which default to `libcubridsa` (`util_get_library_name ()`). Examples: `loaddb` (function `loaddb_user` in `src/loaddb/load_db.c`), `unloaddb` (`unloaddb.c`), `compactdb` (`compactdb.c` in SA, `compactdb_cl.c` in CS). A change to an `SA_CS` utility must build and work in both modes.
+- `SA_CS` → `libcubridcs` with `-C`, `libcubridsa` with `-S`. With neither, `util_get_library_name ()` follows the option map defaults: `loaddb` defaults `-S` on (`ua_Load_Option_Map`) and runs SA; `vacuumdb` and `tde` default to `libcubridsa`; the others use `libcubridcs`. Check the utility's option map before you assume its default mode. Examples: `loaddb` (function `loaddb_user` in `src/loaddb/load_db.c`), `unloaddb` (`unloaddb.c`), `compactdb` (`compactdb.c` in SA, `compactdb_cl.c` in CS). A change to an `SA_CS` utility must build and work in both modes.
 
 `util_common.c` holds shared helpers only (option access, name checks). It has no registration table.
 

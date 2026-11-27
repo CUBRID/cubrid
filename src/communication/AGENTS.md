@@ -12,7 +12,7 @@ Client/server request interface: the request list, the server dispatch table, re
 | `network_sr.c` | `net_server_init ()` fills `net_Requests[]`; `net_server_request ()` dispatches |
 | `network_interface_sr.cpp/.h` | Server handlers `s*` (unpack, call `x*`, reply) |
 | `network_cl.c/.h` | Client send primitives (`net_client_request*`), capability checks |
-| `network_interface_cl.c/.h` | Client functions `c*` (CS: pack and send; SA: direct call) |
+| `network_interface_cl.c/.h` | Client wrappers, usually the worker name without `x` (`tran_server_commit ()` for `xtran_server_commit ()`); a few use a `c` prefix (`csession_*`) (CS: pack and send; SA: direct call) |
 | `network_callback_cl.cpp/.hpp` | Client method/xs callbacks (`xs_queue_send`, `xs_send_queue`, `xs_pack_and_queue`) |
 | `network_callback_sr.cpp/.hpp` | Server method/xs callbacks (`xs_callback_send`, `xs_callback_receive`) |
 | `network_histogram.cpp/.hpp` | Client per-request histogram (`net_histo_ctx`) |
@@ -39,7 +39,7 @@ The `_cl`/`_sr` suffix is only a hint. This table (checked against `cubrid/`, `c
 
 ## Adding a Server Request
 
-Example names: request `NET_SERVER_FOO`, client `cfoo`, server handler `sfoo`, worker `xfoo`.
+Example names: request `NET_SERVER_FOO`, client `foo`, server handler `sfoo`, worker `xfoo`.
 
 1. `network.h`: append `NET_SERVER_REQUEST_ITEM(NET_SERVER_FOO)` at the **end** of `NET_SERVER_REQUEST_LIST`. The enum ordinal is the request number sent on the wire. Inserting in the middle renumbers every later request. Clients and servers of different releases may connect when `rel_get_net_compatible ()` (`src/base/release_string.c`) allows it, so existing numbers must not move. `NET_SERVER_PING_WITH_HANDSHAKE = 999` is fixed.
 2. Worker: implement `xfoo (THREAD_ENTRY *, ...)` in the owning server module and declare it in `src/base/xserver_interface.h`. It must build into `libcubridsa` as well, because the SA client calls it directly.
@@ -47,10 +47,10 @@ Example names: request `NET_SERVER_FOO`, client `cfoo`, server handler `sfoo`, w
 4. Dispatch: in `net_server_init ()` (`network_sr.c`), set `net_Requests[NET_SERVER_FOO].processing_function = sfoo` and, if needed, `action_attribute`. `net_server_request ()` asserts that the function is set. Flags (`net_req_act`):
    - `CHECK_DB_MODIFICATION`: reject the request when the database does not allow modification.
    - `CHECK_AUTHORIZATION`: reject a client that is not DBA (`ER_AU_DBA_ONLY`).
-   - `IN_TRANSACTION` / `OUT_TRANSACTION`: set / clear `conn->in_transaction` before / after the handler.
+   - `IN_TRANSACTION` / `OUT_TRANSACTION`: set / clear `conn->in_transaction` before / after the handler. An HA server going to standby does not close a connection while it is set.
    - `SET_DIAGNOSTICS_INFO`: set on some entries, but `net_server_request ()` does not read it.
-   - Most entries set none. Some handlers check authorization themselves.
-5. Client: implement `cfoo (...)` in `network_interface_cl.c` and declare it in `network_interface_cl.h`, with both branches:
+   - Many entries set `IN_TRANSACTION`, and requests that change the database usually add `CHECK_DB_MODIFICATION`. Copy the flags of the closest existing request and have a reason for every difference. Some handlers check authorization themselves.
+5. Client: implement `foo (...)` (the worker name without `x`) in `network_interface_cl.c` and declare it in `network_interface_cl.h`, with both branches:
    - `#if defined (CS_MODE)`: pack the arguments, call `net_client_request*` with `NET_SERVER_FOO`, and unpack the reply.
    - `#else` (SA): `enter_server ()` → `xfoo ()` → `exit_server ()`.
 6. Build `libcubrid`, `libcubridcs`, and `libcubridsa`. No unit test covers requests; verify end to end with a CS client against a server.
