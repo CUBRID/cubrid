@@ -435,6 +435,8 @@ struct remote_dml_sink
   char *remote_key_col;		/* remote WHERE column the per-row value is compared to, NULL when the proc sends
 				 * no WHERE (INSERT SELECT, and the UPDATE shape that updates every remote row) */
   char *remote_op;		/* comparison operator pushed to the remote WHERE, NULL together with remote_key_col */
+  char *remote_key_cast_type;	/* type name the per-row value is cast to before the remote compares it, NULL to
+				 * send it bare. Not used for a gateway remote. */
   char *remote_using_index;	/* the statement's USING INDEX clause, sent as written, NULL when there is none */
 };
 

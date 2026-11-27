@@ -20590,7 +20590,6 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   char **attr_names = NULL;
   int num_attrs = 0, num_set = 0;
   const char *set_text = NULL;
-  TP_DOMAIN *src_dom = NULL;
   DBLINK_ODKU_ASSIGNS odku = { NULL, NULL, 0 };
   DBLINK_DML_STATE dblink_state = { -1, -1, false, false };
 
@@ -20655,11 +20654,6 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	DELETE_PROC_NODE *del = &xasl->proc.delete_;
 
 	sink = &del->sink;
-	/* Domain of the value the executor will bind. dblink_dml_open() runs before qexec_open_scan(), so
-	 * s_id does not exist yet -- xasl->val_list is the same list qexec_collect_remote_delete_key() reads
-	 * from. The domain is filled before either mode reaches here: pt_make_val_list() sets it in SA, and
-	 * stx_build_val_list() rejects a NULL dom when unpacking in CS. */
-	src_dom = (xasl->val_list != NULL && xasl->val_list->valp != NULL) ? xasl->val_list->valp->dom : NULL;
 	break;
       }
     case DBLINK_DML_UPDATE:
@@ -20669,13 +20663,6 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	sink = &upd->sink;
 	set_text = upd->remote_set_text;
 	num_set = upd->remote_num_set_binds;
-	/* The WHERE key's domain, read from the list DELETE reads it from. Both build their skeleton with
-	 * pt_make_aptr_parent_node (). An UPDATE without a WHERE has no key to restore. */
-	if (sink->remote_key_col != NULL)
-	  {
-	    src_dom = (xasl->val_list != NULL && xasl->val_list->valp != NULL) ? xasl->val_list->valp->dom : NULL;
-	  }
-
 	/* one slot per SET placeholder, plus the WHERE value when the statement sends one */
 	upd_bindv = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * (num_set + 1));
 	if (upd_bindv == NULL)
@@ -20711,8 +20698,8 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
     }
 
   /* open remote connection and prepare the statement this kind sends */
-  if (dblink_dml_open (thread_p, kind, sink, attr_names, num_attrs, val_no, set_text, num_set, &odku, src_dom,
-		       &dblink_state) != NO_ERROR)
+  if (dblink_dml_open (thread_p, kind, sink, attr_names, num_attrs, val_no, set_text, num_set, &odku, &dblink_state)
+      != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;

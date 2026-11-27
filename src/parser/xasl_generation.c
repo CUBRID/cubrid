@@ -24735,7 +24735,8 @@ pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * usin
   sink->remote_using_index = (hint != NULL ? (char *) pt_get_varchar_bytes (hint) : NULL);
 
   /* remote_key_col / remote_op stay as the freshly allocated node left them, NULL: a statement that sends
-   * no WHERE keeps them so, and the DELETE and UPDATE builders set them when theirs does. */
+   * no WHERE keeps them so, and the DELETE and UPDATE builders set them when theirs does.
+   * remote_key_cast_type stays NULL the same way. */
 }
 
 /*
@@ -25215,6 +25216,96 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * pt_dblink_dml_key_cast_type () - Tell what type the WHERE key value of a remote DELETE or UPDATE
+ *   sink is cast to on the remote.
+ *   return: the type name, or NULL to send the value bare
+ *   parser(in): parser context
+ *   key(in): the target column the value is compared with
+ *   value(in): the select list item of the local subquery
+ *
+ * Note: The sink sends each local value as the "?" of "<key> <op> ?". The remote types a bare "?"
+ *   from the target column, so the comparison stops matching the all-local form. A CHAR target pads
+ *   a VARCHAR value, and a numeric target takes a date the all-local form refuses.
+ *   CAST(? AS <source type>) puts the declared type back.
+ *   The value is cast when the two types differ. A numeric target is the exception. There only a
+ *   date/time or a JSON value is cast. With any other value the result does not change, and a cast
+ *   would rewrite every statement keyed on a numeric column.
+ *   The name is pr_type_name (), the text db_get_type_name () publishes. CHAR and BIT need their
+ *   precision. CAST(? AS character) is "Cannot coerce host var to type char". A type whose name is
+ *   not CAST syntax is sent bare, and the sink refuses its value by name at the bind.
+ */
+static const char *
+pt_dblink_dml_key_cast_type (PARSER_CONTEXT * parser, PT_NODE * key, PT_NODE * value)
+{
+  DB_TYPE src_type;
+  int prec;
+  const char *name;
+  char buf[64];
+  int ret;
+
+  if (value == NULL)
+    {
+      return NULL;
+    }
+
+  src_type = pt_type_enum_to_db (value->type_enum);
+  prec = (value->data_type != NULL) ? value->data_type->info.data_type.precision : 0;
+  name = pr_type_name (src_type);
+
+  if (PT_IS_NUMERIC_TYPE (key->type_enum))
+    {
+      switch (src_type)
+	{
+	case DB_TYPE_DATE:
+	case DB_TYPE_TIME:
+	case DB_TYPE_DATETIME:
+	case DB_TYPE_TIMESTAMP:
+	case DB_TYPE_DATETIMETZ:
+	case DB_TYPE_DATETIMELTZ:
+	case DB_TYPE_TIMESTAMPTZ:
+	case DB_TYPE_TIMESTAMPLTZ:
+	case DB_TYPE_JSON:
+	  break;
+	default:
+	  return NULL;
+	}
+    }
+  else if (pt_type_enum_to_db (key->type_enum) == src_type)
+    {
+      return NULL;
+    }
+
+  /* pr_type_name () brackets the ids that are not SQL types, "*NULL*" for one. The three named
+   * here read as plain words that CAST still does not take. */
+  if (name == NULL || name[0] == '*' || src_type == DB_TYPE_ENUMERATION || src_type == DB_TYPE_RESULTSET
+      || src_type == DB_TYPE_MIDXKEY)
+    {
+      return NULL;
+    }
+
+  if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_BIT)
+    {
+      if (prec <= 0)
+	{
+	  return NULL;
+	}
+      ret = snprintf (buf, sizeof (buf), "%s(%d)", name, prec);
+    }
+  else
+    {
+      ret = snprintf (buf, sizeof (buf), "%s", name);
+    }
+
+  /* a truncated type name would prepare as something else on the remote */
+  if (ret < 0 || (size_t) ret >= sizeof (buf))
+    {
+      return NULL;
+    }
+
+  return pt_append_string (parser, NULL, buf);
+}
+
+/*
  * pt_dblink_dml_xasl_where () - Translate a sink's WHERE predicate into the three pieces the remote
  *   statement needs: the key column, the comparison operator as SQL text, and the local subquery whose
  *   values the sink binds one at a time. The DELETE and UPDATE sink builders ask this of the same shape,
@@ -25223,19 +25314,21 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   cond(in)     : the WHERE predicate the parser gate admitted
  *   key_col(out) : remote target column on the left-hand side
  *   op_sql(out)  : the operator the remote statement gets
+ *   key_cast(out): the type the value is cast to on the remote, NULL to send it bare
  *   subq(out)    : the local subquery feeding the values
  */
 static bool
 pt_dblink_dml_xasl_where (PARSER_CONTEXT * parser, PT_NODE * cond, const char *stmt, const char **key_col,
-			  const char **op_sql, PT_NODE ** subq)
+			  const char **op_sql, const char **key_cast, PT_NODE ** subq)
 {
-  PT_NODE *arg1, *arg2;
+  PT_NODE *arg1, *arg2, *key = NULL;
   char errmsg[256];
 
   assert (cond != NULL && cond->node_type == PT_EXPR);
 
   *key_col = NULL;
   *op_sql = NULL;
+  *key_cast = NULL;
   *subq = NULL;
 
   /* Only the first predicate is translated below, so a second would be dropped without a diagnostic. The
@@ -25287,13 +25380,17 @@ pt_dblink_dml_xasl_where (PARSER_CONTEXT * parser, PT_NODE * cond, const char *s
   arg1 = cond->info.expr.arg1;
   if (arg1 != NULL && arg1->node_type == PT_NAME)
     {
-      *key_col = arg1->info.name.original;
+      key = arg1;
     }
   else if (arg1 != NULL && arg1->node_type == PT_DOT_ && arg1->info.dot.arg2 != NULL
 	   && arg1->info.dot.arg2->node_type == PT_NAME)
     {
       /* Trailing attr only; qualifier already checked at the parser gate (not re-checkable after name rewrite). */
-      *key_col = arg1->info.dot.arg2->info.name.original;
+      key = arg1->info.dot.arg2;
+    }
+  if (key != NULL)
+    {
+      *key_col = key->info.name.original;
     }
   if (*key_col == NULL)
     {
@@ -25321,6 +25418,7 @@ pt_dblink_dml_xasl_where (PARSER_CONTEXT * parser, PT_NODE * cond, const char *s
       return false;
     }
 
+  *key_cast = pt_dblink_dml_key_cast_type (parser, key, pt_get_select_list (parser, arg2));
   *subq = arg2;
   return true;
 }
@@ -25342,14 +25440,14 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *from = NULL;
   PT_NODE *cond;
   const char *op_sql = NULL;
-  const char *key_col = NULL;
+  const char *key_col = NULL, *key_cast = NULL;
 
   assert (parser != NULL && statement != NULL);
 
   from = statement->info.delete_.spec;
   cond = statement->info.delete_.search_cond;
 
-  if (!pt_dblink_dml_xasl_where (parser, cond, "DELETE", &key_col, &op_sql, &aptr_statement))
+  if (!pt_dblink_dml_xasl_where (parser, cond, "DELETE", &key_col, &op_sql, &key_cast, &aptr_statement))
     {
       return NULL;
     }
@@ -25385,6 +25483,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   del->sink.remote_key_col = pt_append_string (parser, NULL, key_col);
   del->sink.remote_op = pt_append_string (parser, NULL, op_sql);
+  del->sink.remote_key_cast_type = (char *) key_cast;
   if (del->sink.table_name == NULL || del->sink.remote_key_col == NULL || del->sink.remote_op == NULL
       || pt_has_error (parser))
     {
@@ -25423,7 +25522,7 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *from = NULL;
   PT_NODE *cond, *driving_subq = NULL;
   PT_ASSIGNMENTS_HELPER ea;
-  const char *op_sql = NULL, *key_col = NULL;
+  const char *op_sql = NULL, *key_col = NULL, *key_cast = NULL;
   char *set_text = NULL, *piece = NULL;
   unsigned int save_custom_print;
   int num_set_binds = 0;
@@ -25434,7 +25533,7 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   cond = statement->info.update.search_cond;
 
   /* the WHERE, when the statement has one: its key column, operator and driving subquery */
-  if (cond != NULL && !pt_dblink_dml_xasl_where (parser, cond, "UPDATE", &key_col, &op_sql, &driving_subq))
+  if (cond != NULL && !pt_dblink_dml_xasl_where (parser, cond, "UPDATE", &key_col, &op_sql, &key_cast, &driving_subq))
     {
       return NULL;
     }
@@ -25586,6 +25685,7 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       upd->sink.remote_key_col = pt_append_string (parser, NULL, key_col);
       upd->sink.remote_op = pt_append_string (parser, NULL, op_sql);
+      upd->sink.remote_key_cast_type = (char *) key_cast;
     }
   upd->remote_set_text = set_text;
   upd->remote_num_set_binds = num_set_binds;
