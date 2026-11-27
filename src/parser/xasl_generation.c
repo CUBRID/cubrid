@@ -7132,7 +7132,9 @@ failure:
  *   to the value (LEAVE) or enforced over the value the client sends as it is (ENFORCE), as the server receives the
  *   value: an auto-parameter's literal, cast here, has its own domain (its session collation); the client casts a user
  *   or derived position's value into the position's domain - a string takes the position's type in the enforced
- *   collation (LEAVE: the value's), any other value passes an ENFORCE cast as it is; a NULL value has no type
+ *   collation (LEAVE: the value's), any other value passes an ENFORCE cast as it is; a NULL value has no type. A
+ *   compilation without values (a PREPARE) has no value yet: a context-typed user position's value will come cast
+ *   into its domain, which stands in for it (CBRD-28413)
  */
 static TP_DOMAIN *
 pt_decide_position_collation (PARSER_CONTEXT * parser, int index, TP_DOMAIN * compiled)
@@ -7143,7 +7145,14 @@ pt_decide_position_collation (PARSER_CONTEXT * parser, int index, TP_DOMAIN * co
     }
   const int user = index < parser->host_var_count ? index : parser->host_var_derived_from[index];
   const TP_DOMAIN *value = pt_host_var_value_domain (parser, user);
-  if (value == NULL || TP_DOMAIN_TYPE (value) == DB_TYPE_NULL)
+  if ((value == NULL || TP_DOMAIN_TYPE (value) == DB_TYPE_NULL) && !parser->flag.set_host_var)
+    {
+      /* a bound NULL is NULL at every execution of this plan; an unbound value is not: the plan of a PREPARE runs with
+       * the values of the later executions, which the client casts into the user position's domain first */
+      value = pt_host_var_position_domain (parser, user);
+    }
+  if (value == NULL || TP_DOMAIN_TYPE (value) == DB_TYPE_NULL || TP_DOMAIN_TYPE (value) == DB_TYPE_VARIABLE
+      || TP_DOMAIN_TYPE (value) == DB_TYPE_UNKNOWN)
     {
       return &tp_Null_domain;
     }
