@@ -13396,6 +13396,43 @@ pt_dblink_dml_check_odku (PT_NODE * node, PT_NODE * target)
   return true;
 }
 
+/* what pt_dblink_dml_cte_ref () looks for, and whether it found one */
+typedef struct
+{
+  PT_NODE *cte_list;
+  bool found;
+} PT_DBLINK_DML_CTE_REF;
+
+/*
+ * pt_dblink_dml_cte_ref () - walk callback, tells whether a resolved tree reads one of the given
+ *   CTEs
+ *   arg(in/out): PT_DBLINK_DML_CTE_REF
+ */
+static PT_NODE *
+pt_dblink_dml_cte_ref (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_DBLINK_DML_CTE_REF *ref = (PT_DBLINK_DML_CTE_REF *) arg;
+  PT_NODE *cte;
+
+  (void) parser;
+
+  if (node->node_type != PT_SPEC || !PT_SPEC_IS_CTE (node))
+    {
+      return node;
+    }
+
+  for (cte = ref->cte_list; cte != NULL; cte = cte->next)
+    {
+      if (node->info.spec.cte_pointer->info.pointer.node == cte)
+	{
+	  ref->found = true;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+    }
+  return node;
+}
+
 /*
  * pt_dblink_dml_check_sink () - Judge the shape of a remote DML sink.
  *   return: none. When the sink cannot run the statement, the parser error is set.
@@ -13414,7 +13451,7 @@ pt_dblink_dml_check_odku (PT_NODE * node, PT_NODE * target)
 static void
 pt_dblink_dml_check_sink (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * target)
 {
-  PT_NODE *cond, *key = NULL;
+  PT_NODE *cond, *with, *key = NULL;
   PT_ASSIGNMENTS_HELPER ea;
   const char *dml, *accepted = NULL;
   bool driving_pred, has_local = false;
@@ -13433,6 +13470,28 @@ pt_dblink_dml_check_sink (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * tar
 
   dml = pt_dblink_dml_stmt_name (node, false);
   cond = (node->node_type == PT_DELETE) ? node->info.delete_.search_cond : node->info.update.search_cond;
+
+  /* The sink runs each subquery on its own. It builds nothing for a WITH clause of the statement,
+   * so a subquery that reads one has no producer. A WITH clause inside the subquery is run with
+   * it. A WITH clause of the statement that nothing reads does no harm. */
+  with = (node->node_type == PT_DELETE) ? node->info.delete_.with : node->info.update.with;
+  if (with != NULL)
+    {
+      PT_DBLINK_DML_CTE_REF cte_ref = { with->info.with_clause.cte_definition_list, false };
+
+      parser_walk_tree (parser, cond, pt_dblink_dml_cte_ref, &cte_ref, NULL, NULL);
+      if (!cte_ref.found && node->node_type == PT_UPDATE)
+	{
+	  parser_walk_tree (parser, node->info.update.assignment, pt_dblink_dml_cte_ref, &cte_ref, NULL, NULL);
+	}
+      if (cte_ref.found)
+	{
+	  snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with a local subquery supports only a WITH clause "
+		    "written inside the subquery, not on the statement", dml);
+	  PT_ERRORc (parser, target, errmsg);
+	  return;
+	}
+    }
 
   driving_pred = (cond != NULL && cond->next == NULL && pt_dblink_dml_is_subquery_pred (cond));
   if (driving_pred)
