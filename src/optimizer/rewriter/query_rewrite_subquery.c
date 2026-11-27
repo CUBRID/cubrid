@@ -901,11 +901,10 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 static PT_NODE *
 qo_make_semi_anti_subquery_cond (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
-  PT_NODE *subq, *on_cond, *expr, *cnf, *prev, *in_eq = NULL, *in_prev = NULL, *lhs = NULL, *item = NULL;
+  PT_NODE *subq, *on_cond, *expr, *cnf, *prev, *next, *in_eq = NULL, *lhs = NULL, *item = NULL;
   UINTPTR ref;
   short location = 0;
-  int max_pred_order, n_in_eq = 0;
-  bool is_item_arg1;
+  int max_pred_order;
 
   subq = spec->info.spec.derived_table;
   if (subq == NULL || subq->node_type != PT_SELECT
@@ -924,59 +923,58 @@ qo_make_semi_anti_subquery_cond (PARSER_CONTEXT * parser, PT_NODE * spec)
     }
 
   /* the ON goes into the WHERE of the subquery, where a conjunct is evaluated before the tables of the subquery are
-   * joined: but for the equality of an IN form, only a comparison of columns of the same type, which computes
-   * nothing, may */
-  for (prev = NULL, cnf = on_cond; cnf != NULL; prev = cnf, cnf = cnf->next)
+   * joined: only a comparison of columns of the same type, which computes nothing, may.  The equality of an IN form
+   * is taken out instead, to be the [NOT] IN again */
+  for (prev = NULL, cnf = on_cond; cnf != NULL; cnf = next)
     {
+      next = cnf->next;
+
       if (cnf->node_type == PT_EXPR && PT_EXPR_INFO_IS_FLAGED (cnf, PT_EXPR_INFO_UNNESTED_IN))
 	{
+	  if (in_eq != NULL)
+	    {
+	      goto exit;	/* another rewrite made a copy of it */
+	    }
+
 	  in_eq = cnf;
-	  in_prev = prev;
-	  n_in_eq++;
+	  in_eq->next = NULL;
+	  if (prev == NULL)
+	    {
+	      on_cond = next;
+	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
+	  continue;
 	}
-      else if (cnf->node_type != PT_EXPR || cnf->or_next != NULL || !pt_is_comp_op (cnf->info.expr.op)
-	       || !pt_is_attr (cnf->info.expr.arg1) || !pt_is_attr (cnf->info.expr.arg2)
-	       || !pt_check_same_datatype (parser, cnf->info.expr.arg1, cnf->info.expr.arg2))
+
+      if (cnf->node_type != PT_EXPR || cnf->or_next != NULL || !pt_is_comp_op (cnf->info.expr.op)
+	  || !pt_is_attr (cnf->info.expr.arg1) || !pt_is_attr (cnf->info.expr.arg2)
+	  || !pt_check_same_datatype (parser, cnf->info.expr.arg1, cnf->info.expr.arg2))
 	{
 	  goto exit;
 	}
+      prev = cnf;
     }
 
-  /* an IN form comes back as [NOT] IN: the item of its equality is the side that reads the spec, the lhs the side
-   * that does not */
-  if (n_in_eq == 1 && in_eq->info.expr.op == PT_EQ && in_eq->or_next == NULL)
+  if (in_eq != NULL)
     {
+      /* as it was made, 'lhs = item' with the lhs not reading the spec.  With nothing left in the ON the subquery
+       * is not correlated */
       ref = spec->info.spec.id;
       (void) parser_walk_tree (parser, in_eq->info.expr.arg1, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
-      is_item_arg1 = (ref == 0);
-      ref = spec->info.spec.id;
-      (void) parser_walk_tree (parser, in_eq->info.expr.arg2, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
-      if (is_item_arg1 != (ref == 0))
-	{
-	  item = is_item_arg1 ? in_eq->info.expr.arg1 : in_eq->info.expr.arg2;
-	  lhs = is_item_arg1 ? in_eq->info.expr.arg2 : in_eq->info.expr.arg1;
-	}
-    }
-  if (n_in_eq > 0)
-    {
-      /* the equality is not found as it was made, or the subquery is not correlated: no other conjunct in its ON */
-      if (lhs == NULL || (in_prev == NULL && in_eq->next == NULL))
+      if (in_eq->info.expr.op != PT_EQ || in_eq->or_next != NULL || ref == 0 || on_cond == NULL)
 	{
 	  goto exit;
 	}
 
-      if (in_prev == NULL)
-	{
-	  on_cond = in_eq->next;
-	}
-      else
-	{
-	  in_prev->next = in_eq->next;
-	}
-      in_eq->next = NULL;
+      lhs = in_eq->info.expr.arg1;
+      item = in_eq->info.expr.arg2;
       in_eq->info.expr.arg1 = NULL;
       in_eq->info.expr.arg2 = NULL;
       parser_free_tree (parser, in_eq);
+      in_eq = NULL;
     }
 
   /* replace the columns of the spec with the select list items, as pt_copypush_terms () does */
@@ -1040,6 +1038,7 @@ qo_make_semi_anti_subquery_cond (PARSER_CONTEXT * parser, PT_NODE * spec)
 exit:
   parser_free_tree (parser, subq);
   parser_free_tree (parser, on_cond);
+  parser_free_tree (parser, in_eq);
   return NULL;
 }
 

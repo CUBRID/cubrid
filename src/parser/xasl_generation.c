@@ -23842,11 +23842,17 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
       build_cost = (summary->fixed_cpu_cost + summary->fixed_io_cost + summary->variable_cpu_cost
 		    + summary->variable_io_cost);
 
-      /* the subquery is planned first.  The join reads the derived table and costs no less than building it does: it
-       * is not planned when the subquery costs less than that */
+      /* the subquery is planned first: a spec with none to run as has nothing to be compared with */
       subq_cost = pt_plan_semi_anti_type (parser, select_node, spec, SEMI_ANTI_SUBQUERY);
+      if (subq_cost < 0.0)
+	{
+	  continue;
+	}
+
+      /* the join reads the derived table and costs no less than building it does: it is not planned when the
+       * subquery costs less than that */
       join_cost = -1.0;
-      if (subq_cost < 0.0 || subq_cost >= build_cost)
+      if (subq_cost >= build_cost)
 	{
 	  /* the query as it is was planned where the spec before was compared */
 	  join_cost =
@@ -23854,7 +23860,7 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
 
       /* at the same cost the SEMI / ANTI JOIN is kept */
-      if (subq_cost < 0.0 || (join_cost >= 0.0 && join_cost <= subq_cost) || pt_has_error (parser))
+      if ((join_cost >= 0.0 && join_cost <= subq_cost) || pt_has_error (parser))
 	{
 	  prev_cost = join_cost;
 	  continue;
