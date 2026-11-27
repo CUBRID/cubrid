@@ -1623,6 +1623,11 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     {
       db_npages = (DKNPAGES) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE) / db_desired_pagesize);
     }
+  /* createdb already applies this floor to a size it passes, so it changes only db_volume_size taken above */
+  if (db_npages > 0 && disk_sectors_to_extend_npages (db_npages) < DISK_MIN_FIRST_VOLUME_SECTS)
+    {
+      db_npages = DISK_SECTS_NPAGES (DISK_MIN_FIRST_VOLUME_SECTS);
+    }
 
   if (log_npages <= 0)
     {
@@ -3450,6 +3455,10 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 	  return NO_ERROR;
 	}
 #endif /* SERVER_MODE */
+
+      /* no thread of the client is left to close a parallel section: one still open is leaked, and must not defer
+       * the abort below (lock_group_defer_abort ()) */
+      lock_group_clear (tran_index);
 
       /*
        * If the transaction is active only abort it.

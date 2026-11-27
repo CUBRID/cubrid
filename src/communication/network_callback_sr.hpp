@@ -66,6 +66,9 @@ int xs_callback_send_args (cubthread::entry *thread_p, Args &&... args)
   return xs_callback_send (thread_p, b);
 }
 
+/* the client must not request the server while handling this: the request would wait until the one sending this
+ * next waits for the client or ends. CHANGE_RIGHTS (CBRD-27782) and ARG_PREPARE (VOBJ fixup) still may; the client
+ * checks METHOD_REQUEST_END only */
 template <typename ... Args>
 int xs_callback_send_no_receive (cubthread::entry *thread_p, Args &&... args)
 {
