@@ -2140,7 +2140,7 @@ static void logwr_update_last_sent_eof_lsa (LOGWR_ENTRY * entry);
  *   mode(in):
  *   orig_mode(in): the strongest mode the client has requested
  *
- * Note:
+ * Note: an ASYNC LWT that missed a flush while sending is set to DELAY instead of WAIT.
  */
 static int
 logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p, LOG_PAGEID fpageid, int mode,
@@ -2149,6 +2149,7 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
   LOGWR_ENTRY *entry;
   int rv;
   bool continue_checking = true;
+  LOG_LSA eof_lsa;
   LOGWR_INFO *writer_info = log_Gl.writer_info;
 
   *wr_entry_p = NULL;
@@ -2195,19 +2196,21 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
       entry->copy_from_first_phy_page = copy_from_first_phy_page;
       if (entry->status != LOGWR_STATUS_DELAY)
 	{
-	  /* The caller holds flush_start_mutex, so last_woken_eof_lsa does not change until this LWT waits.
-	   * If a flush woke up the LWTs while this one was sending, the log it flushed has not been sent yet:
-	   * read it now instead of waiting for the next flush, which may not come soon.
+	  /* hdr.eof_lsa moves only in a flush, so if it is past what this LWT has sent, a flush ran while this LWT
+	   * was sending and did not wake it up: read that log now instead of waiting for the next flush, which may
+	   * not come soon. Registering after the flush has moved hdr.eof_lsa but before it wakes up the LWTs is
+	   * also fine: the DELAY waits on LOG_CS until that flush ends and sends the same log.
 	   * Only for an ASYNC client: a DELAY of a non-ASYNC client holds LOG_CS until the reply.
-	   * Not after an interrupt: entry->eof_lsa then caps what is sent, never reaching last_woken_eof_lsa.
-	   * Not when interrupted: only the WAIT path checks the interrupt, and a busy server would never take it. */
+	   * Not after an interrupt: entry->eof_lsa then caps what is sent, so the LWT would DELAY forever.
+	   * Not when interrupted (tdes->interrupt): only the WAIT path checks it. A shutdown stops the LWT only
+	   * while it waits, which sets entry->eof_lsa (covered above). */
+	  eof_lsa = log_Gl.hdr.eof_lsa.load ();
 	  if (orig_mode == LOGWR_MODE_ASYNC && LSA_ISNULL (&entry->eof_lsa) && !LSA_ISNULL (&entry->last_sent_eof_lsa)
-	      && LSA_LT (&entry->last_sent_eof_lsa, &writer_info->last_woken_eof_lsa)
+	      && LSA_LT (&entry->last_sent_eof_lsa, &eof_lsa)
 	      && !logtb_is_interrupted (thread_p, false, &continue_checking))
 	    {
 	      logwr_er_log ("logwr_register_writer_entry, missed flush: last_sent_eof_lsa(%lld|%d) < "
-			    "last_woken_eof_lsa(%lld|%d)\n", LSA_AS_ARGS (&entry->last_sent_eof_lsa),
-			    LSA_AS_ARGS (&writer_info->last_woken_eof_lsa));
+			    "eof_lsa(%lld|%d)\n", LSA_AS_ARGS (&entry->last_sent_eof_lsa), LSA_AS_ARGS (&eof_lsa));
 	      entry->status = LOGWR_STATUS_DELAY;
 	    }
 	  else
