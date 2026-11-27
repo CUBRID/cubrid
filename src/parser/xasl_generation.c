@@ -5248,7 +5248,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
  *   name(in):
  *   attributes(in):
  *   check_func_index_exprs(in): if true, a function-index expression name
- *                              also matches an identical expression in the list
+ *                              also matches an identical expression of the same spec in the list
  */
 int
 pt_find_attribute_with_func_index_expr (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes,
@@ -5299,6 +5299,12 @@ pt_find_attribute_with_func_index_expr (PARSER_CONTEXT * parser, const PT_NODE *
 	   * (parser_print_function_index_expr, as the optimizer does in lookup_seg),
 	   * so the same expression at different parse tree nodes still matches. */
 	  const char *name_str = NULL;
+	  UINTPTR name_spec_id = 0, attr_spec_id = 0;
+	  bool is_single_spec;
+
+	  /* The printed form qualifies a column by its table name, so the expressions of two specs of one table
+	   * (a self join) print the same. Match the printed form only between expressions of the same single spec. */
+	  is_single_spec = !pt_is_join_expr ((PT_NODE *) name, &name_spec_id);
 
 	  for (attr = (PT_NODE *) attributes; attr != NULL; attr = attr->next)
 	    {
@@ -5311,7 +5317,8 @@ pt_find_attribute_with_func_index_expr (PARSER_CONTEXT * parser, const PT_NODE *
 		  return i;
 		}
 
-	      if (pt_is_function_index_expression (attr))
+	      if (pt_is_function_index_expression (attr)
+		  && is_single_spec && !pt_is_join_expr (attr, &attr_spec_id) && attr_spec_id == name_spec_id)
 		{
 		  const char *attr_str;
 
