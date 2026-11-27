@@ -18933,6 +18933,17 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	{
 	  has_error = true;
 	}
+      else if (expr->or_next != NULL && db_get_int (&dbval_res) == 0)
+	{
+	  /* The predicate is a disjunct of a CNF term, the rest of the OR hanging on its or_next, which end: frees with
+	   * the predicate. FALSE drops out of the OR and the rest of it stays, as the evaluation below folds a disjunct;
+	   * TRUE takes the whole OR. */
+	  result = parser_copy_tree_list (parser, expr->or_next);
+	  if (result == NULL)
+	    {
+	      has_error = true;
+	    }
+	}
       goto end;
     }
 
