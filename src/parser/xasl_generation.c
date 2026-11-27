@@ -24656,43 +24656,76 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
+ * pt_remote_dml_sink_has_conn () - Whether a remote DML sink target has its connection info.
+ *   return: false when url/user/pwd were not resolved. No error is set.
+ *           Each builder reports it in its own words.
+ *   spec(in): the remote target spec
+ */
+static bool
+pt_remote_dml_sink_has_conn (PT_NODE * spec)
+{
+  PT_NODE *server_node = spec->info.spec.remote_server_name;
+  PT_DBLINK_INFO *pdblink;
+
+  assert (server_node != NULL && server_node->node_type == PT_DBLINK_TABLE_DML);
+  assert (server_node->info.dblink_table.is_name);
+
+  pdblink = &server_node->info.dblink_table;
+
+  return pdblink->url != NULL && pdblink->user != NULL && pdblink->pwd != NULL;
+}
+
+/*
  * pt_fill_remote_dml_sink () - Fill the common DBLink remote push-sink fields (connection info +
- *   qualified remote table name), shared by the INSERT SELECT, DELETE and UPDATE local-subquery XASL
- *   builders.
+ *   qualified remote table name), shared by the INSERT SELECT, DELETE and UPDATE local-subquery
+ *   XASL builders.
  *   parser(in)      : parser context
- *   entity_name(in) : remote target's entity_name PT_NODE (PT_NAME with optional owner resolved)
- *   pdblink(in)     : remote connection info; url/user/pwd already validated non-NULL by the caller
+ *   spec(in)        : the remote target spec. Its url/user/pwd are already validated non-NULL by
+ *                     the caller (pt_remote_dml_sink_has_conn).
  *   using_index(in) : the statement's USING INDEX clause, NULL for INSERT SELECT and when absent
  *   sink(out)       : is_remote/url/user/pwd/table_name filled in
  *
  * Note: table_name is left NULL on allocation failure -- the caller detects this the same way it
  *   already checks pt_has_error(parser), by testing sink->table_name == NULL.
  *
- * TODO: remote table/column names are emitted unquoted. Quoting is per-DB and cannot be decided here: the
- *   remote DBMS type is unknown at XASL generation (these sinks also target Oracle/MySQL via the gateway),
- *   unquoted names normalize differently (Oracle uppercases, CUBRID lowercases), the quote character differs
- *   ("id" vs MySQL `id`), and info.name.original has already dropped the user's quoting. Deferred, same as
- *   the correlated push-down path (CBRD-26601, mq_dblink_append_corr_pred_sql) -- fix both together.
+ * TODO: remote table/column names are emitted unquoted. Quoting is per-DB and cannot be decided
+ *   here: the remote DBMS type is unknown at XASL generation (these sinks also target Oracle/MySQL
+ *   via the gateway), unquoted names normalize differently (Oracle uppercases, CUBRID lowercases),
+ *   the quote character differs ("id" vs MySQL `id`), and info.name.original has already dropped
+ *   the user's quoting. Deferred, same as the correlated push-down path (CBRD-26601,
+ *   mq_dblink_append_corr_pred_sql) -- fix both together.
  *   Consequence: reserved / mixed-case / special-char identifiers are not supported.
  */
 static void
-pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_DBLINK_INFO * pdblink,
-			 PT_NODE * using_index, REMOTE_DML_SINK * sink)
+pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * using_index, REMOTE_DML_SINK * sink)
 {
+  PT_DBLINK_INFO *pdblink = &spec->info.spec.remote_server_name->info.dblink_table;
+  PT_NODE *entity_name = spec->info.spec.entity_name;
   PARSER_VARCHAR *hint;
+
+  assert (pt_remote_dml_sink_has_conn (spec));
 
   sink->is_remote = true;
   sink->url = (char *) pdblink->url->info.value.data_value.str->bytes;
   sink->user = (char *) pdblink->user->info.value.data_value.str->bytes;
   sink->pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
 
-  sink->table_name = NULL;
-  if (entity_name->info.name.resolved)
+  if (entity_name == NULL && PT_SPEC_IS_DERIVED (spec) && spec->info.spec.derived_table->node_type == PT_DBLINK_TABLE)
     {
-      sink->table_name = pt_append_string (parser, sink->table_name, entity_name->info.name.resolved);
-      sink->table_name = pt_append_string (parser, sink->table_name, ".");
+      /* A target resolved with its columns keeps its name in the derived dblink table.
+       * That name is already qualified. */
+      sink->table_name = spec->info.spec.derived_table->info.dblink_table.remote_table_name;
     }
-  sink->table_name = pt_append_string (parser, sink->table_name, entity_name->info.name.original);
+  else
+    {
+      sink->table_name = NULL;
+      if (entity_name->info.name.resolved)
+	{
+	  sink->table_name = pt_append_string (parser, sink->table_name, entity_name->info.name.resolved);
+	  sink->table_name = pt_append_string (parser, sink->table_name, ".");
+	}
+      sink->table_name = pt_append_string (parser, sink->table_name, entity_name->info.name.original);
+    }
 
   /* The hint names an index on the remote target -- the statement's target is remote, and this side has no
    * schema to resolve it against -- so it is sent as written rather than translated. A vendor that does not
@@ -24702,6 +24735,18 @@ pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_DBLI
 
   /* remote_key_col / remote_op stay as the freshly allocated node left them, NULL: a statement that sends
    * no WHERE keeps them so, and the DELETE and UPDATE builders set them when theirs does. */
+}
+
+/*
+ * pt_remote_dml_set_cached_subq () - Hand a sink aptr the cached XASL id of its subquery, if any.
+ *   return: false on allocation failure, with the error set by pt_set_sub_xasl_id ()
+ *   aptr(in/out): the XASL generated for the subquery
+ *   subq(in)    : the local subquery
+ */
+static bool
+pt_remote_dml_set_cached_subq (XASL_NODE * aptr, PT_NODE * subq)
+{
+  return !subq->info.query.flag.subquery_cached || pt_set_sub_xasl_id (aptr, subq) == NO_ERROR;
 }
 
 /*
@@ -25000,9 +25045,6 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   INSERT_PROC_NODE *insert = NULL;
   PT_NODE *aptr_statement = NULL;
   PT_NODE *into_spec = NULL;
-  PT_NODE *server_node = NULL;
-  PT_DBLINK_INFO *pdblink = NULL;
-  PT_NODE *entity_name = NULL;
   int num_odku_bound = 0;
 
   assert (parser != NULL && statement != NULL);
@@ -25017,48 +25059,25 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  if (aptr_statement->info.query.flag.subquery_cached)
+  if (!pt_remote_dml_set_cached_subq (xasl->aptr_list, aptr_statement))
     {
-      if (pt_set_sub_xasl_id (xasl->aptr_list, aptr_statement) != NO_ERROR)
-	{
-	  PT_ERRORmf (parser, aptr_statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
-		      sizeof (XASL_ID));
-	  return NULL;
-	}
+      PT_ERRORmf (parser, aptr_statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (XASL_ID));
+      return NULL;
     }
 
   into_spec = statement->info.insert.spec;
-  server_node = into_spec->info.spec.remote_server_name;
 
-  assert (server_node != NULL && server_node->node_type == PT_DBLINK_TABLE_DML);
-  assert (server_node->info.dblink_table.is_name);
-
-  pdblink = &server_node->info.dblink_table;
-
-  if (pdblink->url == NULL || pdblink->user == NULL || pdblink->pwd == NULL)
+  if (!pt_remote_dml_sink_has_conn (into_spec))
     {
-      PT_ERRORm (parser, server_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      PT_ERRORm (parser, into_spec->info.spec.remote_server_name, MSGCAT_SET_PARSER_RUNTIME,
+		 MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
       return NULL;
     }
 
   insert = &xasl->proc.insert;
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
-  entity_name = into_spec->info.spec.entity_name;
-  if (entity_name == NULL && PT_SPEC_IS_DERIVED (into_spec)
-      && into_spec->info.spec.derived_table->node_type == PT_DBLINK_TABLE)
-    {
-      /* a target resolved with its columns keeps its name in the derived dblink table, already qualified */
-      insert->sink.is_remote = true;
-      insert->sink.url = (char *) pdblink->url->info.value.data_value.str->bytes;
-      insert->sink.user = (char *) pdblink->user->info.value.data_value.str->bytes;
-      insert->sink.pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
-      insert->sink.table_name = into_spec->info.spec.derived_table->info.dblink_table.remote_table_name;
-    }
-  else
-    {
-      pt_fill_remote_dml_sink (parser, entity_name, pdblink, NULL, &insert->sink);
-    }
+  pt_fill_remote_dml_sink (parser, into_spec, NULL, &insert->sink);
   if (insert->sink.table_name == NULL || pt_has_error (parser))
     {
       return NULL;
@@ -25311,8 +25330,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   XASL_NODE *xasl = NULL;
   DELETE_PROC_NODE *del = NULL;
   PT_NODE *aptr_statement = NULL;
-  PT_NODE *from = NULL, *server_node = NULL, *entity_name = NULL;
-  PT_DBLINK_INFO *pdblink = NULL;
+  PT_NODE *from = NULL;
   PT_NODE *cond;
   const char *op_sql = NULL;
   const char *key_col = NULL;
@@ -25337,20 +25355,12 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  if (aptr_statement->info.query.flag.subquery_cached)
+  if (!pt_remote_dml_set_cached_subq (xasl->aptr_list, aptr_statement))
     {
-      if (pt_set_sub_xasl_id (xasl->aptr_list, aptr_statement) != NO_ERROR)
-	{
-	  return NULL;
-	}
+      return NULL;
     }
 
-  server_node = from->info.spec.remote_server_name;
-  assert (server_node != NULL && server_node->node_type == PT_DBLINK_TABLE_DML);
-  assert (server_node->info.dblink_table.is_name);
-
-  pdblink = &server_node->info.dblink_table;
-  if (pdblink->url == NULL || pdblink->user == NULL || pdblink->pwd == NULL)
+  if (!pt_remote_dml_sink_has_conn (from))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
 	      "remote DELETE: connection info (url/user/pwd) not resolved");
@@ -25362,8 +25372,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   del->num_classes = 0;
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
-  entity_name = from->info.spec.entity_name;
-  pt_fill_remote_dml_sink (parser, entity_name, pdblink, statement->info.delete_.using_index, &del->sink);
+  pt_fill_remote_dml_sink (parser, from, statement->info.delete_.using_index, &del->sink);
 
   del->sink.remote_key_col = pt_append_string (parser, NULL, key_col);
   del->sink.remote_op = pt_append_string (parser, NULL, op_sql);
@@ -25402,9 +25411,8 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   XASL_NODE *xasl = NULL, *set_aptr = NULL, *chain_tail = NULL;
   UPDATE_PROC_NODE *upd = NULL;
-  PT_NODE *from = NULL, *server_node = NULL, *entity_name = NULL;
+  PT_NODE *from = NULL;
   PT_NODE *cond, *driving_subq = NULL;
-  PT_DBLINK_INFO *pdblink = NULL;
   PT_ASSIGNMENTS_HELPER ea;
   const char *op_sql = NULL, *key_col = NULL;
   char *set_text = NULL, *piece = NULL;
@@ -25422,11 +25430,7 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  server_node = from->info.spec.remote_server_name;
-  assert (server_node != NULL && server_node->node_type == PT_DBLINK_TABLE_DML);
-
-  pdblink = &server_node->info.dblink_table;
-  if (pdblink->url == NULL || pdblink->user == NULL || pdblink->pwd == NULL)
+  if (!pt_remote_dml_sink_has_conn (from))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
 	      "remote UPDATE: connection info (url/user/pwd) not resolved");
@@ -25447,12 +25451,9 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  if (driving_subq != NULL && driving_subq->info.query.flag.subquery_cached)
+  if (driving_subq != NULL && !pt_remote_dml_set_cached_subq (xasl->aptr_list, driving_subq))
     {
-      if (pt_set_sub_xasl_id (xasl->aptr_list, driving_subq) != NO_ERROR)
-	{
-	  return NULL;
-	}
+      return NULL;
     }
 
   chain_tail = xasl->aptr_list;
@@ -25513,12 +25514,9 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 	    }
 
-	  if (ea.rhs->info.query.flag.subquery_cached)
+	  if (!pt_remote_dml_set_cached_subq (set_aptr, ea.rhs))
 	    {
-	      if (pt_set_sub_xasl_id (set_aptr, ea.rhs) != NO_ERROR)
-		{
-		  return NULL;
-		}
+	      return NULL;
 	    }
 
 	  set_aptr->next = NULL;
@@ -25574,8 +25572,7 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   upd->classes = NULL;
   upd->num_classes = 0;
 
-  entity_name = from->info.spec.entity_name;
-  pt_fill_remote_dml_sink (parser, entity_name, pdblink, statement->info.update.using_index, &upd->sink);
+  pt_fill_remote_dml_sink (parser, from, statement->info.update.using_index, &upd->sink);
   if (key_col != NULL)
     {
       upd->sink.remote_key_col = pt_append_string (parser, NULL, key_col);
