@@ -531,6 +531,11 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    }
 	}
       log_sysop_commit (thread_p);
+      /* Recovery aborts a participant this coordinator prepared only through its 'P' row, so the rows must be on
+       * disk before the first XA prepare goes out.  The sysop commit above only appends its log record: a crash
+       * right after the prepare would lose the rows and leave the prepared participants in doubt, holding their
+       * locks.  Flush up to that record regardless of async_commit. */
+      logpb_flush_log_for_wal (thread_p, &tdes->tail_lsa);
       /* P2: Crash after (1) before (2) SEND XA PREPARE - recovery: daemon ABORT then DELETE */
       FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_1_2, 0);
 #endif
@@ -602,6 +607,11 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    {
 	      return ER_FAILED;
 	    }
+	  /* The daemon delivers COMMIT as soon as it is queued below.  With async_commit the commit log may not be on
+	   * disk yet, and a crash then rolls this transaction back - the 'C' rows with it - while the participants
+	   * have committed.  Flush up to the commit log first; with a synchronous commit it is already there.  An
+	   * abort needs no flush: recovery aborts the transaction anyway. */
+	  logpb_flush_log_for_wal (thread_p, &tdes->tail_lsa);
 	}
       else
 	{
