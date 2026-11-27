@@ -1435,6 +1435,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_BIT_TO_BLOB:
     case T_CHAR_TO_CLOB:
     case T_LOB_LENGTH:
+    case T_CURRENT_VALUE_BY_OID:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;

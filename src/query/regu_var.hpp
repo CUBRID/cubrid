@@ -414,6 +414,7 @@ fetch_opcode_caches (OPERATOR_TYPE opcode)
     case T_INCR:
     case T_DECR:
     case T_CURRENT_VALUE:
+    case T_CURRENT_VALUE_BY_OID:
     case T_NEXT_VALUE:
     case T_CASE:
     case T_DECODE:

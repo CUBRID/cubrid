@@ -1450,11 +1450,37 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       init_emergency = true;
     }
 
+  if (log_Gl.hdr.is_restore_incomplete != 0 && ismedia_crash == false && init_emergency == false)
+    {
+      /* The volumes hold a backup with at most part of the log replayed, and the log goes on past them. A restart
+       * would not run a media recovery and would lose the committed work that the log holds. */
+      logtb_undefine_trantable (thread_p);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_RESTORE_INCOMPLETE, 1, db_fullname);
+      error_code = ER_LOG_RESTORE_INCOMPLETE;
+      goto error;
+    }
+
   /*
    * Was the database system shut down or was it involved in a crash ?
    */
   if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true))
     {
+      if (ismedia_crash == true)
+	{
+	  /* Until this recovery ends, the restored volumes do not match the log. The header in memory keeps the mark
+	   * too, so that an active log that the recovery makes when there is none gets it. */
+	  log_Gl.hdr.is_restore_incomplete = 1;
+	  if (log_Gl.append.vdes != NULL_VOLDES)
+	    {
+	      error_code = logpb_mark_restore_incomplete (thread_p, log_Gl.append.vdes, log_Name_active);
+	      if (error_code != NO_ERROR)
+		{
+		  logtb_undefine_trantable (thread_p);
+		  goto error;
+		}
+	    }
+	}
+
       /*
        * System was involved in a crash.
        * Execute the recovery process
@@ -5450,14 +5476,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 
       log_tran_do_postpone (thread_p, tdes);
 
-      /* The files created by this transaction are not new files any longer. Close any query cursors at this moment
-       * too. */
-      if (tdes->first_save_entry != NULL)
-	{
-	  spage_free_saved_spaces (thread_p, tdes->first_save_entry);
-	  tdes->first_save_entry = NULL;
-	}
-
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, false);
 
       if (is_local_tran)
@@ -5479,6 +5497,15 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	      log_append_commit_log (thread_p, tdes, &commit_lsa);
 	    }
 
+	  /* Release the space saved for undo only after the commit log is appended. A log that reuses the space after
+	   * this point has a larger LSA than the commit log, so it cannot reach the disk without the commit log, and
+	   * restart recovery does not undo this transaction after the space is reused. */
+	  if (tdes->first_save_entry != NULL)
+	    {
+	      spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	      tdes->first_save_entry = NULL;
+	    }
+
 	  if (retain_lock != true)
 	    {
 	      lock_unlock_all (thread_p);
@@ -5493,7 +5520,16 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	}
       else
 	{
-	  /* Postpone appending replication and commit log and releasing locks to log_complete_for_2pc. */
+	  /* Postpone appending replication and commit log and releasing locks to log_complete_for_2pc.
+	   * The commit decision is already in the log: log_2pc_append_decision appended it, or restart recovery read it
+	   * from the log (and then there is no saved space). A log that reuses the space after this point has a larger
+	   * LSA than the decision, so it cannot reach the disk without the decision even when log_async_commit does not
+	   * wait for the flush. So the saved space can be released. */
+	  if (tdes->first_save_entry != NULL)
+	    {
+	      spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	      tdes->first_save_entry = NULL;
+	    }
 	}
     }
   else

@@ -191,6 +191,7 @@ struct qo_plan
       bool index_cover;		/* covered index scan flag */
       bool index_iss;		/* index skip scan flag */
       bool index_loose;		/* loose index scan flag */
+      bool bitmap_heap;		/* the heap rows are read in file order, through a bitmap of the rows the index found */
       QO_NODE_INDEX_ENTRY *index;
       BITSET multi_col_range_segs;	/* range condition segs for multi_col_term */
       BITSET hash_terms;	/* hash_terms for hash list scan */
@@ -335,6 +336,12 @@ struct qo_info
    * The lowest-cost plan without regard to ordering.
    */
   QO_PLANVEC best_no_order;
+
+  /*
+   * The plans that read a heap through a bitmap. They are kept apart: a position that cannot run one (the inner
+   * of a nested loop or merge join, an ordered input) reads best_no_order and planvec as it did.
+   */
+  QO_PLANVEC best_bitmap;
 
   /*
    * The set of nodes joined by the plans at this node.
@@ -491,6 +498,13 @@ struct qo_planner
   /* Cached result of qo_groupby_limit_groups(env): the groups a GROUP BY stops at, or 0 */
   double groupby_limit_groups;
 
+  /* whether a scan of the statement may read its heap through a bitmap: 0 not asked yet, 1 yes, -1 no */
+  int bitmap_heap_allowed;
+  /* the index scan being made reads its heap through a bitmap (qo_generate_bitmap_heap_scan ()) */
+  bool bitmap_heap_twin;
+  /* the joins are examined over the plans of best_bitmap too (planner_visit_node ()) */
+  bool bitmap_heap_pass;
+
   /* the share of its rows a scan in the ORDER BY order reads before the LIMIT (qo_orderby_limit_fraction ()), or 1 */
   double orderby_limit_fraction;
 
@@ -512,6 +526,7 @@ extern void qo_info_stats (FILE *);
 
 extern bool qo_is_seq_scan (QO_PLAN *);
 extern bool qo_is_func_index_cover_routed (QO_PLAN * plan);
+extern void qo_plan_mark_bitmap_heap (QO_PLAN * planp);
 extern bool qo_is_iscan (QO_PLAN *);
 extern bool qo_is_iscan_from_groupby (QO_PLAN *);
 extern bool qo_is_iscan_from_orderby (QO_PLAN *);

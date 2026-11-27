@@ -5590,6 +5590,12 @@ cleanup:
       free_and_init (data_request);
     }
 
+  /* measuring the size above attached a compressed buffer to each long string */
+  for (i = 0; i < count; i++)
+    {
+      pr_clear_compressed_string (&variables[i]);
+    }
+
   return err;
 #else
   int err = 0;

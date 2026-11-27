@@ -146,6 +146,7 @@
 
 static void do_set_trace_to_query_flag (QUERY_FLAG * query_flag);
 static void do_send_plan_trace_to_session (PARSER_CONTEXT * parser);
+static void do_clear_odku_constants (ODKU_INFO * odku);
 static int do_set_lock_timeout_hint (PT_HINT_ENUM hint, PT_NODE * hint_arg);
 static int do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class_,
@@ -399,7 +400,6 @@ auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALU
     {
       goto end;
     }
-  FLOAT_TO_FIXED_NUMERIC (&range_val);
 
   /* ABS (cached_num * inc_val) <= range_val */
   db_make_int (&cached_num_int_val, cached_num);
@@ -423,7 +423,6 @@ auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALU
     {
       goto end;
     }
-  FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
   error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
   if (error != NO_ERROR)
@@ -1111,6 +1110,10 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
    * then refetch it from server again.
    */
   assert (WS_ISDIRTY (serial_object) == false);
+
+  /* before the row takes its new name: a write-back replicates at once, ahead of this DDL, keyed by the name this
+   * transaction sees, and the standby has only the committed one */
+  (void) serial_decache (ws_oid (serial_object));
 
   ws_decache (serial_object);
   /* no need to get last version for serial - actually, the purpose is AU_FETCH_WRITE, so fetch type is not relevant;
@@ -2077,7 +2080,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
-      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
@@ -3124,7 +3126,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
-      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
@@ -13032,6 +13033,8 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 		}
 	    }
+
+	  do_clear_odku_constants (contextp->xasl->proc.insert.odku);
 	}
       else
 	{
@@ -13133,6 +13136,8 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 	}
+
+      do_clear_odku_constants (xasl->proc.insert.odku);
     }
   else
     {
@@ -22618,6 +22623,30 @@ do_set_trace_to_query_flag (QUERY_FLAG * query_flag)
       && DETAILED_DUMP (prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL)))
     {
       *query_flag |= XASL_TRACE_PLAN_DETAIL;
+    }
+}
+
+/*
+ * do_clear_odku_constants () - clear the constants of the ON DUPLICATE KEY UPDATE assignments of an insert XASL
+ *   return: none
+ *   odku(in): the ON DUPLICATE KEY UPDATE info of the insert XASL, or NULL
+ */
+static void
+do_clear_odku_constants (ODKU_INFO * odku)
+{
+  int i;
+
+  if (odku == NULL)
+    {
+      return;
+    }
+
+  for (i = 0; i < odku->num_assigns; i++)
+    {
+      if (odku->assignments[i].constant)
+	{
+	  pr_clear_value (odku->assignments[i].constant);
+	}
     }
 }
 

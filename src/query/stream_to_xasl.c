@@ -290,6 +290,8 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl->read_class_oid_list = NULL;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
+  xasl->nl_batch = NULL;
+  xasl->nl_sq_batch = NULL;
   xasl->rtf = NULL;
   xasl->rtf_val = NULL;
   xasl->rtf_rows = 0;
@@ -2961,6 +2963,8 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   xasl->max_iterations = -1;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
+  xasl->nl_batch = NULL;
+  xasl->nl_sq_batch = NULL;
   xasl->rtf = NULL;
   xasl->rtf_val = NULL;
   xasl->rtf_rows = 0;
@@ -3510,6 +3514,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
   std::memset (stx_build_list_proc->agg_hash_context, 0, sizeof (*stx_build_list_proc->agg_hash_context));
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_first_tuple);
+  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_order_free);
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hkey_size);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -6336,6 +6341,10 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
 
   ptr = or_unpack_int (ptr, &indx_info->groupby_skip);
 
+  ptr = or_unpack_int (ptr, &indx_info->analytic_sort_cols);
+
+  ptr = or_unpack_int (ptr, &indx_info->analytic_desc_cols);
+
   ptr = or_unpack_int (ptr, &indx_info->use_iss);
 
   ptr = or_unpack_int (ptr, &indx_info->ils_prefix_len);
@@ -7824,6 +7833,10 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   assert (ptr != NULL && aggregate != NULL);
 
   /* server-side runtime state, never part of the stream */
+  aggregate->distinct_mem = false;
+  aggregate->distinct_listed = false;
+  aggregate->distinct_cnt = 0;
+  aggregate->distinct_vals = NULL;
   aggregate->operand_prog = NULL;
   aggregate->operand_prog_idx = NULL;
   aggregate->operand_prog_state = 0;
