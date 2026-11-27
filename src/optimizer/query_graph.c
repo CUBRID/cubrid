@@ -3902,7 +3902,6 @@ check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	case PT_ESTIMATED_AVG_ROW_LENGTH:
 	case PT_ESTIMATED_DATA_LENGTH:
 	case PT_ESTIMATED_DATA_FREE:
-	case PT_SLEEP:
 	  /* the operators of regu_opcode_may_wait () */
 	  QO_TERM_SET_FLAG (info->term, QO_TERM_MAY_WAIT);
 	  break;

@@ -31383,7 +31383,8 @@ qexec_gby_skip_regu_is_local (REGU_VARIABLE * regu)
       {
 	ARITH_TYPE *arith = regu->value.arithptr;
 
-	return (!regu_opcode_may_wait (arith->opcode) && qexec_gby_skip_regu_is_local (arith->leftptr)
+	return (!regu_opcode_may_wait (arith->opcode) && arith->opcode != T_SLEEP
+		&& qexec_gby_skip_regu_is_local (arith->leftptr)
 		&& qexec_gby_skip_regu_is_local (arith->rightptr)
 		&& qexec_gby_skip_regu_is_local (arith->thirdptr) && qexec_gby_skip_pred_is_local (arith->pred));
       }

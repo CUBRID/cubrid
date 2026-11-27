@@ -7239,7 +7239,6 @@ qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
 	case PT_ESTIMATED_AVG_ROW_LENGTH:
 	case PT_ESTIMATED_DATA_LENGTH:
 	case PT_ESTIMATED_DATA_FREE:
-	case PT_SLEEP:
 	  *found = true;
 	  break;
 	default:

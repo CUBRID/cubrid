@@ -402,9 +402,10 @@ is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var)
 }
 
 /* regu_opcode_may_wait () - an operator whose evaluation may wait for what the row does not hold: a serial's page, a
- * class lock and the catalog (the statistics functions, INCR and DECR), a timer.  A scan evaluates none of them with a
+ * class lock and the catalog (the statistics functions, INCR and DECR).  A scan evaluates none of them with a
  * heap or B-tree page held: its block is compiled XASL_NO_FIXED_SCAN, its term is no key filter, the visits under a
- * leaf latch and the parallel scan workers refuse it */
+ * leaf latch and the parallel scan workers refuse it.  SLEEP is not one: it waits for no page or lock, and a scan
+ * sleeps with the page it holds */
 bool
 regu_opcode_may_wait (OPERATOR_TYPE opcode)
 {
@@ -420,7 +421,6 @@ regu_opcode_may_wait (OPERATOR_TYPE opcode)
     case T_ESTIMATED_AVG_ROW_LENGTH:
     case T_ESTIMATED_DATA_LENGTH:
     case T_ESTIMATED_DATA_FREE:
-    case T_SLEEP:
       return true;
     default:
       return false;
