@@ -7213,6 +7213,13 @@ mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 	  node->info.spec.as_attr_list = attributes;
 	  node->info.spec.range_var = tbl_name;
 
+	  if (mq_is_cannot_cache (derived))
+	    {
+	      /* the CTE is a derived table now, not excluded from the subquery cache as a CTE: mq_translate ()
+	       * marks the queries including it, as for a view */
+	      parser->flag.view_cannot_cache = 1;
+	    }
+
 	  if (node->info.spec.cte_pointer)
 	    {
 	      parser_free_tree (parser, node->info.spec.cte_pointer);
@@ -10490,8 +10497,8 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 
   if (return_node != NULL && parser->flag.view_cannot_cache)
     {
-      /* a view expanded into the statement, maybe in a subquery of it, cannot be cached: neither can the queries
-       * including the query reading the view, nor the statement when the view was merged into it */
+      /* a view expanded or a CTE inlined into the statement, maybe in a subquery of it, cannot be cached: neither
+       * can the queries including the query reading it, nor the statement when the view was merged into it */
       (void) parser_walk_tree (parser, (PT_NODE *) return_node, NULL, NULL, mq_propagate_cannot_cache, NULL);
       mq_set_cannot_cache ((PT_NODE *) return_node);
     }

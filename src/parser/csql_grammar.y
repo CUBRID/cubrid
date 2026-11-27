@@ -1999,9 +1999,7 @@ stmt_
 			if (stmt && with_clause)
 			  {
 			    stmt->info.query.with = with_clause;
-			    /* the WITH clause is parsed before the query, out of its scope: a CTE that cannot be cached
-			     * left the flag set (see parser_restore_cannot_cache ()) */
-			    if (parser_cannot_cache && PT_IS_QUERY (stmt))
+			    if (with_clause->info.with_clause.cannot_cache)
 			      {
 				stmt->info.query.flag.reexecute = 1;
 				stmt->info.query.flag.do_cache = 0;
@@ -12609,6 +12607,11 @@ select_expression_opt_with
 			if (stmt && with_clause)
 			  {
 			    stmt->info.query.with = with_clause;
+			    if (with_clause->info.with_clause.cannot_cache)
+			      {
+				/* csql_query marks the query */
+				parser_cannot_cache = true;
+			      }
 			  }
 
 			$$ = stmt;
@@ -12669,18 +12672,31 @@ select_expression_without_subquery
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
                 }}
 
-          table_op select_or_values_query
+	  table_op
+		{{
+			/* the right operand is marked by what it has only, as the left one was marked before it */
+			parser_save_and_set_cannot_cache (false);
+		}}
+	  select_or_values_query
                 {{
 			PT_NODE *stmt = $8;
 			PT_NODE *arg1 = $1;
+
+			if ($10 && parser_cannot_cache)
+			  {
+			    $10->info.query.flag.reexecute = 1;
+			    $10->info.query.flag.do_cache = 0;
+			    $10->info.query.flag.do_not_cache = 1;
+			  }
+			parser_restore_cannot_cache ();
 
 			if (stmt)
 			  {
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
-			    stmt->info.query.q.union_.arg2 = $9;
-                            stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
-                            stmt->flag.is_click_counter = $1->flag.is_click_counter | $9->flag.is_click_counter;
+			    stmt->info.query.q.union_.arg2 = $10;
+                            stmt->flag.recompile = $1->flag.recompile | $10->flag.recompile;
+                            stmt->flag.is_click_counter = $1->flag.is_click_counter | $10->flag.is_click_counter;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12755,18 +12771,31 @@ select_expression
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
 		}}
-	  table_op select_or_subquery
+	  table_op
+		{{
+			/* the right operand is marked by what it has only, as the left one was marked before it */
+			parser_save_and_set_cannot_cache (false);
+		}}
+	  select_or_subquery
 		{{
 			PT_NODE *stmt = $8;
 			PT_NODE *arg1 = $1;
+
+			if ($10 && parser_cannot_cache)
+			  {
+			    $10->info.query.flag.reexecute = 1;
+			    $10->info.query.flag.do_cache = 0;
+			    $10->info.query.flag.do_not_cache = 1;
+			  }
+			parser_restore_cannot_cache ();
 
 			if (stmt)
 			  {
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
-			    stmt->info.query.q.union_.arg2 = $9;
-                            stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
-                            stmt->flag.is_click_counter = $1->flag.is_click_counter | $9->flag.is_click_counter;
+			    stmt->info.query.q.union_.arg2 = $10;
+                            stmt->flag.recompile = $1->flag.recompile | $10->flag.recompile;
+                            stmt->flag.is_click_counter = $1->flag.is_click_counter | $10->flag.is_click_counter;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12839,18 +12868,31 @@ select_expression_without_values_query_no_with_clause
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
 		}}
-	  table_op select_or_subquery_without_values_query_no_with_clause
+	  table_op
+		{{
+			/* the right operand is marked by what it has only, as the left one was marked before it */
+			parser_save_and_set_cannot_cache (false);
+		}}
+	  select_or_subquery_without_values_query_no_with_clause
 		{{
 			PT_NODE *stmt = $8;
 			PT_NODE *arg1 = $1;
+
+			if ($10 && parser_cannot_cache)
+			  {
+			    $10->info.query.flag.reexecute = 1;
+			    $10->info.query.flag.do_cache = 0;
+			    $10->info.query.flag.do_not_cache = 1;
+			  }
+			parser_restore_cannot_cache ();
 
 			if (stmt)
 			  {
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
-			    stmt->info.query.q.union_.arg2 = $9;
-                            stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
-                            stmt->flag.is_click_counter = $1->flag.is_click_counter | $9->flag.is_click_counter;
+			    stmt->info.query.q.union_.arg2 = $10;
+                            stmt->flag.recompile = $1->flag.recompile | $10->flag.recompile;
+                            stmt->flag.is_click_counter = $1->flag.is_click_counter | $10->flag.is_click_counter;
 
 			    if (arg1 != NULL
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -12924,18 +12966,31 @@ select_expression_without_values_and_single_subquery
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
 		}}
-	  table_op select_or_subquery_without_values_query_no_with_clause
+	  table_op
+		{{
+			/* the right operand is marked by what it has only, as the left one was marked before it */
+			parser_save_and_set_cannot_cache (false);
+		}}
+	  select_or_subquery_without_values_query_no_with_clause
 		{{
 			PT_NODE *stmt = $8;
 			PT_NODE *arg1 = $1;
+
+			if ($10 && parser_cannot_cache)
+			  {
+			    $10->info.query.flag.reexecute = 1;
+			    $10->info.query.flag.do_cache = 0;
+			    $10->info.query.flag.do_not_cache = 1;
+			  }
+			parser_restore_cannot_cache ();
 
 			if (stmt)
 			  {
 			     stmt->info.query.id = (UINTPTR) stmt;
 			     stmt->info.query.q.union_.arg1 = $1;
-			     stmt->info.query.q.union_.arg2 = $9;
-                             stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
-                             stmt->flag.is_click_counter = $1->flag.is_click_counter | $9->flag.is_click_counter;
+			     stmt->info.query.q.union_.arg2 = $10;
+                             stmt->flag.recompile = $1->flag.recompile | $10->flag.recompile;
+                             stmt->flag.is_click_counter = $1->flag.is_click_counter | $10->flag.is_click_counter;
 
 			     if (arg1 != NULL
 				 && arg1->info.query.is_subquery != PT_IS_SUBQUERY
@@ -13246,17 +13301,30 @@ opt_with_clause
 			$$ = NULL;
 		}}
 	| WITH            /* $1 */
-	  opt_recursive   /* $2 */
-	  cte_definition_list   /* $3 */
 		{{
-			PT_NODE *node = parser_new_node (this_parser, PT_WITH_CLAUSE);
+			parser_save_and_set_cannot_cache (false);
+		}}
+	  opt_recursive   /* $3 */
+	  cte_definition_list   /* $4 */
+		{{
+			bool cannot_cache = parser_cannot_cache;
+			PT_NODE *node;
+
+			/* the query having the WITH clause is not parsed yet. A CTE that cannot be cached must not mark the
+			 * queries parsed before the end of it (e.g. the left operand of a set operation): the rule of the query
+			 * marks it with the WITH clause */
+			parser_cannot_cache = false;
+			parser_restore_cannot_cache ();
+
+			node = parser_new_node (this_parser, PT_WITH_CLAUSE);
 			if (node)
 			  {
 			    PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
-			    node->info.with_clause.recursive = $2;
-			    if ($3)
+			    node->info.with_clause.recursive = $3;
+			    node->info.with_clause.cannot_cache = cannot_cache;
+			    if ($4)
 			      {
-			        node->info.with_clause.cte_definition_list = $3;
+			        node->info.with_clause.cte_definition_list = $4;
 			      }
 			  }
 
