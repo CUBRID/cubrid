@@ -919,7 +919,7 @@ namespace parallel_index_scan
 	  }
       }
     isidp->oids_count = oids->oid_cnt;
-    scan_index_read_ahead (thread_p, isidp, more);
+    m_scan_id->scan_stats.read_ahead_pages += scan_index_read_ahead (thread_p, isidp, more);
   }
 
   /* Walk remaining slots on m_page until a row qualifies (delegates OID drain to FSM). */
