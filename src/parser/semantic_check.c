@@ -271,7 +271,7 @@ static PT_NODE *pt_is_parameter_node (PARSER_CONTEXT * parser, PT_NODE * node, v
 static PT_NODE *pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list);
 static PT_NODE *pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_list,
 					    PT_NODE * select_list);
-static PT_NODE *pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list);
+static PT_NODE *pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list, PT_NODE * select_list);
 static PT_NODE *pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_filter_index_expr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
@@ -11721,6 +11721,13 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  break;
 	}
 
+      if (!PT_IS_UNION (node) && !PT_IS_INTERSECTION (node) && !PT_IS_DIFFERENCE (node))
+	{
+	  /* the type checking folded the set operation into a value or one of its operands (pt_fold_union ()), which
+	   * it does when an operand is known to be empty only after its CTE is folded: nothing is left to check */
+	  break;
+	}
+
       /* only root UNION nodes */
       if (node->info.query.q.union_.is_leaf_node == false)
 	{
@@ -15302,6 +15309,73 @@ pt_find_order_value_in_list (PARSER_CONTEXT * parser, const PT_NODE * sort_value
 }
 
 /*
+ * pt_fold_single_tuple_orderby_num_pre () - keep the fold of ORDERBY_NUM () out of a nested query
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in): the query whose ORDERBY_NUM () is folded
+ *   continue_walk(in/out):
+ *
+ * Note: an ORDERBY_NUM () inside a subquery numbers the rows of that subquery, not the one row of the query.
+ */
+static PT_NODE *
+pt_fold_single_tuple_orderby_num_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node != (PT_NODE *) arg && PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * pt_fold_single_tuple_orderby_num () - replace ORDERBY_NUM () with 1
+ *   return: node, or the value 1 that replaces it
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ *
+ * Note: an aggregate query without GROUP BY gives exactly one row, so the ORDERBY_NUM () of that row is 1. Its
+ *       BUILDVALUE XASL neither numbers the row nor evaluates an ORDERBY_NUM () predicate (pt_to_buildvalue_proc ()),
+ *       so pt_check_order_by () folds the number here. The value keeps the column title of the expression it
+ *       replaces.
+ */
+static PT_NODE *
+pt_fold_single_tuple_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *one;
+
+  if (!PT_IS_ORDERBYNUM (node))
+    {
+      return node;
+    }
+
+  one = parser_new_node (parser, PT_VALUE);
+  if (one == NULL)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return node;
+    }
+  one->type_enum = PT_TYPE_BIGINT;
+  one->info.value.data_value.bigint = 1;
+  one->line_number = node->line_number;
+  one->column_number = node->column_number;
+  one->alias_print = node->alias_print;
+  if (one->alias_print == NULL)
+    {
+      one->alias_print = pt_append_string (parser, NULL, pt_short_print (parser, node));
+    }
+
+  one->next = node->next;
+  node->next = NULL;
+  parser_free_tree (parser, node);
+
+  return one;
+}
+
+/*
  * pt_check_order_by () - checking an ORDER_BY clause
  *   return:
  *   parser(in):
@@ -15393,6 +15467,33 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
        * we will remove order by clause to avoid error message
        * but, "select count(*) from athlete order by 2" should make out of range err
        */
+      if (query->info.query.order_by != NULL && !query->flag.do_not_replace_orderby
+	  && query->info.query.q.select.connect_by == NULL)
+	{
+	  /* the one row of the query is row 1 of its ORDER BY, and the BUILDVALUE XASL of the query evaluates neither
+	   * FOR ORDERBY_NUM () nor ORDERBY_NUM () in the select list (CBRD-28197): fold the number to 1 and move the
+	   * FOR condition to HAVING, which filters that row. It goes before the derived table of LIMIT below, which
+	   * moves HAVING out with the row. A CREATE or ALTER VIEW check keeps the clause as written (see
+	   * do_not_replace_orderby below); the query that reads the view gets the fold. */
+	  if (query->info.query.orderby_for != NULL)
+	    {
+	      PT_NODE *for_pred;
+
+	      for_pred = parser_walk_tree (parser, query->info.query.orderby_for, pt_fold_single_tuple_orderby_num_pre,
+					   query, pt_fold_single_tuple_orderby_num, NULL);
+	      query->info.query.orderby_for = NULL;
+	      query->info.query.q.select.having = parser_append_node (for_pred, query->info.query.q.select.having);
+	    }
+	  query->info.query.q.select.list =
+	    parser_walk_tree (parser, query->info.query.q.select.list, pt_fold_single_tuple_orderby_num_pre, query,
+			      pt_fold_single_tuple_orderby_num, NULL);
+	  select_list = query->info.query.q.select.list;
+	  if (pt_has_error (parser))
+	    {
+	      return ER_FAILED;
+	    }
+	}
+
       if (query->info.query.order_by != NULL)
 	{
 	  PT_NODE head;
@@ -17477,14 +17578,16 @@ pt_find_matching_sort_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * s
  *   return: new list, after filtering sort specs
  *   parser(in): parser context
  *   list(in): spec list
+ *   select_list(in): statement's select list, for PT_VALUE lookup
  * Note:
  *  This call remove useless sort specs like NULL and constant expressions
- *  (e.g.: order by null, order by 1 + 5, etc)
+ *  (e.g.: order by null, order by 1 + 5, etc), and the position of a constant
+ *  or a constant expression in the select list (e.g.: select 7, ... over (order by 1))
  */
 static PT_NODE *
-pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list)
+pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list, PT_NODE * select_list)
 {
-  PT_NODE *item, *expr, *save_next;
+  PT_NODE *item, *expr, *col, *save_next;
 
   /* check nulls */
   if (parser == NULL)
@@ -17522,6 +17625,13 @@ pt_remove_unusable_sort_specs (PARSER_CONTEXT * parser, PT_NODE * list)
       else if (expr->node_type == PT_EXPR && pt_is_const_expr_node (expr))
 	{
 	  /* order by constant which is not place holder, get rid of it */
+	  parser_free_tree (parser, item);
+	}
+      else if (expr->node_type == PT_VALUE && expr->type_enum == PT_TYPE_INTEGER
+	       && (col = pt_get_node_from_list (select_list, expr->info.value.data_value.i - 1)) != NULL
+	       && pt_is_const_expr_node (col))
+	{
+	  /* place holder of a constant in the select list (e.g. select 7, ... or select -7, ...), get rid of it */
 	  parser_free_tree (parser, item);
 	}
       else
@@ -17611,13 +17721,14 @@ pt_check_analytic_function (PARSER_CONTEXT * parser, PT_NODE * func, void *arg, 
     }
 
   /* remove NULL specs */
+  select_list = query->info.query.q.select.list;
   func->info.function.analytic.partition_by =
-    pt_remove_unusable_sort_specs (parser, func->info.function.analytic.partition_by);
-  func->info.function.analytic.order_by = pt_remove_unusable_sort_specs (parser, func->info.function.analytic.order_by);
+    pt_remove_unusable_sort_specs (parser, func->info.function.analytic.partition_by, select_list);
+  func->info.function.analytic.order_by =
+    pt_remove_unusable_sort_specs (parser, func->info.function.analytic.order_by, select_list);
 
   partition_by = func->info.function.analytic.partition_by;
   order_by = func->info.function.analytic.order_by;
-  select_list = query->info.query.q.select.list;
 
   /* order_by sort direction has priority over partition_by direction */
   if (order_by != NULL && partition_by != NULL)

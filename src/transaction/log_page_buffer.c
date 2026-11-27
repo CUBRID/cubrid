@@ -1417,7 +1417,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
       loghdr->prefix_name[0] = '\0';
     }
   loghdr->vacuum_last_blockid = 0;
-  loghdr->perm_status_obsolete = 0;
+  loghdr->is_restore_incomplete = 0;
 
   for (i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
     {
@@ -9155,6 +9155,66 @@ logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_
 using namespace std;
 
 /*
+ * logpb_mark_restore_incomplete - mark the header of an active log as a restore that has not ended
+ *
+ * return: NO_ERROR or error code
+ *
+ *   vdes(in): the active log, open for writing
+ *   vlabel(in): the name of the active log
+ *
+ * NOTE: A restore marks the active log before it writes the first file over the database, and the active log of a
+ *       backup before that log takes its place. From then on, the volumes do not match the log until the media
+ *       recovery of the restore ends, and that recovery clears the mark. A restart refuses a log with the mark.
+ */
+int
+logpb_mark_restore_incomplete (THREAD_ENTRY * thread_p, int vdes, const char *vlabel)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_pgptr = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  LOG_PHY_PAGEID phy_pageid = logpb_to_physical_pageid (LOGPB_HEADER_PAGE_ID);
+  FILEIO_WRITE_MODE write_mode;
+  int error_code;
+
+  assert (vdes != NULL_VOLDES);
+
+  if (fileio_read (thread_p, vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, (LOG_PAGEID) LOGPB_HEADER_PAGE_ID, phy_pageid,
+	      vlabel);
+      return ER_LOG_READ;
+    }
+
+  if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, phy_pageid);
+      return ER_LOG_PAGE_CORRUPTED;
+    }
+
+  ((LOG_HEADER *) log_pgptr->area)->is_restore_incomplete = 1;
+
+  error_code = logpb_set_page_checksum (thread_p, log_pgptr);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
+  if (fileio_write (thread_p, vdes, log_pgptr, phy_pageid, LOG_PAGESIZE, write_mode) == NULL)
+    {
+      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, (LOG_PAGEID) LOGPB_HEADER_PAGE_ID,
+			   phy_pageid, vlabel);
+      return ER_LOG_WRITE;
+    }
+
+  if (fileio_synchronize (thread_p, vdes, vlabel, false) == NULL_VOLDES)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * logpb_restore - Restore volume from its backup
  *
  * return: NO_ERROR if all OK, ER status otherwise
@@ -9213,6 +9273,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
   bool remember_pages = false;
   bool error_expected = false;
   bool restore_in_progress = false;	/* true if any vols restored */
+  bool is_restore_marked = false;	/* true once the active log is marked as an incomplete restore */
   int lgat_vdes = NULL_VOLDES;
   time_t restore_start_time, restore_end_time;
   char time_val[CTIME_MAX];
@@ -9523,6 +9584,19 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		  volume_name_p = to_volname;
 		}
 
+	      if (volume_name_p == to_volname && !is_restore_marked && log_Gl.append.vdes != NULL_VOLDES)
+		{
+		  /* the first file is about to be written over the database */
+		  error_code = logpb_mark_restore_incomplete (thread_p, log_Gl.append.vdes, log_Name_active);
+		  if (error_code != NO_ERROR)
+		    {
+		      success = ER_FAILED;
+		      LOG_CS_EXIT (thread_p);
+		      goto error;
+		    }
+		  is_restore_marked = true;
+		}
+
 	      restore_in_progress = true;
 	      if (start_level > FILEIO_BACKUP_FULL_LEVEL)
 		{
@@ -9623,6 +9697,32 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
 		  if (is_backup_log_useful)
 		    {
+		      if (to_volid == LOG_DBLOG_ACTIVE_VOLID)
+			{
+			  /* Mark the active log of the backup while it has the temporary name, so that an active log
+			   * without the mark never takes its place over the restored volumes. */
+			  int bk_lgat_vdes = fileio_open (tmp_logfiles_from_backup, O_RDWR, 0);
+
+			  if (bk_lgat_vdes == NULL_VOLDES)
+			    {
+			      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1,
+						   tmp_logfiles_from_backup);
+			      error_code = ER_IO_MOUNT_FAIL;
+			    }
+			  else
+			    {
+			      error_code =
+				logpb_mark_restore_incomplete (thread_p, bk_lgat_vdes, tmp_logfiles_from_backup);
+			      fileio_close (bk_lgat_vdes);
+			    }
+			  if (error_code != NO_ERROR)
+			    {
+			      success = ER_FAILED;
+			      LOG_CS_EXIT (thread_p);
+			      goto error;
+			    }
+			}
+
 		      if (to_volid == LOG_DBLOG_ACTIVE_VOLID && lgat_vdes != NULL_VOLDES)
 			{
 			  fileio_dismount (thread_p, lgat_vdes);

@@ -4001,6 +4001,11 @@ obj_find_multi_desc (MOP op, int size, const SM_DESCRIPTOR * desc[], const DB_VA
     {
       return NULL;
     }
+  if (size == 1 && TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&key)))
+    {
+      /* key is a structure copy of the caller's value, so let it get a compressed buffer of its own */
+      db_set_compressed_string (&key, NULL, DB_NOT_YET_COMPRESSED, false);
+    }
 
   if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
     {
@@ -4072,6 +4077,10 @@ end_find:
   if (size > 1)			/* must clear a multi-column index key */
     {
       pr_clear_value (&key);
+    }
+  else
+    {
+      pr_clear_compressed_string (&key);
     }
 
   return obj;

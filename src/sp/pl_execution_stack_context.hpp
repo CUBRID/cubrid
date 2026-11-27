@@ -164,7 +164,7 @@ namespace cubpl
        * CAS; guarding them covers today's callbacks and any added later, with no way around. */
 
       template <typename ... Args>
-      int send_data_to_client (Args &&... args)
+      int send_data_to_client_no_reply (Args &&... args)
       {
 	if (is_server_side_sql_forbidden ())
 	  {

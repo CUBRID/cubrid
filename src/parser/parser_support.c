@@ -4411,6 +4411,7 @@ pt_register_orphan_db_value (PARSER_CONTEXT * parser, const DB_VALUE * orphan)
 
   if (orphan)
     {
+      pr_clear_compressed_string ((DB_VALUE *) orphan);
       dummy = parser_new_node (parser, PT_VALUE);
       dummy->info.value.db_value_is_in_workspace = 1;
       dummy->info.value.db_value = *orphan;	/* structure copy */
@@ -9043,7 +9044,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                         ") "
         ") "
         "GROUP BY "
-                "[grantee_name], [unique_name], [is_grantable] ASC "
+                "[grantee_name], [object_type], [unique_name], [is_grantable] ASC "
         "ORDER BY 1;";
   // *INDENT-ON*
 
@@ -15716,7 +15717,7 @@ pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * li
     }
 
   /* targets: name [. name ...] [, name [. name ...] ...] */
-  for (i = into + 1; i < list->token_count; i++)
+  for (i = into + 1; i < list->token_count; i += 2)
     {
       if (tokens[i].kind != PT_SS_TOKEN_IDENT && tokens[i].kind != PT_SS_TOKEN_QUOTED)
 	{
@@ -15735,11 +15736,11 @@ pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * li
 	    }
 	}
 
+      /* the next target is past the ',' (the loop header steps over both) */
       if (!pt_static_sql_token_is (list, i + 1, ','))
 	{
 	  break;
 	}
-      i++;
     }
 
   if (i >= list->token_count || targets != into_count)
