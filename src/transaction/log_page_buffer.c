@@ -9385,8 +9385,10 @@ logpb_restore_scan_read_body (THREAD_ENTRY * thread_p, LOGPB_RESTORE_LOG_SCAN * 
  *   when a transaction that logged a barrier postpone reaches its commit record before that point. The replay does
  *   not run a postpone of a system operation that was rolled back, nor one before the first postpone that the commit
  *   runs, so those do not count.
- *   The scan reads the log that the replay will read. Where it cannot (no active log, an archive that is not there,
- *   a page encrypted with TDE), it stops without a refusal, and the replay still refuses at the build.
+ *   The scan reads the log that the replay will read, and goes from record to record as the analysis of media
+ *   recovery does, also over a record that was not complete when its page was archived. Where it cannot read the
+ *   log (no active log, an archive that is not there, a page encrypted with TDE), it stops without a refusal, and
+ *   the replay still refuses at the build.
  */
 static int
 logpb_restore_check_no_logging_index (THREAD_ENTRY * thread_p, const char *db_fullname,
@@ -9572,7 +9574,12 @@ logpb_restore_check_no_logging_index (THREAD_ENTRY * thread_p, const char *db_fu
 	  break;
 
 	case LOG_END_OF_LOG:
-	  is_end = true;
+	  /* in an archive page it is not the end of the log: the log went on after the page was archived, as media
+	   * recovery takes it (log_rv_analysis_log_end ()) */
+	  if (lsa.pageid >= scan.hdr.nxarv_pageid)
+	    {
+	      is_end = true;
+	    }
 	  break;
 
 	default:
@@ -9584,7 +9591,16 @@ logpb_restore_check_no_logging_index (THREAD_ENTRY * thread_p, const char *db_fu
 	  break;
 	}
 
-      /* the next record; stop at the end of the log, and where the log does not go forward */
+      /* the next record. In an archive page a null forward address is not the end of the log either: the record was
+       * not complete when its page was archived. Media recovery goes on at the next page (log_recovery_analysis ()),
+       * whose header tells where its first record starts. Stop at the end of the log, and where the log does not go
+       * forward */
+      if (LSA_ISNULL (&rec.forw_lsa) && lsa.pageid < scan.hdr.nxarv_pageid)
+	{
+	  lsa.pageid++;
+	  lsa.offset = NULL_OFFSET;
+	  continue;
+	}
       if (LSA_ISNULL (&rec.forw_lsa) || rec.forw_lsa.pageid < lsa.pageid
 	  || (rec.forw_lsa.pageid == lsa.pageid && rec.forw_lsa.offset <= lsa.offset))
 	{
