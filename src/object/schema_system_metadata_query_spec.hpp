@@ -59,7 +59,7 @@
  */
 
 /* ============================================================================= */
-/* Authorization check macros: both checks let DBA and CUB_SELECT_CATALOG through */
+/* Authorization check macros */
 /* ============================================================================= */
 
 #define CURRENT_USER_GROUPS_SUBQUERY \
@@ -80,6 +80,14 @@
       "WHERE {[au].[grantee].[name]} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ") " \
       "AND [au].[auth_type] = '" auth_type "'" \
     ")" \
+  ")"
+
+#define AUTH_CHECK_SYSTEM_OBJECT_PRIVILEGE(object_type, auth_type) \
+  "EXISTS (" \
+    "SELECT 1 FROM [" CT_CLASSAUTH_NAME "] AS [au] " \
+    "WHERE [au].[object_type] = " object_type " " \
+    "AND [au].[auth_type] = '" auth_type "' " \
+    "AND {[au].[grantee].[name]} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ")" \
   ")"
 
 #endif // _SCHEMA_SYSTEM_METADATA_QUERY_SPEC_HPP_

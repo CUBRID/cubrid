@@ -3681,6 +3681,7 @@ expr_arith_reads_storage (OPERATOR_TYPE opcode)
     case T_ESTIMATED_AVG_ROW_LENGTH:
     case T_ESTIMATED_DATA_LENGTH:
     case T_ESTIMATED_DATA_FREE:
+    case T_SENSITIVITY_LABEL_GRADE_LEVEL:
       return true;
     default:
       return false;

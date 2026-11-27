@@ -24801,11 +24801,17 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_ESTIMATED_DATA_LENGTH:
     case PT_ESTIMATED_DATA_FREE:
     case PT_COLLECTION_TO_STRING:
+    case PT_SENSITIVITY_LABEL_GRADE_LEVEL:
       {
 	PT_NODE *expr;
 	if (c != 1)
 	  {
 	    return NULL;
+	  }
+	if (key->op == PT_SENSITIVITY_LABEL_GRADE_LEVEL)
+	  {
+	    /* a change of a grade does not clear a cached result of the query: the query does not name the grades */
+	    parser_cannot_cache = true;
 	  }
 	a1 = args;
 	if (key->op == PT_COERCIBILITY && a1)

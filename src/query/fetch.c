@@ -1357,6 +1357,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_ESTIMATED_AVG_ROW_LENGTH:
     case T_ESTIMATED_DATA_LENGTH:
     case T_ESTIMATED_DATA_FREE:
+    case T_SENSITIVITY_LABEL_GRADE_LEVEL:
     case T_COLLECTION_TO_STRING:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)

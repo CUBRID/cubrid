@@ -689,7 +689,7 @@ sm_define_view_schemata_spec (void)
 std::string
 sm_define_view_sensitivity_labels_spec (void)
 {
-  char stmt [2048];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof (stmt),
@@ -711,10 +711,15 @@ sm_define_view_sensitivity_labels_spec (void)
       /* CT_CLASS_NAME */
       "INNER JOIN [%s] AS [cls] ON [cls].[class_of] = [lbl].[class_of] "
       /* CT_ATTRIBUTE_NAME */
-      "INNER JOIN [%s] AS [attr] ON [attr].[class_of] = [cls] AND [attr].[attr_id] = [lbl].[attr_id]",
+      "INNER JOIN [%s] AS [attr] ON [attr].[class_of] = [cls] AND [attr].[attr_id] = [lbl].[attr_id] "
+    "WHERE "
+      AUTH_CHECK_PRIVILEGE ("[cls].[owner].[name]", "[cls].[class_of]", "SELECT") " "
+      /* DB_OBJECT_SENSITIVITY_LABEL */
+      "OR " AUTH_CHECK_SYSTEM_OBJECT_PRIVILEGE ("%d", "SELECT"),
     CT_SENSITIVITY_LABEL_NAME,
     CT_CLASS_NAME,
-    CT_ATTRIBUTE_NAME);
+    CT_ATTRIBUTE_NAME,
+    DB_OBJECT_SENSITIVITY_LABEL);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 

@@ -482,6 +482,7 @@ public class SymbolStack {
                         "LIST_DBS",
                         "ROW_COUNT",
                         "SCHEMA",
+                        "SENSITIVITY_LABEL_GRADE_LEVEL",
                         "SESSIONTIMEZONE",
                         "SYSTEM_USER",
                         "USER",

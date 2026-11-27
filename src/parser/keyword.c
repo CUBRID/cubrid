@@ -738,6 +738,7 @@ static FUNCTION_MAP functions[] = {
   {0, "rpad", PT_RPAD},
   {0, "rtrim", PT_RTRIM},
   {0, "sec_to_time", PT_SECTOTIME},
+  {0, "sensitivity_label_grade_level", PT_SENSITIVITY_LABEL_GRADE_LEVEL},
   {0, "serial_current_value", PT_CURRENT_VALUE},
   {0, "serial_next_value", PT_NEXT_VALUE},
   {0, "sign", PT_SIGN},

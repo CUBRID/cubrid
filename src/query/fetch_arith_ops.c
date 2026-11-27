@@ -4890,6 +4890,21 @@ fetch_op_estimated_table_rows (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 }
 
 
+/* T_SENSITIVITY_LABEL_GRADE_LEVEL */
+static int
+fetch_op_sensitivity_label_grade_level (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+  DB_VALUE *peek_right = a->peek_right;
+
+  if (qdata_get_sensitivity_label_grade_level (thread_p, peek_right, arithptr->value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
+
 /* T_COLLECTION_TO_STRING */
 static int
 fetch_op_collection_to_string (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
@@ -5300,6 +5315,8 @@ fetch_arith_op (OPERATOR_TYPE opcode)
     case T_ESTIMATED_DATA_LENGTH:
     case T_ESTIMATED_DATA_FREE:
       return fetch_op_estimated_table_rows;
+    case T_SENSITIVITY_LABEL_GRADE_LEVEL:
+      return fetch_op_sensitivity_label_grade_level;
     case T_COLLECTION_TO_STRING:
       return fetch_op_collection_to_string;
     default:
