@@ -2983,6 +2983,7 @@ struct pt_select_info
   PT_NODE *use_merge;		/* PT_NAME (list) */
   PT_NODE *no_use_hash;		/* PT_NAME (list) */
   PT_NODE *use_hash;		/* PT_NAME (list) */
+  PT_NODE *fk_reduced_classes;	/* PT_NAME (list), classes of the PK tables removed by the FK join elimination */
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_NODE *jdbc_life_time;	/* jdbc cache life time */
   struct qo_summary *qo_summary;

@@ -2857,6 +2857,11 @@ qo_reduce_joined_tbls_ref_by_fk (PARSER_CONTEXT * parser, PT_NODE * query)
 	  /* reset location */
 	  qo_reset_spec_location (parser, next_pk_spec, query);
 
+	  /* the plan must still be invalidated by a change to the removed class */
+	  query->info.query.q.select.fk_reduced_classes =
+	    parser_append_node (curr_pk_spec->info.spec.flat_entity_list,
+				query->info.query.q.select.fk_reduced_classes);
+	  curr_pk_spec->info.spec.flat_entity_list = NULL;
 	  parser_free_node (parser, curr_pk_spec);
 	  curr_pk_spec = next_pk_spec;
 

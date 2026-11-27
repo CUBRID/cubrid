@@ -804,6 +804,11 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 	    parser_append_node (subq->info.query.q.select.using_index, node->info.query.q.select.using_index);
 	  subq->info.query.q.select.using_index = NULL;
 
+	  node->info.query.q.select.fk_reduced_classes =
+	    parser_append_node (subq->info.query.q.select.fk_reduced_classes,
+				node->info.query.q.select.fk_reduced_classes);
+	  subq->info.query.q.select.fk_reduced_classes = NULL;
+
 	  qo_move_spec_hint (parser, node, subq, inner_spec, PT_HINT_USE_NL, &node->info.query.q.select.use_nl,
 			     &subq->info.query.q.select.use_nl);
 	  qo_move_spec_hint (parser, node, subq, inner_spec, PT_HINT_USE_IDX, &node->info.query.q.select.use_idx,
