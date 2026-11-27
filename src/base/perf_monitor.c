@@ -307,6 +307,9 @@ PSTAT_METADATA pstat_Metadata[] = {
 
   /* Execution statistics for network communication */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_NET_NUM_REQUESTS, "Num_network_requests"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_NET_NUM_EAGER_RECEIVE_REQUESTS, "Num_eager_receive_requests"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_NET_NUM_EAGER_RECEIVE_TIMEOUTS, "Num_eager_receive_timeouts"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_NET_NUM_EAGER_RECEIVE_BUDGET_STOPS, "Num_eager_receive_budget_stops"),
 
   /* flush control stat */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_FC_NUM_PAGES, "Num_adaptive_flush_pages"),

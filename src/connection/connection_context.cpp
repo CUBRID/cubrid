@@ -145,11 +145,19 @@ namespace cubconn::connection
     m_recv.m_command_flags = 0;
     m_recv.m_command = false;
 
+    /* eager receive */
+    m_recv.m_recv_busy.store (false, std::memory_order_relaxed);
+    m_recv.m_eager_running.store (0, std::memory_order_relaxed);
+    m_recv.m_eager_draining = false;
+    m_recv.m_eager_counted = 0;
+
     m_send.m_transmitter.clear ();
     m_send.m_blocker = nullptr;
     m_send.m_room = nullptr;
 
     m_guarded_stats.bytes_out_total = 0;
+    m_guarded_stats.bytes_in_total = 0;
+    m_guarded_stats.recv_budget_hit = 0;
     m_stats.reset ();
   }
 }

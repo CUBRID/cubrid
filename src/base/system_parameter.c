@@ -838,6 +838,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
 
 #define PRM_NAME_INDEX_BUILD_PARALLEL_LEAF "index_build_parallel_leaf"
+/* eager receive: the transaction thread waits on its socket for the next request */
+#define PRM_NAME_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS "eager_receive_window_in_msecs"
 
 // #endregion
 
@@ -5819,6 +5821,19 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.b = true}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* eager receive: the transaction thread waits on its socket for the next request; 0 disables */
+  {PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS,
+   PRM_NAME_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2}},
+   {false, {.i = 2}},
+   {false, {.i = 50}},
+   {false, {.i = 0}},		/* 0 disables */
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

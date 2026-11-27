@@ -383,6 +383,9 @@ typedef enum
 
   /* Execution statistics for network communication */
   PSTAT_NET_NUM_REQUESTS,
+  PSTAT_NET_NUM_EAGER_RECEIVE_REQUESTS,
+  PSTAT_NET_NUM_EAGER_RECEIVE_TIMEOUTS,
+  PSTAT_NET_NUM_EAGER_RECEIVE_BUDGET_STOPS,
 
   /* flush control stat */
   PSTAT_FC_NUM_PAGES,
