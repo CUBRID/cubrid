@@ -537,7 +537,8 @@ qo_optimize_helper (QO_ENV * env)
 {
   PARSER_CONTEXT *parser;
   PT_NODE *tree;
-  PT_NODE *spec, *conj, *next;
+  PT_NODE *spec, *conj;
+  QO_DETACHED_LINK link;
   QO_ENV *local_env;		/* So we can safely take its address */
   QO_PLAN *plan;
   int level;
@@ -612,8 +613,7 @@ qo_optimize_helper (QO_ENV * env)
 	{
 	  for (conj = spec->info.spec.on_cond; conj; conj = conj->next)
 	    {
-	      next = conj->next;
-	      conj->next = NULL;
+	      qo_detach_link (env, &link, &conj->next);
 
 	      /* The conjuct could be PT_VALUE(0) if an explicit join condition was derived/transformed to the
 	       * always-false search condition when type checking, expression evaluation or query rewrite
@@ -630,7 +630,7 @@ qo_optimize_helper (QO_ENV * env)
 		  bitset_add (&nodeset, QO_NODE_IDX (QO_TERM_TAIL (term)));
 		}
 
-	      conj->next = next;
+	      qo_reattach_link (env, &link);
 	    }
 	}
     }
@@ -638,11 +638,10 @@ qo_optimize_helper (QO_ENV * env)
   /* add term in the WHERE clause */
   for (conj = tree->info.query.q.select.where; conj; conj = conj->next)
     {
-      next = conj->next;
-      conj->next = NULL;
+      qo_detach_link (env, &link, &conj->next);
 
       term = qo_add_term (conj, PREDICATE_TERM, env);
-      conj->next = next;
+      qo_reattach_link (env, &link);
     }
 
   /* check join-edge for ansi(explicit) join */
@@ -3642,7 +3641,7 @@ wrapup:
 void
 qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result)
 {
-  PT_NODE *next;
+  QO_DETACHED_LINK link;
 
   if (pt_expr == NULL)
     {
@@ -3651,8 +3650,7 @@ qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result)
     }
 
   /* remember the next link and then break it */
-  next = pt_expr->next;
-  pt_expr->next = NULL;
+  qo_detach_link (env, &link, &pt_expr->next);
 
   /* use env to get the bitset to the walk functions */
   QO_ENV_TMP_BITSET (env) = result;
@@ -3660,7 +3658,7 @@ qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result)
   (void) parser_walk_tree (env->parser, pt_expr, set_seg_expr, &env, pt_continue_walk, NULL);
 
   /* recover the next link */
-  pt_expr->next = next;
+  qo_reattach_link (env, &link);
 
   /* reset the temp pointer so we don't have a dangler */
   QO_ENV_TMP_BITSET (env) = NULL;
@@ -5106,23 +5104,20 @@ get_local_subqueries (QO_ENV * env, PT_NODE * node)
 {
   PARSER_CONTEXT *parser;
   PT_NODE *tree;
-  PT_NODE *select_list_ptr;
-  PT_NODE *next_ptr;
+  QO_DETACHED_LINK next_link, select_list_link;
   int i;
 
   parser = QO_ENV_PARSER (env);
   tree = QO_ENV_PT_TREE (env);
 
-  next_ptr = tree->next;
-  tree->next = NULL;
-  select_list_ptr = tree->info.query.q.select.list;
-  tree->info.query.q.select.list = NULL;
+  qo_detach_link (env, &next_link, &tree->next);
+  qo_detach_link (env, &select_list_link, &tree->info.query.q.select.list);
 
   parser_walk_leaves (parser, tree, get_local_subqueries_pre, env, get_local_subqueries_post, env);
 
   /* restore next list pointer */
-  tree->next = next_ptr;
-  tree->info.query.q.select.list = select_list_ptr;
+  qo_reattach_link (env, &select_list_link);
+  qo_reattach_link (env, &next_link);
 
   /*
    * Now that all of the subqueries have been discovered, make
@@ -6835,6 +6830,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->sel_hist_fallback = false;
   env->fk_join_info = NULL;
   env->n_fk_join_info = 0;
+  env->detached_links = NULL;
 
   return env;
 }
@@ -6874,8 +6870,57 @@ qo_malloc (QO_ENV * env, unsigned size, const char *file, int line)
 void
 qo_abort (QO_ENV * env, const char *file, int line)
 {
+  QO_DETACHED_LINK *link;
+
   er_set (ER_WARNING_SEVERITY, file, line, ER_FAILED_ASSERTION, 1, "false");
+
+  /* the statement runs without a plan from here: give it back the tree as it was. The frames that
+   * cut these links are not unwound yet, and will never run their own restore */
+  for (link = env->detached_links; link != NULL; link = link->prev)
+    {
+      *link->slot = link->saved;
+    }
+  env->detached_links = NULL;
+
   longjmp (env->catch_, 2);
+}
+
+/*
+ * qo_detach_link () - cut a parse tree link for the moment
+ *   return:
+ *   env(in):
+ *   link(out): the record of the cut, in the frame of the caller
+ *   slot(in/out): the link
+ *
+ * Note: the optimizer cuts the next link of a conjunct to look at that conjunct alone, and a failed
+ *	 assertion beneath (QO_ASSERT, QO_ABORT) jumps out past the statement that would put the link
+ *	 back. The statement then ran without a plan and without the conjuncts after the cut. A link
+ *	 cut where qo_abort() may be reached before it is put back is to be cut here.
+ */
+void
+qo_detach_link (QO_ENV * env, QO_DETACHED_LINK * link, PT_NODE ** slot)
+{
+  link->slot = slot;
+  link->saved = *slot;
+  link->prev = env->detached_links;
+  env->detached_links = link;
+
+  *slot = NULL;
+}
+
+/*
+ * qo_reattach_link () - put back the link qo_detach_link () cut last
+ *   return:
+ *   env(in):
+ *   link(in):
+ */
+void
+qo_reattach_link (QO_ENV * env, QO_DETACHED_LINK * link)
+{
+  assert (env->detached_links == link);
+
+  *link->slot = link->saved;
+  env->detached_links = link->prev;
 }
 
 /*
@@ -11262,7 +11307,8 @@ qo_term_clear (QO_ENV * env, int idx)
 static void
 qo_discover_sort_limit_nodes (QO_ENV * env)
 {
-  PT_NODE *query, *orderby, *sort_col, *select_list, *col, *save_next;
+  PT_NODE *query, *orderby, *sort_col, *select_list, *col;
+  QO_DETACHED_LINK col_link;
   int i, pos_spec, limit_max_count;
   QO_NODE *node;
   BITSET order_nodes, dep_nodes, expr_segs, tmp_bitset;
@@ -11360,12 +11406,11 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
 	  goto abandon_stop_limit;
 	}
 
-      save_next = col->next;
-      col->next = NULL;
+      qo_detach_link (env, &col_link, &col->next);
       if (pt_has_analytic (QO_ENV_PARSER (env), col) || pt_has_aggregate (QO_ENV_PARSER (env), col))
 	{
 	  /* abandon search because these expressions cannot be evaluated during SORT_LIMIT evaluation */
-	  col->next = save_next;
+	  qo_reattach_link (env, &col_link);
 	  goto abandon_stop_limit;
 	}
 
@@ -11380,7 +11425,7 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       bitset_delset (&expr_segs);
       bitset_delset (&tmp_bitset);
 
-      col->next = save_next;
+      qo_reattach_link (env, &col_link);
     }
 
   for (i = bitset_iterate (&order_nodes, &bi); i != -1; i = bitset_next_member (&bi))
