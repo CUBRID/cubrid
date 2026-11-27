@@ -2102,6 +2102,39 @@ qo_unmark_substituted_function_index (PARSER_CONTEXT * parser, PT_NODE * node, v
 }
 
 /*
+ * qo_kept_as_join_term () - is a copy of 'other = col' saved as a join term in its first form?
+ *   return: bool
+ *   parser(in):
+ *   other(in): the operand compared with col, an attribute or a function index expression
+ *   col(in): the column the equality is reduced on
+ *
+ * Note: qo_reduce_equality_terms () saves a term on the reduced column as a join term when the other operand
+ *	 reads one spec other than the column's, and neither a subquery nor the column itself (CASE 1 and CASE 3
+ *	 there). This counts the operand the same way.
+ */
+static bool
+qo_kept_as_join_term (PARSER_CONTEXT * parser, PT_NODE * other, PT_NODE * col)
+{
+  PT_NAME_SPEC_INFO info;
+  bool kept;
+
+  info.c_name = pt_get_end_path_node (col);
+  info.c_name_num = 0;
+  info.query_serial_num = 0;
+  info.s_point_list = NULL;
+  (void) parser_walk_tree (parser, other, qo_collect_name_spec, &info, qo_collect_name_spec_post, &info);
+
+  kept = (info.query_serial_num == 0 && info.c_name_num == 0 && pt_length_of_list (info.s_point_list) == 1);
+
+  if (info.s_point_list)
+    {
+      parser_free_tree (parser, info.s_point_list);
+    }
+
+  return kept;
+}
+
+/*
  * qo_null_padded_at () - can a column of the spec be NULL padded where the term is evaluated?
  *   return: bool
  *   spec(in): a spec of the FROM list
@@ -2328,15 +2361,15 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
 	      /* if arg2 is derived alias col, get its corresponding constant column from derived-table. the term is
 	       * dropped for its copy with the constant in place of the column. where an outer join may give the column
-	       * a NULL, only a term on a column of another spec keeps its NULL test: the copy is saved as a join term
-	       * in its first form below (t1.c2 = y.c2 stays, next to t1.c2 = 5). a term on the derived table alone
-	       * loses it (y.c = y.c would become 5 = 5, true for the NULL row it must filter out) */
+	       * a NULL, only a term on another spec keeps its NULL test: the copy is saved as a join term in its first
+	       * form below (t1.c2 = y.c2 and lower (t1.c2) = y.c2 stay, next to t1.c2 = 5 and lower (t1.c2) = 5). a
+	       * term on the derived table alone loses it (y.c = y.c would become 5 = 5, true for the NULL row it must
+	       * filter out) */
 	      if (spec && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
 		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT
 		  && !derived_table->info.query.q.select.single_table_opt
 		  && !(qo_null_padded_at (spec, expr->info.expr.location)
-		       && !(expr->info.expr.op == PT_EQ && pt_is_attr (arg1)
-			    && pt_get_end_path_node (arg1)->info.name.spec_id != spec->info.spec.id)))
+		       && !(expr->info.expr.op == PT_EQ && qo_kept_as_join_term (parser, arg1, arg2))))
 		{
 		  /* traverse as_attr_list */
 		  for (attr = spec->info.spec.as_attr_list, idx = 0; attr; attr = attr->next, idx++)
