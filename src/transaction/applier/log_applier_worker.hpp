@@ -49,6 +49,10 @@
  *   - the transaction holds LA_WORKER_CONFIG.batch_max_tasks tasks, a memory bound (la_worker_batch_max_tasks) that
  *     a backlog should not reach before the commit interval
  *   - a statement task comes, which runs in a transaction of its own
+ *   - its queue is empty after the coordinator asked for commits (la_task_queue_request_commit): a parked task waits
+ *     for units on several workers to complete, the coordinator waits for every task to retire, or the
+ *     commit-order ring is full. Without this a chain of dependent tasks spread over workers advanced once per
+ *     commit interval.
  * The interval bounds how late the changes show on the slave and how long their locks are held, as in the serial
  * applier; a commit costs a log flush, and on a device with slow syncs small commits made the backlog apply at half
  * the serial applier's rate.

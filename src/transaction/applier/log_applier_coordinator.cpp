@@ -77,6 +77,8 @@ static UINT64 la_Coordinator_pending_seen_completion = 0;
 static UINT64 la_Coordinator_pending_seen_dispatch = 0;
 /* a task left in the last pass waits for an earlier unit to be dispatched */
 static bool la_Coordinator_pending_waits_dispatch = false;
+/* a task left in the last pass waits for units on several workers to complete, which needs those workers to commit */
+static bool la_Coordinator_pending_waits_completion = false;
 /* workers whose full queue left a task parked in the last pass, one bit per worker. Note that one bit per worker
  * in a UINT64 holds at most 64 workers; the static_assert below stops the build if the worker limit goes past it. */
 static UINT64 la_Coordinator_pending_room_workers = 0;
@@ -109,7 +111,7 @@ static int la_coordinator_release_parked (LA_TASK *task, int worker);
 static void la_coordinator_trace_schedule (const LA_TASK *task, LA_SCHED_STATUS sched_status, UINT64 dispatch_seq);
 static int la_coordinator_collect_results (void);
 static int la_coordinator_record_result (LA_RESULT *result);
-static int la_coordinator_pop_result (LA_RESULT *result);
+static int la_coordinator_pop_result (LA_RESULT *result, bool request_commit);
 static int la_coordinator_wait_until_retired (void);
 static int la_coordinator_wait_for_inflight_slot (void);
 static int la_coordinator_retire_results (void);
@@ -250,7 +252,7 @@ la_coordinator_set_live_workers (const int *live_workers, int live_worker_count)
  *       1. No pass has run since the coordinator started, so there is nothing to compare with.
  *       2. A task waits for room in a worker queue, and that worker's queue has dropped to
  *          LA_COORDINATOR_ROOM_RESCAN_QUEUED tasks.
- *       3. A task completed since the last pass, so the frontier may have moved.
+ *       3. A task waits for units on several workers to complete, and a task completed since the last pass.
  *       4. A task waits for an earlier task to be dispatched, and a task was dispatched since the last pass.
  *          Dispatches happen on almost every call, so they count only while such a task waits.
  */
@@ -271,7 +273,10 @@ la_coordinator_pending_may_release (void)
 	}
     }
 
-  if (la_Coordinator_pending_seen_completion != la_gate_get_completion_version ())
+  /* a completion matters only to a task waiting for units on several workers; under a chain parked for room,
+   * every taskless unit the coordinator completes would otherwise walk the whole list again */
+  if (la_Coordinator_pending_waits_completion
+      && la_Coordinator_pending_seen_completion != la_gate_get_completion_version ())
     {
       return true;
     }
@@ -296,6 +301,7 @@ la_coordinator_pending_may_release (void)
 static int
 la_coordinator_drain_ready (void)
 {
+  bool behind_parked;
   int error;
 
   /* la_coordinator_pending_may_release compares what the parked tasks wait for (completions, dispatches, queue
@@ -307,12 +313,22 @@ la_coordinator_drain_ready (void)
 
   /* the route calls of this pass record what the tasks left parked wait for */
   la_Coordinator_pending_waits_dispatch = false;
+  la_Coordinator_pending_waits_completion = false;
   la_Coordinator_pending_room_workers = 0;
   error = la_pending_release_routable (la_coordinator_route, la_coordinator_any_queue_has_room,
-				       la_coordinator_release_parked);
+				       la_coordinator_release_parked, &behind_parked);
   if (error != NO_ERROR)
     {
       return error;
+    }
+  /* A task passed over behind an earlier parked one needs no wakeup of its own: that one is released only by a
+   * pass, which goes on to the tasks behind it. Counting it as waiting for a dispatch made every later dispatch
+   * walk the list again. */
+  (void) behind_parked;
+  if (la_Coordinator_pending_waits_completion)
+    {
+      /* the workers holding those units would keep them uncommitted to the end of the commit interval */
+      la_task_queue_request_commit ();
     }
 
   /* a task left parked waits for a completion, for queue room, or for the dispatch of an earlier task that is
@@ -351,7 +367,8 @@ la_coordinator_wait_for_commit_order_slot (void)
 
       if (la_gate_order_get_count () >= la_Coordinator_config.commit_order_capacity)
 	{
-	  /* the frontier moves when the workers commit, by their commit interval */
+	  /* the frontier moves when the workers commit */
+	  la_task_queue_request_commit ();
 	  (void) la_result_queue_wait_for_result (100);
 	}
     }
@@ -558,6 +575,10 @@ la_coordinator_route (const LA_TASK *task, int *worker)
 	{
 	  la_Coordinator_pending_waits_dispatch = true;
 	}
+      if (wait_reason & 2)
+	{
+	  la_Coordinator_pending_waits_completion = true;
+	}
 
       return false;
     }
@@ -709,11 +730,11 @@ la_coordinator_record_result (LA_RESULT *result)
 }
 
 /*
- * la_coordinator_complete_without_task - complete a taskless SYSOP_END boundary
+ * la_coordinator_complete_without_task - complete an apply unit that has nothing to apply
  *
  * return: NO_ERROR or an error code
  *
- *   lsa(in): SYSOP_END position to record and complete
+ *   lsa(in): position of the SYSOP_END or COMMIT to record and complete
  *
  * Note: the boundary still enters the commit-order ring so later dependencies can be released in order.
  */
@@ -751,9 +772,10 @@ la_coordinator_complete_without_task (const LOG_LSA *lsa)
  * la_coordinator_pop_result - wait until one worker result can be removed
  *
  * return: NO_ERROR or ER_FAILED when shutdown is requested
+ *   request_commit(in): ask the workers to commit their open transactions while waiting
  */
 static int
-la_coordinator_pop_result (LA_RESULT *result)
+la_coordinator_pop_result (LA_RESULT *result, bool request_commit)
 {
   assert (result != NULL);
 
@@ -769,7 +791,12 @@ la_coordinator_pop_result (LA_RESULT *result)
 	  return ER_FAILED;
 	}
 
-      /* nothing is dispatched until a result arrives; the workers commit by their commit interval */
+      /* a result arrives when its worker commits; one waiting for every task to retire asks the workers to commit
+       * now rather than at the end of their commit interval */
+      if (request_commit)
+	{
+	  la_task_queue_request_commit ();
+	}
       (void) la_result_queue_wait_for_result (100);
     }
 }
@@ -787,7 +814,7 @@ la_coordinator_wait_until_retired (void)
 
   while (la_inflight_get_count () > 0)
     {
-      error = la_coordinator_pop_result (&result);
+      error = la_coordinator_pop_result (&result, true);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -835,7 +862,7 @@ la_coordinator_wait_for_inflight_slot (void)
 	  break;
 	}
 
-      error = la_coordinator_pop_result (&result);
+      error = la_coordinator_pop_result (&result, false);
       if (error != NO_ERROR)
 	{
 	  return error;

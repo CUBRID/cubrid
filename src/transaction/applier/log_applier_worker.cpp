@@ -469,6 +469,7 @@ struct la_worker_batch
   LA_RESULT *results;		/* LA_WORKER_CONFIG.batch_max_tasks slots, in the order the tasks were taken */
   int count;
   UINT64 begin_ns;		/* when the first of them was applied */
+  UINT64 commit_request_seq;	/* la_task_queue_get_commit_request_seq when the first of them was applied */
 };
 
 /*
@@ -615,6 +616,7 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
     }
   batch.count = 0;
   batch.begin_ns = 0;
+  batch.commit_request_seq = 0;
   taken_count = 0;
   taken_next = 0;
   /* clock readings shared by the tasks taken together: when they were taken, and where the next one starts (the end
@@ -647,13 +649,13 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 
 	      if (taken_count == 0)
 		{
-		  if (la_monotonic_now_ns () < la_worker_batch_deadline_ns (&batch))
+		  if (!commit_requested && la_monotonic_now_ns () < la_worker_batch_deadline_ns (&batch))
 		    {
-		      /* woken by a shorter commit interval before its deadline: hold again until the new one */
+		      /* woken before its deadline by a shorter commit interval or a commit request: decide again */
 		      continue;
 		    }
 
-		  /* nothing came during the interval: commit rather than hold their locks */
+		  /* nothing came during the interval, or the coordinator asked: commit rather than hold their locks */
 		  error = la_worker_commit_and_report (context, &batch, *worker_applied_item_count, &queue_closed);
 		  next_begin_ns = 0;
 		  if (error != NO_ERROR || queue_closed)
@@ -763,6 +765,7 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
       if (batch.count == 0)
 	{
 	  batch.begin_ns = result->apply_begin_ns;
+	  batch.commit_request_seq = la_task_queue_get_commit_request_seq ();
 	}
       batch.count++;
 

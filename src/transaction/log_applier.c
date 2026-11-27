@@ -87,6 +87,7 @@
 #include "log_applier_task.hpp"
 #include "log_applier_result.hpp"
 #include "log_applier_result_queue.hpp"
+#include "log_applier_task_queue.hpp"
 #include "log_applier_inflight.hpp"
 #include "log_applier_gate.hpp"
 #include "log_applier_pending.hpp"
@@ -10163,6 +10164,39 @@ la_coordinator_process_commit (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PA
 		 task.apply == NULL ? 0 : task.apply->num_items, (int) has_label,
 		 LSA_AS_ARGS (&task.dependency_lsa), "parallel");
 
+  if (!task.has_items)
+    {
+      /* Nothing to apply (a transaction that replicated nothing, or one whose rows went out in its independent
+       * operations). Sent to a worker it sat uncommitted in that worker's open transaction until the commit
+       * interval, and any later unit depending past its position saw units on several workers and waited for all
+       * of them; under a chain of SELECT INCR every increment waited so. It is completed here instead: the
+       * frontier moves only through completed units in order, so completing it early lets no unit before it be
+       * skipped. */
+      if (task.apply != NULL)
+	{
+	  LSA_SET_NULL (&task.apply->start_lsa);
+	  LSA_SET_NULL (&task.apply->last_lsa);
+	  LSA_SET_NULL (&task.apply->last_sysop_fragment_lsa);
+	  la_release_apply_slot (task.apply);
+	}
+
+      error = la_coordinator_complete_without_task (final);
+      if (error != NO_ERROR)
+	{
+	  la_applier_need_shutdown = true;
+	  return error;
+	}
+
+      /* as a retire does: with no task to retire after it, committed_lsa would wait for the next one */
+      LOG_LSA frontier;
+      if (la_gate_get_frontier (&frontier) && LSA_GT (&frontier, &la_Info.committed_lsa))
+	{
+	  LSA_COPY (&la_Info.committed_lsa, &frontier);
+	}
+
+      return NO_ERROR;
+    }
+
   error = la_coordinator_submit_task (&task);
   if (error != NO_ERROR)
     {
@@ -10624,7 +10658,9 @@ la_change_state (void)
 	  return NO_ERROR;
 	}
 
-      /* force commit when state is changing */
+      /* force commit when state is changing; the serial applier committed the rows it applied here, and the
+       * workers hold them in their open transactions, so they are asked to commit as well */
+      la_task_queue_request_commit ();
       error = la_log_commit (true);
       if (error != NO_ERROR)
 	{
@@ -13086,6 +13122,20 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    }
 
 	  /* as above, the lock waits for the dispatched tasks; the role change is acted on once they finish */
+	  if (la_Info.is_role_changed == true && !la_coordinator_drain_complete ())
+	    {
+	      /* The serial applier commits at the state record and moves on. Here the workers hold what they applied
+	       * in their open transactions to the end of the commit interval, and nothing else collects their results
+	       * while the record is read again, so the role change waited for tens of seconds. Ask them to commit and
+	       * retire what they report. */
+	      la_task_queue_request_commit ();
+	      error = la_coordinator_collect_and_retire ();
+	      if (error != NO_ERROR)
+		{
+		  la_applier_need_shutdown = true;
+		  break;
+		}
+	    }
 	  if (la_Info.is_role_changed == true && la_coordinator_drain_complete ())
 	    {
 	      clear_owner = true;

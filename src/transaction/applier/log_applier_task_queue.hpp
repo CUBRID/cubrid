@@ -38,6 +38,8 @@ extern int la_task_queue_get_queued (int worker);
 extern int la_task_queue_wait_room (int worker, int timeout_msec, bool *has_room);
 extern void la_task_queue_wake_holding (void);
 extern UINT64 la_task_queue_get_wake_seq (void);
+extern void la_task_queue_request_commit (void);
+extern UINT64 la_task_queue_get_commit_request_seq (void);
 extern int la_task_queue_pop_many (LA_TASK *tasks, int max, int *count, int worker, bool wait,
 				   UINT64 hold_nsec, UINT64 wake_seq);
 extern void la_task_queue_signal_shutdown (void);

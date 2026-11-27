@@ -384,6 +384,36 @@ TEST_CASE ("a worker keeps its batch open on an empty queue until the commit int
   stop_batch_worker (workers);
 }
 
+TEST_CASE ("a worker commits its open batch once its queue is empty after the coordinator asks for commits",
+	   "[log_applier_worker]")
+{
+  LA_WORKER workers[1] = {};
+
+  reset_stubs (0, 1000);
+  reset_batch_stubs ();
+  start_batch_worker (workers);
+
+  LA_TASK first = test_task (0, test_lsa (1), test_null_lsa ());
+  REQUIRE (la_task_queue_push (&first, 0) == NO_ERROR);
+
+  /* held for the commit interval (10 s) */
+  std::this_thread::sleep_for (std::chrono::milliseconds (300));
+  CHECK (commits == 0);
+
+  /* a parked task waits for this worker's units: the coordinator asks, and the holding worker commits now */
+  la_task_queue_request_commit ();
+  REQUIRE (wait_commits (1, 2000));
+  REQUIRE (committed_tasks == 1);
+
+  /* a batch begun after the request is held again for the interval */
+  LA_TASK second = test_task (1, test_lsa (2), test_null_lsa ());
+  REQUIRE (la_task_queue_push (&second, 0) == NO_ERROR);
+  std::this_thread::sleep_for (std::chrono::milliseconds (300));
+  CHECK (commits == 1);
+
+  stop_batch_worker (workers);
+}
+
 TEST_CASE ("a worker whose queue never runs dry commits at the commit interval", "[log_applier_worker]")
 {
   LA_WORKER workers[1] = {};

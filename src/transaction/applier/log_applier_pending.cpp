@@ -183,31 +183,58 @@ la_pending_pop_routable (LA_TASK *task, int *worker, bool (*route) (const LA_TAS
  *   can_route(in): false when no task can be routed now (every worker queue is full); the pass stops there
  *   release(in): dispatches one released task to its worker
  *
+ *   behind_parked(out): set when a task was left without asking route because it depends on a task the pass left
+ *                       parked before it; such a task waits for the dispatch of that earlier task
+ *
  * Note: one pass gives the same result as taking one task at a time from the head: a parked task waits only for
  *       earlier tasks (they come before it in the list and are released first in the pass), for completions (none
  *       arrive during the pass), or for queue room (a release only uses room up). Starting again from the head
  *       after every release scanned the tasks still waiting at the front once per released task.
+ *
+ *       A parked task is on the commit-order ring and has no worker. Every unit up to a task's dependency must be
+ *       applied or on the one worker it follows, so a task whose dependency is at or past the first task the pass
+ *       leaves parked cannot run before that one gets a worker; it is passed over with one comparison instead of
+ *       a route. Under dependencies that park most tasks, routing every one of them on every pass was most of the
+ *       coordinator's time.
  */
 int
 la_pending_release_routable (bool (*route) (const LA_TASK *task, int *worker), bool (*can_route) (void),
-			     int (*release) (LA_TASK *task, int worker))
+			     int (*release) (LA_TASK *task, int worker), bool *behind_parked)
 {
   LA_PENDING_NODE *prev = NULL;
   LA_PENDING_NODE *cur = la_Pending_head;
   LA_PENDING_NODE *next;
+  const LOG_LSA *first_left = NULL;	/* commit position of the first task this pass leaves parked */
   LA_TASK task;
   int worker;
   int error;
 
-  assert (route != NULL && can_route != NULL && release != NULL);
+  assert (route != NULL && can_route != NULL && release != NULL && behind_parked != NULL);
 
-  while (cur != NULL && can_route ())
+  *behind_parked = false;
+  /* room only shrinks during a pass (releases use it up), so it is asked again only after a release */
+  bool room = can_route ();
+
+  while (cur != NULL && room)
     {
       next = cur->next;
+
+      if (first_left != NULL && !LSA_ISNULL (&cur->task.dependency_lsa)
+	  && LSA_GE (&cur->task.dependency_lsa, first_left))
+	{
+	  *behind_parked = true;
+	  prev = cur;
+	  cur = next;
+	  continue;
+	}
 
       la_pending_note_ready (&cur->task);
       if (!route (&cur->task, &worker))
 	{
+	  if (first_left == NULL)
+	    {
+	      first_left = &cur->task.commit_lsa;
+	    }
 	  prev = cur;
 	  cur = next;
 	  continue;
@@ -222,6 +249,7 @@ la_pending_release_routable (bool (*route) (const LA_TASK *task, int *worker), b
 	  return error;
 	}
 
+      room = can_route ();
       cur = next;
     }
 

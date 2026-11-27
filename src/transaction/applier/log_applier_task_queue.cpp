@@ -58,15 +58,31 @@ struct la_task_queue
   pthread_cond_t not_full;	/* the coordinator waits on it for room (la_task_queue_wait_room) */
 };
 
+/* how long a worker looks for the next task on an empty queue before it sleeps on the condition variable */
+#define LA_TASK_QUEUE_SPIN_NSEC (50 * 1000ULL)
+
+static inline void
+la_task_queue_cpu_relax (void)
+{
+#if defined (__x86_64__) || defined (__i386__)
+  __builtin_ia32_pause ();
+#elif defined (__aarch64__)
+  __asm__ __volatile__ ("yield");
+#endif
+}
+
 static LA_TASK_QUEUE *la_Task_queues = NULL;
 static int la_Task_queue_count = 0;
 static int la_Task_queue_total = 0;	/* tasks in all the queues; kept with the queues under la_Task_queue_mutex */
 static int la_Task_queue_max_total = 0;
 static pthread_mutex_t la_Task_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool la_Task_queue_shutdown = false;
-/* bumped by la_task_queue_wake_holding; a worker keeping its batch open on an empty queue stops waiting when it
- * changes */
-static UINT64 la_Task_queue_wake_seq = 0;
+/* bumped by la_task_queue_wake_holding and la_task_queue_request_commit; a worker keeping its batch open on an empty
+ * queue stops waiting when it changes */
+static std::atomic<UINT64> la_Task_queue_wake_seq (0);
+/* bumped by la_task_queue_request_commit; a worker whose open transaction began before the last bump commits it as
+ * soon as its queue is empty */
+static std::atomic<UINT64> la_Task_queue_commit_request_seq (0);
 
 /*
  * la_task_queue_init() - allocate and empty one queue per worker before the workers start
@@ -273,15 +289,15 @@ la_task_queue_wait_room (int worker, int timeout_msec, bool *has_room)
 /*
  * la_task_queue_wake_holding() - wake the workers that keep an open transaction while their queue is empty
  *
- * Note: called by the coordinator when it starts waiting for results, reaches the end of the log or parks a task;
- *       a worker woken this way commits its open transaction instead of waiting out the commit interval.
+ * Note: called when the commit interval gets shorter; a worker woken this way decides its hold again against the
+ *       new deadline.
  */
 void
 la_task_queue_wake_holding (void)
 {
   pthread_mutex_lock (&la_Task_queue_mutex);
 
-  la_Task_queue_wake_seq++;
+  la_Task_queue_wake_seq.fetch_add (1, std::memory_order_relaxed);
   for (int i = 0; i < la_Task_queue_count; i++)
     {
       pthread_cond_broadcast (&la_Task_queues[i].not_empty);
@@ -291,19 +307,47 @@ la_task_queue_wake_holding (void)
 }
 
 /*
+ * la_task_queue_request_commit() - ask every worker to commit its open transaction once its queue is empty
+ *
+ * Note: called by the coordinator when it cannot go on until workers commit: a parked task waits for units on other
+ *       workers to complete, or the coordinator waits for tasks to retire. A worker that has applied everything
+ *       queued commits then instead of holding its transaction to the end of the commit interval; one busy with
+ *       queued tasks commits when it runs out of them.
+ */
+void
+la_task_queue_request_commit (void)
+{
+  pthread_mutex_lock (&la_Task_queue_mutex);
+
+  la_Task_queue_commit_request_seq.fetch_add (1, std::memory_order_relaxed);
+  la_Task_queue_wake_seq.fetch_add (1, std::memory_order_relaxed);
+  for (int i = 0; i < la_Task_queue_count; i++)
+    {
+      pthread_cond_broadcast (&la_Task_queues[i].not_empty);
+    }
+
+  pthread_mutex_unlock (&la_Task_queue_mutex);
+}
+
+/*
+ * la_task_queue_get_commit_request_seq() - read the count of la_task_queue_request_commit calls so far
+ */
+UINT64
+la_task_queue_get_commit_request_seq (void)
+{
+  return la_Task_queue_commit_request_seq.load (std::memory_order_relaxed);
+}
+
+/*
  * la_task_queue_get_wake_seq() - read the wakeup count la_task_queue_pop_many compares against
  *   return: the number of la_task_queue_wake_holding calls so far
  */
 UINT64
 la_task_queue_get_wake_seq (void)
 {
-  UINT64 seq;
-
-  pthread_mutex_lock (&la_Task_queue_mutex);
-  seq = la_Task_queue_wake_seq;
-  pthread_mutex_unlock (&la_Task_queue_mutex);
-
-  return seq;
+  /* bumped under la_Task_queue_mutex, which a holding worker takes before comparing, so no wakeup is lost; the read
+   * itself needs no lock, which a worker took on every empty queue in the coordinator's way */
+  return la_Task_queue_wake_seq.load (std::memory_order_relaxed);
 }
 
 /*
@@ -335,9 +379,24 @@ la_task_queue_pop_many (LA_TASK *tasks, int max, int *count, int worker, bool wa
 
   *count = 0;
 
+  queue = &la_Task_queues[worker];
+  if ((wait || hold_nsec > 0) && queue->queued.load (std::memory_order_relaxed) == 0)
+    {
+      /* The next task usually comes within microseconds while the coordinator is reading a backlog. Sleeping on the
+       * condition variable for it cost a futex wait and a wakeup per task, which a dependency chain on one worker
+       * paid for every task. Look at the count for a short while first; it is written by the coordinator's push. */
+      UINT64 until_ns = la_monotonic_now_ns () + LA_TASK_QUEUE_SPIN_NSEC;
+
+      while (queue->queued.load (std::memory_order_relaxed) == 0
+	     && (wait || la_Task_queue_wake_seq.load (std::memory_order_relaxed) == wake_seq)
+	     && la_monotonic_now_ns () < until_ns)
+	{
+	  la_task_queue_cpu_relax ();
+	}
+    }
+
   pthread_mutex_lock (&la_Task_queue_mutex);
 
-  queue = &la_Task_queues[worker];
   if (wait)
     {
       while (queue->count == 0 && la_Task_queue_shutdown == false)
@@ -353,7 +412,8 @@ la_task_queue_pop_many (LA_TASK *tasks, int max, int *count, int worker, bool wa
       struct timespec abstime;
 
       la_monotonic_deadline (hold_nsec, &abstime);
-      while (queue->count == 0 && la_Task_queue_shutdown == false && la_Task_queue_wake_seq == wake_seq)
+      while (queue->count == 0 && la_Task_queue_shutdown == false
+	     && la_Task_queue_wake_seq.load (std::memory_order_relaxed) == wake_seq)
 	{
 	  int rc;
 
