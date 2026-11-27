@@ -7813,7 +7813,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	  arg1->info.query.flag.has_outer_spec = node->info.query.flag.has_outer_spec;
 	  if (PT_IS_QUERY_NODE_TYPE (arg1->node_type))
 	    {
-	      arg1->info.query.flag.set_op_operand = 1;
+	      arg1->info.query.flag.stays_query = 1;
 	    }
 	}
       if (arg2 != NULL)
@@ -7821,7 +7821,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	  arg2->info.query.flag.has_outer_spec = node->info.query.flag.has_outer_spec;
 	  if (PT_IS_QUERY_NODE_TYPE (arg2->node_type))
 	    {
-	      arg2->info.query.flag.set_op_operand = 1;
+	      arg2->info.query.flag.stays_query = 1;
 	    }
 	}
 
@@ -8562,13 +8562,13 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 
       is_subquery = node->info.query.is_subquery;
 
-      /* An operand of a set operation stays a query: the set operation folds it (pt_fold_union ()), and the
-       * collations in which the set operation compares the columns of the operand it folds to are read from the
-       * select list of the empty operand, which a value no longer has (pt_fold_union_collation ()). */
+      /* An operand of a set operation stays a query (stays_query): the set operation folds it (pt_fold_union ()),
+       * and the collations in which the set operation compares the columns of the operand it folds to are read
+       * from the select list of the empty operand, which a value no longer has (pt_fold_union_collation ()). */
       if (sc_info->donot_fold == false
 	  && (is_subquery == PT_IS_SUBQUERY || is_subquery == PT_IS_UNION_SUBQUERY
 	      || is_subquery == PT_IS_CTE_NON_REC_SUBQUERY || is_subquery == PT_IS_CTE_REC_SUBQUERY)
-	  && !node->info.query.flag.set_op_operand && pt_false_where (parser, node))
+	  && !node->info.query.flag.stays_query && pt_false_where (parser, node))
 	{
 	  node = pt_to_false_subquery (parser, node);
 	}

@@ -18836,8 +18836,8 @@ pt_apply_union_select_list_collation (PARSER_CONTEXT * parser, PT_NODE * query, 
  *   continue_walk(in/out):
  *
  * Note: the semantic check types an operand before it reaches the set operation (pt_semantic_check_local ()): an
- *	 operand is marked here, ahead of the check, so that one that returns no row is left to the set operation to
- *	 fold (pt_eval_type ()).
+ *	 operand is marked to stay a query here, ahead of the check, so that one that returns no row is left to the
+ *	 set operation to fold (pt_eval_type ()).
  */
 static PT_NODE *
 pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -18853,7 +18853,7 @@ pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 	}
       if (arg != NULL && PT_IS_QUERY_NODE_TYPE (arg->node_type))
 	{
-	  arg->info.query.flag.set_op_operand = 1;
+	  arg->info.query.flag.stays_query = 1;
 	}
 
       arg = node->info.query.q.union_.arg2;
@@ -18863,7 +18863,7 @@ pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 	}
       if (arg != NULL && PT_IS_QUERY_NODE_TYPE (arg->node_type))
 	{
-	  arg->info.query.flag.set_op_operand = 1;
+	  arg->info.query.flag.stays_query = 1;
 	}
     }
 
@@ -19196,8 +19196,7 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
 	}
     }
 
-  if (fold_as == STATEMENT_SET_FOLD_AS_NULL
-      && (union_node->info.query.flag.stays_query || union_node->info.query.flag.set_op_operand))
+  if (fold_as == STATEMENT_SET_FOLD_AS_NULL && union_node->info.query.flag.stays_query)
     {
       /* A set operation of a statement typed again with its bound values is not folded into a value, which would
        * leave nothing to execute (db_execute_and_keep_statement_local ()). It folds into an empty operand instead,
@@ -19549,13 +19548,6 @@ pt_fold_union_as_derived (PARSER_CONTEXT * parser, PT_NODE * active, PT_NODE * s
       return NULL;
     }
 
-  /* the active node is a derived table now, no operand of a set operation */
-  col = derived->info.query.q.select.from->info.spec.derived_table;
-  if (col != NULL && PT_IS_QUERY_NODE_TYPE (col->node_type))
-    {
-      col->info.query.flag.set_op_operand = 0;
-    }
-
   for (col = derived->info.query.q.select.list, name = select_list; col != NULL && name != NULL;
        col = col->next, name = name->next)
     {
@@ -19816,12 +19808,10 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 	  new_node = active;
 	}
 
-      /* the node takes the place of the set operation, and whether it stays a query and is an operand of a set
-       * operation with it */
+      /* the node takes the place of the set operation, and whether it stays a query with it */
       if (PT_IS_QUERY_NODE_TYPE (new_node->node_type))
 	{
 	  new_node->info.query.flag.stays_query = union_node->info.query.flag.stays_query;
-	  new_node->info.query.flag.set_op_operand = union_node->info.query.flag.set_op_operand;
 	}
 
       /* free union node */
