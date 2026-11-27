@@ -371,8 +371,9 @@ struct qo_node
   QO_USING_INDEX *using_index;	/* indexes specified in USING INDEX clause */
   /* NULL if no USING INDEX clause in the query */
 
-  BITSET outer_dep_set;		/* outer join and hint dependencies */
-  BITSET semi_anti_dep_set;	/* direct and inherited SEMI/ANTI dependencies */
+  BITSET outer_dep_set;		/* outer join and hint dependencies; never relaxed by DISTINCT */
+  BITSET semi_anti_dep_set;	/* direct and inherited SEMI/ANTI dependencies; only a SEMI node's DISTINCT
+				 * alternative may precede these nodes */
   PT_HINT_ENUM hint;		/* hint comment contained in given */
   bool sargable;		/* whether sargs are applicable to this node */
   bool sort_limit_candidate;	/* whether this node is a candidate for a SORT_LIMIT plan */
@@ -447,7 +448,7 @@ struct qo_node
    bitset_union (&(QO_NODE_SEMI_ANTI_DEP_SET (tail)), &(QO_NODE_SEMI_ANTI_DEP_SET (head))); \
    bitset_add (&(QO_NODE_OUTER_DEP_SET (tail)), QO_NODE_IDX (head));
 
-/* A SEMI/ANTI node also inherits the outer join dependencies of the nodes its ON reads. */
+/* Keep inherited outer join dependencies mandatory even when the SEMI side is read with DISTINCT. */
 #define QO_ADD_SEMI_ANTI_DEP_SET(tail,head) \
    bitset_union (&(QO_NODE_OUTER_DEP_SET (tail)), &(QO_NODE_OUTER_DEP_SET (head))); \
    bitset_union (&(QO_NODE_SEMI_ANTI_DEP_SET (tail)), &(QO_NODE_SEMI_ANTI_DEP_SET (head))); \

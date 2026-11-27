@@ -1686,8 +1686,7 @@ typedef enum
 							 * at select as FOR UPDATE where the executor does not
 							 * reevaluate */
   PT_SPEC_FLAG_UNNESTED_SUBQUERY = 0x100000	/* derived SEMI/ANTI spec unnested from a [NOT] EXISTS / [NOT] IN subquery
-						 * over several tables, or the derived table that reads a SEMI JOIN table with its
-						 * duplicates removed.  Its XASL is made once the query keeps it */
+						 * over several tables.  Its XASL is made once the query keeps it */
 } PT_SPEC_FLAG;
 
 typedef enum

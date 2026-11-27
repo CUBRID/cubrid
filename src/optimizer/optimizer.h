@@ -146,7 +146,6 @@ typedef enum
 typedef enum
 {
   SEMI_ANTI_JOIN,		/* the SEMI / ANTI JOIN */
-  SEMI_ANTI_DISTINCT,		/* an INNER JOIN over its rows with the duplicates removed */
   SEMI_ANTI_EXISTS		/* its [NOT] EXISTS subquery in the WHERE */
 } SEMI_ANTI_TYPE;
 
@@ -226,7 +225,6 @@ extern PT_NODE *qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node,
 extern bool qo_check_nullable_op (PT_NODE * node);
 extern bool qo_expr_rejects_null (PARSER_CONTEXT * parser, PT_NODE * expr, UINTPTR spec_id, PT_NODE * name);
 extern bool qo_is_spec_in_hint (PT_NODE * node, PT_NODE * spec, PT_HINT_ENUM hint, PT_NODE * args);
-extern bool qo_is_distinct_inner_join_eligible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec);
 extern PT_NODE *qo_rewrite_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR spec_id,
 					   SEMI_ANTI_TYPE type);
 extern void qo_plan_compute_subquery_cost (PT_NODE * subquery, double *subq_cpu_cost, double *subq_io_cost);
