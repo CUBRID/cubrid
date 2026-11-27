@@ -91,6 +91,9 @@ FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL, fi_handler_fail, FI_INIT_STATE},
   {FI_TEST_CONNECTION_WORKER_QUEUE_TIMER_STOP_FAIL, fi_handler_fail, FI_INIT_STATE},
   {FI_TEST_CONNECTION_WORKER_CLOSE_HOLD, fi_handler_hold, FI_INIT_STATE},
+  {FI_TEST_SERIAL_DDL_UNDO_HOLD_AFTER_CLR, fi_handler_hold, FI_INIT_STATE},
+  {FI_TEST_SERIAL_REPL_APPLY_HOLD, fi_handler_hold, FI_INIT_STATE},
+  {FI_TEST_SERIAL_APPLIER_DDL_WRITE_HOLD, fi_handler_hold, FI_INIT_STATE},
 #if defined (SERVER_MODE) || defined (SA_MODE)
   {FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT, fi_handler_page_latch_timeout, FI_INIT_STATE},
 #endif /* SERVER_MODE || SA_MODE */
@@ -410,7 +413,9 @@ fi_test_on (FI_TEST_CODE code)
 static int
 fi_handler_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line)
 {
-  exit (0);
+  /* _exit, not exit: exit runs the atexit handlers, and boot_shutdown_server_at_exit () would shut the server
+   * down from inside this thread while the other threads and this transaction are still running. */
+  _exit (0);
 
   return NO_ERROR;
 }

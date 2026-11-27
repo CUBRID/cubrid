@@ -312,6 +312,9 @@
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_READ) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_RELEASE) \
   \
+  /* what the cached XASL of an XASL_ID writes, for a stored procedure inside a SQL statement */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_QUERY_GET_STMT_INFO) \
+  \
   /* password proof for a client login or user switch, appended likewise */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_AU_CHALLENGE) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_AU_RESPONSE)
@@ -356,6 +359,7 @@ extern int net_server_start (const char *name);
 /* Misc */
 extern const char *get_capability_string (int cap, int cap_type);
 extern const char *get_net_request_name (int request);
+extern bool net_request_is_no_reply (int request);
 
 typedef enum
 {

@@ -36,6 +36,7 @@
 
 #include <memory>
 #include <atomic>
+#include <cstdint>
 #include <thread>
 
 #include <cassert>
@@ -59,12 +60,16 @@ struct fi_test_item;
 class log_system_tdes;
 // from log_compress.h
 struct log_zip;
+// from transaction_exec_token.hpp
+class tx_exec_token;
 // from vacuum.h
 struct vacuum_worker;
 // from xasl_unpack_info.hpp
 struct xasl_unpack_info;
 // from page_buffer.h
 struct pgbuf_holder_anchor;
+
+struct serial_repl_apply;
 
 // forward resource trackers
 namespace cubbase
@@ -304,6 +309,7 @@ namespace cubthread
       bool no_logging;
 
       int net_request_index;	/* request index of net server functions */
+      tx_exec_token *exec_token;	/* the execution token this request took (logtb_exec_begin ()) */
 
       struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
 
@@ -325,6 +331,7 @@ namespace cubthread
       bool no_supplemental_log;
       bool trigger_involved;
       bool serial_restart;	/* the object being forced restarts a serial; see LC_FLAG_SERIAL_RESTART */
+      struct serial_repl_apply *serial_repl_apply;	/* the log applier's _db_serial row image being forced, or NULL */
       bool is_cdc_daemon;
 
       /* support multi-process unloaddb
@@ -440,6 +447,12 @@ namespace cubthread
       void stop_waiting ();
 #endif
 
+      // the clock of the current suspension, shown by SHOW THREADS as Wait_elapsed_msecs. the owner thread starts
+      // it when it enters a wait and stops it before it resumes; other threads only read it.
+      void start_wait_clock (void);
+      void stop_wait_clock (void);
+      std::int64_t get_wait_elapsed_msecs (void) const;	// -1 when no wait clock is running
+
     private:
       void clear_resources (void);
 
@@ -458,6 +471,8 @@ namespace cubthread
       log_system_tdes *m_systdes;
 
       lockfree::tran::index m_lf_tran_index;
+
+      std::atomic<std::int64_t> m_wait_start_nsecs;	// steady clock time the current wait started, 0 if none
   };
 
 } // namespace cubthread
@@ -584,6 +599,13 @@ thread_get_main_thread (cubthread::entry *thread_p)
   return thread_p;
 }
 
+/* a parallel query pool thread running a task for another thread; a leader marks itself, which is not one */
+inline bool
+thread_is_px_worker (const cubthread::entry *thread_p)
+{
+  return thread_p->m_px_orig_thread_entry != nullptr && thread_p->m_px_orig_thread_entry != thread_p;
+}
+
 inline void
 thread_lock_entry (cubthread::entry *thread_p)
 {
@@ -605,6 +627,8 @@ void thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_
 void thread_wakeup_already_had_mutex (cubthread::entry *p, thread_resume_suspend_status resume_reason);
 int thread_suspend_with_other_mutex (cubthread::entry *p, pthread_mutex_t *mutexp, int timeout, struct timespec *to,
 				     thread_resume_suspend_status suspended_reason);
+void thread_slot_wait_begin (cubthread::entry *p, cubthread::entry::status &status, void *&holder);
+void thread_slot_wait_end (cubthread::entry *p, cubthread::entry::status status, void *holder);
 
 const char *thread_type_to_string (thread_type type);
 const char *thread_status_to_string (cubthread::entry::status status);

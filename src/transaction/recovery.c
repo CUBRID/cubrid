@@ -36,6 +36,7 @@
 #include "oos_file.hpp"
 #include "overflow_file.h"
 #include "replication.h"
+#include "serial.h"
 #include "system_catalog.h"
 
 #include <stdio.h>
@@ -932,6 +933,12 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    repl_data_insert_log_dump},
+  {RVHF_SERIAL_DDL_UPDATE_UNDO,
+   "RVHF_SERIAL_DDL_UPDATE_UNDO",
+   serial_rv_undo_ddl_update,
+   NULL,
+   log_rv_dump_hexa,
+   NULL},
   {RVHF_BESTSPACE_MAP_INIT,
    "RVHF_BESTSPACE_MAP_INIT",
    NULL,
@@ -943,7 +950,7 @@ struct rvfun RV_fun[] = {
    NULL,
    heap_rv_bsmap_link,
    NULL,
-   log_rv_dump_hexa},
+   log_rv_dump_hexa}
 };
 
 /*

@@ -273,7 +273,15 @@ namespace cubmethod
 	     && h->get_user_name ().compare (au_get_current_user_name ()) == 0;
     });
 
-    if (handler == nullptr)
+    if (handler != nullptr && handler->is_execute_prepare () && handler->prepare_in_new_session (flag) != NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	logddl_set_callback_stmt (handler->get_statement_type (), (char *) sql.c_str (), sql.size (),
+				  m_error_ctx.get_error (), NULL);
+	free_query_handle (handler->get_id (), true);
+	handler = nullptr;
+      }
+    else if (handler == nullptr)
       {
 	/* not found in statement handler cache */
 	handler = new_query_handler ();
@@ -333,7 +341,24 @@ namespace cubmethod
       }
     else
       {
-	int error = handler->execute (request);
+	bool retried = !handler->is_prepared ();
+	int error = retried ? handler->prepare_retry () : NO_ERROR;
+	if (error == NO_ERROR)
+	  {
+	    error = handler->execute (request);
+	  }
+
+	/* XASL cache is not found */
+	if (error == ER_QPROC_INVALID_XASLNODE && !retried)
+	  {
+	    m_error_ctx.clear ();
+	    error = handler->prepare_retry ();
+	    if (error == NO_ERROR)
+	      {
+		error = handler->execute (request);
+	      }
+	  }
+
 	if (error == NO_ERROR)
 	  {
 	    /* register query_id for out resultset */
@@ -346,18 +371,7 @@ namespace cubmethod
 	  }
 	else
 	  {
-	    /* XASL cache is not found */
-	    if (error == ER_QPROC_INVALID_XASLNODE)
-	      {
-		m_error_ctx.clear ();
-		handler->prepare_retry ();
-		error = handler->execute (request);
-	      }
-
-	    if (error != NO_ERROR)
-	      {
-		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
-	      }
+	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	  }
 
 	/* DDL audit */
@@ -1230,7 +1244,15 @@ exit:
 	if (is_free)
 	  {
 	    // clear <SQL string -> handler ID>
-	    m_sql_handler_map.erase (m_query_handlers[id]->get_sql_stmt());
+	    auto range = m_sql_handler_map.equal_range (m_query_handlers[id]->get_sql_stmt ());
+	    for (auto it = range.first; it != range.second; it++)
+	      {
+		if (it->second == id)
+		  {
+		    m_sql_handler_map.erase (it);
+		    break;
+		  }
+	      }
 
 	    m_deferred_query_free_handler.push_back (m_query_handlers[id]);
 	    m_query_handlers[id] = nullptr;

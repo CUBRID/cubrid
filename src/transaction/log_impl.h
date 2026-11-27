@@ -58,6 +58,7 @@
 #include "tde.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "transaction_exec_token.hpp"
 #include "transaction_transient.hpp"
 #include "lockfree_circular_queue.hpp"
 
@@ -570,6 +571,14 @@ struct log_tdes
   bool has_supplemental_log;	/* Checks if supplemental log has been appended within the transaction */
 
   char *ddl_sql_user_text;	/* SQL user text for the transaction */
+
+#if defined (SERVER_MODE)
+  tx_exec_token exec_token;	/* one request at a time runs the transaction (logtb_exec_begin ()) */
+  // *INDENT-OFF*
+  /* its abort is left to the request that ends it: its parallel section's opener or a PL callback's caller */
+  std::atomic<bool> abort_deferred;
+  // *INDENT-ON*
+#endif
 
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
@@ -1167,6 +1176,15 @@ extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * co
 extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index);
 extern bool logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid);
 extern bool logtb_is_current_active (THREAD_ENTRY * thread_p);
+extern void logtb_exec_begin (THREAD_ENTRY * thread_p);
+extern void logtb_exec_end (THREAD_ENTRY * thread_p);
+extern bool logtb_exec_yield (THREAD_ENTRY * thread_p);
+extern void logtb_exec_resume (THREAD_ENTRY * thread_p, bool yielded);
+extern bool logtb_exec_try_take (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+extern void logtb_exec_untake (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+extern void logtb_exec_switch (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+extern bool logtb_is_abort_deferred (int tran_index);
+extern int logtb_fail_if_abort_deferred (int tran_index);
 extern bool logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid);
 extern void logtb_disable_update (THREAD_ENTRY * thread_p);
 extern void logtb_enable_update (THREAD_ENTRY * thread_p);
@@ -1209,7 +1227,9 @@ extern int logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN
 extern int logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, const LK_STAMP_SEEN * seen, LK_HELD_ROW * held);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
-extern MVCC_SNAPSHOT *logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local);
+extern MVCC_SNAPSHOT *logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local,
+						       bool * holds_vacuum);
+extern void logtb_release_catalog_read_snapshot (THREAD_ENTRY * thread_p, const MVCC_SNAPSHOT * local);
 extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 

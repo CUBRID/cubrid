@@ -49,6 +49,7 @@
 #include "transaction_cl.h"
 #include "packer.hpp"		/* packing_packer */
 #include "network_callback_cl.hpp"
+#include "sp_context_rules.hpp"
 #endif
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -178,6 +179,8 @@ method_dispatch (packing_unpacker &unpacker)
 
   if (error == NO_ERROR)
     {
+      sp_depth_guard sql_guard (sp_In_sql_depth, sp_Sa_query_request);
+
       error = method_dispatch_internal (unpacker);
     }
 
@@ -209,6 +212,9 @@ method_dispatch_internal (packing_unpacker &unpacker)
   if (error == NO_ERROR)
     {
       int save_auth = 0;
+#if !defined (NDEBUG)
+      tran_set_in_no_reply_callback (header.command == METHOD_REQUEST_END);
+#endif
       switch (header.command)
 	{
 	case METHOD_REQUEST_ARG_PREPARE:
@@ -240,6 +246,9 @@ method_dispatch_internal (packing_unpacker &unpacker)
 	  return ER_FAILED;
 	  break;
 	}
+#if !defined (NDEBUG)
+      tran_set_in_no_reply_callback (false);
+#endif
     }
 
   return error;
