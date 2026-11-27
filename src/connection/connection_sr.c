@@ -611,6 +611,8 @@ css_make_conn (SOCKET fd)
     {
       if (css_initialize_conn (conn, fd) != NO_ERROR)
 	{
+	  /* the caller still owns the fd when NULL is returned. do not close it here. */
+	  conn->fd = INVALID_SOCKET;
 	  css_prepare_shutdown_conn (conn);
 	  css_free_conn (conn);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT, 0);
@@ -1193,7 +1195,13 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
       (void) unlink (pname.c_str ());
       css_free_conn (conn);
       close (socket_fd);
-      return (css_make_conn (datagram_fd));
+      conn = css_make_conn (datagram_fd);
+      if (conn == NULL)
+	{
+	  /* css_make_conn leaves the fd to the caller on failure */
+	  close (datagram_fd);
+	}
+      return conn;
 #endif /* WINDOWS */
     }
 

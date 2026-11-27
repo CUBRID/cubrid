@@ -97,9 +97,9 @@ class server_monitor
     void register_server_entry (int pid, const std::string &exec_path, const std::string &args,
 				const std::string &server_name);
     void remove_server_entry (const std::string &server_name);
-    void revive_server (const std::string &server_name);
+    void revive_server (const std::string &server_name, int pid);
     int try_revive_server (const std::string &exec_path, char *const *argv);
-    void check_server_revived (const std::string &server_name);
+    void check_server_revived (const std::string &server_name, int pid);
     void shutdown_server (const std::string &server_name);
 
     void produce_job_internal (job_type job_type, int pid, const std::string &exec_path, const std::string &args,
@@ -130,6 +130,7 @@ class server_monitor
 	      m_pid = other.m_pid;
 	      m_need_revive = other.m_need_revive;
 	      m_last_revived_time = other.m_last_revived_time;
+	      m_quick_revive_count = other.m_quick_revive_count;
 	      m_exec_path = other.m_exec_path;
 	      m_argv = std::move (other.m_argv);
 	    }
@@ -141,11 +142,13 @@ class server_monitor
 	char *const *get_argv () const;
 	bool get_need_revive () const;
 	std::chrono::steady_clock::time_point get_last_revived_time () const;
+	int get_quick_revive_count () const;
 
 	void set_pid (int pid);
 	void set_exec_path (const std::string &exec_path);
 	void set_need_revive (bool need_revive);
 	void set_last_revived_time (std::chrono::steady_clock::time_point revive_time);
+	void set_quick_revive_count (int count);
 
 	void proc_make_arg (const std::string &args);
 
@@ -155,6 +158,7 @@ class server_monitor
 	std::unique_ptr<char *[]> m_argv;                             // arguments of server process
 	volatile bool m_need_revive;                                  // need to be revived by monitoring thread
 	std::chrono::steady_clock::time_point m_last_revived_time;    // last revived time
+	int m_quick_revive_count;                                     // revives in a row after quick exits
     };
 
     std::unordered_map <std::string, server_entry> m_server_entry_map;  // map of server entries

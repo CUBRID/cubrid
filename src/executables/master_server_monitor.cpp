@@ -26,6 +26,9 @@
 #include <signal.h>
 
 #include "system_parameter.h"
+#include "error_context.hpp"
+#include "error_manager.h"
+#include "master_util.h"
 #include "master_server_monitor.hpp"
 
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
@@ -75,6 +78,8 @@ void
 server_monitor::server_monitor_thread_worker ()
 {
   job job;
+  /* this thread reports errors with er_set (MASTER_ER_SET), which needs an error context of its own */
+  cuberr::context er_context (true);
 
   while (true)
     {
@@ -146,13 +151,16 @@ server_monitor::remove_server_entry (const std::string &server_name)
 }
 
 void
-server_monitor::revive_server (const std::string &server_name)
+server_monitor::revive_server (const std::string &server_name, int pid)
 {
   int error_code;
 
   // Unacceptable revive time difference is set to be 120 seconds
   // as the timediff of server restart mechanism of heartbeat.
   constexpr int SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS = 120;
+  // give up when the revived server exits within the time difference above this many times in a row.
+  // a temporary cause (e.g. another process still using the database just after the crash) may fail a few of them.
+  constexpr int SERVER_MONITOR_MAX_QUICK_REVIVE_FAILURES = 3;
   std::chrono::steady_clock::time_point tv;
   int out_pid;
 
@@ -160,6 +168,15 @@ server_monitor::revive_server (const std::string &server_name)
 
   if (entry != m_server_entry_map.end ())
     {
+      if (pid != -1 && pid != entry->second.get_pid ())
+	{
+	  /* a request for a process that has already been replaced (registered or revived again). one exit may be
+	   * reported more than once (e.g. by master and by the confirm job), and must be revived only once. */
+	  er_log_debug (ARG_FILE_LINE, "[Server Monitor] [%s] Ignore the stale request to revive server. (pid : %d)",
+			entry->first.c_str(), pid);
+	  return;
+	}
+
       entry->second.set_need_revive (true);
 
       tv = std::chrono::steady_clock::now ();
@@ -173,12 +190,13 @@ server_monitor::revive_server (const std::string &server_name)
       // 1. preventing repeated creation of core files.
       // 2. The service cannot be recovered even if revived if the server abnormally terminates again within a short time.
 
-      // TODO: Consider retry count for repeated failure case, and give up reviving the server after several retries.
-      // TODO: The timediff value continues to increase if REVIVE_SERVER handling is repeated. Thus, the if condition will always be
-      // true after the first evaluation. Therefore, evaluating the timediff only once when producing the REVIVE_SERVER job is needed.
-      // (Currently, it is impossible since last_revived_time is stored in server_entry, which is not synchronized structure between monitor and main thread.)
+      // The revive time is also recorded when the server is forked below, so a revived server that exits before
+      // registering counts as a quick failure too. One that takes longer than the time difference to fail is
+      // revived each time, as before.
+      bool quick_failure = revived_before && timediff <= SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS;
+      int quick_revive_count = quick_failure ? entry->second.get_quick_revive_count () + 1 : 0;
 
-      if (!revived_before || timediff > SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS)
+      if (quick_revive_count < SERVER_MONITOR_MAX_QUICK_REVIVE_FAILURES)
 	{
 	  out_pid = try_revive_server (entry->second.get_exec_path(), entry->second.get_argv());
 	  if (out_pid == -1)
@@ -186,24 +204,34 @@ server_monitor::revive_server (const std::string &server_name)
 	      er_log_debug (ARG_FILE_LINE,
 			    "[Server Monitor] [%s] Failed to fork server process. Server monitor try to revive server again.",
 			    entry->first.c_str());
-	      produce_job_internal (job_type::REVIVE_SERVER, -1, "", "", entry->first);
+	      produce_job_internal (job_type::REVIVE_SERVER, pid, "", "", entry->first);
 	    }
 	  else
 	    {
 	      entry->second.set_pid (out_pid);
+	      /* record the revive time now, not only when the revived server registers. otherwise a revived server
+	       * that exits before registering (e.g. it cannot register to master) is revived again and again. */
+	      entry->second.set_last_revived_time (std::chrono::steady_clock::now ());
+	      /* counted only when forked. a fork failure above is retried without counting it. */
+	      entry->second.set_quick_revive_count (quick_revive_count);
 	      er_log_debug (ARG_FILE_LINE,
 			    "[Server Monitor] [%s] Server monitor is waiting for server to be registered. (pid : %d)",
 			    entry->first.c_str(), entry->second.get_pid());
-	      produce_job_internal (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
+	      produce_job_internal (job_type::CONFIRM_REVIVE_SERVER, out_pid, "", "",
 				    entry->first);
 	    }
 	  return;
 	}
       else
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"[Server Monitor] [%s] Server process failures occurred again within a short period of time(%d sec). It will no longer be revived automatically. (pid : %d)",
-			entry->first.c_str(), SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS, entry->second.get_pid());
+	  /* not a debug log: in a release build an operator must be able to see why the server is not revived */
+	  std::string event = "Server " + entry->first + " exited within "
+			      + std::to_string (SERVER_MONITOR_UNACCEPTABLE_REVIVE_TIMEDIFF_IN_SECS)
+			      + " seconds after it was revived, "
+			      + std::to_string (SERVER_MONITOR_MAX_QUICK_REVIVE_FAILURES) + " times in a row."
+			      + " It will no longer be revived automatically; start it manually if it is not running";
+	  std::string detail = "(last pid: " + std::to_string (entry->second.get_pid ()) + ")";
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2, event.c_str (), detail.c_str ());
 	  m_server_entry_map.erase (entry);
 	  return;
 	}
@@ -211,22 +239,29 @@ server_monitor::revive_server (const std::string &server_name)
 }
 
 void
-server_monitor::check_server_revived (const std::string &server_name)
+server_monitor::check_server_revived (const std::string &server_name, int pid)
 {
   int error_code;
   auto entry = m_server_entry_map.find (server_name);
 
   if (entry != m_server_entry_map.end ())
     {
+      if (pid != entry->second.get_pid ())
+	{
+	  /* the process this job watches has been replaced. another job watches the current one. */
+	  return;
+	}
+
       error_code = kill (entry->second.get_pid (), 0);
       if (error_code)
 	{
 	  if (errno == ESRCH)
 	    {
+	      /* with the pid. if master also reports the exit, revive_server () ignores the second request. */
 	      er_log_debug (ARG_FILE_LINE,
 			    "[Server Monitor] [%s] Revived server process can not be found. Server monitor will try to revive server again. (pid : %d)",
 			    entry->first.c_str(), entry->second.get_pid());
-	      produce_job_internal (job_type::REVIVE_SERVER, -1, "", "", entry->first);
+	      produce_job_internal (job_type::REVIVE_SERVER, pid, "", "", entry->first);
 	    }
 	  else
 	    {
@@ -244,7 +279,7 @@ server_monitor::check_server_revived (const std::string &server_name)
 
 	  std::this_thread::sleep_for (std::chrono::seconds (SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS));
 
-	  produce_job_internal (job_type::CONFIRM_REVIVE_SERVER, -1, "", "",
+	  produce_job_internal (job_type::CONFIRM_REVIVE_SERVER, pid, "", "",
 				entry->first);
 
 	}
@@ -341,10 +376,10 @@ server_monitor::process_job (job &consume_job)
       remove_server_entry (consume_job.get_server_name());
       break;
     case job_type::REVIVE_SERVER:
-      revive_server (consume_job.get_server_name());
+      revive_server (consume_job.get_server_name(), consume_job.get_pid ());
       break;
     case job_type::CONFIRM_REVIVE_SERVER:
-      check_server_revived (consume_job.get_server_name());
+      check_server_revived (consume_job.get_server_name(), consume_job.get_pid ());
       break;
     case job_type::SHUTDOWN_SERVER:
       shutdown_server (consume_job.get_server_name());
@@ -404,6 +439,7 @@ server_entry (int pid, const std::string &exec_path, const std::string &args,
   , m_exec_path {exec_path}
   , m_need_revive {false}
   , m_last_revived_time {revive_time}
+  , m_quick_revive_count {0}
 {
   if (args.size() > 0)
     {
@@ -475,6 +511,18 @@ void
 server_monitor::server_entry::set_last_revived_time (std::chrono::steady_clock::time_point revive_time)
 {
   m_last_revived_time = revive_time;
+}
+
+int
+server_monitor::server_entry::get_quick_revive_count () const
+{
+  return m_quick_revive_count;
+}
+
+void
+server_monitor::server_entry::set_quick_revive_count (int count)
+{
+  m_quick_revive_count = count;
 }
 
 void

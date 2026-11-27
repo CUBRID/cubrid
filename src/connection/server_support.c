@@ -692,7 +692,11 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   /* attach pool */
   connector.attach (connections);
   /* handshake and dispatch connection */
-  connector.run (port_id, name);
+  if (!connector.run (port_id, name))
+    {
+      /* e.g. failed to register to master while starting. the server must not be left running unregistered. */
+      status = ER_FAILED;
+    }
 
 shutdown:
   /*
@@ -750,6 +754,12 @@ shutdown:
 
   /* If this was opened for the new style connection protocol, make sure it gets closed. */
   css_close_server_connection_socket ();
+
+  if (status != NO_ERROR && er_errid () == NO_ERROR)
+    {
+      /* the caller (net_server_start) asserts that an error is set on failure */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_NO_MASTER, 0);
+    }
 
   return status;
 }
