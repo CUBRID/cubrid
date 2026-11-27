@@ -2199,7 +2199,8 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
 	  /* hdr.eof_lsa moves only in a flush, so if it is past what this LWT has sent, a flush ran while this LWT
 	   * was sending and did not wake it up: read that log now instead of waiting for the next flush, which may
 	   * not come soon. Registering after the flush has moved hdr.eof_lsa but before it wakes up the LWTs is
-	   * also fine: the DELAY waits on LOG_CS until that flush ends and sends the same log.
+	   * also fine: the flush does not wait for a DELAY entry, and the DELAY waits on LOG_CS until the caller of
+	   * the flush releases it, then sends at least the log of that flush.
 	   * Only for an ASYNC client: a DELAY of a non-ASYNC client holds LOG_CS until the reply.
 	   * Not after an interrupt: entry->eof_lsa then caps what is sent, so the LWT would DELAY forever.
 	   * Not when interrupted (tdes->interrupt): only the WAIT path checks it. A shutdown stops the LWT only
