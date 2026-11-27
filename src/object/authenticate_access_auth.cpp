@@ -1303,6 +1303,15 @@ au_object_owner_change_privileges (DB_OBJECT_TYPE obj_type, MOP object_mop, MOP 
       sm_bump_local_schema_version ();
     }
 
+  if (obj_type == DB_OBJECT_PROCEDURE || obj_type == DB_OBJECT_PACKAGE)
+    {
+      /*
+       * the old owner had every authorization by being the owner, and the object (MOP) stays the same.
+       * clear the cache for the object to make sure we recalculate it the next time it is referenced
+       */
+      Au_cache.reset_cache_for_user_and_proc_or_pkg (object_mop);
+    }
+
 exit:
   return (error);
 }
@@ -1346,6 +1355,9 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      break;
+    case DB_OBJECT_PACKAGE:
+      sprintf (obj_fetch_query, sql_query, "SELECT [pkg] FROM " CT_PACKAGE_NAME "[pkg] WHERE [unique_name] = ?");
       break;
     default:
       error = ER_FAILED;
@@ -1609,6 +1621,9 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
       break;
     case DB_OBJECT_PROCEDURE:
       sprintf (obj_fetch_query, sql_query, "SELECT [sp] FROM " CT_STORED_PROC_NAME "[sp] WHERE [unique_name] = ?");
+      break;
+    case DB_OBJECT_PACKAGE:
+      sprintf (obj_fetch_query, sql_query, "SELECT [pkg] FROM " CT_PACKAGE_NAME "[pkg] WHERE [unique_name] = ?");
       break;
     default:
       error = ER_FAILED;

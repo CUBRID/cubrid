@@ -12099,7 +12099,9 @@ pl_language_spec
 plcsql_text
         : plcsql_text plcsql_text_part
 		{{
-                        $$ = $1 + strlen($2);
+                        // the length in the original text, not the sum of the lengths of the parts:
+                        // a string with backslash escapes (no_backslash_escapes=no) is shorter than what the user wrote
+                        $$ = @$.buffer_pos - g_query_string_pos - g_plcsql_text_pos;
 		}}
         | plcsql_text_part
 		{{

@@ -3720,7 +3720,7 @@ cleanup1:
 
 /*
  * jsp_rewrite_pkg_code - print a CREATE PACKAGE [BODY] statement to be saved as the source of the package
- *   return: CREATE OR REPLACE PACKAGE [BODY] without the owner name and the comment
+ *   return: CREATE OR REPLACE PACKAGE [BODY] without the owner name and the comment, or NULL with an error set
  *   parser(in): parser context
  *   statement(in): a PT_CREATE_PACKAGE node
  *
@@ -3733,7 +3733,8 @@ jsp_rewrite_pkg_code (PARSER_CONTEXT *parser, PT_NODE *statement)
   const char *rewritten_code;
   int custom_print_saved = parser->custom_print;
 
-  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+  // quote the names as unloaddb does: a name can be a PL/CSQL keyword that is not an SQL one, such as "raise"
+  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME | PT_PRINT_QUOTES;
   parser->flag.is_unloading_plcsql_def = 1;
   rewritten_code = parser_print_tree (parser, statement);
   parser->flag.is_unloading_plcsql_def = 0;
@@ -3800,7 +3801,7 @@ jsp_create_pkg_body (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
 
   if (err == NO_ERROR && pkg_compile_response.err_code == NO_ERROR)
     {
-      const char *ocode, *compile_id;
+      const char *ocode, *compile_id, *source;
       if (pkg_compile_request.type == PLCSQL_COMPILE_TYPE_PKG_SPEC)
 	{
 	  compile_id = pkg_compile_response.compile_id.data();
@@ -3829,7 +3830,13 @@ jsp_create_pkg_body (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
 
       // package spec has not been updated, and hence no spec-related updates in system tables
       // save the rewritten code, not the user code sent to the compiler
-      err = jsp_set_pkg_scode_body_and_ocode (unique_name, owner_mop, jsp_rewrite_pkg_code (parser, statement), ocode);
+      source = jsp_rewrite_pkg_code (parser, statement);
+      if (source == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto error_exit;
+	}
+      err = jsp_set_pkg_scode_body_and_ocode (unique_name, owner_mop, source, ocode);
       if (err != NO_ERROR)
 	{
 	  goto error_exit;
@@ -3915,9 +3922,14 @@ jsp_create_pkg_spec (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
   if (err == NO_ERROR && pkg_compile_response.err_code == NO_ERROR)
     {
       // save the rewritten spec code, not the user code sent to the compiler. the body code is the saved one.
-      err = sp_add_pkg_and_related (unique_name, owner_name, owner_mop,
-				    jsp_rewrite_pkg_code (parser, statement), pkg_compile_request.body_code.data(), comment,
-				    pkg_compile_response, pkg_mop);
+      const char *source = jsp_rewrite_pkg_code (parser, statement);
+      if (source == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto error_exit;
+	}
+      err = sp_add_pkg_and_related (unique_name, owner_name, owner_mop, source, pkg_compile_request.body_code.data(),
+				    comment, pkg_compile_response, pkg_mop);
       if (err != NO_ERROR)
 	{
 	  goto error_exit;
@@ -4047,21 +4059,322 @@ error_exit:
 }
 
 /*
- * jsp_alter_package
- *   return: if failed return error code else execute jsp_add_stored_procedure
- *           function
+ * jsp_set_pkg_comment - set the comment of a package
+ *   return: error code
+ *   pkg_mop(in): the _db_package row
+ *   comment(in): the comment. An empty one is stored as NULL, as CREATE PACKAGE does
+ */
+static int
+jsp_set_pkg_comment (MOP pkg_mop, const char *comment)
+{
+  int err, save;
+  DB_VALUE value;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  if (comment && comment[0])
+    {
+      db_make_string (&value, comment);
+    }
+  else
+    {
+      db_make_null (&value);
+    }
+
+  err = obj_set (pkg_mop, PKG_ATTR_COMMENT, &value);
+  if (err == NO_ERROR)
+    {
+      err = db_update_obj_timestamp (pkg_mop);
+    }
+
+  AU_RESTORE (save);
+
+  return err;
+}
+
+/*
+ * jsp_rebuild_pkg - compile the stored source of a package again, and rebuild the rows of the package
+ *   return: error code
+ *   parser(in/out): parser environment, to record a compile error in
+ *   unique_name(in): the unique name of the package
+ *   pkg_mop(in): the _db_package row of the package
+ *   owner(in): the owner to compile the package for and to give it to. It is the current owner for ALTER PACKAGE ...
+ *              COMPILE, and the new owner for ALTER PACKAGE ... OWNER TO.
+ *   owner_name(in): the downcased name of the owner
+ *   new_unique_name(in): the unique name of the package under the owner. It is unique_name for the current owner.
+ *
+ * Note: it does what CREATE OR REPLACE PACKAGE does with the stored spec and body. The _db_package row is kept,
+ *       and so are the privileges granted on it (CBRD-27720) and its comment. The other rows of the package are
+ *       made again from the compile result. A compile error leaves them to the caller to roll back.
+ */
+static int
+jsp_rebuild_pkg (PARSER_CONTEXT *parser, const char *unique_name, MOP pkg_mop, MOP owner, const char *owner_name,
+		 const char *new_unique_name)
+{
+  int err, save;
+  DB_VALUE scode_spec_value, scode_body_value, comment_value;
+  PLCSQL_COMPILE_REQUEST pkg_compile_request;
+  PLCSQL_COMPILE_RESPONSE pkg_compile_response;
+  std::string comment;
+
+  db_make_null (&scode_spec_value);
+  db_make_null (&scode_body_value);
+  db_make_null (&comment_value);
+
+  AU_SAVE_AND_DISABLE (save);
+
+  // the stored source and comment
+  err = jsp_get_pkg_scode_spec (unique_name, &scode_spec_value);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+  // every package that has a _db_package row, but a system generated one, has its spec source
+  assert (!DB_IS_NULL (&scode_spec_value));
+
+  err = jsp_get_pkg_scode_body (unique_name, &scode_body_value);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  err = db_get (pkg_mop, PKG_ATTR_COMMENT, &comment_value);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+  if (!DB_IS_NULL (&comment_value))
+    {
+      comment.assign (db_get_string (&comment_value));
+    }
+
+  pkg_compile_request.type = PLCSQL_COMPILE_TYPE_PKG_SPEC;
+  pkg_compile_request.code.assign (db_get_string (&scode_spec_value));
+  if (!DB_IS_NULL (&scode_body_value))
+    {
+      pkg_compile_request.body_code.assign (db_get_string (&scode_body_value));
+    }
+  pkg_compile_request.owner.assign (owner_name);
+
+  // as jsp_create_pkg_spec () does, delete the rows of the package but its _db_package row before compiling it
+  err = jsp_drop_pkg_contents (unique_name, pkg_mop);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  au_perform_push_user (owner);
+  err = plcsql_compile (pkg_compile_request, pkg_compile_response);
+  au_perform_pop_user ();
+
+  if (err != NO_ERROR || pkg_compile_response.err_code != NO_ERROR)
+    {
+      err = ER_PKG_COMPILE_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, pkg_compile_response.err_msg.c_str ());
+      pt_record_error (parser, parser->statement_number, pkg_compile_response.err_line, pkg_compile_response.err_column,
+		       er_msg (), NULL);
+      goto exit;
+    }
+
+  err = sp_add_pkg_and_related (new_unique_name, owner_name, owner, pkg_compile_request.code.data (),
+				pkg_compile_request.body_code.data (), comment.c_str (), pkg_compile_response, pkg_mop);
+
+exit:
+  AU_RESTORE (save);
+
+  pr_clear_value (&scode_spec_value);
+  pr_clear_value (&scode_body_value);
+  pr_clear_value (&comment_value);
+
+  return err;
+}
+
+/*
+ * jsp_alter_package - ALTER PACKAGE <package> { COMPILE | [OWNER TO <user>] [COMMENT '<comment>'] }
+ *   return: error code
  *   parser(in/out): parser environment
  *   statement(in): a statement node
- *
- * Note:
  */
+
+#define SAVEPOINT_ALTER_PACKAGE "ALTERPACKAGE"
 
 int
 jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  // TODO package: ALTER PACKAGE is not implemented yet; fail instead of reporting success
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
-  return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
+  int err = NO_ERROR;
+  const char *unique_name;
+  char downcased[DB_MAX_IDENTIFIER_LENGTH + 1];
+  char owner_name[DB_MAX_USER_LENGTH];
+  char new_owner_name[DB_MAX_USER_LENGTH];
+  char new_unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  char *name;
+  MOP owner_mop, pkg_mop, new_owner_mop = NULL;
+  bool is_system;
+  bool has_savepoint = false;
+
+  CHECK_MODIFICATION_ERROR ();
+  assert (!prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT));  // unreachable here if it is true
+  assert (statement->info.pkg.recompile || statement->info.pkg.owner || statement->info.pkg.comment);
+
+  unique_name = PT_NODE_PKG_NAME (statement);
+  sm_downcase_name (unique_name, downcased, DB_MAX_IDENTIFIER_LENGTH + 1);
+  unique_name = downcased;
+
+  owner_name[0] = '\0';
+  if (sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      // a system class name is left unqualified (see pt_set_user_specified_name ()),
+      // and no package can have it (see pt_check_create_package ())
+      assert (sm_check_system_class_by_name (unique_name));
+      err = ER_PKG_NOT_EXIST;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
+      goto exit;
+    }
+  assert (owner_name[0]);     // package name has its owner name at this point of execution
+
+  // a package body created without its spec has a _db_package_code row but no _db_package row
+  pkg_mop = jsp_find_pkg (unique_name);
+  if (pkg_mop == NULL)
+    {
+      err = er_errid ();
+      if (err == NO_ERROR)
+	{
+	  err = ER_PKG_NOT_EXIST;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
+	}
+      goto exit;
+    }
+
+  err = jsp_is_system_generated_pkg (pkg_mop, &is_system);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+  if (is_system)
+    {
+      err = ER_PKG_ALTER_NOT_ALLOWED_SYSTEM_GENERATED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto exit;
+    }
+
+  owner_mop = db_find_user (owner_name);
+  if (owner_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto exit;
+    }
+
+  // only a dba group member can change the owner, and only the owner or a dba group member can do the others
+  if (statement->info.pkg.owner != NULL)
+    {
+      if (!au_is_dba_group_member (Au_user))
+	{
+	  err = ER_AU_DBA_ONLY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, "ALTER PACKAGE ... OWNER TO");
+	  goto exit;
+	}
+
+      new_owner_mop = db_find_user (statement->info.pkg.owner->info.name.original);
+      if (new_owner_mop == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto exit;
+	}
+    }
+  else if (!ws_is_same_object (owner_mop, Au_user) && !au_is_dba_group_member (Au_user))
+    {
+      err = ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, "alter");
+      goto exit;
+    }
+
+  err = tran_system_savepoint (SAVEPOINT_ALTER_PACKAGE);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+  has_savepoint = true;
+
+  // changing the owner to the current one changes nothing
+  if (new_owner_mop != NULL && !ws_is_same_object (new_owner_mop, owner_mop))
+    {
+      // the unique name of the package under the new owner
+      name = au_get_user_name (new_owner_mop);
+      if (name == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto exit;
+	}
+      sm_downcase_name (name, new_owner_name, DB_MAX_USER_LENGTH);
+      db_ws_free_and_init (name);
+      snprintf (new_unique_name, sizeof (new_unique_name), "%s.%s", new_owner_name, sm_remove_qualifier_name (unique_name));
+
+      // the new owner must not have a package of the name, nor a package body created without its spec
+      if (jsp_find_pkg (new_unique_name) != NULL)
+	{
+	  err = ER_PKG_ALREADY_EXIST;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, new_unique_name);
+	  goto exit;
+	}
+      else if (er_errid () != NO_ERROR)
+	{
+	  err = er_errid ();
+	  goto exit;
+	}
+      if (jsp_find_pkg_code (new_unique_name) != NULL)
+	{
+	  err = ER_PKG_BODY_ALREADY_EXIST;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, new_unique_name);
+	  goto exit;
+	}
+      else if (er_errid () != NO_ERROR)
+	{
+	  err = er_errid ();
+	  goto exit;
+	}
+
+      // the privileges granted by the old owner become those granted by the new owner,
+      // and those granted to the new owner are revoked
+      err = au_object_owner_change_privileges (DB_OBJECT_PACKAGE, pkg_mop, owner_mop, new_owner_mop, unique_name);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      // the unique name and the generated class name have the owner name, and the unqualified names in the
+      // package are now resolved for the new owner
+      err = jsp_rebuild_pkg (parser, unique_name, pkg_mop, new_owner_mop, new_owner_name, new_unique_name);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+  if (statement->info.pkg.recompile)
+    {
+      err = jsp_rebuild_pkg (parser, unique_name, pkg_mop, owner_mop, owner_name, unique_name);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+  if (statement->info.pkg.comment != NULL)
+    {
+      err = jsp_set_pkg_comment (pkg_mop, PT_NODE_PKG_COMMENT (statement));
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+exit:
+  if (err != NO_ERROR && has_savepoint)
+    {
+      tran_abort_upto_system_savepoint (SAVEPOINT_ALTER_PACKAGE);
+    }
+
+  return err;
 }
 
 /*
@@ -4566,13 +4879,19 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
       {
 	int custom_print_saved = parser->custom_print;
 
-	parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+	// quote the names as unloaddb does: a name can be a PL/CSQL keyword that is not an SQL one, such as "raise"
+	parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME | PT_PRINT_QUOTES;
 	parser->flag.is_unloading_plcsql_def = 1;
 	rewritten_code = parser_print_tree (parser, statement);
 	parser->flag.is_unloading_plcsql_def = 0;
 
 	parser->custom_print = custom_print_saved;
       }
+      if (rewritten_code == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  goto error_exit;
+	}
 
       code_info.name = sp_info.target_class;
       code_info.compile_id = pl_sp_compile_response.compile_id;
@@ -4879,10 +5198,19 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	}
     }
 
-  err = db_update_obj_timestamp (sp_mop);
-  if (err != NO_ERROR)
+  /* OWNER TO the current owner alone changes nothing (see au_change_sp_owner_with_transfer_privileges ()) */
+  if (sp_comment == NULL && new_owner_mop != NULL && ws_is_same_object (new_owner_mop, owner_mop))
     {
-      goto error;
+      // do not update timestamp
+      // nothing has happened in au_change_sp_owner_with_transfer_privileges()
+    }
+  else
+    {
+      err = db_update_obj_timestamp (sp_mop);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
 error:
