@@ -22522,8 +22522,11 @@ end:
  *   class_oid(in): the heap's class (the root class for the root, database parameter and TDE key heaps)
  *
  * Note: feedback under the page latch is ordered with every change of the page. Without a latch a page may be
- *	 allocated meanwhile, so one that is not the heap's goes only through forget_unverified (). The root class heaps
- *	 also check the page's sector; the map gets a sector only after the file reserved it.
+ *	 allocated meanwhile, so one that is not the heap's goes only through forget_unverified (). Only a page that the
+ *	 file table has allocated is fixed: the map lists a whole sector when it learns of it, also the pages the file
+ *	 has not allocated yet, and the disk image of such a page may be one that a destroyed file left, which a bulk
+ *	 destroy does not mark deallocated. Fixed, that image would look like a heap page and stay in the buffer, where the
+ *	 page's allocation finds it. The sectors also keep out the pages of the other files of the root class heaps.
  */
 // *INDENT-OFF*
 static std::size_t
@@ -22545,8 +22548,9 @@ heap_bsmap_verify_pages (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry
   OID page_class;
   std::size_t count, i, cursor, max_count = (std::size_t) MIN (budget, HEAP_BSMAP_VERIFY_BATCH);
   std::uint8_t code;
+  FILE_PARTIAL_SECTOR *sector;
   int n_file_sectors;
-  bool deallocated, check_sectors, ours;
+  bool deallocated, ours;
 
   cursor = bestspace->m_verify_cursor;
   count = map->next_unverified (bestspace->m_verify_cursor, pages, max_count);
@@ -22562,37 +22566,34 @@ heap_bsmap_verify_pages (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry
       return 0;
     }
 
-  check_sectors = OID_IS_ROOTOID (class_oid);
-  if (check_sectors)
+  hdr_vpid.volid = pin->hfid.vfid.volid;
+  hdr_vpid.pageid = pin->hfid.hpgid;
+  n_file_sectors = 0;
+  if (file_probe_heap_sectors (thread_p, &pin->hfid.vfid, &hdr_vpid, &state, &n_file_sectors, &sectors) != NO_ERROR
+      || state != FILE_HEAP_SECTORS_COLLECTED)
     {
-      hdr_vpid.volid = pin->hfid.vfid.volid;
-      hdr_vpid.pageid = pin->hfid.hpgid;
-      if (file_probe_heap_sectors (thread_p, &pin->hfid.vfid, &hdr_vpid, &state, &n_file_sectors, &sectors) != NO_ERROR
-	  || state != FILE_HEAP_SECTORS_COLLECTED)
-	{
-	  /* busy, or not this heap's file: the batch waits for a later round */
-	  bestspace->m_verify_cursor = cursor;
-	  count = 0;
-	  goto end;
-	}
-      qsort (sectors.partsect_ftab, sectors.nsects, sizeof (*sectors.partsect_ftab), heap_bsmap_file_sector_cmp);
+      /* busy, or not this heap's file: the batch waits for a later round */
+      bestspace->m_verify_cursor = cursor;
+      count = 0;
+      goto end;
     }
+  /* the file header and the file table pages, as heap_bsmap_page_in_file () counts them */
+  *used += 1 + (int) (((std::size_t) n_file_sectors * sizeof (FILE_PARTIAL_SECTOR) + DB_PAGESIZE - 1) / DB_PAGESIZE);
+  qsort (sectors.partsect_ftab, sectors.nsects, sizeof (*sectors.partsect_ftab), heap_bsmap_file_sector_cmp);
 
   for (i = 0; i < count; i++)
     {
       vpid.volid = pages[i].volid;
       vpid.pageid = pages[i].pageid;
-      if (check_sectors)
+      key.vsid.volid = vpid.volid;
+      key.vsid.sectid = SECTOR_FROM_PAGEID (vpid.pageid);
+      sector = (FILE_PARTIAL_SECTOR *) bsearch (&key, sectors.partsect_ftab, sectors.nsects,
+						sizeof (*sectors.partsect_ftab), heap_bsmap_file_sector_cmp);
+      if (sector == NULL || (sector->page_bitmap & (1ULL << (vpid.pageid % DISK_SECTOR_NPAGES))) == 0)
 	{
-	  key.vsid.volid = vpid.volid;
-	  key.vsid.sectid = SECTOR_FROM_PAGEID (vpid.pageid);
-	  if (bsearch (&key, sectors.partsect_ftab, sectors.nsects, sizeof (*sectors.partsect_ftab),
-		       heap_bsmap_file_sector_cmp) == NULL)
-	    {
-	      /* a page of another file (the database parameter or TDE key heap) */
-	      (void) map->forget_unverified (vpid.volid, vpid.pageid);
-	      continue;
-	    }
+	  /* a page the file has not allocated (or a page of another file of the root class heaps) */
+	  (void) map->forget_unverified (vpid.volid, vpid.pageid);
+	  continue;
 	}
 
       /* the sector first, as pgbuf_fix_if_not_deallocated () does: a fix in a sector that is not reserved asserts */
