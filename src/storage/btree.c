@@ -1456,7 +1456,8 @@ static int btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_he
 				    PGBUF_LATCH_MODE latch_mode, PAGE_PTR * prev_page);
 static int btree_ovf_find_swap_leftover (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR first_ovf_page,
 					 OID * oid, BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
-					 int *offset_to_object, BTREE_MVCC_INFO * object_mvcc_info);
+					 int *offset_to_object, BTREE_MVCC_INFO * object_mvcc_info,
+					 BTREE_MVCC_INFO * deleted_mvcc_info);
 static int btree_ovf_dir_next_separator (THREAD_ENTRY * thread_p, PAGE_PTR dir_page, int dir_idx, OID * next_sep,
 					 bool * has_next);
 static int btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
@@ -13886,10 +13887,11 @@ btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, co
  * btid_int (in)	  : B-tree info.
  * first_ovf_page (in)	  : First data page of the chain (fixed).
  * oid (in)		  : Object OID.
- * purpose (in)		  : Purpose of the search (removal of an object).
+ * purpose (in)		  : Purpose of the search.
  * match_mvccinfo (in)	  : MVCC info to be matched.
  * offset_to_object (out) : Offset to the object in the page's record or NOT_FOUND.
  * object_mvcc_info (out) : Output MVCC info when found.
+ * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
  *
  * NOTE: The leaf swap (btree_replace_first_oid_with_ovfl_oid ()) moves the first page's last object into the leaf and
  *	 writes the deleted object into the first page whatever its OID, in OID order within the page
@@ -13900,12 +13902,14 @@ btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, co
  *	 - a split of the first page keeps it in the first page (btree_ovf_dir_grow_chain ());
  *	 - ALTER INDEX ... COMPACT leaves the pair alone (btree_ovf_compact_chain ());
  *	 - another leaf swap moves it into the leaf record, which the search reads first.
- *	 So it is always the first page's last object, which the caller has fixed already.
+ *	 So it is always the first page's last object, which the caller has fixed already. It is looked for by the
+ *	 retried removal, and, when the swap was part of a physical delete whose transaction was rolled back (stand-alone
+ *	 mode), by everything that later looks the surviving object up (CBRD-28214).
  */
 static int
 btree_ovf_find_swap_leftover (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR first_ovf_page, OID * oid,
 			      BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo, int *offset_to_object,
-			      BTREE_MVCC_INFO * object_mvcc_info)
+			      BTREE_MVCC_INFO * object_mvcc_info, BTREE_MVCC_INFO * deleted_mvcc_info)
 {
   RECDES ovf_record;
   BTREE_MVCC_INFO local_mvcc_info;
@@ -13944,6 +13948,10 @@ btree_ovf_find_swap_leftover (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE
   if (is_match)
     {
       *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record.data);
+    }
+  else
+    {
+      btree_note_active_delete_owner (thread_p, deleted_mvcc_info, object_mvcc_info);
     }
   return NO_ERROR;
 }
@@ -14115,12 +14123,16 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
     case BTREE_OP_DELETE_UNDO_INSERT:
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
-      /* Removing an object that a leaf swap may have left at the end of the first page, out of order, where the
-       * directory does not route it. CBRD-28214: the page is fixed already, so a removal that misses on a regular
-       * path (e.g. vacuuming the delete of a rolled-back DELETE) costs no extra page. */
+    case BTREE_OP_INSERT_MVCC_DELID:
+    case BTREE_OP_DELETE_UNDO_INSERT_DELID:
+    case BTREE_OP_CHECK_KEY_OID:
+      /* An object that a leaf swap may have left at the end of the first page, out of order, where the directory
+       * does not route it: the retried removal, or the object surviving a rolled-back physical delete, which a delete
+       * MVCCID, its undo and checkdb look up. CBRD-28214: the page is fixed already, so a removal that misses on a
+       * regular path (e.g. vacuuming the delete of a rolled-back DELETE) costs no extra page. */
       error_code =
 	btree_ovf_find_swap_leftover (thread_p, btid_int, first_ovf_page, oid, purpose, match_mvccinfo,
-				      offset_to_object, object_mvcc_info);
+				      offset_to_object, object_mvcc_info, deleted_mvcc_info);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
