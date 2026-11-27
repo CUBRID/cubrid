@@ -3734,7 +3734,6 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
 	  summary->variable_cpu_cost = plan->variable_cpu_cost;
 	  summary->variable_io_cost = plan->variable_io_cost;
 	  summary->cardinality = (plan->info)->group_rows;
-	  summary->projected_size = (plan->info)->projected_size;
 	  summary->xasl = xasl;
 	  select->info.query.q.select.qo_summary = summary;
 	}

@@ -113,7 +113,6 @@ struct qo_summary
   double fixed_cpu_cost, fixed_io_cost;
   double variable_cpu_cost, variable_io_cost;
   double cardinality;
-  int projected_size;
   xasl_node *xasl;
 };
 
@@ -218,7 +217,8 @@ extern PT_NODE *qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node,
 extern bool qo_check_nullable_op (PT_NODE * node);
 extern bool qo_expr_rejects_null (PARSER_CONTEXT * parser, PT_NODE * expr, UINTPTR spec_id, PT_NODE * name);
 extern bool qo_is_spec_in_hint (PT_NODE * node, PT_NODE * spec, PT_HINT_ENUM hint, PT_NODE * args);
-extern PT_NODE *qo_rewrite_semi_anti_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR spec_id);
+extern PT_NODE *qo_make_semi_anti_subquery_cond (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE ** subqp);
+extern void qo_rewrite_semi_anti_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec, PT_NODE * cond);
 extern void qo_plan_compute_subquery_cost (PT_NODE * subquery, double *subq_cpu_cost, double *subq_io_cost);
 extern PT_NODE *mq_rewrite (PARSER_CONTEXT * parser, PT_NODE * statement);
 

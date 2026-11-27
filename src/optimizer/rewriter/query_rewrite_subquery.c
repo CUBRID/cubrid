@@ -52,7 +52,6 @@ static void qo_move_spec_hint (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE 
 static bool qo_operand_is_non_null (PARSER_CONTEXT * parser, PT_NODE * operand, PT_NODE * spec_list, PT_NODE * where);
 static bool qo_check_eq_term_on_column (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec, const char *col_name);
 static bool qo_is_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec);
-static PT_NODE *qo_make_semi_anti_subquery_cond (PARSER_CONTEXT * parser, PT_NODE * spec);
 static PT_NODE *qo_rewrite_subquery_as_derived (PARSER_CONTEXT * parser, PT_NODE * cnf_node);
 static bool qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node,
 				       QO_UNNEST_INFO * info);
@@ -77,8 +76,8 @@ static PT_NODE *qo_rewrite_inner_as_derived (PARSER_CONTEXT * parser, PT_NODE * 
  * A subquery over several tables is wrapped into a derived table instead (CBRD-27376): the conjuncts naming
  * the enclosing query leave its WHERE for the new spec's ON, reading the inner columns through the derived
  * table's select list, and the rest stays inside with the tables, their join order and their hints.  The
- * derived table runs once, before the enclosing query.  The query is planned with it and with the subquery run per
- * outer row instead, and the cheaper is kept (qo_make_semi_anti_subquery_cond (), CBRD-27929).
+ * derived table runs once, before the enclosing query.  It is run as the subquery again where running the subquery
+ * for each outer row costs far less than building it (pt_plan_semi_anti_joins (), CBRD-27929).
  *
  * This runs after pt_check_semi_anti_join (), so the joins it builds are never checked there; the
  * direct-join invariant is reused explicitly below instead.
@@ -894,18 +893,20 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
  *   return: the [NOT] EXISTS or [NOT] IN; NULL if the spec is not to be run as one
  *   parser(in):
  *   spec(in): a spec flagged PT_SPEC_FLAG_UNNESTED_SUBQUERY
+ *   subqp(out): the subquery of the condition
  *
- * Note: the subquery is a copy of the derived table with the ON added to its WHERE.  It is made after the rewrite,
- *   so that it is auto-parameterized as the derived table is.
+ * Note: the subquery is a copy of the derived table with the ON added to its WHERE, and the spec is left as it is.
+ *   It is made after the rewrite, so that it is auto-parameterized as the derived table is.
  */
-static PT_NODE *
-qo_make_semi_anti_subquery_cond (PARSER_CONTEXT * parser, PT_NODE * spec)
+PT_NODE *
+qo_make_semi_anti_subquery_cond (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE ** subqp)
 {
   PT_NODE *subq, *on_cond, *expr, *cnf, *prev, *next, *in_eq = NULL, *lhs = NULL, *item = NULL;
   UINTPTR ref;
   short location = 0;
   int max_pred_order;
 
+  *subqp = NULL;
   subq = spec->info.spec.derived_table;
   if (subq == NULL || subq->node_type != PT_SELECT
       || (spec->info.spec.join_type != PT_JOIN_SEMI && spec->info.spec.join_type != PT_JOIN_ANTI)
@@ -1033,6 +1034,7 @@ qo_make_semi_anti_subquery_cond (PARSER_CONTEXT * parser, PT_NODE * spec)
       return NULL;
     }
 
+  *subqp = subq;
   return expr;
 
 exit:
@@ -1223,32 +1225,20 @@ qo_is_spec_in_hint (PT_NODE * node, PT_NODE * spec, PT_HINT_ENUM hint, PT_NODE *
 
 /*
  * qo_rewrite_semi_anti_as_subquery () - run a derived SEMI / ANTI JOIN spec as the subquery it was unnested from
- *   return: the subquery that took the place of the spec; NULL if the spec is not to be run as one or on failure
+ *   return: none
  *   parser(in):
  *   node(in/out): the PT_SELECT
- *   spec_id(in): the id of the spec
+ *   spec(in): the spec, not the first of the FROM
+ *   cond(in): the condition qo_make_semi_anti_subquery_cond () made of the spec; it goes to the WHERE
  */
-PT_NODE *
-qo_rewrite_semi_anti_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR spec_id)
+void
+qo_rewrite_semi_anti_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec, PT_NODE * cond)
 {
-  PT_NODE *spec, *prev_spec, *expr;
+  PT_NODE *prev_spec;
 
-  /* the spec and the one before it; a SEMI / ANTI JOIN spec is never the first */
-  for (prev_spec = NULL, spec = node->info.query.q.select.from; spec != NULL && spec->info.spec.id != spec_id;
-       prev_spec = spec, spec = spec->next)
+  for (prev_spec = node->info.query.q.select.from; prev_spec->next != spec; prev_spec = prev_spec->next)
     {
       ;
-    }
-  if (spec == NULL || prev_spec == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "invalid spec");
-      return NULL;
-    }
-
-  expr = qo_make_semi_anti_subquery_cond (parser, spec);
-  if (expr == NULL)
-    {
-      return NULL;
     }
 
   /* cut off the spec */
@@ -1256,19 +1246,8 @@ qo_rewrite_semi_anti_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, UINTP
   spec->next = NULL;
   qo_reset_spec_location (parser, prev_spec->next, node);
 
-  node->info.query.q.select.where = parser_append_node (expr, node->info.query.q.select.where);
+  node->info.query.q.select.where = parser_append_node (cond, node->info.query.q.select.where);
   parser_free_tree (parser, spec);
-
-  /* the subquery of [NOT] IN, or of EXISTS, one level down under the NOT of NOT EXISTS */
-  if (expr->info.expr.op == PT_IS_IN || expr->info.expr.op == PT_IS_NOT_IN)
-    {
-      return expr->info.expr.arg2;
-    }
-  if (expr->info.expr.op == PT_NOT)
-    {
-      expr = expr->info.expr.arg1;
-    }
-  return expr->info.expr.arg1;
 }
 
 
