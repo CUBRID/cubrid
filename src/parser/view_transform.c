@@ -129,6 +129,14 @@ typedef struct check_pushable_info
   bool method_found;
 } CHECK_PUSHABLE_INFO;
 
+/* which columns of a subquery mq_is_numbering_column_referenced () looks for */
+typedef enum
+{
+  MQ_COL_NUMBERING,		/* holds INST_NUM()/ORDERBY_NUM()/GROUPBY_NUM() */
+  MQ_COL_SORT_NUMBERING,	/* holds ORDERBY_NUM()/GROUPBY_NUM(), known only after the sort */
+  MQ_COL_NOT_SORT_NUMBERING	/* any other column, ROWNUM included */
+} MQ_COL_KIND;
+
 typedef struct mq_column_ref_info
 {
   PT_NODE *specs;		/* FROM list whose columns are looked for */
@@ -286,9 +294,13 @@ static bool mq_is_sort_dependent_column (PARSER_CONTEXT * parser, PT_NODE * colu
 static bool mq_is_sort_dependent_column_used_in_expr (PARSER_CONTEXT * parser, PT_NODE * subquery,
 						      PT_NODE * mainquery, PT_NODE * class_spec, PT_NODE * class_);
 static bool mq_is_numbering_column_referenced (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * node,
-					       PT_NODE * class_spec, PT_NODE * class_, bool numbering);
+					       PT_NODE * class_spec, PT_NODE * class_, MQ_COL_KIND kind);
 static bool mq_is_numbering_column_read_by_query (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
-						  PT_NODE * class_spec, PT_NODE * class_, bool numbering);
+						  PT_NODE * class_spec, PT_NODE * class_, MQ_COL_KIND kind);
+static PT_NODE *mq_find_attr_in_nested_query (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
+					      int *continue_walk);
+static bool mq_is_numbering_column_read_in_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
+						     PT_NODE * class_spec, PT_NODE * class_);
 static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
 					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by,
 					      PT_NODE * class_);
@@ -2133,19 +2145,18 @@ mq_is_sort_dependent_column_used_in_expr (PARSER_CONTEXT * parser, PT_NODE * sub
 }
 
 /*
- * mq_is_numbering_column_referenced () - check whether a tree reads a column of the subquery which holds
- *                                        INST_NUM()/ORDERBY_NUM()/GROUPBY_NUM(), or a column which does not
+ * mq_is_numbering_column_referenced () - check whether a tree reads a column of the subquery of the given kind
  *   return: true if such a column is read
  *   parser(in): parser context
  *   subquery(in): subquery(or view query spec) to be merged
  *   node(in): tree of the main query to search. its 'next' list is searched, too
  *   class_spec(in): spec of the subquery in the main query
  *   class_(in): view name node, NULL for an inline view
- *   numbering(in): true to look for a numbering column, false for any other column of the subquery
+ *   kind(in): which columns of the subquery to look for
  */
 static bool
 mq_is_numbering_column_referenced (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * node,
-				   PT_NODE * class_spec, PT_NODE * class_, bool numbering)
+				   PT_NODE * class_spec, PT_NODE * class_, MQ_COL_KIND kind)
 {
   PT_NODE *attributes, *attr, *col, *save_next;
   ATTR_REF_INFO info;
@@ -2186,9 +2197,26 @@ mq_is_numbering_column_referenced (PARSER_CONTEXT * parser, PT_NODE * subquery, 
 			       pt_is_inst_or_orderby_num_node_post, &has_numbering);
       col->next = save_next;
 
-      if (has_numbering != numbering)
+      switch (kind)
 	{
-	  continue;
+	case MQ_COL_NUMBERING:
+	  if (!has_numbering)
+	    {
+	      continue;
+	    }
+	  break;
+	case MQ_COL_SORT_NUMBERING:
+	  if (!has_numbering || !mq_is_sort_dependent_column (parser, col))
+	    {
+	      continue;
+	    }
+	  break;
+	case MQ_COL_NOT_SORT_NUMBERING:
+	  if (has_numbering && mq_is_sort_dependent_column (parser, col))
+	    {
+	      continue;
+	    }
+	  break;
 	}
 
       info.name = attr->info.name.original;
@@ -2210,24 +2238,133 @@ mq_is_numbering_column_referenced (PARSER_CONTEXT * parser, PT_NODE * subquery, 
  *   mainquery(in): query the subquery is to be merged into
  *   class_spec(in): spec of the subquery in the main query
  *   class_(in): view name node, NULL for an inline view
- *   numbering(in): true to look for a numbering column, false for any other column of the subquery
+ *   kind(in): which columns of the subquery to look for
  *
  * NOTE: the FROM clause is not searched: the spec itself holds the names of its attributes.
  */
 static bool
 mq_is_numbering_column_read_by_query (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
-				      PT_NODE * class_spec, PT_NODE * class_, bool numbering)
+				      PT_NODE * class_spec, PT_NODE * class_, MQ_COL_KIND kind)
 {
   assert (PT_IS_SELECT (mainquery));
 
   return (mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.list, class_spec,
-					     class_, numbering)
+					     class_, kind)
 	  || mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.where, class_spec,
-						class_, numbering)
+						class_, kind)
 	  || mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.group_by, class_spec,
-						class_, numbering)
+						class_, kind)
 	  || mq_is_numbering_column_referenced (parser, subquery, mainquery->info.query.q.select.having, class_spec,
-						class_, numbering));
+						class_, kind));
+}
+
+/*
+ * mq_find_attr_in_nested_query () - look for a reference to a given attribute inside a query nested in a tree
+ *   return: node (unchanged)
+ *   parser(in): parser context
+ *   node(in): node to check
+ *   void_arg(in/out): ATTR_REF_INFO *
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+mq_find_attr_in_nested_query (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
+{
+  ATTR_REF_INFO *infop = (ATTR_REF_INFO *) void_arg;
+  PT_NODE *save_next;
+  bool found;
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      /* search this query only, not the nodes after it */
+      save_next = node->next;
+      node->next = NULL;
+      found = mq_is_attr_referenced (parser, node, infop);
+      node->next = save_next;
+
+      infop->found = found;
+      *continue_walk = found ? PT_STOP_WALK : PT_LIST_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * mq_is_numbering_column_read_in_subquery () - check whether a query nested in a clause of the main query reads a
+ *                                              numbering column of the subquery
+ *   return: true if one does
+ *   parser(in): parser context
+ *   subquery(in): subquery(or view query spec) to be merged
+ *   mainquery(in): query the subquery is to be merged into
+ *   class_spec(in): spec of the subquery in the main query
+ *   class_(in): view name node, NULL for an inline view
+ *
+ * NOTE:
+ *   Merging puts the numbering itself where the column is read. Inside a nested query it is the numbering of that
+ *   query, not of the rows of the subquery.
+ */
+static bool
+mq_is_numbering_column_read_in_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
+					 PT_NODE * class_spec, PT_NODE * class_)
+{
+  PT_NODE *attributes, *attr, *col, *save_next;
+  PT_NODE *clauses[5];
+  ATTR_REF_INFO info;
+  bool has_numbering;
+  int i;
+
+  assert (PT_IS_SELECT (subquery) && PT_IS_SELECT (mainquery));
+
+  clauses[0] = mainquery->info.query.q.select.list;
+  clauses[1] = mainquery->info.query.q.select.where;
+  clauses[2] = mainquery->info.query.q.select.group_by;
+  clauses[3] = mainquery->info.query.q.select.having;
+  clauses[4] = mainquery->info.query.order_by;
+
+  if (class_ != NULL)
+    {
+      attributes = mq_fetch_attributes (parser, class_);
+      info.spec_id = class_->info.name.spec_id;
+    }
+  else
+    {
+      attributes = class_spec->info.spec.as_attr_list;
+      info.spec_id = class_spec->info.spec.id;
+    }
+
+  for (attr = attributes, col = subquery->info.query.q.select.list; attr != NULL && col != NULL;
+       attr = attr->next, col = col->next)
+    {
+      if (attr->node_type != PT_NAME || attr->info.name.original == NULL)
+	{
+	  continue;
+	}
+
+      /* cut off next to check this column only */
+      save_next = col->next;
+      col->next = NULL;
+      has_numbering = false;
+      (void) parser_walk_tree (parser, col, pt_is_inst_or_inst_num_node, &has_numbering,
+			       pt_is_inst_or_orderby_num_node_post, &has_numbering);
+      col->next = save_next;
+
+      if (!has_numbering)
+	{
+	  continue;
+	}
+
+      info.name = attr->info.name.original;
+      for (i = 0; i < 5; i++)
+	{
+	  info.found = false;
+	  (void) parser_walk_tree (parser, clauses[i], mq_find_attr_in_nested_query, &info, NULL, NULL);
+	  if (info.found)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -2571,15 +2708,23 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 	  return NON_PUSHABLE;
 	}
 
+      /* The same for a numbering column read by a query nested in the main query: once merged, the numbering there
+       * would count the rows of that nested query. */
+      if (PT_IS_SELECT (mainquery)
+	  && mq_is_numbering_column_read_in_subquery (parser, subquery, mainquery, class_spec, class_))
+	{
+	  return NON_PUSHABLE;
+	}
+
       /* A numbering column of the subquery becomes the numbering of the merged query, which is not the same value
        *  - when the main query numbers or limits its own rows after its WHERE has dropped leading rows by that column
        *    (anything but an upper bound): the two numberings become one, counted before the filter,
        *  - when the ORDER BY of the subquery is removed (main query with DISTINCT or an aggregate) and the main query
-       *    reads another column of the subquery with it: the rows are numbered in another order. The numbers alone
-       *    are the same set of values,
+       *    reads an ORDERBY_NUM() column with another column of the subquery: the rows are numbered in another order.
+       *    The numbers alone are the same set of values, and ROWNUM is given before the sort anyway,
        *  - when the main query groups by it. */
       if (PT_IS_SELECT (mainquery)
-	  && mq_is_numbering_column_read_by_query (parser, subquery, mainquery, class_spec, class_, true))
+	  && mq_is_numbering_column_read_by_query (parser, subquery, mainquery, class_spec, class_, MQ_COL_NUMBERING))
 	{
 	  if (mainquery->info.query.q.select.group_by != NULL)
 	    {
@@ -2596,7 +2741,10 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
 	  if (subquery->info.query.order_by != NULL
 	      && (pt_is_distinct (mainquery) || pt_has_aggregate (parser, mainquery))
-	      && mq_is_numbering_column_read_by_query (parser, subquery, mainquery, class_spec, class_, false))
+	      && mq_is_numbering_column_read_by_query (parser, subquery, mainquery, class_spec, class_,
+						       MQ_COL_SORT_NUMBERING)
+	      && mq_is_numbering_column_read_by_query (parser, subquery, mainquery, class_spec, class_,
+						       MQ_COL_NOT_SORT_NUMBERING))
 	    {
 	      return NON_PUSHABLE;
 	    }
@@ -5361,7 +5509,7 @@ mq_numbering_column_terms_skip_rows (PARSER_CONTEXT * parser, PT_NODE * subquery
       save_next = term->next;
       term->next = NULL;
 
-      if (mq_is_numbering_column_referenced (parser, subquery, term, class_spec, class_, true))
+      if (mq_is_numbering_column_referenced (parser, subquery, term, class_spec, class_, MQ_COL_NUMBERING))
 	{
 	  /* read the term as merging would write it */
 	  copy = parser_copy_tree (parser, term);
