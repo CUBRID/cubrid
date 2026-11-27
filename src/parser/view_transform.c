@@ -3648,6 +3648,9 @@ mq_find_cannot_cache_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 {
   PT_NODE **query = (PT_NODE **) arg;
 
+  /* the walk keeps the PT_LIST_WALK set for a query below when it returns to the node after it */
+  *continue_walk = PT_CONTINUE_WALK;
+
   if (node == *query || !PT_IS_QUERY (node))
     {
       return node;
@@ -9227,6 +9230,7 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
   int cascaded_check;
   int local_check;
   bool spec_has_sp_call;
+  bool spec_cannot_cache;
 
   if (db_is_class (class_object))
     {
@@ -9288,6 +9292,9 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
       if (!query_spec)
 	return NULL;
 
+      /* the parser marked the root; a WITH clause kept below makes a new root (mq_rewrite_query_as_derived ()) */
+      spec_cannot_cache = mq_is_cannot_cache (query_spec);
+
       if (local_check && query_spec->node_type == PT_SELECT)
 	{
 	  /* We have a local check option for a simple select statement. This is the ANSI test case. It does not handle
@@ -9336,9 +9343,9 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
 	  /* this view, or a view it reads, calls a stored procedure: the root tells the statements that expand it */
 	  local_query->flag.has_sp_call = 1;
 	}
-      if (parser->flag.view_cannot_cache)
+      if (spec_cannot_cache || parser->flag.view_cannot_cache)
 	{
-	  /* a view this view reads cannot be cached: the root tells the statements that expand this view */
+	  /* this view, or a view it reads, cannot be cached: the root tells the statements that expand this view */
 	  mq_set_cannot_cache (local_query);
 	}
 

@@ -1999,6 +1999,14 @@ stmt_
 			if (stmt && with_clause)
 			  {
 			    stmt->info.query.with = with_clause;
+			    /* the WITH clause is parsed before the query, out of its scope: a CTE that cannot be cached
+			     * left the flag set (see parser_restore_cannot_cache ()) */
+			    if (parser_cannot_cache && PT_IS_QUERY (stmt))
+			      {
+				stmt->info.query.flag.reexecute = 1;
+				stmt->info.query.flag.do_cache = 0;
+				stmt->info.query.flag.do_not_cache = 1;
+			      }
 			  }
 			$$ = stmt;
 		}}
