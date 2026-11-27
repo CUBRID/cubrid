@@ -4920,46 +4920,46 @@ int
 tp_string_to_real (const DB_VALUE *src, T *num_value, DB_DATA_STATUS *data_stat)
 {
   char str[NUM_BUF_SIZE];
-  const char *strp = NULL;
+  const char *num_str = NULL;
   bool do_alloc = false;
   T d;
-  const char *p, *end;
+  const char *start, *end;
   int status = NO_ERROR;
   unsigned int size;
   INTL_CODESET codeset;
 
   *data_stat = DATA_STATUS_OK;
 
-  p = db_get_string (src);
+  start = db_get_string (src);
   size = db_get_string_size (src);
   codeset = db_get_string_codeset (src);
-  end = p + size - 1;
+  end = (size > 0) ? start + size - 1 : start;
 
   if (size == 0)
     {
       /* An empty string is 0. Its bytes need not be followed by a NUL: a key value read from a multi-column index is
        * followed by the next key column, so the string must not be read past its size. */
-      strp = "";
+      num_str = "";
     }
   else if (*end)
     {
-      while (p <= end && char_isspace (*p))
+      while (start <= end && char_isspace (*start))
 	{
-	  p++;
+	  start++;
 	}
 
-      while (p < end && char_isspace (*end))
+      while (start < end && char_isspace (*end))
 	{
 	  end--;
 	}
 
-      char *strp_tmp = NULL;
-      size = CAST_BUFLEN (end - p) + 1;
+      char *trimmed = NULL;
+      size = CAST_BUFLEN (end - start) + 1;
 
       if (size > sizeof (str) - 1)
 	{
-	  strp_tmp = (char *) malloc (size + 1);
-	  if (strp_tmp == NULL)
+	  trimmed = (char *) malloc (size + 1);
+	  if (trimmed == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (size + 1));
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -4968,20 +4968,20 @@ tp_string_to_real (const DB_VALUE *src, T *num_value, DB_DATA_STATUS *data_stat)
 	}
       else
 	{
-	  strp_tmp = str;
+	  trimmed = str;
 	}
 
       if (size)
 	{
-	  memcpy (strp_tmp, p, size);
+	  memcpy (trimmed, start, size);
 	}
-      strp_tmp[size] = '\0';
+      trimmed[size] = '\0';
 
-      strp = strp_tmp;
+      num_str = trimmed;
     }
   else
     {
-      strp = p;
+      num_str = start;
     }
 
   /* don't use atof() which cannot detect the error. */
@@ -4989,12 +4989,12 @@ tp_string_to_real (const DB_VALUE *src, T *num_value, DB_DATA_STATUS *data_stat)
   char *end_ptr = NULL;
   if constexpr (std::is_same<T, double>::value)
     {
-      d = strtod (strp, &end_ptr);
+      d = strtod (num_str, &end_ptr);
     }
   else
     {
       static_assert (std::is_same<T, float>::value, "T is a double or a float");
-      d = strtof (strp, &end_ptr);
+      d = strtof (num_str, &end_ptr);
     }
 
   /* ERANGE is overflow (an infinity) or underflow (a zero or a subnormal), and only overflow is an error. strtod ()
@@ -5014,7 +5014,7 @@ tp_string_to_real (const DB_VALUE *src, T *num_value, DB_DATA_STATUS *data_stat)
 
   if (do_alloc)
     {
-      free_and_init (strp);
+      free_and_init (num_str);
     }
 
   return status;
