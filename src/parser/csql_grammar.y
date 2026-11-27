@@ -1904,6 +1904,8 @@ stmt
 			parser_save_and_set_si_datetime (false);
 			parser_save_and_set_si_tran_id (false);
 			parser_save_and_set_cannot_prepare (false);
+			/* a query of the previous statement left it set (see parser_restore_cannot_cache ()) */
+			parser_cannot_cache = false;
 
 			parser_attr_type = PT_NORMAL;
 			allow_attribute_ordering = false;
@@ -23055,11 +23057,17 @@ parser_save_and_set_cannot_cache (bool value)
   parser_cannot_cache = value;
 }
 
+/*
+ * parser_restore_cannot_cache () - restore the flag of the enclosing query when a query ends
+ *
+ * Note: the result of the enclosing query includes that of the query that ends (a subquery, a derived table or an
+ *       operand of a set operation): if the query cannot be cached, neither can the enclosing query.
+ */
 static void
 parser_restore_cannot_cache ()
 {
   assert (parser_cannot_cache_sp >= 1);
-  parser_cannot_cache = parser_cannot_cache_stack[--parser_cannot_cache_sp];
+  parser_cannot_cache = parser_cannot_cache_stack[--parser_cannot_cache_sp] || parser_cannot_cache;
 }
 
 static int parser_si_datetime_saved;

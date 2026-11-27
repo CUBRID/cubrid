@@ -251,6 +251,11 @@ static int mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec);
 static int mq_check_authorization_path_entities (PARSER_CONTEXT * parser, PT_NODE * class_spec, int what_for);
 static int mq_check_subqueries_for_prepare (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subquery);
 static void mq_mark_sp_call (PARSER_CONTEXT * parser, PT_NODE * subquery);
+static bool mq_is_cannot_cache (PT_NODE * query);
+static void mq_set_cannot_cache (PT_NODE * query);
+static PT_NODE *mq_find_cannot_cache_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_propagate_cannot_cache (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void mq_mark_cannot_cache (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * subquery);
 static PT_NODE *mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list, PT_NODE * order_by,
 				   int what_for);
 static PT_NODE *mq_class_meth_corr_subq_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
@@ -3574,6 +3579,132 @@ mq_mark_sp_call (PARSER_CONTEXT * parser, PT_NODE * subquery)
 }
 
 /*
+ * mq_is_cannot_cache () - whether the result of a query cannot be cached
+ *   return: true if the parser or mq_set_cannot_cache () marked the query
+ *   query(in):
+ *
+ * Note: a QUERY_CACHE(0) hint sets do_not_cache only. It is for the query itself, not for the queries including it.
+ */
+static bool
+mq_is_cannot_cache (PT_NODE * query)
+{
+  return (query != NULL && PT_IS_QUERY (query) && query->info.query.flag.reexecute
+	  && query->info.query.flag.do_not_cache);
+}
+
+/*
+ * mq_set_cannot_cache () - mark a query whose result cannot be cached, as the parser does for a query that calls
+ *			    RAND (), SYS_GUID (), a serial or a stored procedure
+ *   return: none
+ *   query(in/out):
+ */
+static void
+mq_set_cannot_cache (PT_NODE * query)
+{
+  if (query != NULL && PT_IS_QUERY (query))
+    {
+      query->info.query.flag.reexecute = 1;
+      query->info.query.flag.do_cache = 0;
+      query->info.query.flag.do_not_cache = 1;
+    }
+}
+
+/*
+ * mq_mark_cannot_cache () - note that a view being expanded cannot be cached
+ *   return: none
+ *   parser(in):
+ *   tree(in/out): the statement that reads the view
+ *   subquery(in): the view's query, one node per query spec
+ *
+ * Note: the parser marked the root of the view's query when the view's text, a subquery of it included, calls a
+ *       function whose result cannot be cached. Neither can the result of the statement that reads the view: the
+ *       statement is marked before the view is merged into it. The statement may be a subquery, so the note is kept
+ *       on the parser until mq_translate () returns the top statement and marks it, as mq_mark_sp_call () does.
+ */
+static void
+mq_mark_cannot_cache (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * subquery)
+{
+  for (; subquery != NULL; subquery = subquery->next)
+    {
+      if (mq_is_cannot_cache (subquery))
+	{
+	  parser->flag.view_cannot_cache = 1;
+	  mq_set_cannot_cache (tree);
+	  return;
+	}
+    }
+}
+
+/*
+ * mq_find_cannot_cache_subquery () - find a query, not under another query, whose result cannot be cached
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): the query whose subtree is searched; NULL when found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+mq_find_cannot_cache_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE **query = (PT_NODE **) arg;
+
+  if (node == *query || !PT_IS_QUERY (node))
+    {
+      return node;
+    }
+
+  if (mq_is_cannot_cache (node))
+    {
+      *query = NULL;
+      *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      /* the queries under it were checked when it was visited (see mq_propagate_cannot_cache ()) */
+      *continue_walk = PT_LIST_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * mq_propagate_cannot_cache () - mark a query including a query whose result cannot be cached
+ *   return: node
+ *   parser(in):
+ *   node(in/out):
+ *   arg(in):
+ *   continue_walk(in/out):
+ *
+ * Note: the parser marks the queries including a query that calls RAND () (see parser_restore_cannot_cache ()), but
+ *       it does not know the views. mq_mark_cannot_cache () marks the query reading a view that cannot be cached,
+ *       and this marks the queries including it, e.g. a subquery cached by a QUERY_CACHE hint (do_prepare_subquery).
+ *       A post function: the queries under the node have been marked.
+ */
+static PT_NODE *
+mq_propagate_cannot_cache (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *query = node;
+  PT_NODE *save_next;
+
+  if (!PT_IS_QUERY (node) || mq_is_cannot_cache (node))
+    {
+      return node;
+    }
+
+  save_next = node->next;
+  node->next = NULL;
+  (void) parser_walk_tree (parser, node, mq_find_cannot_cache_subquery, &query, NULL, NULL);
+  node->next = save_next;
+
+  if (query == NULL)
+    {
+      mq_set_cannot_cache (node);
+    }
+
+  return node;
+}
+
+/*
  * mq_check_subqueries_for_prepare () -
  *   return:
  *   parser(in):
@@ -3760,6 +3891,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 
 		      tree->flag.cannot_prepare = mq_check_subqueries_for_prepare (parser, tree, subquery);
 		      mq_mark_sp_call (parser, subquery);
+		      mq_mark_cannot_cache (parser, tree, subquery);
 #if defined(CUBRID_DEBUG)
 		      fprintf (stdout, "\n<subqueries of %s are>\n  %s\n", entity->info.name.original,
 			       parser_print_tree_list (parser, subquery));
@@ -9196,12 +9328,18 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
        * expressions in subqueries and improve performance, we put mq_push_paths as post function. */
       local_query = parser_walk_tree (parser, query_spec, NULL, NULL, mq_push_paths, NULL);
       parser->flag.view_has_sp_call = 0;
+      parser->flag.view_cannot_cache = 0;
       spec_has_sp_call = query_spec->flag.has_sp_call;
       local_query = parser_walk_tree (parser, query_spec, NULL, NULL, mq_translate_local, NULL);
       if (local_query != NULL && (spec_has_sp_call || parser->flag.view_has_sp_call))
 	{
 	  /* this view, or a view it reads, calls a stored procedure: the root tells the statements that expand it */
 	  local_query->flag.has_sp_call = 1;
+	}
+      if (parser->flag.view_cannot_cache)
+	{
+	  /* a view this view reads cannot be cached: the root tells the statements that expand this view */
+	  mq_set_cannot_cache (local_query);
 	}
 
       local_query = pt_add_row_oid_name (parser, local_query);
@@ -9228,6 +9366,10 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
 	  if (statements != NULL)
 	    {
 	      statements->flag.has_sp_call = (left->flag.has_sp_call || local_query->flag.has_sp_call);
+	      if (mq_is_cannot_cache (left) || mq_is_cannot_cache (local_query))
+		{
+		  mq_set_cannot_cache (statements);
+		}
 	    }
 	}
 
@@ -10300,6 +10442,7 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 {
   volatile PT_NODE *return_node = NULL;
   volatile unsigned save_view_has_sp_call;
+  volatile unsigned save_view_cannot_cache;
 
   if (!node)
     {
@@ -10312,6 +10455,8 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 
   save_view_has_sp_call = parser->flag.view_has_sp_call;
   parser->flag.view_has_sp_call = 0;
+  save_view_cannot_cache = parser->flag.view_cannot_cache;
+  parser->flag.view_cannot_cache = 0;
 
   /* CBRD-27583: the session variables' types are the session's at each execution: a plan statement over them is
    * compiled every time, not cached (SET and DROP VARIABLE keep their own execution). It shares no plan, so it takes
@@ -10335,6 +10480,15 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
       return_node->flag.cannot_prepare = 1;
     }
   parser->flag.view_has_sp_call |= save_view_has_sp_call;
+
+  if (return_node != NULL && parser->flag.view_cannot_cache)
+    {
+      /* a view expanded into the statement, maybe in a subquery of it, cannot be cached: neither can the queries
+       * including the query reading the view, nor the statement when the view was merged into it */
+      (void) parser_walk_tree (parser, (PT_NODE *) return_node, NULL, NULL, mq_propagate_cannot_cache, NULL);
+      mq_set_cannot_cache ((PT_NODE *) return_node);
+    }
+  parser->flag.view_cannot_cache |= save_view_cannot_cache;
 
   /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions. The
    * compiled statement's are assigned by the walk its class prefetch makes next (pt_class_pre_fetch) */

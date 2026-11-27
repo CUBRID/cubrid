@@ -4285,6 +4285,9 @@ struct parser_context
     unsigned view_has_sp_call:1;	/* the current mq_translate () expanded a view that calls a stored procedure,
 					 * and mq_translate () sets has_sp_call and cannot_prepare on the statement at
 					 * its end; while a view cache is built, has_sp_call on the view's root */
+    unsigned view_cannot_cache:1;	/* the current mq_translate () expanded a view whose result cannot be cached
+					 * (e.g. it calls RAND ()), and mq_translate () marks the statement not to be
+					 * cached at its end; while a view cache is built, the view's root */
     unsigned regu_has_sp_call:1;	/* a stored procedure regu variable was generated since
 					 * db_compile_statement_local () cleared it, so pt_add_read_class_oids () adds
 					 * the classes the statement reads to its XASL header. A parser compiled
