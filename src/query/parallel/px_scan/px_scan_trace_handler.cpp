@@ -59,12 +59,18 @@ namespace parallel_scan
     if (scan_id->type == S_INDX_SCAN)
       {
 	cs.read_keys = scan_id->scan_stats.read_keys;
+	cs.read_ahead_pages = scan_id->scan_stats.read_ahead_pages;
 	cs.qualified_keys = scan_id->scan_stats.qualified_keys;
 	cs.key_qualified_rows = scan_id->scan_stats.key_qualified_rows;
 	cs.data_qualified_rows = scan_id->scan_stats.data_qualified_rows;
 	cs.elapsed_lookup = scan_id->scan_stats.elapsed_lookup;
 	cs.covered_index = scan_id->scan_stats.covered_index;
 	cs.multi_range_opt = scan_id->scan_stats.multi_range_opt;
+	cs.bitmap_heap = scan_id->scan_stats.bitmap_heap;
+	cs.bitmap_time = scan_id->scan_stats.bitmap_heap_time;
+	cs.bitmap_fetches = scan_id->scan_stats.bitmap_heap_fetches;
+	cs.bitmap_ioreads = scan_id->scan_stats.bitmap_heap_ioreads;
+	cs.bitmap_pages = scan_id->scan_stats.bitmap_heap_pages;
 	cs.index_skip_scan = scan_id->scan_stats.index_skip_scan;
 	cs.loose_index_scan = scan_id->scan_stats.loose_index_scan;
 	cs.need_count_only = scan_id->s.isid.need_count_only;
@@ -113,7 +119,10 @@ namespace parallel_scan
 	perfmon_add_values_to_local (thread_p, m_px_stats);
 	memset (m_px_stats, 0, perfmon_get_number_of_statistic_values () * sizeof (UINT64));
       }
+    /* the workers start the heap step of a scan through a bitmap together: the longest one is the step's time */
+    struct timeval bitmap_time = {0, 0};
     struct timeval oos_longest = {};
+
     for (auto &stat : m_stats)
       {
 	add_workers_oos_reads (scan_stats->oos_reads, stat.oos_reads, oos_longest);
@@ -122,15 +131,25 @@ namespace parallel_scan
 	scan_stats->num_ioreads += stat.ioreads;
 	scan_stats->num_fetches += stat.fetches;
 	scan_stats->read_keys += stat.read_keys;
+	scan_stats->read_ahead_pages += stat.read_ahead_pages;
 	scan_stats->qualified_keys += stat.qualified_keys;
 	scan_stats->key_qualified_rows += stat.key_qualified_rows;
 	scan_stats->data_qualified_rows += stat.data_qualified_rows;
 	TSC_ADD_TIMEVAL (scan_stats->elapsed_lookup, stat.elapsed_lookup);
 	scan_stats->covered_index = scan_stats->covered_index || stat.covered_index;
 	scan_stats->multi_range_opt = scan_stats->multi_range_opt || stat.multi_range_opt;
+	scan_stats->bitmap_heap = MAX (scan_stats->bitmap_heap, stat.bitmap_heap);
+	scan_stats->bitmap_heap_fetches += stat.bitmap_fetches;
+	scan_stats->bitmap_heap_ioreads += stat.bitmap_ioreads;
+	scan_stats->bitmap_heap_pages += stat.bitmap_pages;
+	if (timercmp (&stat.bitmap_time, &bitmap_time, >))
+	  {
+	    bitmap_time = stat.bitmap_time;
+	  }
 	scan_stats->index_skip_scan = scan_stats->index_skip_scan || stat.index_skip_scan;
 	scan_stats->loose_index_scan = scan_stats->loose_index_scan || stat.loose_index_scan;
       }
+    TSC_ADD_TIMEVAL (scan_stats->bitmap_heap_time, bitmap_time);
     TSC_ADD_TIMEVAL (scan_stats->oos_reads.elapsed, oos_longest);
   }
 
@@ -200,6 +219,9 @@ namespace parallel_scan
 
   void accumulative_trace_storage::add_stats (trace_handler &trace_handler)
   {
+    struct timeval bitmap_time = {0, 0};
+    struct timeval oos_longest = {};
+
     // accumulative m_topnsort_used: no in-place reset; storage freed+realloc'd per top-level exec in qexec_clear_access_spec_list. worker per-reopen reset = trace_handler::clear().
     m_topnsort_used = m_topnsort_used || trace_handler.is_topnsort_used();
     if (m_expr_compile_dump.empty ())
@@ -209,22 +231,29 @@ namespace parallel_scan
     if (!m_is_initialized)
       {
 	m_stats.resize (trace_handler.m_stats.size());
-	m_stats_last = {};
 	for (size_t i = 0; i < m_stats.size(); i++)
 	  {
 	    m_stats[i] = trace_handler.m_stats[i];
-	    add_workers_oos_reads (m_stats_last.oos_reads, trace_handler.m_stats[i].oos_reads,
-				   m_stats_last.oos_reads.elapsed);
-	    m_stats_last.fetches+=trace_handler.m_stats[i].fetches;
-	    m_stats_last.ioreads+=trace_handler.m_stats[i].ioreads;
-	    m_stats_last.read_rows+=trace_handler.m_stats[i].read_rows;
-	    m_stats_last.qualified_rows+=trace_handler.m_stats[i].qualified_rows;
-	    m_stats_last.read_keys+=trace_handler.m_stats[i].read_keys;
-	    m_stats_last.qualified_keys+=trace_handler.m_stats[i].qualified_keys;
-	    m_stats_last.key_qualified_rows+=trace_handler.m_stats[i].key_qualified_rows;
-	    m_stats_last.data_qualified_rows+=trace_handler.m_stats[i].data_qualified_rows;
+	    add_workers_oos_reads (m_stats_last.oos_reads, trace_handler.m_stats[i].oos_reads, oos_longest);
+	    m_stats_last.fetches += trace_handler.m_stats[i].fetches;
+	    m_stats_last.ioreads += trace_handler.m_stats[i].ioreads;
+	    m_stats_last.read_rows += trace_handler.m_stats[i].read_rows;
+	    m_stats_last.qualified_rows += trace_handler.m_stats[i].qualified_rows;
+	    m_stats_last.read_keys += trace_handler.m_stats[i].read_keys;
+	    m_stats_last.read_ahead_pages += trace_handler.m_stats[i].read_ahead_pages;
+	    m_stats_last.qualified_keys += trace_handler.m_stats[i].qualified_keys;
+	    m_stats_last.key_qualified_rows += trace_handler.m_stats[i].key_qualified_rows;
+	    m_stats_last.data_qualified_rows += trace_handler.m_stats[i].data_qualified_rows;
 	    m_stats_last.covered_index = m_stats_last.covered_index || trace_handler.m_stats[i].covered_index;
 	    m_stats_last.multi_range_opt = m_stats_last.multi_range_opt || trace_handler.m_stats[i].multi_range_opt;
+	    m_stats_last.bitmap_heap = MAX (m_stats_last.bitmap_heap, trace_handler.m_stats[i].bitmap_heap);
+	    m_stats_last.bitmap_fetches += trace_handler.m_stats[i].bitmap_fetches;
+	    m_stats_last.bitmap_ioreads += trace_handler.m_stats[i].bitmap_ioreads;
+	    m_stats_last.bitmap_pages += trace_handler.m_stats[i].bitmap_pages;
+	    if (timercmp (&trace_handler.m_stats[i].bitmap_time, &bitmap_time, >))
+	      {
+		bitmap_time = trace_handler.m_stats[i].bitmap_time;
+	      }
 	    m_stats_last.index_skip_scan = m_stats_last.index_skip_scan || trace_handler.m_stats[i].index_skip_scan;
 	    m_stats_last.loose_index_scan = m_stats_last.loose_index_scan || trace_handler.m_stats[i].loose_index_scan;
 	    m_stats_last.need_count_only = m_stats_last.need_count_only || trace_handler.m_stats[i].need_count_only;
@@ -242,63 +271,113 @@ namespace parallel_scan
 		m_stats[i] = {};
 	      }
 	  }
-	m_stats_last = {};
 	/* partition workers may shrink; bound by current size to avoid OOB. */
 	for (size_t i = 0; i < trace_handler.m_stats.size(); i++)
 	  {
 	    m_stats[i].fetches += trace_handler.m_stats[i].fetches;
 	    m_stats[i].ioreads += trace_handler.m_stats[i].ioreads;
 	    m_stats[i].fetch_time += trace_handler.m_stats[i].fetch_time;
-	    add_workers_oos_reads (m_stats_last.oos_reads, trace_handler.m_stats[i].oos_reads,
-				   m_stats_last.oos_reads.elapsed);
+	    add_workers_oos_reads (m_stats_last.oos_reads, trace_handler.m_stats[i].oos_reads, oos_longest);
 	    m_stats[i].read_rows += trace_handler.m_stats[i].read_rows;
 	    m_stats[i].qualified_rows += trace_handler.m_stats[i].qualified_rows;
 	    TSC_ADD_TIMEVAL (m_stats[i].elapsed_time, trace_handler.m_stats[i].elapsed_time);
 	    m_stats[i].read_keys += trace_handler.m_stats[i].read_keys;
+	    m_stats[i].read_ahead_pages += trace_handler.m_stats[i].read_ahead_pages;
 	    m_stats[i].qualified_keys += trace_handler.m_stats[i].qualified_keys;
 	    m_stats[i].key_qualified_rows += trace_handler.m_stats[i].key_qualified_rows;
 	    m_stats[i].data_qualified_rows += trace_handler.m_stats[i].data_qualified_rows;
 	    TSC_ADD_TIMEVAL (m_stats[i].elapsed_lookup, trace_handler.m_stats[i].elapsed_lookup);
 	    m_stats[i].covered_index = m_stats[i].covered_index || trace_handler.m_stats[i].covered_index;
 	    m_stats[i].multi_range_opt = m_stats[i].multi_range_opt || trace_handler.m_stats[i].multi_range_opt;
+	    m_stats[i].bitmap_heap = MAX (m_stats[i].bitmap_heap, trace_handler.m_stats[i].bitmap_heap);
+	    TSC_ADD_TIMEVAL (m_stats[i].bitmap_time, trace_handler.m_stats[i].bitmap_time);
+	    m_stats[i].bitmap_fetches += trace_handler.m_stats[i].bitmap_fetches;
+	    m_stats[i].bitmap_ioreads += trace_handler.m_stats[i].bitmap_ioreads;
+	    m_stats[i].bitmap_pages += trace_handler.m_stats[i].bitmap_pages;
 	    m_stats[i].index_skip_scan = m_stats[i].index_skip_scan || trace_handler.m_stats[i].index_skip_scan;
 	    m_stats[i].loose_index_scan = m_stats[i].loose_index_scan || trace_handler.m_stats[i].loose_index_scan;
 	    m_stats[i].need_count_only = m_stats[i].need_count_only || trace_handler.m_stats[i].need_count_only;
-	    m_stats_last.fetches+=trace_handler.m_stats[i].fetches;
-	    m_stats_last.ioreads+=trace_handler.m_stats[i].ioreads;
-	    m_stats_last.read_rows+=trace_handler.m_stats[i].read_rows;
-	    m_stats_last.qualified_rows+=trace_handler.m_stats[i].qualified_rows;
-	    m_stats_last.read_keys+=trace_handler.m_stats[i].read_keys;
-	    m_stats_last.qualified_keys+=trace_handler.m_stats[i].qualified_keys;
-	    m_stats_last.key_qualified_rows+=trace_handler.m_stats[i].key_qualified_rows;
-	    m_stats_last.data_qualified_rows+=trace_handler.m_stats[i].data_qualified_rows;
+	    m_stats_last.fetches += trace_handler.m_stats[i].fetches;
+	    m_stats_last.ioreads += trace_handler.m_stats[i].ioreads;
+	    m_stats_last.read_rows += trace_handler.m_stats[i].read_rows;
+	    m_stats_last.qualified_rows += trace_handler.m_stats[i].qualified_rows;
+	    m_stats_last.read_keys += trace_handler.m_stats[i].read_keys;
+	    m_stats_last.read_ahead_pages += trace_handler.m_stats[i].read_ahead_pages;
+	    m_stats_last.qualified_keys += trace_handler.m_stats[i].qualified_keys;
+	    m_stats_last.key_qualified_rows += trace_handler.m_stats[i].key_qualified_rows;
+	    m_stats_last.data_qualified_rows += trace_handler.m_stats[i].data_qualified_rows;
 	    m_stats_last.covered_index = m_stats_last.covered_index || trace_handler.m_stats[i].covered_index;
 	    m_stats_last.multi_range_opt = m_stats_last.multi_range_opt || trace_handler.m_stats[i].multi_range_opt;
+	    m_stats_last.bitmap_heap = MAX (m_stats_last.bitmap_heap, trace_handler.m_stats[i].bitmap_heap);
+	    m_stats_last.bitmap_fetches += trace_handler.m_stats[i].bitmap_fetches;
+	    m_stats_last.bitmap_ioreads += trace_handler.m_stats[i].bitmap_ioreads;
+	    m_stats_last.bitmap_pages += trace_handler.m_stats[i].bitmap_pages;
+	    if (timercmp (&trace_handler.m_stats[i].bitmap_time, &bitmap_time, >))
+	      {
+		bitmap_time = trace_handler.m_stats[i].bitmap_time;
+	      }
 	    m_stats_last.index_skip_scan = m_stats_last.index_skip_scan || trace_handler.m_stats[i].index_skip_scan;
 	    m_stats_last.loose_index_scan = m_stats_last.loose_index_scan || trace_handler.m_stats[i].loose_index_scan;
 	    m_stats_last.need_count_only = m_stats_last.need_count_only || trace_handler.m_stats[i].need_count_only;
 	  }
       }
+    TSC_ADD_TIMEVAL (m_stats_last.bitmap_time, bitmap_time);
+    TSC_ADD_TIMEVAL (m_stats_last.oos_reads.elapsed, oos_longest);
   }
 
   void accumulative_trace_storage::set_last_partition_stats (SCAN_STATS *partition_stats)
   {
-    partition_stats->num_fetches = m_stats_last.fetches;
-    partition_stats->num_ioreads = m_stats_last.ioreads;
-    partition_stats->oos_reads = m_stats_last.oos_reads;
-    partition_stats->read_rows = m_stats_last.read_rows;
-    partition_stats->qualified_rows = m_stats_last.qualified_rows;
+    /* add to partition_stats (preserving leader deltas and any prior passes) and clear for the next partition */
+    partition_stats->num_fetches += m_stats_last.fetches;
+    partition_stats->num_ioreads += m_stats_last.ioreads;
+    partition_stats->oos_reads.fetches += m_stats_last.oos_reads.fetches;
+    partition_stats->oos_reads.ioreads += m_stats_last.oos_reads.ioreads;
+    TSC_ADD_TIMEVAL (partition_stats->oos_reads.elapsed, m_stats_last.oos_reads.elapsed);
+    partition_stats->read_rows += m_stats_last.read_rows;
+    partition_stats->qualified_rows += m_stats_last.qualified_rows;
     if (m_scan_type == SCAN_TYPE::INDEX)
       {
-	partition_stats->read_keys = m_stats_last.read_keys;
-	partition_stats->qualified_keys = m_stats_last.qualified_keys;
-	partition_stats->key_qualified_rows = m_stats_last.key_qualified_rows;
-	partition_stats->data_qualified_rows = m_stats_last.data_qualified_rows;
-	partition_stats->covered_index = m_stats_last.covered_index;
-	partition_stats->multi_range_opt = m_stats_last.multi_range_opt;
-	partition_stats->index_skip_scan = m_stats_last.index_skip_scan;
-	partition_stats->loose_index_scan = m_stats_last.loose_index_scan;
+	partition_stats->read_keys += m_stats_last.read_keys;
+	partition_stats->read_ahead_pages += m_stats_last.read_ahead_pages;
+	partition_stats->qualified_keys += m_stats_last.qualified_keys;
+	partition_stats->key_qualified_rows += m_stats_last.key_qualified_rows;
+	partition_stats->data_qualified_rows += m_stats_last.data_qualified_rows;
+	partition_stats->covered_index = partition_stats->covered_index || m_stats_last.covered_index;
+	/* a partition read through a bitmap shows its heap step as the scan does */
+	partition_stats->bitmap_heap = MAX (partition_stats->bitmap_heap, m_stats_last.bitmap_heap);
+	TSC_ADD_TIMEVAL (partition_stats->bitmap_heap_time, m_stats_last.bitmap_time);
+	partition_stats->bitmap_heap_fetches += m_stats_last.bitmap_fetches;
+	partition_stats->bitmap_heap_ioreads += m_stats_last.bitmap_ioreads;
+	partition_stats->bitmap_heap_pages += m_stats_last.bitmap_pages;
+	partition_stats->multi_range_opt = partition_stats->multi_range_opt || m_stats_last.multi_range_opt;
+	partition_stats->index_skip_scan = partition_stats->index_skip_scan || m_stats_last.index_skip_scan;
+	partition_stats->loose_index_scan = partition_stats->loose_index_scan || m_stats_last.loose_index_scan;
       }
+    m_stats_last = {};
+  }
+
+  /* the workers' line under the heap step of a scan through a bitmap */
+  void accumulative_trace_storage::dump_bitmap_heap_stats_text (FILE *fp, int indent)
+  {
+    UINT64 min_time = std::numeric_limits<UINT64>::max(), max_time = 0;
+    UINT64 min_pages = std::numeric_limits<UINT64>::max(), max_pages = 0;
+    UINT64 min_rows = std::numeric_limits<UINT64>::max(), max_rows = 0;
+
+    if (m_stats.empty())
+      {
+	return;
+      }
+    for (size_t i = 0; i < m_stats.size(); i++)
+      {
+	min_time = std::min (min_time, (UINT64) (TO_MSEC (m_stats[i].bitmap_time)));
+	max_time = std::max (max_time, (UINT64) (TO_MSEC (m_stats[i].bitmap_time)));
+	min_pages = std::min (min_pages, m_stats[i].bitmap_pages);
+	max_pages = std::max (max_pages, m_stats[i].bitmap_pages);
+	min_rows = std::min (min_rows, m_stats[i].data_qualified_rows);
+	max_rows = std::max (max_rows, m_stats[i].data_qualified_rows);
+      }
+    fprintf (fp, "\n%*c(parallel workers: %d, heap time: %lu..%lu, pages: %lu..%lu, rows: %lu..%lu)", indent, ' ',
+	     (int) m_stats.size(), min_time, max_time, min_pages, max_pages, min_rows, max_rows);
   }
 
   void accumulative_trace_storage::dump_stats_text (FILE *fp, int indent, char *class_name)
@@ -347,11 +426,15 @@ namespace parallel_scan
     UINT64 max_lookup = 0;
     UINT64 min_data_qualified_rows = std::numeric_limits<UINT64>::max();
     UINT64 max_data_qualified_rows = 0;
+    int any_bitmap = 0;
     bool any_covered = false, any_mro = false, any_iss = false, any_lis = false, any_count_only = false;
     for (size_t i = 0; i < m_stats.size(); i++)
       {
-	min_elapsed_scan = std::min (min_elapsed_scan, (UINT64) (TO_MSEC (m_stats[i].elapsed_time)));
-	max_elapsed_scan = std::max (max_elapsed_scan, (UINT64) (TO_MSEC (m_stats[i].elapsed_time)));
+	/* the heap step of a scan through a bitmap is shown as a scan of its own */
+	const UINT64 elapsed_scan = (UINT64) (TO_MSEC (m_stats[i].elapsed_time) - TO_MSEC (m_stats[i].bitmap_time));
+
+	min_elapsed_scan = std::min (min_elapsed_scan, elapsed_scan);
+	max_elapsed_scan = std::max (max_elapsed_scan, elapsed_scan);
 	min_read_rows = std::min (min_read_rows, m_stats[i].read_rows);
 	max_read_rows = std::max (max_read_rows, m_stats[i].read_rows);
 	min_qualified_rows = std::min (min_qualified_rows, m_stats[i].qualified_rows);
@@ -368,6 +451,7 @@ namespace parallel_scan
 	max_data_qualified_rows = std::max (max_data_qualified_rows, m_stats[i].data_qualified_rows);
 	any_covered = any_covered || m_stats[i].covered_index;
 	any_mro = any_mro || m_stats[i].multi_range_opt;
+	any_bitmap = MAX (any_bitmap, m_stats[i].bitmap_heap);
 	any_iss = any_iss || m_stats[i].index_skip_scan;
 	any_lis = any_lis || m_stats[i].loose_index_scan;
 	any_count_only = any_count_only || m_stats[i].need_count_only;
@@ -405,7 +489,7 @@ namespace parallel_scan
 	  }
 	fprintf (fp, ", gather: %s", result_type_str);
 	fprintf (fp, ")");
-	if (!any_covered)
+	if (!any_covered && any_bitmap == 0)
 	  {
 	    fprintf (fp, " (lookup time: %lu..%lu, rows: %lu..%lu)",
 		     min_lookup, max_lookup, min_data_qualified_rows, max_data_qualified_rows);
@@ -486,11 +570,15 @@ namespace parallel_scan
     UINT64 max_lookup = 0;
     UINT64 min_data_qualified_rows = std::numeric_limits<UINT64>::max();
     UINT64 max_data_qualified_rows = 0;
+    int any_bitmap = 0;
     bool any_covered = false, any_mro = false, any_iss = false, any_lis = false, any_count_only = false;
     for (size_t i = 0; i < m_stats.size(); i++)
       {
-	min_elapsed_scan = std::min (min_elapsed_scan, (UINT64) (TO_MSEC (m_stats[i].elapsed_time)));
-	max_elapsed_scan = std::max (max_elapsed_scan, (UINT64) (TO_MSEC (m_stats[i].elapsed_time)));
+	/* the heap step of a scan through a bitmap is shown as a scan of its own */
+	const UINT64 elapsed_scan = (UINT64) (TO_MSEC (m_stats[i].elapsed_time) - TO_MSEC (m_stats[i].bitmap_time));
+
+	min_elapsed_scan = std::min (min_elapsed_scan, elapsed_scan);
+	max_elapsed_scan = std::max (max_elapsed_scan, elapsed_scan);
 	min_read_rows = std::min (min_read_rows, m_stats[i].read_rows);
 	max_read_rows = std::max (max_read_rows, m_stats[i].read_rows);
 	min_qualified_rows = std::min (min_qualified_rows, m_stats[i].qualified_rows);
@@ -507,6 +595,7 @@ namespace parallel_scan
 	max_data_qualified_rows = std::max (max_data_qualified_rows, m_stats[i].data_qualified_rows);
 	any_covered = any_covered || m_stats[i].covered_index;
 	any_mro = any_mro || m_stats[i].multi_range_opt;
+	any_bitmap = MAX (any_bitmap, m_stats[i].bitmap_heap);
 	any_iss = any_iss || m_stats[i].index_skip_scan;
 	any_lis = any_lis || m_stats[i].loose_index_scan;
 	any_count_only = any_count_only || m_stats[i].need_count_only;
@@ -530,6 +619,27 @@ namespace parallel_scan
 	if (any_covered)
 	  {
 	    trace_json_object_set_new (parallel_obj, "covered", trace_json_true ());
+	  }
+	else if (any_bitmap != 0)
+	  {
+	    /* the heap step of a scan through a bitmap, per worker */
+	    UINT64 min_time = std::numeric_limits<UINT64>::max(), max_time = 0;
+	    UINT64 min_pages = std::numeric_limits<UINT64>::max(), max_pages = 0;
+	    char heap_time_buf[64], heap_pages_buf[64], heap_rows_buf[64];
+
+	    for (size_t i = 0; i < m_stats.size(); i++)
+	      {
+		min_time = std::min (min_time, (UINT64) (TO_MSEC (m_stats[i].bitmap_time)));
+		max_time = std::max (max_time, (UINT64) (TO_MSEC (m_stats[i].bitmap_time)));
+		min_pages = std::min (min_pages, m_stats[i].bitmap_pages);
+		max_pages = std::max (max_pages, m_stats[i].bitmap_pages);
+	      }
+	    snprintf (heap_time_buf, sizeof (heap_time_buf), "%lu..%lu", min_time, max_time);
+	    snprintf (heap_pages_buf, sizeof (heap_pages_buf), "%lu..%lu", min_pages, max_pages);
+	    snprintf (heap_rows_buf, sizeof (heap_rows_buf), "%lu..%lu", min_data_qualified_rows, max_data_qualified_rows);
+	    trace_json_object_set_new (parallel_obj, "bitmap heap lookup",
+				       trace_json_pack ("{s:s, s:s, s:s}", "time", heap_time_buf, "pages", heap_pages_buf,
+					   "rows", heap_rows_buf));
 	  }
 	else
 	  {

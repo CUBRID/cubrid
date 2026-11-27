@@ -54,7 +54,7 @@ struct lk_thread_deferred_wake
   UINT64 held_row;		/* packed OID of the row held X while waiting on a self-lock, or 0 */
   lk_entry *prequeued;		/* our lock entry queued but not asleep yet (lock_ask_row_handoff ()) */
 
-  /* one request: lock_reset_request_state () clears it */
+  /* one request, or one parallel task: lock_reset_request_state () and lock_end_parallel_task () clear it */
   request_state request;
 };
 
