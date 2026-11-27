@@ -25,6 +25,7 @@
 
 #include <assert.h>
 #include "query_rewrite.h"
+#include "authenticate.h"
 
 
 static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -2954,6 +2955,7 @@ qo_is_exclude_spec (PT_NODE * exclude_spec_point_list, PT_NODE * spec)
  *         4. No primary key.
  *         5. No foreign key referencing the primary key.
  *         6. Non-join predicates exist.
+ *         7. The primary key index is shared in a class hierarchy.
  */
 static bool
 qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
@@ -2961,6 +2963,7 @@ qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 {
   PT_NODE *curr_pk_spec = NULL;
   MOP curr_pk_mop = NULL;
+  SM_CLASS *curr_pk_class = NULL;
   SM_CLASS_CONSTRAINT *curr_pk_cons = NULL;
   PT_NODE *join_pred_point_list = NULL;
   PT_NODE *parent_pred_point_list = NULL;
@@ -3021,7 +3024,12 @@ qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
       goto exit_on_fail_with_exclude;
     }
 
-  for (curr_pk_cons = sm_class_constraints (curr_pk_mop); curr_pk_cons != NULL; curr_pk_cons = curr_pk_cons->next)
+  if (au_fetch_class (curr_pk_mop, &curr_pk_class, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+    {
+      goto exit_on_fail_with_exclude;
+    }
+
+  for (curr_pk_cons = curr_pk_class->constraints; curr_pk_cons != NULL; curr_pk_cons = curr_pk_cons->next)
     {
       if (curr_pk_cons->type == SM_CONSTRAINT_PRIMARY_KEY)
 	{
@@ -3033,6 +3041,13 @@ qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
   if (curr_pk_cons == NULL || curr_pk_cons->fk_info == NULL)
     {
       /* No primary key or no foreign key referencing the primary key. */
+      goto exit_on_fail_with_exclude;
+    }
+
+  /* the foreign key check accepts a key of any class sharing the index, but the scan reads this class only */
+  if (curr_pk_cons->attributes[0]->class_mop != curr_pk_mop
+      || (curr_pk_class->users != NULL && curr_pk_class->partition == NULL))
+    {
       goto exit_on_fail_with_exclude;
     }
 
