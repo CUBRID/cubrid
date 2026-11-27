@@ -13455,9 +13455,20 @@ pt_dblink_dml_is_local_subq_sink (const SERVER_NAME_LIST * snl)
 const char *
 pt_dblink_dml_stmt_name (const PT_NODE * node, bool lower)
 {
-  if (node->node_type == PT_UPDATE)
+  switch (node->node_type)
     {
+    case PT_UPDATE:
       return lower ? "update" : "UPDATE";
+    case PT_MERGE:
+      return lower ? "merge" : "MERGE";
+    case PT_INSERT:
+      if (node->info.insert.do_replace)
+	{
+	  return lower ? "replace" : "REPLACE";
+	}
+      return lower ? "insert" : "INSERT";
+    default:
+      break;
     }
 
   return lower ? "delete" : "DELETE";
@@ -13529,13 +13540,16 @@ pt_dblink_dml_reject_declined (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE 
 }
 
 /* The mixed local/remote rejection, in the voice of the declines above. A DELETE or an UPDATE gets
- * here when no decline above names its cause, and the bare sentence is all there is to say. The
- * shape of a sink statement is not judged here. pt_dblink_dml_check_sink () refuses it after name
- * resolution. */
+ * here when no decline above names its cause. A DBLINK () it reads is named here, and otherwise the
+ * bare sentence is all there is to say. The shape of a sink statement is not judged here.
+ * pt_dblink_dml_check_sink () refuses it after name resolution. */
 static void
 pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, int odku_local_cnt,
-				PT_NODE * loc)
+				int odku_new_servers, PT_NODE * loc)
 {
+  const char *stmt = pt_dblink_dml_stmt_name (node, false);
+  char errmsg[256];
+
   switch (node->node_type)
     {
     case PT_INSERT:
@@ -13549,15 +13563,35 @@ pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
        * and the name that sentence composes covers UPDATE and DELETE only. */
       if (pt_get_subquery_of_insert_select (node) == NULL)
 	{
-	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only INSERT ... SELECT");
+	  snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with local data supports only %s ... SELECT", stmt,
+		    stmt);
+	  PT_ERRORc (parser, loc, errmsg);
 	  return;
 	}
-      /* Blamed only when the clause is what refuses the statement, which is a local table in it.
-       * A source that also reads another server is refused whatever the clause holds. */
-      if (odku_local_cnt > 0 && snl->distinct_cnt == 1)
+      /* Blamed only when the clause is what refuses the statement: a local table in it, with or
+       * without a server only it reads. A source that reads another server itself is refused
+       * whatever the clause holds. */
+      if (odku_local_cnt > 0 && snl->distinct_cnt - odku_new_servers == 1)
 	{
-	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only constants and qualified "
-		    "source columns in ON DUPLICATE KEY UPDATE");
+	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only constants, source columns "
+		    "and + - * / over target columns in ON DUPLICATE KEY UPDATE");
+	  return;
+	}
+      /* What is left is a source that reads another server too. The sink reads a remote table only
+       * through the server of the target. */
+      snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with local data supports only a source that mixes "
+		"local tables with a remote table on the %s target's own server", stmt,
+		pt_dblink_dml_stmt_name (node, true));
+      PT_ERRORc (parser, loc, errmsg);
+      return;
+
+    case PT_DELETE:
+    case PT_UPDATE:
+      if (snl->has_dblink_query)
+	{
+	  snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with a local subquery does not support a DBLINK () "
+		    "source", stmt);
+	  PT_ERRORc (parser, loc, errmsg);
 	  return;
 	}
       break;
@@ -13893,6 +13927,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   int tmp_server_cnt = snl->server_cnt;
   int sub_sel_server_cnt = 0;	/* remote server count in the sink subquery, set per statement kind below */
   int odku_local_cnt = 0;	/* local table count found in the ON DUPLICATE KEY UPDATE clause */
+  int odku_new_servers = 0;	/* remote servers that only the ON DUPLICATE KEY UPDATE clause reads */
   unsigned int save_custom_print;
 
   PT_NODE *into_spec = NULL, *upd_spec = NULL, *server;
@@ -13915,6 +13950,10 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	  sub_sel_server_cnt = pt_dblink_dml_subq_servers (parser, node, snl, tmp_server_cnt);
 	}
 
+      /* The target is counted ahead of the ON DUPLICATE KEY UPDATE clause. Then odku_new_servers
+       * counts only a server that neither the target nor the source reads. */
+      parser_walk_tree (parser, into_spec, pt_get_server_name_list, snl, NULL, NULL);
+
       /* An ON DUPLICATE KEY UPDATE assignment can hold a subquery, so a table reference lives here
        * too. Its local specs still go into local_cnt and are also counted on their own in
        * odku_local_cnt: a sink statement usually reads a local source and has local_cnt above zero,
@@ -13924,10 +13963,11 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
        * rather than counting them, which would newly convert them. */
       if (remote_upd > 0 && node->info.insert.odku_assignments)
 	{
-	  int local_cnt_before = snl->local_cnt;
+	  int local_cnt_before = snl->local_cnt, distinct_cnt_before = snl->distinct_cnt;
 
 	  parser_walk_tree (parser, node->info.insert.odku_assignments, pt_get_server_name_list, snl, NULL, NULL);
 	  odku_local_cnt = snl->local_cnt - local_cnt_before;
+	  odku_new_servers = snl->distinct_cnt - distinct_cnt_before;
 	}
       break;
     case PT_DELETE:
@@ -13952,7 +13992,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       assert (false);
     }
 
-  if (into_spec)
+  if (into_spec && node->node_type != PT_INSERT)
     {
       parser_walk_tree (parser, into_spec, pt_get_server_name_list, snl, NULL, NULL);
     }
@@ -13987,10 +14027,12 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
    *     target, sink or not -- the clause goes out as text and the remote would resolve that name against
    *     its own tables.
    *   - local_cnt > 0 without a sink: any other local reference -- a sink statement reads a local source by
-   *     design, so this one cannot apply to it. */
+   *     design, so this one cannot apply to it.
+   * pt_dblink_dml_reject_mixed_ref () words the message after the cause where it can tell it. */
   if (remote_upd > 0 && (odku_local_cnt > 0 || (snl->local_cnt > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)))
     {
-      pt_dblink_dml_reject_mixed_ref (parser, node, snl, odku_local_cnt, upd_spec ? upd_spec : into_spec);
+      pt_dblink_dml_reject_mixed_ref (parser, node, snl, odku_local_cnt, odku_new_servers,
+				      upd_spec ? upd_spec : into_spec);
       return;
     }
 
@@ -14002,7 +14044,11 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (snl->has_dblink_query && snl->sink_kind != DBLINK_REMOTE_SINK_INSERT_SELECT)
     {
-      PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: remote DML has DBLINK query is not allowed");
+      char errmsg[128];
+
+      snprintf (errmsg, sizeof (errmsg), "dblink: remote %s does not support a DBLINK () source",
+		pt_dblink_dml_stmt_name (node, false));
+      PT_ERRORc (parser, upd_spec ? upd_spec : into_spec, errmsg);
       return;
     }
 

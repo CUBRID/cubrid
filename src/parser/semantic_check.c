@@ -13061,8 +13061,8 @@ pt_dblink_dml_sink_subq (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * targ
   parser_walk_tree (parser, subq, pt_dblink_dml_spec_ref, &ref, NULL, NULL);
   if (ref.found)
     {
-      snprintf (msg, sizeof (msg), "dblink: correlated subquery is not supported in a remote %s %s clause", dml,
-		clause);
+      snprintf (msg, sizeof (msg), "dblink: remote %s with a local subquery supports only a %s subquery that "
+		"does not read the target", dml, clause);
       PT_ERRORc (parser, stmt, msg);
       return NULL;
     }
@@ -13456,15 +13456,15 @@ pt_dblink_dml_check_sink (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * tar
   PT_NODE *cond, *with, *key = NULL;
   PT_ASSIGNMENTS_HELPER ea;
   const char *dml, *accepted = NULL;
-  bool driving_pred, has_local = false;
+  bool driving_pred, other_op, has_local = false;
   char errmsg[256];
 
   if (node->node_type == PT_INSERT)
     {
       if (node->info.insert.odku_assignments != NULL && !pt_dblink_dml_check_odku (node, target))
 	{
-	  PT_ERROR (parser, target, "dblink: remote INSERT with local data supports only constants and qualified "
-		    "source columns in ON DUPLICATE KEY UPDATE");
+	  PT_ERROR (parser, target, "dblink: remote INSERT with local data supports only constants, source columns "
+		    "and + - * / over target columns in ON DUPLICATE KEY UPDATE");
 	  return;
 	}
       return;
@@ -13496,6 +13496,9 @@ pt_dblink_dml_check_sink (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * tar
     }
 
   driving_pred = (cond != NULL && cond->next == NULL && pt_dblink_dml_is_subquery_pred (cond));
+  /* a single predicate over a subquery, through an operator the sink does not push */
+  other_op = (!driving_pred && cond != NULL && cond->next == NULL && cond->node_type == PT_EXPR
+	      && cond->info.expr.arg2 != NULL && PT_IS_QUERY (cond->info.expr.arg2));
   if (driving_pred)
     {
       key = cond->info.expr.arg1;
@@ -13526,7 +13529,9 @@ pt_dblink_dml_check_sink (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * tar
     {
       if (!driving_pred)
 	{
-	  accepted = "a single uncorrelated WHERE subquery";
+	  accepted = other_op
+	    ? "IN, a quantified ANY or a scalar comparison in the WHERE subquery predicate"
+	    : "a single uncorrelated WHERE subquery";
 	}
     }
   else if (driving_pred && pt_dblink_dml_pred_targets_can_overlap (cond))
@@ -13535,7 +13540,9 @@ pt_dblink_dml_check_sink (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * tar
     }
   else if (cond != NULL && !driving_pred)
     {
-      accepted = "a single uncorrelated WHERE subquery, or no WHERE";
+      accepted = other_op
+	? "IN, = ANY or a scalar comparison in the WHERE subquery predicate"
+	: "a single uncorrelated WHERE subquery, or no WHERE";
     }
   else
     {
