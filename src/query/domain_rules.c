@@ -446,16 +446,16 @@ domain_arith_rule (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_targe
       first = DB_TYPE_DOUBLE;
       second = DB_TYPE_DOUBLE;
     }
-  else if (is_add && TP_IS_DATE_OR_TIME_TYPE (first) && (TP_IS_FLOATING_NUMBER_TYPE (second)
+  else if (is_add && TP_IS_DATE_OR_TIME_TYPE (first) && (TP_IS_CONTINUOUS_NUMBER_TYPE (second)
 							 || TP_IS_CHAR_TYPE (second)))
     {
       second = DB_TYPE_BIGINT;
     }
-  else if (opcode == T_SUB && TP_IS_DATE_OR_TIME_TYPE (first) && TP_IS_FLOATING_NUMBER_TYPE (second))
+  else if (opcode == T_SUB && TP_IS_DATE_OR_TIME_TYPE (first) && TP_IS_CONTINUOUS_NUMBER_TYPE (second))
     {
       second = DB_TYPE_BIGINT;
     }
-  else if (opcode == T_SUB && TP_IS_FLOATING_NUMBER_TYPE (first) && TP_IS_DATE_OR_TIME_TYPE (second))
+  else if (opcode == T_SUB && TP_IS_CONTINUOUS_NUMBER_TYPE (first) && TP_IS_DATE_OR_TIME_TYPE (second))
     {
       first = DB_TYPE_BIGINT;
     }

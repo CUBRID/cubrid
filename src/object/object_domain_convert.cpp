@@ -309,7 +309,7 @@ tp_value_convert_number (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN 
 		 (&number, target, desired_domain, date_error);
 	}
       else if constexpr (MODE == DOMAIN_CONVERT_COMPARE
-			 && (SRC == DB_TYPE_FLOAT || SRC == DB_TYPE_DOUBLE || SRC == DB_TYPE_MONETARY))
+			 && TP_IS_FLOATING_POINT_NUMBER_TYPE (SRC))
 	{
 	  return DOMAIN_INCOMPATIBLE;
 	}

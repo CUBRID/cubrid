@@ -282,9 +282,15 @@ typedef enum tp_match
 #define TP_IS_DATE_OR_TIME_TYPE(typeid) \
   (((typeid) == DB_TYPE_TIME) || TP_IS_DATE_TYPE(typeid))
 
-#define TP_IS_FLOATING_NUMBER_TYPE(typeid) \
-  (((typeid) == DB_TYPE_FLOAT) || ((typeid) == DB_TYPE_DOUBLE) \
-   || ((typeid) == DB_TYPE_NUMERIC) || ((typeid) == DB_TYPE_MONETARY))
+/* a MONETARY is a floating-point number by its double amount */
+#define TP_IS_FLOATING_POINT_NUMBER_TYPE(typeid) \
+  (((typeid) == DB_TYPE_FLOAT) || ((typeid) == DB_TYPE_DOUBLE) || ((typeid) == DB_TYPE_MONETARY))
+
+#define TP_IS_FIXED_POINT_NUMBER_TYPE(typeid) \
+  ((typeid) == DB_TYPE_NUMERIC)
+
+#define TP_IS_CONTINUOUS_NUMBER_TYPE(typeid) \
+  (TP_IS_FLOATING_POINT_NUMBER_TYPE (typeid) || TP_IS_FIXED_POINT_NUMBER_TYPE (typeid))
 
 #define TP_IS_DISCRETE_NUMBER_TYPE(typeid) \
   (((typeid) == DB_TYPE_INTEGER) || ((typeid) == DB_TYPE_SMALLINT) \
