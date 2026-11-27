@@ -38,6 +38,7 @@
 #include "concurrency_slot.hpp"
 #endif
 
+#include <chrono>
 #include <cstring>
 #include <sstream>
 
@@ -128,6 +129,7 @@ namespace cubthread
     , log_data_length (0)
     , no_logging (false)
     , net_request_index (-1)
+    , exec_token (NULL)
     , vacuum_worker (NULL)
     , sort_stats_active (false)
     , event_stats ()
@@ -172,6 +174,7 @@ namespace cubthread
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
     , m_systdes (NULL)
     , m_lf_tran_index (lockfree::tran::INVALID_INDEX)
+    , m_wait_start_nsecs (0)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -485,6 +488,46 @@ namespace cubthread
     return m_lf_tran_index;
   }
 
+  static std::int64_t
+  steady_clock_nsecs (void)
+  {
+    std::chrono::steady_clock::duration now = std::chrono::steady_clock::now ().time_since_epoch ();
+
+    return (std::int64_t) std::chrono::duration_cast<std::chrono::nanoseconds> (now).count ();
+  }
+
+  void
+  entry::start_wait_clock (void)
+  {
+    m_wait_start_nsecs.store (steady_clock_nsecs (), std::memory_order_relaxed);
+  }
+
+  void
+  entry::stop_wait_clock (void)
+  {
+    m_wait_start_nsecs.store (0, std::memory_order_relaxed);
+  }
+
+  std::int64_t
+  entry::get_wait_elapsed_msecs (void) const
+  {
+    std::int64_t start_nsecs = m_wait_start_nsecs.load (std::memory_order_relaxed);
+    std::int64_t now_nsecs;
+
+    if (start_nsecs == 0)
+      {
+	return -1;
+      }
+
+    now_nsecs = steady_clock_nsecs ();
+    if (now_nsecs < start_nsecs)
+      {
+	// steady clock does not go back; guard anyway against a negative elapsed time
+	return 0;
+      }
+    return (now_nsecs - start_nsecs) / 1000000;
+  }
+
 #if defined (SERVER_MODE)
   void
   entry::start_waiting ()
@@ -619,6 +662,7 @@ thread_prepare_suspension (cubthread::entry *thread_p, cubthread::entry::status 
   assert (thread_p->m_status == cubthread::entry::status::TS_RUN
 	  || thread_p->m_status == cubthread::entry::status::TS_CHECK);
   status = thread_p->m_status;
+  thread_p->start_wait_clock ();
   thread_p->m_status = cubthread::entry::status::TS_WAIT;
   thread_p->resume_status = suspended_reason;
 
@@ -748,6 +792,7 @@ thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status 
 #endif
 
   thread_p->m_status = status;
+  thread_p->stop_wait_clock ();
 }
 
 /*
@@ -857,6 +902,7 @@ thread_suspend_with_other_mutex (cubthread::entry *thread_p, pthread_mutex_t *mu
 
   pthread_mutex_lock (&thread_p->th_entry_lock);
 
+  thread_p->start_wait_clock ();
   thread_p->m_status = cubthread::entry::status::TS_WAIT;
   thread_p->resume_status = suspended_reason;
 
@@ -884,12 +930,57 @@ thread_suspend_with_other_mutex (cubthread::entry *thread_p, pthread_mutex_t *mu
   pthread_mutex_lock (&thread_p->th_entry_lock);
 
   thread_p->m_status = old_status;
+  thread_p->stop_wait_clock ();
 
   pthread_mutex_unlock (&thread_p->th_entry_lock);
 
   assert (error == NO_ERROR || error == ER_CSS_PTHREAD_COND_TIMEDOUT);
 
   return error;
+}
+
+/*
+ * thread_slot_wait_begin (), thread_slot_wait_end () - around a wait on another module's condition variable: the
+ *   concurrency slot is left to the slot daemon as in a lock wait, and taken back after
+ *
+ * Note: the daemon takes slots only from TS_WAIT entries, under the entry lock, so m_slot is read under it too.
+ */
+void
+thread_slot_wait_begin (cubthread::entry *thread_p, cubthread::entry::status &status, void *&holder)
+{
+  holder = nullptr;
+  thread_p->lock ();
+  status = thread_p->m_status;
+  thread_p->m_status = cubthread::entry::status::TS_WAIT;
+#if defined (SERVER_MODE)
+  if (thread_p->m_slot)
+    {
+      holder = static_cast<void *> (thread_p->m_slot->get_holder_pool ());
+      thread_p->start_waiting ();
+    }
+#endif
+  thread_p->unlock ();
+}
+
+void
+thread_slot_wait_end (cubthread::entry *thread_p, cubthread::entry::status status, void *holder)
+{
+  thread_p->lock ();
+#if defined (SERVER_MODE)
+  if (holder != nullptr)
+    {
+      if (thread_p->m_slot)
+	{
+	  thread_p->stop_waiting ();
+	}
+      else
+	{
+	  static_cast<cubthread::concurrency_slot_pool *> (holder)->acquire_slot (thread_p);
+	}
+    }
+#endif
+  thread_p->m_status = status;
+  thread_p->unlock ();
 }
 
 /*
