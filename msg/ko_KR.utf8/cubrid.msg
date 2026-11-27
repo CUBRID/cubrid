@@ -1553,7 +1553,11 @@ $ LOADDB
 
 1422 세션 %1$u의 login 사용자 %2$s을(를) 복원할 수 없습니다. 새로 연결하십시오.
 
-1423 마지막 에러
+1423 언로드 파일의 LOB charset(%1$s) 이 이 데이터베이스(%2$s) 와 다릅니다; 적재를 중단합니다.
+1424 LOB 로케이터에 대한 현재 사용자 또는 세션의 접근 권한이 없습니다.
+1425 LOB 사이드카 파일이 없거나, 적재 파일의 참조가 사이드카에 없습니다.
+1426 이 로케이터가 가리키는 LOB 값이 더 이상 없습니다. 행을 다시 조회하십시오.
+1427 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1721,6 +1725,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Server의 USER 최대 길이는 %1$d 바이트입니다.
 139 저장 프로시저/함수의 인수 타입과 결과 타입에는 정밀도를 지정할 수 없습니다.
 140 FILL_FACTOR 인자 값은 %1$d에서 %2$d까지 허용됩니다.
+141 잘못된 형식의 clob_to_char 함수입니다.\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -2073,6 +2078,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
 345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
 346 %2$s의 %1$d번째 인자는 %3$s 매개변수에 넘기므로 바인드 변수(? 또는 :name)여야 합니다.
+347 CLOB 리터럴은 1GiB를 넘을 수 없습니다. 1GiB를 넘는 값은 CLOB_FROM_FILE 또는 CFILE_TO_CLOB으로 넣을 수 있습니다(최대 4GiB).
+348 BLOB 리터럴은 128MiB를 넘을 수 없습니다. 128MiB를 넘는 값은 BLOB_FROM_FILE 또는 BFILE_TO_BLOB으로 넣을 수 있습니다(최대 4GiB).
 
 
 

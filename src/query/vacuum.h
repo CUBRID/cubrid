@@ -248,8 +248,17 @@ extern int vacuum_rv_redo_append_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void vacuum_rv_redo_append_data_dump (FILE * fp, int length, void *data);
 extern int vacuum_rv_redo_start_job (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
+/* The heap's OOS / Internal LOB file ids, resolved by a caller that holds heap pages across vacuum_heap_page (). */
+typedef struct vacuum_heap_oos_files VACUUM_HEAP_OOS_FILES;
+struct vacuum_heap_oos_files
+{
+  VFID oos_vfid;
+  VFID internal_lob_vfid;
+};
+
 extern int vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, int n_heap_objects,
-			     MVCCID threshold_mvccid, HFID * hfid, bool * reusable, bool was_interrupted);
+			     MVCCID threshold_mvccid, HFID * hfid, const VACUUM_HEAP_OOS_FILES * oos_files,
+			     bool * reusable, bool was_interrupted);
 extern int vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

@@ -526,6 +526,9 @@ struct vacuum_heap_helper
   HFID hfid;			/* Heap file identifier. */
   VFID overflow_vfid;		/* Overflow file identifier. */
   VFID oos_vfid;		/* OOS file identifier (if any). */
+  VFID internal_lob_vfid;	/* Internal LOB file identifier (if any); resolved together with oos_vfid. */
+  bool oos_files_resolved;	/* True once oos_vfid or internal_lob_vfid was found. */
+  bool oos_files_from_caller;	/* The ids came from a caller holding heap pages: never wait for the header. */
   bool reusable;		/* True if heap file has reusable slots. */
 
   MVCC_SATISFIES_VACUUM_RESULT can_vacuum;	/* Result of vacuum check. */
@@ -1597,7 +1600,7 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	}
       /* Vacuum page. */
       error_code =
-	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, &reusable, was_interrupted);
+	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, NULL, &reusable, was_interrupted);
       if (error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED)
 	{
 	  /* The first deferral decides the block. Every page of this heap would wait for its header again, so a later
@@ -1672,12 +1675,15 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
  * n_heap_objects (in)	 : Number of objects.
  * threshold_mvccid (in) : Threshold MVCCID used to vacuum.
  * hfid (in/out)         : Heap file identifier
+ * oos_files (in)	 : The heap's OOS / Internal LOB file ids when the caller holds heap pages across this call, else
+ *			   NULL (looked up here).
  * reusable (in/out)	 : True if object slots are reusable.
  * was_interrutped (in)  : True if same job was executed and interrupted.
  */
 int
 vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, int n_heap_objects,
-		  MVCCID threshold_mvccid, HFID * hfid, bool * reusable, bool was_interrupted)
+		  MVCCID threshold_mvccid, HFID * hfid, const VACUUM_HEAP_OOS_FILES * oos_files, bool * reusable,
+		  bool was_interrupted)
 {
   VACUUM_HEAP_HELPER helper;	/* Vacuum heap helper. */
   HEAP_PAGE_VACUUM_STATUS page_vacuum_status;	/* Current page vacuum status. */
@@ -1722,6 +1728,14 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   helper.initial_home_free_space = -1;
   VFID_SET_NULL (&helper.overflow_vfid);
   VFID_SET_NULL (&helper.oos_vfid);
+  VFID_SET_NULL (&helper.internal_lob_vfid);
+  helper.oos_files_resolved = false;
+  helper.oos_files_from_caller = (oos_files != NULL);
+  if (oos_files != NULL)
+    {
+      helper.oos_vfid = oos_files->oos_vfid;
+      helper.internal_lob_vfid = oos_files->internal_lob_vfid;
+    }
 
   /* Fix heap page. */
   if (was_interrupted)
@@ -2358,12 +2372,13 @@ vacuum_heap_prepare_oos_vfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * help
 
   *pages_released = false;
 
-  if (!VFID_ISNULL (&helper->oos_vfid) || !heap_recdes_contains_oos (&helper->record))
+  if (helper->oos_files_resolved || !heap_recdes_contains_oos (&helper->record))
     {
       return NO_ERROR;
     }
 
-  if (!heap_oos_find_vfid_nowait (thread_p, &helper->hfid, &helper->oos_vfid))
+  if (!helper->oos_files_from_caller
+      && !heap_oos_find_both_vfids_nowait (thread_p, &helper->hfid, &helper->oos_vfid, &helper->internal_lob_vfid))
     {
       VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
 
@@ -2374,7 +2389,8 @@ vacuum_heap_prepare_oos_vfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * help
       vacuum_heap_page_log_and_reset (thread_p, helper, false, true);
       *pages_released = true;
 
-      error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record, &helper->oos_vfid);
+      error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record, &helper->oos_vfid,
+							 &helper->internal_lob_vfid);
       if (error_code != NO_ERROR)
 	{
 	  if (vacuum_is_thread_vacuum_worker (thread_p))
@@ -2398,7 +2414,8 @@ vacuum_heap_prepare_oos_vfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * help
 	}
     }
 
-  if (VFID_ISNULL (&helper->oos_vfid))
+  helper->oos_files_resolved = !VFID_ISNULL (&helper->oos_vfid) || !VFID_ISNULL (&helper->internal_lob_vfid);
+  if (!helper->oos_files_resolved)
     {
       vacuum_oos_report_missing_oos_file (&helper->hfid, &helper->record, helper->crt_slotid, helper->record_type);
     }
@@ -2616,7 +2633,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
    * Single-page REC_HOME needs no sysop: its single log record is already atomic, so it rides the bulk
    * path.  record_type alone is only a proxy for the footprint -- OOS is the orthogonal axis that can push
    * an otherwise single-page REC_HOME into the sysop path. */
-  bool has_oos = (!VFID_ISNULL (&helper->oos_vfid)
+  bool has_oos = ((!VFID_ISNULL (&helper->oos_vfid) || !VFID_ISNULL (&helper->internal_lob_vfid))
 		  && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION)
 		  && heap_recdes_contains_oos (&helper->record));
 
@@ -2682,7 +2699,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
       if (has_oos)
 	{
 	  OID owner_oid = { helper->home_vpid.pageid, helper->crt_slotid, helper->home_vpid.volid };
-	  int oos_err = vacuum_heap_oos_log_reclaim_intent (thread_p, &helper->oos_vfid, &helper->record, &owner_oid);
+	  int oos_err = vacuum_heap_oos_log_reclaim_intent (thread_p, &helper->oos_vfid, &helper->record, &owner_oid,
+							    &helper->internal_lob_vfid);
 	  if (oos_err != NO_ERROR)
 	    {
 	      /* The caller unfixes the forward page. */
@@ -2691,7 +2709,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 	    }
 	}
 
-      vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, oos_emptied_pages_out);
+      vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, oos_emptied_pages_out, &helper->oos_vfid);
 
       /* add candidate page into bestspace candidates */
       heap_add_bestpage (thread_p, &helper->hfid, helper->forward_page);
@@ -2750,14 +2768,15 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					     helper->reusable);
 
 	  OID owner_oid = { helper->home_vpid.pageid, helper->crt_slotid, helper->home_vpid.volid };
-	  int oos_err = vacuum_heap_oos_log_reclaim_intent (thread_p, &helper->oos_vfid, &helper->record, &owner_oid);
+	  int oos_err = vacuum_heap_oos_log_reclaim_intent (thread_p, &helper->oos_vfid, &helper->record, &owner_oid,
+							    &helper->internal_lob_vfid);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      return oos_err;
 	    }
 
-	  vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, oos_emptied_pages_out);
+	  vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, oos_emptied_pages_out, &helper->oos_vfid);
 	}
       else
 	{

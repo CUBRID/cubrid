@@ -935,7 +935,8 @@ TEST (OosBestspaceTest, BestspaceStaleCacheEviction)
   PAGEID seed_page = oid_seed.pageid;
 
   // Now fill that page with a large record so the cache entry becomes stale
-  auto large_data = test_oos_utils::make_repeated_pattern_string (max_chunk - 50);
+  auto large_data = test_oos_utils::make_repeated_pattern_string (max_chunk -
+		    64);	// room for the seed record and its 40B header
   RECDES rec_large{};
   err = test_oos_utils::from_string_into_recdes (large_data, rec_large);
   ASSERT_EQ (err, NO_ERROR);

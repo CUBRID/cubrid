@@ -644,7 +644,8 @@ get_cci_type (char *p)
 	}
       else if (memcmp (p, "BLOB", 5) == 0)
 	{
-	  type = CCI_U_TYPE_BLOB;
+	  /* the SQL log does not keep a LOB value, so it is replayed as NULL */
+	  type = CCI_U_TYPE_NULL;
 	}
       break;
 
@@ -659,7 +660,8 @@ get_cci_type (char *p)
 	}
       else if (memcmp (p, "CLOB", 5) == 0)
 	{
-	  type = CCI_U_TYPE_CLOB;
+	  /* as BLOB above */
+	  type = CCI_U_TYPE_NULL;
 	}
       break;
 

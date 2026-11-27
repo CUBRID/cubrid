@@ -938,7 +938,13 @@ struct rvfun RV_fun[] = {
    serial_rv_undo_ddl_update,
    NULL,
    log_rv_dump_hexa,
-   NULL}
+   NULL},
+  {RVREPL_INTERNAL_LOB_INSERT,
+   "RVREPL_INTERNAL_LOB_INSERT",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump}
 };
 
 /*

@@ -126,6 +126,8 @@ extern int binary_reserve_row_size (TEXT_OUTPUT * tout, TEXT_BUFFER_BLK ** rec_b
 extern int64_t binary_max_record_size (void);
 extern int binary_fill_row_size (TEXT_OUTPUT * tout, TEXT_BUFFER_BLK * rec_blk, char *rec_size_ptr, int64_t * row_size);
 extern int text_print_request_flush (TEXT_OUTPUT * tout, bool force);
+extern int internal_lob_unload_sidecar_open (const char *output_dirname, const char *output_prefix);
+extern void internal_lob_unload_sidecar_close (void);
 
 extern volatile bool error_occurred;
 extern int g_sampling_records;

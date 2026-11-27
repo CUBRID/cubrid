@@ -29,6 +29,7 @@
 #include "log_impl.h"
 #include "log_manager.h"
 #include "memory_alloc.h"
+#include "object_domain.h"
 #include "object_representation.h"
 #include "oid.h"
 #include "oos_file.hpp"
@@ -88,13 +89,15 @@ vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
  * thread_p (in)     : Thread entry.
  * hfid (in)         : Heap file of the record being vacuumed.
  * record (in)       : The record's data.
- * oos_vfid (in/out) : The caller's OOS file id. Left alone if already found, filled in on success (VFID_NULL when the
- *                     heap has no OOS file), set to VFID_NULL on error.
+ * oos_vfid (in/out) : The caller's OOS file id. Filled in on success (VFID_NULL when the heap has no OOS file), set
+ *                     to VFID_NULL on error.
+ * internal_lob_vfid (in/out) : The same for the heap's internal LOB file.
  */
 int
-vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record, VFID *oos_vfid)
+vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record, VFID *oos_vfid,
+				      VFID *internal_lob_vfid)
 {
-  if (!VFID_ISNULL (oos_vfid) || !heap_recdes_contains_oos (record))
+  if (!heap_recdes_contains_oos (record))
     {
       return NO_ERROR;
     }
@@ -103,7 +106,7 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
   if (FI_INSERTED (FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT))
     {
       /* A latch timeout stops debug builds in pgbuf_timed_sleep, so a busy header fails here at once instead. */
-      found = heap_oos_find_vfid_nowait (thread_p, hfid, oos_vfid);
+      found = heap_oos_find_both_vfids_nowait (thread_p, hfid, oos_vfid, internal_lob_vfid);
       if (!found)
 	{
 	  VPID header_vpid = { hfid->hpgid, hfid->vfid.volid };
@@ -112,7 +115,7 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
     }
   else
     {
-      found = heap_oos_find_vfid (thread_p, hfid, oos_vfid, false);
+      found = heap_oos_find_both_vfids (thread_p, hfid, oos_vfid, internal_lob_vfid);
     }
   if (found)
     {
@@ -122,6 +125,7 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
   int error_code;
   ASSERT_ERROR_AND_SET (error_code);
   VFID_SET_NULL (oos_vfid);
+  VFID_SET_NULL (internal_lob_vfid);
   return error_code;
 }
 
@@ -162,18 +166,17 @@ vacuum_oos_report_missing_oos_file (const HFID *hfid, const RECDES *record, PGSL
  *
  * return	  : Error code.
  * thread_p (in)  : Thread entry.
- * oos_vfid (in)  : OOS file of the record's heap (must be valid).
+ * oos_vfid (in)  : OOS file of the record's heap (needed when the record has an ordinary OOS chain).
  * record (in)	  : Heap record whose OOS references are reclaimed.
  * owner_oid (in) : The record's OID, for diagnostics.
+ * internal_lob_vfid (in) : internal LOB file of the heap (needed when the record has an internal LOB chain).
  */
 int
 vacuum_heap_oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
-				    const OID *owner_oid)
+				    const OID *owner_oid, const VFID *internal_lob_vfid)
 {
-  assert (!VFID_ISNULL (oos_vfid));
-
-  OOS_REF_VECTOR oos_refs;
-  int error_code = heap_recdes_get_oos_refs (record, oos_refs);
+  HEAP_OOS_REFERENCE_VECTOR references;
+  int error_code = heap_recdes_get_oos_references (thread_p, record, references);
   if (error_code != NO_ERROR)
     {
       if (error_code != ER_OUT_OF_VIRTUAL_MEMORY)
@@ -184,19 +187,53 @@ vacuum_heap_oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFID *oos_vfid
     }
   assert (LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
 
-  /* Sort by head OID so the reclaim visits nearby pages back to back. */
-  std::sort (oos_refs.begin (), oos_refs.end (), [] (const oos_chain_ref &a, const oos_chain_ref &b)
-  {
-    return oid_compare (&a.head_oid, &b.head_oid) < 0;
-  });
-
-  error_code = oos_log_reclaim_intent (thread_p, *oos_vfid, *owner_oid, 0, "vacuum remove", oos_refs);
-  if (error_code != NO_ERROR)
+  /* one intent per file: internal LOB chains live in the heap's internal LOB file */
+  OOS_REF_VECTOR oos_refs;
+  OOS_REF_VECTOR lob_refs;
+  try
     {
-      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to record the OOS reclaim of record %d|%d|%d.",
-			   OID_AS_ARGS (owner_oid));
+      for (const HEAP_OOS_REFERENCE &reference : references)
+	{
+	  (TP_IS_LOB_TYPE (reference.type) ? lob_refs : oos_refs).push_back (reference.ref);
+	}
     }
-  return error_code;
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, references.size () * sizeof (oos_chain_ref));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  const VFID *vfids[2] = { oos_vfid, internal_lob_vfid };
+  OOS_REF_VECTOR *refs[2] = { &oos_refs, &lob_refs };
+  for (int i = 0; i < 2; i++)
+    {
+      if (refs[i]->empty ())
+	{
+	  continue;
+	}
+      if (vfids[i] == NULL || VFID_ISNULL (vfids[i]))
+	{
+	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "%s reference %d|%d|%d without its file; skipped (bounded leak)",
+			       i == 0 ? "OOS" : "Internal LOB", OID_AS_ARGS (&refs[i]->front ().head_oid));
+	  assert (false);
+	  continue;
+	}
+
+      /* Sort by head OID so the reclaim visits nearby pages back to back. */
+      std::sort (refs[i]->begin (), refs[i]->end (), [] (const oos_chain_ref &a, const oos_chain_ref &b)
+      {
+	return oid_compare (&a.head_oid, &b.head_oid) < 0;
+      });
+
+      error_code = oos_log_reclaim_intent (thread_p, *vfids[i], *owner_oid, 0, "vacuum remove", *refs[i]);
+      if (error_code != NO_ERROR)
+	{
+	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to record the OOS reclaim of record %d|%d|%d.",
+			       OID_AS_ARGS (owner_oid));
+	  return error_code;
+	}
+    }
+  return NO_ERROR;
 }
 
 /*
@@ -205,11 +242,13 @@ vacuum_heap_oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFID *oos_vfid
  *
  * thread_p (in)	  : Thread entry.
  * emptied_pages (in/out) : The pages are appended, each once.
+ * oos_vfid (in)	  : When not NULL, only pages of this file are collected; others stay in their file's set.
  */
 void
-vacuum_oos_sysop_commit_collecting_emptied_pages (THREAD_ENTRY *thread_p, VACUUM_OOS_EMPTIED_PAGES *emptied_pages)
+vacuum_oos_sysop_commit_collecting_emptied_pages (THREAD_ENTRY *thread_p, VACUUM_OOS_EMPTIED_PAGES *emptied_pages,
+    const VFID *oos_vfid)
 {
-  oos_emptied_page_sink sink (*emptied_pages);
+  oos_emptied_page_sink sink (*emptied_pages, oos_vfid);
   log_sysop_commit (thread_p);
 }
 

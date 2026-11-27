@@ -1615,7 +1615,7 @@ load_object_file (load_args * args, int *exit_status)
   /* *INDENT-ON* */
 
   // here we are sure that object_file exists since it was validated by loaddb_internal function
-  return split (args->periodic_commit, args->object_file, c_handler, b_handler);
+  return split (args->periodic_commit, args->object_file, c_handler, b_handler, args->syntax_check);
 }
 
 static T_SCHEMA_FILE_LIST_INFO **

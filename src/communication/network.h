@@ -312,6 +312,13 @@
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_READ) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_RELEASE) \
   \
+  /* the transitional internal LOB upload-token protocol */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_INTERNAL_LOB_UPLOAD_RELEASE) \
+  /* END of an internal LOB DML stream, whose statement may call back to the client */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_INTERNAL_LOB_DML_END) \
+  /* the internal LOB locators a session's client was given, kept in the session when a CAS lets the client go */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_INTERNAL_LOB_ISSUED) \
+  \
   /* what the cached XASL of an XASL_ID writes, for a stored procedure inside a SQL statement */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_QUERY_GET_STMT_INFO) \
   \

@@ -165,10 +165,11 @@ class OosReclaimTest : public ::testing::Test
     }
 };
 
-/* ADR-0008 decision 4: the chunk header grows to 32B and every link carries the next chunk's stamp. */
+/* ADR-0008 decision 4: every link carries the next chunk's stamp; with the 64-bit total length of internal LOB the
+ * chunk header is 40B. */
 TEST_F (OosReclaimTest, EveryLinkCarriesTheStampTheNextChunkWasWrittenWith)
 {
-  EXPECT_EQ (OOS_RECORD_HEADER_SIZE, 32);
+  EXPECT_EQ (OOS_RECORD_HEADER_SIZE, 40);
 
   std::vector<oos_chain_ref> chunks;
   insert_chain (oos_vfid, 4, chunks);

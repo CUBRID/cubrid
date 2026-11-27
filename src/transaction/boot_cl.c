@@ -1697,6 +1697,8 @@ boot_finish_client_transaction (void)
 static int
 boot_shutdown_client_internal (bool is_er_final, bool finalize_modules)
 {
+  internal_lob_locator_forget_issued ();
+
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
       if (boot_finish_client_transaction ())

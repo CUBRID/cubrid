@@ -290,13 +290,15 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  *   key_dbvalue(in): Primary Key value
  *   prior_dbvalue(in): NULL, or the value packed after the key (see LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC)
  *   serial_issue(in): mark a _db_serial write that issues values (see LOG_REPL_SERIAL_ISSUE_MAGIC)
+ *   oos_attrid(in): NULL_ATTRID, or the target attribute packed after the key of an OOS record
+ *                   (see REPL_OOS_METADATA_MAGIC)
  *
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
 static int
 repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
 			  LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info,
-			  DB_VALUE * prior_dbvalue, bool serial_issue)
+			  DB_VALUE * prior_dbvalue, bool serial_issue, int oos_attrid)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -305,6 +307,10 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
   char *class_name = NULL;
   char *ptr;
   int error = NO_ERROR, strlen;
+  bool is_oos_repl = REPL_IS_OOS_RCVINDEX (rcvindex);
+
+  assert (!is_oos_repl || oos_attrid != NULL_ATTRID);
+  assert (!is_oos_repl || (prior_dbvalue == NULL && !serial_issue));
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -407,6 +413,10 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 	{
 	  repl_rec->length += INT_ALIGNMENT + OR_INT_SIZE + OR_INT_SIZE;
 	}
+      if (is_oos_repl)
+	{
+	  repl_rec->length += 2 * OR_INT_SIZE;	/* metadata magic and target attrid */
+	}
 
       ptr = (char *) malloc (repl_rec->length);
       if (ptr == NULL)
@@ -428,6 +438,14 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 
       ptr = or_pack_string_with_length (ptr, class_name, strlen);
       ptr = or_pack_mem_value (ptr, key_dbvalue, &packed_key_len);
+      if (is_oos_repl)
+	{
+	  ptr = or_pack_int (ptr, REPL_OOS_METADATA_MAGIC);
+	  ptr = or_pack_int (ptr, oos_attrid);
+	  /* OR_VALUE_ALIGNED_SIZE includes spare alignment capacity. Trim it so the metadata trailer is
+	   * unambiguous; legacy appliers ignore the extra trailer after the packed key. */
+	  repl_rec->length = CAST_BUFLEN (ptr - repl_rec->repl_data);
+	}
 
       /* fill the length of disk image of pk */
       or_pack_int (ptr_to_packed_key_value_size, packed_key_len);
@@ -487,6 +505,7 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 	}
       break;
     case RVREPL_OOS_INSERT:
+    case RVREPL_INTERNAL_LOB_INSERT:
     case RVREPL_DUMMY_OOS_RECORD:
       if (!tdes->oos_insert_lsa_queue.is_empty ())
 	{
@@ -551,6 +570,22 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
   return error;
 }
 
+int
+repl_log_insert_oos (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid,
+		     LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info, int attrid)
+{
+  assert (REPL_IS_OOS_RCVINDEX (rcvindex));
+
+  if (!REPL_IS_OOS_RCVINDEX (rcvindex) || attrid == NULL_ATTRID)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "invalid typed OOS replication metadata");
+      return ER_REPL_ERROR;
+    }
+
+  return repl_log_insert_internal (thread_p, class_oid, inst_oid, LOG_REPLICATION_DATA, rcvindex, key_dbvalue,
+				   repl_info, NULL, false, attrid);
+}
+
 /*
  * repl_log_insert - insert a replication info to the transaction descriptor
  *
@@ -567,7 +602,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info)
 {
   return repl_log_insert_internal (thread_p, class_oid, inst_oid, log_type, rcvindex, key_dbvalue, repl_info, NULL,
-				   false);
+				   false, NULL_ATTRID);
 }
 
 /*
@@ -598,7 +633,8 @@ repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_o
   tdes->suppress_replication = 0;
 
   error = repl_log_insert_internal (thread_p, oid_Serial_class_oid, serial_oidp, LOG_REPLICATION_DATA,
-				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, prior_dbvalue, false);
+				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, prior_dbvalue, false,
+				    NULL_ATTRID);
   if (error == NO_ERROR)
     {
       error = repl_add_update_lsa (thread_p, serial_oidp);
@@ -627,7 +663,8 @@ repl_log_insert_serial_issue (THREAD_ENTRY * thread_p, const OID * serial_class_
   int error;
 
   error = repl_log_insert_internal (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA,
-				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, NULL, true);
+				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, NULL, true,
+				    NULL_ATTRID);
   if (error == NO_ERROR)
     {
       error = repl_add_update_lsa (thread_p, serial_oidp);
@@ -848,14 +885,14 @@ repl_log_abort_after_lsa (LOG_TDES * tdes, LOG_LSA * start_lsa)
 /*
  * repl_is_oos_item - whether the replication record is an OOS item of a heap row
  *
- * return: true for RVREPL_OOS_INSERT, RVREPL_DUMMY_OOS_RECORD and RVREPL_OOS_REUSE
+ * return: true for RVREPL_OOS_INSERT, RVREPL_INTERNAL_LOB_INSERT, RVREPL_DUMMY_OOS_RECORD and RVREPL_OOS_REUSE
  *
  *   rcvindex(in):
  */
 static bool
 repl_is_oos_item (LOG_RCVINDEX rcvindex)
 {
-  return rcvindex == RVREPL_OOS_INSERT || rcvindex == RVREPL_DUMMY_OOS_RECORD || rcvindex == RVREPL_OOS_REUSE;
+  return REPL_IS_OOS_RCVINDEX (rcvindex);
 }
 
 /*

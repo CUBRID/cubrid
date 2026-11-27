@@ -210,8 +210,11 @@ typedef enum
   RVOOS_UPDATE_DROP_POSTPONE = 143,	/* logical postpone: append RVOOS_NOTIFY_VACUUM once an UPDATE commits */
   RVREPL_OOS_REUSE = 144,	/* OOS replication marker: the UPDATE reused this column's chain */
   RVHF_SERIAL_DDL_UPDATE_UNDO = 145,
+  /* Replication-only record. The target WAL record is still RVOOS_INSERT; this tag preserves
+   * FILE_INTERNAL_LOB as the replica-side destination. Append-only on-disk value. */
+  RVREPL_INTERNAL_LOB_INSERT = 146,
 
-  RV_LAST_LOGID = RVHF_SERIAL_DDL_UPDATE_UNDO,
+  RV_LAST_LOGID = RVREPL_INTERNAL_LOB_INSERT,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;

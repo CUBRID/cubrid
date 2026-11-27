@@ -1554,7 +1554,11 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1422 Cannot restore the login user %2$s of session %1$u. Open a new connection.
 
-1423 Last Error
+1423 The unload file's LOB charset (%1$s) differs from this database (%2$s); load aborted.
+1424 LOB locator is not authorized for the current user or session.
+1425 The LOB sidecar file is missing, or a reference in the load file is not in it.
+1426 The LOB value this locator refers to no longer exists; fetch the row again.
+1427 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1722,6 +1726,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Maximum length of a server user is %1$d bytes.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
 140 FILL_FACTOR argument must be between %1$d and %2$d.
+141 invalid use of clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -2074,6 +2079,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
 346 Argument %1$d of %2$s must be a bind variable (? or :name) because it is passed to an %3$s parameter.
+347 CLOB literal exceeds 1 GiB. Values over 1 GiB can be loaded with CLOB_FROM_FILE or CFILE_TO_CLOB (up to 4 GiB).
+348 BLOB literal exceeds 128 MiB. Values over 128 MiB can be loaded with BLOB_FROM_FILE or BFILE_TO_BLOB (up to 4 GiB).
 
 
 

@@ -31,7 +31,7 @@
 
 struct oos_record_header
 {
-  int total_data_length;	/* total length of user data across all chunks (excluding OOS headers) */
+  INT64 total_data_length;	/* total length of user data across all chunks (excluding OOS headers) */
   int chunk_index;		/* 0-based index of this chunk in the chain */
   OID next_chunk_oid;		/* OID of next chunk, or NULL OID if this is the last */
   LOG_LSA next_chunk_stamp;	/* identity stamp the next chunk carries, or NULL_LSA if this is the last.
@@ -74,13 +74,14 @@ struct oos_chain_ref
  * for a malformed chain, which a rerun rejects again: it is reported and left in place. */
 enum oos_reclaim_intent_flag
 {
-  OOS_RECLAIM_DIAGNOSE_SKIPS = 0x1	/* the owner held the only reference; report a skipped chain */
+  OOS_RECLAIM_DIAGNOSE_SKIPS = 0x1,	/* the owner held the only reference; report a skipped chain */
+  OOS_RECLAIM_INTERNAL_LOB = 0x2	/* an UPDATE's chains are in the heap's internal LOB file, not its OOS file */
 };
 
 extern int oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &owner_oid, int flags,
 				   const char *op_ctx, const std::vector<oos_chain_ref> &refs);
 extern int oos_log_update_drop_intent (THREAD_ENTRY *thread_p, const HFID &heap_hfid,
-				       const std::vector<oos_chain_ref> &refs);
+				       const std::vector<oos_chain_ref> &refs, int flags = 0);
 /* Vacuum's consumer of one RVOOS_NOTIFY_VACUUM record. emptied_vpids receives the pages the deletes
  * emptied. The notify record names its OOS file; it is returned through oos_vfid_out. Returns NO_ERROR,
  * ER_INTERRUPTED (shutdown), or the error of a failed heap header lookup for the OOS file, whose heap is
@@ -95,17 +96,19 @@ extern int oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *noti
 
 /* While one is in scope on a thread, the reclaim postpones that run on that thread report the pages
  * they empty to it instead of discarding them. Vacuum opens one around the sysop commit of a REMOVE,
- * then hands the pages to oos_reclaim_empty_pages after unfixing the heap page. */
+ * then hands the pages to oos_reclaim_empty_pages after unfixing the heap page. With vfid, only the pages
+ * of that file are reported; a page of another file (an internal LOB file) stays in its own file's set. */
 class oos_emptied_page_sink
 {
   public:
-    explicit oos_emptied_page_sink (std::vector<VPID> &pages);
+    explicit oos_emptied_page_sink (std::vector<VPID> &pages, const VFID *vfid = NULL);
     ~oos_emptied_page_sink ();
     oos_emptied_page_sink (const oos_emptied_page_sink &) = delete;
     oos_emptied_page_sink &operator= (const oos_emptied_page_sink &) = delete;
 
   private:
     std::vector<VPID> *m_previous;
+    const VFID *m_previous_vfid;
 };
 
 /* What oos_delete did with the chain a reference names. Every skip is a successful call that modified
@@ -204,6 +207,10 @@ struct oos_hdr_stats
 };
 
 extern int oos_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid, VFID &oos_vfid);
+/* Internal LOB storage reuses the OOS file layout under its own file type; the owner descriptor is required so
+ * FILE_INTERNAL_LOB stays traversable and lock-protectable exactly like FILE_OOS. */
+extern int oos_create_file_with_type (THREAD_ENTRY *thread_p, int file_type, const HFID &heap_hfid,
+				      const OID &class_oid, VFID &oos_vfid);
 #if defined (CUBRID_UNIT_TEST_ENABLED)
 /* Low-level OOS tests use a synthetic, non-null owner descriptor while exercising storage in isolation. */
 extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
@@ -223,6 +230,47 @@ extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer 
 /* Inserts requests in logical order; each request receives its head OOS OID and, when asked, the
  * head chunk's identity stamp. */
 extern int oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos_insert_request> requests);
+
+/* ---- Incremental chain writer ----------------------------------------------------------------
+ *
+ * Builds the same chunk chain as oos_insert () without the whole value in memory.  Chunks come TAIL-FIRST, so
+ * each header is stamped with the already-written next chunk's OID and the last one inserted is the head.  Each
+ * is published for replication as a standalone record; the chunk count must be known up front.
+ */
+struct oos_chain_writer
+{
+  VFID oos_vfid;
+  INT64 total_data_length;	/* stamped into every chunk header */
+  int next_index;		/* chunk_index of the next chunk to insert; counts down to 0 (head) */
+  OID next_chunk_oid;		/* the already-written following chunk; NULL while writing the tail */
+  LOG_LSA next_chunk_stamp;	/* that chunk's identity stamp, stored in the link (ADR-0008) */
+};
+using OOS_CHAIN_WRITER = struct oos_chain_writer;
+
+/* Usable payload bytes in one chunk (the chain header is already excluded). */
+extern int oos_chain_max_chunk_payload (void);
+/* total_chunks: how many chunks the value will be split into (>= 1). */
+extern void oos_chain_insert_begin (const VFID &oos_vfid, INT64 total_data_length, int total_chunks,
+				    OOS_CHAIN_WRITER &writer);
+/* Inserts the next chunk (tail-first order) and returns its OID; identity_stamp_out (optional) receives the
+ * chunk's identity stamp, and the head chunk's is the one the OOS inline stub must carry. */
+extern int oos_chain_insert_next (THREAD_ENTRY *thread_p, OOS_CHAIN_WRITER &writer, oos_buffer chunk, OID &oid,
+				  LOG_LSA *identity_stamp_out = NULL);
+/* Inserts one chunk with a caller-supplied chain position.  Used where the position is dictated from
+ * outside instead of a local countdown - notably HA apply, which re-inserts a replicated chunk keeping
+ * the master's chunk_index but relinking next_chunk_oid to the slave's own preceding chunk. */
+extern int oos_chain_insert_chunk (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer chunk,
+				   INT64 total_data_length, int chunk_index, const OID &next_chunk_oid,
+				   const LOG_LSA &next_chunk_stamp, OID &oid,
+				   LOG_LSA *identity_stamp_out = NULL);
+/* Reads one chunk addressed directly by OID, returning its chain header (with its identity stamp) and payload; an
+ * empty dest fetches only the header (to walk a chain without copying payload). */
+extern int oos_chain_read_chunk (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest, int &payload_len,
+				 OOS_RECORD_HEADER &header);
+/* True when the next chunk to insert is the chain head (chunk_index 0). */
+extern bool oos_chain_insert_is_head_next (const OOS_CHAIN_WRITER &writer);
+/* True once every chunk has been inserted (the last returned OID is the head). */
+extern bool oos_chain_insert_done (const OOS_CHAIN_WRITER &writer);
 /* Reads exactly dest.size() bytes of the chain ref names; the caller obtains the length from the
  * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. A stale reference fails
  * with ER_HEAP_OOS_CORRUPTED_RECORD and never delivers another chain's bytes into dest: a
@@ -267,7 +315,27 @@ extern int oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_e
  * reference in tests and diagnostics. Fails when the page is deallocated or no longer an OOS page,
  * or the slot is absent. */
 extern int oos_get_identity_stamp (THREAD_ENTRY *thread_p, const OID &head_oid, LOG_LSA *identity_stamp_out);
-extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
+extern INT64 oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
+
+/* Forward-only streaming reader over an OOS chunk chain: open with oos_read_open on the chain reference, then call
+ * oos_read_pull until nread == 0.  Memory stays bounded and the chain is walked once, unlike repeated oos_read.
+ * A head chunk that does not carry the reference's identity stamp, or a chunk whose slot another chain took while
+ * the walk was on its way, fails with ER_HEAP_OOS_CORRUPTED_RECORD. */
+struct oos_reader
+{
+  OID current;			/* chunk currently being read; NULL OID once exhausted */
+  LOG_LSA head_identity_stamp;	/* the reference's identity stamp, checked when the head is read */
+  LOG_LSA current_identity_stamp;	/* stamp `current` had when first read; a resumed read must find it again */
+  OID prev;			/* the chunk before `current`, which must still link to it */
+  LOG_LSA prev_identity_stamp;
+  int chunk_consumed;		/* bytes already returned from current chunk's payload */
+  int next_index;		/* expected chunk_index of `current` (0 at head) */
+};
+using OOS_READER = struct oos_reader;
+
+extern int oos_read_open (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, OOS_READER &reader);
+extern int oos_chain_check_link (THREAD_ENTRY *thread_p, const OID &prev, const LOG_LSA &prev_stamp, const OID &next);
+extern int oos_read_pull (THREAD_ENTRY *thread_p, OOS_READER &reader, oos_buffer dest, int &nread);
 
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 extern int oos_rv_undo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv);

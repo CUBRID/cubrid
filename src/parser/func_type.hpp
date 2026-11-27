@@ -99,6 +99,7 @@ namespace func_type
 
     protected:
       bool preprocess(); //preprocess current function node type for special cases
+      bool check_lob_args (); //refuse an implicit conversion of a LOB argument
       const func_signature *get_signature (const func_all_signatures &signatures);
       void set_return_type (const func_signature &signature); //set return type for current node in current context
       bool apply_signature (const func_signature &signature); //apply function signature with casts if necessary

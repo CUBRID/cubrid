@@ -121,6 +121,7 @@ typedef enum
   LC_FLUSH_UPDATE_PRUNE,
   LC_FLUSH_UPDATE_PRUNE_VERIFY,
   LC_FETCH_VERIFY_CHN,
+  LC_FLUSH_INSERT_INTERNAL_LOB,
   LC_FLUSH_REUSE_OOS
 } LC_COPYAREA_OPERATION;
 
@@ -128,12 +129,16 @@ typedef enum
  * primary key to look up). locator_mflush never produces it. */
 #define LC_IS_FLUSH_INSERT(operation) \
   (operation == LC_FLUSH_INSERT || operation == LC_FLUSH_INSERT_PRUNE \
-   || operation == LC_FLUSH_INSERT_PRUNE_VERIFY || operation == LC_FLUSH_INSERT_OOS)
+   || operation == LC_FLUSH_INSERT_PRUNE_VERIFY || operation == LC_FLUSH_INSERT_OOS \
+   || operation == LC_FLUSH_INSERT_INTERNAL_LOB)
+
+#define LC_IS_FLUSH_INSERT_OOS(operation) \
+  (operation == LC_FLUSH_INSERT_OOS || operation == LC_FLUSH_INSERT_INTERNAL_LOB)
 
 /* A replicated OOS item belongs to the heap row that follows it in the same force area: a new chain
- * (LC_FLUSH_INSERT_OOS) or a chain the master's UPDATE reused, which carries no record (LC_FLUSH_REUSE_OOS). */
+ * (LC_IS_FLUSH_INSERT_OOS) or a chain the master's UPDATE reused, which carries no record (LC_FLUSH_REUSE_OOS). */
 #define LC_IS_FLUSH_OOS_ITEM(operation) \
-  ((operation) == LC_FLUSH_INSERT_OOS || (operation) == LC_FLUSH_REUSE_OOS)
+  (LC_IS_FLUSH_INSERT_OOS (operation) || (operation) == LC_FLUSH_REUSE_OOS)
 
 #define LC_IS_FLUSH_UPDATE(operation) \
   (operation == LC_FLUSH_UPDATE || operation == LC_FLUSH_UPDATE_PRUNE \

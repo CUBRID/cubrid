@@ -588,6 +588,9 @@ extern "C"
 /* This constant defines the maximum length of a LOB value that can be used as the value of an attribute. */
 #define DB_MAX_LOB_LENGTH 0x3fffffff
 
+/* Maximum physical payload accepted by the internal LOB streaming storage path (4 GiB). */
+#define DB_MAX_INTERNAL_LOB_LENGTH 0x100000000LL
+
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION (40)
 
@@ -790,16 +793,16 @@ extern "C"
     DB_TYPE_TABLE = 30,		/* internal use only */
     DB_TYPE_BIGINT = 31,
     DB_TYPE_DATETIME = 32,
-    DB_TYPE_BFILE = 33,
-    DB_TYPE_CFILE = 34,
-    DB_TYPE_BLOB = 35,
-    DB_TYPE_CLOB = 36,
-    DB_TYPE_ENUMERATION = 37,
-    DB_TYPE_TIMESTAMPTZ = 38,
-    DB_TYPE_TIMESTAMPLTZ = 39,
-    DB_TYPE_DATETIMETZ = 40,
-    DB_TYPE_DATETIMELTZ = 41,
-    DB_TYPE_JSON = 42,
+    DB_TYPE_BLOB = 33,
+    DB_TYPE_CLOB = 34,
+    DB_TYPE_ENUMERATION = 35,
+    DB_TYPE_TIMESTAMPTZ = 36,
+    DB_TYPE_TIMESTAMPLTZ = 37,
+    DB_TYPE_DATETIMETZ = 38,
+    DB_TYPE_DATETIMELTZ = 39,
+    DB_TYPE_JSON = 40,
+    DB_TYPE_BFILE = 41,
+    DB_TYPE_CFILE = 42,
 
     /* aliases */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
@@ -807,7 +810,7 @@ extern "C"
     DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
     DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP */
 
-    DB_TYPE_LAST = DB_TYPE_JSON
+    DB_TYPE_LAST = DB_TYPE_CFILE
   } DB_TYPE;
 
   /* Domain information stored in DB_VALUE structures. */

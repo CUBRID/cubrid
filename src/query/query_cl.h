@@ -37,6 +37,26 @@ extern int prepare_query (compile_context * context, xasl_stream * stream);
 extern int execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const DB_VALUE * varptr,
 			  QFILE_LIST_ID ** list_idp, QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
 			  CACHE_TIME * srv_cache_time);
+extern int execute_query_with_internal_lob_dml (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt,
+						const DB_VALUE * varptr, QFILE_LIST_ID ** list_idp, QUERY_FLAG flag,
+						CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time,
+						const OID * direct_class_oid, const bool * used_vars,
+						const bool * direct_vars);
+extern int check_client_internal_lob_dml_params (int var_cnt, const DB_VALUE * varptr, const bool * used_vars);
+extern int query_set_one_shot_plan_key (compile_context * context);
+extern void query_drop_one_shot_plan (const compile_context * context);
+#if defined(CS_MODE)
+extern bool query_is_internal_lob_file_source (const DB_VALUE * value);
+extern int query_copy_without_unused_file_sources (int var_cnt, const DB_VALUE * varptr, const bool * used_vars,
+						   DB_VALUE ** copy_out);
+extern bool query_needs_internal_lob_dml_stream (int var_cnt, const DB_VALUE * varptr, const bool * used_vars,
+						 const bool * direct_vars);
+extern int prepare_and_execute_query_with_internal_lob_dml (char *stream, int stream_size, QUERY_ID * query_idp,
+							    int var_cnt, const DB_VALUE * varptr,
+							    QFILE_LIST_ID ** list_idp, QUERY_FLAG flag,
+							    const OID * direct_class_oid, const bool * used_vars,
+							    const bool * direct_vars);
+#endif /* CS_MODE */
 extern int prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id, int var_cnt,
 				      DB_VALUE * varptr, QFILE_LIST_ID ** result, QUERY_FLAG flag);
 

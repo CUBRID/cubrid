@@ -640,6 +640,7 @@ check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type)
 static void
 extractobjects_cleanup ()
 {
+  internal_lob_unload_sidecar_close ();
   close_object_file ();
 
   if (obj_table != NULL)
@@ -804,6 +805,15 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
     {
       status = 1;
       goto end;
+    }
+
+  if (!datafile_per_class)
+    {
+      if (internal_lob_unload_sidecar_open (output_dirname, ctxt.output_prefix) != NO_ERROR)
+	{
+	  status = 1;
+	  goto end;
+	}
     }
 
   obj_out = &(g_thr_param[0].text_output);
@@ -1220,6 +1230,8 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 
 	      if (datafile_per_class && IS_CLASS_REQUESTED (i))
 		{
+		  char sidecar_prefix[PATH_MAX];
+
 		  ws_find (class_table->mops[i], (MOBJ *) (&class_ptr));
 		  if (class_ptr == NULL)
 		    {
@@ -1232,6 +1244,16 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 		      status = 1;
 		      goto end;
 		    }
+
+		  /* The per-class object file is <prefix>_<class>_objects; loaddb derives the sidecar name
+		   * by stripping _objects and appending _internal_lob, so the sidecar must be per-class too. */
+		  snprintf (sidecar_prefix, sizeof (sidecar_prefix), "%s_%s", ctxt.output_prefix,
+			    sm_ch_name ((MOBJ) class_ptr));
+		  if (internal_lob_unload_sidecar_open (output_dirname, sidecar_prefix) != NO_ERROR)
+		    {
+		      status = 1;
+		      goto end;
+		    }
 		}
 
 	      ret_val = process_class (ctxt, i, nthreads, data_format);
@@ -1239,6 +1261,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 	      if (datafile_per_class && IS_CLASS_REQUESTED (i))
 		{
 		  close_object_file ();
+		  internal_lob_unload_sidecar_close ();
 		}
 
 	      if (ret_val != NO_ERROR)
@@ -1399,7 +1422,7 @@ unload_printer (LC_COPYAREA * fetch_area, DESC_OBJ * desc_obj, TEXT_OUTPUT * obj
       ++total_objects_atomic;
       LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
       TIMER_BEGIN ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[0]));
-      error = desc_disk_to_obj (g_uci->class_, g_uci->class_ptr, &recdes, desc_obj, true);
+      error = desc_disk_to_obj (g_uci->class_, g_uci->class_ptr, &recdes, desc_obj, DESC_OOS_TEXT_LOCATOR);
       TIMER_END ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[0]));
       if (error == NO_ERROR)
 	{
@@ -1466,11 +1489,13 @@ unload_extractor_thread (void *param)
   pthread_t tid = pthread_self ();
   TEXT_OUTPUT *obj_out = &(parg->text_output);
   DESC_OBJ *desc_obj = make_desc_obj (g_uci->class_ptr, g_pre_alloc_varchar_size);
+
   if (desc_obj == NULL)
     {
       thr_ret = ER_FAILED;
     }
-  else
+
+  if (thr_ret == NO_ERROR)
     {
       LC_COPYAREA_NODE *node = NULL;
       cuberr::context * er_context_p;
@@ -1563,9 +1588,13 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
   while ((nobjects != nfetched) && (error_occurred == false))
     {
       TIMER_BEGIN ((g_sampling_records >= 0), &(g_uci->wi_fetch));
+      /* Let the server expand OOS stubs (keep_oos_locators = false): ordinary OOS values come back inline, the only
+       * form printable here, and an Internal LOB stub as its locator text, which
+       * fprint_internal_lob_ref_if_locator () turns into a sidecar reference. */
       error = locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area,
 				 g_request_pages, g_parallel_process_cnt,
-				 (g_parallel_process_idx - 1) /* to zero base */ );
+				 (g_parallel_process_idx - 1) /* to zero base */ ,
+				 false);
       TIMER_END ((g_sampling_records >= 0), &(g_uci->wi_fetch));
       if (error == NO_ERROR)
 	{
@@ -1948,6 +1977,18 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 	      done = true;
 	      break;
 
+	    case DB_TYPE_BLOB:
+	    case DB_TYPE_CLOB:
+	      /* Internal LOB unload materializes OOS data into the sidecar file.  Keep it single-threaded so
+	       * standalone page-buffer access and client/server requests both run through the utility thread.
+	       * A binary section has no form for an internal LOB value either. */
+	      fprintf (stderr, "warning: %s%s%s has %s type.\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
+		       db_get_type_name (db_type));
+	      nthreads = 0;
+	      data_format = OBJECT_FORMAT_TEXT;
+	      done = true;
+	      break;
+
 	    case DB_TYPE_SET:
 	    case DB_TYPE_MULTISET:
 	    case DB_TYPE_SEQUENCE:
@@ -1967,20 +2008,6 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 		  nthreads = 0;
 		  data_format = OBJECT_FORMAT_TEXT;
 		  done = true;
-		}
-	      break;
-
-	    case DB_TYPE_BLOB:
-	    case DB_TYPE_CLOB:
-	      /* a binary section has no form for an internal LOB value */
-	      if (data_format != OBJECT_FORMAT_TEXT)
-		{
-		  fprintf (stderr, "warning: %s%s%s has %s type.\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
-			   db_get_type_name (db_type));
-		  fprintf (stderr, "So for class %s%s%s, %s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
-			   optmsg2);
-		  fflush (stderr);
-		  data_format = OBJECT_FORMAT_TEXT;
 		}
 	      break;
 
