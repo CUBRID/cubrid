@@ -429,7 +429,7 @@ static PARSER_VARCHAR *pt_print_set_xaction (PARSER_CONTEXT * parser, PT_NODE * 
 static PARSER_VARCHAR *pt_print_showstmt (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p);
-static PARSER_VARCHAR *pt_print_false_query (PARSER_CONTEXT * parser, const PT_NODE * attr_list);
+static PARSER_VARCHAR *pt_print_false_query (PARSER_CONTEXT * parser, PT_NODE * value, const PT_NODE * attr_list);
 static PT_NODE *pt_pad_attr_list_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * attr_list, PT_NODE * select_list);
 static PARSER_VARCHAR *pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -9975,19 +9975,27 @@ pt_init_spec (PT_NODE * p)
 }
 
 /*
- * pt_print_false_query () - print a query that returns no row, of a column for each of attr_list
+ * pt_print_false_query () - print the query that a derived table or a CTE definition folded to a false where value
+ *			     returns no row of
  *   return:
  *   parser(in):
+ *   value(in): the false where value (PT_IS_FALSE_WHERE_VALUE)
  *   attr_list(in): the columns of the derived table or the CTE
  *
  * Note: constant folding (pt_to_false_subquery ()) replaces a derived table or a CTE definition that returns no row by
- *	 a NULL value, which the grammar does not take in their place. They are printed as this query instead, so that
- *	 a stored view definition reads back
+ *	 a NULL value, which the grammar does not take in their place. They are printed as a query instead, so that a
+ *	 stored view definition reads back: the query folded, which keeps the types of the columns, or else (a set
+ *	 operation folded by pt_fold_union ()) an empty query of NULL columns
  */
 static PARSER_VARCHAR *
-pt_print_false_query (PARSER_CONTEXT * parser, const PT_NODE * attr_list)
+pt_print_false_query (PARSER_CONTEXT * parser, PT_NODE * value, const PT_NODE * attr_list)
 {
   PARSER_VARCHAR *q = NULL;
+
+  if (value->info.value.is_false_where && value->info.value.false_query != NULL)
+    {
+      return pt_print_bytes (parser, value->info.value.false_query);
+    }
 
   q = pt_append_nulstring (parser, q, "select null");
   for (attr_list = (attr_list != NULL) ? attr_list->next : NULL; attr_list != NULL; attr_list = attr_list->next)
@@ -10137,9 +10145,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       if (p->info.spec.derived_table_type == PT_IS_SUBQUERY && PT_IS_FALSE_WHERE_VALUE (p->info.spec.derived_table))
 	{
-	  r1 = pt_append_nulstring (parser, NULL, "(");
-	  r1 = pt_append_varchar (parser, r1, pt_print_false_query (parser, p->info.spec.as_attr_list));
-	  r1 = pt_append_nulstring (parser, r1, ")");
+	  r1 = pt_print_false_query (parser, p->info.spec.derived_table, p->info.spec.as_attr_list);
 	}
       else
 	{
@@ -18774,7 +18780,7 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (PT_IS_FALSE_WHERE_VALUE (p->info.cte.non_recursive_part))
     {
-      r1 = pt_print_false_query (parser, as_attr_list);
+      r1 = pt_print_false_query (parser, p->info.cte.non_recursive_part, as_attr_list);
     }
   else
     {

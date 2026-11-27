@@ -7433,6 +7433,7 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
   const char *alias_print;
   PT_SELECT_INFO *subq;
   PT_NODE *col, *set, *spec, *old_list, *old_col;
+  PT_NODE *false_query;
 
   if (node->info.query.flag.has_outer_spec == 1 || node->info.query.flag.is_sort_spec
       || node->info.query.flag.is_insert_select)
@@ -7589,12 +7590,12 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
       alias_print = node->alias_print;
 
       node->next = NULL;
-      parser_free_tree (parser, node);
+      false_query = node;
 
       node = parser_new_node (parser, PT_VALUE);
       if (!node)
 	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  PT_ERRORm (parser, false_query, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	  return NULL;
 	}
 
@@ -7604,6 +7605,9 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
       node->type_enum = PT_TYPE_NULL;
       node->info.value.location = 0;
       node->info.value.is_false_where = true;
+      /* kept for printing: a view stores its query printed after this folding, and the grammar does not take a value
+       * for a derived table or a CTE definition. The query keeps the types of its columns, which a NULL lacks */
+      node->info.value.false_query = false_query;
       node->flag.is_hidden_column = hidden;
       node->next = next;	/* restore link */
     }
