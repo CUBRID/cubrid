@@ -2459,7 +2459,8 @@ domain_key_converts_losslessly (DB_TYPE source, const TP_DOMAIN * column)
 
     case DB_TYPE_DATE:
     case DB_TYPE_TIMESTAMP:
-      /* DATETIME spans the dates of both and holds their seconds; a DATE becomes its midnight */
+      /* DATETIME spans the dates of both and holds their seconds: a DATE becomes its midnight, a TIMESTAMP its local
+       * time, which repeats an hour at the end of daylight saving time */
       return target == DB_TYPE_DATETIME;
 
     case DB_TYPE_TIMESTAMPTZ:
