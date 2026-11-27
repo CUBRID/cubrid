@@ -24018,6 +24018,22 @@ qexec_bind_checksum (int count, const DB_VALUE * values)
 			   || TP_IS_SET_TYPE (type) || TP_IS_LOB_TYPE (type) || type == DB_TYPE_OID
 			   || type == DB_TYPE_VOBJ || type == DB_TYPE_ENUMERATION || type == DB_TYPE_JSON);
       sum = sum * 31 + ((DB_IS_NULL (value) || !hashed) ? 1 : mht_valhash (value, UINT_MAX));
+
+      /* mht_valhash () hashes by value, which a coercion in place keeps (a NUMERIC 1.5 to 1.50, a -0.0 to 0.0) */
+      sum = sum * 31 + (unsigned int) DB_VALUE_PRECISION (value);
+      sum = sum * 31 + (unsigned int) DB_VALUE_SCALE (value);
+
+      /* the sign, which the hash of a zero leaves out: a -0.0, and a NUMERIC zero with its sign flag set */
+      if (!DB_IS_NULL (value) && TP_IS_FIXED_POINT_NUMBER_TYPE (type))
+	{
+	  sum = sum * 31 + (unsigned int) DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value);
+	}
+      else if (!DB_IS_NULL (value) && TP_IS_FLOATING_POINT_NUMBER_TYPE (type))
+	{
+	  const double number = ((type == DB_TYPE_FLOAT) ? db_get_float (value)
+				 : (type == DB_TYPE_DOUBLE) ? db_get_double (value) : db_get_monetary (value)->amount);
+	  sum = sum * 31 + (unsigned int) std::signbit (number);
+	}
     }
   return sum;
 }
