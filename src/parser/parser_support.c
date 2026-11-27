@@ -15723,7 +15723,7 @@ pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * li
     }
 
   /* targets: name [. name ...] [, name [. name ...] ...] */
-  for (i = into + 1; i < list->token_count; i++)
+  for (i = into + 1; i < list->token_count; i += 2)
     {
       if (tokens[i].kind != PT_SS_TOKEN_IDENT && tokens[i].kind != PT_SS_TOKEN_QUOTED)
 	{
@@ -15742,11 +15742,11 @@ pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * li
 	    }
 	}
 
+      /* the next target is past the ',' (the loop header steps over both) */
       if (!pt_static_sql_token_is (list, i + 1, ','))
 	{
 	  break;
 	}
-      i++;
     }
 
   if (i >= list->token_count || targets != into_count)

@@ -177,6 +177,15 @@ namespace cubxasl
       bool dummy; /* for alignment, free space for future use */
     } flag;
     int is_ended;		/* true, if the aggregate is ended */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+    /* CBRD-28181: a sort GROUP BY's COUNT (DISTINCT) keeps a group's distinct values in memory up to
+     * QDATA_DISTINCT_MEM_MAX of them, instead of a list file it sorts at the group's end (qdata_distinct_mem_add ());
+     * runtime only, set by qexec_groupby () for the run */
+    bool distinct_mem;		/* the GROUP BY lets this node keep its values in memory */
+    bool distinct_listed;	/* this group's values went to the list file: more than the memory takes */
+    int distinct_cnt;		/* this group's values in distinct_vals */
+    DB_VALUE *distinct_vals;
+#endif
   };
 };
 
