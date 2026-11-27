@@ -4929,7 +4929,13 @@ tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
   codeset = db_get_string_codeset (src);
   end = p + size - 1;
 
-  if (size > 0 && *end)
+  if (size == 0)
+    {
+      /* An empty string is 0. Its bytes need not be followed by a NUL: a key value read from a multi-column index is
+       * followed by the next key column, so the string must not be read past its size. */
+      strp = "";
+    }
+  else if (*end)
     {
       while (p <= end && char_isspace (*p))
 	{
@@ -5071,8 +5077,10 @@ tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_sta
     }
 
   /* See CBRD-24780.
-   * For backwards compatibility, casting from empty string to bigint is allowed. */
-  if (!is_hex && *strp != '\0')
+   * For backwards compatibility, casting from empty string to bigint is allowed.
+   * The string ends at stre: a key value read from a multi-column index is followed by the next key column, not by a
+   * NUL, so stop there before reading a byte. */
+  if (!is_hex && strp != stre && *strp != '\0')
     {
       /* check whether is scientific format */
       p = strp;
@@ -7609,10 +7617,14 @@ tp_value_auto_cast_with_precision_check_converter (const DB_VALUE * src, DB_VALU
     }
 #endif
 
-  if (TP_IS_DISCRETE_NUMBER_TYPE (src->domain.general_info.type))
+  if (TP_IS_DISCRETE_NUMBER_TYPE (src->domain.general_info.type) && desired_domain->type->id == DB_TYPE_NUMERIC
+      && desired_domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
     {
-      /* if the numeric's precision is 19 or more, then it can get the bigint enough */
-      if (desired_domain->type->id == DB_TYPE_NUMERIC && desired_domain->precision < DB_BIGINT_PRECISION)
+      /* the integer digits of NUMERIC(p, s) are p - s, a scale above the precision leaves only 0 */
+      const int int_digits = MAX (desired_domain->precision - desired_domain->scale, 0);
+
+      /* if the numeric's integer digits are 19 or more, then it can get the bigint enough */
+      if (int_digits < DB_BIGINT_PRECISION)
 	{
 	  INT64 bigint;
 
@@ -7636,8 +7648,8 @@ tp_value_auto_cast_with_precision_check_converter (const DB_VALUE * src, DB_VALU
 	      break;
 	    }
 
-	  if ((bigint > 0 && (bigint >= max_value[desired_domain->precision]))
-	      || ((bigint < 0) && ((-bigint) >= max_value[desired_domain->precision])))
+	  if ((bigint > 0 && (bigint >= max_value[int_digits]))
+	      || ((bigint < 0) && ((-bigint) >= max_value[int_digits])))
 	    {
 	      /* can not coerce for overflow */
 	      dom_status = DOMAIN_OVERFLOW;

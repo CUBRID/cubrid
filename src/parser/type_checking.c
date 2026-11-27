@@ -225,6 +225,8 @@ static int pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALU
 static PT_NODE *pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * gl_expr);
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void pt_mark_filter_terms (PT_NODE * cond);
+static void pt_mark_filter_spine (PT_NODE * node);
 static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -235,6 +237,8 @@ static void pt_remove_exists_limit (PARSER_CONTEXT * parser, PT_NODE * node);
 static bool pt_query_has_intersect_or_difference (PT_NODE * node);
 static void pt_record_host_var_bind_domain (PARSER_CONTEXT * parser, const PT_NODE * hv_node);
 static void pt_preset_hostvar_domain (PARSER_CONTEXT * parser, PT_NODE * hv_node, bool record_bind_domain);
+static int pt_coerce_auto_param_as_literal (PARSER_CONTEXT * parser, PT_NODE * hv_node, PT_TYPE_ENUM desired_type,
+					    PT_NODE * data_type);
 static bool pt_is_able_to_determine_return_type (const PT_OP_TYPE op);
 static PT_NODE *pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_opt_type (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -1426,6 +1430,20 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       sig.arg1_type.type = pt_arg_type::GENERIC;
       sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_NUMERIC;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_CURRENT_VALUE_BY_OID:
+      num = 0;
+
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_OBJECT;
 
       sig.return_type.type = pt_arg_type::NORMAL;
       sig.return_type.val.type = PT_TYPE_NUMERIC;
@@ -5585,7 +5603,11 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		      keep_searching = false;
 		      break;
 		    }
-		  if (precision < temp->info.data_type.precision)
+		  /* an element of no fixed length (a string literal) is the longest: cast to the length of a shorter one,
+		   * a longer literal would fail to coerce */
+		  if (precision != TP_FLOATING_PRECISION_VALUE
+		      && (temp->info.data_type.precision == TP_FLOATING_PRECISION_VALUE
+			  || precision < temp->info.data_type.precision))
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5600,7 +5622,10 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		      keep_searching = false;
 		      break;
 		    }
-		  if (precision < temp->info.data_type.precision)
+		  /* as for VARCHAR, an element of no fixed length is the longest */
+		  if (precision != TP_FLOATING_PRECISION_VALUE
+		      && (temp->info.data_type.precision == TP_FLOATING_PRECISION_VALUE
+			  || precision < temp->info.data_type.precision))
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5713,6 +5738,13 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
   PT_NODE *b2 = NULL;
 
   op = expr->info.expr.op;
+  if (op == PT_NOT_BETWEEN)
+    {
+      /* x NOT BETWEEN a AND b is evaluated as NOT (x >= a AND x <= b) (pt_to_pred_expr_local_with_arg ()), and the
+       * NOT (x BETWEEN a AND b) of a search condition becomes one (pt_cnf ()). Decide its operand types as for
+       * BETWEEN, or a row can satisfy both x BETWEEN a AND b and its negation, or neither. */
+      op = PT_BETWEEN;
+    }
 
   arg1 = expr->info.expr.arg1;
   if (arg1)
@@ -6606,6 +6638,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_TO_DATETIME:
     case PT_TO_NUMBER:
     case PT_CURRENT_VALUE:
+    case PT_CURRENT_VALUE_BY_OID:
     case PT_NEXT_VALUE:
     case PT_CAST:
     case PT_EXTRACT:
@@ -6942,9 +6975,10 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 	  goto always_false;
 	}
 
-      if (cnf_node->type_enum == PT_TYPE_NA || cnf_node->type_enum == PT_TYPE_NULL)
+      if ((cnf_node->type_enum == PT_TYPE_NA || cnf_node->type_enum == PT_TYPE_NULL) && cnf_node->or_next == NULL)
 	{
-	  /* on_cond does not confused with where conjunct is a NULL, treat it as false condition */
+	  /* on_cond does not confused with where conjunct is a NULL, treat it as false condition; the head of an
+	   * or_next chain is one disjunct only, see the DNF loop below */
 	  goto always_false;
 	}
 
@@ -6996,10 +7030,13 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 		  break;
 		}
 
-	      if (dnf_node->node_type == PT_VALUE && dnf_node->type_enum == PT_TYPE_LOGICAL
-		  && dnf_node->info.value.data_value.i == 0)
+	      if ((dnf_node->node_type == PT_VALUE && dnf_node->type_enum == PT_TYPE_LOGICAL
+		   && dnf_node->info.value.data_value.i == 0)
+		  || dnf_node->type_enum == PT_TYPE_NA || dnf_node->type_enum == PT_TYPE_NULL)
 		{
-		  /* cut it off from DNF list */
+		  /* cut it off from DNF list: a FALSE or NULL disjunct, as a NULL (UNKNOWN) rejects the row as FALSE does
+		   * in a condition (since CBRD-28029 a NULL OR x is folded only in a term pt_cnf () made, and CNF can leave
+		   * the NULL as the head of the chain) */
 		  if (dnf_prev)
 		    {
 		      dnf_prev->or_next = dnf_node->or_next;
@@ -7142,6 +7179,23 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case PT_SELECT:
 
+      /* the ORDER BY ... FOR filter takes the rows out after the aggregation */
+      if (node->info.query.orderby_for)
+	{
+	  where = node->info.query.orderby_for;
+	  if (pt_false_search_condition (parser, where) == true)
+	    {
+	      return true;
+	    }
+	}
+
+      /* an aggregate with no GROUP BY gives one row even over no row: a false START WITH or hierarchical WHERE,
+       * which take the rows out before the aggregation, does not empty it (CBRD-28029) */
+      if (pt_is_single_tuple (parser, node))
+	{
+	  return false;
+	}
+
       /* If the "connect by" condition is false the query still has to return all the "start with" tuples. Therefore we
        * do not check that "connect by" is false. */
       if (node->info.query.q.select.start_with)
@@ -7159,20 +7213,6 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      return true;
 	    }
-	}
-
-      if (node->info.query.orderby_for)
-	{
-	  where = node->info.query.orderby_for;
-	  if (pt_false_search_condition (parser, where) == true)
-	    {
-	      return true;
-	    }
-	}
-
-      if (pt_is_single_tuple (parser, node))
-	{
-	  return false;
 	}
 
       if (node->info.query.q.select.group_by)
@@ -7321,8 +7361,7 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
   int line, column;
   const char *alias_print;
   PT_SELECT_INFO *subq;
-  int col_cnt, i;
-  PT_NODE *col, *set, *spec;
+  PT_NODE *col, *set, *spec, *old_list, *old_col;
 
   if (node->info.query.flag.has_outer_spec == 1 || node->info.query.flag.is_sort_spec
       || node->info.query.flag.is_insert_select)
@@ -7337,26 +7376,29 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 
       subq = &(node->info.query.q.select);
 
-      /* rewrite SELECT list */
-      col_cnt = pt_length_of_select_list (subq->list, EXCLUDE_HIDDEN_COLUMNS);
-
-      parser_free_tree (parser, subq->list);
+      /* rewrite SELECT list, hidden columns too: a derived table takes them into its columns
+       * (pt_get_attr_list_of_derived_table ()), and an ORDER BY kept below refers to them by position */
+      old_list = subq->list;
       subq->list = NULL;
 
-      for (i = 0; i < col_cnt; i++)
+      for (old_col = old_list; old_col != NULL; old_col = old_col->next)
 	{
 	  col = parser_new_node (parser, PT_VALUE);
 	  if (col)
 	    {
 	      col->type_enum = PT_TYPE_NULL;
+	      col->flag.is_hidden_column = old_col->flag.is_hidden_column;
 	      subq->list = parser_append_node (subq->list, col);
 	    }
 	  else
 	    {
+	      parser_free_tree (parser, old_list);
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      return NULL;
 	    }
 	}
+
+      parser_free_tree (parser, old_list);
 
       /* rewrite FROM list */
       set = parser_new_node (parser, PT_VALUE);
@@ -7386,6 +7428,22 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	  return NULL;
+	}
+
+      /* rewrite WHERE as false unless it is: the query may be false by another clause (HAVING, a folded derived
+       * table or CTE in its FROM), and the WHERE it had then refers to the FROM list removed above */
+      if (!pt_false_search_condition (parser, subq->where))
+	{
+	  parser_free_tree (parser, subq->where);
+	  subq->where = parser_new_node (parser, PT_VALUE);
+	  if (subq->where == NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return NULL;
+	    }
+	  subq->where->type_enum = PT_TYPE_LOGICAL;
+	  subq->where->info.value.data_value.i = 0;
+	  (void) pt_value_to_db (parser, subq->where);
 	}
 
       /* clear unnecessary node info */
@@ -7442,6 +7500,12 @@ pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       subq->hint = PT_HINT_NONE;
+
+      /* neither an aggregate or analytic function nor GROUP BY is left. A query still taken as an aggregate one
+       * (pt_has_aggregate ()) would return a row for its empty input, and one taken as an analytic one
+       * (pt_has_analytic ()) finds no function to evaluate and fails */
+      PT_SELECT_INFO_CLEAR_FLAG (node, PT_SELECT_INFO_HAS_AGG);
+      PT_SELECT_INFO_CLEAR_FLAG (node, PT_SELECT_INFO_HAS_ANALYTIC);
     }
   else
     {
@@ -7517,6 +7581,45 @@ pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * recursive_expr)
 }
 
 /*
+ * pt_mark_filter_spine () - mark the AND and OR nodes reached from a term of a search condition through AND and OR
+ *   return:
+ *   node(in/out): a term, or an operand of an AND or an OR of it
+ *
+ * Note: a search condition keeps a row only when it is TRUE, and AND and OR are monotone, so an operand on this spine
+ *	 that is UNKNOWN can be taken as FALSE; pt_eval_type () folds a NULL operand of such an AND or OR.  The spine
+ *	 stops at any other node: under IS, NOT, XOR, CAST, CASE or a function the truth value is a value again.
+ */
+static void
+pt_mark_filter_spine (PT_NODE * node)
+{
+  while (node != NULL && node->node_type == PT_EXPR && (node->info.expr.op == PT_AND || node->info.expr.op == PT_OR))
+    {
+      PT_EXPR_INFO_SET_FLAG (node, PT_EXPR_INFO_FILTER_TERM);
+      pt_mark_filter_spine (node->info.expr.arg1);
+      node = node->info.expr.arg2;
+    }
+}
+
+/*
+ * pt_mark_filter_terms () - mark the AND/OR spine of each term of a search condition
+ *   return:
+ *   cond(in/out): a search condition, a tree or a CNF list with or_next chains
+ */
+static void
+pt_mark_filter_terms (PT_NODE * cond)
+{
+  PT_NODE *term, *disj;
+
+  for (term = cond; term != NULL; term = term->next)
+    {
+      for (disj = term; disj != NULL; disj = disj->or_next)
+	{
+	  pt_mark_filter_spine (disj);
+	}
+    }
+}
+
+/*
  * pt_eval_type_pre () -
  *   return:
  *   parser(in):
@@ -7536,6 +7639,44 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
   if (sc_info->donot_fold == true)
     {				/* skip folding */
       return node;
+    }
+
+  /* the search conditions, where pt_eval_type () folds a NULL operand of an AND or OR as a filter does */
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      pt_mark_filter_terms (node->info.query.q.select.where);
+      pt_mark_filter_terms (node->info.query.q.select.having);
+      pt_mark_filter_terms (node->info.query.q.select.start_with);
+      pt_mark_filter_terms (node->info.query.q.select.connect_by);
+      pt_mark_filter_terms (node->info.query.q.select.after_cb_filter);
+      break;
+
+    case PT_SPEC:
+      pt_mark_filter_terms (node->info.spec.on_cond);
+      break;
+
+    case PT_UPDATE:
+      pt_mark_filter_terms (node->info.update.search_cond);
+      break;
+
+    case PT_DELETE:
+      pt_mark_filter_terms (node->info.delete_.search_cond);
+      break;
+
+    case PT_MERGE:
+      pt_mark_filter_terms (node->info.merge.search_cond);
+      pt_mark_filter_terms (node->info.merge.update.search_cond);
+      pt_mark_filter_terms (node->info.merge.update.del_search_cond);
+      pt_mark_filter_terms (node->info.merge.insert.search_cond);
+      break;
+
+    case PT_CREATE_INDEX:
+      pt_mark_filter_terms (node->info.index.where);
+      break;
+
+    default:
+      break;
     }
 
   /* cast before the switch below types the LIMIT values and copies them into the numbering predicates. A PL/CSQL
@@ -8286,6 +8427,10 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 		      d = tp_domain_cache (d);
 		      SET_EXPECTED_DOMAIN (v, d);
 		      pt_preset_hostvar (parser, v);
+		      if (pt_coerce_auto_param_as_literal (parser, v, attr->type_enum, attr->data_type) != NO_ERROR)
+			{
+			  return node;
+			}
 		    }
 		}
 	    }
@@ -9162,6 +9307,86 @@ pt_preset_hostvar_domain (PARSER_CONTEXT * parser, PT_NODE * hv_node, bool recor
 }
 
 /*
+ * pt_coerce_auto_param_as_literal () - coerce the value of an auto-parameter as its literal would be coerced
+ *   return: NO_ERROR or error code
+ *   parser(in):
+ *   hv_node(in): host variable whose data type was just set to the desired type
+ *   desired_type(in):
+ *   data_type(in):
+ *
+ *   An auto-parameter already holds its value, so its data type and its value must change together.
+ *   The type check runs again for each statement, also on an XASL cache hit, so every value of the plan is cast here.
+ */
+static int
+pt_coerce_auto_param_as_literal (PARSER_CONTEXT * parser, PT_NODE * hv_node, PT_TYPE_ENUM desired_type,
+				 PT_NODE * data_type)
+{
+  const int index = hv_node->info.host_var.index;
+  DB_VALUE *hv_value;
+  DB_VALUE *coerced;
+  PT_NODE *literal;
+  int error;
+
+  if (index < parser->host_var_count || index >= parser->host_var_count + parser->auto_param_count
+      || pt_is_derived_host_var (parser, index) || hv_node->info.host_var.pads_to != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  if (hv_node->data_type == NULL)
+    {
+      /* no data type was set, so the plan takes the domain of the value as it is */
+      return NO_ERROR;
+    }
+
+  hv_value = &parser->host_variables[index];
+  if (DB_IS_NULL (hv_value))
+    {
+      return NO_ERROR;
+    }
+
+  literal = pt_dbval_to_value (parser, hv_value);
+  if (literal == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "coerce auto parameter");
+	}
+      return ER_FAILED;
+    }
+  literal->line_number = hv_node->line_number;
+  literal->column_number = hv_node->column_number;
+
+  error = pt_coerce_value_explicit (parser, literal, literal, desired_type, data_type);
+  if (error == NO_ERROR)
+    {
+      coerced = pt_value_to_db (parser, literal);
+      if (coerced == NULL)
+	{
+	  error = ER_FAILED;
+	}
+      else
+	{
+	  DB_VALUE tmp;
+
+	  error = pr_clone_value (coerced, &tmp);
+	  if (error == NO_ERROR)
+	    {
+	      pr_clear_value (hv_value);
+	      *hv_value = tmp;
+	    }
+	}
+    }
+
+  parser_free_tree (parser, literal);
+  if (error != NO_ERROR && !pt_has_error (parser))
+    {
+      PT_INTERNAL_ERROR (parser, "coerce auto parameter");
+    }
+  return error;
+}
+
+/*
  * pt_preset_hostvar () -
  *   return: none
  *   parser(in):
@@ -9328,6 +9553,8 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_DISK_SIZE:
     case PT_SCHEMA_DEF:
     case PT_COLLECTION_TO_STRING:
+      /* EXISTS is LOGICAL whatever its subquery selects, even a host variable that has no type yet */
+    case PT_EXISTS:
       return true;
 
     default:
@@ -9461,6 +9688,15 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  assert (node->info.expr.arg1->node_type == PT_VALUE);
 	}
+      return node;
+    }
+
+  if (pt_is_range_expression (op) && node->info.expr.arg2 != NULL && PT_IS_VALUE_NODE (node->info.expr.arg2)
+      && node->info.expr.arg2->info.value.is_false_where)
+    {
+      /* the right operand is a subquery that returns no row, folded to a NULL value (pt_to_false_subquery ()): the
+       * comparison is TRUE or FALSE whatever the left operand is, and pt_fold_const_expr () folds it */
+      node->type_enum = PT_TYPE_LOGICAL;
       return node;
     }
 
@@ -10581,6 +10817,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  d = tp_domain_cache (d);
 	  SET_EXPECTED_DOMAIN (arg2, d);
 	  pt_preset_hostvar (parser, arg2);
+	  if (pt_coerce_auto_param_as_literal (parser, arg2, arg1_type, arg1->data_type) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       if (PT_IS_VALUE_NODE (arg2))
 	{
@@ -12150,7 +12390,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       || op == PT_CONCAT_WS || op == PT_FIELD || op == PT_UNIX_TIMESTAMP || op == PT_BIT_COUNT || op == PT_REPEAT
       || op == PT_SPACE || op == PT_MD5 || op == PT_TIMEF || op == PT_AES_ENCRYPT || op == PT_AES_DECRYPT
       || op == PT_SHA_TWO || op == PT_SHA_ONE || op == PT_TO_BASE64 || op == PT_FROM_BASE64 || op == PT_DEFAULTF
-      || op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_UUID_FORMAT)
+      || op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_CURRENT_VALUE_BY_OID || op == PT_UUID_FORMAT)
     {
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
@@ -12689,6 +12929,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 
     case PT_NEXT_VALUE:
     case PT_CURRENT_VALUE:
+    case PT_CURRENT_VALUE_BY_OID:
       /* serial value is fixed NUMERIC(38,0); do not promote to float numeric */
       dt->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
       dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
@@ -12727,7 +12968,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  if (op != PT_NEXT_VALUE && op != PT_CURRENT_VALUE)
+	  if (op != PT_NEXT_VALUE && op != PT_CURRENT_VALUE && op != PT_CURRENT_VALUE_BY_OID)
 	    {
 	      dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	      dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
@@ -13804,9 +14045,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	case DB_TYPE_NUMERIC:
 	  {
+	    int precision = 0, scale = 0, digits = 0;
 	    bool is_float_numeric = false;
-	    int precision = 0, scale = 0;
-	    db_get_numeric_precision_and_scale (arg1, &precision, &scale, &is_float_numeric);
+	    db_get_numeric_precision_and_scale (arg1, &precision, &scale, &digits, &is_float_numeric);
 
 	    bool is_value_negative = !arg1->domain.numeric_info.is_value_negative;
 	    if (is_value_negative && numeric_db_value_is_zero (arg1))
@@ -13816,7 +14057,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    db_make_numeric (result, db_get_numeric (arg1), precision, scale, DB_NUMERIC_BUF_SIZE, is_value_negative,
-			     is_float_numeric);
+			     digits, is_float_numeric);
 	  }
 	  break;
 
@@ -14387,6 +14628,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  db_make_int (result, pr_data_writeval_disk_size (arg1));
 	  /* call pr_data_writeval_disk_size function to return the size on disk */
+	  pr_clear_compressed_string (arg1);
 	}
       break;
 
@@ -17049,6 +17291,31 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       }
 
     case PT_SCHEMA:
+      {
+	/* the schema is the current user, as in XASL generation */
+	char *username = db_get_user_name ();
+
+	db_make_null (result);
+	if (username == NULL)
+	  {
+	    assert (er_errid () != NO_ERROR);
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+
+	error = db_make_string_copy (result, username);
+	db_string_free (username);
+	if (error < 0)
+	  {
+	    PT_ERRORc (parser, o1, er_msg ());
+	    return 0;
+	  }
+	else
+	  {
+	    return 1;
+	  }
+      }
+
     case PT_DATABASE:
       db_make_null (result);
       error = db_make_string (&tmp_val, db_get_database_name ());
@@ -17644,7 +17911,15 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  return 0;
 	}
-      dom_status = tp_value_cast (arg1, result, domain, false);
+      if (PT_IS_EXPR_NODE (expr) && PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP | PT_EXPR_INFO_CAST_NOFAIL))
+	{
+	  dom_status = tp_value_cast (arg1, result, domain, false);
+	}
+      else
+	{
+	  /* a CAST the user wrote truncates a longer string, as the server's T_CAST does */
+	  dom_status = tp_value_cast_force (arg1, result, domain, false);
+	}
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  assert (expr->node_type == PT_EXPR);
@@ -17943,7 +18218,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    DB_VALUE slash_char;
 	    char const *slash_str = "\\";
 
-	    if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false && DB_IS_NULL (esc_char))
+	    /* with no ESCAPE clause the backslash escapes only under require_like_escape_character, as when the term is
+	     * evaluated (pt_to_pred_expr_local_with_arg ()); no_backslash_escapes concerns string literals only */
+	    if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER) && DB_IS_NULL (esc_char))
 	      {
 		INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET : db_get_string_codeset (arg1);
 		int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION : db_get_string_collation (arg1);
@@ -18119,6 +18396,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     case PT_ESTIMATED_AVG_ROW_LENGTH:
     case PT_ESTIMATED_DATA_LENGTH:
     case PT_ESTIMATED_DATA_FREE:
+    case PT_CURRENT_VALUE_BY_OID:
       /* constant folding for this expression is never performed : is always resolved on server */
       return 0;
     case PT_LIST_DBS:
@@ -18556,6 +18834,35 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
       goto end;
     }
+
+  if (pt_is_range_expression (op) && expr->info.expr.arg2 != NULL && PT_IS_VALUE_NODE (expr->info.expr.arg2)
+      && expr->info.expr.arg2->info.value.is_false_where)
+    {
+      /* the right operand is a subquery that returns no row (pt_to_false_subquery ()): x op ALL and x NOT IN over the
+       * empty set are TRUE, x op SOME and x IN are FALSE, also for a NULL x */
+      switch (op)
+	{
+	case PT_EQ_ALL:
+	case PT_NE_ALL:
+	case PT_GE_ALL:
+	case PT_GT_ALL:
+	case PT_LT_ALL:
+	case PT_LE_ALL:
+	case PT_IS_NOT_IN:
+	  db_make_int (&dbval_res, 1);
+	  break;
+	default:
+	  db_make_int (&dbval_res, 0);
+	  break;
+	}
+      result = pt_dbval_to_value (parser, &dbval_res);
+      if (result == NULL)
+	{
+	  has_error = true;
+	}
+      goto end;
+    }
+
   /* special handling for only one range - convert to comp op */
   if (op == PT_RANGE)
     {
@@ -18612,7 +18919,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    }
 	}
     }
-  else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB
+  else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_CURRENT_VALUE_BY_OID
+	   || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB
 	   || op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR
 	   || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET
 	   || op == PT_ESTIMATED_TABLE_ROWS || op == PT_ESTIMATED_AVG_ROW_LENGTH
@@ -19101,6 +19409,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  }
 	  break;
 	case PT_LIKE:
+	case PT_NOT_LIKE:
+	  /* no ESCAPE clause: a NULL value here would be taken as ESCAPE NULL, which escapes with a backslash */
 	  arg3 = NULL;
 	  type3 = PT_TYPE_NONE;
 	  break;
@@ -19233,6 +19543,16 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
 
       db_value = pt_value_to_db (parser, val);
+      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL
+	  && !PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CNF_DONE | PT_EXPR_INFO_FILTER_TERM))
+	{
+	  /* NULL AND x is FALSE when x is, and NULL OR x is UNKNOWN when x is FALSE: only on the AND/OR spine of a
+	   * search condition (pt_mark_filter_terms (), and pt_cnf () marks its terms CNF_DONE), where UNKNOWN rejects
+	   * the row as FALSE does, takes NULL for the AND and the other operand for the OR.  Under IS, NOT, XOR, CAST or
+	   * CASE the node stays, and the grammar reads its NULL operand back from a stored definition */
+	  goto end;
+	}
+
       if (op == PT_AND)
 	{
 	  if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
@@ -24706,6 +25026,11 @@ pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node)
     {
       parser_free_node (parser, hv_node->data_type);
       hv_node->data_type = pt_domain_to_data_type (parser, dom);
+      if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (dom)))
+	{
+	  /* a collection data type lists only its elements, the collection type is the node's */
+	  hv_node->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
+	}
     }
 }
 
