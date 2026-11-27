@@ -13071,6 +13071,34 @@ pt_dblink_dml_sink_subq (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * targ
 }
 
 /*
+ * pt_dblink_dml_has_marked_literal () - Tell whether a value holds a literal written with a charset
+ *   introducer or a COLLATE modifier.
+ *   return: true if so
+ *   value(in): a literal, or an expression over literals and names
+ *
+ * Note: Such a literal goes out as written, and the remote need not read it alike. So no remote
+ *   DML sink sends one. A literal inside a braced collection is not looked at.
+ */
+static bool
+pt_dblink_dml_has_marked_literal (PT_NODE * value)
+{
+  if (value == NULL)
+    {
+      return false;
+    }
+
+  if (value->node_type == PT_EXPR)
+    {
+      return pt_dblink_dml_has_marked_literal (value->info.expr.arg1)
+	|| pt_dblink_dml_has_marked_literal (value->info.expr.arg2);
+    }
+
+  return value->node_type == PT_VALUE
+    && (value->info.value.has_cs_introducer || value->info.value.print_charset || value->info.value.print_collation
+	|| value->info.value.coll_modifier != 0);
+}
+
+/*
  * pt_dblink_dml_classify_value () - Tell how a remote DML sink sends a value of the statement.
  *   return: the class of the value
  *   value(in): the value, resolved
@@ -13081,7 +13109,8 @@ pt_dblink_dml_sink_subq (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * targ
  *   unary -) over those go out as text. A bare subquery and a column of the source are computed
  *   here and bound. A host variable would print as "?" with no bind, and a function call is text
  *   nothing checks, so both are refused. "||" is refused too. CUBRID and Oracle concatenate with
- *   it, and MySQL reads it as OR unless PIPES_AS_CONCAT is set.
+ *   it, and MySQL reads it as OR unless PIPES_AS_CONCAT is set. A literal with a charset introducer
+ *   or a COLLATE modifier is refused as well.
  */
 PT_DBLINK_VALUE_CLASS
 pt_dblink_dml_classify_value (PT_NODE * value, PT_NODE * target, PT_NODE * source)
@@ -13101,7 +13130,7 @@ pt_dblink_dml_classify_value (PT_NODE * value, PT_NODE * target, PT_NODE * sourc
   switch (value->node_type)
     {
     case PT_VALUE:
-      return PT_DBLINK_VALUE_REMOTE_TEXT;
+      return pt_dblink_dml_has_marked_literal (value) ? PT_DBLINK_VALUE_REJECT : PT_DBLINK_VALUE_REMOTE_TEXT;
 
     case PT_NAME:
       if (value->info.name.meta_class != PT_NORMAL || value->info.name.spec_id == 0)
@@ -13362,14 +13391,6 @@ pt_dblink_dml_check_odku (PT_NODE * node, PT_NODE * target)
 	{
 	  return false;
 	}
-
-      /* An introducer or a COLLATE modifier goes out as written, and the remote need not read it
-       * alike. */
-      if (rhs->info.value.has_cs_introducer || rhs->info.value.print_charset || rhs->info.value.print_collation
-	  || rhs->info.value.coll_modifier != 0)
-	{
-	  return false;
-	}
     }
 
   return true;
@@ -13457,7 +13478,9 @@ pt_dblink_dml_check_sink (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * tar
 	    }
 	  else if (ea.is_n_column || pt_dblink_dml_classify_value (ea.rhs, target, NULL) != PT_DBLINK_VALUE_REMOTE_TEXT)
 	    {
-	      accepted = "SET values that are a bare subquery or an expression the remote computes";
+	      accepted = pt_dblink_dml_has_marked_literal (ea.rhs)
+		? "SET literals with no charset introducer and no COLLATE modifier"
+		: "SET values that are a bare subquery or an expression the remote computes";
 	    }
 	}
 
