@@ -746,3 +746,48 @@ TEST_CASE ("with one worker the coordinator waiting for queue room stops on a sh
   REQUIRE (rc == ER_FAILED);
   test_Shutdown_from_thread = false;
 }
+
+TEST_CASE ("a dependent that can go only to a worker with a full queue waits for room there instead of being parked",
+	   "[log_applier_coordinator]")
+{
+  TEST_COORDINATOR_CONTEXT context;
+  LOG_LSA restart_lsa = test_lsa (10);
+  LOG_LSA previous = test_null_lsa ();
+  LA_TASK queued;
+  int chain_worker;
+
+  /* one chain fills the queue of the worker its first task went to; the other worker stays idle */
+  test_initialize_coordinator (&context, &restart_lsa, 2, 4 * LA_TASK_QUEUE_CAPACITY);
+  for (int t = 0; t < LA_TASK_QUEUE_CAPACITY; t++)
+    {
+      LA_TASK task = test_task (t + 1, test_lsa (100 + t), previous);
+      REQUIRE (la_coordinator_submit_task (&task) == NO_ERROR);
+      previous = task.commit_lsa;
+    }
+  chain_worker = la_task_queue_get_queued (0) == LA_TASK_QUEUE_CAPACITY ? 0 : 1;
+  REQUIRE (la_task_queue_get_queued (chain_worker) == LA_TASK_QUEUE_CAPACITY);
+  REQUIRE (la_task_queue_get_queued (1 - chain_worker) == 0);
+
+  std::atomic<int> rc (NO_ERROR);
+  std::atomic<bool> returned (false);
+  std::thread coordinator ([&rc, &returned, previous] ()
+  {
+    LA_TASK task = test_task (5000, test_lsa (100 + LA_TASK_QUEUE_CAPACITY), previous);
+    rc = la_coordinator_submit_task (&task);
+    returned = true;
+  });
+
+  std::this_thread::sleep_for (std::chrono::milliseconds (300));
+  REQUIRE_FALSE (returned);
+  REQUIRE (la_pending_is_empty ());
+
+  /* the worker takes one task; the waiting dependent goes into the slot it frees, behind its predecessor */
+  REQUIRE (test_task_pop (&queued, chain_worker) == NO_ERROR);
+  REQUIRE (queued.tranid == 1);
+  coordinator.join ();
+  REQUIRE (rc == NO_ERROR);
+  REQUIRE (la_pending_is_empty ());
+  REQUIRE (context.dispatched == LA_TASK_QUEUE_CAPACITY + 1);
+  REQUIRE (la_task_queue_get_queued (chain_worker) == LA_TASK_QUEUE_CAPACITY);
+  REQUIRE (la_task_queue_get_queued (1 - chain_worker) == 0);
+}

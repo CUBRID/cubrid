@@ -94,9 +94,12 @@ static_assert (LA_MAX_WORKER_COUNT <= 64, "la_Coordinator_pending_room_workers k
  * parked tasks waiting until the worker commits. */
 #define LA_COORDINATOR_ROOM_RESCAN_QUEUED LA_TASK_QUEUE_ROOM_WAKE_QUEUED
 
-/* how long the coordinator waits at a time for room in the only worker's queue before it checks for shutdown and
- * collects results */
+/* how long the coordinator waits at a time for room in a worker's queue before it checks for shutdown and collects
+ * results */
 #define LA_COORDINATOR_ROOM_WAIT_MSEC 100
+
+/* the worker the last la_coordinator_route call had to send its task to but found with a full queue; -1 otherwise */
+static int la_Coordinator_route_full_worker = -1;
 
 /* results la_coordinator_collect_results takes under one lock of the result queue */
 #define LA_COORDINATOR_COLLECT_BATCH 64
@@ -554,12 +557,14 @@ la_coordinator_route (const LA_TASK *task, int *worker)
   /* with one worker, la_coordinator_submit_task dispatches every task directly and nothing is parked */
   assert (la_Coordinator_config.worker_count > 1);
 
+  la_Coordinator_route_full_worker = -1;
   route = la_gate_route (&task->dependency_lsa, worker, &wait_reason);
   if (route == LA_GATE_ROUTE_WORKER)
     {
       if (!la_coordinator_queue_has_room (*worker))
 	{
 	  la_Coordinator_pending_room_workers |= LA_COORDINATOR_WORKER_BIT (*worker);
+	  la_Coordinator_route_full_worker = *worker;
 	  return false;
 	}
 
@@ -1093,9 +1098,53 @@ la_coordinator_submit_task (LA_TASK *task, bool commit_order)
 
   /* dispatch now when the dependency is satisfied or every unfinished predecessor is in one
    * worker's queue or open slave transaction */
-  if (la_coordinator_route (task, &worker))
+  for (;;)
     {
-      return la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED, worker);
+      bool has_room;
+
+      if (la_coordinator_route (task, &worker))
+	{
+	  return la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED, worker);
+	}
+
+      /* A task that can go only to a worker whose queue is full waits here for room, as with one worker, instead of
+       * being parked. That worker is already a full queue behind, so its pace bounds the apply anyway, and the
+       * other workers keep a queue of their own. Parked, a chain on one worker (one serial, one row) filled the
+       * pending list with nearly every task read, and each pass over it walked them all. */
+      if (la_Coordinator_route_full_worker < 0)
+	{
+	  break;
+	}
+
+      error = la_task_queue_wait_room (la_Coordinator_route_full_worker, LA_COORDINATOR_ROOM_WAIT_MSEC, &has_room);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (has_room)
+	{
+	  /* route again: the predecessors may have completed meanwhile, which lets the task go to any worker */
+	  continue;
+	}
+
+      /* a worker that stopped on an error frees no slot: its result or the shutdown request ends the wait */
+      if (la_Coordinator_config.shutdown_requested (la_Coordinator_config.context))
+	{
+	  return ER_FAILED;
+	}
+
+      error = la_coordinator_collect_and_retire ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      error = la_coordinator_drain_ready ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   if (!dependency_ready)
