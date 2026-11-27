@@ -1554,7 +1554,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1422 Cannot restore the login user %2$s of session %1$u. Open a new connection.
 
-1423 Last Error
+1423 Bestspace map of heap file %1$d|%2$d (header page %3$d): %4$d of %5$d pages under-reported, %6$d missing, %7$d unverified%8$s.
+
+1424 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

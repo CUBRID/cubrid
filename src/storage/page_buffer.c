@@ -14858,7 +14858,7 @@ pgbuf_is_page_fixed_by_thread (THREAD_ENTRY * thread_p, const VPID * vpid_p)
   /* walk holders and try to find page */
   thrd_index = thread_get_entry_index (thread_p);
   thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
-  for (thrd_holder = thrd_holder_info->thrd_hold_list; thrd_holder != NULL; thrd_holder = thrd_holder->next_holder)
+  for (thrd_holder = thrd_holder_info->thrd_hold_list; thrd_holder != NULL; thrd_holder = thrd_holder->thrd_link)
     {
       if (VPID_EQ (&thrd_holder->bufptr->vpid, vpid_p))
 	{

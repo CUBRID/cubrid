@@ -34,7 +34,7 @@ extern int log_rv_get_unzip_log_data (THREAD_ENTRY * thread_p, int length, log_r
 extern int log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log_reader & log_pgptr_reader,
 						    LOG_RCV * rcv, int undo_length, const char *undo_data,
 						    LOG_ZIP & redo_unzip);
-extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat);
+extern bool log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat);
 
 /* Media recovery judges a no-logging index build against the restored backup level with the highest number: where
  * that level started copying pages.  LOG_RCV_MAX_BACKUP_LEVELS == FILEIO_BACKUP_UNDEFINED_LEVEL (asserted in

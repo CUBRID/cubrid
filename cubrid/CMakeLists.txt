@@ -542,6 +542,7 @@ set(TRANSACTION_HEADERS
 
 set(STORAGE_SOURCES
   ${STORAGE_DIR}/bestspace.cpp
+  ${STORAGE_DIR}/bestspace_map.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_lock.cpp
@@ -581,6 +582,7 @@ set(STORAGE_SOURCES
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/bestspace.hpp
+  ${STORAGE_DIR}/bestspace_map.hpp
   ${STORAGE_DIR}/btree_lock.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/double_write_buffer.hpp
