@@ -19684,8 +19684,11 @@ end:
 	  /* the value prints as the expression it was folded from, which a stored text (a view spec) keeps. A subquery
 	   * folded to an empty one is printed as a NULL value (pt_to_false_subquery ()), which reads back as NULL, not as
 	   * the empty set: "x IN null" cannot be parsed, and "NOT EXISTS null" would be false. Such a value prints as
-	   * itself. */
-	  if (PT_IS_VALUE_NODE (result) && !result->info.value.text && !pt_has_false_subquery_operand (expr))
+	   * itself when it prints as it reads back, a logical value or NULL. Another value keeps the text: a scalar
+	   * subquery reads back as NULL there too, and a DOUBLE printed as itself loses its last digits. */
+	  if (PT_IS_VALUE_NODE (result) && !result->info.value.text
+	      && !(pt_has_false_subquery_operand (expr)
+		   && (result_type == PT_TYPE_LOGICAL || result->type_enum == PT_TYPE_NULL)))
 	    {
 	      result->info.value.text = pt_append_string (parser, NULL, expr->alias_print);
 	    }
