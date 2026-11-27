@@ -454,9 +454,10 @@ struct update_proc_node
   int num_reev_classes;		/* no of classes involved in mvcc condition and assignment reevaluation */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions and assignment reevaluation */
-  /* remote UPDATE + local subquery sink fields (UPDATE remote SET col = (SELECT FROM local)). A local
-   * subquery becomes a bind placeholder; what pt_dblink_dml_is_remote_only_expr accepts is deparsed into
-   * the SET text instead, its value not being computable on this side. */
+  /* remote UPDATE + local subquery sink fields (UPDATE remote SET col = (SELECT FROM local)). A
+   * local subquery becomes a bind placeholder; what pt_dblink_dml_classify_value () tells to be
+   * remote text is deparsed into the SET text instead, its value not being computable on this side.
+   */
   REMOTE_DML_SINK sink;
   char *remote_set_text;	/* SET clause with a placeholder per bound value: "c1 = ?, c2 = c2 + 1" */
   int remote_num_set_binds;	/* placeholders in remote_set_text; that many aptrs supply values, in chain order */

@@ -25276,8 +25276,8 @@ pt_dblink_dml_xasl_where (PARSER_CONTEXT * parser, PT_NODE * cond, const char *s
       return false;
     }
 
-  /* single-column WHERE left-hand side. The parser gate (pt_dblink_dml_pred_lhs_is_column) refuses row values
-   * and expressions first; this stays as a backstop for a rewrite between there and here. */
+  /* single-column WHERE left-hand side. The semantic check (pt_dblink_dml_check_sink) refuses row
+   * values and expressions first; this stays as a backstop for a rewrite between there and here. */
   arg1 = cond->info.expr.arg1;
   if (arg1 != NULL && arg1->node_type == PT_NAME)
     {
@@ -25536,10 +25536,10 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  /* Re-check the shape rather than trusting the gate blindly: if pt_dblink_update_set_is_inscope and
-	   * this walk ever drift apart, an expression the gate would not have accepted must not be printed
-	   * into the remote statement. */
-	  if (!pt_dblink_dml_is_remote_only_expr (ea.rhs))
+	  /* Re-check the value rather than trusting the semantic check blindly. If
+	   * pt_dblink_dml_check_sink () and this walk ever drift apart, an expression it would not
+	   * have accepted must not be printed into the remote statement. */
+	  if (pt_dblink_dml_classify_value (ea.rhs, statement->info.update.spec, NULL) != PT_DBLINK_VALUE_REMOTE_TEXT)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
 		      "remote UPDATE sink: SET value cannot be sent to the remote server as written");

@@ -4390,6 +4390,14 @@ enum cdc_ddl_object_type
 };
 typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 
+/* how a remote DML sink sends a value of the statement */
+typedef enum pt_dblink_value_class
+{
+  PT_DBLINK_VALUE_REJECT = 0,
+  PT_DBLINK_VALUE_REMOTE_TEXT,	/* a literal, a target column, and + - * / and unary - over those */
+  PT_DBLINK_VALUE_LOCAL_BIND	/* a value computed here: a bare subquery, a column of the source */
+} PT_DBLINK_VALUE_CLASS;
+
 /* Which remote DML value-push sink (if any) a statement is routed to. A statement is exactly one of
  * INSERT/DELETE/UPDATE, so these are mutually exclusive by construction -- unlike the bool pair this
  * replaces, the type itself rules out an (INSERT_SELECT, DELETE_LOCAL_SUBQ) state that could never
