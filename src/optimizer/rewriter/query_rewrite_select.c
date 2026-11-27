@@ -5161,10 +5161,14 @@ struct qo_gbp_build
 static int qo_gbp_spec_index (QO_GBP_ENV * env, UINTPTR spec_id);
 static PT_NODE *qo_gbp_check_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static bool qo_gbp_is_null_strict (PT_NODE * node);
+static bool qo_gbp_exact_digits (PARSER_CONTEXT * parser, PT_NODE * node, int *prec, int *scale);
+static bool qo_gbp_cannot_fail (PARSER_CONTEXT * parser, PT_NODE * node);
 static bool qo_gbp_is_image_equal (PT_NODE * node);
 static bool qo_gbp_is_same_domain (PT_NODE * a, PT_NODE * b);
 static bool qo_gbp_name_is_grouped (QO_GBP_ENV * env, PT_NODE * name);
 static PT_NODE *qo_gbp_check_output_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *qo_gbp_has_name_or_agg_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static bool qo_gbp_limit_reads_groups_in_key_order (PARSER_CONTEXT * parser, PT_NODE * query);
 static bool qo_gbp_check_term (PARSER_CONTEXT * parser, QO_GBP_ENV * env, PT_NODE * term, QO_GBP_MASK * maskp);
 static bool qo_gbp_analyze (PARSER_CONTEXT * parser, PT_NODE * query, QO_GBP_ENV * env);
 static QO_GBP_MASK qo_gbp_term_mask (PARSER_CONTEXT * parser, QO_GBP_ENV * env, PT_NODE * term);
@@ -5173,15 +5177,17 @@ static PT_NODE *qo_gbp_needed_columns (PARSER_CONTEXT * parser, QO_GBP_ENV * env
 static bool qo_gbp_needed_is_image_equal (PT_NODE * needed);
 static bool qo_gbp_needed_has_key (QO_GBP_ENV * env, QO_GBP_MASK cmask, PT_NODE * needed);
 static bool qo_gbp_is_lookup (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, int t);
+static bool qo_gbp_is_connected (QO_GBP_ENV * env, QO_GBP_MASK cmask);
+static bool qo_gbp_is_candidate (QO_GBP_ENV * env, QO_GBP_MASK cmask);
 static bool qo_gbp_can_remove_group_by (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, PT_NODE * needed);
 static PT_NODE *qo_gbp_add_column (PARSER_CONTEXT * parser, QO_GBP_BUILD * build, PT_NODE * expr, bool group);
 static PT_NODE *qo_gbp_make_agg (PARSER_CONTEXT * parser, FUNC_CODE function, PT_NODE * arg);
 static PT_NODE *qo_gbp_cast_to (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * like);
+static PT_NODE *qo_gbp_widen_sum_arg (PARSER_CONTEXT * parser, PT_NODE * arg);
 static PT_NODE *qo_gbp_replace_agg_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_gbp_replace_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *qo_gbp_relocate_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_gbp_transform (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, bool remove_group_by);
-static bool qo_gbp_is_connected (QO_GBP_ENV * env, QO_GBP_MASK cmask);
-static bool qo_gbp_is_candidate (QO_GBP_ENV * env, QO_GBP_MASK cmask);
 static CLASS_STATS *qo_gbp_class_stats (PT_NODE * spec);
 static double qo_gbp_column_ndv (QO_GBP_ENV * env, PT_NODE * name);
 static double qo_gbp_term_selectivity (QO_GBP_ENV * env, PT_NODE * term);
@@ -5380,13 +5386,13 @@ qo_gbp_exact_digits (PARSER_CONTEXT * parser, PT_NODE * node, int *prec, int *sc
       switch (node->type_enum)
 	{
 	case PT_TYPE_SMALLINT:
-	  *prec = 5;
+	  *prec = DB_SMALLINT_PRECISION;
 	  return true;
 	case PT_TYPE_INTEGER:
-	  *prec = 10;
+	  *prec = DB_INTEGER_PRECISION;
 	  return true;
 	case PT_TYPE_BIGINT:
-	  *prec = 19;
+	  *prec = DB_BIGINT_PRECISION;
 	  return true;
 	case PT_TYPE_NUMERIC:
 	  if (node->node_type == PT_NAME)
@@ -5452,18 +5458,30 @@ qo_gbp_exact_digits (PARSER_CONTEXT * parser, PT_NODE * node, int *prec, int *sc
       return *prec <= DB_MAX_NUMERIC_PRECISION;
 
     case PT_CAST:
-      /* a number cast to a NUMERIC with as many integer digits */
+      /* a number cast to a NUMERIC with as many integer digits, and one more when rounding off its fraction may carry
+       * into them (999.99 to NUMERIC (4, 1) is 1000.0) */
       if (!qo_gbp_exact_digits (parser, node->info.expr.arg1, &p1, &s1) || p1 == 0 || node->data_type == NULL)
 	{
 	  return false;
 	}
       *prec = node->data_type->info.data_type.precision;
       *scale = node->data_type->info.data_type.dec_precision;
-      return *prec > 0 && p1 - s1 <= *prec - *scale;
+      return *prec > 0 && p1 - s1 + (s1 > *scale ? 1 : 0) <= *prec - *scale;
 
     default:
       return false;
     }
+}
+
+/*
+ * qo_gbp_cannot_fail () - whether an aggregate argument evaluates without error on every row (qo_gbp_exact_digits ())
+ */
+static bool
+qo_gbp_cannot_fail (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  int prec, scale;
+
+  return qo_gbp_exact_digits (parser, node, &prec, &scale);
 }
 
 /*
@@ -5477,10 +5495,30 @@ qo_gbp_is_image_equal (PT_NODE * node)
 {
   int coll;
 
-  if (PT_IS_NUMERIC_TYPE (node->type_enum) || node->type_enum == PT_TYPE_DATE || node->type_enum == PT_TYPE_TIME
-      || node->type_enum == PT_TYPE_TIMESTAMP || node->type_enum == PT_TYPE_DATETIME)
+  switch (node->type_enum)
     {
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+    case PT_TYPE_BIGINT:
+    case PT_TYPE_DATE:
+    case PT_TYPE_TIME:
+    case PT_TYPE_TIMESTAMP:
+    case PT_TYPE_DATETIME:
       return true;
+
+    case PT_TYPE_NUMERIC:
+      /* a NUMERIC declared without a precision keeps the scale of each value (1.5 and 1.50) */
+      return node->data_type != NULL && node->data_type->info.data_type.precision > 0
+	&& node->data_type->info.data_type.precision <= DB_MAX_FIXED_NUMERIC_PRECISION;
+
+    case PT_TYPE_FLOAT:
+    case PT_TYPE_DOUBLE:
+    case PT_TYPE_MONETARY:
+      /* -0.0 equals 0.0, and a MONETARY compares its amount only, not its currency */
+      return false;
+
+    default:
+      break;
     }
 
   if (!PT_HAS_COLLATION (node->type_enum) || node->data_type == NULL
@@ -5571,8 +5609,6 @@ qo_gbp_check_output_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   QO_GBP_WALK arg_walk;
   PT_NODE *agg_arg;
   FUNC_CODE function;
-  int prec, scale;
-
   if (walk->bad)
     {
       *continue_walk = PT_STOP_WALK;
@@ -5626,7 +5662,7 @@ qo_gbp_check_output_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
       /* an argument over several tables (SUM (a.x * b.y)) has no table to be grouped with; an argument that may raise
        * an error is evaluated by the derived table on rows the block drops (qo_gbp_exact_digits ()) */
-      if (arg_walk.bad || qo_gbp_popcount (arg_walk.mask) > 1 || !qo_gbp_exact_digits (parser, agg_arg, &prec, &scale))
+      if (arg_walk.bad || qo_gbp_popcount (arg_walk.mask) > 1 || !qo_gbp_cannot_fail (parser, agg_arg))
 	{
 	  walk->bad = true;
 	  *continue_walk = PT_STOP_WALK;
@@ -5704,6 +5740,68 @@ qo_gbp_check_output_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     }
 
   return node;
+}
+
+/*
+ * qo_gbp_has_name_or_agg_pre () - find a column or an aggregate in a tree
+ */
+static PT_NODE *
+qo_gbp_has_name_or_agg_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (node->node_type == PT_NAME || pt_is_aggregate_function (parser, node) || PT_IS_QUERY_NODE_TYPE (node->node_type)
+      || node->node_type == PT_METHOD_CALL || node->node_type == PT_DOT_)
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * qo_gbp_limit_reads_groups_in_key_order () - whether the block limits its groups so that it may stop after the
+ *					      first ones in the order of the grouping key (GROUP BY skip over an
+ *					      index), or limits them by more than their count: a LIMIT over groups
+ *					      not ordered first by an aggregate, a groupby_num (), or an ORDERBY_NUM
+ *					      () condition that reads a column or an aggregate
+ */
+static bool
+qo_gbp_limit_reads_groups_in_key_order (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  PT_NODE *order, *item;
+  bool found = false;
+  int i;
+
+  if (query->info.query.orderby_for == NULL && query->info.query.limit == NULL)
+    {
+      return false;
+    }
+
+  (void) parser_walk_tree (parser, query->info.query.orderby_for, qo_gbp_has_name_or_agg_pre, &found, NULL, NULL);
+  if (found)
+    {
+      return true;
+    }
+
+  /* the groups are read whole when the first sort key is an aggregate (TPC-H Q10: ORDER BY revenue DESC LIMIT 20) */
+  order = query->info.query.order_by;
+  if (order == NULL || order->node_type != PT_SORT_SPEC || order->info.sort_spec.pos_descr.pos_no <= 0)
+    {
+      return true;
+    }
+  for (item = query->info.query.q.select.list, i = 1; item != NULL && i < order->info.sort_spec.pos_descr.pos_no;
+       item = item->next, i++)
+    {
+      ;
+    }
+  if (item == NULL)
+    {
+      return true;
+    }
+
+  return !pt_has_aggregate (parser, item);
 }
 
 /*
@@ -5879,6 +5977,13 @@ qo_gbp_analyze (PARSER_CONTEXT * parser, PT_NODE * query, QO_GBP_ENV * env)
   (void) parser_walk_tree (parser, query->info.query.q.select.having, qo_gbp_check_output_pre, &walk, NULL, NULL);
   (void) parser_walk_tree (parser, query->info.query.order_by, qo_gbp_check_output_pre, &walk, NULL, NULL);
   if (walk.bad)
+    {
+      return false;
+    }
+
+  /* a block that may stop after its first groups reads only the rows of C they hold, where the derived table groups
+   * all of C first */
+  if (env->has_groupby_num || qo_gbp_limit_reads_groups_in_key_order (parser, query))
     {
       return false;
     }
@@ -6372,7 +6477,8 @@ qo_gbp_can_remove_group_by (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MA
 	    }
 	  a1 = term->info.expr.arg1;
 	  a2 = term->info.expr.arg2;
-	  if (a1->node_type != PT_NAME || a2->node_type != PT_NAME)
+	  /* a column fixes another only if they compare as the same values (FLOAT = INTEGER does not) */
+	  if (a1->node_type != PT_NAME || a2->node_type != PT_NAME || !qo_gbp_is_same_domain (a1, a2))
 	    {
 	      continue;
 	    }
@@ -6677,9 +6783,37 @@ qo_gbp_replace_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 }
 
 /*
+ * qo_gbp_relocate_pre () - move the terms of the ON of a spec to the new place of the spec
+ */
+static PT_NODE *
+qo_gbp_relocate_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  short *loc = (short *) arg;	/* loc[0]: the old place, loc[1]: the new one */
+
+  if (node->node_type == PT_EXPR && node->info.expr.location == loc[0])
+    {
+      node->info.expr.location = loc[1];
+    }
+  else if (node->node_type == PT_NAME && node->info.name.location == loc[0])
+    {
+      node->info.name.location = loc[1];
+    }
+  else if (node->node_type == PT_VALUE && node->info.value.location == loc[0])
+    {
+      node->info.value.location = loc[1];
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+
+  return node;
+}
+
+/*
  * qo_gbp_transform () - group the tables of C in a derived table and re-aggregate the block over it
- *   return: the derived table's SELECT, NULL if the block could not be rewritten (it may be partly rewritten then:
- *	     the caller works on a copy, or has checked the same copy before)
+ *   return: the derived table's SELECT, NULL if the block could not be rewritten (only on memory; the block may be
+ *	     partly rewritten then, and the caller reports the error)
  *   env(in): the block, analyzed
  *   cmask(in): the tables to group
  *   remove_group_by(in): the block meets one row per group and drops its GROUP BY
@@ -6692,6 +6826,7 @@ qo_gbp_transform (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, 
   PT_NODE *first_c = NULL, *nullable_spec = NULL, *moved = NULL, *on_spec = NULL;
   QO_GBP_MASK mask;
   int k, idx = 0, seq = 0;
+  short loc[2];
 
   memset (&build, 0, sizeof (build));
   build.env = env;
@@ -6855,6 +6990,26 @@ qo_gbp_transform (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, 
       spec->info.spec.join_type = PT_JOIN_NONE;
       spec->info.spec.location = idx++;
       dquery->info.query.q.select.from = parser_append_node (spec, dquery->info.query.q.select.from);
+    }
+
+  /* number the block's FROM again: the tables of C left gaps, and the terms of an ON must keep the place of their spec
+   * (an outer join after C, l, o, c LEFT OUTER JOIN n).  A spec only moves to a lower place, so no term is moved twice */
+  for (spec = query->info.query.q.select.from, loc[1] = 0; spec != NULL; spec = spec->next, loc[1]++)
+    {
+      loc[0] = spec->info.spec.location;
+      if (loc[0] == loc[1])
+	{
+	  continue;
+	}
+      spec->info.spec.location = loc[1];
+      if (spec->info.spec.entity_name != NULL && spec->info.spec.entity_name->node_type == PT_NAME)
+	{
+	  spec->info.spec.entity_name->info.name.location = loc[1];
+	}
+      spec->info.spec.on_cond =
+	parser_walk_tree (parser, spec->info.spec.on_cond, qo_gbp_relocate_pre, loc, NULL, NULL);
+      query->info.query.q.select.where =
+	parser_walk_tree (parser, query->info.query.q.select.where, qo_gbp_relocate_pre, loc, NULL, NULL);
     }
 
   /* the columns of C left in the block read the derived table */
