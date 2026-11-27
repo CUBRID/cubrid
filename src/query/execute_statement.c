@@ -109,7 +109,10 @@
 #define UNIQUE_SAVEPOINT_ALTER_TRIGGER "aLTERtRIGGER"
 #define UNIQUE_SAVEPOINT_CREATE_BLOCK_TRIGGER "cREATEbLOCKtRIGGER"
 
-#define CUSTOM_PRINT_4_SHA_COMPUTE (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT | PT_PRINT_DBLINK_INFO)
+/* the XASL cache key text; the parameters a compilation reads (PRM_FOR_QRY_STRING) are in it for DML too, as for
+ * SELECT, so that a plan compiled under another value is not reused (CBRD-28029) */
+#define CUSTOM_PRINT_4_SHA_COMPUTE (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT \
+				    | PT_PRINT_DBLINK_INFO | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS)
 /*
  * Function Group:
  * Do create/alter/drop serial statement
@@ -141,6 +144,7 @@
 
 static void do_set_trace_to_query_flag (QUERY_FLAG * query_flag);
 static void do_send_plan_trace_to_session (PARSER_CONTEXT * parser);
+static void do_clear_odku_constants (ODKU_INFO * odku);
 static int do_set_lock_timeout_hint (PT_HINT_ENUM hint, PT_NODE * hint_arg);
 static int do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class_,
@@ -394,7 +398,6 @@ auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALU
     {
       goto end;
     }
-  FLOAT_TO_FIXED_NUMERIC (&range_val);
 
   /* ABS (cached_num * inc_val) <= range_val */
   db_make_int (&cached_num_int_val, cached_num);
@@ -418,7 +421,6 @@ auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALU
     {
       goto end;
     }
-  FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
   error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
   if (error != NO_ERROR)
@@ -2072,7 +2074,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
-      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
@@ -3119,7 +3120,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
-      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
@@ -12702,6 +12702,8 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 		}
 	    }
+
+	  do_clear_odku_constants (contextp->xasl->proc.insert.odku);
 	}
       else
 	{
@@ -12803,6 +12805,8 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 	}
+
+      do_clear_odku_constants (xasl->proc.insert.odku);
     }
   else
     {
@@ -15922,8 +15926,14 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 	{
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
 	  pt_reset_error (parser);
-
 	  error = er_errid ();
+	}
+      /* the error is in the error manager now, reported here or by a callee that reset the messages (the error_exit of
+       * the hash join generation): has_internal_error left set would make the caller report the parser again, with
+       * no message left, as "Internal error- reporting semantic error." */
+      if (parser->error_msgs == NULL)
+	{
+	  parser->flag.has_internal_error = 0;
 	}
 
       assert (er_errid () != NO_ERROR);
@@ -16071,8 +16081,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
 
-  PT_NODE_PRINT_TO_ALIAS (parser, statement,
-			  (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_LOWER));
+  PT_NODE_PRINT_TO_ALIAS (parser, statement, (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER));
 
   contextp->sql_hash_text = (char *) statement->alias_print;
   err = do_append_bind_variant_key (parser, contextp, statement);
@@ -16200,8 +16209,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
 	      pt_reset_error (parser);
-
 	      err = er_errid ();
+	    }
+	  /* the error is in the error manager now, reported here or by a callee that reset the messages (the error_exit
+	   * of the hash join generation): has_internal_error left set would make the caller report the parser again,
+	   * with no message left, as "Internal error- reporting semantic error." */
+	  if (parser->error_msgs == NULL)
+	    {
+	      parser->flag.has_internal_error = 0;
 	    }
 
 	  assert (er_errid () != NO_ERROR);
@@ -22277,6 +22292,30 @@ do_set_trace_to_query_flag (QUERY_FLAG * query_flag)
       && DETAILED_DUMP (prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL)))
     {
       *query_flag |= XASL_TRACE_PLAN_DETAIL;
+    }
+}
+
+/*
+ * do_clear_odku_constants () - clear the constants of the ON DUPLICATE KEY UPDATE assignments of an insert XASL
+ *   return: none
+ *   odku(in): the ON DUPLICATE KEY UPDATE info of the insert XASL, or NULL
+ */
+static void
+do_clear_odku_constants (ODKU_INFO * odku)
+{
+  int i;
+
+  if (odku == NULL)
+    {
+      return;
+    }
+
+  for (i = 0; i < odku->num_assigns; i++)
+    {
+      if (odku->assignments[i].constant)
+	{
+	  pr_clear_value (odku->assignments[i].constant);
+	}
     }
 }
 

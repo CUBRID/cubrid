@@ -120,6 +120,22 @@
  * saturation, without overturning genuinely cheap unique-key probes. Revisit together with
  * ISCAN_OID_ACCESS_OVERHEAD if either is recalibrated. */
 #define BTREE_DESCENT_PAGE_OVERHEAD 50
+/* CPU of a bitmap heap scan's steps in tuple units, the unit a row of a sequential scan costs 1 of (the use site
+ * multiplies by QO_CPU_WEIGHT): a row recorded in the index step, a row written to and read from the temp records
+ * when the workers' tables are full, a page (its entry merged and put in order, its fix), a row looked up on the
+ * page held. Measured on a release build as instructions of the server a row or a page, against the 1,328 a row of
+ * a parallel sequential scan of the same table takes (TPC-H SF10 lineitem by l_partkey, 12,038 to 5,996,296 rows on
+ * 11,936 to 716,271 pages; CBRD-28032). The start is what a serial scan of one row takes more than its lookup in
+ * key order (450 thousand instructions). */
+#define BITMAP_HEAP_MARK_OVERHEAD 0.24
+#define BITMAP_HEAP_RECORD_OVERHEAD 0.12
+#define BITMAP_HEAP_PAGE_OVERHEAD 1.39
+#define BITMAP_HEAP_LOOKUP_OVERHEAD 1.92
+/* a worker's table and temp files, made once a scan */
+#define BITMAP_HEAP_START_OVERHEAD 340.0
+/* the heap's sectors, listed and put in file order once a scan: what 200 runs of a 2,000-row range take more on a
+ * heap of 38 thousand pages than on one of 9.5 thousand (0.3 million instructions a run, 446 sectors) */
+#define BITMAP_HEAP_SECTOR_OVERHEAD 0.5
 /* Switching the index scan of a nested-loop inner walked per outer row to another partition
  * (scan_switch_index_partition ()), as a share of the B+tree descent that follows it: about a quarter on the
  * release build (CBRD-27866) */
@@ -200,7 +216,6 @@ enum
 
 #define RBO_CHECK_COST 50
 #define RBO_CHECK_RATIO 1.2
-#define RBO_CHECK_LIMIT_RATIO 10
 
 /* NL inner memoize decision (qo_nl_inner_memoize_is_useless) */
 #define MEMOIZE_UNIQUE_KEY_RATIO 0.95	/* without a unique index, NDV >= 95% of the rows counts as near-unique */
@@ -443,11 +458,15 @@ static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index
 static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_NODE * col);
 static int qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type);
 static bool qo_index_holds_all_rows (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
-static bool qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp);
+static bool qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp, bool any);
 static PT_NODE *qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						   int *continue_walk);
 static double qo_analytic_sort_cost (QO_PLAN * plan);
 static QO_PLAN *qo_plan_top_scan (QO_PLAN * plan);
+static double qo_limit_rows (QO_ENV * env);
+static double qo_orderby_limit_fraction (QO_ENV * env);
+static bool qo_scan_has_join_term (QO_PLAN * plan);
+static double qo_scan_limit_fraction (QO_PLAN * plan);
 static bool qo_index_keeps_asc_key_order (QO_ENV * env, QO_NODE * node, QO_INDEX_ENTRY * index_entryp);
 static bool qo_key_seg_is_asc_column (QO_ENV * env, TP_DOMAIN * col_type, int seg_idx);
 static int qo_iscan_sort_segs (QO_PLAN * plan, int *seg_idxs, int max);
@@ -475,6 +494,12 @@ static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * ter
 static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
 
 static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
+static double qo_bitmap_heap_gain (QO_PLAN * planp);
+static bool qo_bitmap_heap_allowed (QO_PLANNER * planner);
+static bool qo_plan_has_bitmap_heap (QO_PLAN * plan);
+static bool qo_plan_saves_sort (QO_PLAN * plan);
+static void qo_generate_bitmap_heap_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * ni_entryp,
+					  BITSET * range_terms);
 static int qo_check_groupby_iscan (QO_PLAN * plan, void *arg);
 static void qo_set_use_desc (QO_PLAN * plan);
 static int qo_set_orderby_skip (QO_PLAN * plan, void *arg);
@@ -707,6 +732,9 @@ qo_plan_malloc (QO_ENV * env)
   plan->need_final_sort = false;
   plan->groupby_skip_join = false;
   plan->limit_nljoin_guessed_card = 0.0;
+  plan->limit_scan_fraction = 1.0;
+  plan->limit_whole_cpu_cost = 0.0;
+  plan->limit_whole_io_cost = 0.0;
   plan->iscan_index_rows = 0.0;
   plan->iscan_range_rows = 0.0;
   plan->iscan_heap_io = 0.0;
@@ -1281,7 +1309,7 @@ static double qo_having_pred_selectivity (QO_HAVING_ENV * henv, PT_NODE * pred);
 static double
 qo_having_disjunct_selectivity (QO_HAVING_ENV * henv, PT_NODE * pred)
 {
-  PT_NODE *save_next, *save_or_next;
+  QO_DETACHED_LINK next_link, or_next_link;
   double p;
   int found = 0;
 
@@ -1292,10 +1320,8 @@ qo_having_disjunct_selectivity (QO_HAVING_ENV * henv, PT_NODE * pred)
     }
 
   /* look at this disjunct only; the walk and the WHERE estimate would follow next and or_next */
-  save_next = pred->next;
-  save_or_next = pred->or_next;
-  pred->next = NULL;
-  pred->or_next = NULL;
+  qo_detach_link (henv->env, &next_link, &pred->next);
+  qo_detach_link (henv->env, &or_next_link, &pred->or_next);
 
   (void) parser_walk_tree (QO_ENV_PARSER (henv->env), pred, qo_has_aggregate_pre, &found, NULL, NULL);
   if (found & QO_HAVING_HAS_GROUPBY_NUM)
@@ -1329,8 +1355,8 @@ qo_having_disjunct_selectivity (QO_HAVING_ENV * henv, PT_NODE * pred)
       p = (p < 0.0) ? QO_HAVING_DEFAULT_SELECTIVITY : MIN (MAX (p, DEFAULT_EQUAL_SELECTIVITY), 1.0);
     }
 
-  pred->next = save_next;
-  pred->or_next = save_or_next;
+  qo_reattach_link (henv->env, &or_next_link);
+  qo_reattach_link (henv->env, &next_link);
 
   return p;
 }
@@ -1672,6 +1698,7 @@ qo_plan_compute_cost (QO_PLAN * plan)
    * A pinned subquery is not evaluated for every scanned row: a term containing a subquery is never put on the
    * access predicate of the scan but on the if-predicate, which is evaluated only for the rows that survived the
    * access predicate. Multiply the cost by that estimated number of evaluations (see qo_plan_subquery_eval_rows ()).
+   * A scan that stops at the LIMIT (limit_scan_fraction, CBRD-28111) evaluates it for the share of the rows it reads.
    */
   for (i = bitset_iterate (&(plan->subqueries), &iter); i != -1; i = bitset_next_member (&iter))
     {
@@ -1680,8 +1707,13 @@ qo_plan_compute_cost (QO_PLAN * plan)
       qo_plan_compute_subquery_cost (query, &subq_cpu_cost, &subq_io_cost);
       eval_rows = qo_plan_subquery_eval_rows (plan, i);
 
-      plan->variable_cpu_cost += eval_rows * subq_cpu_cost;
-      plan->variable_io_cost += eval_rows * subq_io_cost;
+      plan->variable_cpu_cost += eval_rows * subq_cpu_cost * plan->limit_scan_fraction;
+      plan->variable_io_cost += eval_rows * subq_io_cost * plan->limit_scan_fraction;
+      if (plan->limit_scan_fraction < 1.0)
+	{
+	  plan->limit_whole_cpu_cost += eval_rows * subq_cpu_cost;
+	  plan->limit_whole_io_cost += eval_rows * subq_io_cost;
+	}
     }
 }
 
@@ -2336,6 +2368,9 @@ qo_top_plan_new (QO_PLAN * plan)
 	      {
 		bool yn = true;
 		qo_walk_plan_tree (plan, qo_set_orderby_skip, &yn);
+		/* and on the top plan itself, which a join is not: the chosen plan marks the index entries again
+		 * (qo_search_planner ()) */
+		plan->skip_orderby_opt = QO_PLAN_SKIP_ORDERBY_USE;
 	      }
 
 	      if (plan->need_final_sort)
@@ -2745,6 +2780,7 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method)
   plan->plan_un.scan.index_cover = false;
   plan->plan_un.scan.index_iss = false;
   plan->plan_un.scan.index_loose = false;
+  plan->plan_un.scan.bitmap_heap = false;
   plan->plan_un.scan.index = NULL;
 
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
@@ -3119,6 +3155,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 
   /* check for loose index scan */
   plan->plan_un.scan.index_loose = false;	/* init */
+  plan->plan_un.scan.bitmap_heap = false;	/* init */
   if (index_entryp->ils_prefix_len > 0)
     {
       assert (plan->plan_un.scan.index_iss == false);
@@ -3185,6 +3222,20 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
   assert (plan->plan_un.scan.index != NULL);
 
   plan->order = qo_iscan_order (plan);
+
+  if (info->planner != NULL && info->planner->bitmap_heap_twin)
+    {
+      /* the same scan, its heap read through a bitmap: made when that is cheaper and the key order saves no sort */
+      if (qo_bitmap_heap_gain (plan) <= 0.0
+	  || (QO_ENV_PT_TREE (env)->info.query.order_by != NULL && qo_plan_is_orderby_skip_candidate (plan))
+	  || qo_plan_is_groupby_skip_candidate (plan) || qo_index_covers_analytic_sort (env, node, ni_entry, true))
+	{
+	  qo_plan_release (plan);
+	  return NULL;
+	}
+      plan->plan_un.scan.bitmap_heap = true;
+      plan->order = QO_UNORDERED;
+    }
 
   qo_plan_compute_cost (plan);
 
@@ -3822,6 +3873,41 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->variable_io_cost = object_IO * QO_COST_RANDOM_PAGE;
   planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * heap_sel);
 
+  if (planp->plan_un.scan.bitmap_heap)
+    {
+      /* the heap rows are read through a bitmap: what that saves leaves the cost of the lookup. The scan reads all its
+       * rows before it returns the first, so it is not charged for a share of them as a scan that stops at the LIMIT
+       * is (below) */
+      double gain = MAX (0.0, MIN (qo_bitmap_heap_gain (planp), planp->variable_io_cost + planp->variable_cpu_cost));
+      double io = MIN (gain, planp->variable_io_cost);
+
+      planp->variable_io_cost -= io;
+      planp->variable_cpu_cost -= gain - io;
+      planp->limit_scan_fraction = 1.0;
+    }
+  else
+    {
+      /* a scan that skips the ORDER BY or GROUP BY of a LIMIT query stops at the LIMIT (CBRD-28111): it is charged
+       * for the share of its rows it reads. The leaf pages and the CPU go by the share; the heap pages are those the
+       * rows of the share touch (Mackert-Lohman, as above), not the share of the pages of the whole scan, which the
+       * heap size saturates. The cost of the whole scan is kept for the plans that read it whole. */
+      planp->limit_scan_fraction = qo_scan_limit_fraction (planp);
+      if (planp->limit_scan_fraction < 1.0)
+	{
+	  planp->limit_whole_cpu_cost = planp->variable_cpu_cost;
+	  planp->limit_whole_io_cost = planp->variable_io_cost;
+
+	  object_IO = (leaves - first_leaf) * planp->limit_scan_fraction;
+	  if (!qo_is_index_covering_scan (planp))
+	    {
+	      heap_rows = (double) QO_NODE_NCARD (nodep) * heap_sel * planp->limit_scan_fraction;
+	      object_IO += MAX (1.0, qo_mackert_lohman_pages ((double) opages, heap_rows));
+	    }
+	  planp->variable_cpu_cost *= planp->limit_scan_fraction;
+	  planp->variable_io_cost = MIN (planp->variable_io_cost, object_IO * QO_COST_RANDOM_PAGE);
+	}
+    }
+
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
@@ -3840,6 +3926,310 @@ qo_iscan_cost (QO_PLAN * planp)
 #endif /* TEST_DUMP_PLAN_SCAN_COST */
 }
 
+
+/*
+ * qo_plan_has_bitmap_heap () - whether a scan of a plan reads its heap through a bitmap
+ *   return: true or false
+ *   plan(in): a plan
+ */
+static bool
+qo_plan_has_bitmap_heap (QO_PLAN * plan)
+{
+  if (plan == NULL)
+    {
+      return false;
+    }
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      return plan->plan_un.scan.bitmap_heap;
+    case QO_PLANTYPE_SORT:
+      return qo_plan_has_bitmap_heap (plan->plan_un.sort.subplan);
+    case QO_PLANTYPE_FOLLOW:
+      return qo_plan_has_bitmap_heap (plan->plan_un.follow.head);
+    case QO_PLANTYPE_JOIN:
+      return qo_plan_has_bitmap_heap (plan->plan_un.join.outer) || qo_plan_has_bitmap_heap (plan->plan_un.join.inner);
+    default:
+      return false;
+    }
+}
+
+/*
+ * qo_plan_saves_sort () - whether the order of a plan saves a sort of the statement
+ *   return: true or false
+ *   plan(in): a plan without a bitmap heap scan
+ *
+ * Note: Such a plan won by the order it gives (an ORDER BY or GROUP BY skip, a multi range optimization), which
+ *	 the cost of a plan with a bitmap heap scan and a sort does not weigh: it is not replaced by one.
+ */
+static bool
+qo_plan_saves_sort (QO_PLAN * plan)
+{
+  QO_PLAN *scan = plan;
+
+  if (qo_plan_multi_range_opt (plan) || qo_plan_skip_groupby (plan)
+      || plan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE)
+    {
+      return true;
+    }
+  while (scan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (scan))
+    {
+      scan = scan->plan_un.join.outer;
+    }
+  return (scan->plan_type == QO_PLANTYPE_SCAN && scan->plan_un.scan.index != NULL
+	  && scan->plan_un.scan.index->head->orderby_skip);
+}
+
+/*
+ * qo_plan_mark_bitmap_heap_scans () - mark the spec of every scan of a plan that reads its heap through a bitmap
+ *   return: nothing
+ *   planp(in): a plan
+ */
+static void
+qo_plan_mark_bitmap_heap_scans (QO_PLAN * planp)
+{
+  PT_NODE *spec;
+
+  if (planp == NULL)
+    {
+      return;
+    }
+  switch (planp->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      if (planp->plan_un.scan.bitmap_heap && (spec = QO_NODE_ENTITY_SPEC (planp->plan_un.scan.node)) != NULL)
+	{
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_BITMAP_HEAP_SCAN);
+	  /* the index entry is shared with the plans of this index that lost: a skip one of them marked is not
+	   * this scan's, whose rows leave in file order below a sort of their own */
+	  planp->plan_un.scan.index->head->orderby_skip = false;
+	  planp->plan_un.scan.index->head->groupby_skip = false;
+	}
+      break;
+    case QO_PLANTYPE_SORT:
+      qo_plan_mark_bitmap_heap_scans (planp->plan_un.sort.subplan);
+      break;
+    case QO_PLANTYPE_FOLLOW:
+      qo_plan_mark_bitmap_heap_scans (planp->plan_un.follow.head);
+      break;
+    case QO_PLANTYPE_JOIN:
+      qo_plan_mark_bitmap_heap_scans (planp->plan_un.join.outer);
+      qo_plan_mark_bitmap_heap_scans (planp->plan_un.join.inner);
+      break;
+    default:
+      break;
+    }
+}
+
+/*
+ * qo_plan_mark_bitmap_heap () - hand the scans the plan search made bitmap heap scans to the XASL generation
+ *   return: nothing
+ *   planp(in): the statement's plan
+ *
+ * Note: The search decided them (qo_generate_bitmap_heap_scan ()); this only writes the decision on the specs.
+ */
+void
+qo_plan_mark_bitmap_heap (QO_PLAN * planp)
+{
+  QO_ENV *env;
+  int t;
+
+  if (planp == NULL || planp->info == NULL || (env = planp->info->env) == NULL)
+    {
+      return;
+    }
+  /* a tree planned again is marked again: a scan of this plan keeps no mark of an earlier plan */
+  for (t = 0; t < (signed) env->nnodes; t++)
+    {
+      PT_NODE *spec = QO_NODE_ENTITY_SPEC (QO_ENV_NODE (env, t));
+
+      if (spec != NULL)
+	{
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag & ~PT_SPEC_FLAG_BITMAP_HEAP_SCAN);
+	}
+    }
+  qo_plan_mark_bitmap_heap_scans (planp);
+}
+
+/*
+ * qo_bitmap_heap_allowed () - whether a scan of the statement may read its heap through a bitmap
+ *   return: true or false
+ *   planner(in): the planner of the statement
+ *
+ * Note: A bitmap records every row of the key range before the first row leaves, and its rows leave in file order.
+ *	 A statement that locks the rows it reads, runs once an outer row, or may stop before its scans end keeps
+ *	 the lookup in key order in all its scans.
+ */
+static bool
+qo_bitmap_heap_allowed (QO_PLANNER * planner)
+{
+  QO_ENV *env = planner->env;
+  PT_NODE *tree;
+  bool calls = false;
+  int t;
+
+  if (planner->bitmap_heap_allowed != 0)
+    {
+      return planner->bitmap_heap_allowed > 0;
+    }
+  planner->bitmap_heap_allowed = -1;
+
+  if ((tree = QO_ENV_PT_TREE (env)) == NULL
+      || !PT_IS_SELECT (tree) || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_FOR_UPDATE)
+      || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_MVCC_LOCK_NEEDED)
+      || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_UPD_DEL_QUERY))
+    {
+      /* a scan that locks the rows it reads looks them up in key order */
+      return false;
+    }
+  if (tree->info.query.correlation_level != 0 || PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_HQ_ITERATION))
+    {
+      /* a correlated subquery runs once an outer row, the scan of a hierarchical query once a parent row: a bitmap
+       * made again for every run costs more than it saves */
+      return false;
+    }
+  if (tree->info.query.limit != NULL
+      && ((tree->info.query.order_by == NULL && tree->info.query.q.select.group_by == NULL
+	   && !PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_HAS_AGG)) || pt_has_analytic (QO_ENV_PARSER (env), tree)))
+    {
+      /* the statement may stop its scans at the row limit */
+      return false;
+    }
+  if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_MINMAX_NULL_FILTERED))
+    {
+      /* a MIN or MAX read off one end of the key range needs the key order, and stops there */
+      return false;
+    }
+  if (planner->P > 1)
+    {
+      /* the parts of a join with no term between them are joined by nested loops, whose inner runs once an outer
+       * row; which part comes first is not known when a part picks its plan */
+      return false;
+    }
+  for (t = 0; t < (signed) planner->T; t++)
+    {
+      if (QO_TERM_CLASS (&planner->term[t]) == QO_TC_TOTALLY_AFTER_JOIN)
+	{
+	  /* an inst_num () predicate stops the scans below the statement's sort */
+	  return false;
+	}
+    }
+  (void) parser_walk_tree (QO_ENV_PARSER (env), tree, pt_is_method_call_node, &calls, NULL, NULL);
+  if (calls)
+    {
+      /* a stored procedure or a method the block calls may run a statement between two rows, which takes a new
+       * snapshot under READ COMMITTED: the rows recorded under the old one would be read under the new one */
+      return false;
+    }
+
+  planner->bitmap_heap_allowed = 1;
+  return true;
+}
+
+/*
+ * qo_generate_bitmap_heap_scan () - make the plan of an index scan that reads its heap through a bitmap
+ *   return: nothing
+ *   infop(in): the info of the node
+ *   nodep(in): the node
+ *   ni_entryp(in): the index
+ *   range_terms(in): the key range terms of the index scan just made
+ *
+ * Note: The plan competes with the index scan in key order and the sequential scan of the node, and with the joins
+ *	 made of them, by its cost. qo_index_scan_new () drops it when the bitmap saves nothing or the key order
+ *	 of the scan saves a sort.
+ */
+static void
+qo_generate_bitmap_heap_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * ni_entryp, BITSET * range_terms)
+{
+  QO_PLANNER *planner = infop->planner;
+  QO_PLAN *planp;
+
+  if (planner == NULL || !qo_bitmap_heap_allowed (planner))
+    {
+      return;
+    }
+  planner->bitmap_heap_twin = true;
+  planp = qo_index_scan_new (infop, nodep, ni_entryp, QO_SCANMETHOD_INDEX_SCAN, range_terms, NULL);
+  planner->bitmap_heap_twin = false;
+  (void) qo_check_plan_on_info (infop, planp);
+}
+
+/*
+ * qo_bitmap_heap_gain () - what reading the heap rows of an index scan through a bitmap saves
+ *   return: the cost of the lookup in key order less the cost of the bitmap heap scan; not positive when the scan
+ *	     cannot be one
+ *   planp(in): an index scan
+ *
+ * Note: An index scan looks its rows up in key order, one heap page fix a row. A bitmap heap scan first records
+ *	 every row the index finds by heap page, then reads the recorded pages in file order, each once. Its cost
+ *	 has one term a step: the tables and temp files made at its start, the heap's sectors listed, a mark a row, a record written and read a row when the workers' tables cannot hold
+ *	 the pages, the pages put in order, the pages read once each at a price between a random and a sequential
+ *	 read (the denser they lie, the closer to sequential), a row lookup on the page held. The index part costs
+ *	 the same both ways, so only the heap parts are compared. The cost is that of a serial scan: the workers of
+ *	 a parallel scan are decided after the plan and change neither side's share.
+ */
+static double
+qo_bitmap_heap_gain (QO_PLAN * planp)
+{
+  QO_NODE *nodep;
+  QO_INDEX_ENTRY *index_entryp;
+  PT_NODE *spec;
+  BITSET_ITERATOR iter;
+  double heap_rows, opages, pages, tables, lookup_cost, bitmap_cost;
+  size_t memory, buckets;
+  int t;
+
+  if (planp->plan_type != QO_PLANTYPE_SCAN || planp->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN
+      || planp->plan_un.scan.index == NULL)
+    {
+      return 0.0;
+    }
+  nodep = planp->plan_un.scan.node;
+  index_entryp = planp->plan_un.scan.index->head;
+  spec = QO_NODE_ENTITY_SPEC (nodep);
+  if (spec == NULL)
+    {
+      return 0.0;
+    }
+  if (qo_is_index_covering_scan (planp) || qo_is_index_iss_scan (planp) || qo_is_index_loose_scan (planp)
+      || qo_plan_multi_range_opt (planp) || bitset_is_empty (&(planp->plan_un.scan.terms)) || index_entryp->orderby_skip
+      || index_entryp->groupby_skip || index_entryp->key_limit != NULL)
+    {
+      return 0.0;
+    }
+  /* rows that reach the heap: those the key range and the key filter leave. Counted here and not taken from
+   * qo_iscan_cost (), which prices an index the statement forces at zero without counting anything. */
+  heap_rows = (double) QO_NODE_NCARD (nodep);
+  for (t = bitset_iterate (&(planp->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      heap_rows *= QO_TERM_SELECTIVITY (QO_ENV_TERM (QO_NODE_ENV (nodep), t));
+    }
+  heap_rows = MIN (heap_rows, (double) QO_NODE_NCARD (nodep));
+  for (t = bitset_iterate (&(planp->plan_un.scan.kf_terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      heap_rows *= QO_TERM_SELECTIVITY (QO_ENV_TERM (QO_NODE_ENV (nodep), t));
+    }
+  heap_rows = MAX (1.0, heap_rows);
+  opages = MAX (1.0, (double) QO_NODE_TCARD (nodep));
+  /* the distinct pages heap_rows rows lie on (Mackert and Lohman's estimate without a cache) */
+  pages = MIN (opages, (2.0 * opages * heap_rows) / (2.0 * opages + heap_rows));
+  /* page entries the table holds, as the scan sizes it from the server's index scan key buffer */
+  memory = (size_t) MAX (prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES), 1) * DB_PAGESIZE;
+  BITMAP_HEAP_TABLE_BUCKETS (buckets, memory);
+  tables = (double) BITMAP_HEAP_TABLE_ENTRIES (memory, buckets);
+
+  /* the lookup in key order as qo_iscan_cost () prices it: the pages its rows touch, each a random read, and a row */
+  lookup_cost = MAX (1.0, qo_mackert_lohman_pages (opages, heap_rows)) * QO_COST_RANDOM_PAGE
+    + heap_rows * (double) ISCAN_OID_ACCESS_OVERHEAD *(double) QO_CPU_WEIGHT;
+  bitmap_cost = pages * (QO_COST_RANDOM_PAGE - (QO_COST_RANDOM_PAGE - QO_COST_SEQ_PAGE) * sqrt (pages / opages));
+  bitmap_cost += (heap_rows * (BITMAP_HEAP_MARK_OVERHEAD + BITMAP_HEAP_LOOKUP_OVERHEAD)
+		  + (pages > tables ? heap_rows * BITMAP_HEAP_RECORD_OVERHEAD : 0.0)
+		  + pages * BITMAP_HEAP_PAGE_OVERHEAD
+		  + BITMAP_HEAP_START_OVERHEAD
+		  + (opages / (double) DISK_SECTOR_NPAGES) * BITMAP_HEAP_SECTOR_OVERHEAD) * (double) QO_CPU_WEIGHT;
+
+  return lookup_cost - bitmap_cost;
+}
 
 static void
 qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
@@ -3918,6 +4308,11 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
       if (qo_plan_multi_range_opt (plan))
 	{
 	  fprintf (f, " (multi_range_opt)");
+	}
+
+      if (plan->plan_un.scan.bitmap_heap)
+	{
+	  fprintf (f, " (bitmap heap scan)");
 	}
 
       if (plan->plan_un.scan.index && plan->plan_un.scan.index->head->use_descending)
@@ -4065,6 +4460,11 @@ qo_scan_info_internal (QO_PLAN * plan, FILE * f, int howfar, bool parallel_scan)
       if (qo_plan_multi_range_opt (plan))
 	{
 	  fprintf (f, " (multi_range_opt)");
+	}
+
+      if (plan->plan_un.scan.bitmap_heap)
+	{
+	  fprintf (f, " (bitmap heap scan)");
 	}
 
       if (plan->plan_un.scan.index && plan->plan_un.scan.index->head->use_descending)
@@ -4383,7 +4783,10 @@ qo_sort_cost (QO_PLAN * planp)
 	{
 	  double save_ncard = QO_NODE_NCARD (subplanp->plan_un.scan.node);
 	  QO_NODE_NCARD (subplanp->plan_un.scan.node) = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (planp->info->env));
+	  /* the scan is priced as one of LIMIT rows: not charged for a share of them on top (CBRD-28111) */
+	  planp->info->planner->sort_limit_costing = true;
 	  (*(subplanp->vtbl)->cost_fn) (subplanp);
+	  planp->info->planner->sort_limit_costing = false;
 	  QO_NODE_NCARD (subplanp->plan_un.scan.node) = save_ncard;
 	}
 
@@ -4392,8 +4795,8 @@ qo_sort_cost (QO_PLAN * planp)
        */
       planp->fixed_cpu_cost = subplanp->fixed_cpu_cost;
       planp->fixed_io_cost = subplanp->fixed_io_cost;
-      planp->variable_cpu_cost = subplanp->variable_cpu_cost;
-      planp->variable_io_cost = subplanp->variable_io_cost;
+      planp->variable_cpu_cost = QO_PLAN_VARIABLE_CPU_COST_WHOLE (subplanp);
+      planp->variable_io_cost = QO_PLAN_VARIABLE_IO_COST_WHOLE (subplanp);
       qo_plan_uncover_cost (subplanp, false, &planp->variable_io_cost, &planp->variable_cpu_cost);
     }
   else
@@ -4413,8 +4816,8 @@ qo_sort_cost (QO_PLAN * planp)
       /* The cost (in io's) of just setting up a list file.  This is mostly to discourage the optimizer from choosing
        * merge join for joins of little classes.
        */
-      planp->fixed_cpu_cost = subplanp->fixed_cpu_cost + subplanp->variable_cpu_cost + TEMP_SETUP_COST;
-      planp->fixed_io_cost = subplanp->fixed_io_cost + subplanp->variable_io_cost;
+      planp->fixed_cpu_cost = subplanp->fixed_cpu_cost + QO_PLAN_VARIABLE_CPU_COST_WHOLE (subplanp) + TEMP_SETUP_COST;
+      planp->fixed_io_cost = subplanp->fixed_io_cost + QO_PLAN_VARIABLE_IO_COST_WHOLE (subplanp);
       planp->variable_cpu_cost = (planp->info)->cardinality * (double) QO_CPU_WEIGHT;
       /* the list file is written and re-read in order: sequential unit price. TEMP_SETUP_COST
        * above is a CPU-side policy offset, not a page count, and is not priced. */
@@ -6174,6 +6577,177 @@ qo_can_apply_limit_card (QO_ENV * env)
 }
 
 /*
+ * qo_limit_rows () - the rows the LIMIT of the query stops at
+ *   return: LIMIT rows, GUESSED_BIND_LIMIT_CARD for a host variable
+ *   env(in):
+ */
+static double
+qo_limit_rows (QO_ENV * env)
+{
+  return (!DB_IS_NULL (&QO_ENV_LIMIT_VALUE (env)) && db_get_bigint (&QO_ENV_LIMIT_VALUE (env)) > 0)
+    ? (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (env)) : GUESSED_BIND_LIMIT_CARD;
+}
+
+/*
+ * qo_orderby_limit_fraction () - the share of its rows a plan that reads them in the ORDER BY order and stops at the
+ *				  LIMIT reads
+ *   return: LIMIT rows (GUESSED_BIND_LIMIT_CARD for a host variable) over the estimated rows of the query, at most 1;
+ *	     1 when the query has no ORDER BY that an index scan could skip, or no LIMIT
+ *   env(in):
+ *
+ * Note: CBRD-28111. The scan of the ORDER BY order stops when the query has its LIMIT rows: with the filtered rows
+ *	 spread evenly along the key, as every estimate assumes, it reads this share of its rows, the first nested
+ *	 loop inner is probed by this share of the scan's rows, and so on up the joins (CBRD-25080 charged the inner
+ *	 for LIMIT / hit_prob rows, the same share for two tables). The rows of the query are the product of the node
+ *	 cardinalities and the term selectivities, as the join infos compute them; a term evaluated after the join
+ *	 (inst_num ()) does not stop the scan earlier.
+ */
+static double
+qo_orderby_limit_fraction (QO_ENV * env)
+{
+  PT_NODE *tree = QO_ENV_PT_TREE (env);
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  double limit, rows;
+  int i;
+
+  if (tree == NULL || parser == NULL || tree->node_type != PT_SELECT || tree->info.query.order_by == NULL
+      || (tree->info.query.limit == NULL && tree->info.query.orderby_for == NULL)
+      || tree->info.query.q.select.group_by != NULL || tree->info.query.all_distinct == PT_DISTINCT
+      || tree->info.query.q.select.connect_by != NULL || pt_has_analytic (parser, tree))
+    {
+      return 1.0;
+    }
+
+  limit = qo_limit_rows (env);
+
+  rows = 1.0;
+  for (i = 0; i < env->Nnodes; i++)
+    {
+      rows *= MAX (1.0, QO_NODE_NCARD (QO_ENV_NODE (env, i)));
+    }
+  for (i = 0; i < env->Nterms; i++)
+    {
+      if (QO_TERM_CLASS (QO_ENV_TERM (env, i)) != QO_TC_TOTALLY_AFTER_JOIN)
+	{
+	  rows *= QO_TERM_SELECTIVITY (QO_ENV_TERM (env, i));
+	}
+    }
+
+  return MIN (1.0, limit / MAX (1.0, rows));
+}
+
+/*
+ * qo_scan_has_join_term () - does an index scan take a join term as its key range or filter
+ *   return: true/false
+ *   plan(in):
+ *
+ * Note: such a scan is the inner of an index join (qo_generate_join_index_scan ()), read once per outer row.
+ */
+static bool
+qo_scan_has_join_term (QO_PLAN * plan)
+{
+  BITSET_ITERATOR iter;
+  int t;
+
+  for (t = bitset_iterate (&(plan->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      if (QO_IS_EDGE_TERM (QO_ENV_TERM (plan->info->env, t)))
+	{
+	  return true;
+	}
+    }
+  for (t = bitset_iterate (&(plan->plan_un.scan.kf_terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      if (QO_IS_EDGE_TERM (QO_ENV_TERM (plan->info->env, t)))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_scan_limit_fraction () - the share of its rows an index scan reads when it skips the ORDER BY or the GROUP BY
+ *			       of a LIMIT query
+ *   return: the share, or 1 for a scan that reads its rows whole
+ *   plan(in): an index scan whose cost is being computed
+ *
+ * Note: CBRD-28111. The scan is charged for this share of its rows (qo_iscan_cost ()), so that it competes by its
+ *	 LIMIT cost with the other scans of its node and drives the nested loops above it at that cost. The plan
+ *	 that reads it whole, as a nested loop inner, a hash or merge join input or a sort input, charges it whole
+ *	 again (QO_PLAN_VARIABLE_CPU_COST_WHOLE ()). An index join inner is read once per outer row and is not
+ *	 discounted. For an ORDER BY the share is the query's (qo_orderby_limit_fraction ()); for a GROUP BY it is
+ *	 the rows of the LIMIT groups (CBRD-27685) over the rows of the key range. An index skip scan and a loose
+ *	 index scan do not stop at the LIMIT and are charged whole. A multi range optimization scan reads the LIMIT
+ *	 rows of each of its key ranges.
+ */
+static double
+qo_scan_limit_fraction (QO_PLAN * plan)
+{
+  QO_PLANNER *planner;
+  QO_NODE_INDEX_ENTRY *ni_entry;
+  double rows_per_group, rows, range_rows, filter_sel, group_prob, ranges;
+  int sort_col;
+
+  if (plan == NULL || plan->info == NULL || plan->plan_un.scan.index == NULL || !qo_is_interesting_order_scan (plan))
+    {
+      return 1.0;
+    }
+
+  /* an index skip scan and a loose index scan search the index for every prefix value whatever the LIMIT */
+  if (qo_is_index_iss_scan (plan) || qo_is_index_loose_scan (plan))
+    {
+      return 1.0;
+    }
+
+  planner = plan->info->planner;
+  if (planner == NULL || planner->sort_limit_costing || qo_scan_has_join_term (plan))
+    {
+      return 1.0;
+    }
+
+  if (qo_is_index_mro_scan (plan))
+    {
+      /* the key ranges are the values of the columns before the first sort column that the key range holds; the scan
+       * reads each of them in the ORDER BY order until its rows cannot enter the LIMIT rows any more */
+      ni_entry = plan->plan_un.scan.index;
+      sort_col = ni_entry->head->first_sort_column;
+      if (sort_col < 1 || sort_col > ni_entry->cum_stats.pkeys_size || ni_entry->cum_stats.pkeys[sort_col - 1] < 1
+	  || QO_NODE_NCARD (plan->plan_un.scan.node) < 1)
+	{
+	  return 1.0;
+	}
+      ranges = plan->iscan_range_rows * ni_entry->cum_stats.pkeys[sort_col - 1]
+	/ (double) QO_NODE_NCARD (plan->plan_un.scan.node);
+      rows = MAX (1.0, ranges) * qo_limit_rows (plan->info->env);
+      return MIN (1.0, rows / MAX (1.0, (plan->info)->cardinality));
+    }
+
+  if (planner->orderby_limit_fraction < 1.0 && qo_plan_is_orderby_skip_candidate (plan))
+    {
+      return planner->orderby_limit_fraction;
+    }
+
+  if (planner->groupby_limit_groups > 0.0 && qo_plan_is_groupby_skip_candidate (plan))
+    {
+      rows_per_group = qo_groupby_skip_rows_per_group (plan, QO_ENV_PT_TREE (plan->info->env));
+      if (rows_per_group < DBL_MAX)
+	{
+	  /* the rows of the key range read for the LIMIT groups: rows_per_group counts the rows of a group before
+	   * the filters, and a group is one of the LIMIT only when a row of it passes them */
+	  range_rows = MAX (1.0, plan->iscan_range_rows);
+	  filter_sel = MIN (1.0, (plan->info)->cardinality / range_rows);
+	  group_prob = 1.0 - pow (1.0 - filter_sel, MAX (1.0, rows_per_group));
+	  rows = planner->groupby_limit_groups * rows_per_group / MAX (group_prob, 1.0 / range_rows);
+	  return MIN (1.0, rows / range_rows);
+	}
+    }
+
+  return 1.0;
+}
+
+/*
  * qo_groupby_limit_groups () - groups a GROUP BY query reads before its LIMIT stops the scan
  *   return: LIMIT plus offset, GUESSED_BIND_LIMIT_CARD for a host variable, or 0 when the query reads every group
  *   env(in):
@@ -6606,11 +7180,12 @@ qo_check_serial_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
  *
  * Note: the PT counterparts of what scan_check_parallel_scan_possible () rejects in the XASL
  *	 (px_scan_checker.cpp): a method or a stored procedure without PARALLEL_ENABLE (TYPE_SP,
- *	 qo_check_method_call_parallel_eligibility ()), a serial NEXT_VALUE / CURRENT_VALUE and a
- *	 session variable (the ARITH_TYPE opcodes T_NEXT_VALUE, T_CURRENT_VALUE,
- *	 T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE), a path expression and an object column
- *	 (TYPE_ATTR_ID of DB_TYPE_OBJECT / DB_TYPE_OID). In the select list the executor blocks
- *	 the scan for all of these but the method call (qo_check_serial_select_list_expr ()).
+ *	 qo_check_method_call_parallel_eligibility ()), a serial NEXT_VALUE / CURRENT_VALUE /
+ *	 serial_current_value_by_oid () and a session variable (the ARITH_TYPE opcodes T_NEXT_VALUE,
+ *	 T_CURRENT_VALUE, T_CURRENT_VALUE_BY_OID, T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE), a path
+ *	 expression and an object column (TYPE_ATTR_ID of DB_TYPE_OBJECT / DB_TYPE_OID). In the
+ *	 select list the executor blocks the scan for all of these but the method call
+ *	 (qo_check_serial_select_list_expr ()).
  */
 static PT_NODE *
 qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -6634,6 +7209,7 @@ qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
 	{
 	case PT_NEXT_VALUE:
 	case PT_CURRENT_VALUE:
+	case PT_CURRENT_VALUE_BY_OID:
 	case PT_DEFINE_VARIABLE:
 	case PT_EVALUATE_VARIABLE:
 	  *found = true;
@@ -6701,6 +7277,8 @@ qo_check_serial_select_list_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void 
  *
  * Note: a serial is updated under a system operation and through the serial cache,
  *	 so the parallel probe workers may evaluate NEXT_VALUE and CURRENT_VALUE.
+ *	 serial_current_value_by_oid () stays blocked as in qo_check_serial_block_expr (): only the
+ *	 db_serial and information_schema.tables view specs call it, in their select lists.
  */
 static PT_NODE *
 qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -6735,8 +7313,9 @@ qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
  *	 - the source query of UPDATE / DELETE (UPDATE_PROC, DELETE_PROC) and SELECT ... FOR UPDATE;
  *	 - a select list or WHERE clause holding one of the expressions of
  *	   qo_check_serial_block_expr () (T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE, T_NEXT_VALUE,
- *	   T_CURRENT_VALUE, an attribute of DB_TYPE_OBJECT), a WHERE clause holding a method or a
- *	   stored procedure without PARALLEL_ENABLE (TYPE_SP), or a path expression;
+ *	   T_CURRENT_VALUE, T_CURRENT_VALUE_BY_OID, an attribute of DB_TYPE_OBJECT), a WHERE clause
+ *	   holding a method or a stored procedure without PARALLEL_ENABLE (TYPE_SP), or a path
+ *	   expression;
  *	 - a subquery of the select list or WHERE clause holding a session variable anywhere
  *	   (SESSION_STATE_ACCESS).
  *	 Rarer cases stay costed as parallel: an uncorrelated scalar subquery used as is in a
@@ -7292,7 +7871,17 @@ qo_nljoin_cost (QO_PLAN * planp)
 	  limit_rows = limit_val;
 	}
 
-      if (outer->plan_type == QO_PLANTYPE_SCAN)
+      if (!is_groupby_limit && planp->info->planner->orderby_limit_fraction < 1.0
+	  && qo_plan_is_orderby_skip_candidate (planp))
+	{
+	  /* the join reads its outer in the ORDER BY order and stops at the LIMIT: the share of the outer rows the
+	   * query reads (qo_orderby_limit_fraction (), CBRD-28111), the share its outer scan was charged for */
+	  guessed_result_cardinality =
+	    MAX (1.0, (outer->info)->cardinality * planp->info->planner->orderby_limit_fraction);
+	  planp->limit_nljoin_guessed_card =
+	    MAX (1.0, MIN (limit_rows, (planp->info)->cardinality * planp->info->planner->orderby_limit_fraction));
+	}
+      else if (outer->plan_type == QO_PLANTYPE_SCAN)
 	{
 	  /* outer rows required to satisfy the LIMIT; the outer scan cannot read more rows than it has */
 	  required_card = MAX (limit_val / (outer->info)->hit_prob, 1.0);
@@ -7357,7 +7946,8 @@ qo_nljoin_cost (QO_PLAN * planp)
   /* iscan_descent_cpu is the per-probe root-to-leaf descent (zero for non-iscan inners):
    * the inner side really descends once per outer row, so it is charged here and only here --
    * see the publishing comment in qo_iscan_cost (). */
-  inner_cpu_cost = inner_scan_card * inner->variable_cpu_cost + guessed_result_cardinality * inner->iscan_descent_cpu;
+  inner_cpu_cost =
+    inner_scan_card * QO_PLAN_VARIABLE_CPU_COST_WHOLE (inner) + guessed_result_cardinality * inner->iscan_descent_cpu;
 
   /* inner side IO cost of nested-loop block join */
   if (qo_is_iscan (inner))
@@ -7389,8 +7979,8 @@ qo_nljoin_cost (QO_PLAN * planp)
        * scan carries no heap share and no phantom page (qo_iscan_cost ()), so its per-probe IO
        * is the non-covering probe's minus the heap page -- never more.  Anything a later step
        * adds to variable_io_cost (e.g. subquery IO) stays per probe by design. */
-      heap_io = MIN (inner->iscan_heap_io, inner->variable_io_cost);
-      leaf_io = inner->variable_io_cost - heap_io;
+      heap_io = MIN (inner->iscan_heap_io, QO_PLAN_VARIABLE_IO_COST_WHOLE (inner));
+      leaf_io = QO_PLAN_VARIABLE_IO_COST_WHOLE (inner) - heap_io;
 
       /* Saturate in page space, then price: heap_io/leaf_io already carry the random unit
        * price (qo_iscan_cost ()), so the saturation ceilings get the same factor. Pricing
@@ -7407,13 +7997,24 @@ qo_nljoin_cost (QO_PLAN * planp)
     {
       /* if inner is seq scan, it is calculated by default card. */
       /* This prevents the worst plan if the cardinality is calculated to be less than the actual value. */
-      inner_io_cost = (inner_scan_card + SSCAN_DEFAULT_CARD) * inner->variable_io_cost;
+      inner_io_cost = (inner_scan_card + SSCAN_DEFAULT_CARD) * QO_PLAN_VARIABLE_IO_COST_WHOLE (inner);
     }
 
-  /* outer side CPU cost of nested-loop block join */
-  outer_cpu_cost = outer->variable_cpu_cost;
-  /* outer side IO cost of nested-loop block join */
-  outer_io_cost = outer->variable_io_cost;
+  /* outer side CPU and IO cost of nested-loop block join: an outer scan charged for the share of its rows it reads
+   * before the LIMIT (qo_scan_limit_fraction ()) keeps that cost when this join skips the ORDER BY or the GROUP BY
+   * in its order, and is read whole by any other join (CBRD-28111) */
+  if (outer->plan_type == QO_PLANTYPE_SCAN && outer->limit_scan_fraction < 1.0
+      && !(is_groupby_limit || (QO_PLAN_HAS_LIMIT (planp) && qo_plan_is_orderby_skip_candidate (planp))
+	   || (qo_is_index_mro_scan (outer) && qo_plan_multi_range_opt (planp))))
+    {
+      outer_cpu_cost = QO_PLAN_VARIABLE_CPU_COST_WHOLE (outer);
+      outer_io_cost = QO_PLAN_VARIABLE_IO_COST_WHOLE (outer);
+    }
+  else
+    {
+      outer_cpu_cost = outer->variable_cpu_cost;
+      outer_io_cost = outer->variable_io_cost;
+    }
 
   /* a partitioned inner walks its partitions per outer row (CBRD-27866): each outer key its memo has not seen
    * (qo_nl_outer_key_ndv ()) probes every partition the join does not prune (qo_nl_inner_partitions ()), and the
@@ -7607,10 +8208,10 @@ qo_mjoin_cost (QO_PLAN * planp)
   planp->fixed_cpu_cost = outer->fixed_cpu_cost + inner->fixed_cpu_cost;
   planp->fixed_io_cost = outer->fixed_io_cost + inner->fixed_io_cost;
   /* CPU and IO costs which are variable according to the join plan */
-  planp->variable_cpu_cost = outer->variable_cpu_cost + inner->variable_cpu_cost;
+  planp->variable_cpu_cost = QO_PLAN_VARIABLE_CPU_COST_WHOLE (outer) + QO_PLAN_VARIABLE_CPU_COST_WHOLE (inner);
   planp->variable_cpu_cost += (outer_cardinality + inner_cardinality) * QO_CPU_WEIGHT * MJ_CPU_OVERHEAD_FACTOR;
   /* merge cost */
-  planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
+  planp->variable_io_cost = QO_PLAN_VARIABLE_IO_COST_WHOLE (outer) + QO_PLAN_VARIABLE_IO_COST_WHOLE (inner);
   qo_plan_uncover_cost (outer, false, &planp->variable_io_cost, &planp->variable_cpu_cost);
   qo_plan_uncover_cost (inner, false, &planp->variable_io_cost, &planp->variable_cpu_cost);
 
@@ -7699,10 +8300,10 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   outer_factor = qo_join_input_factor (outer_plan_p, divisor);
   inner_factor = qo_join_input_factor (inner_plan_p, divisor);
 
-  plan_p->variable_cpu_cost =
-    outer_plan_p->variable_cpu_cost * outer_factor + inner_plan_p->variable_cpu_cost * inner_factor;
-  plan_p->variable_io_cost =
-    outer_plan_p->variable_io_cost * outer_factor + inner_plan_p->variable_io_cost * inner_factor;
+  plan_p->variable_cpu_cost = QO_PLAN_VARIABLE_CPU_COST_WHOLE (outer_plan_p) * outer_factor
+    + QO_PLAN_VARIABLE_CPU_COST_WHOLE (inner_plan_p) * inner_factor;
+  plan_p->variable_io_cost = QO_PLAN_VARIABLE_IO_COST_WHOLE (outer_plan_p) * outer_factor
+    + QO_PLAN_VARIABLE_IO_COST_WHOLE (inner_plan_p) * inner_factor;
   {
     double outer_io = 0.0, outer_cpu = 0.0, inner_io = 0.0, inner_cpu = 0.0;
 
@@ -8081,9 +8682,9 @@ qo_follow_cost (QO_PLAN * planp)
 
   planp->fixed_cpu_cost = head->fixed_cpu_cost;
   planp->fixed_io_cost = head->fixed_io_cost;
-  planp->variable_cpu_cost = head->variable_cpu_cost + (cardinality * (double) QO_CPU_WEIGHT);
+  planp->variable_cpu_cost = QO_PLAN_VARIABLE_CPU_COST_WHOLE (head) + (cardinality * (double) QO_CPU_WEIGHT);
   /* following an OID to its object is a random page read */
-  planp->variable_io_cost = head->variable_io_cost + fetch_ios * QO_COST_RANDOM_PAGE;
+  planp->variable_io_cost = QO_PLAN_VARIABLE_IO_COST_WHOLE (head) + fetch_ios * QO_COST_RANDOM_PAGE;
 
 #if TEST_DUMP_PLAN_FOLLOW_COST
   fprintf (stdout, "\nFollow Cost: \n");
@@ -8400,27 +9001,13 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       }
   }
 
-  if (ta > 0 && tb > 0 && QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
+  if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_RATIO <= tb))
     {
-      if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_LIMIT_RATIO <= tb))
-	{
-	  return PLAN_COMP_LT;
-	}
-      else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_LIMIT_RATIO))
-	{
-	  return PLAN_COMP_GT;
-	}
+      return PLAN_COMP_LT;
     }
-  else
+  else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_RATIO))
     {
-      if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_RATIO <= tb))
-	{
-	  return PLAN_COMP_LT;
-	}
-      else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_RATIO))
-	{
-	  return PLAN_COMP_GT;
-	}
+      return PLAN_COMP_GT;
     }
 
   if (qo_is_sort_limit (a))
@@ -10206,6 +10793,19 @@ qo_find_best_list_input_on_info (QO_INFO * info, QO_EQCLASS * order)
 	  best_cost = cost;
 	}
     }
+  if (order == QO_UNORDERED && info->planner != NULL && info->planner->bitmap_heap_pass
+      && !qo_plan_saves_sort (best_plan))
+    {
+      for (i = 0, pv = &info->best_bitmap; i < pv->nplans; i++)
+	{
+	  cost = qo_plan_list_input_cost (pv->plan[i]);
+	  if (cost < best_cost || (cost == best_cost && !qo_plan_has_bitmap_heap (best_plan)))
+	    {
+	      best_plan = pv->plan[i];
+	      best_cost = cost;
+	    }
+	}
+    }
 
   return best_plan;
 }
@@ -10222,22 +10822,34 @@ qo_find_best_parallel_driving_plan_on_info (QO_INFO * info)
   QO_PLANVEC *pv = &info->best_no_order;
   QO_PLAN *best_plan = NULL;
   double best_cost = 0.0, cost;
+  bool bitmap = false;
   int i;
 
-  for (i = 0; i < pv->nplans; i++)
+  for (;;)
     {
-      if (!qo_plan_drives_parallel (pv->plan[i]))
+      for (i = 0; i < pv->nplans; i++)
 	{
-	  continue;
-	}
+	  if (!qo_plan_drives_parallel (pv->plan[i]))
+	    {
+	      continue;
+	    }
 
-      cost = pv->plan[i]->fixed_cpu_cost + pv->plan[i]->fixed_io_cost + pv->plan[i]->variable_cpu_cost
-	+ pv->plan[i]->variable_io_cost;
-      if (best_plan == NULL || cost < best_cost)
-	{
-	  best_plan = pv->plan[i];
-	  best_cost = cost;
+	  cost = pv->plan[i]->fixed_cpu_cost + pv->plan[i]->fixed_io_cost + pv->plan[i]->variable_cpu_cost
+	    + pv->plan[i]->variable_io_cost;
+	  /* an equal cost goes to the bitmap, as in qo_find_best_plan_on_info () */
+	  if (best_plan == NULL || cost < best_cost || (bitmap && cost == best_cost))
+	    {
+	      best_plan = pv->plan[i];
+	      best_cost = cost;
+	    }
 	}
+      if (bitmap || info->planner == NULL || !info->planner->bitmap_heap_pass)
+	{
+	  break;
+	}
+      /* the pass that joins from the plans with a bitmap heap scan: those drive a parallel block too */
+      pv = &info->best_bitmap;
+      bitmap = true;
     }
 
   return best_plan;
@@ -10320,6 +10932,11 @@ qo_find_best_plan_on_planvec (QO_PLANVEC * planvec, double n)
    * and we never make plan non-NULL.  This is very bad for those callers above who believe that we're returning
    * something useful.
    */
+
+  if (planvec->nplans == 0)
+    {
+      return NULL;
+    }
 
   best_plan = planvec->plan[0];
   fixed = best_plan->fixed_cpu_cost + best_plan->fixed_io_cost;
@@ -10425,6 +11042,7 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   info->is_distinct = false;
 
   qo_init_planvec (&info->best_no_order);
+  qo_init_planvec (&info->best_bitmap);
 
   /*
    * Set aside an array for ordered plans.  Each element of the array
@@ -10514,6 +11132,7 @@ qo_detach_info (QO_INFO * info)
       info->detached = true;
 
       qo_uninit_planvec (&info->best_no_order);
+      qo_uninit_planvec (&info->best_bitmap);
     }
 }
 
@@ -10635,6 +11254,21 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
     {
       qo_plan_release (plan);
       return 0;
+    }
+
+  if (qo_plan_has_bitmap_heap (plan))
+    {
+      /* kept apart from the plans every position can run, whatever its order: its bitmap scan gives none */
+      if ((best_info != NULL
+	   && (qo_cmp_planvec (&best_info->best_no_order, plan) == PLAN_COMP_LT
+	       || qo_cmp_planvec (&best_info->best_bitmap, plan) == PLAN_COMP_LT))
+	  || qo_check_planvec (&info->best_bitmap, plan) != PLAN_COMP_GT)
+	{
+	  qo_plan_release (plan);
+	  return 0;
+	}
+      info->join_unit = info->planner->join_unit;
+      return 1;
     }
 
   /*
@@ -10785,6 +11419,24 @@ qo_find_best_plan_on_info (QO_INFO * info, QO_EQCLASS * order, double n)
   if (order == QO_UNORDERED)
     {
       pv = &info->best_no_order;
+      if (info->planner != NULL && info->planner->bitmap_heap_pass && info->best_bitmap.nplans > 0)
+	{
+	  /* an equal cost goes to the bitmap: its scans were made because they are the cheaper */
+	  QO_PLAN *plan = qo_find_best_plan_on_planvec (pv, n);
+	  QO_PLAN *bitmap_plan = qo_find_best_plan_on_planvec (&info->best_bitmap, n);
+
+	  if (plan == NULL)
+	    {
+	      /* every other plan of this join cost more than the best plan of the whole join and was dropped */
+	      return bitmap_plan;
+	    }
+
+	  return (!qo_plan_saves_sort (plan)
+		  && ((bitmap_plan->fixed_cpu_cost + bitmap_plan->fixed_io_cost
+		       + n * (bitmap_plan->variable_cpu_cost + bitmap_plan->variable_io_cost))
+		      <= (plan->fixed_cpu_cost + plan->fixed_io_cost
+			  + n * (plan->variable_cpu_cost + plan->variable_io_cost)))) ? bitmap_plan : plan;
+	}
     }
   else
     {
@@ -10794,7 +11446,15 @@ qo_find_best_plan_on_info (QO_INFO * info, QO_EQCLASS * order, double n)
 	  QO_PLAN *planp;
 
 	  planp = qo_find_best_plan_on_planvec (&info->best_no_order, n);
-	  if (info->is_distinct && planp != NULL)
+	  if (planp == NULL && info->planner != NULL && info->planner->bitmap_heap_pass)
+	    {
+	      planp = qo_find_best_plan_on_planvec (&info->best_bitmap, n);
+	    }
+	  if (planp == NULL)
+	    {
+	      return NULL;
+	    }
+	  if (info->is_distinct)
 	    {
 	      /* qo_sort_new () would skip the DISTINCT plan below it and the removal with it */
 	      assert (planp->plan_type == QO_PLANTYPE_SORT && planp->plan_un.sort.sort_type == SORT_DISTINCT);
@@ -12172,6 +12832,7 @@ qo_examine_follow (QO_INFO * info, QO_TERM * path_term, QO_INFO * head_info, BIT
 		   BITSET * pinned_subqueries)
 {
   PT_NODE *entity_spec;
+  QO_PLAN *head_plan;
   /*
    * Examine the feasibility of a follow plan implementation for this
    * edge.  Don't build follow plans if the tail of the path is an rdb
@@ -12183,9 +12844,13 @@ qo_examine_follow (QO_INFO * info, QO_TERM * path_term, QO_INFO * head_info, BIT
       return 0;
     }
 
-  return qo_check_plan_on_info (info,
-				qo_follow_new (info, qo_find_best_plan_on_info (head_info, QO_UNORDERED, 1.0),
-					       path_term, sarged_terms, pinned_subqueries));
+  head_plan = qo_find_best_plan_on_info (head_info, QO_UNORDERED, 1.0);
+  if (head_plan == NULL)
+    {
+      return 0;
+    }
+
+  return qo_check_plan_on_info (info, qo_follow_new (info, head_plan, path_term, sarged_terms, pinned_subqueries));
 
 }
 
@@ -12377,12 +13042,17 @@ qo_alloc_planner (QO_ENV * env)
   planner->join_info = NULL;
   planner->best_info = NULL;
   planner->cp_info = NULL;
+  planner->bitmap_heap_allowed = 0;
+  planner->bitmap_heap_twin = false;
+  planner->bitmap_heap_pass = false;
 
   planner->info_list = NULL;
 
   planner->cleanup_needed = true;
   planner->can_apply_limit_card = qo_can_apply_limit_card (env);
   planner->groupby_limit_groups = qo_groupby_limit_groups (env);
+  planner->orderby_limit_fraction = qo_orderby_limit_fraction (env);
+  planner->sort_limit_costing = false;
 
   return planner;
 }
@@ -12751,7 +13421,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     {
       /* at here, not yet visited at this join level; use cache */
 
-      if (new_info->best_no_order.nplans == 0)
+      if (new_info->best_no_order.nplans == 0 && new_info->best_bitmap.nplans == 0)
 	{
 	  goto wrapup;		/* give up */
 	}
@@ -13663,6 +14333,33 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 				    &sarged_terms, &pinned_subqueries, idx_join_cand);
 	  }
 #endif /* HASH_JOINS */
+
+	/* STEP 5-6: the same joins over the plans that read a heap through a bitmap. The inner of a nested loop join
+	 * runs once an outer row and a merge join reads sorted inputs: they take no such plan. */
+	if (head_info->best_bitmap.nplans > 0 || tail_info->best_bitmap.nplans > 0)
+	  {
+	    int bitmap_idx_join_plan_n = 0, bitmap_idx_join_cand = 0;
+
+	    planner->bitmap_heap_pass = true;
+	    if (idx_join_cnt && !tail_info->is_distinct)
+	      {
+		bitmap_idx_join_plan_n =
+		  qo_examine_idx_join (new_info, join_type, head_info, tail_info, &afj_terms, &sarged_terms,
+				       &pinned_subqueries, &sm_join_terms, &bitmap_idx_join_cand);
+		kept += bitmap_idx_join_plan_n;
+	      }
+	    kept +=
+	      qo_examine_nl_join (new_info, join_type, head_info, tail_info, &nl_join_terms, &duj_terms, &afj_terms,
+				  &sarged_terms, &pinned_subqueries, idx_join_plan_n + bitmap_idx_join_plan_n,
+				  idx_join_cand, &sm_join_terms);
+	    if (!bitset_is_empty (&sm_join_terms))
+	      {
+		kept +=
+		  qo_examine_hash_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms,
+					&afj_terms, &sarged_terms, &pinned_subqueries, idx_join_cand);
+	      }
+	    planner->bitmap_heap_pass = false;
+	  }
       }
 
     /* At this point, kept indicates the number of worthwhile plans generated by examine_joins (i.e., plans that where
@@ -13697,8 +14394,10 @@ go_ahead_subvisit:
 	  goto wrapup;
 	}
 
+      planner->bitmap_heap_pass = true;
       new_plan = qo_find_best_plan_on_info (new_info, QO_UNORDERED, 1.0);
       best_plan = qo_find_best_plan_on_info (planner->best_info, QO_UNORDERED, 1.0);
+      planner->bitmap_heap_pass = false;
       if (best_plan == NULL || new_plan == NULL)
 	{			/* unknown error */
 	  goto wrapup;		/* give up */
@@ -13978,7 +14677,9 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 	      continue;		/* skip and go ahead */
 	    }
 
+	  planner->bitmap_heap_pass = true;
 	  best_plan = qo_find_best_plan_on_info (best_info, QO_UNORDERED, 1.0);
+	  planner->bitmap_heap_pass = false;
 
 	  if (best_plan == NULL)
 	    {			/* unknown error */
@@ -14421,6 +15122,7 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * 
 	{
 	  normal_index_plan_n++;	/* include index skip scan */
 	}
+      qo_generate_bitmap_heap_scan (infop, nodep, ni_entryp, &range_terms);
 
       /* is it safe to ignore the result of qo_check_plan_on_info()? */
       bitset_remove (&range_terms, t);
@@ -14443,6 +15145,7 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * 
 	{
 	  normal_index_plan_n++;	/* include index skip scan */
 	}
+      qo_generate_bitmap_heap_scan (infop, nodep, ni_entryp, &range_terms);
 
       /* is it safe to ignore the result of qo_check_plan_on_info()? */
       bitset_remove (&range_terms, t);
@@ -14876,7 +15579,7 @@ qo_search_planner (QO_PLANNER * planner)
 		  /* CBRD-27469: a full index scan that supplies the rows in the PARTITION BY + ORDER BY order of an
 		   * analytic function lets the analytic evaluation skip its sort; the sort it saves is charged to
 		   * the sequential scan in qo_plan_cmp (). */
-		  if (!n && qo_index_covers_analytic_sort (info->env, node, ni_entry))
+		  if (!n && qo_index_covers_analytic_sort (info->env, node, ni_entry, false))
 		    {
 		      n =
 			qo_check_plan_on_info (info,
@@ -15048,6 +15751,38 @@ qo_search_planner (QO_PLANNER * planner)
       assert (driving != NULL && driving->plan_un.scan.index != NULL);
       driving->plan_un.scan.index->head->groupby_skip = true;
     }
+
+  /* an index entry is shared by the plans of its node, and every top plan accepted to skip the ORDER BY marked the
+   * entries of its scans (qo_set_orderby_skip ()), the ones a chosen sort plan reads among them (a scan so marked is
+   * not read in parallel, and reverses a key list of a descending ORDER BY); the chosen plan alone marks them
+   * (CBRD-28111) */
+  {
+    QO_ENV *env = planner->env;
+    QO_NODE_INDEX *ni;
+    QO_INDEX_ENTRY *entry;
+    QO_PLAN *top;
+    int n, j;
+    bool yn = true;
+
+    for (n = 0; n < env->Nnodes; n++)
+      {
+	ni = QO_NODE_INDEXES (QO_ENV_NODE (env, n));
+	for (j = 0; ni != NULL && j < QO_NI_N (ni); j++)
+	  {
+	    for (entry = QO_NI_ENTRY (ni, j)->head; entry != NULL; entry = entry->next)
+	      {
+		entry->orderby_skip = false;
+	      }
+	  }
+      }
+
+    for (top = plan; top != NULL && top->plan_type == QO_PLANTYPE_SORT; top = top->plan_un.sort.subplan)
+      ;
+    if (top != NULL && top->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE)	/* accepted by qo_top_plan_new () */
+      {
+	qo_walk_plan_tree (top, qo_set_orderby_skip, &yn);
+      }
+  }
 
 end:
 
@@ -15347,7 +16082,9 @@ qo_search_partition (QO_PLANNER * planner, QO_PARTITION * partition, QO_EQCLASS 
 
   if (planner->best_info)
     {
+      planner->bitmap_heap_pass = true;
       QO_PARTITION_PLAN (partition) = qo_plan_finalize (qo_find_best_plan_on_info (planner->best_info, order, 1.0));
+      planner->bitmap_heap_pass = false;
     }
   else
     {
@@ -17793,7 +18530,19 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
 
 	  if (i >= env->nterms)
 	    {
-	      attr_notnull = true;	/* OK */
+	      /* the walk above takes the key as read also under IS FALSE, in a bound of a RANGE or inside a subquery,
+	       * so a term must prove that it cannot be TRUE on a NULL key; an ON condition of an outer join does not
+	       * filter the preserved table, nor does a path term */
+	      for (i = 0; i < env->nterms && !attr_notnull; i++)
+		{
+		  termp = QO_ENV_TERM (env, i);
+		  pt_expr = QO_TERM_PT_EXPR (termp);
+		  if (pt_expr != NULL && pt_expr->or_next == NULL && !QO_ON_COND_TERM (termp)
+		      && !QO_IS_PATH_TERM (termp) && !QO_IS_FAKE_TERM (termp))
+		    {
+		      attr_notnull = qo_expr_rejects_null (env->parser, pt_expr, col->info.name.spec_id, col);
+		    }
+		}
 	    }
 
 	  bitset_delset (&key_segment);
@@ -18036,7 +18785,6 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
       else
 	{
 	  cover->has_uncovered = true;
-	  *continue_walk = PT_STOP_WALK;
 	}
     }
 
@@ -18052,6 +18800,8 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
  *   env(in): pointer to the optimizer environment
  *   node(in): the node scanned by the index
  *   ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ *   any(in): true to ask whether the index key order covers the sort list of at least one analytic function, in a
+ *	      join and on a class hierarchy too: XASL generation may then skip a sort on the key order of the scan
  *
  * Note: XASL generation evaluates analytic functions in sort groups and may merge the sort lists of compatible
  *   functions into one (pt_metadomains_compatible () compares PARTITION BY keys as sets), so a function that the
@@ -18060,7 +18810,7 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
  *   the order they first appear, which is then the index order), so that the first group surely skips its sort.
  */
 static bool
-qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp)
+qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp, bool any)
 {
   PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
   PT_NODE *tree = QO_ENV_PT_TREE (env);
@@ -18075,13 +18825,14 @@ qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY
   /* The analytic functions see the scan order only when the scan feeds them directly: no join, grouping or
    * hierarchical query in between. A partitioned class or a class hierarchy is scanned one class at a time, which
    * does not keep the index order across the classes. */
-  if (env->nnodes != 1 || tree->info.query.q.select.group_by != NULL || tree->info.query.q.select.connect_by != NULL
-      || QO_NODE_IS_CLASS_HIERARCHY (node) || pt_has_aggregate (parser, tree) || !pt_has_analytic (parser, tree))
+  if (tree->info.query.q.select.group_by != NULL || tree->info.query.q.select.connect_by != NULL
+      || pt_has_aggregate (parser, tree) || !pt_has_analytic (parser, tree))
     {
       return false;
     }
 
-  if (qo_is_prefix_index (index_entryp) || !qo_index_holds_all_rows (env, ni_entryp))
+  if (!any && (env->nnodes != 1 || QO_NODE_IS_CLASS_HIERARCHY (node) || qo_is_prefix_index (index_entryp)
+	       || !qo_index_holds_all_rows (env, ni_entryp)))
     {
       return false;
     }
@@ -18095,7 +18846,7 @@ qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY
   (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_index_covers_analytic_sort_pre, &cover, NULL,
 			   NULL);
 
-  return cover.has_covered && !cover.has_uncovered;
+  return cover.has_covered && (any || !cover.has_uncovered);
 }
 
 /*
@@ -18900,8 +19651,8 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
 	}
     }
 
-  /* check for plan type */
-  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN)
+  /* check for plan type; the rows of a bitmap heap scan leave in file order */
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN || plan->plan_un.scan.bitmap_heap)
     {
       goto exit_on_end;		/* nop */
     }
