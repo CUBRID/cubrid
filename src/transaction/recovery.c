@@ -938,7 +938,13 @@ struct rvfun RV_fun[] = {
    serial_rv_undo_ddl_update,
    NULL,
    log_rv_dump_hexa,
-   NULL}
+   NULL},
+  {RVDK_DELETE_VOLUME,
+   "RVDK_DELETE_VOLUME",
+   NULL,
+   disk_rv_redo_delete_volume,
+   NULL,
+   disk_rv_dump_delete_volume}
 };
 
 /*

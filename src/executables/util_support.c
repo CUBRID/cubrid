@@ -238,7 +238,8 @@ util_is_password_argument (int index, int value)
 #endif
       || (index == TDE && value == TDE_DBA_PASSWORD_S)
       || (index == LOADDB && value == LOAD_PASSWORD_S) || (index == UNLOADDB && value == UNLOAD_PASSWORD_S)
-      || (index == FLASHBACK && value == FLASHBACK_DBA_PASSWORD_S))
+      || (index == FLASHBACK && value == FLASHBACK_DBA_PASSWORD_S)
+      || (index == DELVOLDB && value == DELVOL_DBA_PASSWORD_S))
     {
       return true;
     }
