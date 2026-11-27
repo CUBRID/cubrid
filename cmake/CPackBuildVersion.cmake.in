@@ -1,0 +1,37 @@
+#
+#  Copyright 2016 CUBRID Corporation
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+
+# Configured with @ONLY at cmake time and loaded at cpack time by CPackOptions.cmake, on Linux only.
+#
+# The Linux build resolves the full version at build time (cmake/build-version.sh), so the version CMake put into
+# the package file names when configuring can be that of an older commit. Name the package after the version of the
+# binaries instead: the version the last build wrote to VERSION-DIST. The package target builds before running
+# cpack, so it is the version of the commit being packaged; cpack run on its own (as build.sh does after its build)
+# names the package after the last build, which is the version of the binaries it packages.
+
+if(EXISTS "@CUBRID_VERSION_DIR@/VERSION-DIST")
+  file(STRINGS "@CUBRID_VERSION_DIR@/VERSION-DIST" cubrid_build_version LIMIT_COUNT 1)
+else()
+  # nothing is built yet
+  execute_process(COMMAND "@BASH_EXECUTABLE@" "@PROJECT_SOURCE_DIR@/cmake/build-version.sh" resolve "@PROJECT_SOURCE_DIR@"
+    OUTPUT_VARIABLE cubrid_build_version OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY)
+endif()
+
+set(CPACK_PACKAGE_VERSION "${cubrid_build_version}")
+string(REPLACE "-@CUBRID_VERSION@-" "-${cubrid_build_version}-" CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_FILE_NAME}")
+string(REPLACE "-@CUBRID_VERSION@-" "-${cubrid_build_version}-" CPACK_SOURCE_PACKAGE_FILE_NAME
+  "${CPACK_SOURCE_PACKAGE_FILE_NAME}")

@@ -33,6 +33,7 @@
 #include "string_buffer.hpp"
 #include "pl_session.hpp"
 #include "network_callback_sr.hpp"
+#include "log_impl.h"
 
 #if defined (SA_MODE)
 #include "query_method.hpp"
@@ -106,7 +107,7 @@ namespace cubmethod
     cubmethod::header header (s_id, METHOD_REQUEST_ARG_PREPARE);
     cubmethod::prepare_args arg (m_id, t_id, METHOD_TYPE_CLASS_METHOD, arg_base); // TOD
 
-    error = xs_callback_send_args (m_stack->get_thread_entry (), header, arg);
+    error = xs_callback_send_no_receive (m_stack->get_thread_entry (), header, arg);
 
     return error;
   }
@@ -185,6 +186,11 @@ namespace cubmethod
 	delete m_stack;
       }
 exit:
+    /* as in cubpl::executor::execute (): a method that ignored a deadlock error of its SQL */
+    if (error == NO_ERROR)
+      {
+	error = logtb_fail_if_abort_deferred (logtb_get_current_tran_index ());
+      }
     return error;
   }
 
