@@ -721,6 +721,10 @@ quoted_string
 identifier
     : REGULAR_ID
     | DELIMITED_ID
+    | BODY      // non-reserved keywords
+    | PACKAGE
+    | RECORD
+    | TYPE
     ;
 
 
