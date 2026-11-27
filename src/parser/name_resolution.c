@@ -6501,6 +6501,15 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
   /* If so, name resolves to scope's flat list of entities */
   if (exposed_spec)
     {
+      /* A trigger action is compiled before the DBLink gate judges it, so a remote spec of the
+       * action is still in the entity shape. It has no columns and binds nothing. Its name alone
+       * stays as written, as its column names do. A sink target is resolved again when the action
+       * runs, in the derived shape. */
+      if (col_name && exposed_spec->info.spec.remote_server_name != NULL && PT_SPEC_IS_ENTITY (exposed_spec))
+	{
+	  return in_node;
+	}
+
       /* the exposed name of a derived table or a CTE may not be used alone, ie, "select e from (select a from c) e"
        * is disallowed. */
       if (col_name && (PT_SPEC_IS_DERIVED (exposed_spec) || PT_SPEC_IS_CTE (exposed_spec))
