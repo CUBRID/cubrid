@@ -107,6 +107,7 @@ extern void session_end_tran_streams (THREAD_ENTRY * thread_p, int tran_index);
 
 extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr));
 extern bool session_is_pl_session_running (THREAD_ENTRY * thread_p);
+extern bool session_is_pl_callback (THREAD_ENTRY * thread_p);
 extern void session_clear_pl_session_interrupt (THREAD_ENTRY * thread_p);
 
 extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
