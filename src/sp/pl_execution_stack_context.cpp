@@ -123,7 +123,7 @@ namespace cubpl
 
     set_cs_command (METHOD_REQUEST_END);
     std::vector<int> handler_vec (m_stack_handler_id.begin (), m_stack_handler_id.end ());
-    int error = send_data_to_client (handler_vec);
+    int error = send_data_to_client_no_reply (handler_vec);
     m_stack_handler_id.clear ();
 
     // restore to callback mode
