@@ -10,7 +10,7 @@ This subtree uses GoogleTest, an explicit exception to the Catch2 default in [th
   - `ServerModeEnv` (`test_oos_server_common.hpp`) for `SERVER_MODE` tests.
   - `SqlServerEnv` (`sql/test_oos_sql_common.hpp`) for SQL-level tests in `sql/`.
   - Pure-logic tests install none (for example `test_oos_record_flags.cpp`).
-  - Tests that create, crash, or restart their own database install none and boot it themselves, often in a forked child (`test_oos_workspace.cpp`, `test_oos_server_crash_recovery.cpp`, `sql/test_oos_sql_crash_recovery.cpp`). Copy one of them for such a test.
+  - Tests that create, crash, or restart their own database install none. `test_oos_server_crash_recovery.cpp` and `sql/test_oos_sql_crash_recovery.cpp` boot the database in a forked child; `test_oos_workspace.cpp` runs the `cubrid` and `csql` binaries on a fresh database. Copy the one that matches your test.
 - To call a file-static engine function, add a `bridge_<name> ()` wrapper in the engine source under `#if defined(CUBRID_UNIT_TEST_ENABLED)`, and declare it in the test file. Example: `bridge_oos_get_max_chunk_size_within_page ()` in `src/storage/oos_file.cpp`, declared in `test_oos_delete.cpp`. The parent build defines `CUBRID_UNIT_TEST_ENABLED` whenever any unit test is enabled.
 
 ## Adding a Test
