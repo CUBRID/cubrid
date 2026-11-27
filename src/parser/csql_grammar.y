@@ -1168,7 +1168,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token BITSHIFT_LEFT
 %token BITSHIFT_RIGHT
 %token BLOB_
-%token BODY
 %token BOOLEAN_
 %token BOTH_
 %token BREADTH
@@ -1365,7 +1364,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token OUTER
 %token OUTPUT
 %token OVERLAPS
-%token PACKAGE
 %token PARAMETERS
 %token PARTIAL
 %token PARTITION
@@ -1556,6 +1554,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> BIT_AND
 %token <cptr> BIT_OR
 %token <cptr> BIT_XOR
+%token <cptr> BODY
 %token <cptr> BUFFER
 %token <cptr> CALLER
 %token <cptr> CACHE
@@ -1682,6 +1681,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> OVER
 %token <cptr> PATH
 %token <cptr> OWNER
+%token <cptr> PACKAGE
 %token <cptr> PAGE
 %token <cptr> PARALLEL
 %token <cptr> PARALLEL_ENABLE
@@ -2998,13 +2998,16 @@ create_stmt
 	| CREATE					/* 1 */
 	  opt_or_replace               		        /* 2 */
 	  PACKAGE					/* 3 */
-          opt_body                                      /* 4 */
-                {                                       /* 5 */
+                {                                       /* 4 */
+                  // This action comes before opt_body, where the parser can split on BODY, a non-reserved keyword
+                  // (CREATE PACKAGE body AS ...). An action is deferred while the parser is split, and then
+                  // expecting_pkg_plcsql_text would be set too late, after the lexer has read IS or AS.
 		  PT_NODE *node = parser_new_node (this_parser, PT_CREATE_PACKAGE);
 		  parser_push_hint_node (node);
                   expecting_pkg_plcsql_text = 1;
 		  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PACKAGE);
                 }
+          opt_body                                      /* 5 */
 	  package_name_without_dot                      /* 6 */
 	  is_or_as plcsql_text                          /* 7, 8 */
 	  opt_comment_spec				/* 9 */
@@ -3040,7 +3043,7 @@ create_stmt
                         node->info.pkg.block = plcsql_block;
 
                         node->info.pkg.or_replace = $2;
-                        node->info.pkg.for_body = $4;
+                        node->info.pkg.for_body = $5;
                         node->info.pkg.name = $6;
                         node->info.pkg.comment = $9;
 
@@ -20947,6 +20950,7 @@ identifier
 	| BIT_AND                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| BIT_OR                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| BIT_XOR                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| BODY                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| BUFFER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CALLER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CACHE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -21072,6 +21076,7 @@ identifier
 	| ORDINALITY             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OVER                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OWNER                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PACKAGE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PAGE                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PARALLEL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PARALLEL_ENABLE        {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
