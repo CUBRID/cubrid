@@ -730,7 +730,7 @@ sm_define_view_serial_spec (void)
           "[serial].[unique_name] AS [unique_name], "
           "[serial].[name] AS [name], "
           "[serial].[owner].[name] AS [owner], "
-          "[serial].[current_val] AS [current_val], "
+          "serial_current_value_by_oid ([serial]) AS [current_val], "
           "[serial].[increment_val] AS [increment_val], "
           "[serial].[max_val] AS [max_val], "
           "[serial].[min_val] AS [min_val], "

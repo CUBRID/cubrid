@@ -323,13 +323,11 @@ namespace cubconn::connection
       }
     else
       {
-	/* there is no previous */
-	m_statistics[index].m_worker.first = worker.second;
+	/* the first message sets only the baseline: its counters are totals since the worker or connection started */
 	m_statistics[index].m_worker.second = worker.second;
 
 	for (auto &stats : contexts)
 	  {
-	    m_statistics[index].m_contexts[stats.first].first = stats.second;
 	    m_statistics[index].m_contexts[stats.first].second = stats.second;
 	  }
       }

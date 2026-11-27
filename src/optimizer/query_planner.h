@@ -191,6 +191,7 @@ struct qo_plan
       bool index_cover;		/* covered index scan flag */
       bool index_iss;		/* index skip scan flag */
       bool index_loose;		/* loose index scan flag */
+      bool bitmap_heap;		/* the heap rows are read in file order, through a bitmap of the rows the index found */
       QO_NODE_INDEX_ENTRY *index;
       BITSET multi_col_range_segs;	/* range condition segs for multi_col_term */
       BITSET hash_terms;	/* hash_terms for hash list scan */
@@ -259,6 +260,10 @@ struct qo_plan
   /* Rows this NL join is expected to emit under LIMIT: the LIMIT itself, or fewer when the outer runs out
    * first. Used as the next join level's driving row count and for the plan dump. */
   double limit_nljoin_guessed_card;
+  double limit_scan_fraction;	/* the share of its rows an index scan that skips the ORDER BY or GROUP BY of a LIMIT
+				 * query was charged for (qo_scan_limit_fraction ()); 1 when charged whole */
+  double limit_whole_cpu_cost;	/* the variable cost of such a scan read whole; set when limit_scan_fraction < 1 */
+  double limit_whole_io_cost;
   double iscan_index_rows;	/* index-condition-only rows per probe (before non-index filters); set by
 				   qo_iscan_cost, consumed by qo_nljoin_cost for the repeated-probe N */
   double iscan_range_rows;	/* rows in the key range per probe, covering scans included; set by
@@ -331,6 +336,12 @@ struct qo_info
    * The lowest-cost plan without regard to ordering.
    */
   QO_PLANVEC best_no_order;
+
+  /*
+   * The plans that read a heap through a bitmap. They are kept apart: a position that cannot run one (the inner
+   * of a nested loop or merge join, an ordered input) reads best_no_order and planvec as it did.
+   */
+  QO_PLANVEC best_bitmap;
 
   /*
    * The set of nodes joined by the plans at this node.
@@ -486,7 +497,27 @@ struct qo_planner
 
   /* Cached result of qo_groupby_limit_groups(env): the groups a GROUP BY stops at, or 0 */
   double groupby_limit_groups;
+
+  /* whether a scan of the statement may read its heap through a bitmap: 0 not asked yet, 1 yes, -1 no */
+  int bitmap_heap_allowed;
+  /* the index scan being made reads its heap through a bitmap (qo_generate_bitmap_heap_scan ()) */
+  bool bitmap_heap_twin;
+  /* the joins are examined over the plans of best_bitmap too (planner_visit_node ()) */
+  bool bitmap_heap_pass;
+
+  /* the share of its rows a scan in the ORDER BY order reads before the LIMIT (qo_orderby_limit_fraction ()), or 1 */
+  double orderby_limit_fraction;
+
+  /* a SORT-LIMIT plan is pricing its scan as one of LIMIT rows (qo_sort_cost ()): no share on top */
+  bool sort_limit_costing;
 };
+
+/* the variable cost of a plan read whole: an index scan charged for the share of its rows it reads before the LIMIT
+ * (limit_scan_fraction) is read whole by a nested loop inner, a hash or merge join input and a sort input */
+#define QO_PLAN_VARIABLE_CPU_COST_WHOLE(plan) \
+  ((plan)->limit_scan_fraction < 1.0 ? (plan)->limit_whole_cpu_cost : (plan)->variable_cpu_cost)
+#define QO_PLAN_VARIABLE_IO_COST_WHOLE(plan) \
+  ((plan)->limit_scan_fraction < 1.0 ? (plan)->limit_whole_io_cost : (plan)->variable_io_cost)
 
 extern QO_PLAN *qo_planner_search (QO_ENV *);
 extern void qo_planner_free (QO_PLANNER *);
@@ -495,6 +526,7 @@ extern void qo_info_stats (FILE *);
 
 extern bool qo_is_seq_scan (QO_PLAN *);
 extern bool qo_is_func_index_cover_routed (QO_PLAN * plan);
+extern void qo_plan_mark_bitmap_heap (QO_PLAN * planp);
 extern bool qo_is_iscan (QO_PLAN *);
 extern bool qo_is_iscan_from_groupby (QO_PLAN *);
 extern bool qo_is_iscan_from_orderby (QO_PLAN *);
