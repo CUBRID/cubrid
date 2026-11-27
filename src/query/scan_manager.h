@@ -902,7 +902,7 @@ extern SCAN_CODE scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern bool scan_index_nl_batch_ok (const SCAN_ID * scan_id);
 extern SCAN_CODE scan_index_nl_batch_collect (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * oids, int room,
 					      int *n_oids, bool * complete);
-extern int scan_index_nl_batch_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int count);
+extern int scan_index_nl_batch_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int count, int *looked_up);
 extern SCAN_CODE scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos);
 extern SCAN_CODE scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos);

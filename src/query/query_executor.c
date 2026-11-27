@@ -754,6 +754,12 @@ static SCAN_CODE qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, boo
 						    QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc);
 static SCAN_CODE qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				     QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc);
+static inline SCAN_CODE qexec_execute_scan_row_body (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+						     XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * ignore,
+						     XASL_SCAN_FNC_PTR next_scan_fnc, const bool may_hold)
+  __attribute__ ((ALWAYS_INLINE));
+static SCAN_CODE qexec_execute_scan_row_plain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+					       QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc);
 static SCAN_CODE qexec_execute_scan_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					 QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc);
 static void qexec_nl_batch_free (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
@@ -13363,7 +13369,9 @@ qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * 
       ptr = (XASL_SCAN_FNC_PTR) scan_func_ptr;
     }
 
-  return qexec_execute_scan (thread_p, xasl, xasl_state, NULL, ptr);
+  /* as in the function vector of qexec_execute_mainblock_internal (): a scan is run by its own entry, and is handed
+   * the entry of the scan after it (qexec_execute_scan_outer () replaces the entry of a scan it settles) */
+  return (*ptr[0]) (thread_p, xasl, xasl_state, NULL, ptr + 1);
 }
 
 /*
@@ -13376,7 +13384,8 @@ qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * 
  * for it as it would have, finding its OIDs read already.  The rows of the join come out in the same order.
  */
 #define QEXEC_NL_BATCH_MAX_LISTS 16
-#define QEXEC_NL_BATCH_FIRST_ROWS 8	/* outer rows of the first batch of a join; each following one is twice as large */
+#define QEXEC_NL_BATCH_FIRST_ROWS 8	/* outer rows of the first batch of a join, and of the one after a batch whose
+					 * pages were all in the buffer; each following one is twice as large */
 #define QEXEC_NL_BATCH_MAX_BYTES (2 * 1024 * 1024)	/* held values: a batch of wide rows closes here */
 #define QEXEC_NL_BATCH_FIRST_BACKOFF 64
 #define QEXEC_NL_BATCH_MAX_BACKOFF 65536
@@ -13395,6 +13404,8 @@ typedef struct qexec_nl_batch QEXEC_NL_BATCH;
 struct qexec_nl_batch
 {
   bool on;			/* this inner scan batches; decided once, by its outer */
+  bool pass;			/* ... but holds no row itself: its index scan is of a kind that is never read ahead.
+				 * Its batch only lets the batch of the scan after it stay open across its rows */
   bool replaying;		/* the held rows are being joined */
   bool row_open;		/* ... and the current one is inside the row path */
   bool passing;			/* an outer row that was not held is inside the row path */
@@ -13419,7 +13430,8 @@ struct qexec_nl_batch
   int n_oids;
   int oid_cap;			/* twice the inner scan's OID buffer: a row is taken while the first half has room */
   int row_target;		/* outer rows that close the batch, unless their OIDs fill one OID buffer first: grows
-				 * batch by batch, so a join that stops after a few rows reads few rows ahead */
+				 * batch by batch, so a join that stops after a few rows reads few rows ahead, and
+				 * starts again after a batch whose pages were all in the buffer */
   int backoff;			/* outer rows joined row at a time after a batch whose pages were all in the buffer:
 				 * twice as many each time */
   int skip;			/* ... of which still to come */
@@ -13427,6 +13439,8 @@ struct qexec_nl_batch
 				 * when the inner scan stops at its first match */
   int ahead_distance;		/* OIDs of the last read-ahead window; grows as an index scan's does */
   int hinted;			/* pages of this batch named to the OS */
+  int checked;			/* pages of this batch looked up in the buffer for it: with fewer than two, a batch that
+				 * named none says nothing about the buffer */
   INT64 bytes;			/* memory of the held outer rows */
   unsigned int *seen;		/* hashes of the keys of the held rows, for a step whose answers are kept by key
 				 * (memoize, the subquery's result cache): open addressing, 0 is an empty slot */
@@ -13477,8 +13491,15 @@ static SCAN_CODE qexec_nl_batch_error_ahead (THREAD_ENTRY * thread_p, XASL_NODE 
 static int qexec_nl_batch_copy_lists (THREAD_ENTRY * thread_p, VAL_LIST ** lists, int n_lists, DB_VALUE * vals,
 				      bool to_lists, INT64 * bytes);
 static QEXEC_SQ_BATCH *qexec_sq_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static SCAN_CODE qexec_execute_scan_batch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+					   QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc)
+  __attribute__ ((noinline));
 static SCAN_CODE qexec_execute_scan_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					  QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc);
+static inline SCAN_CODE qexec_execute_scan_outer_body (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+						       XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * ignore,
+						       XASL_SCAN_FNC_PTR next_scan_fnc, const bool may_hold)
+  __attribute__ ((ALWAYS_INLINE));
 static SCAN_CODE qexec_execute_scan_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					   QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc);
 static SCAN_CODE qexec_sq_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -13564,6 +13585,12 @@ qexec_nl_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * outer, XASL_NODE * inne
 	}
     }
   batch->on = true;
+  /* what the plan already tells of scan_index_nl_batch_ok (): a covering index and a list of keys or ranges are
+   * never read ahead (an index skip scan changes its range type as it runs, and is asked row by row) */
+  batch->pass = (spec->next == NULL && spec->indexptr != NULL
+		 && (spec->indexptr->coverage != 0
+		     || (spec->indexptr->use_iss == 0 && spec->indexptr->range_type != R_KEY
+			 && spec->indexptr->range_type != R_RANGE)));
 }
 
 /*
@@ -13854,6 +13881,23 @@ qexec_nl_batch_is_full (QEXEC_NL_BATCH * batch, bool closed)
 }
 
 /*
+ * qexec_nl_batch_skips_row () - is the new outer row one of those joined a row at a time after a batch that named
+ *				 no page?
+ *   return: true when the row is not held: it is counted off the rows to skip
+ *   batch(in/out): of a scan that batches, with no row of this outer row inside its row path
+ */
+static inline bool
+qexec_nl_batch_skips_row (QEXEC_NL_BATCH * batch)
+{
+  if (batch->skip > 0 && batch->n_rows == 0 && !batch->flush && !batch->replaying)
+    {
+      batch->skip--;
+      return true;
+    }
+  return false;
+}
+
+/*
  * qexec_nl_batch_seen () - does the batch hold a row of this key already?
  *   return: true when a held row had the same key hash; otherwise false, and the hash is remembered
  *   hash(in): of the key by which the step's answers are kept
@@ -13918,6 +13962,8 @@ qexec_nl_batch_seen (QEXEC_NL_BATCH * batch, unsigned int hash)
  *   return: S_SUCCESS (held, more rows may follow), S_END (held, and the batch is closed),
  *	     S_DOESNT_EXIST (not held: the row path runs for it now), S_ERROR
  *   xasl(in/out): the inner scan, rewound by its outer for the row
+ *
+ * Note: the caller does not come here for a row it skips after a batch that named no page.
  */
 static SCAN_CODE
 qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * batch)
@@ -13943,12 +13989,8 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
     {
       scan_ok = (up->curr_spec != NULL && !up->curr_spec->s_id.mvcc_select_lock_needed);
     }
-  if ((!scan_ok || batch->skip > 0) && batch->n_rows == 0)
+  if (!scan_ok && batch->n_rows == 0)
     {
-      if (batch->skip > 0)
-	{
-	  batch->skip--;
-	}
       return S_DOESNT_EXIST;
     }
 
@@ -14108,9 +14150,9 @@ qexec_nl_batch_open_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BAT
  *
  * Note: This function is the general scan block interpretation function.
  */
-static SCAN_CODE
-qexec_execute_scan_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-			QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc)
+static inline SCAN_CODE
+qexec_execute_scan_row_body (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+			     QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc, const bool may_hold)
 {
   XASL_NODE *xptr;
   SCAN_CODE sc_scan;
@@ -14122,7 +14164,7 @@ qexec_execute_scan_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   int memoize_err_code;
   bool memoize_success = true, memoize_key_ended, memoize_put_success;
   bool memoize_held = false;
-  QEXEC_SQ_BATCH *sq = (xasl->nl_batch != NULL) ? xasl->nl_batch->sq : NULL;
+  QEXEC_SQ_BATCH *sq = (may_hold && xasl->nl_batch != NULL) ? xasl->nl_batch->sq : NULL;
 
   /* check if further scan procedure are still active */
   if (xasl->scan_ptr && xasl->next_scan_on)
@@ -14465,7 +14507,7 @@ memoize_lookup:
 	    }
 	}			/* if (qualified) */
 
-      if (xasl->dptr_list != NULL && xasl->nl_batch != NULL && !xasl->nl_batch->sq_armed)
+      if (may_hold && xasl->dptr_list != NULL && xasl->nl_batch != NULL && !xasl->nl_batch->sq_armed)
 	{
 	  sq = qexec_sq_batch_arm (thread_p, xasl);
 	}
@@ -14650,31 +14692,63 @@ memoize_lookup:
 }
 
 /*
- * qexec_execute_scan_outer () - qexec_execute_scan_row () for a scan whose following scan may batch its rows
+ * qexec_execute_scan_row () - the row path of a scan that may hold rows for its correlated subquery
+ */
+static SCAN_CODE
+qexec_execute_scan_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+			QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc)
+{
+  return qexec_execute_scan_row_body (thread_p, xasl, xasl_state, ignore, next_scan_fnc, true);
+}
+
+/*
+ * qexec_execute_scan_row_plain () - the row path of a scan decided to hold no row for a subquery
+ *
+ * Note: the same source as qexec_execute_scan_row (), compiled without the tests for such rows.
+ */
+static SCAN_CODE
+qexec_execute_scan_row_plain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+			      QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc)
+{
+  return qexec_execute_scan_row_body (thread_p, xasl, xasl_state, ignore, next_scan_fnc, false);
+}
+
+/*
+ * qexec_execute_scan_outer_body () - the row path of a scan whose following scan may batch its rows
  *   return: scan code
+ *   may_hold(in): false for a scan decided to hold no row for a subquery (qexec_execute_scan_row_plain ())
  *
  * Note: when this scan's rows end, the rows its following scan still holds are joined before S_END goes up.
  */
-static SCAN_CODE
-qexec_execute_scan_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-			  QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc)
+static inline SCAN_CODE
+qexec_execute_scan_outer_body (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+			       QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc, const bool may_hold)
 {
   XASL_NODE *inner = xasl->scan_ptr;
-  QEXEC_NL_BATCH *batch;
+  QEXEC_NL_BATCH *own = xasl->nl_batch;
+  QEXEC_NL_BATCH *batch = NULL;
   SCAN_CODE sc_scan;
 
-  if (inner == NULL)
+  if (inner != NULL)
     {
-      return qexec_execute_scan_row (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
+      if (inner->nl_batch == NULL)
+	{
+	  qexec_nl_batch_arm (thread_p, xasl, inner, false);
+	}
+      batch = inner->nl_batch;
     }
-  if (inner->nl_batch == NULL)
-    {
-      qexec_nl_batch_arm (thread_p, xasl, inner, false);
-    }
-  batch = inner->nl_batch;
   if (batch == NULL || !batch->on)
     {
-      return qexec_execute_scan_row (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
+      if (own != NULL && (!own->on || own->pass) && (inner == NULL || batch != NULL)
+	  && (xasl->dptr_list == NULL || (own->sq_armed && own->sq == NULL)))
+	{
+	  /* No batch at this scan, none for a subquery of it, none at the scan after it, all decided: from now on
+	   * the scan's entry in the function vector, which precedes the one it is handed, is its row path. Every
+	   * row of the join passes through that entry once on its way up from the scans below. */
+	  next_scan_fnc[-1] = (XASL_SCAN_FUNC) qexec_execute_scan_row_plain;
+	}
+      return (may_hold ? qexec_execute_scan_row (thread_p, xasl, xasl_state, ignore, next_scan_fnc)
+	      : qexec_execute_scan_row_plain (thread_p, xasl, xasl_state, ignore, next_scan_fnc));
     }
 
   if (batch->outer_ended)
@@ -14689,7 +14763,8 @@ qexec_execute_scan_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       return sc_scan;
     }
 
-  sc_scan = qexec_execute_scan_row (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
+  sc_scan = (may_hold ? qexec_execute_scan_row (thread_p, xasl, xasl_state, ignore, next_scan_fnc)
+	     : qexec_execute_scan_row_plain (thread_p, xasl, xasl_state, ignore, next_scan_fnc));
   if (sc_scan == S_ERROR)
     {
       return qexec_nl_batch_error_ahead (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
@@ -14709,6 +14784,16 @@ qexec_execute_scan_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 }
 
 /*
+ * qexec_execute_scan_outer () - qexec_execute_scan_outer_body () for a scan that may hold rows for its subquery
+ */
+static SCAN_CODE
+qexec_execute_scan_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+			  QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc)
+{
+  return qexec_execute_scan_outer_body (thread_p, xasl, xasl_state, ignore, next_scan_fnc, true);
+}
+
+/*
  * qexec_execute_scan () - the scan function of every scan but the first of a nested-loop chain
  *   return: scan code
  *   xasl(in)   : XASL Tree pointer
@@ -14722,6 +14807,72 @@ qexec_execute_scan_outer (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 static SCAN_CODE
 qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * ignore,
 		    XASL_SCAN_FNC_PTR next_scan_fnc)
+{
+  QEXEC_NL_BATCH *own = xasl->nl_batch;
+  XASL_NODE *inner = xasl->scan_ptr;
+  SCAN_CODE sc_scan;
+  bool through;
+
+  /* Every row of the join passes here once for each scan, most of them on their way up from the scans below. A scan
+   * that holds no row now takes them from the following scan here, as qexec_execute_scan_row () starts by doing,
+   * and goes to its row path only for a row of its own. */
+  if (own == NULL)
+    {
+      return qexec_execute_scan_batch (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
+    }
+  if (own->sq != NULL || (xasl->dptr_list != NULL && !own->sq_armed)
+      || (inner != NULL && inner->nl_batch != NULL && inner->nl_batch->drain))
+    {
+      /* rows held for the scan's correlated subquery, or to be held from this call on, are joined before S_END goes
+       * up; rows held below are being passed on. Past this test the scan holds no row for a subquery, now or
+       * later: its row path is the plain one */
+      return qexec_execute_scan_batch (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
+    }
+  through = (!own->on || own->pass);	/* the scan never holds an outer row */
+  if (!through && !own->passing && qexec_nl_batch_skips_row (own))
+    {
+      own->passing = true;
+    }
+  if (through || own->passing)
+    {
+      /* the outer row is not held: what qexec_execute_scan_batch () comes to for it */
+      if (inner == NULL && !through)
+	{
+	  sc_scan = qexec_execute_scan_row_plain (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
+	  own->passing = (sc_scan == S_SUCCESS);
+	  return sc_scan;
+	}
+      if (inner != NULL && xasl->next_scan_on && (inner->nl_batch == NULL || !inner->nl_batch->outer_ended))
+	{
+	  sc_scan = (*next_scan_fnc) (thread_p, inner, xasl_state, ignore, next_scan_fnc + 1);
+	  if (sc_scan == S_SUCCESS)
+	    {
+	      return S_SUCCESS;
+	    }
+	  if (sc_scan != S_END)
+	    {
+	      if (sc_scan == S_ERROR)
+		{
+		  sc_scan = qexec_nl_batch_error_ahead (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
+		}
+	      own->passing = (own->passing && sc_scan == S_SUCCESS);
+	      return sc_scan;
+	    }
+	  xasl->next_scan_on = false;
+	}
+      sc_scan = qexec_execute_scan_outer_body (thread_p, xasl, xasl_state, ignore, next_scan_fnc, false);
+      own->passing = (!through && sc_scan == S_SUCCESS);
+      return sc_scan;
+    }
+  return qexec_execute_scan_batch (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
+}
+
+/*
+ * qexec_execute_scan_batch () - qexec_execute_scan () for a scan that holds rows, or whose following scan does
+ */
+static SCAN_CODE
+qexec_execute_scan_batch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+			  QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc)
 {
   QEXEC_SQ_BATCH *sq = (xasl->nl_batch != NULL) ? xasl->nl_batch->sq : NULL;
   QEXEC_NL_BATCH *below = (xasl->scan_ptr != NULL) ? xasl->scan_ptr->nl_batch : NULL;
@@ -14798,39 +14949,41 @@ qexec_execute_scan_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   QEXEC_NL_BATCH *batch = xasl->nl_batch;
   SCAN_CODE sc_scan;
 
-  if (batch == NULL || !batch->on)
+  if (batch == NULL || !batch->on || batch->pass)
     {
       return qexec_execute_scan_outer (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
     }
 
   if (!batch->replaying)
     {
+      if (!batch->passing && !batch->flush)
+	{
+	  /* a new outer row */
+	  if (qexec_nl_batch_skips_row (batch))
+	    {
+	      batch->passing = true;
+	    }
+	  else
+	    {
+	      sc_scan = qexec_nl_batch_add (thread_p, xasl, batch);
+	      if (sc_scan == S_ERROR)
+		{
+		  /* the batch holds at most the row that failed; rows held further below are joined first */
+		  qexec_nl_batch_drop_rows (thread_p, batch);
+		  return qexec_nl_batch_error_ahead (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
+		}
+	      if (sc_scan == S_SUCCESS)
+		{
+		  return S_END;
+		}
+	      batch->passing = (sc_scan == S_DOESNT_EXIST);
+	    }
+	}
       if (batch->passing)
 	{
 	  sc_scan = qexec_execute_scan_outer (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
 	  batch->passing = (sc_scan == S_SUCCESS);
 	  return sc_scan;
-	}
-      if (!batch->flush)
-	{
-	  /* a new outer row */
-	  sc_scan = qexec_nl_batch_add (thread_p, xasl, batch);
-	  if (sc_scan == S_ERROR)
-	    {
-	      /* the batch holds at most the row that failed; rows held further below are joined first */
-	      qexec_nl_batch_drop_rows (thread_p, batch);
-	      return qexec_nl_batch_error_ahead (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
-	    }
-	  if (sc_scan == S_DOESNT_EXIST)
-	    {
-	      sc_scan = qexec_execute_scan_outer (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
-	      batch->passing = (sc_scan == S_SUCCESS);
-	      return sc_scan;
-	    }
-	  if (sc_scan == S_SUCCESS)
-	    {
-	      return S_END;
-	    }
 	}
       /* the batch is closed: the pages of the lookups that follow are named to the OS a window at a time, the first
        * one now */
@@ -14841,6 +14994,7 @@ qexec_execute_scan_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	}
       batch->ahead_next = 0;
       batch->hinted = 0;
+      batch->checked = 0;
       batch->next_row = 0;
       qexec_nl_batch_read_ahead (thread_p, xasl, batch, 0);
       batch->replaying = true;
@@ -14859,10 +15013,17 @@ qexec_execute_scan_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		}
 	      else
 		{
-		  /* nothing to read ahead: holding the rows only cost time */
+		  /* nothing to read ahead: holding the rows only cost time. Twice as many rows are joined a row at
+		   * a time before the next batch. When its pages were found in the buffer, that batch starts small
+		   * again: it is there to find out whether they have left it. A batch with too few pages to tell
+		   * leaves the next one to grow until it can */
 		  batch->backoff = MIN (MAX (batch->backoff * 2, QEXEC_NL_BATCH_FIRST_BACKOFF),
 					QEXEC_NL_BATCH_MAX_BACKOFF);
 		  batch->skip = batch->backoff;
+		  if (batch->checked > 1)
+		    {
+		      batch->row_target = QEXEC_NL_BATCH_FIRST_ROWS;
+		    }
 		}
 	      /* the scans above go on from the rows they were at when the batch closed */
 	      if (batch->span
@@ -15288,6 +15449,7 @@ qexec_sq_batch_close (THREAD_ENTRY * thread_p, QEXEC_SQ_BATCH * sq)
   sq->close_pending = false;
   b->ahead_next = 0;
   b->hinted = 0;
+  b->checked = 0;
   b->next_row = 0;
   qexec_nl_batch_read_ahead (thread_p, sq->sq_xasl, b, 0);
   b->replaying = true;
@@ -15336,9 +15498,14 @@ qexec_sq_batch_end (THREAD_ENTRY * thread_p, QEXEC_SQ_BATCH * sq)
     }
   else
     {
-      /* nothing to read ahead: holding the rows only cost time */
+      /* nothing to read ahead: holding the rows only cost time; with its pages found in the buffer, the next batch
+       * starts small again */
       b->backoff = MIN (MAX (b->backoff * 2, QEXEC_NL_BATCH_FIRST_BACKOFF), QEXEC_NL_BATCH_MAX_BACKOFF);
       b->skip = b->backoff;
+      if (b->checked > 1)
+	{
+	  b->row_target = QEXEC_NL_BATCH_FIRST_ROWS;
+	}
     }
   sq->slice_cnt = -1;
   qexec_nl_batch_drop_rows (thread_p, b);
@@ -15418,7 +15585,7 @@ qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_
 	}
       if (end > batch->ahead_next)
 	{
-	  hinted = scan_index_nl_batch_read_ahead (thread_p, firsts, n);
+	  hinted = scan_index_nl_batch_read_ahead (thread_p, firsts, n, &batch->checked);
 	  batch->hinted += hinted;
 	  *stat += hinted;
 	  *part_stat += hinted;
@@ -15438,7 +15605,8 @@ qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_
   batch->ahead_next = MAX (batch->ahead_next, pos);
   if (end > batch->ahead_next)
     {
-      hinted = scan_index_nl_batch_read_ahead (thread_p, batch->oids + batch->ahead_next, end - batch->ahead_next);
+      hinted = scan_index_nl_batch_read_ahead (thread_p, batch->oids + batch->ahead_next, end - batch->ahead_next,
+					       &batch->checked);
       batch->hinted += hinted;
       *stat += hinted;
       *part_stat += hinted;

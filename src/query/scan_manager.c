@@ -209,15 +209,17 @@ static bool scan_batch_keep_matches (const SCAN_BATCH_KEEP * keep, const HEAP_SC
 static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static SCAN_CODE scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+STATIC_INLINE SCAN_CODE scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+  __attribute__ ((ALWAYS_INLINE));
 static SCAN_CODE scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static int scan_index_bitmap_start (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static void scan_index_bitmap_free (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp);
 static SCAN_CODE scan_next_index_bitmap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, FILTER_INFO * data_filter,
 					 TRAN_ISOLATION isolation);
-static SCAN_CODE scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
-					      FILTER_INFO * data_filter, TRAN_ISOLATION isolation);
+STATIC_INLINE SCAN_CODE scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
+						     FILTER_INFO * data_filter, TRAN_ISOLATION isolation)
+  __attribute__ ((ALWAYS_INLINE));
 static SCAN_CODE scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -6782,9 +6784,10 @@ scan_index_nl_batch_collect (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * o
  *   return: pages named; 0 when every page is in the buffer already
  *   oids(in): in lookup order
  *   count(in):
+ *   looked_up(in/out): gets the pages looked up in the buffer added
  */
 int
-scan_index_nl_batch_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int count)
+scan_index_nl_batch_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int count, int *looked_up)
 {
   VPID vpids[SCAN_INDEX_READ_AHEAD_DISTANCE];
   int num_hinted = 0;
@@ -6808,12 +6811,14 @@ scan_index_nl_batch_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int c
       if (n == SCAN_INDEX_READ_AHEAD_DISTANCE)
 	{
 	  num_hinted += pgbuf_read_ahead (thread_p, vpids, n);
+	  *looked_up += n;
 	  n = 0;
 	}
     }
   if (n > 1 || (n == 1 && num_hinted > 0))
     {
       num_hinted += pgbuf_read_ahead (thread_p, vpids, n);
+      *looked_up += n;
     }
 
   return num_hinted;
@@ -6826,7 +6831,7 @@ scan_index_nl_batch_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int c
  *
  * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
  */
-static SCAN_CODE
+STATIC_INLINE SCAN_CODE
 scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   INDX_SCAN_ID *isidp;
@@ -8431,7 +8436,7 @@ scan_next_index_bitmap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, FILTER_INFO 
  *
  * Note: If the tuple is not qualified for data filter, S_DOESNT_EXIST is returned.
  */
-static SCAN_CODE
+STATIC_INLINE SCAN_CODE
 scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
 			     FILTER_INFO * data_filter, TRAN_ISOLATION isolation)
 {
