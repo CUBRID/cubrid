@@ -605,9 +605,12 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  break;
 	case DB_TYPE_NUMERIC:
 	  {
-	    bool is_float_numeric = false;
-	    int precision = 0, scale = 0;
-	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
+	    int precision = 0, scale = 0, digits = 0;
+	    db_get_numeric_precision_and_scale (val, &precision, &scale, &digits, NULL);
+
+	    /* the digits of the value, not its type, so a negative scale multiplies a fixed value as far as an equal
+	     * float value */
+	    precision = digits;
 
 	    /*
 	     * calculate hash without normalization if:
@@ -2466,7 +2469,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	  {
 	    bool is_float_numeric = false;
 	    int precision = 0, scale = 0;
-	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
+	    db_get_numeric_precision_and_scale (val, &precision, &scale, NULL, &is_float_numeric);
 
 	    /*
 	     * calculate hash without normalization if:
