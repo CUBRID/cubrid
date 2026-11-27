@@ -11721,6 +11721,13 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  break;
 	}
 
+      if (!PT_IS_UNION (node) && !PT_IS_INTERSECTION (node) && !PT_IS_DIFFERENCE (node))
+	{
+	  /* the type checking folded the set operation into a value or one of its operands (pt_fold_union ()), which
+	   * it does when an operand is known to be empty only after its CTE is folded: nothing is left to check */
+	  break;
+	}
+
       /* only root UNION nodes */
       if (node->info.query.q.union_.is_leaf_node == false)
 	{
