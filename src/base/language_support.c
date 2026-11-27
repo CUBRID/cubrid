@@ -3328,7 +3328,7 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
 
   /* keep the first INTL_UTF8_MAX_CHAR_SIZE - 1 of them: a malformed lead byte before them reads them as its next bytes
    * (intl_utf8_to_cp () does not check them), as the compare function does; a space read alone weighs 0 */
-  str_end = MIN (str_end + (INTL_UTF8_MAX_CHAR_SIZE - 1), str + size);
+  str_end += MIN (INTL_UTF8_MAX_CHAR_SIZE - 1, (str + size) - str_end);
 
   while (str < str_end)
     {
@@ -4160,12 +4160,12 @@ lang_back_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, bool is_match,
   str1_start = str1;
   str2_start = str2;
 
-  while (*str1_last == ASCII_SPACE)
+  while (str1_last >= str1_start && *str1_last == ASCII_SPACE)
     {
       str1_last--;
     }
 
-  while (*str2_last == ASCII_SPACE)
+  while (str2_last >= str2_start && *str2_last == ASCII_SPACE)
     {
       str2_last--;
     }
