@@ -4114,10 +4114,17 @@ logtb_rv_2pc_restore_unique_stats (THREAD_ENTRY * thread_p, LOG_TDES * tdes, con
   BTID btid;
   int count, deleted, i;
 
+  /* check the length before reading the count, and compare count before multiplying, so that a damaged count
+   * cannot overflow the product */
+  if (length < OR_INT_SIZE)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
   count = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
-  /* compare count before multiplying, so that a damaged count cannot overflow the product */
-  if (length < OR_INT_SIZE || count < 0 || count > (length - OR_INT_SIZE) / LOG_2PC_UNIQUE_STATS_ENTRY_SIZE
+  if (count < 0 || count > (length - OR_INT_SIZE) / LOG_2PC_UNIQUE_STATS_ENTRY_SIZE
       || length != OR_INT_SIZE + count * LOG_2PC_UNIQUE_STATS_ENTRY_SIZE)
     {
       assert (false);

@@ -3671,6 +3671,13 @@ log_recovery_2pc_restore_tran_unique_stats (THREAD_ENTRY * thread_p, LOG_TDES * 
 	}
       if (found)
 	{
+	  if (zip->data_length < OR_BTID_ALIGNED_SIZE)
+	    {
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      error_code = ER_GENERIC_ERROR;
+	      goto end;
+	    }
 	  OR_GET_BTID (zip->log_data, &btid);
 	  logtb_rv_2pc_skip_applied_unique_stats (thread_p, tdes, &btid);
 	}
