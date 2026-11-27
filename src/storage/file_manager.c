@@ -4020,7 +4020,7 @@ file_sector_map_dealloc_temp (THREAD_ENTRY * thread_p, const void *data, int ind
 	  continue;
 	}
 
-      page = pgbuf_simple_fix (thread_p, &vpid, false);
+      page = pgbuf_simple_fix (thread_p, &vpid);
       if (page == NULL)
 	{
 	  /* don't care about page which is not on page buffer. */
@@ -4250,7 +4250,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 	    {
 	      if (file_partsect_is_bit_set (&ftab_collector.partsect_ftab[iter_sects], offset))
 		{
-		  page_ftab = pgbuf_simple_fix (thread_p, &vpid_ftab, false);
+		  page_ftab = pgbuf_simple_fix (thread_p, &vpid_ftab);
 		  if (page_ftab == NULL)
 		    {
 		      /* don't care about page which is not on page buffer. */
