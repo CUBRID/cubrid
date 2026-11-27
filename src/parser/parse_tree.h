@@ -3077,6 +3077,10 @@ struct pt_query_info
     unsigned folded_distinct:1;	/* a SELECT DISTINCT from a derived table of the operand a set operation
 				 * without ALL folded to (pt_fold_union_as_derived ()): where only the set of
 				 * its rows counts, the operand takes its place (pt_fold_union_unwrap ()) */
+    unsigned set_op_operand:1;	/* an operand of a set operation (pt_mark_union_leaf_nodes (),
+				 * pt_eval_type_pre ()): one that returns no row is not folded into a value by
+				 * itself (pt_to_false_subquery ()) but by the set operation, which still reads
+				 * the domains of its columns (pt_fold_union ()) */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
