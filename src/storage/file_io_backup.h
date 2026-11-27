@@ -33,6 +33,7 @@
 #include "file_io.h"
 #include "release_string.h"
 
+#include <stdio.h>
 #include <map>
 #include <string>
 #include <utility>

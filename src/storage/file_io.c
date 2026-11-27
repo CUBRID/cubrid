@@ -83,25 +83,16 @@
 #include "fault_injection.h"
 #include "es_posix.h"
 
-#if defined (SERVER_MODE)
-#include "vacuum.h"
-#endif /* SERVER_MODE */
-#include "crypt_opfunc.h"
-
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
 
-#if defined(SERVER_MODE)
-#include "connection_error.h"
-#endif /* SERVER_MODE */
-
 #if !defined (CS_MODE)
 #include "double_write_buffer.hpp"
 #include "page_buffer.h"
-#include "xserver_interface.h"
+#include "log_manager.h"
 #endif /* !defined (CS_MODE) */
 
 #include "tsc_timer.h"
