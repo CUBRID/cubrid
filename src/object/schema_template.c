@@ -46,6 +46,7 @@
 #include "db.h"
 #include "release_string.h"
 #include "execute_schema.h"
+#include "network_interface_cl.h"
 #if defined(WINDOWS)
 #include "misc_string.h"
 #endif
@@ -80,6 +81,7 @@ static int smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAIN
 					   SM_FUNCTION_INFO * function_index, const char *comment,
 					   SM_INDEX_STATUS index_status);
 static void smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value);
+static int smt_class_has_rows (MOP class_mop);
 static int smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constraint_name,
 					      SM_ATTRIBUTE_FLAG constraint);
 static int smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_ATTRIBUTE ** atts,
@@ -1393,12 +1395,25 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	       * default value to the attribute. This should be handled by using candidates in the template and storing
 	       * an extra bit field in the candidate structure. See the comment above sm_attribute for more information
 	       * about "original_value". */
-	      if (error == NO_ERROR && (att->flags & SM_ATTFLAG_NEW)
-		  && !(template_->op == NULL && default_expr != NULL && DB_IS_RESIDUAL_DEFAULT_EXPR (default_expr)))
+	      if (error == NO_ERROR && (att->flags & SM_ATTFLAG_NEW))
 		{
-		  /* only rows older than the attribute read the original value, and a new class has none: the
-		   * DDL-time value of a residual DEFAULT is kept there only for an attribute added to a class */
-		  smt_set_attribute_orig_default_value (att, value);
+		  /* only rows older than the attribute read the original value: the DDL-time value of a residual
+		   * DEFAULT is kept there only when the attribute is added to a class that has rows */
+		  int has_rows = 1;
+
+		  if (default_expr != NULL && DB_IS_RESIDUAL_DEFAULT_EXPR (default_expr))
+		    {
+		      has_rows = (template_->op != NULL) ? smt_class_has_rows (template_->op) : 0;
+		      if (has_rows < 0)
+			{
+			  ASSERT_ERROR_AND_SET (error);
+			}
+		    }
+
+		  if (has_rows > 0)
+		    {
+		      smt_set_attribute_orig_default_value (att, value);
+		    }
 		}
 	    }
 	}
@@ -1440,6 +1455,47 @@ smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_va
 
   pr_clear_value (&att->default_value.original_value);
   pr_clone_value (new_orig_value, &att->default_value.original_value);
+}
+
+/*
+ * smt_class_has_rows() - Whether the class or any of its subclasses (partitions included) has a visible row.
+ *   return: 1 if it has, 0 if not, an error code on failure
+ *   class_mop(in): class
+ */
+static int
+smt_class_has_rows (MOP class_mop)
+{
+  SM_CLASS *class_ = NULL;
+  DB_OBJLIST *sub;
+  HFID *hfid;
+  int has_rows;
+
+  has_rows = au_fetch_class_force (class_mop, &class_, AU_FETCH_READ);
+  if (has_rows != NO_ERROR)
+    {
+      return has_rows;
+    }
+
+  hfid = sm_ch_heap ((MOBJ) class_);
+  if (!HFID_IS_NULL (hfid))
+    {
+      has_rows = heap_has_instance (hfid, WS_OID (class_mop), 1);
+      if (has_rows != 0)
+	{
+	  return has_rows;
+	}
+    }
+
+  for (sub = class_->users; sub != NULL; sub = sub->next)
+    {
+      has_rows = smt_class_has_rows (sub->op);
+      if (has_rows != 0)
+	{
+	  return has_rows;
+	}
+    }
+
+  return 0;
 }
 
 /*
@@ -4673,6 +4729,8 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
   DB_VALUE default_value;
   DB_DEFAULT_EXPR default_expr;
   TP_DOMAIN_STATUS status;
+  bool was_residual;
+  int has_rows;
 
   *found_att = NULL;
   error = smt_change_attribute (def, name, new_name, new_domain_string, new_domain, name_space, change_first,
@@ -4687,6 +4745,8 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
       ERROR1 (error, ER_UNEXPECTED, "Attribute not found.");
       return error;
     }
+
+  was_residual = DB_IS_RESIDUAL_DEFAULT_EXPR (&(*found_att)->default_value.default_expr);
 
   /* 
      The default value's domain should be checked even though the new default is not specified
@@ -4765,6 +4825,23 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
       /* the attribute's current default original value has the same domain, no need to change it */
       assert (error == NO_ERROR);
       return error;
+    }
+
+  if (was_residual)
+    {
+      /* the original value of a residual DEFAULT is its DDL-time value, read only by rows older than the
+       * attribute: with no rows left there is nothing to convert */
+      has_rows = (def->op != NULL) ? smt_class_has_rows (def->op) : 0;
+      if (has_rows < 0)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      if (has_rows == 0)
+	{
+	  pr_clear_value (orig_value);
+	  return NO_ERROR;
+	}
     }
 
   /* cast the value to new one : explicit cast */
