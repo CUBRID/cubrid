@@ -6857,6 +6857,13 @@ qo_gbp_transform (PARSER_CONTEXT * parser, QO_GBP_ENV * env, QO_GBP_MASK cmask, 
   dquery->info.query.q.select.hint = query->info.query.q.select.hint & QO_GBP_DERIVED_HINTS;
   dquery->info.query.q.select.num_parallel_threads = query->info.query.q.select.num_parallel_threads;
   PT_SELECT_INFO_SET_FLAG (dquery, PT_SELECT_INFO_HAS_AGG);
+  if (!remove_group_by)
+    {
+      /* the block groups the derived table again, so the order of its groups cannot reach the result: a hash GROUP BY
+       * may hand them over in any order (CBRD-28181, XASL_G_ORDER_FREE_SET; pt_gby_output_reads_order () still keeps
+       * it for an output read in that order).  A block that drops its GROUP BY meets them in that order */
+      PT_SELECT_INFO_SET_FLAG (dquery, PT_SELECT_INFO_GBY_ORDER_FREE);
+    }
 
   dspec->info.spec.id = (UINTPTR) dspec;
   dspec->info.spec.derived_table = dquery;
