@@ -475,7 +475,8 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"class_of", "attr_name", "attr_type", nullptr}}
+      {DB_CONSTRAINT_INDEX, "", {"class_of", "attr_name", "attr_type", nullptr}},
+      {DB_CONSTRAINT_INDEX, "", {"class_of", "attr_id", nullptr}}
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
