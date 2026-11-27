@@ -36029,6 +36029,12 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 	{
 	  return 0;
 	}
+      /* a partitioned class or a class hierarchy is scanned one class at a time, which does not keep the index order
+       * across the classes */
+      if (QO_NODE_IS_CLASS_HIERARCHY (qo_plan->plan_un.scan.node))
+	{
+	  return 0;
+	}
       if (QO_ENV_PT_TREE (env)->info.query.q.select.connect_by != NULL)
 	{
 	  return 0;
@@ -36043,7 +36049,9 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
       return pt_count_analytic_covered_sort_list (parser, qo_plan->plan_un.sort.subplan, eval, info);
 
     case QO_PLANTYPE_JOIN:
-      if (!QO_IS_NL_JOIN (qo_plan))
+      /* an inner that scans a class hierarchy class by class reads each class over the whole outer scan
+       * (qexec_next_scan_block_iterations ()) */
+      if (!QO_IS_NL_JOIN (qo_plan) || qo_nl_inner_scans_per_class (qo_plan->plan_un.join.inner))
 	{
 	  return 0;
 	}
