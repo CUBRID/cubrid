@@ -950,6 +950,8 @@ static SCAN_CODE qexec_open_row_partition (THREAD_ENTRY * thread_p, XASL_NODE * 
 static bool qexec_can_switch_index_partition (ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
 static bool qexec_row_partition_has_next (const ACCESS_SPEC_TYPE * spec);
 
+static int qexec_precompute_subquery (THREAD_ENTRY * thread_p, XASL_NODE * subq, XASL_STATE * xasl_state);
+static int qexec_precompute_output_subqueries (THREAD_ENTRY * thread_p, XASL_NODE * subq, XASL_STATE * xasl_state);
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
@@ -24303,6 +24305,55 @@ qexec_execute_ctes_first (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 #endif
 
 /*
+ * qexec_precompute_subquery () - run an uncorrelated subquery through the regu variable that owns it
+ *   return: NO_ERROR, or ER_code
+ *   subq(in)   : subquery with precomp_owner_regu
+ *   xasl_state(in)     : XASL state information
+ */
+static int
+qexec_precompute_subquery (THREAD_ENTRY * thread_p, XASL_NODE * subq, XASL_STATE * xasl_state)
+{
+  DB_VALUE *peek_precomp = NULL;
+
+  if (subq->is_single_tuple)
+    {
+      return fetch_peek_dbval (thread_p, subq->precomp_owner_regu, &xasl_state->vd, NULL, NULL, NULL, &peek_precomp);
+    }
+
+  EXECUTE_REGU_VARIABLE_XASL (thread_p, subq->precomp_owner_regu, &xasl_state->vd);
+  return CHECK_REGU_VARIABLE_XASL_STATUS (subq->precomp_owner_regu) == XASL_SUCCESS ? NO_ERROR : ER_FAILED;
+}
+
+/*
+ * qexec_precompute_output_subqueries () - run the subqueries of an aptr list that are items of an output list
+ *   return: NO_ERROR, or ER_code
+ *   subq(in)   : aptr list
+ *   xasl_state(in)     : XASL state information
+ *
+ * Note: from the last one of the aptr list to the first, which is the order of the output list: the order the first
+ *       output row evaluated them in.
+ */
+static int
+qexec_precompute_output_subqueries (THREAD_ENTRY * thread_p, XASL_NODE * subq, XASL_STATE * xasl_state)
+{
+  int error;
+
+  if (subq == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  error = qexec_precompute_output_subqueries (thread_p, subq->next, xasl_state);
+  if (error == NO_ERROR && subq->precomp_owner_regu != NULL
+      && REGU_VARIABLE_IS_FLAGED (subq->precomp_owner_regu, REGU_VARIABLE_OUTPUT_SUBQUERY))
+    {
+      error = qexec_precompute_subquery (thread_p, subq, xasl_state);
+    }
+
+  return error;
+}
+
+/*
  * qexec_execute_mainblock_internal () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
@@ -24969,32 +25020,31 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* an uncorrelated table subquery (not single-tuple) runs here too: a key filter, a covered visit or a fixed scan
        * would otherwise start it under the page it holds. Its list is the leader's; a parallel scan is not relaxed
        * for it (px_scan_checker.cpp) */
-      for (XASL_NODE * head = xasl; head != NULL; head = (head == xasl ? xasl->connect_by_ptr : NULL))
+      /* a subquery that is an item of the select list runs here as well, after the others and in the order of the
+       * list, as the first output row ran them: under a scan that keeps its page, or once in every worker of a parallel
+       * scan, otherwise */
+      for (int output_pass = 0; output_pass < 2; output_pass++)
 	{
-	  for (xptr = head; xptr != NULL; xptr = xptr->scan_ptr)
+	  for (XASL_NODE * head = xasl; head != NULL; head = (head == xasl ? xasl->connect_by_ptr : NULL))
 	    {
-	      XASL_NODE *subq;
-
-	      for (subq = xptr->aptr_list; subq != NULL; subq = subq->next)
+	      for (xptr = head; xptr != NULL; xptr = xptr->scan_ptr)
 		{
-		  DB_VALUE *peek_precomp = NULL;
+		  XASL_NODE *subq;
 		  int precomp_error = NO_ERROR;
 
-		  if (subq->precomp_owner_regu == NULL)
+		  if (output_pass == 1)
 		    {
-		      continue;
-		    }
-		  if (subq->is_single_tuple)
-		    {
-		      precomp_error = fetch_peek_dbval (thread_p, subq->precomp_owner_regu, &xasl_state->vd, NULL, NULL,
-							NULL, &peek_precomp);
+		      precomp_error = qexec_precompute_output_subqueries (thread_p, xptr->aptr_list, xasl_state);
 		    }
 		  else
 		    {
-		      EXECUTE_REGU_VARIABLE_XASL (thread_p, subq->precomp_owner_regu, &xasl_state->vd);
-		      if (CHECK_REGU_VARIABLE_XASL_STATUS (subq->precomp_owner_regu) != XASL_SUCCESS)
+		      for (subq = xptr->aptr_list; subq != NULL && precomp_error == NO_ERROR; subq = subq->next)
 			{
-			  precomp_error = ER_FAILED;
+			  if (subq->precomp_owner_regu != NULL
+			      && !REGU_VARIABLE_IS_FLAGED (subq->precomp_owner_regu, REGU_VARIABLE_OUTPUT_SUBQUERY))
+			    {
+			      precomp_error = qexec_precompute_subquery (thread_p, subq, xasl_state);
+			    }
 			}
 		    }
 		  if (precomp_error != NO_ERROR)

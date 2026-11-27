@@ -237,6 +237,8 @@ const int REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE = 0x8000;	/* the N - 1 of rownum < N
 							 * key_limit_eval () reads it as ceil (N) - 1 */
 const int REGU_VARIABLE_LIMIT_SUM = 0x10000;	/* the T_ADD of the offset + count a LIMIT rewrite builds: an overflow
 						 * gives the BIGINT maximum, or minimum when negative (fetch_limit_sum_ovf ()) */
+const int REGU_VARIABLE_OUTPUT_SUBQUERY = 0x20000;	/* a subquery that is itself an item of an output list: the aptr
+							 * list holds such items in the reverse order of the list */
 
 /* CBRD-27583: REGU_VARIABLE.conv_mode - the converter (a DOMAIN_CONVERT_MODE, the ENUM name converter or the CHAR
  * prefix converter) and what a failed conversion gives */

@@ -19062,6 +19062,11 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		      /* set as linked to regu var */
 		      XASL_SET_FLAG (xasl, XASL_LINK_TO_REGU_VARIABLE);
 		      regu->xasl = xasl;
+		      /* an uncorrelated one runs before the block's scans open, through this regu (pt_make_regu_subquery ()):
+		       * run at its first evaluation it would start under the page the evaluating scan holds, and once in
+		       * every worker of a parallel scan. The flag keeps the order of the list among such items */
+		      xasl->precomp_owner_regu = regu;
+		      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_OUTPUT_SUBQUERY);
 		    }
 
 		  if (xasl->is_single_tuple)
