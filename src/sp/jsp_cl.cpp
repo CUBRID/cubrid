@@ -728,6 +728,104 @@ jsp_is_sp_deterministic (PARSER_CONTEXT *parser, PT_NODE *node)
   return deterministic;
 }
 
+bool
+jsp_get_call_params (PARSER_CONTEXT *parser, PT_NODE *node, DB_TYPE &return_type, std::vector<sp_arg_info> &params)
+{
+  DB_OBJECT *mop_p, *arg_mop_p;
+  DB_VALUE value, args, elem;
+  DB_SET *param_set;
+  int save, num_args = 0, i;
+  bool readable = false;
+  const char *name = jsp_pl_call_name (parser, node);
+
+  params.clear ();
+  return_type = DB_TYPE_NULL;
+  if (name == NULL)
+    {
+      return false;
+    }
+
+  db_make_null (&args);
+  db_make_null (&elem);
+
+  AU_SAVE_AND_DISABLE (save);
+  er_stack_push ();
+
+  mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
+  if (mop_p == NULL || db_get (mop_p, SP_ATTR_RETURN_TYPE, &value) != NO_ERROR)
+    {
+      goto end;
+    }
+  return_type = (DB_TYPE) db_get_int (&value);
+  pr_clear_value (&value);
+
+  if (db_get (mop_p, SP_ATTR_ARG_COUNT, &value) != NO_ERROR)
+    {
+      goto end;
+    }
+  num_args = db_get_int (&value);
+  pr_clear_value (&value);
+
+  if (num_args > 0)
+    {
+      if (db_get (mop_p, SP_ATTR_ARGS, &args) != NO_ERROR)
+	{
+	  goto end;
+	}
+      param_set = db_get_set (&args);
+      for (i = 0; i < num_args; i++)
+	{
+	  sp_arg_info param;
+
+	  if (set_get_element (param_set, i, &elem) != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  arg_mop_p = db_get_object (&elem);
+	  if (arg_mop_p == NULL || db_get (arg_mop_p, SP_ARG_ATTR_MODE, &value) != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  param.mode = (SP_MODE_ENUM) db_get_int (&value);
+	  pr_clear_value (&value);
+
+	  if (db_get (arg_mop_p, SP_ARG_ATTR_DATA_TYPE, &value) != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  param.data_type = (DB_TYPE) db_get_int (&value);
+	  pr_clear_value (&value);
+
+	  if (db_get (arg_mop_p, SP_ARG_ATTR_ARG_NAME, &value) != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  if (!DB_IS_NULL (&value))
+	    {
+	      param.arg_name = db_get_string (&value);
+	    }
+	  pr_clear_value (&value);
+
+	  params.push_back (param);
+	  pr_clear_value (&elem);
+	}
+    }
+  readable = true;
+
+end:
+  pr_clear_value (&elem);
+  pr_clear_value (&args);
+  er_stack_pop ();
+  AU_RESTORE (save);
+
+  if (!readable)
+    {
+      params.clear ();
+      return_type = DB_TYPE_NULL;
+    }
+  return readable;
+}
+
 /* the catalog name of the routine a PT_METHOD_CALL calls */
 static const char *
 jsp_pl_call_name (PARSER_CONTEXT *parser, PT_NODE *node)
@@ -1479,6 +1577,12 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
       if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
 	{
 	  decl = compile_response.java_signature.c_str ();
+	}
+      else if (err == ER_LK_UNILATERALLY_ABORTED || er_errid () == ER_LK_UNILATERALLY_ABORTED)
+	{
+	  /* kept, so the statement fails as aborted and the client ends the transaction too */
+	  err = ER_LK_UNILATERALLY_ABORTED;
+	  goto error_exit;
 	}
       else
 	{
@@ -2294,6 +2398,12 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
       if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
 	{
 	  decl = compile_response.java_signature.c_str ();
+	}
+      else if (err == ER_LK_UNILATERALLY_ABORTED || er_errid () == ER_LK_UNILATERALLY_ABORTED)
+	{
+	  /* as in jsp_create_stored_procedure_internal () */
+	  err = ER_LK_UNILATERALLY_ABORTED;
+	  goto error;
 	}
       else
 	{

@@ -2468,6 +2468,8 @@ fn_proxy_client_cursor_close (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p, 
   T_CAS_IO *cas_io_p;
   int srv_h_id;
   int cas_srv_h_id;
+  int i;
+  int num_found;
 
   const char func_code = CAS_FC_CURSOR_CLOSE;
 
@@ -2492,20 +2494,33 @@ fn_proxy_client_cursor_close (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p, 
       assert (ctx_p->cas_id == cas_io_p->cas_id);
       proxy_context_set_in_tran (ctx_p, cas_io_p->shard_id, cas_io_p->cas_id);
 
-      net_arg_get_int (&srv_h_id, argv[0]);
-
-      cas_srv_h_id = shard_stmt_find_srv_h_id_for_shard_cas (srv_h_id, cas_io_p->shard_id, cas_io_p->cas_id);
-      if (cas_srv_h_id < 0)
+      num_found = 0;
+      for (i = 0; i < argc; i++)
 	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to cursoe close. " "cannot find cas server handle. context(%s).",
-		     proxy_str_context (ctx_p));
-	  assert (false);
+	  net_arg_get_int (&srv_h_id, argv[i]);
+
+	  cas_srv_h_id = shard_stmt_find_srv_h_id_for_shard_cas (srv_h_id, cas_io_p->shard_id, cas_io_p->cas_id);
+	  if (cas_srv_h_id < 0)
+	    {
+	      PROXY_LOG (PROXY_LOG_MODE_SHARD_DETAIL,
+			 "Skip cursor close. cannot find cas server handle. (srv_h_id:%d), context(%s).", srv_h_id,
+			 proxy_str_context (ctx_p));
+	      cas_srv_h_id = 0;
+	    }
+	  else
+	    {
+	      num_found++;
+	    }
+
+	  net_arg_put_int (argv[i], &cas_srv_h_id);
+	}
+
+      if (num_found == 0)
+	{
 	  goto out_tran;
 	}
 
       /* relay request to the CAS */
-      net_arg_put_int (argv[0], &cas_srv_h_id);
-
       error = proxy_cas_io_write (cas_io_p, event_p);
       if (error)
 	{
@@ -2521,9 +2536,9 @@ fn_proxy_client_cursor_close (T_PROXY_CONTEXT * ctx_p, T_PROXY_EVENT * event_p, 
     }
 
 out_tran:
-  /* send cursor_close response to the client, if this context is not IN_TRAN, or context is IN_TRAN status but
-   * cas_srv_h_id is not found */
-  /* FIXME : if context is IN_TRAN and cas_srv_hd_id is not found ? */
+  /* Answer the client here when there is nothing to relay: the context is not IN_TRAN, or it is IN_TRAN but none of
+   * the requested srv_h_ids has a handle on the bound CAS. Such a handle is already closed or was never prepared on
+   * that CAS, so nothing is left to close there and OK is the right answer. */
   error =
     proxy_send_response_to_client_with_new_event (ctx_p, PROXY_EVENT_IO_WRITE, PROXY_EVENT_FROM_CLIENT,
 						  proxy_io_make_cursor_close_out_tran_ok);
