@@ -635,11 +635,18 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 	{
 	  /* take every task waiting in the queue at once; they are applied in order below */
 	  taken_next = 0;
+	  if (la_Worker_config.release_pages != NULL && la_task_queue_get_queued (context->worker_idx) == 0)
+	    {
+	      /* the worker may wait now: do not keep a log page from being replaced meanwhile */
+	      la_Worker_config.release_pages ();
+	    }
 	  if (batch.count > 0)
 	    {
 	      /* read before the hold is decided, so a wakeup sent after the decision ends the hold */
 	      UINT64 wake_seq = la_task_queue_get_wake_seq ();
-	      UINT64 hold_nsec = la_worker_empty_hold_nsec (&batch);
+	      /* the coordinator waits for commits: do not hold the transaction once the queue is empty */
+	      bool commit_requested = (la_task_queue_get_commit_request_seq () != batch.commit_request_seq);
+	      UINT64 hold_nsec = commit_requested ? 0 : la_worker_empty_hold_nsec (&batch);
 
 	      if (la_task_queue_pop_many (taken, LA_WORKER_TAKE_MAX_TASKS, &taken_count, context->worker_idx, false,
 				      hold_nsec, wake_seq) != NO_ERROR)

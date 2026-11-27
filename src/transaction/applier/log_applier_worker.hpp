@@ -122,6 +122,10 @@ typedef bool (*LA_WORKER_SHUTDOWN_REQUESTED_FUNC) (void);
 /* Releases what run_task kept in the context; called while the worker's connection is still open. */
 typedef void (*LA_WORKER_END_CONTEXT_FUNC) (LA_APPLY_WORKER_CONTEXT *context);
 
+/* Releases what run_task keeps between tasks for the next one (the log page read last); called before the worker looks
+ * for more tasks in an empty queue. Owned by log_applier.c. May be left NULL in the config. */
+typedef void (*LA_WORKER_RELEASE_PAGES_FUNC) (void);
+
 /* The class the task being applied wrote rows of, for the worker's trace; NULL when none or more than one. Owned by
  * log_applier.c and kept per worker thread, not in the result, which crosses to the coordinator for every task. May
  * be left NULL in the config. */
@@ -139,6 +143,7 @@ struct la_worker_config
   LA_WORKER_REQUEST_SHUTDOWN_FUNC request_shutdown;
   LA_WORKER_SHUTDOWN_REQUESTED_FUNC shutdown_requested;
   LA_WORKER_END_CONTEXT_FUNC end_context;
+  LA_WORKER_RELEASE_PAGES_FUNC release_pages;
   LA_WORKER_TASK_CLASS_FUNC task_class;
   int batch_max_msec;		/* commit interval until la_worker_set_commit_interval sets another:
 				 * ha_applylogdb_max_commit_interval_in_msecs */

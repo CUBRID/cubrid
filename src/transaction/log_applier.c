@@ -208,7 +208,10 @@
 typedef struct la_cache_buffer LA_CACHE_BUFFER;
 struct la_cache_buffer
 {
-  int fix_count;
+  /* fixes held on the buffer. Taken and dropped under the cache mutex, except that a thread already holding a fix of
+   * the buffer may add or drop another one without it (la_get_page_buffer, la_release_pinned_page_buffers): the count
+   * stays above 0 then, so the buffer cannot be chosen for replacement meanwhile. */
+  std::atomic<int> fix_count;
   bool recently_free;
   bool in_archive;
 
@@ -530,6 +533,9 @@ static bool la_applier_stop_by_worker = false;
 static volatile int la_Worker_exit_error = NO_ERROR;
 static thread_local LA_PINNED_PAGE_BUFFER *la_Pinned_page_buffers = NULL;
 static thread_local int la_Pinned_page_buffer_count = 0;
+/* the buffer whose last fix la_release_page_buffer left in the pinned list for the next read of its page; NULL when
+ * none. At most one is left, so a thread that reads page after page still holds one fix at a time. */
+static thread_local LA_CACHE_BUFFER *la_Deferred_page_buffer = NULL;
 
 /* The class of the rows the current task of this worker applied, for its trace and the block-class test hook. Kept
  * here rather than in the task's result, which is copied to the coordinator for every task. */
@@ -635,6 +641,7 @@ static bool la_applied_tx_marker_exists (const LOG_LSA * commit_lsa);
 static int la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * key_lsa,
 				     const LA_LSA_RANGE * ranges, int range_count, LA_STATS * stats);
 static void la_worker_end_context (LA_APPLY_WORKER_CONTEXT * context);
+static void la_worker_release_pages (void);
 static int la_delete_applied_tx_markers (const LOG_LSA * upto_lsa);
 static int la_batch_marker_append (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task);
 static int la_add_batch_markers (LA_APPLY_WORKER_CONTEXT * context, LA_STATS * stats);
@@ -1502,6 +1509,7 @@ la_start_apply_workers (void)
   config.request_shutdown = la_request_shutdown;
   config.shutdown_requested = la_worker_shutdown_requested;
   config.end_context = la_worker_end_context;
+  config.release_pages = la_worker_release_pages;
   config.task_class = la_worker_task_class;
   config.batch_max_msec = MAX (1, prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS));
   config.batch_max_tasks = la_Info.batch_max_tasks;
@@ -1538,9 +1546,23 @@ la_start_apply_workers (void)
  *
  * Note: runs on the worker thread, so it frees that thread's pinned list and OOS cache too.
  */
+/*
+ * la_worker_release_pages() - release the log page a worker keeps between tasks
+ *
+ * Note: called by the worker module before the worker looks for more tasks in an empty queue, so a waiting worker does
+ *       not keep a page from being replaced.
+ */
+static void
+la_worker_release_pages (void)
+{
+  la_release_pinned_page_buffers (NULL);
+}
+
 static void
 la_worker_end_context (LA_APPLY_WORKER_CONTEXT * context)
 {
+  /* the page a worker keeps between tasks; the pinned list is freed below */
+  la_release_pinned_page_buffers (NULL);
   la_free_pinned_page_buffers ();
   la_release_oos_thread_state ();
   la_return_items_flush ();
@@ -2463,6 +2485,42 @@ la_free_pinned_page_buffers (void)
   la_Pinned_page_buffer_capacity = 0;
 }
 
+/*
+ * la_find_own_fix() - a buffer of the page that the calling thread holds a fix of and that still holds the page
+ *   return: the buffer, or NULL
+ *   pageid(in): the page
+ *
+ * Note: a fixed buffer is never replaced, but the coordinator may invalidate it (la_invalidate_page_buffer) to read a
+ *       newer copy of the page, which sets its pageid to 0; such a buffer is not reused. The coordinator invalidates
+ *       a page before it hands out a task that reads the newer part, and the task queue orders that before the
+ *       worker reads it.
+ */
+static LA_CACHE_BUFFER *
+la_find_own_fix (LOG_PAGEID pageid)
+{
+  for (int i = la_Pinned_page_buffer_count - 1; i >= 0; i--)
+    {
+      LA_CACHE_BUFFER *buffer = la_Pinned_page_buffers[i].buffer;
+
+      if (la_Pinned_page_buffers[i].pageid == pageid && __atomic_load_n (&buffer->pageid, __ATOMIC_ACQUIRE) == pageid
+	  && buffer->logpage.hdr.logical_pageid == pageid)
+	{
+	  return buffer;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * la_last_pinned_buffer() - the buffer the calling thread fixed last, or NULL when it holds none
+ */
+static const LA_CACHE_BUFFER *
+la_last_pinned_buffer (void)
+{
+  return la_Pinned_page_buffer_count > 0 ? la_Pinned_page_buffers[la_Pinned_page_buffer_count - 1].buffer : NULL;
+}
+
 /* error is NO_ERROR for a page not yet available; pin-list failures must not be retried as missing pages. */
 static LA_CACHE_BUFFER *
 la_get_page_buffer (LOG_PAGEID pageid, int *error)
@@ -2472,6 +2530,25 @@ la_get_page_buffer (LOG_PAGEID pageid, int *error)
 
   assert (error != NULL);
   *error = NO_ERROR;
+
+  /* A page this thread already holds a fix of needs no lookup: another fix is added without the mutex. A worker keeps
+   * the page it read last between items and tasks (la_release_pinned_page_buffers), and consecutive records mostly
+   * lie on the same page, so the mutex the coordinator reads the log under is taken once per page, not twice per
+   * item. */
+  cache_buffer = la_find_own_fix (pageid);
+  if (cache_buffer != NULL)
+    {
+      cache_buffer->fix_count.fetch_add (1, std::memory_order_relaxed);
+      *error = la_pin_page_buffer (cache_buffer, pageid);
+      if (*error != NO_ERROR)
+	{
+	  cache_buffer->fix_count.fetch_sub (1, std::memory_order_relaxed);
+	  return NULL;
+	}
+
+      return cache_buffer;
+    }
+
   pthread_mutex_lock (&cache_pb->mutex);
 
   /* find the target page in the cache buffer */
@@ -2620,23 +2697,63 @@ la_unpin_page_buffer (const LA_CACHE_BUFFER * cache_buffer, LOG_PAGEID pageid)
  * Note:
  *   The buffer comes from the thread's own pinned list, not from the hash table: the hash entry may
  *   be gone, or point at a newer copy of the page, after another thread invalidated the buffer.
+ *   A fix of a buffer the thread holds another fix of is dropped without the mutex. The last fix is left in the
+ *   list instead (la_Deferred_page_buffer), so that the next read of the page, mostly by the next item, takes no
+ *   lock (la_find_own_fix); the buffer left before it, if another one, is released now, and the one left is
+ *   released with the thread's other fixes when its unit of work ends or it waits (la_release_pinned_page_buffers).
  */
 static void
 la_release_page_buffer (LOG_PAGEID pageid)
 {
   LA_CACHE_PB *cache_pb = la_Info.cache_pb;
-  LA_CACHE_BUFFER *cache_buffer;
+  LA_CACHE_BUFFER *cache_buffer = NULL;
+  LA_CACHE_BUFFER *previous;
+  int i, own = 0;
 
-  cache_buffer = la_unpin_page_buffer (NULL, pageid);
+  for (i = la_Pinned_page_buffer_count - 1; i >= 0; i--)
+    {
+      if (cache_buffer == NULL && la_Pinned_page_buffers[i].pageid == pageid)
+	{
+	  cache_buffer = la_Pinned_page_buffers[i].buffer;
+	}
+    }
   if (cache_buffer == NULL)
     {
       assert (false);
       return;
     }
+  for (i = 0; i < la_Pinned_page_buffer_count; i++)
+    {
+      own += (la_Pinned_page_buffers[i].buffer == cache_buffer) ? 1 : 0;
+    }
 
-  pthread_mutex_lock (&cache_pb->mutex);
-  la_unfix_page_buffer (cache_buffer);
-  pthread_mutex_unlock (&cache_pb->mutex);
+  if (own > 1)
+    {
+      (void) la_unpin_page_buffer (cache_buffer, NULL_PAGEID);
+      cache_buffer->fix_count.fetch_sub (1, std::memory_order_relaxed);
+      return;
+    }
+
+  previous = la_Deferred_page_buffer;
+  la_Deferred_page_buffer = cache_buffer;
+  if (previous == NULL || previous == cache_buffer)
+    {
+      return;
+    }
+
+  /* release the buffer left before this one, unless the thread fixed it again since */
+  own = 0;
+  for (i = 0; i < la_Pinned_page_buffer_count; i++)
+    {
+      own += (la_Pinned_page_buffers[i].buffer == previous) ? 1 : 0;
+    }
+  if (own == 1)
+    {
+      (void) la_unpin_page_buffer (previous, NULL_PAGEID);
+      pthread_mutex_lock (&cache_pb->mutex);
+      la_unfix_page_buffer (previous);
+      pthread_mutex_unlock (&cache_pb->mutex);
+    }
 }
 
 /*
@@ -2646,7 +2763,10 @@ la_release_page_buffer (LOG_PAGEID pageid)
  *
  * Note:
  *   Called when a unit of work is done (one applied item on a worker, one processed record on the
- *   coordinator), so the fixes the read macros took on following pages do not pile up.
+ *   coordinator), so the fixes the read macros took on following pages do not pile up. The coordinator keeps the
+ *   page it is reading; a worker keeps the page it read last (la_last_pinned_buffer) until its queue is empty
+ *   (la_worker_release_pages), so the next item on that page takes no lock. Releasing only extra fixes of keep takes
+ *   no lock either.
  */
 static void
 la_release_pinned_page_buffers (const LA_CACHE_BUFFER * keep)
@@ -2654,6 +2774,7 @@ la_release_pinned_page_buffers (const LA_CACHE_BUFFER * keep)
   LA_CACHE_PB *cache_pb = la_Info.cache_pb;
   int i, kept = 0;
   bool keep_found = false;
+  bool others = false;
 
   if (la_Pinned_page_buffer_count == 0)
     {
@@ -2663,22 +2784,46 @@ la_release_pinned_page_buffers (const LA_CACHE_BUFFER * keep)
       return;
     }
 
-  pthread_mutex_lock (&cache_pb->mutex);
+  /* One fix of keep stays. Further fixes of keep are dropped without the mutex, since the one kept holds the count
+   * above 0; only fixes of other buffers need it. */
+  for (i = 0; i < la_Pinned_page_buffer_count && !others; i++)
+    {
+      others = (keep == NULL || la_Pinned_page_buffers[i].buffer != keep);
+    }
+
+  if (others)
+    {
+      pthread_mutex_lock (&cache_pb->mutex);
+    }
   for (i = 0; i < la_Pinned_page_buffer_count; i++)
     {
-      /* one fix of keep stays; a second fix of the same buffer is released like the others */
-      if (keep != NULL && !keep_found && la_Pinned_page_buffers[i].buffer == keep)
+      if (keep != NULL && la_Pinned_page_buffers[i].buffer == keep)
 	{
-	  la_Pinned_page_buffers[kept++] = la_Pinned_page_buffers[i];
-	  keep_found = true;
+	  if (!keep_found)
+	    {
+	      la_Pinned_page_buffers[kept++] = la_Pinned_page_buffers[i];
+	      keep_found = true;
+	    }
+	  else
+	    {
+	      la_Pinned_page_buffers[i].buffer->fix_count.fetch_sub (1, std::memory_order_relaxed);
+	    }
 	  continue;
 	}
 
       la_unfix_page_buffer (la_Pinned_page_buffers[i].buffer);
     }
-  pthread_mutex_unlock (&cache_pb->mutex);
+  if (others)
+    {
+      pthread_mutex_unlock (&cache_pb->mutex);
+    }
 
   la_Pinned_page_buffer_count = kept;
+  if (la_Deferred_page_buffer != NULL && (kept == 0 || la_Deferred_page_buffer != keep))
+    {
+      /* its fix was released above, or kept as keep, which ends its deferral */
+      la_Deferred_page_buffer = NULL;
+    }
 
   /* a large record grew the list; give the memory back step by step once a unit of work leaves it mostly empty */
   if (la_Pinned_page_buffer_capacity > LA_MIN_PINNED_PAGE_BUFFERS
@@ -9510,8 +9655,9 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
       er_clear ();
 
       /* Pages the previous item fixed while reading records across a page boundary are still held;
-       * the item's rows are already copied into the record pool, so release them before the next one. */
-      la_release_pinned_page_buffers (NULL);
+       * the item's rows are already copied into the record pool, so release them before the next one. The page read
+       * last stays fixed: the next item is mostly on it. */
+      la_release_pinned_page_buffers (la_last_pinned_buffer ());
 
       if (la_oos_row_failed && item->log_type == LOG_REPLICATION_DATA)
 	{
@@ -9705,7 +9851,8 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
     }
 
 end:
-  la_release_pinned_page_buffers (NULL);
+  /* the page read last stays fixed for the next task, until the worker's queue is empty (la_worker_release_pages) */
+  la_release_pinned_page_buffers (la_last_pinned_buffer ());
   if (item != NULL)
     {
       /* A long-transaction item read from the log may no longer belong to apply's linked list. */

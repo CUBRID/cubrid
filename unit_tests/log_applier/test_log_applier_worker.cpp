@@ -117,7 +117,8 @@ namespace
   LA_WORKER_CONFIG
   test_config ()
   {
-    LA_WORKER_CONFIG config;
+    /* zeroed: the callbacks a test does not set (task_class, release_pages) may be NULL, never left undefined */
+    LA_WORKER_CONFIG config = {};
 
     config.db_page_size = 16 * 1024;
     config.recdes_pool_size = 4;
