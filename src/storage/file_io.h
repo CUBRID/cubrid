@@ -88,7 +88,6 @@
 #define FILEIO_SUFFIX_KEYS           "_keys"
 #define FILEIO_MAX_SUFFIX_LENGTH     7
 
-/* used by both file_io.c and file_io_backup.c */
 #define FILEIO_DISK_FORMAT_MODE            (O_RDWR | O_CREAT)
 #define FILEIO_DISK_PROTECTION_MODE        0600
 #define FILEIO_GET_FILE_SIZE(pagesize, npages)  \
@@ -237,6 +236,8 @@ struct flush_stats
 
 extern int fileio_open (const char *vlabel, int flags, int mode);
 extern void fileio_close (int vdes);
+extern int fileio_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
+			  bool dolock, bool dosync);
 extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
 			  DKNPAGES npages, bool sweep_clean, bool dolock, bool dosync, size_t page_size,
 			  int kbytes_to_be_written_per_sec, bool reuse_file);
@@ -328,9 +329,6 @@ extern const char *fileio_get_zip_method_string (FILEIO_ZIP_METHOD zip_method);
 extern const char *fileio_get_zip_level_string (FILEIO_ZIP_LEVEL zip_level);
 
 
-/* defined in file_io.c, also used by file_io_backup.c */
-extern int fileio_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
-			  bool dolock, bool dosync);
 extern char *fileio_ctime (INT64 * clock, char *buf);
 
 #if !defined(WINDOWS)

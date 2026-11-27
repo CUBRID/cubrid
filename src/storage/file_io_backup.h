@@ -17,8 +17,8 @@
  */
 
 /*
- * file_io_backup.h - backup and restore of database volumes (at server)
- *
+ * file_io_backup.h - backup and restore of database volumes (server and standalone);
+ *                    the types clients also use (backup level, zip, prompt) stay in file_io.h
  */
 
 #ifndef _FILE_IO_BACKUP_H_
@@ -26,10 +26,16 @@
 
 #ident "$Id$"
 
-#include "file_io.h"
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-/* backup and restore run only in the server and standalone builds */
-#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "file_io.h"
+#include "release_string.h"
+
+#include <map>
+#include <string>
+#include <utility>
 
 #define FILEIO_INITIAL_BACKUP_UNITS    0
 #define FILEIO_NO_BACKUP_UNITS         -1
@@ -324,7 +330,5 @@ extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_list_find (FILEIO_RESTORE_
 extern void fileio_page_bitmap_list_add (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
 					 FILEIO_RESTORE_PAGE_BITMAP * page_bitmap);
 extern void fileio_page_bitmap_list_destroy (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list);
-
-#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 #endif /* _FILE_IO_BACKUP_H_ */

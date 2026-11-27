@@ -13,7 +13,7 @@ page fix/unfix behavior, dirty-page flushing, page LSA handling, volume read/wri
 | `double_write_buffer.cpp/hpp` | Torn-write protection for data page flushes |
 | `tde.c/h` | Transparent data encryption helpers for pages/logs and TDE algorithm metadata |
 
-`page_buffer.c` and `double_write_buffer.cpp` are server/SA code. `file_io.c` and `tde.c` also appear in the client
+`page_buffer.c`, `double_write_buffer.cpp` and `file_io_backup.c` are server/SA code. `file_io.c` and `tde.c` also appear in the client
 source list in [cs/CMakeLists.txt](../../../cs/CMakeLists.txt).
 
 ## Page Fix Protocol
@@ -88,9 +88,10 @@ Rules:
 
 ## Raw I/O Layer
 
-`file_io.c` owns physical files, volume labels, page reads/writes, and low-level path handling; backup and restore
-live in `file_io_backup.c` on top of it. It is below the buffer pool. Heap/B-tree/catalog code should not bypass
-`pgbuf_*` to edit permanent pages through `fileio_*` calls.
+`file_io.c` owns physical files, volume labels, page reads/writes, and low-level path handling. It is below the
+buffer pool. Heap/B-tree/catalog code should not bypass `pgbuf_*` to edit permanent pages through `fileio_*` calls.
+`file_io_backup.c` runs backup and restore sessions on top of `file_io.c`; it also calls the buffer pool, the disk
+manager and the log page buffer.
 
 ## Double-Write Buffer
 

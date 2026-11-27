@@ -17,7 +17,7 @@
  */
 
 /*
- * file_io_backup.c - backup and restore of database volumes (at server)
+ * file_io_backup.c - backup and restore of database volumes (server and standalone)
  */
 
 #ident "$Id$"
@@ -78,25 +78,13 @@
 #if defined (SERVER_MODE)
 #include "thread_worker_pool_impl.hpp"	// for system_core_count
 #include "server_support.h"
-#endif // SERVER_MODE
-#if defined (SERVER_MODE)
 #include "thread_entry_task.hpp"
 #endif // SERVER_MODE
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
-#endif // SERVER_MODE
+#endif // SERVER_MODE || SA_MODE
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-/* backup and restore run only in the server and standalone builds; this file compiles empty in cubridcs */
-#if defined (SERVER_MODE) || defined (SA_MODE)
-
-#if !defined(SERVER_MODE)
-#define pthread_mutex_init(a, b)
-#define pthread_mutex_destroy(a)
-#define pthread_mutex_lock(a)	0
-#define pthread_mutex_unlock(a)
-#endif
 
 /*
  * Message id in the set MSGCAT_SET_IO
@@ -5757,5 +5745,3 @@ fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_
     }
   fprintf (out_fp, "\n");
 }
-
-#endif /* defined (SERVER_MODE) || (SA_MODE) */
