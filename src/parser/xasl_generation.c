@@ -25092,13 +25092,15 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   insert->num_default_expr = 0;
   insert->att_id = NULL;
 
-  /* remote column names:
-   *   attr_list present  → explicit columns (INSERT INTO remote (c1,c2) SELECT ...)
-   *                         → remote_attr_names[i] = attr_list column names
-   *   attr_list absent   → positional mapping (INSERT INTO remote SELECT ...)
-   *                         → remote_attr_names = NULL; dblink_dml_open uses INSERT INTO t VALUES (?,?)
+  /* remote column names, by whether the statement wrote a column list:
+   *   written     → remote_attr_names[i] = its names (INSERT INTO remote (c1,c2) SELECT ...)
+   *   not written → remote_attr_names = NULL. dblink_dml_open uses INSERT INTO t VALUES (?,?)
+   * Name resolution fills an absent list with the target's columns, so dml_no_col_list tells which.
+   * The names go out unquoted. A list the statement did not write would fail a target whose
+   * column name is a reserved word.
    */
-  if (statement->info.insert.attr_list != NULL)
+  if (statement->info.insert.attr_list != NULL
+      && !statement->info.insert.spec->info.spec.remote_server_name->info.dblink_table.dml_no_col_list)
     {
       PT_NODE *col;
       int n, i;
@@ -25345,8 +25347,8 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  /* note: a correlated subquery is rejected earlier, in pt_check_with_info's DELETE branch
-   * (pt_dblink_dml_corr_ref), before the stand-alone bind -- so it never reaches this XASL builder. */
+  /* A correlated subquery never reaches this builder. The semantic check refused it
+   * (pt_dblink_dml_sink_subq). */
 
   /* build XASL skeleton: aptr (local subquery) + val_list + list scan spec */
   xasl = pt_make_aptr_parent_node (parser, aptr_statement, DELETE_PROC);

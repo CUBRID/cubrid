@@ -6506,7 +6506,10 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
       if (col_name && (PT_SPEC_IS_DERIVED (exposed_spec) || PT_SPEC_IS_CTE (exposed_spec))
 	  && exposed_spec->info.spec.range_var != in_node)
 	{
-	  if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_FOR_UPDATE))
+	  /* The target of a remote sink has the derived shape, to take its columns. A DELETE names
+	   * it alone. */
+	  if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_FOR_UPDATE)
+	      || PT_DBLINK_DML_IS_SINK (exposed_spec->info.spec.remote_server_name))
 	    {
 	      in_node->info.name.spec_id = exposed_spec->info.spec.id;
 	      return in_node;
@@ -13789,7 +13792,7 @@ pt_gather_dml_target_assigns (PARSER_CONTEXT * parser, S_LINK_COLUMNS * lkcol, P
  *   to the target's remote select list
  *   return:
  *   parser(in): parser context
- *   stmt(in): the PT_INSERT
+ *   stmt(in): the PT_INSERT, the PT_DELETE or the PT_UPDATE
  *   spec(in/out): its target, just given the derived dblink table shape
  *
  * Note: The shape starts the list with a star, which describes the visible columns only. A column
@@ -13826,6 +13829,15 @@ pt_gather_dblink_cols_in_dml_target (PARSER_CONTEXT * parser, PT_NODE * stmt, PT
 	  pt_gather_dml_target_col (parser, &lkcol, attr);
 	}
       pt_gather_dml_target_assigns (parser, &lkcol, stmt->info.insert.odku_assignments);
+      break;
+
+    case PT_UPDATE:
+      pt_gather_dml_target_assigns (parser, &lkcol, stmt->info.update.assignment);
+      pt_walk_col_refs (parser, stmt->info.update.search_cond, pt_dml_target_column_name_pre, &lkcol);
+      break;
+
+    case PT_DELETE:
+      pt_walk_col_refs (parser, stmt->info.delete_.search_cond, pt_dml_target_column_name_pre, &lkcol);
       break;
 
     default:

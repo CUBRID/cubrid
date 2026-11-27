@@ -21152,8 +21152,9 @@ qexec_execute_remote_update_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 {
   XASL_NODE *aptr;
 
+  /* aptr_list is empty when the type check folded every SET subquery of an UPDATE with no WHERE
+   * into a value. The SET text then carries the values, and one statement goes to the remote. */
   assert (xasl->proc.update.sink.is_remote);
-  assert (xasl->aptr_list != NULL);	/* the sink XASL always carries at least one local subquery */
 
   for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
     {

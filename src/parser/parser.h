@@ -783,6 +783,7 @@ extern "C"
   extern const char *pt_get_name_without_current_user_name (const char *name);
 
   extern void pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt);
+  extern const char *pt_dblink_dml_stmt_name (const PT_NODE * node, bool lower);
   extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern void pt_gather_dblink_cols_in_dml (PARSER_CONTEXT * parser, PT_NODE * stmt);
   extern void pt_gather_dblink_cols_in_dml_target (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * spec);

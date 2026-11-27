@@ -3652,6 +3652,10 @@ typedef struct pt_dblink_info
    * name outside "SELECT *" is described: a remote accepting it proves nothing (Oracle's UID). */
   bool uncertain_name_seen;
 
+  /* The INSERT of a remote DML sink wrote no column list. Name resolution fills the list with the
+   * target's columns, and the remote statement still goes out without one. */
+  bool dml_no_col_list;
+
   void *remote_col_list;	/* remote table's column list */
 
   /* Correlated equality push-down (single equality: count == 1).

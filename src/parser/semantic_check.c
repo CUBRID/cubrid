@@ -12696,117 +12696,6 @@ pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_dblink_dml_subq_shadows_name () - true if subq's OWN top-level FROM rebinds name (as a range
- *   variable, or as a bare entity name when the spec has no alias).
- *   Only a plain SELECT has a single top-level FROM to check; UNION/INTERSECTION/DIFFERENCE and CTEs are
- *   conservatively treated as not shadowing (same as before this check existed), since a query's operands
- *   would each need this evaluated in their own right. Checks subq's own scope only -- a further-nested
- *   PT_SELECT (a derived table in this FROM, or any other nested subquery) may shadow the name again on
- *   its own terms, independently of this result; the caller (pt_dblink_dml_corr_ref_pre) re-evaluates
- *   this per scope as it descends, rather than relying on a single top-level call.
- */
-static bool
-pt_dblink_dml_subq_shadows_name (PT_NODE * subq, const char *name)
-{
-  PT_NODE *spec;
-
-  if (name == NULL || subq == NULL || subq->node_type != PT_SELECT)
-    {
-      return false;
-    }
-
-  for (spec = subq->info.query.q.select.from; spec != NULL; spec = spec->next)
-    {
-      const char *spec_name = (spec->info.spec.range_var != NULL)
-	? spec->info.spec.range_var->info.name.original
-	: ((spec->info.spec.entity_name != NULL) ? spec->info.spec.entity_name->info.name.original : NULL);
-
-      if (spec_name != NULL && intl_identifier_casecmp (spec_name, name) == 0)
-	{
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/*
- * pt_dblink_dml_corr_ref_pre/_post () - walk callback pair: flag a subquery correlated to the outer
- *   remote DELETE or UPDATE target. A correlated reference is a qualified column (PT_DOT_) whose
- *   qualifier matches the target's range variable or entity name. Used by pt_check_with_info's DELETE
- *   branch and by pt_dblink_update_bind_subq () before the subquery is bound stand-alone (which would
- *   otherwise fail with a confusing "Attribute <alias> was not found").
- *   Shadowing is re-evaluated at every PT_SELECT boundary the walk descends into (subq itself, a derived
- *   table, or any other nested subquery) via the scope stack the pre/post pair pushes/pops -- not just
- *   subq's own top-level FROM -- so a derived table that rebinds the name deeper in the tree is also
- *   recognized. A scope inherits its enclosing scope's shadow state (once shadowed, always shadowed
- *   going deeper -- see pt_dblink_dml_subq_shadows_name).
- */
-typedef struct pt_dblink_dml_corr_scope
-{
-  struct pt_dblink_dml_corr_scope *up;
-  bool alias_shadowed;		/* true if this scope's own top-level FROM (or an enclosing one) rebinds `alias` */
-  bool entity_shadowed;		/* true if this scope's own top-level FROM (or an enclosing one) rebinds `entity` */
-} PT_DBLINK_DML_CORR_SCOPE;
-
-typedef struct
-{
-  const char *alias;		/* outer target range variable (e.g. "r" in remote_t AS r), may be NULL */
-  const char *entity;		/* outer target table name (e.g. "remote_t"), may be NULL */
-  PT_DBLINK_DML_CORR_SCOPE *top;	/* innermost pushed scope; NULL before subq's own PT_SELECT is entered */
-  bool found;
-} PT_DBLINK_DML_CORR;
-
-static PT_NODE *
-pt_dblink_dml_corr_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  PT_DBLINK_DML_CORR *chk = (PT_DBLINK_DML_CORR *) arg;
-
-  *continue_walk = PT_CONTINUE_WALK;
-  if (node->node_type == PT_SELECT)
-    {
-      PT_DBLINK_DML_CORR_SCOPE *scope = (PT_DBLINK_DML_CORR_SCOPE *) parser_alloc (parser, sizeof (*scope));
-      bool up_alias_shadowed = (chk->top != NULL) && chk->top->alias_shadowed;
-      bool up_entity_shadowed = (chk->top != NULL) && chk->top->entity_shadowed;
-
-      scope->up = chk->top;
-      scope->alias_shadowed = up_alias_shadowed || pt_dblink_dml_subq_shadows_name (node, chk->alias);
-      scope->entity_shadowed = up_entity_shadowed || pt_dblink_dml_subq_shadows_name (node, chk->entity);
-      chk->top = scope;
-    }
-  else if (node->node_type == PT_DOT_ && node->info.dot.arg1 != NULL && node->info.dot.arg1->node_type == PT_NAME)
-    {
-      const char *q = node->info.dot.arg1->info.name.original;
-      bool alias_shadowed = (chk->top != NULL) && chk->top->alias_shadowed;
-      bool entity_shadowed = (chk->top != NULL) && chk->top->entity_shadowed;
-
-      if (q != NULL
-	  && ((chk->alias != NULL && !alias_shadowed && intl_identifier_casecmp (q, chk->alias) == 0)
-	      || (chk->entity != NULL && !entity_shadowed && intl_identifier_casecmp (q, chk->entity) == 0)))
-	{
-	  chk->found = true;
-	  *continue_walk = PT_STOP_WALK;
-	}
-    }
-  return node;
-}
-
-static PT_NODE *
-pt_dblink_dml_corr_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  PT_DBLINK_DML_CORR *chk = (PT_DBLINK_DML_CORR *) arg;
-
-  (void) parser;
-
-  *continue_walk = PT_CONTINUE_WALK;
-  if (node->node_type == PT_SELECT && chk->top != NULL)
-    {
-      chk->top = chk->top->up;
-    }
-  return node;
-}
-
-/*
  * pt_dblink_dml_translate_subq () - Translate a local subquery that a remote DML sink evaluates
  *   stand-alone.
  *   return: the translated subquery, or NULL with the parser error set
@@ -12840,76 +12729,6 @@ pt_dblink_dml_translate_subq (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE *
 }
 
 /*
- * pt_bind_remote_dml_subq () - Bind a local subquery that a remote DML sink (INSERT SELECT / DELETE
- *   local-subquery) evaluates stand-alone: run the same steps a top-level SELECT receives
- *   (pt_resolve_names -> pt_check_where -> pt_mark_union_leaf_nodes -> pt_semantic_check_local ->
- *   mq_translate), since the remote DML path breaks out of the normal query semantic check before this
- *   subquery would otherwise be processed as one. Without this, WHERE / GROUP BY / HAVING / ORDER BY /
- *   LIMIT / expressions / aggregates / UNION on the subquery are never handled (e.g. ORDER BY raises a
- *   "generate order_by" system error, LIMIT is ignored).
- *   return: the translated subquery, or NULL on failure (parser error already set)
- *   parser(in)         : parser context
- *   subq(in)            : the local subquery to bind (SELECT for INSERT; WHERE right-hand side for DELETE)
- *   sc_info_ptr(in/out) : semantic check info; top_node is set to subq for the duration, then restored
- *   fail_msg(in)        : PT_INTERNAL_ERROR message if mq_translate returns NULL without setting an error
- *                         (its contract, like the canonical db_vdb.c caller, treats that as a failure too)
- */
-static PT_NODE *
-pt_bind_remote_dml_subq (PARSER_CONTEXT * parser, PT_NODE * subq, SEMANTIC_CHK_INFO * sc_info_ptr, const char *fail_msg)
-{
-  PT_NODE *saved_top = sc_info_ptr->top_node;
-
-  pt_resolve_names (parser, subq, sc_info_ptr);
-  if (pt_has_error (parser))
-    {
-      return NULL;
-    }
-
-  sc_info_ptr->top_node = subq;
-  subq = pt_check_where (parser, subq);
-  if (subq != NULL && !pt_has_error (parser))
-    {
-      subq = parser_walk_tree (parser, subq, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
-    }
-  if (subq != NULL && !pt_has_error (parser))
-    {
-      subq = parser_walk_tree (parser, subq, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
-    }
-  if (subq != NULL && !pt_has_error (parser))
-    {
-      /* after the local semantic check, as in the usual semantic check -> mq_translate order */
-      subq = pt_dblink_dml_translate_subq (parser, saved_top, subq, fail_msg);
-    }
-
-  sc_info_ptr->top_node = saved_top;
-
-  return pt_has_error (parser) ? NULL : subq;
-}
-
-/*
- * pt_dblink_insert_binds_odku_value () - Tell whether a remote INSERT ... SELECT binds an ON DUPLICATE KEY
- *   UPDATE value from the source row. Such a value must be resolved with the source row in scope, which needs
- *   the target's columns. Asked before name resolution, on the clause as written.
- *   return: true iff a value is a qualified column (pt_dblink_odku_value_is_bound)
- *   node(in): the INSERT
- */
-static bool
-pt_dblink_insert_binds_odku_value (PT_NODE * node)
-{
-  PT_NODE *assign;
-
-  for (assign = node->info.insert.odku_assignments; assign != NULL; assign = assign->next)
-    {
-      if (assign->node_type == PT_EXPR && assign->info.expr.op == PT_ASSIGN
-	  && pt_dblink_odku_value_is_bound (assign->info.expr.arg2))
-	{
-	  return true;
-	}
-    }
-  return false;
-}
-
-/*
  * pt_dblink_odku_carry_values_and_translate () - Carry the bound ON DUPLICATE KEY UPDATE values of a remote
  *   INSERT ... SELECT in its source SELECT, then translate the source SELECT.
  *   return: none. On failure the parser error is set.
@@ -12939,7 +12758,8 @@ pt_dblink_odku_carry_values_and_translate (PARSER_CONTEXT * parser, PT_NODE * no
 
   if (subq->node_type == PT_SELECT)
     {
-      /* A statement checked again has its copies, and its source SELECT is translated already. */
+      /* An INSERT with these copies is a statement checked again. Its source SELECT is translated
+       * already. */
       for (item = subq->info.query.q.select.list; item != NULL; item = item->next)
 	{
 	  if (item->flag.is_dblink_odku_value)
@@ -13100,64 +12920,21 @@ pt_dblink_dml_target_as_derived (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
- * pt_dblink_update_bind_subq () - Reject a subquery correlated to the outer remote UPDATE target, then
- *   bind it stand-alone. A remote UPDATE sink holds one subquery per SET assignment plus the WHERE
- *   driving predicate, and each needs both steps, so they live here instead of being repeated per site.
- *   The correlation walk is shared with the DELETE sink (PT_DBLINK_DML_CORR and its callback pair): the
- *   rule is the same for both -- the sink evaluates the subquery once with no outer row, so a reference
- *   to the target cannot be honored -- and rejecting it here keeps the stand-alone bind below from
- *   failing with a confusing "Attribute <alias> was not found". Only a qualified reference is recognized,
- *   so an unqualified one (WHERE l.x = remote_only_col) still reaches the bind and fails with that
- *   message -- the statement is rejected either way, just less clearly. Same limitation on the DELETE side.
- *   return: the bound subquery, or NULL if it was rejected or the bind failed (parser error already set)
- *   parser(in)          : parser context
- *   stmt(in)            : the UPDATE statement, for error reporting
- *   subq(in)            : the subquery to check and bind
- *   sc_info_ptr(in/out) : semantic check info, passed through to pt_bind_remote_dml_subq
- *   alias(in)           : outer target range variable, may be NULL
- *   entity(in)          : outer target table name, may be NULL
- *   clause(in)          : "WHERE" or "SET", used to name the offending clause in both messages
- */
-static PT_NODE *
-pt_dblink_update_bind_subq (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * subq,
-			    SEMANTIC_CHK_INFO * sc_info_ptr, const char *alias, const char *entity, const char *clause)
-{
-  PT_DBLINK_DML_CORR corr;
-  char msg[128];
-
-  corr.alias = alias;
-  corr.entity = entity;
-  corr.top = NULL;
-  corr.found = false;
-  parser_walk_tree (parser, subq, pt_dblink_dml_corr_ref_pre, &corr, pt_dblink_dml_corr_ref_post, &corr);
-  if (corr.found)
-    {
-      snprintf (msg, sizeof (msg), "dblink: correlated subquery is not supported in a remote UPDATE %s clause", clause);
-      PT_ERRORc (parser, stmt, msg);
-      return NULL;
-    }
-
-  snprintf (msg, sizeof (msg), "remote UPDATE: failed to translate the %s subquery", clause);
-
-  return pt_bind_remote_dml_subq (parser, subq, sc_info_ptr, msg);
-}
-
-/*
- * pt_dblink_update_fold_driving_values () - Make the values of a remote UPDATE's IN / = ANY driving subquery
- *   distinct, after its row cut.
+ * pt_dblink_update_fold_driving_values () - Make the values of a remote UPDATE's IN / = ANY driving
+ *   subquery distinct, after its row cut.
  *   return: the subquery to use, or NULL on error (parser error set)
  *   parser(in) : parser context
  *   subq(in)   : the bound driving subquery
  *
- * One statement goes out per value the driving subquery produces, so a repeated value writes the same
- * remote row twice. The equality shapes this sink admits match disjoint rows for distinct values, so the
- * values are de-duplicated. A scalar comparison is left as written. DISTINCT would hide its "more than a
- * single tuple" error. DELETE does not need this, because a second statement finds the row gone.
+ * One statement goes out per value the driving subquery produces, so a repeated value writes the
+ * same remote row twice. The equality shapes this sink admits match disjoint rows for distinct
+ * values, so the values are de-duplicated. A scalar comparison is left as written. DISTINCT would
+ * hide its "more than a single tuple" error. DELETE does not need this, because a second statement
+ * finds the row gone.
  *
- * The subquery was checked and translated on its own by pt_bind_remote_dml_subq (), so the handling a local
- * IN subquery gets during type checking (drop the ORDER BY, set DISTINCT) never ran on it. This runs right
- * after that call, ahead of the subquery cache prepare in do_prepare_statement (). When
- * pt_try_set_subquery_distinct () declines, the subquery is wrapped and folded outside.
+ * This runs at the end of the statement's semantic check (pt_dblink_dml_sink_finish). That is ahead
+ * of the subquery cache prepare in do_prepare_statement (). When pt_try_set_subquery_distinct ()
+ * declines, the subquery is wrapped and folded outside.
  */
 static PT_NODE *
 pt_dblink_update_fold_driving_values (PARSER_CONTEXT * parser, PT_NODE * subq)
@@ -13192,6 +12969,191 @@ pt_dblink_update_fold_driving_values (PARSER_CONTEXT * parser, PT_NODE * subq)
 
   parser_free_tree (parser, subq);
   return wrapped;
+}
+
+/*
+ * pt_dblink_dml_sink_target () - Find the target of a remote DML that sends values to a sink.
+ *   return: the target spec, or NULL when the statement is not such a sink
+ *   node(in): a statement
+ *
+ * Note: A remote INSERT is such a sink only with a source SELECT.
+ */
+static PT_NODE *
+pt_dblink_dml_sink_target (PT_NODE * node)
+{
+  PT_NODE *spec = NULL;
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      spec = (pt_get_subquery_of_insert_select (node) != NULL) ? node->info.insert.spec : NULL;
+      break;
+    case PT_DELETE:
+      spec = node->info.delete_.spec;
+      break;
+    case PT_UPDATE:
+      spec = node->info.update.spec;
+      break;
+    default:
+      break;
+    }
+
+  return (spec != NULL && PT_DBLINK_DML_IS_SINK (spec->info.spec.remote_server_name)) ? spec : NULL;
+}
+
+/* what pt_dblink_dml_spec_ref () looks for, and whether it found one */
+typedef struct
+{
+  UINTPTR spec_id;
+  bool found;
+} PT_DBLINK_DML_SPEC_REF;
+
+/*
+ * pt_dblink_dml_spec_ref () - walk callback, tells whether a resolved tree reads a column of a spec
+ *   arg(in/out): PT_DBLINK_DML_SPEC_REF
+ */
+static PT_NODE *
+pt_dblink_dml_spec_ref (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_DBLINK_DML_SPEC_REF *ref = (PT_DBLINK_DML_SPEC_REF *) arg;
+
+  (void) parser;
+
+  if (node->node_type == PT_NAME && ref->spec_id != 0 && node->info.name.spec_id == ref->spec_id)
+    {
+      ref->found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_dblink_dml_sink_subq () - Check and translate a local subquery of a remote DELETE or UPDATE
+ *   sink.
+ *   return: the subquery to use, or NULL with the parser error set
+ *   parser(in): parser context
+ *   stmt(in): the DELETE or the UPDATE, for error reporting
+ *   target(in): its target spec
+ *   subq(in): the subquery, resolved and checked with the statement
+ *   clause(in): "WHERE" or "SET", to name the clause in both messages
+ *
+ * Note: The sink evaluates the subquery once, with no target row. So a subquery that reads a target
+ *   column is refused. The names were resolved with the statement, so the reference is found by its
+ *   spec id, qualified or not. db_vdb.c skips the statement-level mq_translate for a remote DML, so
+ *   the subquery is translated here.
+ */
+static PT_NODE *
+pt_dblink_dml_sink_subq (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * target, PT_NODE * subq, const char *clause)
+{
+  PT_DBLINK_DML_SPEC_REF ref = { target->info.spec.id, false };
+  const char *dml = pt_dblink_dml_stmt_name (stmt, false);
+  char msg[128];
+
+  parser_walk_tree (parser, subq, pt_dblink_dml_spec_ref, &ref, NULL, NULL);
+  if (ref.found)
+    {
+      snprintf (msg, sizeof (msg), "dblink: correlated subquery is not supported in a remote %s %s clause", dml,
+		clause);
+      PT_ERRORc (parser, stmt, msg);
+      return NULL;
+    }
+
+  snprintf (msg, sizeof (msg), "remote %s: failed to translate the %s subquery", dml, clause);
+
+  return pt_dblink_dml_translate_subq (parser, stmt, subq, msg);
+}
+
+/*
+ * pt_dblink_dml_sink_finish () - Finish the semantic check of a remote DML sink resolved with its
+ *   target's columns.
+ *   return: none. On failure the parser error is set.
+ *   parser(in): parser context
+ *   node(in/out): the INSERT, the DELETE or the UPDATE, resolved and checked
+ *
+ * Note: The local subqueries are translated, since nothing else translates them. The driving
+ *   subquery is the right side of the single WHERE predicate. An UPDATE holds one more per SET
+ *   assignment. The values of an UPDATE's IN / = ANY driving subquery are made distinct.
+ */
+static void
+pt_dblink_dml_sink_finish (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *target, *cond, *subq;
+  PT_ASSIGNMENTS_HELPER ea;
+
+  if (node->node_type == PT_INSERT)
+    {
+      pt_dblink_odku_carry_values_and_translate (parser, node);
+      return;
+    }
+
+  target = (node->node_type == PT_DELETE) ? node->info.delete_.spec : node->info.update.spec;
+  cond = (node->node_type == PT_DELETE) ? node->info.delete_.search_cond : node->info.update.search_cond;
+
+  /* The type check folds a subquery whose WHERE is constant false into a null value. The driving
+   * subquery then has no value to send, so the statement changes no row. Its WHERE becomes a
+   * false value, which is what a local statement gets, and no statement goes to the remote. This
+   * holds because every operator the gate lets in (IN, ANY, a scalar comparison) matches no row
+   * on an empty set. */
+  if (cond != NULL && cond->next == NULL && cond->node_type == PT_EXPR && cond->info.expr.arg2 != NULL
+      && cond->info.expr.arg2->node_type == PT_VALUE && cond->info.expr.arg2->info.value.is_false_where)
+    {
+      PT_NODE *false_where = parser_new_node (parser, PT_VALUE);
+
+      if (false_where == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return;
+	}
+      false_where->line_number = cond->line_number;
+      false_where->column_number = cond->column_number;
+      false_where->type_enum = PT_TYPE_LOGICAL;
+      false_where->info.value.data_value.i = 0;
+      (void) pt_value_to_db (parser, false_where);
+
+      parser_free_tree (parser, cond);
+      if (node->node_type == PT_DELETE)
+	{
+	  node->info.delete_.search_cond = false_where;
+	}
+      else
+	{
+	  node->info.update.search_cond = false_where;
+	}
+      return;
+    }
+
+  if (cond != NULL && cond->next == NULL && cond->node_type == PT_EXPR && cond->info.expr.arg2 != NULL
+      && PT_IS_QUERY (cond->info.expr.arg2))
+    {
+      subq = pt_dblink_dml_sink_subq (parser, node, target, cond->info.expr.arg2, "WHERE");
+      if (subq != NULL && node->node_type == PT_UPDATE
+	  && (cond->info.expr.op == PT_IS_IN || cond->info.expr.op == PT_EQ_SOME))
+	{
+	  subq = pt_dblink_update_fold_driving_values (parser, subq);
+	}
+      if (subq != NULL)
+	{
+	  cond->info.expr.arg2 = subq;
+	}
+    }
+
+  if (node->node_type != PT_UPDATE)
+    {
+      return;
+    }
+
+  pt_init_assignments_helper (parser, &ea, node->info.update.assignment);
+  while (!pt_has_error (parser) && pt_get_next_assignment (&ea))
+    {
+      if (ea.rhs != NULL && PT_IS_QUERY (ea.rhs))
+	{
+	  subq = pt_dblink_dml_sink_subq (parser, node, target, ea.rhs, "SET");
+	  if (subq != NULL)
+	    {
+	      ea.assignment->info.expr.arg2 = subq;
+	    }
+	}
+    }
 }
 
 /*
@@ -13294,177 +13256,11 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      || (node->node_type == PT_UPDATE && node->info.update.spec->info.spec.remote_server_name)
 	      || (node->node_type == PT_MERGE && node->info.merge.into->info.spec.remote_server_name))
 	    {
-	      bool resolve_whole = false;
+	      PT_NODE *sink_target = pt_dblink_dml_sink_target (node);
 
-	      /* For a remote INSERT SELECT in the sink form (local SELECT streamed to the remote
-	       * target; see the qstr gate below) the SELECT subquery runs locally, but the remote DML path
-	       * breaks out of the normal query semantic check below, so the subquery is never processed
-	       * as a stand-alone query. Run the same steps a top-level SELECT receives
-	       * (pt_resolve_names -> pt_check_where -> pt_mark_union_leaf_nodes -> pt_semantic_check_local)
-	       * so its WHERE / GROUP BY / HAVING / ORDER BY / LIMIT / expressions / aggregates / UNION are
-	       * handled; otherwise ORDER BY raises a "generate order_by" system error, LIMIT is ignored, etc. */
-	      /* Sink form only (DML text not serialized, qstr == NULL): the SELECT subquery runs
-	       * locally, so it needs the local semantic pass below. The full-pushdown form
-	       * (qstr set) ships the whole statement to the remote server, where it is parsed
-	       * and type-checked; the local pass would fail on remote columns whose types are
-	       * unknown locally. */
-	      if (node->node_type == PT_INSERT
-		  && PT_DBLINK_DML_IS_SINK (node->info.insert.spec->info.spec.remote_server_name))
-		{
-		  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
-
-		  /* An ON DUPLICATE KEY UPDATE value bound from the source row is resolved with the rest of the
-		   * statement, not here: the target takes its columns and the statement goes on to the steps below.
-		   * A target already in that shape is a statement checked again. */
-		  if (subq != NULL
-		      && (PT_SPEC_IS_DERIVED (node->info.insert.spec) || pt_dblink_insert_binds_odku_value (node)))
-		    {
-		      if (!PT_SPEC_IS_DERIVED (node->info.insert.spec))
-			{
-			  if (pt_dblink_dml_target_as_derived (parser, node->info.insert.spec) != NO_ERROR)
-			    {
-			      PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: failed to take the target's columns");
-			      break;
-			    }
-			  pt_gather_dblink_cols_in_dml_target (parser, node, node->info.insert.spec);
-			}
-		      resolve_whole = true;
-		      subq = NULL;
-		    }
-
-		  if (subq != NULL)
-		    {
-		      subq = pt_bind_remote_dml_subq (parser, subq, sc_info_ptr,
-						      "remote INSERT SELECT: failed to translate the SELECT subquery");
-		      if (subq != NULL)
-			{
-			  node->info.insert.value_clauses->info.node_list.list = subq;
-
-			  /* The remote path also skips the INSERT-level attribute/value count check, so an
-			   * explicit column list whose size differs from the SELECT projection would reach
-			   * XASL generation and abort there. Validate it here with the same semantic error a
-			   * local INSERT uses. */
-			  if (node->info.insert.attr_list != NULL)
-			    {
-			      int ac = pt_length_of_list (node->info.insert.attr_list);
-			      int cc = pt_length_of_select_list (pt_get_select_list (parser, subq),
-								 EXCLUDE_HIDDEN_COLUMNS);
-			      if (ac != cc)
-				{
-				  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					       MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE, ac, cc);
-				}
-			    }
-			}
-		    }
-		}
-	      else if (node->node_type == PT_DELETE)
-		{
-		  /* mirrors the remote INSERT SELECT handling above (same reason -- see that comment); here
-		   * the WHERE subquery's specs would lack range_var / spec id and XASL generation would
-		   * crash. Only the single-predicate "<col> <op> (subquery)" shape is touched; other remote
-		   * DELETEs have no subquery (or a value list) and use the qstr pushdown. */
-		  PT_NODE *remote = node->info.delete_.spec->info.spec.remote_server_name;
-		  PT_NODE *cond = node->info.delete_.search_cond;
-		  PT_NODE *subq = NULL;
-
-		  /* Only the value-push sink. pt_rewrite_for_dblink (db_vdb.c, before this semantic check) already
-		   * converted the target to PT_DBLINK_TABLE_DML: the sink leaves qstr == NULL, while a full qstr
-		   * pushdown (e.g. same-server all-remote IN (SELECT ... FROM t@srv)) sets qstr and ships the whole
-		   * DELETE as text -- its subquery must NOT be translated locally. qstr == NULL is only produced when
-		   * the parser shape gate (pt_dblink_dml_where_is_inscope) accepted the form, so this also confines
-		   * resolution to the parser-approved single-predicate shapes. */
-		  if (PT_DBLINK_DML_IS_SINK (remote) && cond != NULL && cond->next == NULL
-		      && cond->node_type == PT_EXPR && cond->info.expr.arg2 != NULL
-		      && PT_IS_QUERY (cond->info.expr.arg2))
-		    {
-		      subq = cond->info.expr.arg2;
-		    }
-		  if (subq != NULL)
-		    {
-		      PT_NODE *tgt = node->info.delete_.spec;
-		      PT_DBLINK_DML_CORR corr;
-
-		      /* reject a subquery correlated to the outer DELETE target with a clear message, before the
-		       * stand-alone bind below (which would fail with "Attribute <alias> was not found"). The
-		       * value-push sink evaluates the subquery once with no outer row, so correlation is out of
-		       * scope (extension). */
-		      corr.alias =
-			(tgt->info.spec.range_var != NULL) ? tgt->info.spec.range_var->info.name.original : NULL;
-		      corr.entity =
-			(tgt->info.spec.entity_name != NULL) ? tgt->info.spec.entity_name->info.name.original : NULL;
-		      /* an inner FROM item that reuses the outer alias/table name for its OWN range shadows it --
-		       * any qualifier by that name inside that FROM item's scope then refers to the inner item,
-		       * not the outer target. Shadowing is (re-)computed per scope by the pre/post pair itself. */
-		      corr.top = NULL;
-		      corr.found = false;
-		      parser_walk_tree (parser, subq, pt_dblink_dml_corr_ref_pre, &corr,
-					pt_dblink_dml_corr_ref_post, &corr);
-		      if (corr.found)
-			{
-			  PT_ERROR (parser, node,
-				    "dblink: correlated subquery is not supported in a remote DELETE WHERE clause");
-			  subq = NULL;
-			}
-		    }
-		  if (subq != NULL)
-		    {
-		      subq = pt_bind_remote_dml_subq (parser, subq, sc_info_ptr,
-						      "remote DELETE: failed to translate the WHERE subquery");
-		      if (subq != NULL)
-			{
-			  cond->info.expr.arg2 = subq;
-			}
-		    }
-		}
-	      else if (node->node_type == PT_UPDATE)
-		{
-		  /* mirrors the remote DELETE handling above (same reason -- see that comment), with one
-		   * difference: a remote UPDATE sink can hold several local subqueries -- the WHERE driving
-		   * predicate plus one per SET assignment -- and every one of them runs stand-alone. */
-		  PT_NODE *remote = node->info.update.spec->info.spec.remote_server_name;
-
-		  if (PT_DBLINK_DML_IS_SINK (remote))
-		    {
-		      PT_NODE *tgt = node->info.update.spec;
-		      PT_NODE *cond = node->info.update.search_cond;
-		      PT_ASSIGNMENTS_HELPER ea;
-		      const char *alias =
-			(tgt->info.spec.range_var != NULL) ? tgt->info.spec.range_var->info.name.original : NULL;
-		      const char *entity =
-			(tgt->info.spec.entity_name != NULL) ? tgt->info.spec.entity_name->info.name.original : NULL;
-
-		      if (cond != NULL && cond->next == NULL && cond->node_type == PT_EXPR
-			  && cond->info.expr.arg2 != NULL && PT_IS_QUERY (cond->info.expr.arg2))
-			{
-			  PT_NODE *subq = pt_dblink_update_bind_subq (parser, node, cond->info.expr.arg2,
-								      sc_info_ptr, alias, entity, "WHERE");
-			  if (subq != NULL && (cond->info.expr.op == PT_IS_IN || cond->info.expr.op == PT_EQ_SOME))
-			    {
-			      subq = pt_dblink_update_fold_driving_values (parser, subq);
-			    }
-			  if (subq != NULL)
-			    {
-			      cond->info.expr.arg2 = subq;
-			    }
-			}
-
-		      pt_init_assignments_helper (parser, &ea, node->info.update.assignment);
-		      while (!pt_has_error (parser) && pt_get_next_assignment (&ea))
-			{
-			  if (ea.rhs != NULL && PT_IS_QUERY (ea.rhs))
-			    {
-			      PT_NODE *subq = pt_dblink_update_bind_subq (parser, node, ea.rhs, sc_info_ptr,
-									  alias, entity, "SET");
-			      if (subq != NULL)
-				{
-				  ea.assignment->info.expr.arg2 = subq;
-				}
-			    }
-			}
-		    }
-		}
-	      if (!resolve_whole)
+	      /* A statement sent as text is parsed and checked by the remote server. Its remote
+	       * columns have no type here, so it leaves now. */
+	      if (sink_target == NULL)
 		{
 		  if (parser->host_var_classified == node)
 		    {
@@ -13473,6 +13269,25 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		      node = pt_classify_host_var_positions (parser, node, NULL, NULL);
 		    }
 		  break;
+		}
+
+	      /* A sink resolves its names with the rest of the statement, so its target takes its
+	       * columns first. The statement then goes on to the steps below. A target already in
+	       * that shape is a statement checked again. */
+	      if (!PT_SPEC_IS_DERIVED (sink_target))
+		{
+		  if (pt_dblink_dml_target_as_derived (parser, sink_target) != NO_ERROR)
+		    {
+		      PT_INTERNAL_ERROR (parser, "remote DML sink: failed to take the target's columns");
+		      break;
+		    }
+		  /* Asked now. Name resolution fills an empty column list with the target's
+		   * columns. */
+		  if (node->node_type == PT_INSERT && node->info.insert.attr_list == NULL)
+		    {
+		      sink_target->info.spec.remote_server_name->info.dblink_table.dml_no_col_list = true;
+		    }
+		  pt_gather_dblink_cols_in_dml_target (parser, node, sink_target);
 		}
 	    }
 	}
@@ -13547,15 +13362,15 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	    }
 	}
 
-      /* db_vdb.c skips the statement-level mq_translate for a remote DML. A remote INSERT resolved with its
-       * target's columns has its source SELECT translated here, as pt_bind_remote_dml_subq () does on the other
-       * path. Without it a UNION source or a dblink derived table in the source sends no rows or some of them,
-       * with no error. The bound ON DUPLICATE KEY UPDATE values join the source SELECT first. */
-      if (!pt_has_error (parser) && node != NULL && node->node_type == PT_INSERT
-	  && node->info.insert.spec->info.spec.remote_server_name != NULL
-	  && PT_SPEC_IS_DERIVED (node->info.insert.spec))
+      /* A sink resolved with its target's columns is finished here, after the checks above. */
+      if (!pt_has_error (parser) && node != NULL)
 	{
-	  pt_dblink_odku_carry_values_and_translate (parser, node);
+	  PT_NODE *sink_target = pt_dblink_dml_sink_target (node);
+
+	  if (sink_target != NULL && PT_SPEC_IS_DERIVED (sink_target))
+	    {
+	      pt_dblink_dml_sink_finish (parser, node);
+	    }
 	}
 
       break;
