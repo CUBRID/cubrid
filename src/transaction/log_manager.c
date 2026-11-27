@@ -1451,11 +1451,37 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       init_emergency = true;
     }
 
+  if (log_Gl.hdr.is_restore_incomplete != 0 && ismedia_crash == false && init_emergency == false)
+    {
+      /* The volumes hold a backup with at most part of the log replayed, and the log goes on past them. A restart
+       * would not run a media recovery and would lose the committed work that the log holds. */
+      logtb_undefine_trantable (thread_p);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_RESTORE_INCOMPLETE, 1, db_fullname);
+      error_code = ER_LOG_RESTORE_INCOMPLETE;
+      goto error;
+    }
+
   /*
    * Was the database system shut down or was it involved in a crash ?
    */
   if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true))
     {
+      if (ismedia_crash == true)
+	{
+	  /* Until this recovery ends, the restored volumes do not match the log. The header in memory keeps the mark
+	   * too, so that an active log that the recovery makes when there is none gets it. */
+	  log_Gl.hdr.is_restore_incomplete = 1;
+	  if (log_Gl.append.vdes != NULL_VOLDES)
+	    {
+	      error_code = logpb_mark_restore_incomplete (thread_p, log_Gl.append.vdes, log_Name_active);
+	      if (error_code != NO_ERROR)
+		{
+		  logtb_undefine_trantable (thread_p);
+		  goto error;
+		}
+	    }
+	}
+
       /*
        * System was involved in a crash.
        * Execute the recovery process

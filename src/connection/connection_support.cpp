@@ -76,6 +76,7 @@
 
 #if defined(CS_MODE)
 #include "network_interface_cl.h"
+#include "network.h"
 #endif
 
 #if defined (SERVER_MODE)
@@ -95,6 +96,9 @@
 
 #if defined(CS_MODE)
 extern bool tran_is_in_libcas (void);
+#if !defined (NDEBUG)
+extern bool tran_is_in_no_reply_callback (void);
+#endif
 #endif
 
 #if !defined (SERVER_MODE)
@@ -1478,6 +1482,8 @@ css_set_net_header (NET_HEADER *header_p, int type, short function_code, int req
     }
 
 #if defined (CS_MODE)
+  /* sent while handling a no-reply callback, it waits until the request that sent the callback next waits or ends */
+  assert (type != COMMAND_TYPE || !tran_is_in_no_reply_callback () || net_request_is_no_reply (function_code));
   if (tran_is_in_libcas ())
     {
       flags |= NET_HEADER_FLAG_METHOD_MODE;

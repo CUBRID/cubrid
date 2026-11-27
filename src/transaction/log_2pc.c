@@ -531,6 +531,11 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    }
 	}
       log_sysop_commit (thread_p);
+      /* Recovery aborts a participant this coordinator prepared only through its 'P' row, so the rows must be on
+       * disk before the first XA prepare goes out.  The sysop commit above only appends its log record: a crash
+       * right after the prepare would lose the rows and leave the prepared participants in doubt, holding their
+       * locks.  Flush up to that record regardless of async_commit. */
+      logpb_flush_log_for_wal (thread_p, &tdes->tail_lsa);
       /* P2: Crash after (1) before (2) SEND XA PREPARE - recovery: daemon ABORT then DELETE */
       FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_1_2, 0);
 #endif
@@ -602,6 +607,11 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    {
 	      return ER_FAILED;
 	    }
+	  /* The daemon delivers COMMIT as soon as it is queued below.  With async_commit the commit log may not be on
+	   * disk yet, and a crash then rolls this transaction back - the 'C' rows with it - while the participants
+	   * have committed.  Flush up to the commit log first; with a synchronous commit it is already there.  An
+	   * abort needs no flush: recovery aborts the transaction anyway. */
+	  logpb_flush_log_for_wal (thread_p, &tdes->tail_lsa);
 	}
       else
 	{
@@ -1260,6 +1270,7 @@ log_2pc_attach_client (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_TDES * clie
 
   /* Return the table entry that is not going to be used anymore */
   logtb_free_tran_index (thread_p, client_tdes->tran_index);
+  logtb_exec_switch (thread_p, tdes);
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, tdes->tran_index);
 #if defined (SERVER_MODE)
   /* the connection now runs under the attached index */
@@ -1353,6 +1364,14 @@ log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   tdes = log_2pc_find_tran_descriptor (gtrid);
   if (tdes != NULL)
     {
+      /* before promoting it: a request of the client that prepared it may still run it */
+      if (!logtb_exec_try_take (thread_p, tdes))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_2PC_CANNOT_ATTACH, 2, gtrid, client_tdes->trid);
+
+	  TR_TABLE_CS_EXIT (thread_p);
+	  return NULL_TRAN_INDEX;
+	}
       if (!tdes->isloose_end)
 	{
 	  tdes->isloose_end = true;
@@ -1361,6 +1380,7 @@ log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
       if (log_2pc_attach_client (thread_p, tdes, client_tdes) != NO_ERROR)
 	{
+	  logtb_exec_untake (thread_p, tdes);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_2PC_CANNOT_ATTACH, 2, gtrid, client_tdes->trid);
 
 	  TR_TABLE_CS_EXIT (thread_p);
@@ -1378,9 +1398,17 @@ log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 	{
 	  goto error;
 	}
+      if (!logtb_exec_try_take (thread_p, tdes))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_2PC_CANNOT_ATTACH, 2, gtrid, client_tdes->trid);
+
+	  TR_TABLE_CS_EXIT (thread_p);
+	  return NULL_TRAN_INDEX;
+	}
 
       if (log_2pc_attach_client (thread_p, tdes, client_tdes) != NO_ERROR)
 	{
+	  logtb_exec_untake (thread_p, tdes);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_2PC_CANNOT_ATTACH, 2, gtrid, client_tdes->trid);
 
 	  TR_TABLE_CS_EXIT (thread_p);
