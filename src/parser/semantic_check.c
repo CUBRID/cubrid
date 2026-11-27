@@ -19691,18 +19691,27 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       int cinfo_cnt = 0;
       bool keep_distinct, as_derived;
 
-      /* The operand takes the place of the set operation, so its columns take the set operation's types, as they do
-       * when no operand is folded away (pt_eval_type ()): left as they are, an empty set operation that stays a
-       * query, or one left with an operand of other types, returned the types of that operand (CBRD-28385). A
-       * VALUES operand is typed with its rows and keeps its types, as before. */
-      if (PT_IS_QUERY_NODE_TYPE (union_node->info.query.q.union_.arg1->node_type)
+      /* An empty operand that takes the place of a set operation that stays a query returns no row but the columns
+       * of the statement, so they take the set operation's types, as they do when no operand is folded away
+       * (pt_eval_type ()): left as they are, they had the types of that operand (CBRD-28385). An operand with rows
+       * keeps its types, as before, and so does a VALUES operand, typed with its rows. Operands of types the set
+       * operation cannot unite fold as before, without an error. */
+      active = (fold_as == STATEMENT_SET_FOLD_AS_ARG1 ? union_node->info.query.q.union_.arg1
+		: union_node->info.query.q.union_.arg2);
+      if (!pt_has_error (parser) && PT_IS_QUERY_NODE_TYPE (union_node->info.query.q.union_.arg1->node_type)
 	  && PT_IS_QUERY_NODE_TYPE (union_node->info.query.q.union_.arg2->node_type)
 	  && !PT_IS_VALUE_QUERY (union_node->info.query.q.union_.arg1)
-	  && !PT_IS_VALUE_QUERY (union_node->info.query.q.union_.arg2))
+	  && !PT_IS_VALUE_QUERY (union_node->info.query.q.union_.arg2) && pt_false_where (parser, active))
 	{
-	  if (pt_check_union_compatibility (parser, union_node) == NULL)
+	  /* a column the set operation cannot unite leaves its error and may still return the node */
+	  (void) pt_check_union_compatibility (parser, union_node);
+	  if (pt_has_error (parser))
 	    {
-	      return NULL;
+	      /* pt_reset_error () also resets oid_included, which the statement keeps */
+	      PT_INCLUDE_OID_TYPE oid_included = parser->oid_included;
+
+	      pt_reset_error (parser);
+	      parser->oid_included = oid_included;
 	    }
 	}
 
