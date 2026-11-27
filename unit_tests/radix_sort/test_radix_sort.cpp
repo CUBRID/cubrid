@@ -1377,7 +1377,8 @@ namespace
     sample one;
 
     numeric_coerce_dec_str_to_num (digits.c_str (), num, &spelt_negative);
-    if (db_make_numeric (&value, num, precision, scale, DB_NUMERIC_BUF_SIZE, negative, is_float) != NO_ERROR)
+    if (db_make_numeric (&value, num, precision, scale, DB_NUMERIC_BUF_SIZE, negative,
+			 is_float ? precision : numeric_get_precision_digits (num), is_float) != NO_ERROR)
       {
 	FAIL ("db_make_numeric: " << digits);
       }
