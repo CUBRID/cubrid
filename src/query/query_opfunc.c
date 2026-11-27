@@ -5068,9 +5068,9 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
 
     case DB_TYPE_NUMERIC:
       {
+	int precision = 0, scale = 0, digits = 0;
 	bool is_float_numeric = false;
-	int precision = 0, scale = 0;
-	db_get_numeric_precision_and_scale (dbval_p, &precision, &scale, &is_float_numeric);
+	db_get_numeric_precision_and_scale (dbval_p, &precision, &scale, &digits, &is_float_numeric);
 
 	bool is_value_negative = !dbval_p->domain.numeric_info.is_value_negative;
 	if (is_value_negative && numeric_db_value_is_zero (dbval_p))
@@ -5080,7 +5080,7 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
 	  }
 
 	db_make_numeric (result_p, db_get_numeric (dbval_p), precision, scale, DB_NUMERIC_BUF_SIZE, is_value_negative,
-			 is_float_numeric);
+			 digits, is_float_numeric);
       }
       break;
 

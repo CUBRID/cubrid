@@ -99,6 +99,10 @@ extern void tran_end_libcas_function (void);
 extern void tran_reset_libcas_function (void);
 extern bool tran_is_in_libcas (void);
 extern int tran_get_libcas_depth (void);
+#if !defined (NDEBUG)
+extern void tran_set_in_no_reply_callback (bool in);
+extern bool tran_is_in_no_reply_callback (void);
+#endif
 
 extern bool tran_set_check_interrupt (bool flag);
 extern bool tran_get_check_interrupt (void);
