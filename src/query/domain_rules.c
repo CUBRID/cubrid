@@ -2417,9 +2417,7 @@ domain_copy_one (const TP_DOMAIN * domain)
   return tp_domain_copy (&one, false);
 }
 
-/* Whether every value of type source converts into the column's domain without failure, rounding or change of order:
- * the integers into wider integers, into a NUMERIC holding all their digits and the two shorter ones into DOUBLE, FLOAT
- * into DOUBLE, DATE and TIMESTAMP into DATETIME, a time zone TIMESTAMP into the DATETIME of its family. */
+/* Whether every value of type source converts into the column's domain without failure, rounding or change of order. */
 bool
 domain_key_converts_losslessly (DB_TYPE source, const TP_DOMAIN * column)
 {
@@ -2443,20 +2441,35 @@ domain_key_converts_losslessly (DB_TYPE source, const TP_DOMAIN * column)
   switch (source)
     {
     case DB_TYPE_SHORT:
-      return target == DB_TYPE_INTEGER || target == DB_TYPE_BIGINT || target == DB_TYPE_DOUBLE || integer_digits >= 5;
+      /* 16 bits: within the significands of FLOAT (24 bits) and DOUBLE (53 bits), and 5 decimal digits */
+      return target == DB_TYPE_INTEGER || target == DB_TYPE_BIGINT || target == DB_TYPE_FLOAT
+	|| target == DB_TYPE_DOUBLE || integer_digits >= 5;
+
     case DB_TYPE_INTEGER:
+      /* 32 bits: within the significand of DOUBLE but not of FLOAT, and 10 decimal digits */
       return target == DB_TYPE_BIGINT || target == DB_TYPE_DOUBLE || integer_digits >= 10;
+
     case DB_TYPE_BIGINT:
+      /* 64 bits: beyond the significands of FLOAT and DOUBLE, and 19 decimal digits */
       return integer_digits >= 19;
+
     case DB_TYPE_FLOAT:
+      /* DOUBLE has a wider significand and exponent than FLOAT */
       return target == DB_TYPE_DOUBLE;
+
     case DB_TYPE_DATE:
     case DB_TYPE_TIMESTAMP:
+      /* DATETIME spans the dates of both and holds their seconds; a DATE becomes its midnight */
       return target == DB_TYPE_DATETIME;
+
     case DB_TYPE_TIMESTAMPTZ:
+      /* DATETIMETZ holds the instant and the time zone of a TIMESTAMPTZ */
       return target == DB_TYPE_DATETIMETZ;
+
     case DB_TYPE_TIMESTAMPLTZ:
+      /* DATETIMELTZ holds the instant of a TIMESTAMPLTZ, both under the session time zone */
       return target == DB_TYPE_DATETIMELTZ;
+
     default:
       return false;
     }
