@@ -13732,6 +13732,111 @@ pt_gather_dblink_cols_in_dml (PARSER_CONTEXT * parser, PT_NODE * stmt)
   (void) parser_walk_tree (parser, stmt, pt_gather_dblink_cols_in_dml_pre, stmt, NULL, NULL);
 }
 
+/* pt_get_column_name_pre () outside the nested query blocks. A sink refuses a subquery that reads
+ * its target, so a name in a nested block is never the target's. */
+static PT_NODE *
+pt_dml_target_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  return pt_get_column_name_pre (parser, node, arg, continue_walk);
+}
+
+/* An assignment's left side or the INSERT column list names this column. So it is the target's. */
+static void
+pt_gather_dml_target_col (PARSER_CONTEXT * parser, S_LINK_COLUMNS * lkcol, PT_NODE * node)
+{
+  if (node->node_type == PT_NAME && node->type_enum != PT_TYPE_STAR)
+    {
+      check_for_already_exists (parser, lkcol, node->info.name.resolved, node->info.name.original);
+    }
+  else if (node->node_type == PT_DOT_ && node->info.dot.arg1->node_type == PT_NAME
+	   && node->info.dot.arg2->node_type == PT_NAME)
+    {
+      check_for_already_exists (parser, lkcol, node->info.dot.arg1->info.name.original,
+				node->info.dot.arg2->info.name.original);
+    }
+}
+
+/* the columns an assignment list names on the target, on both sides */
+static void
+pt_gather_dml_target_assigns (PARSER_CONTEXT * parser, S_LINK_COLUMNS * lkcol, PT_NODE * assigns)
+{
+  PT_NODE *assign, *lhs;
+
+  for (assign = assigns; assign != NULL; assign = assign->next)
+    {
+      if (!PT_IS_ASSIGN_NODE (assign))
+	{
+	  continue;
+	}
+      for (lhs = assign->info.expr.arg1; lhs != NULL; lhs = lhs->next)
+	{
+	  pt_gather_dml_target_col (parser, lkcol, lhs);
+	}
+      pt_walk_col_refs (parser, assign->info.expr.arg2, pt_dml_target_column_name_pre, lkcol);
+    }
+}
+
+/*
+ * pt_gather_dblink_cols_in_dml_target () - add the columns a remote DML sink names on its target
+ *   to the target's remote select list
+ *   return:
+ *   parser(in): parser context
+ *   stmt(in): the PT_INSERT
+ *   spec(in/out): its target, just given the derived dblink table shape
+ *
+ * Note: The shape starts the list with a star, which describes the visible columns only. A column
+ *   the statement names besides is described too, so an invisible one is found by its name. A name
+ *   that is no column of the target is dropped from the list (pt_check_column_list), and name
+ *   resolution reports it.
+ */
+void
+pt_gather_dblink_cols_in_dml_target (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * spec)
+{
+  PT_NODE *table, *attr;
+  S_LINK_COLUMNS lkcol;
+
+  if (spec == NULL || spec->info.spec.derived_table_type != PT_DERIVED_DBLINK_TABLE
+      || spec->info.spec.derived_table == NULL || spec->info.spec.derived_table->node_type != PT_DBLINK_TABLE
+      || spec->info.spec.range_var == NULL)
+    {
+      return;
+    }
+  table = spec->info.spec.derived_table;
+
+  memset (&lkcol, 0x00, sizeof (lkcol));
+  lkcol.col_list = table->info.dblink_table.sel_list;
+  lkcol.tbl_name_node = spec->info.spec.range_var;
+
+  switch (stmt->node_type)
+    {
+    case PT_INSERT:
+      /* ON DUPLICATE KEY UPDATE resolves against the target and the tables of the source SELECT.
+       * So a bare name there may be the source's. */
+      lkcol.multi_source = true;
+      for (attr = stmt->info.insert.attr_list; attr != NULL; attr = attr->next)
+	{
+	  pt_gather_dml_target_col (parser, &lkcol, attr);
+	}
+      pt_gather_dml_target_assigns (parser, &lkcol, stmt->info.insert.odku_assignments);
+      break;
+
+    default:
+      return;
+    }
+
+  table->info.dblink_table.sel_list = lkcol.col_list;
+  table->info.dblink_table.needs_describe |= lkcol.needs_describe;
+  table->info.dblink_table.uncertain_name_seen |= lkcol.uncertain_name_seen;
+}
+
 int
 pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
 {
