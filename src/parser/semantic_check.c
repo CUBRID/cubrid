@@ -12780,8 +12780,15 @@ pt_dblink_odku_carry_values_and_translate (PARSER_CONTEXT * parser, PT_NODE * no
 	      continue;
 	    }
 
-	  /* The gate let a column in only when its qualifier names a table of the source SELECT. Any other
-	   * column would be printed into the remote statement as the user wrote it. */
+	  /* A target column goes out as text for the remote to read on its row. */
+	  if (value->info.name.spec_id == node->info.insert.spec->info.spec.id)
+	    {
+	      continue;
+	    }
+
+	  /* pt_dblink_dml_check_odku () let a column in only when it was resolved to a table of the
+	   * source SELECT or to the target. Any other column would be printed into the remote
+	   * statement as the user wrote it. */
 	  for (spec = subq->info.query.q.select.from; spec != NULL; spec = spec->next)
 	    {
 	      if (spec->info.spec.id == value->info.name.spec_id)
@@ -13210,24 +13217,89 @@ pt_dblink_dml_pred_targets_can_overlap (PT_NODE * cond)
 }
 
 /*
+ * pt_dblink_dml_exposed_name () - The name a spec is referred to by: its alias, or its table name
+ *   without the owner. A local table's range variable carries its owner, and a remote target's does
+ *   not.
+ *   return: the name, or NULL
+ *   spec(in): a spec
+ */
+static const char *
+pt_dblink_dml_exposed_name (PT_NODE * spec)
+{
+  const char *name = NULL;
+
+  if (spec->info.spec.range_var != NULL)
+    {
+      name = spec->info.spec.range_var->info.name.original;
+    }
+  else if (spec->info.spec.entity_name != NULL && spec->info.spec.entity_name->node_type == PT_NAME)
+    {
+      name = spec->info.spec.entity_name->info.name.original;
+    }
+
+  return (name != NULL) ? sm_remove_qualifier_name (name) : NULL;
+}
+
+/*
+ * pt_dblink_dml_value_reads_name () - Tell whether a value sent as remote text reads a name.
+ *   return: true if a name is in it
+ *   value(in): the value, which pt_dblink_dml_classify_value () told to be remote text
+ */
+static bool
+pt_dblink_dml_value_reads_name (PT_NODE * value)
+{
+  if (value == NULL)
+    {
+      return false;
+    }
+  if (value->node_type == PT_NAME)
+    {
+      return true;
+    }
+  if (value->node_type == PT_EXPR)
+    {
+      return pt_dblink_dml_value_reads_name (value->info.expr.arg1)
+	|| pt_dblink_dml_value_reads_name (value->info.expr.arg2);
+    }
+  return false;
+}
+
+/*
  * pt_dblink_dml_check_odku () - Tell whether every ON DUPLICATE KEY UPDATE assignment of a remote
  *   INSERT ... SELECT can go to the remote.
  *   return: true if so
  *   node(in): the INSERT, resolved
  *   target(in): its target spec
  *
- * Note: A literal the remote reads the same way is printed into the statement. A column of the
- *   source SELECT is bound per row. Anything else is refused, an expression over source columns
- *   included. A computed value belongs in the source SELECT.
+ * Note: A literal the remote reads the same way is printed into the statement. So is a target
+ *   column, or + - * / over target columns and literals, which the remote computes on the row it
+ *   updates, as for an UPDATE SET value. A column of the source SELECT is bound per row. Anything
+ *   else is refused, an expression over source columns included. A computed value belongs in the
+ *   source SELECT.
+ *   When a table of the source has the exposed name of the target, a name qualified by it could
+ *   mean either. Name resolution takes the target, and the user may have meant the source. A value
+ *   that reads a name is refused then.
  */
 static bool
 pt_dblink_dml_check_odku (PT_NODE * node, PT_NODE * target)
 {
   PT_NODE *subq = pt_get_subquery_of_insert_select (node);
-  PT_NODE *source, *assign, *lhs, *rhs;
+  PT_NODE *source, *assign, *lhs, *rhs, *spec;
+  const char *target_name;
+  bool name_in_source = false;
 
   /* The bound values are carried in one select list, which a set operation does not have. */
   source = (subq != NULL && subq->node_type == PT_SELECT) ? subq->info.query.q.select.from : NULL;
+
+  target_name = pt_dblink_dml_exposed_name (target);
+  for (spec = source; spec != NULL && target_name != NULL; spec = spec->next)
+    {
+      if (pt_str_compare (pt_dblink_dml_exposed_name (spec), target_name, CASE_INSENSITIVE) == 0)
+	{
+	  name_in_source = true;
+	  break;
+	}
+    }
 
   for (assign = node->info.insert.odku_assignments; assign != NULL; assign = assign->next)
     {
@@ -13254,6 +13326,18 @@ pt_dblink_dml_check_odku (PT_NODE * node, PT_NODE * target)
 	  continue;
 
 	case PT_DBLINK_VALUE_REMOTE_TEXT:
+	  if (name_in_source && pt_dblink_dml_value_reads_name (rhs))
+	    {
+	      return false;
+	    }
+	  if (rhs->node_type == PT_NAME
+	      || (rhs->node_type == PT_EXPR
+		  && !(rhs->info.expr.op == PT_UNARY_MINUS && rhs->info.expr.arg1 != NULL
+		       && rhs->info.expr.arg1->node_type == PT_VALUE)))
+	    {
+	      /* Over target columns. Its literals are not looked at, as in an UPDATE SET value. */
+	      continue;
+	    }
 	  break;
 
 	default:

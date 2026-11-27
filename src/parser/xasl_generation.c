@@ -24838,14 +24838,17 @@ pt_finish_remote_dml_xasl (XASL_NODE * xasl)
 
 /*
  * pt_fill_remote_odku_assigns () - Fill the ON DUPLICATE KEY UPDATE text the remote INSERT carries.
- *   The left-hand side is the remote column name, as the user wrote it. A constant on the right-hand side is
- *   printed with the flags the other text push paths use, so the same value cannot come out two ways. A value
- *   bound from the source row (is_dblink_odku_value) is not printed: its text is left NULL, which the sink
- *   sends as "?". Which right-hand sides may arrive is the gate's decision, not this loop's.
+ *   The left-hand side is the remote column name, as the user wrote it. A constant, a target column
+ *   or an expression over those on the right-hand side is printed with the flags the other text
+ *   push paths use, so the same value cannot come out two ways. A value bound from the source row
+ *   (is_dblink_odku_value) is not printed: its text is left NULL, which the sink sends as "?".
+ *   Which right-hand sides may arrive is decided by pt_dblink_dml_check_odku (), not this loop.
  *   return: true on success. false after PT_ERROR; the caller returns NULL.
- *   parser(in): parser context. custom_print is saved across the printing and restored on every return.
+ *   parser(in): parser context. custom_print is saved across the printing and restored on every
+ *     return.
  *   statement(in): PT_INSERT node
- *   insert(out): remote_odku_cols, remote_odku_exprs, remote_num_odku. NULL and 0 when there is no clause.
+ *   insert(out): remote_odku_cols, remote_odku_exprs, remote_num_odku. NULL and 0 when there is no
+ *     clause.
  *   num_bound(out): the number of values left NULL
  */
 static bool
@@ -24878,7 +24881,7 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
   save_custom_print = parser->custom_print;
   parser->custom_print |=
     PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
-    PT_PRINT_SUPPRESS_FOR_DBLINK;
+    PT_PRINT_SUPPRESS_FOR_DBLINK | PT_SUPPRESS_RESOLVED;
   ok = true;
 
   for (assign = statement->info.insert.odku_assignments, i = 0; assign != NULL && i < n; assign = assign->next, i++)
@@ -24912,8 +24915,11 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
 	  continue;
 	}
 
-      /* A column not marked would be printed as the user wrote it and read by the remote as its own column. */
-      if (assign->info.expr.arg2->node_type == PT_NAME)
+      /* A column not marked would be printed as the user wrote it and read by the remote as its own
+       * column. A target column is the remote's own and is printed. */
+      if (assign->info.expr.arg2->node_type == PT_NAME
+	  && pt_dblink_dml_classify_value (assign->info.expr.arg2, statement->info.insert.spec,
+					   NULL) != PT_DBLINK_VALUE_REMOTE_TEXT)
 	{
 	  PT_ERROR (parser, assign, "dblink: remote ON DUPLICATE KEY UPDATE value is a column the plan does not bind");
 	  ok = false;
