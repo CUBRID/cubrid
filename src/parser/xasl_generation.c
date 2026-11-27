@@ -23792,6 +23792,9 @@ pt_get_semi_anti_outer_rows (PARSER_CONTEXT * parser, PT_NODE * select_node, PT_
  *   output.  Only the derived table and the subquery are planned, not the query: a spec that is not chosen to run as
  *   its subquery is left the join, and whether the join reads it as it is or once with its duplicates removed is
  *   chosen in the plan of the query (qo_prepare_distinct_info ()).
+ *   A spec run as its subquery stays so for the statement, since a plan made again does not rewrite the statement.
+ *   So nothing is chosen with unbound host-variable markers, but when the plan is made again under the values at the
+ *   first EXECUTE (HV_PRED_PLAN_UNPEEKED).
  */
 static void
 pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
@@ -23799,6 +23802,11 @@ pt_plan_semi_anti_joins (PARSER_CONTEXT * parser, PT_NODE * select_node)
   PT_NODE *spec, *next_spec, *cond, *subq;
   QO_SUMMARY *summary;
   double outer_rows, subq_cost, build_cost, cpu_cost, io_cost;
+
+  if (!parser->flag.set_host_var && parser->host_var_count > 0 && histogram_stmt_has_hv_predicate (parser, select_node))
+    {
+      return;
+    }
 
   for (spec = select_node->info.query.q.select.from; spec != NULL && !pt_has_error (parser); spec = next_spec)
     {
