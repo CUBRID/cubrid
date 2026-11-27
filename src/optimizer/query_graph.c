@@ -3831,6 +3831,136 @@ get_term_rank (QO_ENV * env, QO_TERM * term)
 }
 
 /*
+ * qo_expr_op_may_wait () - the PT counterpart of regu_opcode_may_wait () (regu_var.hpp): an operator whose evaluation
+ *			    may wait for what the row does not hold. The two lists are the same
+ *   return: true if it is one
+ *   op(in): operator
+ */
+bool
+qo_expr_op_may_wait (PT_OP_TYPE op)
+{
+  switch (op)
+    {
+    case PT_NEXT_VALUE:
+    case PT_CURRENT_VALUE:
+    case PT_CURRENT_VALUE_BY_OID:
+    case PT_INDEX_CARDINALITY:
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * qo_is_lazy_table_subquery () - is the operand a table subquery its block does not run before its scans?
+ *   return: true if it is one
+ *   node(in): operand an operator reads as a table
+ *
+ * Note: a table subquery that reads no outer block runs once, before the scans of the block it is in open
+ *	 (pt_make_regu_subquery ()), and one that reads that block is in QO_TERM_SUBQUERIES. One that reads a block
+ *	 beyond it is run by the first evaluation of the term in each execution of the block: under the leaf latch
+ *	 if the term were a key filter. The level a regeneration finds overwritten was 0 (uncorr_hoisted).
+ */
+static bool
+qo_is_lazy_table_subquery (PT_NODE * node)
+{
+  return (node != NULL && PT_IS_QUERY (node) && node->info.query.correlation_level > 1
+	  && !node->info.query.flag.uncorr_hoisted);
+}
+
+/*
+ * qo_term_on_node () - the node whose ON clause the term is in
+ *   return: the node, or NULL
+ *   term(in): an ON condition
+ */
+static QO_NODE *
+qo_term_on_node (QO_TERM * term)
+{
+  QO_ENV *env = QO_TERM_ENV (term);
+  int i;
+
+  for (i = 0; i < env->nnodes; i++)
+    {
+      if (QO_NODE_LOCATION (QO_ENV_NODE (env, i)) == QO_TERM_LOCATION (term))
+	{
+	  return QO_ENV_NODE (env, i);
+	}
+    }
+  return NULL;
+}
+
+/*
+ * qo_is_padding_on_cond_term () - is the term an ON condition of a join that pads rows?
+ *   return: true if it is one
+ *   term(in):
+ *
+ * Note: such a term stays with the scan of the padded side: evaluated after the join, as a WHERE term may be, it
+ *	 would drop the padded rows. The ON condition of an inner join is not one, unless a right outer join after
+ *	 it pads the tables before it.
+ */
+bool
+qo_is_padding_on_cond_term (QO_TERM * term)
+{
+  QO_ENV *env = QO_TERM_ENV (term);
+  QO_NODE *on_node, *node;
+  int i;
+
+  if (!QO_ON_COND_TERM (term))
+    {
+      return false;
+    }
+  on_node = qo_term_on_node (term);
+  if (on_node == NULL || QO_NODE_PT_JOIN_TYPE (on_node) != PT_JOIN_INNER)
+    {
+      return true;
+    }
+  for (i = 0; i < env->nnodes; i++)
+    {
+      node = QO_ENV_NODE (env, i);
+      if (QO_NODE_LOCATION (node) > QO_NODE_LOCATION (on_node)
+	  && (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * qo_padding_on_cond_term_reaches () - may the scan of a node be given a padding ON condition as its data filter?
+ *   return: true if it may
+ *   term(in): qo_is_padding_on_cond_term ()
+ *   node(in):
+ *
+ * Note: a left outer, semi or anti join evaluates its ON condition at the scan of its own table, the inner one. A
+ *	 right outer join's padded side is every table before it. Otherwise (an inner join padded by a later right
+ *	 outer join) any table the term reads may be the one.
+ */
+bool
+qo_padding_on_cond_term_reaches (QO_TERM * term, QO_NODE * node)
+{
+  QO_NODE *on_node = qo_term_on_node (term);
+
+  if (on_node == NULL)
+    {
+      return true;
+    }
+  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_LEFT_OUTER || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
+    {
+      return node == on_node;
+    }
+  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_RIGHT_OUTER || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_FULL_OUTER)
+    {
+      return QO_NODE_LOCATION (node) < QO_NODE_LOCATION (on_node);
+    }
+  return node == on_node || BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node));
+}
+
+/*
  * check_subquery_pre () - Pre routine to add to some bitset all correlated
  *			   subqueries found in an expression
  *   return: PT_NODE *
@@ -3886,25 +4016,58 @@ check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
       /* a stored procedure runs its SQL on another thread of the transaction; CLASS OF reads the object's heap */
       QO_TERM_SET_FLAG (info->term, QO_TERM_MAY_WAIT);
     }
+  else if (node->node_type == PT_FUNCTION && node->info.function.function_type < F_TOP_TABLE_FUNC)
+    {
+      /* SET, MULTISET or SEQUENCE of a subquery: its argument is a table */
+      PT_NODE *arg;
+
+      for (arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
+	{
+	  if (qo_is_lazy_table_subquery (arg))
+	    {
+	      QO_TERM_SET_FLAG (info->term, QO_TERM_MAY_WAIT);
+	    }
+	}
+    }
   else if (node->node_type == PT_EXPR)
     {
-      switch (node->info.expr.op)
+      if (qo_expr_op_may_wait (node->info.expr.op))
 	{
-	case PT_NEXT_VALUE:
-	case PT_CURRENT_VALUE:
-	case PT_CURRENT_VALUE_BY_OID:
-	case PT_INCR:
-	case PT_DECR:
-	case PT_INDEX_CARDINALITY:
-	case PT_ESTIMATED_TABLE_ROWS:
-	case PT_ESTIMATED_AVG_ROW_LENGTH:
-	case PT_ESTIMATED_DATA_LENGTH:
-	case PT_ESTIMATED_DATA_FREE:
-	  /* the operators of regu_opcode_may_wait () */
 	  QO_TERM_SET_FLAG (info->term, QO_TERM_MAY_WAIT);
-	  break;
-	default:
-	  break;
+	}
+      else
+	{
+	  switch (node->info.expr.op)
+	    {
+	    case PT_IS_IN:
+	    case PT_IS_NOT_IN:
+	    case PT_EQ_SOME:
+	    case PT_NE_SOME:
+	    case PT_GE_SOME:
+	    case PT_GT_SOME:
+	    case PT_LT_SOME:
+	    case PT_LE_SOME:
+	    case PT_EQ_ALL:
+	    case PT_NE_ALL:
+	    case PT_GE_ALL:
+	    case PT_GT_ALL:
+	    case PT_LT_ALL:
+	    case PT_LE_ALL:
+	      /* the operators whose second operand is a table (pt_to_pred_expr_local_with_arg ()) */
+	      if (qo_is_lazy_table_subquery (node->info.expr.arg2))
+		{
+		  QO_TERM_SET_FLAG (info->term, QO_TERM_MAY_WAIT);
+		}
+	      break;
+	    case PT_EXISTS:
+	      if (qo_is_lazy_table_subquery (node->info.expr.arg1))
+		{
+		  QO_TERM_SET_FLAG (info->term, QO_TERM_MAY_WAIT);
+		}
+	      break;
+	    default:
+	      break;
+	    }
 	}
     }
 

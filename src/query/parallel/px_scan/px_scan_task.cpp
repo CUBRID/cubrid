@@ -24,6 +24,7 @@
 #include "error_code.h"
 #include "error_manager.h"
 #include "expr_batch.h"
+#include "expr_compile.h"
 #include "heap_file.h"
 #include "storage_common.h"
 #include "xasl.h"
@@ -332,17 +333,24 @@ namespace parallel_scan
 		else if (specp->type == TARGET_CLASS)
 		  {
 		    bool inner_cached_scan = false;
-		    /* as qexec_execute_mainblock_internal () decides: the innermost heap scan keeps its page unless a node
-		     * of the chain starts another statement or waits for each row; an index scan never does (its heap
-		     * lookup would hold the row's page through the data filter) */
-		    bool chain_has_dptr = false;
-		    for (xasl_node *cn = m_xasl; cn != nullptr && !chain_has_dptr; cn = cn->scan_ptr)
+		    /* The innermost scan of the chain keeps its page, an index lookup too, unless a node of the chain
+		     * starts another statement or waits for each row. That is what qexec_block_waits_per_row () tells,
+		     * except that a subquery the leader ran before the scan is only read here: its value or list was
+		     * given to the clone above */
+		    bool chain_waits = false;
+		    for (xasl_node *cn = m_xasl; cn != nullptr && !chain_waits; cn = cn->scan_ptr)
 		      {
-			chain_has_dptr = qexec_block_waits_per_row (cn);
+			chain_waits = (XASL_IS_FLAGED (cn, XASL_NO_FIXED_SCAN) || cn->dptr_list != nullptr
+				       || cn->bptr_list != nullptr || cn->fptr_list != nullptr
+				       || expr_xasl_node_runs_pending_query (cn));
+			for (xasl_node *aptr = cn->aptr_list; aptr != nullptr && !chain_waits; aptr = aptr->next)
+			  {
+			    chain_waits = XASL_IS_FLAGED (aptr, XASL_LINK_TO_REGU_VARIABLE) && aptr->status != XASL_SUCCESS;
+			  }
 		      }
-		    if (xptr->scan_ptr == NULL && !chain_has_dptr)
+		    if (xptr->scan_ptr == NULL && !chain_waits)
 		      {
-			fixed_scan = (specp->access == ACCESS_METHOD_SEQUENTIAL);
+			fixed_scan = true;
 		      }
 		    /* every heap scan of the chain that keeps no page reads from its copy of the page, as the serial
 		     * block's scans do */

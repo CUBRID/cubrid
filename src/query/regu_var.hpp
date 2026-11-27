@@ -404,10 +404,11 @@ is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var)
 }
 
 /* regu_opcode_may_wait () - an operator whose evaluation may wait for what the row does not hold: a serial's page, a
- * class lock and the catalog (the statistics functions, INCR and DECR).  A scan evaluates none of them with a
- * heap or B-tree page held: its block is compiled XASL_NO_FIXED_SCAN, its term is no key filter, the visits under a
- * leaf latch and the parallel scan workers refuse it.  SLEEP is not one: it waits for no page or lock, and a scan
- * sleeps with the page it holds */
+ * class lock and the catalog (the statistics functions).  A scan evaluates none of them with a heap or B-tree page
+ * held: its block is compiled XASL_NO_FIXED_SCAN, its term is no key filter, the visits under a leaf latch and the
+ * parallel scan workers refuse it.  SLEEP is not one: it waits for no page or lock, and a scan sleeps with the page
+ * it holds.  Nor are INCR and DECR: the row's evaluation only copies the object's OID (fetch_op_incr ()), and the
+ * lock and the update come after the scan (qexec_execute_selupd_list ()) */
 bool
 regu_opcode_may_wait (OPERATOR_TYPE opcode)
 {
@@ -416,8 +417,6 @@ regu_opcode_may_wait (OPERATOR_TYPE opcode)
     case T_NEXT_VALUE:
     case T_CURRENT_VALUE:
     case T_CURRENT_VALUE_BY_OID:
-    case T_INCR:
-    case T_DECR:
     case T_INDEX_CARDINALITY:
     case T_ESTIMATED_TABLE_ROWS:
     case T_ESTIMATED_AVG_ROW_LENGTH:

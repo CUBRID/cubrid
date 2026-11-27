@@ -1265,7 +1265,8 @@ namespace parallel_scan
     result |= check<false> (arg);
 
     /* a subquery a regu variable runs at its first evaluation and the leader does not run before the scan (no
-     * precomp_owner_regu: a nested INSERT) would start under a worker's leaf */
+     * precomp_owner_regu: a nested INSERT, a subquery that reads a block beyond its own) would start under a
+     * worker's leaf */
     bool runs_linked_aptr = false;
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp != nullptr && !runs_linked_aptr; xaslp = xaslp->next)
       {

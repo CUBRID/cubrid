@@ -781,7 +781,8 @@ struct qo_term
 #define QO_TERM_SEL_FROM_SNAPSHOT   32768	/* join selectivity from the small side's rows (CBRD-27478) */
 #define QO_TERM_OR_DERIVED_COLUMN   65536	/* OR-derived key range on one column */
 #define QO_TERM_OR_DERIVED_ORIGIN   131072	/* OR-derived restriction an OR-derived key range is paired with */
-#define QO_TERM_MAY_WAIT            262144	/* its evaluation may wait: a stored procedure, a serial, a statistic */
+#define QO_TERM_MAY_WAIT            262144	/* its evaluation may wait: a stored procedure, a serial, a statistic,
+						 * a table subquery it runs (qo_is_lazy_table_subquery ()) */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
@@ -1138,6 +1139,9 @@ extern void qo_eqclass_fprint_wrt (QO_EQCLASS *, BITSET *, FILE *);
 extern void qo_termset_fprint (QO_ENV *, BITSET *, FILE *);
 extern int qo_seg_width (QO_SEGMENT * seg);
 extern bool qo_is_equi_join_term (QO_TERM * term);
+extern bool qo_expr_op_may_wait (PT_OP_TYPE op);
+extern bool qo_is_padding_on_cond_term (QO_TERM * term);
+extern bool qo_padding_on_cond_term_reaches (QO_TERM * term, QO_NODE * node);
 extern bool qo_is_prefix_index (QO_INDEX_ENTRY *);
 extern bool qo_is_filter_index (QO_INDEX_ENTRY *);
 extern void qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt);

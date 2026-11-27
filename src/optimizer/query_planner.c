@@ -3112,11 +3112,11 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 	      term = QO_ENV_TERM (env, t);
 
 	      if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term)))
-		  || (QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && !QO_ON_COND_TERM (term)))
+		  || (QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && !qo_is_padding_on_cond_term (term)))
 		{
-		  /* term contains correlated subquery, or is a WHERE term whose evaluation may wait: the block
-		   * evaluates it (if_pred). An ON condition's is a data filter: evaluated after the join it would
-		   * drop the rows an outer join pads */
+		  /* term contains correlated subquery, or its evaluation may wait: the block evaluates it (if_pred).
+		   * Not the ON condition of a join that pads rows, which is a data filter: evaluated after the join
+		   * it would drop the padded rows */
 		  continue;
 		}
 
@@ -3125,14 +3125,13 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 
 	  if (t == -1)
 	    {
-	      /* an ON condition whose evaluation may wait is a data filter of this scan also when the join hands it
-	       * over later (the inner of a nested loop join): one that reads this node or belongs to its join */
+	      /* such an ON condition is a data filter of this scan also when the join hands it over later (the inner
+	       * of a nested loop join): the scan of the padded side, not of the preserved one */
 	      for (t = 0; t < env->nterms; t++)
 		{
 		  term = QO_ENV_TERM (env, t);
-		  if (QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && QO_ON_COND_TERM (term)
-		      && (BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node))
-			  || QO_TERM_LOCATION (term) == QO_NODE_LOCATION (node)))
+		  if (QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && qo_is_padding_on_cond_term (term)
+		      && qo_padding_on_cond_term_reaches (term, node))
 		    {
 		      break;
 		    }
@@ -7224,22 +7223,16 @@ qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
     case PT_EXPR:
       switch (tree->info.expr.op)
 	{
-	case PT_NEXT_VALUE:
-	case PT_CURRENT_VALUE:
-	case PT_CURRENT_VALUE_BY_OID:
 	case PT_DEFINE_VARIABLE:
 	case PT_EVALUATE_VARIABLE:
-	  /* the rest of regu_opcode_may_wait () */
-	case PT_INCR:
-	case PT_DECR:
-	case PT_INDEX_CARDINALITY:
-	case PT_ESTIMATED_TABLE_ROWS:
-	case PT_ESTIMATED_AVG_ROW_LENGTH:
-	case PT_ESTIMATED_DATA_LENGTH:
-	case PT_ESTIMATED_DATA_FREE:
 	  *found = true;
 	  break;
 	default:
+	  if (qo_expr_op_may_wait (tree->info.expr.op))
+	    {
+	      /* a serial and the statistics functions */
+	      *found = true;
+	    }
 	  break;
 	}
       break;

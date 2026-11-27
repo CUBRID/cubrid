@@ -25013,8 +25013,10 @@ btree_get_next_page_vpid (THREAD_ENTRY * thread_p, PAGE_PTR leaf_page, VPID * ne
  *   page_p(in): the leaf
  *   next_page(out): the next leaf, NULL when the leaf is the last one
  *
- * NOTE: a caller that goes on after a failed fix leaves the next leaf's previous link unrepaired, and a descending
- *       scan then skips the leaves in between (CBRD-28426)
+ * NOTE: a caller must not go on after a failed fix: the next leaf's previous link would stay on the old neighbor, and
+ *       a descending scan stops there with ER_BTREE_CORRUPT_PREV_LINK (CBRD-28426).
+ *       The fix waits also in a transaction that does not wait (lock timeout 0): its caller, a split or a merge, has
+ *       changed its pages already and could only undo them on a refusal.
  */
 static int
 btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PAGE_PTR * next_page)
@@ -25022,6 +25024,7 @@ btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PAGE_PTR * next_p
   BTREE_NODE_HEADER *header = NULL;
   VPID next_vpid;
   int error_code = NO_ERROR;
+  int old_wait_msecs;
 
   *next_page = NULL;
 
@@ -25039,7 +25042,9 @@ btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PAGE_PTR * next_p
       return NO_ERROR;
     }
 
+  old_wait_msecs = pgbuf_force_latch_wait (thread_p);
   *next_page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  (void) logtb_set_thread_wait_msecs (thread_p, old_wait_msecs);
   if (*next_page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);

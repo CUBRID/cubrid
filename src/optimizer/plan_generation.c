@@ -1973,13 +1973,18 @@ is_normal_if_term (QO_TERM * term)
  *
  * Note: a covering index scan runs no data filter, and its key filter runs under the leaf latch. A term whose
  *	 evaluation may wait (QO_TERM_MAY_WAIT) is neither: the block evaluates it, as it does a term with a
- *	 correlated subquery. An ON condition is not moved: the planner gives its scan no covering
- *	 (qo_index_scan_new ())
+ *	 correlated subquery. The ON condition of a join that pads rows is not moved: the planner makes no scan it
+ *	 reaches a covering one (qo_index_scan_new ())
  */
 static int
 is_covered_access_term (QO_TERM * term)
 {
-  return !(QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && !QO_ON_COND_TERM (term)) && is_normal_access_term (term);
+  if (QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && is_normal_access_term (term))
+    {
+      assert (!qo_is_padding_on_cond_term (term));
+      return qo_is_padding_on_cond_term (term);
+    }
+  return is_normal_access_term (term);
 }
 
 /*
@@ -1991,7 +1996,8 @@ static int
 is_covered_if_term (QO_TERM * term)
 {
   return (is_normal_if_term (term)
-	  || (QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && !QO_ON_COND_TERM (term) && is_normal_access_term (term)));
+	  || (QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && !qo_is_padding_on_cond_term (term)
+	      && is_normal_access_term (term)));
 }
 
 /*
@@ -5687,9 +5693,10 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	  return NO_ERROR;
 	}
 
-      if (QO_TERM_IS_FLAGED (termp, QO_TERM_MAY_WAIT))
+      if (QO_TERM_IS_FLAGED (termp, QO_TERM_MAY_WAIT)
+	  && BITSET_MEMBER (QO_TERM_NODES (termp), QO_NODE_IDX (node_of_plan)))
 	{
-	  /* neither a key range nor a key filter: the rows it drops are dropped after the keys are counted */
+	  /* a term of this node that is no key filter: the rows it drops are dropped after the keys are counted */
 	  return NO_ERROR;
 	}
 

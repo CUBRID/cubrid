@@ -5781,6 +5781,8 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_
       return qdata_evaluate_generic_function (thread_p, funcp, val_desc_p, obj_oid_p, tplrec);
 
     case F_CLASS_OF:
+      /* reads the object's heap page, as the operators of regu_opcode_may_wait () read what the row does not hold */
+      assert (!pgbuf_holds_heap_or_btree_page (thread_p));
       return qdata_get_class_of_function (thread_p, funcp, val_desc_p, obj_oid_p, tplrec);
 
     case F_INSERT_SUBSTRING:

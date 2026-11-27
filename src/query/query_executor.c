@@ -25985,19 +25985,32 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	      /* subquery in HAVING clause, can't have fixed scan */
 	      fixed_scan_xasl = NULL;
 	    }
-	  /* no node of the join starts another statement or waits for each of its rows: the fixed scan's last page
-	   * stays fixed while the nodes before it go on to their next rows */
-	  for (xptr = xasl; fixed_scan_xasl != NULL && xptr != NULL; xptr = xptr->scan_ptr)
+	  if (XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN))
+	    {
+	      /* no fixed scan if it was decided so during compilation */
+	      fixed_scan_xasl = NULL;
+	    }
+	  /* The fixed scan holds its page while its own node and the nodes after it take a row, and while the block
+	   * puts the joined row out: none of that starts another statement or waits. A node before it does its work
+	   * for a row (its filter, its subqueries and fetches) before the scans after it start again, and those hold
+	   * no page then: a scan lets its page go at its end (heap_next ()) or early stop
+	   * (scan_handle_single_scan ()) */
+	  for (xptr = fixed_scan_xasl; fixed_scan_xasl != NULL && xptr != NULL; xptr = xptr->scan_ptr)
 	    {
 	      if (qexec_block_waits_per_row (xptr))
 		{
 		  fixed_scan_xasl = NULL;
 		}
 	    }
-	  if (fixed_scan_xasl != NULL && xasl->connect_by_ptr != NULL
-	      && qexec_block_waits_per_row (xasl->connect_by_ptr))
+	  if (fixed_scan_xasl != NULL && fixed_scan_xasl != xasl && expr_xasl_node_output_runs_query (xasl))
 	    {
-	      /* START WITH is evaluated for each row of this block */
+	      /* the select list, inst_num () and the aggregates are evaluated for each row of the fixed scan */
+	      fixed_scan_xasl = NULL;
+	    }
+	  if (fixed_scan_xasl != NULL && xasl->connect_by_ptr != NULL
+	      && expr_xasl_node_output_runs_query (xasl->connect_by_ptr))
+	    {
+	      /* START WITH and the CONNECT BY node's output list are evaluated for each row of this block */
 	      fixed_scan_xasl = NULL;
 	    }
 
@@ -26274,10 +26287,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		}
 
 	      /* the CONNECT BY scan keeps its page between rows unless it is an index scan (its heap lookup would hold
-	       * the row's page through the data filter) or the block or the CONNECT BY node waits for each row */
+	       * the row's page through the data filter) or the CONNECT BY node waits for each row. What this block
+	       * evaluates for a row (its select list, its subqueries) runs after that scan is closed
+	       * (qexec_iterate_connect_by_results ()) */
 	      if (qexec_execute_connect_by (thread_p, xasl->connect_by_ptr,
 					    !IS_ANY_INDEX_ACCESS (xasl->connect_by_ptr->spec_list->access)
-					    && !qexec_block_waits_per_row (xasl)
 					    && !qexec_block_waits_per_row (xasl->connect_by_ptr), xasl_state,
 					    &tplrec) != NO_ERROR)
 		{
