@@ -3869,6 +3869,9 @@ lang_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, const int level, bo
 	      if (!(has_last_escape && str2 + c_size >= str2_end))
 		{
 		  str2 += c_size;
+
+		  /* cmp_offset counts str1 bytes, which no longer line up with str2 */
+		  compute_offset = false;
 		}
 	    }
 
@@ -4207,11 +4210,16 @@ lang_back_strmatch_utf8_uca_w_level (const COLL_DATA * coll_data, bool is_match,
 	    {
 	      unsigned char *str2_prev_prev;
 
-	      (void) intl_back_utf8_to_cp (str2, str2_start, &str2_prev_prev);
+	      (void) intl_back_utf8_to_cp (str2_start, str2, &str2_prev_prev);
 
 	      if (intl_cmp_char (str2_prev_prev + 1, escape, INTL_CODESET_UTF8, &c_size) == 0)
 		{
+		  /* the escape escapes the character read before it: skip it */
 		  str2 = str2_prev_prev;
+		  if (str2 < str2_start)
+		    {
+		      goto compare;
+		    }
 		}
 	    }
 
