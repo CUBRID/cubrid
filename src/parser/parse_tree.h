@@ -799,6 +799,10 @@ struct trace_json_t;
 #define PT_SPEC_IS_ENTITY(spec_) \
   ((spec_)->info.spec.entity_name != NULL)
 
+/* PT_DBLINK_TABLE_DML node of a remote DML that sends values to a sink, not its text */
+#define PT_DBLINK_DML_IS_SINK(dml_) \
+  ((dml_) != NULL && (dml_)->node_type == PT_DBLINK_TABLE_DML && (dml_)->info.dblink_table.qstr == NULL)
+
 #define PT_IS_FALSE_WHERE_VALUE(node) \
  (((node) != NULL && (node)->node_type == PT_VALUE \
   && ((node)->type_enum == PT_TYPE_NULL \

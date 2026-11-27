@@ -13288,8 +13288,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	       * and type-checked; the local pass would fail on remote columns whose types are
 	       * unknown locally. */
 	      if (node->node_type == PT_INSERT
-		  && node->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML
-		  && node->info.insert.spec->info.spec.remote_server_name->info.dblink_table.qstr == NULL)
+		  && PT_DBLINK_DML_IS_SINK (node->info.insert.spec->info.spec.remote_server_name))
 		{
 		  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
 
@@ -13351,8 +13350,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		   * DELETE as text -- its subquery must NOT be translated locally. qstr == NULL is only produced when
 		   * the parser shape gate (pt_dblink_dml_where_is_inscope) accepted the form, so this also confines
 		   * resolution to the parser-approved single-predicate shapes. */
-		  if (remote != NULL && remote->node_type == PT_DBLINK_TABLE_DML
-		      && remote->info.dblink_table.qstr == NULL && cond != NULL && cond->next == NULL
+		  if (PT_DBLINK_DML_IS_SINK (remote) && cond != NULL && cond->next == NULL
 		      && cond->node_type == PT_EXPR && cond->info.expr.arg2 != NULL
 		      && PT_IS_QUERY (cond->info.expr.arg2))
 		    {
@@ -13402,8 +13400,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		   * predicate plus one per SET assignment -- and every one of them runs stand-alone. */
 		  PT_NODE *remote = node->info.update.spec->info.spec.remote_server_name;
 
-		  if (remote != NULL && remote->node_type == PT_DBLINK_TABLE_DML
-		      && remote->info.dblink_table.qstr == NULL)
+		  if (PT_DBLINK_DML_IS_SINK (remote))
 		    {
 		      PT_NODE *tgt = node->info.update.spec;
 		      PT_NODE *cond = node->info.update.search_cond;
