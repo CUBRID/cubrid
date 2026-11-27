@@ -1264,6 +1264,14 @@ namespace parallel_scan
 
     result |= check<false> (arg);
 
+    /* a subquery a regu variable runs at its first evaluation and the leader does not run before the scan (no
+     * precomp_owner_regu: a subquery that is a select list item, a nested INSERT) would start under a worker's leaf */
+    bool runs_linked_aptr = false;
+    for (XASL_NODE *xaslp = arg->aptr_list; xaslp != nullptr && !runs_linked_aptr; xaslp = xaslp->next)
+      {
+	runs_linked_aptr = XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE) && xaslp->precomp_owner_regu == NULL;
+      }
+
     const bool block_index_spec =
 	    ((arg->instnum_pred || arg->instnum_val) && !is_renumberable_instnum (arg))
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_SKIP_SORT)
@@ -1272,7 +1280,7 @@ namespace parallel_scan
 	     * starts no correlated subquery and no inner scan of a join (they descend an index from its root, against
 	     * the latch order of a split). The leader refuses the scan too when a row of the block calls a stored
 	     * procedure (scan_open_parallel_index_scan ()) */
-	    || arg->dptr_list != nullptr || arg->scan_ptr != nullptr;
+	    || arg->dptr_list != nullptr || arg->scan_ptr != nullptr || runs_linked_aptr;
 
     /* atomic draw keeps an arbitrary N rows: fine on a heap, but a temp list is usually a sorted
      * top-N idiom, so keep list specs serial. Renumbering (instnum_pred == NULL) is unaffected. */

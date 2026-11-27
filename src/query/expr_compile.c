@@ -1619,6 +1619,8 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     {
       return rc;
     }
+  /* as fetch_peek_arith (), which this step replaces */
+  assert (!regu_opcode_may_wait (a.arithptr->opcode) || !pgbuf_holds_heap_or_btree_page (ctx->thread_p));
   expr_frames_add (ctx, step->level);
   rc = ((FETCH_ARITH_OP) step->fn) (ctx->thread_p, &a);
   expr_frames_add (ctx, -step->level);

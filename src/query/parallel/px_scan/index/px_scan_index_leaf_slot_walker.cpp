@@ -529,6 +529,12 @@ namespace parallel_index_scan
 	return S_ERROR;
       }
 
+    if (!m_scan_id->fixed && !keeps_bitmap_page () && isidp->scan_cache.page_watcher.pgptr != NULL)
+      {
+	/* as scan_next_index_lookup_heap (): the filter of a block that keeps no page starts with no page held */
+	pgbuf_ordered_unfix (thread_p, &isidp->scan_cache.page_watcher);
+      }
+
     return finish_heap_row (thread_p, oid, &heap_recdes);
   }
 
