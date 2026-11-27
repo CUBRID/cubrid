@@ -195,9 +195,9 @@ typedef enum collation_result
 static PT_TYPE_ENUM pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1, PT_TYPE_ENUM * arg2,
 					  PT_TYPE_ENUM * arg3, const TP_DOMAIN * expected_domain);
 static bool pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def);
-static bool does_op_specially_treat_null_arg (PT_OP_TYPE op);
 static bool pt_is_null_or_cast_of_null (const PT_NODE * node);
 static bool pt_is_null_fold_operand (const PT_NODE * expr, const PT_NODE * opd);
+static bool does_op_specially_treat_null_arg (PT_OP_TYPE op);
 static int pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** expr);
 static PT_TYPE_ENUM pt_expr_get_return_type (PT_NODE * expr, const EXPRESSION_SIGNATURE sig);
 static int pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE ** arg,
@@ -6165,16 +6165,49 @@ pt_is_range_or_comp (PT_OP_TYPE op)
  * pt_is_null_or_cast_of_null () - is the node NULL, or a CAST (NULL AS type) that is kept unfolded as a typed NULL
  *   return: true if so
  *   node(in): expression argument
+ *
+ *   Note: arithmetic on a typed NULL (CAST (NULL AS INT) + 1) is NULL too. It stays unfolded for its type, as the
+ *	   arithmetic on an untyped NULL used to fold into NULL. A string '+' is left out, as it concatenates and
+ *	   oracle_style_empty_string takes NULL for an empty string there.
  */
 static bool
 pt_is_null_or_cast_of_null (const PT_NODE * node)
 {
-  while (node != NULL && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
+  if (node == NULL)
     {
-      node = node->info.expr.arg1;
+      return false;
     }
 
-  return node != NULL && node->type_enum == PT_TYPE_NULL;
+  if (node->type_enum == PT_TYPE_NULL)
+    {
+      return true;
+    }
+
+  if (node->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  switch (node->info.expr.op)
+    {
+    case PT_CAST:
+      return pt_is_null_or_cast_of_null (node->info.expr.arg1);
+
+    case PT_UNARY_MINUS:
+    case PT_PLUS:
+    case PT_MINUS:
+    case PT_TIMES:
+    case PT_DIVIDE:
+    case PT_MOD:
+      if (!PT_IS_NUMERIC_TYPE (node->type_enum) && !PT_IS_DATE_TIME_TYPE (node->type_enum))
+	{
+	  return false;
+	}
+      return (pt_is_null_or_cast_of_null (node->info.expr.arg1) || pt_is_null_or_cast_of_null (node->info.expr.arg2));
+
+    default:
+      return false;
+    }
 }
 
 /*
@@ -18112,7 +18145,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  break;
 
 	case PT_NULLSAFE_EQ:
-	  if ((o1 && o1->node_type != PT_VALUE) || (o2 && o2->node_type != PT_VALUE))
+	  /* an operand that is not a value is NULL here (arg is a dummy NULL), which is right only for a typed NULL */
+	  if ((o1 && o1->node_type != PT_VALUE && !pt_is_null_or_cast_of_null (o1))
+	      || (o2 && o2->node_type != PT_VALUE && !pt_is_null_or_cast_of_null (o2)))
 	    {
 	      return 0;
 	    }
