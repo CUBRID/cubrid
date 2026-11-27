@@ -212,6 +212,9 @@ method_dispatch_internal (packing_unpacker &unpacker)
   if (error == NO_ERROR)
     {
       int save_auth = 0;
+#if !defined (NDEBUG)
+      tran_set_in_no_reply_callback (header.command == METHOD_REQUEST_END);
+#endif
       switch (header.command)
 	{
 	case METHOD_REQUEST_ARG_PREPARE:
@@ -243,6 +246,9 @@ method_dispatch_internal (packing_unpacker &unpacker)
 	  return ER_FAILED;
 	  break;
 	}
+#if !defined (NDEBUG)
+      tran_set_in_no_reply_callback (false);
+#endif
     }
 
   return error;

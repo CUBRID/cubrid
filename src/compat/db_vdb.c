@@ -4334,7 +4334,9 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
 
   parser_walk_tree (prepared_session->parser, prepared_stmt, do_process_prepare_subquery_pre, &prepare_info, NULL,
 		    NULL);
-  if ((err = er_errid ()) != NO_ERROR)
+  /* a warning left by the compilation is not a failure of the walk: e.g. name resolution leaves ER_OBJ_NO_COMPONENTS
+   * for a class without subclasses (ALL class), and a statement folded to false does not go on to clear it */
+  if ((err = er_errid_if_has_error ()) != NO_ERROR)
     {
       goto cleanup;
     }

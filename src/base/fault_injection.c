@@ -413,7 +413,9 @@ fi_test_on (FI_TEST_CODE code)
 static int
 fi_handler_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line)
 {
-  exit (0);
+  /* _exit, not exit: exit runs the atexit handlers, and boot_shutdown_server_at_exit () would shut the server
+   * down from inside this thread while the other threads and this transaction are still running. */
+  _exit (0);
 
   return NO_ERROR;
 }

@@ -1029,6 +1029,12 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  db_value_clear (&arg);
 	  free (&arg);
 	}
+      else
+	{
+	  /* the value belongs to the parse tree or the host variables, so free only the buffer packing it attached */
+	  DB_VALUE &arg = args[i];
+	  pr_clear_compressed_string (&arg);
+	}
       vc = vc->next;
     }
 
@@ -1456,6 +1462,12 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
       if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
 	{
 	  decl = compile_response.java_signature.c_str ();
+	}
+      else if (err == ER_LK_UNILATERALLY_ABORTED || er_errid () == ER_LK_UNILATERALLY_ABORTED)
+	{
+	  /* kept, so the statement fails as aborted and the client ends the transaction too */
+	  err = ER_LK_UNILATERALLY_ABORTED;
+	  goto error_exit;
 	}
       else
 	{
@@ -2271,6 +2283,12 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
       if (err == NO_ERROR && compile_response.err_code == NO_ERROR)
 	{
 	  decl = compile_response.java_signature.c_str ();
+	}
+      else if (err == ER_LK_UNILATERALLY_ABORTED || er_errid () == ER_LK_UNILATERALLY_ABORTED)
+	{
+	  /* as in jsp_create_stored_procedure_internal () */
+	  err = ER_LK_UNILATERALLY_ABORTED;
+	  goto error;
 	}
       else
 	{
