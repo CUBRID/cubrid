@@ -1197,9 +1197,10 @@ db_find_multi_unique (MOP classmop, int size, char *attr_names[], DB_VALUE * val
 
 /*
  * db_find_multi_unique_catalog() - like db_find_multi_unique (DB_FETCH_READ), but reads the
- *    latest committed version of the found row WITHOUT taking a lock (mirrors
- *    db_get_histogram_for_optimizer ()). Used where the caller only needs to know whether a row
- *    exists and must not leave an S lock that a concurrent writer's X would have to wait on.
+ *    found row WITHOUT taking a lock, under a catalog read snapshot (mirrors
+ *    db_get_histogram_for_optimizer (); _db_histogram only, see obj_find_multi_attr_catalog ()).
+ *    Used where the caller only needs to know whether a row exists and must not leave an S lock
+ *    that a concurrent writer's X would have to wait on.
  * returns: the object, or NULL when the key does not exist
  * classmop(in): class pointer
  * size(in): number of attributes
@@ -1208,8 +1209,8 @@ db_find_multi_unique (MOP classmop, int size, char *attr_names[], DB_VALUE * val
  *
  * Note (CBRD-27369): the writer's histogram existence check used DB_FETCH_READ, taking an S lock
  *   held to commit on each _db_histogram row; the store step then upgraded the same rows S -> X,
- *   so concurrent collectors deadlocked on the upgrade.  A committed lock-free read answers the
- *   existence question just as well: mvcc_satisfies_committed shows this transaction's own
+ *   so concurrent collectors deadlocked on the upgrade.  An unlocked read answers the
+ *   existence question just as well: a catalog read snapshot shows this transaction's own
  *   uncommitted inserts (so a re-check inside one transaction still finds them) while excluding
  *   another transaction's uncommitted ones -- and it leaves no lock for the store's X to fight.
  */

@@ -1730,6 +1730,7 @@ namespace parallel_scan
 	}
       else if constexpr (ST == SCAN_TYPE::INDEX)
 	{
+	  m_input_handler->set_bitmap_query_id (m_query_id);
 	  init_err = m_input_handler->init_on_main (m_thread_p, m_indx_info, m_scan_id, m_vd, m_parallelism);
 	}
       else

@@ -1623,6 +1623,11 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     {
       db_npages = (DKNPAGES) (prm_get_bigint_value (PRM_ID_DB_VOLUME_SIZE) / db_desired_pagesize);
     }
+  /* createdb already applies this floor to a size it passes, so it changes only db_volume_size taken above */
+  if (db_npages > 0 && disk_sectors_to_extend_npages (db_npages) < DISK_MIN_FIRST_VOLUME_SECTS)
+    {
+      db_npages = DISK_SECTS_NPAGES (DISK_MIN_FIRST_VOLUME_SECTS);
+    }
 
   if (log_npages <= 0)
     {
@@ -3136,8 +3141,10 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #ifdef CCI_XA
   dblink_2pc_daemon_stop ();
 #endif /* CCI_XA */
-  pgbuf_daemons_destroy ();
+  /* a CDC producer that fixes a page while no buffer is free wakes the page flush daemon; stop it before
+   * pgbuf_daemons_destroy deletes that daemon */
   cdc_daemons_destroy ();
+  pgbuf_daemons_destroy ();
   pl_server_destroy ();
   parallel_query::worker_manager_global::get_manager ().destroy ();
 #endif
@@ -3448,6 +3455,10 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 	  return NO_ERROR;
 	}
 #endif /* SERVER_MODE */
+
+      /* no thread of the client is left to close a parallel section: one still open is leaked, and must not defer
+       * the abort below (lock_group_defer_abort ()) */
+      lock_group_clear (tran_index);
 
       /*
        * If the transaction is active only abort it.
@@ -6163,10 +6174,10 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 
   int error_code = NO_ERROR;
 
-  assert (log_check_system_op_is_started (thread_p));
-
   if (voltype == DB_PERMANENT_VOLTYPE)
     {
+      /* the volume addition is logged; a temporary volume is not, so it is added outside a system operation */
+      assert (log_check_system_op_is_started (thread_p));
       assert (boot_Db_parm->nvols >= 0);
       if (volid != boot_Db_parm->last_volid + 1)
 	{
