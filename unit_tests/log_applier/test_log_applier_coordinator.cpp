@@ -791,3 +791,50 @@ TEST_CASE ("a dependent that can go only to a worker with a full queue waits for
   REQUIRE (la_task_queue_get_queued (chain_worker) == LA_TASK_QUEUE_CAPACITY);
   REQUIRE (la_task_queue_get_queued (1 - chain_worker) == 0);
 }
+
+TEST_CASE ("the coordinator stops reading while the pending list is full and goes on once parked tasks are released",
+	   "[log_applier_coordinator]")
+{
+  TEST_COORDINATOR_CONTEXT context;
+  LOG_LSA restart_lsa = test_lsa (10);
+  LA_TASK first = test_task (1, test_lsa (20), test_null_lsa ());
+  LA_TASK second = test_task (2, test_lsa (30), test_null_lsa ());
+  LA_TASK queued;
+
+  /* every dependent waits for units on both workers, so each one is parked */
+  test_initialize_coordinator (&context, &restart_lsa, 2, 4 * LA_TASK_QUEUE_CAPACITY);
+  REQUIRE (la_coordinator_submit_task (&first) == NO_ERROR);
+  REQUIRE (la_coordinator_submit_task (&second) == NO_ERROR);
+  for (int t = 0; t < LA_TASK_QUEUE_CAPACITY; t++)
+    {
+      LA_TASK task = test_task (10 + t, test_lsa (100 + t), second.commit_lsa);
+      REQUIRE (la_coordinator_submit_task (&task) == NO_ERROR);
+    }
+  REQUIRE (la_pending_get_count () == LA_TASK_QUEUE_CAPACITY);
+
+  std::atomic<int> rc (NO_ERROR);
+  std::atomic<bool> returned (false);
+  LOG_LSA dependency = second.commit_lsa;
+  std::thread coordinator ([&rc, &returned, dependency] ()
+  {
+    LA_TASK task = test_task (5000, test_lsa (100 + LA_TASK_QUEUE_CAPACITY), dependency);
+    rc = la_coordinator_submit_task (&task);
+    returned = true;
+  });
+
+  std::this_thread::sleep_for (std::chrono::milliseconds (300));
+  REQUIRE_FALSE (returned);
+  REQUIRE (la_pending_get_count () == LA_TASK_QUEUE_CAPACITY);
+
+  /* the first worker's unit completes: the parked tasks follow the second worker until its queue is full, and the
+   * waiting task, which follows it too, goes in once the worker takes one */
+  REQUIRE (test_task_pop (&queued, 0) == NO_ERROR);
+  REQUIRE (queued.tranid == first.tranid);
+  test_push_result (&queued, 0);
+  std::this_thread::sleep_for (std::chrono::milliseconds (300));
+  REQUIRE (la_pending_get_count () < LA_TASK_QUEUE_CAPACITY);
+  REQUIRE (test_task_pop (&queued, 1) == NO_ERROR);
+  REQUIRE (queued.tranid == second.tranid);
+  coordinator.join ();
+  REQUIRE (rc == NO_ERROR);
+}

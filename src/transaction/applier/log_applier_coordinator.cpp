@@ -101,6 +101,14 @@ static_assert (LA_MAX_WORKER_COUNT <= 64, "la_Coordinator_pending_room_workers k
 /* the worker the last la_coordinator_route call had to send its task to but found with a full queue; -1 otherwise */
 static int la_Coordinator_route_full_worker = -1;
 
+/* Most tasks the pending list holds before the coordinator stops reading the log. A chain whose head is parked
+ * parks every task after it, as each waits for the one before to be dispatched; each pass over the list then walks
+ * them all, and with a chain of 100,000 that was most of the coordinator's time. Holding more tasks than a worker's
+ * queue does not apply them sooner: they are released only as fast as the workers take them. */
+#define LA_COORDINATOR_PENDING_MAX LA_TASK_QUEUE_CAPACITY
+/* how long the coordinator waits at a time for the pending list to shrink before it looks again */
+#define LA_COORDINATOR_PENDING_WAIT_MSEC 2
+
 /* commit_lsa of the last submitted task; the next one carries it as prev_unit_lsa */
 static LOG_LSA la_Coordinator_last_submitted_lsa = LSA_INITIALIZER;
 
@@ -109,6 +117,7 @@ static LOG_LSA la_Coordinator_last_submitted_lsa = LSA_INITIALIZER;
 
 static int la_coordinator_drain_ready (void);
 static int la_coordinator_wait_for_commit_order_slot (void);
+static int la_coordinator_wait_for_pending_room (void);
 static int la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status, int worker);
 static bool la_coordinator_route (const LA_TASK *task, int *worker);
 static bool la_coordinator_queue_has_room (int worker);
@@ -377,6 +386,49 @@ la_coordinator_wait_for_commit_order_slot (void)
 	  /* the frontier moves when the workers commit */
 	  la_task_queue_request_commit ();
 	  (void) la_result_queue_wait_for_result (100);
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * la_coordinator_wait_for_pending_room - wait until the pending list holds fewer than LA_COORDINATOR_PENDING_MAX tasks
+ *
+ * return: NO_ERROR or an error code
+ *
+ * Note: the parked tasks wait only for units read before them (completions, dispatches or queue room), so they are
+ *       released without the tasks not read yet, and waiting here cannot stop them.
+ */
+static int
+la_coordinator_wait_for_pending_room (void)
+{
+  int error;
+
+  while (la_pending_get_count () >= LA_COORDINATOR_PENDING_MAX)
+    {
+      if (la_Coordinator_config.shutdown_requested (la_Coordinator_config.context))
+	{
+	  return ER_FAILED;
+	}
+
+      error = la_coordinator_collect_and_retire ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      error = la_coordinator_drain_ready ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (la_pending_get_count () >= LA_COORDINATOR_PENDING_MAX)
+	{
+	  /* a result means a completion; queue room comes without one, so the wait is short. A pass that leaves a
+	   * task waiting for units on several workers has asked them to commit (la_coordinator_drain_ready). */
+	  (void) la_result_queue_wait_for_result (LA_COORDINATOR_PENDING_WAIT_MSEC);
 	}
     }
 
@@ -1152,6 +1204,12 @@ la_coordinator_submit_task (LA_TASK *task, bool commit_order)
 	{
 	  return error;
 	}
+    }
+
+  error = la_coordinator_wait_for_pending_room ();
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   if (!dependency_ready)
