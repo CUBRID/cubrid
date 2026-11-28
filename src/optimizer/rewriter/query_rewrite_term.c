@@ -2104,6 +2104,85 @@ qo_unmark_substituted_function_index (PARSER_CONTEXT * parser, PT_NODE * node, v
 }
 
 /*
+ * qo_kept_as_join_term () - is a copy of 'other = col' saved as a join term in its first form?
+ *   return: bool
+ *   parser(in):
+ *   other(in): the operand compared with col, an attribute or a function index expression
+ *   col(in): the column the equality is reduced on
+ *
+ * Note: qo_reduce_equality_terms () saves a term on the reduced column as a join term when the other operand
+ *	 reads one spec other than the column's, and neither a subquery nor the column itself (CASE 1 and CASE 3
+ *	 there). This counts the operand the same way.
+ */
+static bool
+qo_kept_as_join_term (PARSER_CONTEXT * parser, PT_NODE * other, PT_NODE * col)
+{
+  PT_NAME_SPEC_INFO info;
+  bool kept;
+
+  info.c_name = pt_get_end_path_node (col);
+  info.c_name_num = 0;
+  info.query_serial_num = 0;
+  info.s_point_list = NULL;
+  (void) parser_walk_tree (parser, other, qo_collect_name_spec, &info, qo_collect_name_spec_post, &info);
+
+  kept = (info.query_serial_num == 0 && info.c_name_num == 0 && pt_length_of_list (info.s_point_list) == 1);
+
+  if (info.s_point_list)
+    {
+      parser_free_tree (parser, info.s_point_list);
+    }
+
+  return kept;
+}
+
+/*
+ * qo_null_padded_at () - can a column of the spec be NULL padded where the term is evaluated?
+ *   return: bool
+ *   spec(in): a spec of the FROM list
+ *   location(in): the location of the term; 0 for WHERE, n for the ON condition of the n-th spec
+ *
+ * Note: the spec is the null-supplying side of an outer join when it is the inner of a LEFT OUTER, or when a spec
+ *	 after it in the same join tree opens a RIGHT OUTER; the first such join pads it. A comma ends the join tree
+ *	 (mq_is_outer_join_spec () stops there too). The ON condition of that join, and of the joins before it, still
+ *	 reads its real rows; the WHERE clause and the ON conditions after it may read the NULL row.
+ */
+static bool
+qo_null_padded_at (PT_NODE * spec, short location)
+{
+  PT_NODE *next_spec;
+  short pad_location = -1;
+
+  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || spec->info.spec.join_type == PT_JOIN_FULL_OUTER)
+    {
+      pad_location = spec->info.spec.location;
+    }
+  else
+    {
+      for (next_spec = spec->next; next_spec != NULL; next_spec = next_spec->next)
+	{
+	  if (next_spec->info.spec.join_type == PT_JOIN_NONE)
+	    {
+	      break;
+	    }
+	  if (next_spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER
+	      || next_spec->info.spec.join_type == PT_JOIN_FULL_OUTER)
+	    {
+	      pad_location = next_spec->info.spec.location;
+	      break;
+	    }
+	}
+    }
+
+  if (pad_location < 0)
+    {
+      return false;
+    }
+
+  return (location == 0 || location > pad_location);
+}
+
+/*
  * qo_reduce_equality_terms () -
  *   return:
  *   parser(in):
@@ -2282,10 +2361,17 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		    break;	/* found match */
 		}
 
-	      /* if arg2 is derived alias col, get its corresponding constant column from derived-table */
+	      /* if arg2 is derived alias col, get its corresponding constant column from derived-table. the term is
+	       * dropped for its copy with the constant in place of the column. where an outer join may give the column
+	       * a NULL, only a term on another spec keeps its NULL test: the copy is saved as a join term in its first
+	       * form below (t1.c2 = y.c2 and lower (t1.c2) = y.c2 stay, next to t1.c2 = 5 and lower (t1.c2) = 5). a
+	       * term on the derived table alone loses it (y.c = y.c would become 5 = 5, true for the NULL row it must
+	       * filter out) */
 	      if (spec && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
 		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT
-		  && !derived_table->info.query.q.select.single_table_opt)
+		  && !derived_table->info.query.q.select.single_table_opt
+		  && !(qo_null_padded_at (spec, expr->info.expr.location)
+		       && !(expr->info.expr.op == PT_EQ && qo_kept_as_join_term (parser, arg1, arg2))))
 		{
 		  /* traverse as_attr_list */
 		  for (attr = spec->info.spec.as_attr_list, idx = 0; attr; attr = attr->next, idx++)
