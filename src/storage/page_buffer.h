@@ -287,6 +287,7 @@ extern void pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * 
 extern void pgbuf_rv_add_unreserved_sector (const VSID * vsid, const LOG_LSA * unreserve_lsa);
 extern void pgbuf_rv_discard_unreserved_pages (THREAD_ENTRY * thread_p);
 
+/* pgbuf_fix: a thread holding the page READ-latched must not request WRITE; use pgbuf_promote_read_latch (). */
 #if !defined(NDEBUG)
 
 #define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
