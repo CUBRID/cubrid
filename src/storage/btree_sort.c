@@ -50,6 +50,7 @@
 #include "btree_load.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "language_support.h"
 #include "file_manager.h"
 #include "heap_file.h"
 #include "page_buffer.h"
@@ -200,6 +201,24 @@ struct btsort_px_merge_input
   BTSORT_INDEX_SHARD range;	/* this shard's [start, end) slice of the run */
   FILE_FIND_NTH_CURSOR cursor;	/* this shard's page lookup position in the run above. every shard owns its own
 				 * BTSORT_PX_MERGE_INPUT array, so shards reading the same run do not share it. */
+};
+
+/* the index_cmpdisk () of a type (pr_type::index_cmpdisk_function_type) */
+typedef DB_VALUE_COMPARE_RESULT BTSORT_CMPDISK_FUNC (void *, void *, TP_DOMAIN *, int, int, int *);
+
+/* the argument of the comparator btsort_pick_compare () picks */
+typedef struct btsort_cmp_arg BTSORT_CMP_ARG;
+struct btsort_cmp_arg
+{
+  SORT_ARGS *sort_args;
+  TP_DOMAIN *key_type;
+  bool is_desc;			/* a key of one column runs down */
+  BTSORT_CMPDISK_FUNC *cmpdisk;	/* a key of one column: the index_cmpdisk () of its type */
+
+  /* a VARCHAR or a CHAR key: the comparison of its collation, and whether it ignores trailing spaces */
+  LANG_COLLATION *coll;
+  int (*fastcmp) (const LANG_COLLATION *, const unsigned char *, int, const unsigned char *, int, bool);
+  bool ti;
 };
 
 typedef struct btsort_param BTSORT_PARAM;
@@ -356,6 +375,10 @@ static SCAN_CODE btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES *
 STATIC_INLINE int btsort_compare_keys (const void *first, const void *second, void *arg)
   __attribute__ ((ALWAYS_INLINE));
 static int btsort_compare_records (const void *first, const void *second, void *arg);
+static int btsort_compare_column (const void *first, const void *second, void *arg);
+static bool btsort_get_uncompressed_string (char *key, unsigned char **str, int *size);
+static int btsort_compare_string (const void *first, const void *second, void *arg);
+static BTSORT_CMP_FUNC *btsort_pick_compare (SORT_ARGS * sort_args, BTSORT_CMP_ARG * cmp_arg);
 static char *btsort_retrieve_longrec (THREAD_ENTRY * thread_p, RECDES * address, RECDES * memory);
 
 /************************************************************************/
@@ -707,7 +730,7 @@ btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool pee
  *   return: DB_LT, DB_EQ or DB_GT
  *   first(in): sort record (bt_load_put_buf_to_record ())
  *   second(in): sort record
- *   arg(in): SORT_ARGS *
+ *   arg(in): BTSORT_CMP_ARG *
  *
  * Note: The key is compared by bt_load_cmp_key_bytes (), in the order the leaf loader expects.
  */
@@ -721,7 +744,7 @@ btsort_compare_keys (const void *first, const void *second, void *arg)
   TP_DOMAIN *key_type;
   int c = DB_UNK;
 
-  sort_args = (SORT_ARGS *) arg;
+  sort_args = ((BTSORT_CMP_ARG *) arg)->sort_args;
   key_type = sort_args->key_type;
 
   assert (PTR_ALIGN (mem1, INT_ALIGNMENT) == mem1);
@@ -773,7 +796,7 @@ btsort_compare_keys (const void *first, const void *second, void *arg)
  *   return: DB_LT or DB_GT (a key tie is broken by OID)
  *   first(in): sort record (bt_load_put_buf_to_record ())
  *   second(in): sort record
- *   arg(in): SORT_ARGS *
+ *   arg(in): BTSORT_CMP_ARG *
  */
 static int
 btsort_compare_records (const void *first, const void *second, void *arg)
@@ -793,6 +816,154 @@ btsort_compare_records (const void *first, const void *second, void *arg)
     }
 
   return c;
+}
+
+/*
+ * btsort_compare_order () - The order of two sort records of a key of one column, from the order of their keys
+ *   return: DB_LT or DB_GT (a key tie is broken by OID)
+ *   first(in): sort record
+ *   second(in): sort record
+ *   c(in): the order of the keys in their type
+ *   is_desc(in): the key runs down
+ */
+static int
+btsort_compare_order (const void *first, const void *second, int c, bool is_desc)
+{
+  OID first_oid, second_oid;
+
+  /* the sort engine reads DB_UNK (-2) as "less than", which would silently break the order */
+  assert_release (c == DB_LT || c == DB_EQ || c == DB_GT);
+
+  if (c != DB_EQ)
+    {
+      return is_desc ? -c : c;
+    }
+
+  OR_GET_OID (BTSORT_REC_OID (first), &first_oid);
+  OR_GET_OID (BTSORT_REC_OID (second), &second_oid);
+
+  assert_release (!OID_EQ (&first_oid, &second_oid));
+
+  return (OID_LT (&first_oid, &second_oid) ? DB_LT : DB_GT);
+}
+
+/*
+ * btsort_compare_column () - Compares two sort records of a key of one column by the index_cmpdisk () of its type
+ *   return: DB_LT or DB_GT (a key tie is broken by OID)
+ *   first(in): sort record
+ *   second(in): sort record
+ *   arg(in): BTSORT_CMP_ARG *
+ */
+static int
+btsort_compare_column (const void *first, const void *second, void *arg)
+{
+  BTSORT_CMP_ARG *cmp_arg = (BTSORT_CMP_ARG *) arg;
+  int c;
+
+  c = (*cmp_arg->cmpdisk) (BTSORT_REC_KEY (first), BTSORT_REC_KEY (second), cmp_arg->key_type, 0, 1, NULL);
+
+  return btsort_compare_order (first, second, c, cmp_arg->is_desc);
+}
+
+/*
+ * btsort_get_uncompressed_string () - The bytes of a VARCHAR or a CHAR key, where they can be read in place
+ *   return: false for a compressed value
+ *   key(in): the key image
+ *   str(out): the bytes
+ *   size(out): the number of bytes
+ *
+ * Note: A value is its length byte and its bytes. One of OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION bytes or more has
+ *       the compressed and the original size after the length byte, and is stored as it was when the compressed size
+ *       is 0.
+ */
+static bool
+btsort_get_uncompressed_string (char *key, unsigned char **str, int *size)
+{
+  OR_BUF buf;
+  int compressed_size;
+
+  if ((unsigned char) key[0] < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+    {
+      *str = (unsigned char *) key + OR_BYTE_SIZE;
+      *size = (unsigned char) key[0];
+      return true;
+    }
+
+  or_init (&buf, key, 0);
+  if (or_get_varchar_compression_lengths (&buf, &compressed_size, size) != NO_ERROR || compressed_size > 0)
+    {
+      return false;
+    }
+
+  *str = (unsigned char *) buf.ptr;
+
+  return true;
+}
+
+/*
+ * btsort_compare_string () - Compares two sort records of a VARCHAR or a CHAR key by the comparison of its collation
+ *   return: DB_LT or DB_GT (a key tie is broken by OID)
+ *   first(in): sort record
+ *   second(in): sort record
+ *   arg(in): BTSORT_CMP_ARG *
+ */
+static int
+btsort_compare_string (const void *first, const void *second, void *arg)
+{
+  BTSORT_CMP_ARG *cmp_arg = (BTSORT_CMP_ARG *) arg;
+  unsigned char *str1, *str2;
+  int size1, size2;
+  int c;
+
+  if (!btsort_get_uncompressed_string (BTSORT_REC_KEY (first), &str1, &size1)
+      || !btsort_get_uncompressed_string (BTSORT_REC_KEY (second), &str2, &size2))
+    {
+      /* index_cmpdisk () reads a compressed value */
+      return btsort_compare_column (first, second, arg);
+    }
+
+  c = (*cmp_arg->fastcmp) (cmp_arg->coll, str1, size1, str2, size2, cmp_arg->ti);
+
+  return btsort_compare_order (first, second, DB_INT_TO_COMPARE_RESULT (c), cmp_arg->is_desc);
+}
+
+/*
+ * btsort_pick_compare () - Picks the comparator of the sort records by the key domain, once per sort
+ *   return: the comparator
+ *   sort_args(in):
+ *   cmp_arg(out): the argument of the comparator
+ *
+ * Note: A key of one column takes the comparison function of its type, and a VARCHAR or a CHAR key that of its
+ *       collation, so that no comparison looks them up again. A MIDXKEY takes btsort_compare_records ().
+ */
+static BTSORT_CMP_FUNC *
+btsort_pick_compare (SORT_ARGS * sort_args, BTSORT_CMP_ARG * cmp_arg)
+{
+  TP_DOMAIN *key_type = sort_args->key_type;
+
+  memset (cmp_arg, 0, sizeof (*cmp_arg));
+  cmp_arg->sort_args = sort_args;
+  cmp_arg->key_type = key_type;
+
+  if (key_type == NULL || TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
+    {
+      return btsort_compare_records;
+    }
+
+  cmp_arg->is_desc = key_type->is_desc;
+  cmp_arg->cmpdisk = key_type->type->get_index_cmpdisk_function ();
+
+  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_VARCHAR || TP_DOMAIN_TYPE (key_type) == DB_TYPE_CHAR)
+    {
+      /* as index_cmpdisk () does: CHAR ignores trailing spaces, VARCHAR does by ignore_trailing_space */
+      cmp_arg->coll = lang_get_collation (key_type->collation_id);
+      cmp_arg->fastcmp = cmp_arg->coll->fastcmp;
+      cmp_arg->ti = (TP_DOMAIN_TYPE (key_type) == DB_TYPE_CHAR || prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE));
+
+      return btsort_compare_string;
+    }
+
+  return btsort_compare_column;
 }
 
 /*
@@ -865,6 +1036,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   int error = NO_ERROR;
   BTSORT_PARAM ori_sort_param;
   BTSORT_PARAM *sort_param = &ori_sort_param;
+  BTSORT_CMP_ARG cmp_arg;
   int min_buffers;
 
   /* for parallel sort */
@@ -893,8 +1065,8 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   sort_param->complete_cond = &complete_cond;
 #endif /* SERVER_MODE */
 
-  sort_param->cmp_fn = btsort_compare_records;
-  sort_param->cmp_arg = sort_args;
+  sort_param->cmp_fn = btsort_pick_compare (sort_args, &cmp_arg);
+  sort_param->cmp_arg = &cmp_arg;
 
   sort_param->sorter = btsort_run_pick_sorter (sort_args);
 
@@ -965,9 +1137,11 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
     }
 
   /* Size estimate of an input temp file: its share of one sort buffer, so that the input files together reserve
-   * no more than one buffer of pages however small their runs are. A file that receives full runs grows a sector
-   * at a time as they are flushed. */
-  sort_param->tmp_file_pgs = CEIL_PTVDIV (sort_param->tot_buffers, sort_param->half_files);
+   * no more than one buffer of pages however small their runs are, and no more than a sector: file_create adds the
+   * file table to the size, so a file of 64 pages would take two sectors. A file that receives full runs grows a
+   * sector at a time as they are flushed. */
+  sort_param->tmp_file_pgs =
+    MIN (CEIL_PTVDIV (sort_param->tot_buffers, sort_param->half_files), DISK_SECTOR_NPAGES - 1);
 
   sort_param->tde_encrypted = includes_tde_class;
   sort_param->px_error_published = false;
@@ -1984,7 +2158,7 @@ btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, B
       /* a worker reads its share of the data sectors, and makes no more files than that */
       px_sort_param[i].half_files = btsort_get_num_half_tmpfiles (slice, sort_param->data_sects / parallel_num);
       px_sort_param[i].tot_tempfiles = px_sort_param[i].half_files * 2;
-      px_sort_param[i].tmp_file_pgs = CEIL_PTVDIV (slice, px_sort_param[i].half_files);
+      px_sort_param[i].tmp_file_pgs = MIN (CEIL_PTVDIV (slice, px_sort_param[i].half_files), DISK_SECTOR_NPAGES - 1);
       error = btsort_alloc_temp_slots (&px_sort_param[i]);
       if (error != NO_ERROR)
 	{
@@ -4786,12 +4960,21 @@ btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * c
  *   return: NO_ERROR, or error code
  *   thread_p(in):
  *   sort_param(in): sort parameters; get_arg names the classes
- *   n_sects(out): the data sectors of the heaps of the classes together; a class without a heap adds none
+ *   n_sects(out): the data sectors of the heaps of the classes together, with their OOS and overflow files; a class
+ *                 without a heap adds none
+ *
+ * Note: A value that makes its record longer than about a quarter of a page lives in the OOS file of its heap, and a
+ *       record longer than a page (a catalog row) in the overflow file, not in the heap file. A key longer than a page
+ *       makes runs of its own and mostly comes from such a value, so both files are counted as well: without them a
+ *       table of long keys would hold many runs in few heap sectors and merge them with a fan-in below 4. A function
+ *       index can also lengthen a short value past a page (REPEAT, LPAD), and such keys are not counted.
  */
 static int
 btsort_get_num_data_sectors (THREAD_ENTRY * thread_p, const BTSORT_PARAM * sort_param, int *n_sects)
 {
   const SORT_ARGS *sort_args_p = (const SORT_ARGS *) sort_param->get_arg;
+  VFID oos_vfid;
+  VFID ovf_vfid;
   int class_sects;
   int error;
   int i;
@@ -4812,6 +4995,53 @@ btsort_get_num_data_sectors (THREAD_ENTRY * thread_p, const BTSORT_PARAM * sort_
 	}
 
       *n_sects += class_sects;
+
+      /* heap_oos_find_vfid returns false only on an error, and a null VFID when the heap has no OOS file */
+      if (!heap_oos_find_vfid (thread_p, &sort_args_p->hfids[i], &oos_vfid, false))
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+
+      if (!VFID_ISNULL (&oos_vfid))
+	{
+	  error = file_get_num_data_sectors (thread_p, &oos_vfid, &class_sects);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error;
+	    }
+
+	  *n_sects += class_sects;
+	}
+
+      /* heap_ovf_find_vfid returns NULL when the heap has no overflow file, and when it fails to read the heap header,
+       * an interrupt among the failures. Only a failure sets an error, so the error of this call alone tells them
+       * apart: an error left from before would fail a heap without an overflow file. */
+      er_stack_push ();
+      if (heap_ovf_find_vfid (thread_p, &sort_args_p->hfids[i], &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) == NULL)
+	{
+	  error = er_errid ();
+	  if (error != NO_ERROR)
+	    {
+	      er_stack_pop_and_keep_error ();
+	      return error;
+	    }
+
+	  /* the heap has no overflow file */
+	  er_stack_pop ();
+	  continue;
+	}
+      er_stack_pop ();
+
+      error = file_get_num_data_sectors (thread_p, &ovf_vfid, &class_sects);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+
+      *n_sects += class_sects;
     }
 
   return NO_ERROR;
@@ -4822,7 +5052,7 @@ btsort_get_num_data_sectors (THREAD_ENTRY * thread_p, const BTSORT_PARAM * sort_
  *                        during the sorting process
  *   return: half of the number of temporary files (the number of input files of a merge pass, its fan-in)
  *   tot_buffers(in): total number of buffers in the sort buffer
- *   data_sects(in): data sectors of the heap pages the sort reads, or 0 if unknown
+ *   data_sects(in): data sectors of the heaps the sort reads, with their OOS and overflow files, or 0 if unknown
  *
  * Note: A merge pass reads from as many files as half the sort buffer holds pages, one page per input at full
  *       fan-in, but from at least BTSORT_MIN_HALF_FILES (fewer files cannot merge). In a sweep of one to eight pages
@@ -4835,10 +5065,10 @@ btsort_get_num_data_sectors (THREAD_ENTRY * thread_p, const BTSORT_PARAM * sort_
  *       space of short runs: every file takes at least a sector, and keys longer than a page make runs of a page.
  *
  *       The data sectors bound the count as well: a file takes a sector however short its runs, so a sort that
- *       makes no more files than its input holds sectors reserves no more space for them than the heap takes. The
- *       bound leaves a large input alone, whose runs fill their files, and stops the short runs of a small one from
- *       taking a sector each. The workers of a parallel sort read a share of the sectors each, so their files
- *       together stay within the same bound.
+ *       makes no more files than its input holds sectors reserves no more space for them than the heap and its OOS
+ *       and overflow files take. The bound leaves a large input alone, whose runs fill their files, and stops the
+ *       short runs of a small one from taking a sector each. The workers of a parallel sort read a share of the
+ *       sectors each, so their files together stay within the same bound.
  */
 static int
 btsort_get_num_half_tmpfiles (int tot_buffers, int data_sects)

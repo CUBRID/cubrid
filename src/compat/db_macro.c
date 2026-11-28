@@ -496,12 +496,15 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
 	     * this function only needs to consider the maximum integer magnitude case
 	     * by setting the scale to its minimum value.
 	     */
-	    value->domain.numeric_info.scale = DB_MIN_NUMERIC_SCALE;
-	    FIXED_TO_FLOAT_NUMERIC (value);
+	    value->data.num.header.precision = DB_MAX_NUMERIC_PRECISION;
+	    value->data.num.header.scale = DB_MIN_NUMERIC_SCALE;
+	    value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	  }
 	else
 	  {
 	    memset (str + 1, '9', value->domain.numeric_info.precision);
+	    value->data.num.header.precision = value->domain.numeric_info.precision;
+	    value->data.num.header.scale = value->domain.numeric_info.scale;
 	  }
 	numeric_coerce_dec_str_to_num (str, value->data.num.d.buf, NULL);
 	value->domain.numeric_info.is_value_negative = true;
@@ -682,12 +685,15 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
 	     * this function only needs to consider the maximum integer magnitude case
 	     * by setting the scale to its minimum value.
 	     */
-	    value->domain.numeric_info.scale = DB_MIN_NUMERIC_SCALE;
-	    FIXED_TO_FLOAT_NUMERIC (value);
+	    value->data.num.header.precision = DB_MAX_NUMERIC_PRECISION;
+	    value->data.num.header.scale = DB_MIN_NUMERIC_SCALE;
+	    value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	  }
 	else
 	  {
 	    memset (str, '9', value->domain.numeric_info.precision);
+	    value->data.num.header.precision = value->domain.numeric_info.precision;
+	    value->data.num.header.scale = value->domain.numeric_info.scale;
 	  }
 	numeric_coerce_dec_str_to_num (str, value->data.num.d.buf, NULL);
 	value->domain.numeric_info.is_value_negative = false;
@@ -945,6 +951,11 @@ db_value_domain_zero (DB_VALUE * value, const DB_TYPE type, const int precision,
 	{
 	  value->data.num.header.precision = 1;
 	  value->data.num.header.scale = 0;
+	}
+      else
+	{
+	  value->data.num.header.precision = 1;
+	  value->data.num.header.scale = value->domain.numeric_info.scale;
 	}
       value->domain.numeric_info.is_value_negative = false;
       value->domain.general_info.is_null = 0;
@@ -1838,7 +1849,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 
 	bool is_float_numeric = false;
 	int precision = 0, scale = 0;
-	db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
+	db_get_numeric_precision_and_scale (value, &precision, &scale, NULL, &is_float_numeric);
 
 	error = numeric_coerce_string_to_num (buf, buflen, LANG_SYS_CODESET, &tmp_value);
 	if (error != NO_ERROR)
@@ -1859,17 +1870,19 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	  {
 	    db_make_numeric (value, db_locate_numeric (&tmp_value), DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
 			     DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), DB_NUMERIC_BUF_SIZE,
-			     DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (&tmp_value), true);
+			     DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (&tmp_value),
+			     DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value), true);
 	  }
 	else
 	  {
 	    unsigned char new_num[DB_NUMERIC_BUF_SIZE];
 	    bool tmp_value_is_negative = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (&tmp_value);
+	    int new_digits = 0;
 
 	    if (numeric_coerce_num_to_num
 		(&tmp_value, DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
 		 DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), precision, scale, new_num,
-		 &tmp_value_is_negative) != NO_ERROR)
+		 &tmp_value_is_negative, &new_digits) != NO_ERROR)
 	      {
 		status = C_TO_VALUE_CONVERSION_ERROR;
 	      }
@@ -1877,7 +1890,8 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	      {
 		/* Yes, I know that the precision and scale are already set, but this is neater than just assigning the
 		 * value. */
-		db_make_numeric (value, new_num, precision, scale, DB_NUMERIC_BUF_SIZE, tmp_value_is_negative, false);
+		db_make_numeric (value, new_num, precision, scale, DB_NUMERIC_BUF_SIZE, tmp_value_is_negative,
+				 new_digits, false);
 	      }
 	  }
 	db_value_clear (&tmp_value);

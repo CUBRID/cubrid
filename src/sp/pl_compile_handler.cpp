@@ -22,6 +22,7 @@
 
 #include "pl_comm.h"
 #include "pl_execution_stack_context.hpp"
+#include "log_impl.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -184,6 +185,12 @@ namespace cubpl
       }
     while (error_code == NO_ERROR && code != METHOD_REQUEST_COMPILE);
 
+    /* a deferred abort wins over the error the loop ended with: splcsql_transfer_file () aborts only on its error */
+    if (logtb_fail_if_abort_deferred (logtb_get_current_tran_index ()) != NO_ERROR)
+      {
+	error_code = ER_LK_UNILATERALLY_ABORTED;
+	create_error_response (out_blk, error_code);
+      }
     return error_code;
   }
 }

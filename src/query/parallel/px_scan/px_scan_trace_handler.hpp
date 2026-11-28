@@ -47,12 +47,18 @@ namespace parallel_scan
 
     /* index scan only */
     UINT64 read_keys;
+    UINT64 read_ahead_pages;
     UINT64 qualified_keys;
     UINT64 key_qualified_rows;
     UINT64 data_qualified_rows;
     struct timeval elapsed_lookup;
     bool covered_index;
     bool multi_range_opt;
+    int bitmap_heap;
+    struct timeval bitmap_time;	/* the heap step of a scan through a bitmap */
+    UINT64 bitmap_fetches;
+    UINT64 bitmap_ioreads;
+    UINT64 bitmap_pages;
     bool index_skip_scan;
     bool loose_index_scan;
     bool need_count_only;
@@ -120,11 +126,12 @@ namespace parallel_scan
 
       void add_stats (trace_handler &trace_handler);
       void dump_stats_text (FILE *fp, int indent, char *class_name);
+      void dump_bitmap_heap_stats_text (FILE *fp, int indent);
       void dump_stats_json (trace_json_t *scan, char *class_name);
       void set_last_partition_stats (SCAN_STATS *partition_stats);
     private:
       std::vector<child_stats> m_stats;
-      child_stats m_stats_last;
+      child_stats m_stats_last = {};
       RESULT_TYPE m_result_type;
       SCAN_TYPE m_scan_type;
       bool m_is_initialized;
