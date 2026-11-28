@@ -282,6 +282,9 @@ static PT_NODE *pt_get_assignments (PT_NODE * node, bool * dblinked);
 static int pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
 static PT_UNION_COMPATIBLE pt_get_select_list_coll_compat (PARSER_CONTEXT * parser, PT_NODE * query,
 							   SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo);
+static PT_UNION_COMPATIBLE pt_apply_attr_list_collation (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE ** attrs,
+							 bool set_query_type, SEMAN_COMPATIBLE_INFO * cinfo,
+							 int num_cinfo);
 static PT_UNION_COMPATIBLE pt_apply_union_select_list_collation (PARSER_CONTEXT * parser, PT_NODE * query,
 								 SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo);
 static PT_NODE *pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -468,6 +471,7 @@ pt_values_query_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node, SEM
   bool need_to_cast;
   PT_NODE_LIST_INFO *cur_node_list_info;
   bool is_select_data_type_set = false;
+  SEMAN_COMPATIBLE_INFO att_cinfo;
 
   assert (parser != NULL && node != NULL && cinfo != NULL);
   assert (node->node_type == PT_SELECT && PT_IS_VALUE_QUERY (node));
@@ -510,7 +514,17 @@ pt_values_query_to_compatible_cast (PARSER_CONTEXT * parser, PT_NODE * node, SEM
 		  goto end;
 		}
 
-	      new_att = pt_make_cast_with_compatible_info (parser, att, next_att, cinfo + i, &new_cast_added);
+	      memcpy (&att_cinfo, &(cinfo[i]), sizeof (att_cinfo));
+
+	      if (PT_HAS_COLLATION (att->type_enum) && att->data_type != NULL)
+		{
+		  /* keep the collation of the value, as pt_to_compatible_cast () does for a select list: the one in cinfo
+		   * is not inferred, and the collation of a set operation already cast to it must stay */
+		  att_cinfo.coll_infer.coll_id = att->data_type->info.data_type.collation_id;
+		  att_cinfo.coll_infer.codeset = (INTL_CODESET) att->data_type->info.data_type.units;
+		}
+
+	      new_att = pt_make_cast_with_compatible_info (parser, att, next_att, &att_cinfo, &new_cast_added);
 	      if (new_att == NULL)
 		{
 		  goto out_of_mem;
@@ -18791,6 +18805,95 @@ pt_get_select_list_coll_compat (PARSER_CONTEXT * parser, PT_NODE * query, SEMAN_
 }
 
 /*
+ * pt_apply_attr_list_collation () - casts each column of a select list, or of a row of a VALUES query, whose
+ *				     collation differs from the one of the column in 'cinfo' array
+ *
+ *   return:  union compatibility status
+ *   parser(in): the parser context
+ *   query(in): the SELECT node that owns the list
+ *   attrs(in/out): the head of the list, replaced when its first column gets a cast
+ *   set_query_type(in): take the type of the query from the first column when it gets a cast
+ *   cinfo(in): compatibility info array structure
+ *   num_cinfo(in): number of elements in cinfo
+ */
+static PT_UNION_COMPATIBLE
+pt_apply_attr_list_collation (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE ** attrs, bool set_query_type,
+			      SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo)
+{
+  PT_NODE *att, *prev_att, *next_att, *new_att;
+  int i;
+  PT_UNION_COMPATIBLE status = PT_UNION_COMP;
+
+  prev_att = NULL;
+  next_att = NULL;
+
+  for (att = *attrs, i = 0; i < num_cinfo && att != NULL; ++i, prev_att = att, att = next_att)
+    {
+      SEMAN_COMPATIBLE_INFO cinfo_att;
+
+      next_att = att->next;
+
+      if (!PT_HAS_COLLATION (att->type_enum))
+	{
+	  continue;
+	}
+
+      assert (PT_HAS_COLLATION (cinfo[i].type_enum));
+
+      pt_get_compatible_info_from_node (att, &cinfo_att);
+
+      if (cinfo_att.coll_infer.coll_id != cinfo[i].coll_infer.coll_id)
+	{
+	  bool new_cast_added = false;
+
+	  if (pt_common_collation (&cinfo_att.coll_infer, &(cinfo[i].coll_infer), NULL, 2, false,
+				   &cinfo_att.coll_infer.coll_id, &cinfo_att.coll_infer.codeset) != 0)
+	    {
+	      PT_ERRORmf2 (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+			   pt_short_print (parser, att), pt_short_print (parser, cinfo[i].ref_att));
+	      return PT_UNION_INCOMP_CANNOT_FIX;
+	    }
+
+	  new_att = pt_make_cast_with_compatible_info (parser, att, next_att, &cinfo_att, &new_cast_added);
+	  if (new_att == NULL)
+	    {
+	      PT_ERRORmf2 (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+			   pt_short_print (parser, att), pt_short_print (parser, cinfo[i].ref_att));
+	      return PT_UNION_INCOMP_CANNOT_FIX;
+	    }
+
+	  att = new_att;
+
+	  if (new_cast_added)
+	    {
+	      if (prev_att == NULL)
+		{
+		  *attrs = att;
+		  if (set_query_type)
+		    {
+		      query->type_enum = att->type_enum;
+		      if (query->data_type)
+			{
+			  parser_free_tree (parser, query->data_type);
+			}
+
+		      query->data_type = parser_copy_tree_list (parser, att->data_type);
+		    }
+		}
+	      else
+		{
+		  prev_att->next = att;
+		}
+	    }
+
+	  status = PT_UNION_INCOMP;
+	}
+    }
+
+  return status;
+}
+
+/*
  * pt_apply_union_select_list_collation () - scans a UNION parse tree and
  *		sets for each node with collation the collation corresponding
  *		of the column in 'cinfo' array
@@ -18805,8 +18908,7 @@ static PT_UNION_COMPATIBLE
 pt_apply_union_select_list_collation (PARSER_CONTEXT * parser, PT_NODE * query, SEMAN_COMPATIBLE_INFO * cinfo,
 				      int num_cinfo)
 {
-  PT_NODE *attrs, *att, *prev_att, *next_att, *new_att;
-  int i;
+  PT_NODE *row;
   PT_UNION_COMPATIBLE status = PT_UNION_COMP, status2;
 
   assert (query != NULL);
@@ -18814,70 +18916,29 @@ pt_apply_union_select_list_collation (PARSER_CONTEXT * parser, PT_NODE * query, 
   switch (query->node_type)
     {
     case PT_SELECT:
-
-      attrs = pt_get_select_list (parser, query);
-
-      prev_att = NULL;
-      next_att = NULL;
-
-      for (att = attrs, i = 0; i < num_cinfo && att != NULL; ++i, prev_att = att, att = next_att)
+      if (PT_IS_VALUE_QUERY (query))
 	{
-	  SEMAN_COMPATIBLE_INFO cinfo_att;
-
-	  next_att = att->next;
-
-	  if (!PT_HAS_COLLATION (att->type_enum))
+	  /* the select list of a VALUES query is its list of rows (pt_get_select_list () returns the values of the
+	   * first one): each row takes the collations */
+	  for (row = query->info.query.q.select.list; row != NULL; row = row->next)
 	    {
-	      continue;
+	      status2 = pt_apply_attr_list_collation (parser, query, &row->info.node_list.list,
+						      row == query->info.query.q.select.list, cinfo, num_cinfo);
+	      if (status2 != PT_UNION_COMP && status2 != PT_UNION_INCOMP)
+		{
+		  return status2;
+		}
+
+	      if (status2 != PT_UNION_COMP)
+		{
+		  status = status2;
+		}
 	    }
-
-	  assert (PT_HAS_COLLATION (cinfo[i].type_enum));
-
-	  pt_get_compatible_info_from_node (att, &cinfo_att);
-
-	  if (cinfo_att.coll_infer.coll_id != cinfo[i].coll_infer.coll_id)
-	    {
-	      bool new_cast_added = false;
-
-	      if (pt_common_collation (&cinfo_att.coll_infer, &(cinfo[i].coll_infer), NULL, 2, false,
-				       &cinfo_att.coll_infer.coll_id, &cinfo_att.coll_infer.codeset) != 0)
-		{
-		  PT_ERRORmf2 (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
-			       pt_short_print (parser, att), pt_short_print (parser, cinfo[i].ref_att));
-		  return PT_UNION_INCOMP_CANNOT_FIX;
-		}
-
-	      new_att = pt_make_cast_with_compatible_info (parser, att, next_att, &cinfo_att, &new_cast_added);
-	      if (new_att == NULL)
-		{
-		  PT_ERRORmf2 (parser, att, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
-			       pt_short_print (parser, att), pt_short_print (parser, cinfo[i].ref_att));
-		  return PT_UNION_INCOMP_CANNOT_FIX;
-		}
-
-	      att = new_att;
-
-	      if (new_cast_added)
-		{
-		  if (prev_att == NULL)
-		    {
-		      query->info.query.q.select.list = att;
-		      query->type_enum = att->type_enum;
-		      if (query->data_type)
-			{
-			  parser_free_tree (parser, query->data_type);
-			}
-
-		      query->data_type = parser_copy_tree_list (parser, att->data_type);
-		    }
-		  else
-		    {
-		      prev_att->next = att;
-		    }
-		}
-
-	      status = PT_UNION_INCOMP;
-	    }
+	}
+      else
+	{
+	  status = pt_apply_attr_list_collation (parser, query, &query->info.query.q.select.list, true, cinfo,
+						 num_cinfo);
 	}
       break;
     case PT_UNION:
