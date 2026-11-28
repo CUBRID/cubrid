@@ -572,6 +572,9 @@ struct log_tdes
 
   char *ddl_sql_user_text;	/* SQL user text for the transaction */
 
+  UINT64 commit_batch_epoch;	/* epoch of the log flush broadcast that last released this index's flush waiter,
+				 * kept across transactions: the next flush wait is a return while it is current */
+
 #if defined (SERVER_MODE)
   tx_exec_token exec_token;	/* one request at a time runs the transaction (logtb_exec_begin ()) */
   // *INDENT-OFF*

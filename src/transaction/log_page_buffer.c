@@ -56,6 +56,7 @@
 #include "connection_defs.h"
 #include "language_support.h"
 #include "log_append.hpp"
+#include "log_commit_batch.hpp"
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_manager.h"
@@ -357,6 +358,9 @@ static int logpb_get_cdc_arv_num_for_pageid (THREAD_ENTRY * thread_p, LOG_PAGEID
 
 static int logpb_flush_all_append_pages (THREAD_ENTRY * thread_p);
 static int logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * ndoe);
+#if defined (SERVER_MODE)
+static LOG_TDES *logpb_note_commit_batch_wait (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa);
+#endif /* SERVER_MODE */
 
 static void logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header);
 static void logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header);
@@ -4057,7 +4061,53 @@ logpb_flush_pages_direct (THREAD_ENTRY * thread_p)
 
   (void) logpb_flush_all_append_pages (thread_p);
   log_Stat.direct_flush_count++;
+#if defined (SERVER_MODE)
+  cublog::commit_batch.on_flushed ();
+#endif /* SERVER_MODE */
 }
+
+#if defined (SERVER_MODE)
+/*
+ * logpb_note_commit_batch_wait - count a flush wait in the commit batching window of the log flush daemon
+ *
+ * return: the descriptor that keeps the epoch of the broadcast that ends this wait, or NULL
+ *
+ *   flush_lsa(in): the record the wait is for
+ *
+ * Note: Only a wait whose record is not on disk yet counts. The system tdes is shared by threads: its waits are
+ *       arrivals, never returns, and it keeps no epoch.
+ */
+static LOG_TDES *
+logpb_note_commit_batch_wait (THREAD_ENTRY * thread_p, const LOG_LSA * flush_lsa)
+{
+  LOG_TDES *tdes;
+
+  if (!cublog::commit_batch.enabled () || !logpb_need_wal (flush_lsa))
+    {
+      return NULL;
+    }
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes != NULL && tdes->tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      tdes = NULL;
+    }
+  /* the window's epoch starts at 1: epoch 0 is never a return */
+  cublog::commit_batch.note_arrival (tdes != NULL ? tdes->commit_batch_epoch : 0);
+
+  /* a waiter that holds fixed pages or 2PC locks cannot wait for the window */
+  if (pgbuf_has_perm_pages_fixed (thread_p))
+    {
+      cublog::commit_batch.on_urgent_request (*flush_lsa, cublog::commit_batch_urgent_source::PAGES_FIXED);
+    }
+  else if (tdes != NULL && LOG_ISTRAN_2PC (tdes))
+    {
+      cublog::commit_batch.on_urgent_request (*flush_lsa, cublog::commit_batch_urgent_source::TWO_PC);
+    }
+
+  return tdes;
+}
+#endif /* SERVER_MODE */
 
 /*
  * logpb_flush_pages - FLUSH LOG APPEND PAGES
@@ -4088,7 +4138,10 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
   int max_wait_time_in_msec = 1000;
   bool need_wakeup_LFT, need_wait;
   bool async_commit, group_commit;
+  bool woken = false;
+  UINT64 epoch = 0;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
+  LOG_TDES *tdes = NULL;
 
   assert (flush_lsa != NULL && !LSA_ISNULL (flush_lsa));
 
@@ -4158,6 +4211,8 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  need_wakeup_LFT = true;
 	}
 
+      tdes = logpb_note_commit_batch_wait (thread_p, flush_lsa);
+
       while (logpb_need_wal (flush_lsa))
 	{
 	  gettimeofday (&start_time, NULL);
@@ -4176,9 +4231,21 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	      log_wakeup_log_flush_daemon ();
 	    }
 	  (void) pthread_cond_timedwait (&group_commit_info->gc_cond, &group_commit_info->gc_mutex, &to);
+	  if (tdes != NULL)
+	    {
+	      /* a broadcast moves the epoch under gc_mutex; after the 1 s timeout this is the epoch still current */
+	      epoch = cublog::commit_batch.epoch ();
+	      woken = true;
+	    }
 	  pthread_mutex_unlock (&group_commit_info->gc_mutex);
 
 	  need_wakeup_LFT = true;
+	}
+
+      if (woken)
+	{
+	  /* the next flush wait of this index is a return while this epoch is current */
+	  tdes->commit_batch_epoch = epoch;
 	}
     }
 #endif /* SERVER_MODE */

@@ -30,6 +30,7 @@ cd build_preset_debug && ctest
 | `resource_tracker/` | `UNIT_TEST_RESOURCE_TRACKER` | ✓ Active |
 | `monitor/` | `UNIT_TEST_MONITOR` | ✓ Active |
 | `log_prior_inflight/` | `UNIT_TEST_LOG_PRIOR_INFLIGHT` | ✓ Active |
+| `log_commit_batch/` | `UNIT_TEST_LOG_COMMIT_BATCH` | ✓ Active |
 | `json_builder/` | `UNIT_TEST_JSON_BUILDER` | ✓ Active |
 | `log_recovery/` | `UNIT_TEST_LOG_RECOVERY` | ✓ Active |
 | `radix_sort/` | `UNIT_TEST_RADIX_SORT` | ✓ Active |
