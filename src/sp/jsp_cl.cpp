@@ -1393,6 +1393,56 @@ jsp_drop_system_generated_procedure (const char *name)
 }
 
 /*
+ * jsp_check_trigger_block
+ *   return: if failed return error code else NO_ERROR
+ *   check_sql(in): a CREATE PROCEDURE statement that declares the correlation names as records
+ *   owner(in): owner of the trigger, whose rights the check uses
+ *   owner_name(in): name of the owner
+ *   names(in): the correlation names
+ *   n_names(in): number of the names
+ *   uses(out): the fields of the names that the block reads
+ *
+ * Note: The statement is only compiled up to the type check. No procedure is created.
+ *       A failure, even to reach the PL server, is set as ER_SP_COMPILE_ERROR,
+ *       as jsp_create_system_generated_procedure sets it.
+ */
+
+int
+jsp_check_trigger_block (const char *check_sql, MOP owner, const char *owner_name, const char **names, int n_names,
+			 std::vector<cubpl::plcsql_correlation_use> &uses)
+{
+  PLCSQL_COMPILE_REQUEST compile_request;
+  PLCSQL_COMPILE_RESPONSE compile_response;
+  int i;
+  int err;
+
+  assert (check_sql != NULL && owner != NULL && owner_name != NULL && n_names > 0);
+
+  compile_request.code.assign (check_sql);
+  compile_request.owner.assign (owner_name);
+  for (i = 0; i < n_names; i++)
+    {
+      compile_request.correlation_names.push_back (names[i]);
+    }
+  compile_request.line_offset = JSP_TRIGGER_BLOCK_LINE_OFFSET;
+
+  // checked with the rights of the owner, as a PL/CSQL procedure is compiled
+  au_perform_push_user (owner);
+  err = plcsql_transfer_file (compile_request, compile_response);
+  au_perform_pop_user ();
+
+  if (err != NO_ERROR || compile_response.err_code != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 1, compile_response.err_msg.c_str ());
+      return ER_SP_COMPILE_ERROR;
+    }
+
+  uses = std::move (compile_response.correlation_uses);
+
+  return NO_ERROR;
+}
+
+/*
  * jsp_create_stored_procedure_internal
  *   return: if failed return error code else NO_ERROR
  *   parser(in/out): parser environment
@@ -1551,6 +1601,8 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
       assert (statement->sql_user_text && statement->sql_user_text_len);
       compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
       compile_request.owner.assign ((owner_name[0] == '\0') ? au_get_current_user_name () : owner_name);
+      /* a system generated procedure compiled here is always the one of a block of a trigger */
+      compile_request.line_offset = is_system_generated ? JSP_TRIGGER_BLOCK_LINE_OFFSET : 0;
 
       // TODO: Only the owner's rights is supported for PL/CSQL
       au_perform_push_user (sp_info.owner);
@@ -2366,6 +2418,18 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   compile_request.code.assign (scode, scode_len);
   compile_request.owner.assign (owner_str);
   pr_clear_value (&scode_val);
+
+  /* the column is 1 for a procedure of a block of a trigger, and NULL for the others */
+  err = db_get (code_mop, SP_CODE_ATTR_IS_SYSTEM_GENERATED, &value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+  if (!DB_IS_NULL (&value) && db_get_int (&value) == 1)
+    {
+      compile_request.line_offset = JSP_TRIGGER_BLOCK_LINE_OFFSET;
+    }
+  pr_clear_value (&value);
 
   // TODO: Only the owner's rights is supported for PL/CSQL
   au_perform_push_user (sp_info.owner);

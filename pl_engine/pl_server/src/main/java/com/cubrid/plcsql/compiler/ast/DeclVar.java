@@ -45,6 +45,9 @@ public class DeclVar extends DeclIdTypeSpeced {
     public final boolean notNull;
     public final Expr val;
 
+    // a correlation name of a trigger, such as OBJ, declared at the top of the procedure
+    public boolean isCorrelationName = false;
+
     public DeclVar(
             ParserRuleContext ctx, String name, TypeSpec typeSpec, boolean notNull, Expr val) {
         super(ctx);

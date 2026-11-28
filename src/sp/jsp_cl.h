@@ -41,8 +41,21 @@
 #include "sp_constants.hpp"
 #include "pl_signature.hpp"
 
+/*
+ * Lines before a PL/CSQL block in the procedure of a block trigger.
+ * The compiler subtracts it, so a line of an error is a line of the block.
+ */
+#define JSP_TRIGGER_BLOCK_LINE_OFFSET 2
+
+namespace cubpl
+{
+  struct plcsql_correlation_use;
+}
+
 extern int jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int jsp_create_system_generated_procedure (const char *create_sql);
+extern int jsp_check_trigger_block (const char *check_sql, MOP owner, const char *owner_name, const char **names,
+				    int n_names, std::vector < cubpl::plcsql_correlation_use > &uses);
 extern int jsp_drop_system_generated_procedure (const char *name);
 extern int jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int alter_stored_procedure_code (PARSER_CONTEXT * parser, MOP sp_mop, const char *name, const char *owner_str,

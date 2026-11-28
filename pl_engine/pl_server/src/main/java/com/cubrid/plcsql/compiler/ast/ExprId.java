@@ -104,6 +104,10 @@ public class ExprId extends Expr implements AssignTarget {
 
     @Override
     public boolean isAssignableTo() {
-        return (decl instanceof DeclParamOut) || (decl instanceof DeclVar);
+        if (decl instanceof DeclVar) {
+            // a correlation name of a trigger is read only
+            return !((DeclVar) decl).isCorrelationName;
+        }
+        return decl instanceof DeclParamOut;
     }
 }
