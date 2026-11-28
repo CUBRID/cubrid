@@ -652,6 +652,9 @@ struct cte_proc_node
 	      /* clear correlated subquery list files */ \
 	      if (IS_XASL_INITIAL_STATUS((_x)->status)) \
 		{ \
+		  /* a nested statement starts with no heap or B-tree page held: it may wait for a page, a lock or \
+		   * another thread (CBRD-28426) */ \
+		  assert (!pgbuf_holds_heap_or_btree_page (thread_p)); \
 		  /* execute xasl query */ \
 		  if (_x->sub_xasl_id) \
 		    { \
@@ -1509,6 +1512,9 @@ struct xasl_node
 				 * filter on the node (the row loop, the page batch, a worker's clone), merged like them */
   HJOIN_PREHASH *hj_prehash;	/* a hash join's build input hashes this node's written tuples append to (not owned;
 				 * hjoin_prehash_arm ()), or NULL */
+  bool runs_query_per_row;	/* a row of this node may start another statement or wait for what the node does not
+				 * hold (expr_xasl_node_runs_query ()): its scan keeps no page between rows. Decided when
+				 * the node is unpacked; not serialized */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

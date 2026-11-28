@@ -961,6 +961,8 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
     {
       return V_ERROR;
     }
+  /* the list is complete, and the workers of a parallel scan read the leader's at the same time */
+  s_id.is_read_only = true;
 
   pr_type = list_id->type_list.domp[0]->type;
   if (pr_type == NULL)

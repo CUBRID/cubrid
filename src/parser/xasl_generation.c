@@ -10072,6 +10072,15 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	      regu->type = TYPE_LIST_ID;
 	      regu->value.srlist_id = srlist_id;
 	      srlist_id->list_id = xasl->list_id;
+	      /* an uncorrelated table subquery (ALL, SOME, IN) runs before the block's scans open too, through this
+	       * regu: run at its first evaluation it would start under the page the evaluating scan holds. One that
+	       * reads a block beyond the one it is in would run again for every execution of that block, whether a
+	       * row evaluates it or not: it stays with its first evaluation, and the optimizer keeps its term out of
+	       * the key filter (check_subquery_pre ()) */
+	      if (XASL_IS_FLAGED (xasl, XASL_ZERO_CORR_LEVEL))
+		{
+		  xasl->precomp_owner_regu = regu;
+		}
 	    }
 	  else
 	    {
@@ -19064,6 +19073,15 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		      /* set as linked to regu var */
 		      XASL_SET_FLAG (xasl, XASL_LINK_TO_REGU_VARIABLE);
 		      regu->xasl = xasl;
+		      /* an uncorrelated one runs before the block's scans open, through this regu (pt_make_regu_subquery ()):
+		       * run at its first evaluation it would start under the page the evaluating scan holds, and once in
+		       * every worker of a parallel scan. The flag keeps the order of the list among such items. One that
+		       * reads a block beyond the one it is in stays with the first output row, as a table subquery does */
+		      if (XASL_IS_FLAGED (xasl, XASL_ZERO_CORR_LEVEL))
+			{
+			  xasl->precomp_owner_regu = regu;
+			  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_OUTPUT_SUBQUERY);
+			}
 		    }
 
 		  if (xasl->is_single_tuple)

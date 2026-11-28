@@ -3054,9 +3054,10 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 	      continue;
 	    }
 
-	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))) || QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT))
 	    {
-	      continue;		/* term contains correlated subquery */
+	      /* term contains correlated subquery, or its evaluation may wait: a key filter runs under the leaf latch */
+	      continue;
 	    }
 
 	  /* check for no key-range index scan */
@@ -3110,9 +3111,12 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 	    {
 	      term = QO_ENV_TERM (env, t);
 
-	      if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	      if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term)))
+		  || (QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && !qo_is_padding_on_cond_term (term)))
 		{
-		  /* term contains correlated subquery */
+		  /* term contains correlated subquery, or its evaluation may wait: the block evaluates it (if_pred).
+		   * Not the ON condition of a join that pads rows, which is a data filter: evaluated after the join
+		   * it would drop the padded rows */
 		  continue;
 		}
 
@@ -3121,8 +3125,20 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 
 	  if (t == -1)
 	    {
+	      /* such an ON condition is a data filter of this scan also when the join hands it over later (the inner
+	       * of a nested loop join): the scan of the padded side, not of the preserved one */
+	      for (t = 0; t < env->nterms; t++)
+		{
+		  term = QO_ENV_TERM (env, t);
+		  if (QO_TERM_IS_FLAGED (term, QO_TERM_MAY_WAIT) && qo_is_padding_on_cond_term (term)
+		      && qo_padding_on_cond_term_reaches (term, node))
+		    {
+		      break;
+		    }
+		}
+
 	      /* not found data-filter; mark as covering index scan */
-	      plan->plan_un.scan.index_cover = true;
+	      plan->plan_un.scan.index_cover = (t == env->nterms);
 	    }
 	}
     }
@@ -7207,20 +7223,30 @@ qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
     case PT_EXPR:
       switch (tree->info.expr.op)
 	{
-	case PT_NEXT_VALUE:
-	case PT_CURRENT_VALUE:
-	case PT_CURRENT_VALUE_BY_OID:
 	case PT_DEFINE_VARIABLE:
 	case PT_EVALUATE_VARIABLE:
 	  *found = true;
 	  break;
 	default:
+	  if (qo_expr_op_may_wait (tree->info.expr.op))
+	    {
+	      /* a serial and the statistics functions */
+	      *found = true;
+	    }
 	  break;
 	}
       break;
 
     case PT_DOT_:
       *found = true;
+      break;
+
+    case PT_FUNCTION:
+      if (tree->info.function.function_type == F_CLASS_OF)
+	{
+	  /* reads the object's heap page */
+	  *found = true;
+	}
       break;
 
     case PT_NAME:

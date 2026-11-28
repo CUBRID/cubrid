@@ -237,6 +237,8 @@ const int REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE = 0x8000;	/* the N - 1 of rownum < N
 							 * key_limit_eval () reads it as ceil (N) - 1 */
 const int REGU_VARIABLE_LIMIT_SUM = 0x10000;	/* the T_ADD of the offset + count a LIMIT rewrite builds: an overflow
 						 * gives the BIGINT maximum, or minimum when negative (fetch_limit_sum_ovf ()) */
+const int REGU_VARIABLE_OUTPUT_SUBQUERY = 0x20000;	/* a subquery that is itself an item of an output list: the aptr
+							 * list holds such items in the reverse order of the list */
 
 /* CBRD-27583: REGU_VARIABLE.conv_mode - the converter (a DOMAIN_CONVERT_MODE, the ENUM name converter or the CHAR
  * prefix converter) and what a failed conversion gives */
@@ -336,6 +338,7 @@ inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
 inline bool regu_is_variable_pos (const regu_variable_node *regu);
 inline bool is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var);
 inline bool fetch_opcode_caches (OPERATOR_TYPE opcode);
+inline bool regu_opcode_may_wait (OPERATOR_TYPE opcode);
 inline TP_DOMAIN *regu_produced_domain (const regu_variable_node *regu);
 inline bool arith_decides_arith (const arith_list_node *arith);
 inline const DOMAIN_ARITH *arith_decided_arith (const arith_list_node *arith);
@@ -398,6 +401,31 @@ is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var)
     }
 
   return false;
+}
+
+/* regu_opcode_may_wait () - an operator whose evaluation may wait for what the row does not hold: a serial's page, a
+ * class lock and the catalog (the statistics functions).  A scan evaluates none of them with a heap or B-tree page
+ * held: its block is compiled XASL_NO_FIXED_SCAN, its term is no key filter, the visits under a leaf latch and the
+ * parallel scan workers refuse it.  SLEEP is not one: it waits for no page or lock, and a scan sleeps with the page
+ * it holds.  Nor are INCR and DECR: the row's evaluation only copies the object's OID (fetch_op_incr ()), and the
+ * lock and the update come after the scan (qexec_execute_selupd_list ()) */
+bool
+regu_opcode_may_wait (OPERATOR_TYPE opcode)
+{
+  switch (opcode)
+    {
+    case T_NEXT_VALUE:
+    case T_CURRENT_VALUE:
+    case T_CURRENT_VALUE_BY_OID:
+    case T_INDEX_CARDINALITY:
+    case T_ESTIMATED_TABLE_ROWS:
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+    case T_ESTIMATED_DATA_LENGTH:
+    case T_ESTIMATED_DATA_FREE:
+      return true;
+    default:
+      return false;
+    }
 }
 
 /* whether an arithmetic node over constant operands keeps its value for the rest of the execution by its operator

@@ -815,6 +815,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
   /* the node and the domains it computes in (fetch_arith_node_domains); the operand fetch rules read the node's
    * domain (T_ADD's oracle_style_empty_string) */
+  assert (!regu_opcode_may_wait (arithptr->opcode) || !pgbuf_holds_heap_or_btree_page (thread_p));
+
   FETCH_ARITH_ARGS args;
   args.regu_var = regu_var;
   args.arithptr = arithptr;
@@ -1847,6 +1849,8 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	    tsc_getticks (&start_tick);
 	  }
 
+	/* the stored routine's SQL runs on another thread: this one holds no heap or B-tree page (CBRD-28426) */
+	assert (!pgbuf_holds_heap_or_btree_page (thread_p));
 	cubpl::executor executor (*regu_var->value.sp_ptr->sig);
 	if (er_errid () != NO_ERROR)
 	  {

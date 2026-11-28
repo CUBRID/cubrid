@@ -601,10 +601,33 @@ retry:
 	return err;
       }
 
+    if (leaf_unchanged)
+      {
+	/* The left leaf refused the link of a leaf that has not changed since it was handed out. Either link changes
+	 * only together with this leaf's previous link, under its WRITE latch, which would have changed the leaf: the
+	 * link was written wrong (a split or merge that gave up on this leaf's latch, CBRD-28426). Walking on from
+	 * here reads the same link again, for ever. */
+	BTID_INT *btid_int = m_ranges->get_btid_int ();
+	char *index_name = nullptr;
+
+	pgbuf_unfix (thread_p, leaf);
+	if (heap_get_indexinfo_of_btid (thread_p, &btid_int->topclass_oid, btid_int->sys_btid, NULL, NULL, NULL, NULL,
+					&index_name, NULL) != NO_ERROR)
+	  {
+	    er_clear ();
+	  }
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_CORRUPT_PREV_LINK, 3, index_name != nullptr ? index_name : "*",
+		leaf_vpid.volid, leaf_vpid.pageid);
+	if (index_name != nullptr)
+	  {
+	    free_and_init (index_name);
+	  }
+	return ER_BTREE_CORRUPT_PREV_LINK;
+      }
+
     int key_cnt = btree_node_number_of_keys (thread_p, leaf);
-    /* unchanged leaf was handed out whole; else slot_id = key slot if found, or slot of the next bigger key, so the
-     * next smaller key is at slot_id - 1 */
-    int start = leaf_unchanged ? 0 : (slot_id - 1);
+    /* slot_id = key slot if found, or slot of the next bigger key, so the next smaller key is at slot_id - 1 */
+    int start = slot_id - 1;
     if (start >= 1 && start <= key_cnt)
       {
 	out_page = leaf;

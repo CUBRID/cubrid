@@ -1619,6 +1619,8 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     {
       return rc;
     }
+  /* as fetch_peek_arith (), which this step replaces */
+  assert (!regu_opcode_may_wait (a.arithptr->opcode) || !pgbuf_holds_heap_or_btree_page (ctx->thread_p));
   expr_frames_add (ctx, step->level);
   rc = ((FETCH_ARITH_OP) step->fn) (ctx->thread_p, &a);
   expr_frames_add (ctx, -step->level);
@@ -3879,7 +3881,9 @@ expr_scan_pred_kid_or_leaves (const void *compiled, int kid, const val_descr * v
 typedef enum
 {
   EXPR_RUNS_SIDE_EFFECT,
-  EXPR_RUNS_QUERY
+  EXPR_RUNS_QUERY,
+  EXPR_RUNS_PENDING_QUERY,
+  EXPR_RUNS_CALL
 } EXPR_RUNS_WHAT;
 
 static bool expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what);
@@ -3905,17 +3909,7 @@ expr_regu_list_runs (const REGU_VARIABLE_LIST list, EXPR_RUNS_WHAT what)
 static bool
 expr_arith_reads_storage (OPERATOR_TYPE opcode)
 {
-  switch (opcode)
-    {
-    case T_INDEX_CARDINALITY:
-    case T_ESTIMATED_TABLE_ROWS:
-    case T_ESTIMATED_AVG_ROW_LENGTH:
-    case T_ESTIMATED_DATA_LENGTH:
-    case T_ESTIMATED_DATA_FREE:
-      return true;
-    default:
-      return false;
-    }
+  return regu_opcode_may_wait (opcode);
 }
 
 /* Does a row's evaluation of regu run, anywhere under its arithmetic, function and procedure-argument nodes:
@@ -3929,7 +3923,11 @@ expr_arith_reads_storage (OPERATOR_TYPE opcode)
  * Such a node may open a scan whose ordered fix lets go of the page the batch holds and fixes it again, while the
  * chunk's rows still point into it.  So may the operators that read the catalog or an index while the row is
  * evaluated (expr_arith_reads_storage ()): develop turns the block's fixed scan off for them (XASL_NO_FIXED_SCAN),
- * which a filter iterator, holding its page on its own, would not see. */
+ * which a filter iterator, holding its page on its own, would not see.
+ * EXPR_RUNS_PENDING_QUERY -- EXPR_RUNS_QUERY, except that a linked subquery that ran already (XASL_SUCCESS) is
+ * only read: the one the leader ran before a parallel scan, in the clone of a worker that was given its result.
+ * EXPR_RUNS_CALL -- EXPR_RUNS_QUERY without the linked subqueries and lists: a stored procedure call and those
+ * operators, what the row's own evaluation calls. */
 static bool
 expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what)
 {
@@ -3937,7 +3935,8 @@ expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what)
     {
       return false;
     }
-  if (what == EXPR_RUNS_QUERY && regu->xasl != NULL)
+  if (regu->xasl != NULL
+      && (what == EXPR_RUNS_QUERY || (what == EXPR_RUNS_PENDING_QUERY && regu->xasl->status != XASL_SUCCESS)))
     {
       return true;
     }
@@ -3946,7 +3945,7 @@ expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what)
     case TYPE_SP:
       return true;
     case TYPE_LIST_ID:
-      return what == EXPR_RUNS_QUERY;
+      return what == EXPR_RUNS_QUERY || (what == EXPR_RUNS_PENDING_QUERY && regu->xasl == NULL);
     case TYPE_INARITH:
     case TYPE_OUTARITH:
       {
@@ -3957,14 +3956,16 @@ expr_regu_runs (const REGU_VARIABLE * regu, EXPR_RUNS_WHAT what)
 	    return false;
 	  }
 	return (what == EXPR_RUNS_SIDE_EFFECT && expr_arith_side_effect (arith->opcode))
-	  || (what == EXPR_RUNS_QUERY && expr_arith_reads_storage (arith->opcode))
+	  || (what != EXPR_RUNS_SIDE_EFFECT && expr_arith_reads_storage (arith->opcode))
 	  || expr_regu_runs (arith->leftptr, what) || expr_regu_runs (arith->rightptr, what)
 	  || expr_regu_runs (arith->thirdptr, what)
 	  /* T_CASE, T_DECODE, T_IF, T_PREDICATE evaluate arith->pred through eval_pred () (fetch_op_case ()) */
 	  || expr_pred_runs (arith->pred, what);
       }
     case TYPE_FUNC:
-      return regu->value.funcp != NULL && expr_regu_list_runs (regu->value.funcp->operand, what);
+      return regu->value.funcp != NULL
+	&& ((what != EXPR_RUNS_SIDE_EFFECT && regu->value.funcp->ftype == F_CLASS_OF)
+	    || expr_regu_list_runs (regu->value.funcp->operand, what));
     case TYPE_REGUVAL_LIST:
       {
 	const REGU_VALUE_ITEM *item;
@@ -4070,6 +4071,143 @@ expr_scan_pred_node_runs (const EXPR_PRED * pred, EXPR_RUNS_WHAT what)
       /* a leaf over compiled cells only (not a scan filter's shape): its operands are not reachable from here */
       return true;
     }
+}
+
+/* the same question of what a block evaluates for each joined row, with the last scan of its join on that row:
+ * inst_num (), its output list and its aggregates' operands, and what group by skip evaluates between two rows. For
+ * a CONNECT BY node: START WITH and its output list, which the block it reads evaluates for each of its rows */
+static bool
+expr_xasl_node_output_runs (const XASL_NODE * xasl, EXPR_RUNS_WHAT what)
+{
+  const AGGREGATE_TYPE *agg = NULL;
+
+  if (expr_pred_runs (xasl->instnum_pred, what)
+      || (xasl->outptr_list != NULL && expr_regu_list_runs (xasl->outptr_list->valptrp, what)))
+    {
+      return true;
+    }
+  if (xasl->type == CONNECTBY_PROC && expr_pred_runs (xasl->proc.connect_by.start_with_pred, what))
+    {
+      return true;
+    }
+  if (xasl->type == BUILDLIST_PROC)
+    {
+      agg = xasl->proc.buildlist.g_agg_list;
+      if (expr_regu_list_runs (xasl->proc.buildlist.g_hk_scan_regu_list, what)
+	  || expr_regu_list_runs (xasl->proc.buildlist.g_scan_regu_list, what)
+	  || expr_regu_list_runs (xasl->proc.buildlist.a_scan_regu_list, what))
+	{
+	  return true;
+	}
+      /* group by skip ends a group between two rows of the scan: what it evaluates then, a scan joined to the block
+       * still holding its page */
+      if (xasl->spec_list != NULL && xasl->spec_list->indexptr != NULL && xasl->spec_list->indexptr->groupby_skip
+	  && (expr_pred_runs (xasl->proc.buildlist.g_having_pred, what)
+	      || expr_pred_runs (xasl->proc.buildlist.g_grbynum_pred, what)
+	      || (xasl->proc.buildlist.g_outptr_list != NULL
+		  && expr_regu_list_runs (xasl->proc.buildlist.g_outptr_list->valptrp, what))))
+	{
+	  return true;
+	}
+    }
+  else if (xasl->type == BUILDVALUE_PROC)
+    {
+      agg = xasl->proc.buildvalue.agg_list;
+    }
+  for (; agg != NULL; agg = agg->next)
+    {
+      if (expr_regu_list_runs (agg->operands, what)
+	  || ((agg->function == PT_PERCENTILE_CONT || agg->function == PT_PERCENTILE_DISC)
+	      && expr_regu_runs (agg->info.percentile.percentile_reguvar, what)))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* the same question of everything an XASL node evaluates for a row while its scan may hold a page: the filters and
+ * key values of its specs, its join and block predicates, and what it puts out (expr_xasl_node_output_runs ()). The
+ * subqueries the node owns (aptr, dptr), its fetches and the scans joined to it are not expressions: the caller
+ * reads those lists */
+static bool
+expr_xasl_node_runs (const XASL_NODE * xasl, EXPR_RUNS_WHAT what)
+{
+  const ACCESS_SPEC_TYPE *spec;
+  int i, pass;
+
+  if (expr_pred_runs (xasl->during_join_pred, what) || expr_pred_runs (xasl->after_join_pred, what)
+      || expr_pred_runs (xasl->if_pred, what))
+    {
+      return true;
+    }
+  for (pass = 0; pass < 2; pass++)
+    {
+      for (spec = (pass == 0) ? xasl->spec_list : xasl->merge_spec; spec != NULL; spec = spec->next)
+	{
+	  if (expr_pred_runs (spec->where_key, what) || expr_pred_runs (spec->where_pred, what)
+	      || expr_pred_runs (spec->where_range, what))
+	    {
+	      return true;
+	    }
+	  /* what the scan's open evaluates for a row of the node before it: a set or a JSON document to scan */
+	  if ((spec->type == TARGET_SET && expr_regu_runs (spec->s.set_node.set_ptr, what))
+	      || (spec->type == TARGET_JSON_TABLE && expr_regu_runs (spec->s.json_table_node.m_json_reguvar, what)))
+	    {
+	      return true;
+	    }
+	  if (spec->indexptr == NULL)
+	    {
+	      continue;
+	    }
+	  if (expr_regu_runs (spec->indexptr->key_info.key_limit_l, what)
+	      || expr_regu_runs (spec->indexptr->key_info.key_limit_u, what))
+	    {
+	      return true;
+	    }
+	  for (i = 0; i < spec->indexptr->key_info.key_cnt; i++)
+	    {
+	      if (expr_regu_runs (spec->indexptr->key_info.key_ranges[i].key1, what)
+		  || expr_regu_runs (spec->indexptr->key_info.key_ranges[i].key2, what))
+		{
+		  return true;
+		}
+	    }
+	}
+    }
+  return expr_xasl_node_output_runs (xasl, what);
+}
+
+/* a row of the node may start another statement or wait for what the node does not hold: its scan keeps no page
+ * between rows (xasl_node.runs_query_per_row, set when the node is unpacked) */
+bool
+expr_xasl_node_runs_query (const XASL_NODE * xasl)
+{
+  return expr_xasl_node_runs (xasl, EXPR_RUNS_QUERY);
+}
+
+/* the same of what the block puts out for each joined row only: a scan after the block's own keeps its page through
+ * that, but not through the filters, subqueries and fetches of the nodes before it */
+bool
+expr_xasl_node_output_runs_query (const XASL_NODE * xasl)
+{
+  return expr_xasl_node_output_runs (xasl, EXPR_RUNS_QUERY);
+}
+
+/* expr_xasl_node_runs_query () in the clone of a parallel scan's worker: a subquery the leader ran before the scan
+ * is only read there */
+bool
+expr_xasl_node_runs_pending_query (const XASL_NODE * xasl)
+{
+  return expr_xasl_node_runs (xasl, EXPR_RUNS_PENDING_QUERY);
+}
+
+/* a row of the node calls a stored procedure or an operator that may wait: a parallel index scan's worker, which
+ * keeps its leaf while it evaluates the leaf's rows, does not take the node */
+bool
+expr_xasl_node_calls (const XASL_NODE * xasl)
+{
+  return expr_xasl_node_runs (xasl, EXPR_RUNS_CALL);
 }
 
 bool

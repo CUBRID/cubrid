@@ -22,6 +22,8 @@
 
 #include "px_scan.hpp"
 
+#include "expr_compile.h"
+
 #include "error_code.h"
 #include "object_primitive.h"
 #include "perf_monitor.h"
@@ -1347,6 +1349,13 @@ extern "C"
       }
 
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN))
+      {
+	return NO_ERROR;
+      }
+
+    /* A worker keeps its leaf while it evaluates the leaf's rows: it calls no stored procedure, whose SQL runs on
+     * another thread of the transaction, and no operator that may wait (CBRD-28426). */
+    if (expr_xasl_node_calls (xasl))
       {
 	return NO_ERROR;
       }

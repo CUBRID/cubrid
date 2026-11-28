@@ -8482,6 +8482,13 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       assert (sp_scan == S_SUCCESS || sp_scan == S_SUCCESS_CHN_UPTODATE);
     }
 
+  if (!scan_id->fixed && !isidp->bitmap_keep_page && isidp->scan_cache.page_watcher.pgptr != NULL)
+    {
+      /* the heap step of a bitmap heap scan got its page back from the lookup. The row is a copy, and a block that
+       * keeps no page evaluates the filter below, which may wait, with no page held */
+      pgbuf_ordered_unfix (thread_p, &isidp->scan_cache.page_watcher);
+    }
+
   /* evaluate the predicates to see if the object qualifies */
   ev_res = eval_data_filter (thread_p, isidp->curr_oidp, &recdes, &isidp->scan_cache, data_filter);
 

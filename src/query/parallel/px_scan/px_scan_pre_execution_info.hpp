@@ -66,11 +66,14 @@ namespace parallel_scan
       /* precomputed scalar values, keyed by subquery xasl header.id; never operator[] (default-inserts NULL on miss) -- find/at/emplace only. */
       const DB_VALUE *find_precomp_val (XASL_NODE_ID subquery_id) const;
       void capture_precomp_vals (xasl_node *head);
+      /* the leader's list of an uncorrelated table subquery it ran before the scan; workers only read it */
+      QFILE_LIST_ID *find_precomp_list (XASL_NODE_ID subquery_id) const;
 
     private:
       std::mutex m_mutex;
       std::map <XASL_NODE_ID, scan_info> m_scan_infos;
       std::map <XASL_NODE_ID, DB_VALUE> m_precomp_vals;
+      std::map <XASL_NODE_ID, QFILE_LIST_ID *> m_precomp_lists;
   };
 }
 

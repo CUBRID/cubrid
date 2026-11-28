@@ -204,7 +204,8 @@ namespace parallel_scan
 	SCAN_CODE scan = m_slot_walker.process_bitmap_row (thread_p, &oid);
 	if (scan == S_END)
 	  {
-	    /* not visible or filtered out */
+	    /* not visible or filtered out; a scan that keeps no page let it go before the filter */
+	    m_bm_unfixed = !m_slot_walker.keeps_bitmap_page ();
 	    continue;
 	  }
 	if (scan == S_ERROR)

@@ -24,6 +24,7 @@
 #include "error_code.h"
 #include "error_manager.h"
 #include "expr_batch.h"
+#include "expr_compile.h"
 #include "heap_file.h"
 #include "storage_common.h"
 #include "xasl.h"
@@ -138,6 +139,21 @@ namespace parallel_scan
 	    REGU_VARIABLE *regu = clone_subq->precomp_owner_regu;
 	    if (regu == nullptr)
 	      {
+		continue;
+	      }
+	    if (!clone_subq->is_single_tuple)
+	      {
+		/* an uncorrelated table subquery (ALL, SOME, IN): the leader ran it before the scan and the worker only
+		 * reads the leader's list; finalize () points the operand back at the clone's own list (CBRD-28426) */
+		QFILE_LIST_ID *leader_list = m_pre_execution_info->find_precomp_list (clone_subq->header.id);
+		if (leader_list == nullptr || regu->type != TYPE_LIST_ID || regu->xasl != clone_subq)
+		  {
+		    assert (false);
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+		    return ER_QPROC_INVALID_XASLNODE;
+		  }
+		regu->value.srlist_id->list_id = leader_list;
+		clone_subq->status = XASL_SUCCESS;
 		continue;
 	      }
 	    const DB_VALUE *map_val = m_pre_execution_info->find_precomp_val (clone_subq->header.id);
@@ -317,22 +333,28 @@ namespace parallel_scan
 		else if (specp->type == TARGET_CLASS)
 		  {
 		    bool inner_cached_scan = false;
-		    bool chain_has_dptr = false;
-		    for (xasl_node *cn = m_xasl; cn != nullptr && !chain_has_dptr; cn = cn->scan_ptr)
+		    /* The innermost scan of the chain keeps its page, an index lookup too, unless a node of the chain
+		     * starts another statement or waits for each row. That is what qexec_block_waits_per_row () tells,
+		     * except that a subquery the leader ran before the scan is only read here: its value or list was
+		     * given to the clone above */
+		    bool chain_waits = false;
+		    for (xasl_node *cn = m_xasl; cn != nullptr && !chain_waits; cn = cn->scan_ptr)
 		      {
-			chain_has_dptr = (cn->dptr_list != nullptr);
+			chain_waits = (XASL_IS_FLAGED (cn, XASL_NO_FIXED_SCAN) || cn->dptr_list != nullptr
+				       || cn->bptr_list != nullptr || cn->fptr_list != nullptr
+				       || expr_xasl_node_runs_pending_query (cn));
+			for (xasl_node *aptr = cn->aptr_list; aptr != nullptr && !chain_waits; aptr = aptr->next)
+			  {
+			    chain_waits = XASL_IS_FLAGED (aptr, XASL_LINK_TO_REGU_VARIABLE) && aptr->status != XASL_SUCCESS;
+			  }
 		      }
-		    if (xptr->scan_ptr == NULL)
+		    if (xptr->scan_ptr == NULL && !chain_waits)
 		      {
-			if (!chain_has_dptr)
-			  {
-			    fixed_scan = true;
-			  }
-			else if (!specp->s_id.grouped)
-			  {
-			    inner_cached_scan = true;
-			  }
+			fixed_scan = true;
 		      }
+		    /* every heap scan of the chain that keeps no page reads from its copy of the page, as the serial
+		     * block's scans do */
+		    inner_cached_scan = (!fixed_scan && !specp->s_id.grouped);
 
 		    /* a partitioned SEMI / ANTI inner, or a following join after one (CBRD-27493), is not advanced
 		     * partition by partition by the main thread's scan-block iteration
@@ -663,6 +685,20 @@ namespace parallel_scan
 	  {
 	    scan_end_scan (&thread_ref, m_scan_id);
 	    scan_close_scan (&thread_ref, m_scan_id);
+	  }
+      }
+
+    /* the table subquery operands initialize () pointed at the leader's lists: back to the clone's own list before
+     * the clone is cleared and retired to the pool, where a leader may pick it up */
+    for (xptr = m_xasl; xptr != NULL; xptr = xptr->scan_ptr)
+      {
+	for (xasl_node *clone_subq = xptr->aptr_list; clone_subq != nullptr; clone_subq = clone_subq->next)
+	  {
+	    REGU_VARIABLE *regu = clone_subq->precomp_owner_regu;
+	    if (regu != nullptr && !clone_subq->is_single_tuple && regu->type == TYPE_LIST_ID)
+	      {
+		regu->value.srlist_id->list_id = clone_subq->list_id;
+	      }
 	  }
       }
 

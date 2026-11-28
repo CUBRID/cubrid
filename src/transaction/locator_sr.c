@@ -15989,9 +15989,10 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 
   if (recdes == NULL && mvcc_reev_data != NULL)
     {
-      /* peek if only for reevaluation */
+      /* only for reevaluation: a copy when there is a cache to copy into, so that the page is let go before the
+       * conditions and assignments are evaluated again */
       recdes = &recdes_local;
-      ispeeking = PEEK;
+      ispeeking = (scan_cache != NULL) ? COPY : PEEK;
       old_chn = NULL_CHN;
     }
 
@@ -16063,6 +16064,13 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	       * which was already evaluated. */
 	      goto exit;
 	    }
+	}
+      if (ispeeking == COPY && scan == S_SUCCESS)
+	{
+	  /* The last version is another transaction's and the row was copied: the reevaluation may run a subquery or
+	   * a stored procedure (a condition, the right side of an assignment), which starts with no heap page held
+	   * (CBRD-28426). A fixed scan's cache keeps its page; its block evaluates nothing that waits. */
+	  heap_clean_get_context (thread_p, &context);
 	}
       ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
       if (ev_res != V_TRUE)
@@ -16578,10 +16586,12 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
 	    }
 	  scan_cache_inited = true;
 	  local_scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+	  /* the row is copied: its page is let go at once, not kept in the cache while the filters below are evaluated */
+	  local_scan_cache.cache_last_fix_page = false;
 
 	  /* record is consumed only through the attribute layer for MVCC reevaluation (CBRD-26847) */
 	  scan_code =
-	    heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, PEEK, NULL_CHN,
+	    heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, COPY, NULL_CHN,
 				      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  if (scan_code != S_SUCCESS)
 	    {

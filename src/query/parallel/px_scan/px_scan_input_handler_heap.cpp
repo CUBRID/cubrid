@@ -77,6 +77,12 @@ namespace parallel_scan
 	    m_tl_ftab = m_tl_ftab_set->get_next();
 	    if (VSID_IS_NULL (&m_tl_ftab.vsid))
 	      {
+		/* no page is held past the last one, as scan_heap_next_listed_page () leaves it: a last page that gave
+		 * no row is still fixed here, and the worker may join the rows of a batched join after this */
+		if (m_tl_scan_cache->page_watcher.pgptr != NULL)
+		  {
+		    pgbuf_ordered_unfix (thread_p, &m_tl_scan_cache->page_watcher);
+		  }
 		return S_END;
 	      }
 	    m_tl_pgoffset = 0;
