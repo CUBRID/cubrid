@@ -1522,7 +1522,8 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
 
   if (g_trace_log_level == 1)
     {
-      CUBRID_LOG_WRITE_TRACELOG ("[OUTPUT] timestamp (%lld), lsa (%lld)\n", *timestamp, g_next_lsa);
+      CUBRID_LOG_WRITE_TRACELOG ("[OUTPUT] timestamp (%lld), lsa (%lld|%d)\n", (long long) *timestamp,
+				 LSA_AS_ARGS (&g_next_lsa));
     }
 
   return CUBRID_LOG_SUCCESS;

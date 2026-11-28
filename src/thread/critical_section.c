@@ -649,11 +649,12 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (tv_diff));
 	}
       er_log_debug (ARG_FILE_LINE,
-		    "csect_enter_critical_section_as_reader: %6d.%06d"
-		    " %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d total_elapsed %d.06d\n", tv_diff.tv_sec,
-		    tv_diff.tv_usec, csect_name (csect), csect->stats->nenter, csect->stats->nwait,
-		    csect->stats->max_elapsed.tv_sec, csect->stats->max_elapsed.tv_usec,
-		    csect->stats->total_elapsed.tv_sec, csect->stats->total_elapsed.tv_usec);
+		    "csect_enter_critical_section_as_reader: %6lld.%06ld"
+		    " %s total_enter %u ntotal_elapsed %u max_elapsed %lld.%06ld total_elapsed %lld.%06ld\n",
+		    (long long) tv_diff.tv_sec, (long) tv_diff.tv_usec, csect_name (csect), csect->stats->nenter,
+		    csect->stats->nwait, (long long) csect->stats->max_elapsed.tv_sec,
+		    (long) csect->stats->max_elapsed.tv_usec, (long long) csect->stats->total_elapsed.tv_sec,
+		    (long) csect->stats->total_elapsed.tv_usec);
     }
 
   thread_p->get_csect_tracker ().on_enter_as_writer (csect->cs_index);
@@ -868,11 +869,11 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (tv_diff));
 	}
       er_log_debug (ARG_FILE_LINE,
-		    "csect_enter_critical_section: %6d.%06d %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d"
-		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, csect_name (csect),
-		    csect->stats->nenter, csect->stats->nwait, csect->stats->max_elapsed.tv_sec,
-		    csect->stats->max_elapsed.tv_usec, csect->stats->total_elapsed.tv_sec,
-		    csect->stats->total_elapsed.tv_usec);
+		    "csect_enter_critical_section: %6lld.%06ld %s total_enter %u ntotal_elapsed %u"
+		    " max_elapsed %lld.%06ld total_elapsed %lld.%06ld\n", (long long) tv_diff.tv_sec,
+		    (long) tv_diff.tv_usec, csect_name (csect), csect->stats->nenter, csect->stats->nwait,
+		    (long long) csect->stats->max_elapsed.tv_sec, (long) csect->stats->max_elapsed.tv_usec,
+		    (long long) csect->stats->total_elapsed.tv_sec, (long) csect->stats->total_elapsed.tv_usec);
     }
 
   thread_p->get_csect_tracker ().on_enter_as_reader (csect->cs_index);
@@ -1128,11 +1129,11 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (tv_diff));
 	}
       er_log_debug (ARG_FILE_LINE,
-		    "csect_demote_critical_section: %6d.%06d %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d"
-		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, csect_name (csect),
-		    csect->stats->nenter, csect->stats->nwait, csect->stats->max_elapsed.tv_sec,
-		    csect->stats->max_elapsed.tv_usec, csect->stats->total_elapsed.tv_sec,
-		    csect->stats->total_elapsed.tv_usec);
+		    "csect_demote_critical_section: %6lld.%06ld %s total_enter %u ntotal_elapsed %u"
+		    " max_elapsed %lld.%06ld total_elapsed %lld.%06ld\n", (long long) tv_diff.tv_sec,
+		    (long) tv_diff.tv_usec, csect_name (csect), csect->stats->nenter, csect->stats->nwait,
+		    (long long) csect->stats->max_elapsed.tv_sec, (long) csect->stats->max_elapsed.tv_usec,
+		    (long long) csect->stats->total_elapsed.tv_sec, (long) csect->stats->total_elapsed.tv_usec);
     }
   thread_p->get_csect_tracker ().on_demote (csect->cs_index);
   return NO_ERROR;
@@ -1336,11 +1337,11 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (tv_diff));
 	}
       er_log_debug (ARG_FILE_LINE,
-		    "csect_promote_critical_section: %6d.%06d %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d"
-		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, csect_name (csect),
-		    csect->stats->nenter, csect->stats->nwait, csect->stats->max_elapsed.tv_sec,
-		    csect->stats->max_elapsed.tv_usec, csect->stats->total_elapsed.tv_sec,
-		    csect->stats->total_elapsed.tv_usec);
+		    "csect_promote_critical_section: %6lld.%06ld %s total_enter %u ntotal_elapsed %u"
+		    " max_elapsed %lld.%06ld total_elapsed %lld.%06ld\n", (long long) tv_diff.tv_sec,
+		    (long) tv_diff.tv_usec, csect_name (csect), csect->stats->nenter, csect->stats->nwait,
+		    (long long) csect->stats->max_elapsed.tv_sec, (long) csect->stats->max_elapsed.tv_usec,
+		    (long long) csect->stats->total_elapsed.tv_sec, (long) csect->stats->total_elapsed.tv_usec);
     }
 
   thread_p->get_csect_tracker ().on_promote (csect->cs_index);

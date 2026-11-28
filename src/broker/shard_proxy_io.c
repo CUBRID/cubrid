@@ -3507,7 +3507,7 @@ proxy_cas_io_free_by_ctx (int shard_id, int cas_id, int ctx_cid, int unsigned ct
 
   if (cas_io_p->is_in_tran == false || cas_io_p->ctx_cid != ctx_cid || cas_io_p->ctx_uid != ctx_uid)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. " "(context id:%d, context uid:%d). CAS(%S).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. " "(context id:%d, context uid:%d). CAS(%s).",
 		 ctx_cid, ctx_uid, proxy_str_cas_io (cas_io_p));
 
       assert (false);
@@ -3597,7 +3597,7 @@ proxy_cas_find_io_by_ctx (int shard_id, int cas_id, int ctx_cid, unsigned int ct
 
   if (cas_io_p->is_in_tran == false || cas_io_p->ctx_cid != ctx_cid || cas_io_p->ctx_uid != ctx_uid)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. " "(context id:%d, context uid:%d). CAS(%S).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. " "(context id:%d, context uid:%d). CAS(%s).",
 		 ctx_cid, ctx_uid, proxy_str_cas_io (cas_io_p));
       return NULL;
     }
@@ -3736,7 +3736,7 @@ proxy_cas_release_by_ctx (int shard_id, int cas_id, int ctx_cid, unsigned int ct
 
   if (cas_io_p->is_in_tran == false || cas_io_p->ctx_cid != ctx_cid || cas_io_p->ctx_uid != ctx_uid)
     {
-      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. " "(context id:%d, context uid:%d). CAS(%S).",
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unable to find CAS entry. " "(context id:%d, context uid:%d). CAS(%s).",
 		 ctx_cid, ctx_uid, proxy_str_cas_io (cas_io_p));
 
       assert (false);

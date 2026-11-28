@@ -14144,7 +14144,8 @@ cdc_make_dcl_loginfo (time_t at_time, int trid, char *user, int log_type, CDC_LO
   dcl_entry->log_info = (char *) malloc (dcl_entry->length);
   if (dcl_entry->log_info == NULL)
     {
-      cdc_log ("cdc_make_dcl_loginfo : failed to allocate memory for log info in dcl entry", trid, user, dcl_type);
+      cdc_log ("cdc_make_dcl_loginfo : failed to allocate memory for log info in dcl entry (trid:%d, "
+	       "transaction user:%s, dcl type:%d)", trid, user, dcl_type);
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, dcl_entry->length);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;

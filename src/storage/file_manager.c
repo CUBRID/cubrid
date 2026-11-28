@@ -6261,7 +6261,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
   /* update file header */
   file_header_update_mark_deleted (thread_p, page_fhead, 1);
 
-  file_log ("file_dealloc", "file %d|%d marked vpid %|%d as deleted", VFID_AS_ARGS (vfid), VPID_AS_ARGS (vpid));
+  file_log ("file_dealloc", "file %d|%d marked vpid %d|%d as deleted", VFID_AS_ARGS (vfid), VPID_AS_ARGS (vpid));
 
   /* done */
   assert (error_code != NO_ERROR);

@@ -5260,7 +5260,8 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
 	{
 	  assert_release (false);
 	  vacuum_er_log_error (VACUUM_ER_LOG_VACUUM_DATA,
-			       "Failed to update file descriptor!!!", save_first_vpid.volid, save_first_vpid.pageid);
+			       "Failed to update file descriptor!!! first vpid %d|%d", save_first_vpid.volid,
+			       save_first_vpid.pageid);
 	  log_sysop_abort (thread_p);
 
 	  return;
