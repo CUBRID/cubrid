@@ -3071,9 +3071,13 @@ struct pt_query_info
 				 * do_replan_statement_with_bind_peek ()) restore the level to 0
 				 * first, so the subquery keeps its XASL_ZERO_CORR_LEVEL
 				 * (uncorrelated, parallel-executable) marking. */
-    unsigned stays_query:1;	/* a set operation of a statement typed again with its bound values
-				 * (db_execute_and_keep_statement_local ()): it folds into an empty operand,
-				 * never into a value (pt_check_union_is_foldable ()) */
+    unsigned stays_query:1;	/* a query that is not folded into a value: a set operation of a statement
+				 * typed again with its bound values (db_execute_and_keep_statement_local ())
+				 * or an operand of a set operation (pt_mark_union_leaf_nodes (),
+				 * pt_eval_type_pre ()). An empty SELECT stays a query
+				 * (pt_eval_type ()), and a set operation whose operands are all empty
+				 * folds into an empty operand (pt_check_union_is_foldable ()), so a set
+				 * operation above still reads the domains of its columns (pt_fold_union ()) */
     unsigned folded_distinct:1;	/* a SELECT DISTINCT from a derived table of the operand a set operation
 				 * without ALL folded to (pt_fold_union_as_derived ()): where only the set of
 				 * its rows counts, the operand takes its place (pt_fold_union_unwrap ()) */

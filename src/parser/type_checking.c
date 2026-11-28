@@ -7804,16 +7804,25 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      /* propagate to children */
+      /* propagate to children. An operand that returns no row is folded by the set operation, which still reads the
+       * domains of its columns then (pt_fold_union ()), not into a value by itself (pt_eval_type ()) */
       arg1 = node->info.query.q.union_.arg1;
       arg2 = node->info.query.q.union_.arg2;
       if (arg1 != NULL)
 	{
 	  arg1->info.query.flag.has_outer_spec = node->info.query.flag.has_outer_spec;
+	  if (PT_IS_QUERY_NODE_TYPE (arg1->node_type))
+	    {
+	      arg1->info.query.flag.stays_query = 1;
+	    }
 	}
       if (arg2 != NULL)
 	{
 	  arg2->info.query.flag.has_outer_spec = node->info.query.flag.has_outer_spec;
+	  if (PT_IS_QUERY_NODE_TYPE (arg2->node_type))
+	    {
+	      arg2->info.query.flag.stays_query = 1;
+	    }
 	}
 
       /* rewrite limit clause as numbering expression and add it to the corresponding predicate */
@@ -8553,10 +8562,13 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 
       is_subquery = node->info.query.is_subquery;
 
+      /* An operand of a set operation stays a query (stays_query): the set operation folds it (pt_fold_union ()),
+       * and the collations in which the set operation compares the columns of the operand it folds to are read
+       * from the select list of the empty operand, which a value no longer has (pt_fold_union_collation ()). */
       if (sc_info->donot_fold == false
 	  && (is_subquery == PT_IS_SUBQUERY || is_subquery == PT_IS_UNION_SUBQUERY
 	      || is_subquery == PT_IS_CTE_NON_REC_SUBQUERY || is_subquery == PT_IS_CTE_REC_SUBQUERY)
-	  && pt_false_where (parser, node))
+	  && !node->info.query.flag.stays_query && pt_false_where (parser, node))
 	{
 	  node = pt_to_false_subquery (parser, node);
 	}

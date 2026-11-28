@@ -18921,12 +18921,17 @@ pt_apply_union_select_list_collation (PARSER_CONTEXT * parser, PT_NODE * query, 
 /*
  * pt_mark_union_leaf_nodes () - walking function for setting for each UNION
  *				 DIFFERENCE/INTERSECTION query if it is a root
- *				 of a leaf node.
+ *				 of a leaf node, and for each of its operands
+ *				 that it is one.
  *   return:
  *   parser(in):
  *   node(in):
  *   arg(in):
  *   continue_walk(in/out):
+ *
+ * Note: the semantic check types an operand before it reaches the set operation (pt_semantic_check_local ()): an
+ *	 operand is marked to stay a query here, ahead of the check, so that one that returns no row is left to the
+ *	 set operation to fold (pt_eval_type ()).
  */
 static PT_NODE *
 pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -18940,11 +18945,19 @@ pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 	{
 	  arg->info.query.q.union_.is_leaf_node = 1;
 	}
+      if (arg != NULL && PT_IS_QUERY_NODE_TYPE (arg->node_type))
+	{
+	  arg->info.query.flag.stays_query = 1;
+	}
 
       arg = node->info.query.q.union_.arg2;
       if (PT_IS_UNION (arg) || PT_IS_INTERSECTION (arg) || PT_IS_DIFFERENCE (arg))
 	{
 	  arg->info.query.q.union_.is_leaf_node = 1;
+	}
+      if (arg != NULL && PT_IS_QUERY_NODE_TYPE (arg->node_type))
+	{
+	  arg->info.query.flag.stays_query = 1;
 	}
     }
 
@@ -19282,7 +19295,9 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
       /* A set operation of a statement typed again with its bound values is not folded into a value, which would
        * leave nothing to execute (db_execute_and_keep_statement_local ()). It folds into an empty operand instead,
        * which returns no row; a SELECT with a false WHERE on top is not even sent to the server
-       * (do_select_internal ()). An operand already folded into a value cannot take its place. */
+       * (do_select_internal ()). Neither is one that is itself an operand of a set operation, which reads the
+       * domains of its columns when it folds (pt_fold_union_collation ()). An operand already folded into a value
+       * cannot take its place. */
       if (arg1_is_null && PT_IS_QUERY_NODE_TYPE (arg1->node_type))
 	{
 	  fold_as = STATEMENT_SET_FOLD_AS_ARG1;
@@ -19587,6 +19602,14 @@ pt_fold_union_collation (PARSER_CONTEXT * parser, PT_NODE * active, PT_NODE * em
       return true;
     }
 
+  if (PT_IS_VALUE_QUERY (active))
+    {
+      /* pt_apply_union_select_list_collation () puts the cast of the first column of a VALUES query in place of its
+       * row list and the type checking crashes on it (CBRD-28219): a VALUES node folds as before until then */
+      free_and_init (*cinfo);
+      return false;
+    }
+
   *cinfo_cnt = cnt;
   return true;
 }
@@ -19783,7 +19806,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       unsigned int union_rewrite_limit;
       SEMAN_COMPATIBLE_INFO *cinfo = NULL;
       int cinfo_cnt = 0;
-      bool keep_distinct, as_derived;
+      bool coll_told, keep_distinct, as_derived;
 
       if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
 	{
@@ -19803,6 +19826,11 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
        * and taken later, it carries the domains of the other operand (pt_get_select_list ()). */
       empty_list = (PT_IS_QUERY_NODE_TYPE (empty->node_type) ? pt_get_select_list (parser, empty) : NULL);
 
+      /* The columns of the node take the collations of the set operation, with or without ALL: a comparison on the
+       * result of the set operation is made in them (pt_semantic_check_local ()). */
+      coll_told = (PT_IS_QUERY_NODE_TYPE (active->node_type)
+		   && pt_fold_union_collation (parser, active, empty_list, &cinfo, &cinfo_cnt));
+
       /* A set operation without ALL returns each row once, and the empty operand took none away: the node takes over
        * that duplicate elimination (R UNION {} = R EXCEPT {} = DISTINCT R) as a SELECT DISTINCT from a derived table
        * of the active node, which leaves the block of the active node, with its LIMIT, numbering and grouping, as it
@@ -19814,11 +19842,10 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 	{
 	  select_list = pt_get_select_list (parser, active);
 	}
-      keep_distinct = (union_node->info.query.all_distinct == PT_DISTINCT && PT_IS_QUERY_NODE_TYPE (active->node_type)
+      keep_distinct = (union_node->info.query.all_distinct == PT_DISTINCT && coll_told
 		       && active->info.query.all_distinct != PT_DISTINCT && !pt_false_where (parser, active)
 		       && !pt_folds_without_distinct (active)
-		       && pt_orderby_matches_select_list (parser, union_node->info.query.order_by, select_list, false)
-		       && pt_fold_union_collation (parser, active, empty_list, &cinfo, &cinfo_cnt));
+		       && pt_orderby_matches_select_list (parser, union_node->info.query.order_by, select_list, false));
       as_derived = (PT_IS_QUERY_NODE_TYPE (active->node_type)
 		    && (keep_distinct || pt_fold_union_needs_derived (union_node, active)));
 
