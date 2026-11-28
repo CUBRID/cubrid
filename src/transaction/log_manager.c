@@ -16068,8 +16068,17 @@ end:
   return error;
 }
 
+/*
+ * cdc_check_lsa_range () - check that lsa lies in [first lsa of the log volumes, nxio_lsa]
+ *
+ * return       : NO_ERROR if lsa is in the range, ER_CDC_INVALID_LOG_LSA otherwise
+ * lsa (in)     : start lsa requested by a CDC client
+ * at_end (out) : true if lsa equals nxio_lsa. nxio_lsa is the start of the first log record that is not
+ *                completely flushed yet, so it is a valid position to resume from although the record may not
+ *                be on disk.
+ */
 static int
-cdc_check_lsa_range (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
+cdc_check_lsa_range (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool * at_end)
 {
   LOG_PAGE *hdr_pgptr = NULL;
   LOG_PAGE *log_pgptr = NULL;
@@ -16089,9 +16098,24 @@ cdc_check_lsa_range (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
   LOG_LSA first_lsa = LSA_INITIALIZER;
   LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
 
+  *at_end = false;
+
+  /* A client that has consumed every log record resumes from nxio_lsa. Check it without LOG_CS, which a backup
+   * can hold for a long time while it copies the active log. */
+  if (LSA_EQ (lsa, &nxio_lsa))
+    {
+      cdc_log ("%s : input lsa (%lld|%d) is the end of the log", __func__, LSA_AS_ARGS (lsa));
+      *at_end = true;
+      return NO_ERROR;
+    }
+
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
   LOG_CS_ENTER_READ_MODE (thread_p);
+
+  /* nxio_lsa may have advanced while this thread waited for LOG_CS. Read it again under LOG_CS, which the log flush
+   * holds in write mode while it advances nxio_lsa. */
+  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 
   if (num_arvs == 0)
     {
@@ -16161,6 +16185,11 @@ cdc_check_lsa_range (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
     {
       return NO_ERROR;
     }
+  else if (LSA_EQ (lsa, &nxio_lsa))
+    {
+      *at_end = true;
+      return NO_ERROR;
+    }
   else
     {
       return ER_CDC_INVALID_LOG_LSA;
@@ -16183,6 +16212,7 @@ cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
   log_page_p->hdr.offset = NULL_OFFSET;
 
   int error = NO_ERROR;
+  bool at_end = false;
 
   if (LSA_ISNULL (lsa))
     {
@@ -16196,9 +16226,17 @@ cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
       return ER_CDC_INVALID_LOG_LSA;
     }
 
-  if (cdc_check_lsa_range (thread_p, lsa) != NO_ERROR)
+  if (cdc_check_lsa_range (thread_p, lsa, &at_end) != NO_ERROR)
     {
       return ER_CDC_INVALID_LOG_LSA;
+    }
+
+  if (at_end)
+    {
+      /* The record at nxio_lsa is not completely on disk yet, and neither may be its page. The producer waits until
+       * nxio_lsa passes it. */
+      cdc_log ("cdc_validate_lsa : LOG_LSA (%lld | %d) validation success at the end of the log", LSA_AS_ARGS (lsa));
+      return NO_ERROR;
     }
 
   cdc_log ("cdc_validate_lsa : fetch page from LOG_LSA (%lld | %d) to validate ", LSA_AS_ARGS (lsa));
