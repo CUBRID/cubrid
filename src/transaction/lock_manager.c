@@ -820,7 +820,8 @@ static LK_HAND_RESULT lock_wait_handed_row_back (THREAD_ENTRY * thread_p, LK_RES
 static LK_ENTRY *lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
 static void lock_free_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, LK_ENTRY * lock_entry);
 
-static void lock_victimize_first_thread_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper);
+static void lock_victimize_first_thread_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int core,
+						 bool & victimized);
 static void lock_check_timeout_expired_and_count_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
 								    size_t & suspend_count);
 static void lock_get_transaction_lock_waiting_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
@@ -10596,12 +10597,14 @@ lock_is_local_deadlock_detection_interval_up (void)
 //
 // thread_ref (in)  : current thread
 // stop_mapper (in) : output to stop mapper when a thread was victimized
+// core (in)        : request worker core the waiter must run on, or -1 for any waiter
+// victimized (out) : output true when a thread was victimized
 //
 static void
-lock_victimize_first_thread_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper)
+lock_victimize_first_thread_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int core, bool & victimized)
 {
 #if defined (SERVER_MODE)
-  if (thread_ref.lockwait == NULL)
+  if (thread_ref.lockwait == NULL || (core >= 0 && css_get_request_core (thread_ref) != core))
     {
       return;
     }
@@ -10609,6 +10612,7 @@ lock_victimize_first_thread_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapp
   if (lock_wakeup_deadlock_victim_timeout (tran_index))
     {
       stop_mapper = true;
+      victimized = true;
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LK_NOTENOUGH_ACTIVE_THREADS, 3,
 	      (int) css_get_num_request_workers (), logtb_get_number_assigned_tran_indices (), tran_index);
     }
@@ -10984,7 +10988,15 @@ final_:
 	  if (css_are_all_request_handlers_suspended ())
 	    {
 	      /* We must timeout at least one thread, so other clients can execute, otherwise, the server will hang. */
-	      thread_get_manager ()->map_entries (lock_victimize_first_thread_mapfunc);
+	      /* A queued request of a transaction may be the one that ends the waits: free a worker of its core first. */
+	      int core = css_get_queued_transaction_request_core ();
+	      bool victimized = false;
+
+	      thread_get_manager ()->map_entries (lock_victimize_first_thread_mapfunc, core, victimized);
+	      if (!victimized && core >= 0)
+		{
+		  thread_get_manager ()->map_entries (lock_victimize_first_thread_mapfunc, -1, victimized);
+		}
 	    }
 	  lk_Gl.no_victim_case_count = 0;
 	}
