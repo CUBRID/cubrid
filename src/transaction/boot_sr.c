@@ -2308,6 +2308,16 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
+  /* A restore lays out no records, and failing after logpb_restore would leave a half-restored database. The next
+   * ordinary restart checks the threshold. */
+  if (from_backup == false)
+    {
+      error_code = heap_oos_check_trigger_threshold ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
 
   /*
    * Now continue the normal restart process. At this point the data volumes
@@ -4988,6 +4998,11 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     {
       goto error;
     }
+  error_code = heap_oos_check_trigger_threshold ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   /* Create the active log and initialize the log and recovery manager */
   error_code = log_create (thread_p, boot_Db_full_name, log_path, log_prefix, log_npages);
@@ -5563,6 +5578,11 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
       goto error_exit;
     }
   error_code = heap_manager_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  error_code = heap_oos_check_trigger_threshold ();
   if (error_code != NO_ERROR)
     {
       goto error_exit;

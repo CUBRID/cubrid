@@ -41,6 +41,9 @@
 
 #include "test_oos_sql_common.hpp"
 #include "heap_oos.hpp"
+#include "log_impl.h"
+#include "object_representation.h"
+#include "work_space.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -50,6 +53,21 @@ namespace
   const char *const DIRECTIONAL_STORAGE_SETTINGS[] = { "PREFER_INLINE", "FORCE_OUTLINE", "PREFER_OUTLINE" };
   const char *const TYPE_DEFAULT_STORAGE_SETTINGS[] = { "DEFAULT", "FORCE_INLINE" };
   const char *const FIXED_TYPES[] = { "INT", "BIT(128)" };
+
+  class scoped_oos_threshold
+  {
+    public:
+      scoped_oos_threshold () : m_original (prm_get_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD))
+      {
+      }
+      ~scoped_oos_threshold ()
+      {
+	prm_set_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD, m_original);
+      }
+
+    private:
+      UINT64 m_original;
+  };
 
   std::vector<std::string>
   all_storage_settings ()
@@ -1085,6 +1103,137 @@ TEST_F (OosSqlStorage, AlterModifyToFixedTypeDropsForceInlineForGood)
   rc = fetch_single_int ("SELECT CAST(c AS INT) FROM t_oos_stg", &value);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (value, 1234);
+}
+
+TEST_F (OosSqlStorage, ConfiguredThresholdChangesPlacementAndPreservesValues)
+{
+  scoped_oos_threshold restore_threshold;
+  auto expect_row = [] (int id, bool expect_oos)
+  {
+    int result = 0;
+    std::string predicate = " FROM t_oos_stg WHERE id = " + std::to_string (id);
+    ASSERT_EQ (fetch_single_int (("SELECT BIT_LENGTH(a)" + predicate).c_str (), &result), NO_ERROR);
+    EXPECT_EQ (result, 8000 * 8);
+    ASSERT_EQ (fetch_single_int (("SELECT COUNT(*)" + predicate + " AND a = "
+				  + uncompressed_bit_varying (8000)).c_str (), &result), NO_ERROR);
+    EXPECT_EQ (result, 1);
+
+    DB_OBJECT *cls = db_find_class ("t_oos_stg");
+    ASSERT_NE (cls, nullptr);
+    OID class_oid = *WS_OID (cls);
+    DB_OBJLIST *objects = db_fetch_all_objects (cls, DB_FETCH_READ);
+    ASSERT_NE (objects, nullptr);
+    const OID oid = *WS_OID (objects->op);
+    db_objlist_free (objects);
+    auto *thread = thread_get_thread_entry_info ();
+    HFID hfid;
+    ASSERT_EQ (heap_get_class_hfid (thread, &class_oid, &hfid, nullptr), NO_ERROR);
+    HEAP_SCANCACHE scan_cache;
+    ASSERT_EQ (heap_scancache_start (thread, &scan_cache, &hfid, &class_oid, true,
+				     logtb_get_mvcc_snapshot (thread)), NO_ERROR);
+    RECDES record = RECDES_INITIALIZER;
+    const SCAN_CODE scan = heap_get_visible_version (thread, &oid, &class_oid, &record,
+			   &scan_cache, COPY, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+    if (scan == S_SUCCESS)
+      {
+	int offset = 0;
+	EXPECT_EQ (heap_recdes_get_var_offset_entry (&record, 0, &offset), NO_ERROR);
+	EXPECT_EQ (bool (OR_IS_OOS (offset)), expect_oos);
+      }
+    EXPECT_EQ (heap_scancache_end (thread, &scan_cache), NO_ERROR);
+    ASSERT_EQ (scan, S_SUCCESS);
+  };
+  prm_set_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD, 0);
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING)"), 0);
+  ASSERT_GE (exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (8000) + ")").c_str ()), 0);
+  db_commit_transaction ();
+
+  OOS_STATS_INFO stats;
+  ASSERT_EQ (get_oos_stats ("t_oos_stg", &stats), NO_ERROR);
+  ASSERT_EQ (stats.num_recs, 1);
+  ASSERT_NO_FATAL_FAILURE (expect_row (1, true));
+
+  int max_size = 0;
+  ASSERT_EQ (xheap_get_maxslotted_reclength (max_size), NO_ERROR);
+  prm_set_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD, max_size);
+
+  ASSERT_GE (exec_sql ("UPDATE t_oos_stg SET id = 2 WHERE id = 1"), 0);
+  db_commit_transaction ();
+  ASSERT_NO_FATAL_FAILURE (expect_row (2, false));
+
+  prm_set_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD, 0);
+  ASSERT_GE (exec_sql ("UPDATE t_oos_stg SET id = 3 WHERE id = 2"), 0);
+  db_commit_transaction ();
+  ASSERT_NO_FATAL_FAILURE (expect_row (3, true));
+  prm_set_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD, max_size);
+
+  ASSERT_GE (exec_sql ("DROP TABLE t_oos_stg"), 0);
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING)"), 0);
+  ASSERT_GE (exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (8000) + ")").c_str ()), 0);
+  db_commit_transaction ();
+  ASSERT_EQ (get_oos_stats ("t_oos_stg", &stats), NO_ERROR);
+  EXPECT_EQ (stats.has_oos_file, 0);
+
+  ASSERT_GE (exec_sql (("INSERT INTO t_oos_stg VALUES (2, " + uncompressed_bit_varying (17000) + ")").c_str ()), 0);
+  db_commit_transaction ();
+  ASSERT_EQ (get_oos_stats ("t_oos_stg", &stats), NO_ERROR);
+  EXPECT_GE (stats.recs_sumlen, 17000);
+  int bits = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT BIT_LENGTH(a) FROM t_oos_stg WHERE id = 2", &bits), NO_ERROR);
+  EXPECT_EQ (bits, 17000 * 8);
+
+  ASSERT_GE (exec_sql ("DROP TABLE t_oos_stg"), 0);
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING STORAGE FORCE_INLINE)"), 0);
+  int rc = exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (17000) + ")").c_str ());
+  EXPECT_LT (rc, 0);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);
+  db_abort_transaction ();
+}
+
+TEST_F (OosSqlStorage, ConfiguredThresholdPreservesStoragePolicies)
+{
+  scoped_oos_threshold restore_threshold;
+  prm_set_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD, 7500);
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING STORAGE FORCE_INLINE, "
+		       "b BIT VARYING STORAGE PREFER_INLINE, c BIT VARYING)"), 0);
+  ASSERT_GE (exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (4000) + ", "
+			+ uncompressed_bit_varying (3000) + ", " + uncompressed_bit_varying (2000) + ")").c_str ()), 0);
+  db_commit_transaction ();
+
+  OOS_STATS_INFO stats;
+  ASSERT_EQ (get_oos_stats ("t_oos_stg", &stats), NO_ERROR);
+  EXPECT_EQ (stats.num_recs, 1);
+  EXPECT_GE (stats.recs_sumlen, 2000);
+  EXPECT_LT (stats.recs_sumlen, 3000);
+
+  ASSERT_GE (exec_sql ("DROP TABLE t_oos_stg"), 0);
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING STORAGE FORCE_OUTLINE)"), 0);
+  ASSERT_GE (exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (100) + ")").c_str ()), 0);
+  db_commit_transaction ();
+  ASSERT_EQ (get_oos_stats ("t_oos_stg", &stats), NO_ERROR);
+  EXPECT_EQ (stats.num_recs, 1);
+}
+
+TEST_F (OosSqlStorage, ConfiguredThresholdGateIsStrict)
+{
+  scoped_oos_threshold restore_threshold;
+  prm_set_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD, 8192);
+  const int sizes[] = { 8143, 8144 };
+
+  for (int i = 0; i < 2; ++i)
+    {
+      SCOPED_TRACE (sizes[i]);
+      ASSERT_GE (exec_sql ("CREATE TABLE t_oos_stg (id INT, p BIT VARYING)"), 0);
+      std::string sql = "INSERT INTO t_oos_stg VALUES (1, REPEAT(X'AB', " + std::to_string (sizes[i]) + "))";
+      ASSERT_GE (exec_sql (sql.c_str ()), 0);
+      db_commit_transaction ();
+
+      OOS_STATS_INFO stats;
+      ASSERT_EQ (get_oos_stats ("t_oos_stg", &stats), NO_ERROR);
+      EXPECT_EQ (stats.has_oos_file, i);
+      ASSERT_GE (exec_sql ("DROP TABLE t_oos_stg"), 0);
+      db_commit_transaction ();
+    }
 }
 
 TEST_F (OosSqlStorage, ForceInlineKeepsLargeValueOutOfOos)
