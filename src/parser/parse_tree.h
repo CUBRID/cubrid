@@ -2500,6 +2500,11 @@ struct pt_expr_info
   PT_TYPE_ENUM recursive_type;	/* common type for recursive expression arguments (like PT_GREATEST, PT_LEAST,...) */
   int coll_modifier;		/* collation modifier = collation + 1 */
   int pred_order;		/* for view-merge or predicate-push. pred is ordered by pred_order in qo_discover_edges */
+  bool rand_reseeds;		/* a seeded random call the client evaluates: its seed may change from row to row, so
+				 * every evaluation reseeds */
+  UINT64 rand_execution;	/* the statement execution (parser->rand_execution) that decided rand_reseeds and, for a
+				 * fixed seed, seeded rand_buf; 0 for none; a copy starts with none */
+  struct drand48_data rand_buf;	/* a fixed-seed call's generator, as the server keeps one in the arithmetic node */
 };
 
 /* FILE PATH INFO */
@@ -4095,6 +4100,10 @@ struct pt_static_sql_star
   PT_STATIC_SQL_STAR *next;
 };
 
+/* parser->rand_execution outside any statement execution; each seeded random call evaluated there is a statement of
+ * its own */
+#define PT_RAND_OUTSIDE_EXECUTION 1
+
 struct parser_context
 {
   PT_INT_FUNCTION next_char;	/* the next character function */
@@ -4197,6 +4206,9 @@ struct parser_context
 
   long int lrand;		/* integer random value used by rand() */
   double drand;			/* floating-point random value used by drand() */
+  UINT64 rand_execution;	/* the statement execution running now, for the fixed-seed random calls' generators;
+				 * PT_RAND_OUTSIDE_EXECUTION when none runs */
+  UINT64 rand_executions;	/* the last number given to a statement execution; never given twice */
   UINT64 uuidv7_last_ms;	/* last used millisecond timestamp for local UUIDv7 generation */
   UINT8 uuidv7_seq;		/* local UUIDv7 sequence within the same millisecond */
 
