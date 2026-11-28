@@ -1878,6 +1878,7 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
 {
   QO_TERM *term;
   QO_NODE *node;
+  int idx;
 
   QO_ASSERT (env, conjunct->next == NULL);
 
@@ -1962,7 +1963,13 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
 	      bitset_add (&(QO_TERM_NODES (term)), QO_NODE_IDX (node));
 	      break;
 	    case PT_JOIN_RIGHT_OUTER:
-	      bitset_add (&(QO_TERM_NODES (term)), QO_NODE_IDX (node) - 1);
+	      /* emptying an anti join inner keeps every outer row instead of none, so skip to the node before it */
+	      idx = QO_NODE_IDX (node) - 1;
+	      while (QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (env, idx)) == PT_JOIN_ANTI)
+		{
+		  idx--;
+		}
+	      bitset_add (&(QO_TERM_NODES (term)), idx);
 	      break;
 	    case PT_JOIN_FULL_OUTER:	/* not used */
 	      /* I don't know what is to be done for full outer. */
