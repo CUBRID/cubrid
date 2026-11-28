@@ -5087,6 +5087,20 @@ do_replan_statement_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool
   int err;
   unsigned int save_recompile = statement->flag.recompile;
   int save_level;
+  DB_CLASS_MODIFICATION_STATUS cls_status;
+
+  /* the rewrites of the kept tree, such as a join elimination, hold only for the schema it was compiled under */
+  cls_status = pt_has_modified_class (parser, statement);
+  if (cls_status == DB_CLASS_MODIFIED)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
+    }
+  else if (cls_status == DB_CLASS_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
 
   if (statement->xasl_id != NULL)
     {

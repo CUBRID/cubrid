@@ -15163,6 +15163,7 @@ pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.query.q.select.use_merge, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.no_use_hash, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.use_hash, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.fk_reduced_classes, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.waitsecs_hint, arg);
   PT_APPLY_WALK (parser, p->info.query.into_list, arg);
   PT_APPLY_WALK (parser, p->info.query.order_by, arg);
@@ -15761,6 +15762,15 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  q = pt_append_nulstring (parser, q, " from ");
 	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      /* keeps the XASL cache entry apart from a query written without the removed tables */
+      if (p->info.query.q.select.fk_reduced_classes != NULL && (parser->custom_print & PT_PRINT_USER) != 0)
+	{
+	  r1 = pt_print_bytes_l (parser, p->info.query.q.select.fk_reduced_classes);
+	  q = pt_append_nulstring (parser, q, " /* -");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, " */");
 	}
 
       if (p->info.query.q.select.single_table_opt && p->info.query.q.select.from && !p->info.query.q.select.from->next)

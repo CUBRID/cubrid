@@ -512,6 +512,8 @@ static PT_NODE *parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * nod
 static int pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, OID ** oid_listp,
 					   int **lock_listp, int **tcard_listp, int *nump, int *sizep,
 					   int includes_tde_class);
+static int pt_fk_reduced_classes_to_xasl_class_oid_list (PARSER_CONTEXT * parser, PT_NODE * classes,
+							 XASL_SUPP_INFO * info);
 static int pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * serial, OID ** oid_listp,
 					     int **lock_listp, int **tcard_listp, int *nump, int *sizep);
 static PT_NODE *parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -24175,6 +24177,27 @@ error:
   return -1;
 }
 
+/*
+ * pt_fk_reduced_classes_to_xasl_class_oid_list () - add the classes of the PK tables removed by the FK join
+ *						      elimination to the class OID list of the XASL
+ *   return: same as pt_spec_to_xasl_class_oid_list ()
+ *   parser(in): parser context
+ *   classes(in): PT_NAME list (fk_reduced_classes of a SELECT)
+ *   info(in/out): XASL cache related information
+ */
+static int
+pt_fk_reduced_classes_to_xasl_class_oid_list (PARSER_CONTEXT * parser, PT_NODE * classes, XASL_SUPP_INFO * info)
+{
+  PT_NODE spec;
+
+  memset (&spec, 0, sizeof (PT_NODE));
+  spec.node_type = PT_SPEC;
+  spec.info.spec.flat_entity_list = classes;
+
+  return pt_spec_to_xasl_class_oid_list (parser, &spec, &info->class_oid_list, &info->class_locks, &info->tcard_list,
+					 &info->n_oid_list, &info->oid_list_size, &info->includes_tde_class);
+}
+
 
 /*
  * pt_serial_to_xasl_class_oid_list () - get serial OID list
@@ -29652,9 +29675,13 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 	{
 	  /* fill in XASL cache related information; list of class OIDs used in this XASL */
 	  if (xasl
-	      && pt_spec_to_xasl_class_oid_list (parser, node->info.query.q.select.from, &info->class_oid_list,
-						 &info->class_locks, &info->tcard_list, &info->n_oid_list,
-						 &info->oid_list_size, &info->includes_tde_class) < 0)
+	      && (pt_spec_to_xasl_class_oid_list (parser, node->info.query.q.select.from, &info->class_oid_list,
+						  &info->class_locks, &info->tcard_list, &info->n_oid_list,
+						  &info->oid_list_size, &info->includes_tde_class) < 0
+		  || (node->info.query.q.select.fk_reduced_classes != NULL
+		      && pt_fk_reduced_classes_to_xasl_class_oid_list (parser,
+								       node->info.query.q.select.fk_reduced_classes,
+								       info) < 0)))
 	    {
 	      /* might be memory allocation error */
 	      PT_INTERNAL_ERROR (parser, "generate xasl");

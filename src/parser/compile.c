@@ -636,13 +636,23 @@ cleanup:
 static PT_NODE *
 pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  PT_NODE *classes = NULL;
   PT_NODE *class_;
   MOP clsmop = NULL;
   int is_class = 0;
 
   if (node->node_type == PT_SPEC)
     {
-      for (class_ = node->info.spec.flat_entity_list; class_; class_ = class_->next)
+      classes = node->info.spec.flat_entity_list;
+    }
+  else if (node->node_type == PT_SELECT)
+    {
+      classes = node->info.query.q.select.fk_reduced_classes;
+    }
+
+  if (classes != NULL)
+    {
+      for (class_ = classes; class_; class_ = class_->next)
 	{
 	  clsmop = class_->info.name.db_object;
 	  if (clsmop == NULL)
@@ -702,6 +712,7 @@ static PT_NODE *
 pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   DB_CLASS_MODIFICATION_STATUS *status = (DB_CLASS_MODIFICATION_STATUS *) arg;
+  PT_NODE *classes = NULL;
   PT_NODE *class_;
   MOP clsmop = NULL;
   SM_CLASS *sm_class = NULL;
@@ -716,7 +727,16 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
   *continue_walk = PT_CONTINUE_WALK;
   if (node->node_type == PT_SPEC)
     {
-      for (class_ = node->info.spec.flat_entity_list; class_; class_ = class_->next)
+      classes = node->info.spec.flat_entity_list;
+    }
+  else if (node->node_type == PT_SELECT)
+    {
+      classes = node->info.query.q.select.fk_reduced_classes;
+    }
+
+  if (classes != NULL)
+    {
+      for (class_ = classes; class_; class_ = class_->next)
 	{
 	  clsmop = class_->info.name.db_object;
 

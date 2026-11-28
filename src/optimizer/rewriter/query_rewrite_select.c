@@ -25,6 +25,7 @@
 
 #include <assert.h>
 #include "query_rewrite.h"
+#include "authenticate.h"
 
 
 static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -47,6 +48,13 @@ static bool qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, 
 						       QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
+static PT_NODE *qo_get_right_outer_join_after (PT_NODE * spec);
+static PT_NODE *qo_get_spec_at_location (PT_NODE * query, int location);
+static bool qo_is_filter_location (PT_NODE * query, int location);
+static bool qo_is_in_point_list (PT_NODE * point_list, PT_NODE * node);
+static bool qo_has_term_at (PT_NODE * where, PT_NODE * skip_point_list, PT_NODE * skip_point_list2, int location);
+static bool qo_is_reducible_in_join_chain (PT_NODE * query, QO_REDUCE_REFERENCE_INFO * reduce_reference_info,
+					   PT_NODE * prev_pk_spec);
 static bool qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons);
 static void qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query);
 static PT_NODE *qo_check_unmatchable_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -55,6 +63,10 @@ static bool qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where,
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_rewrite_oid_equality (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * pred, int *seqno);
 static bool qo_is_semi_join_on_after (PT_NODE * spec, int location);
+static PT_NODE *qo_get_right_join_on_after (PT_NODE * spec, int location);
+static bool qo_is_spec_operand (PT_NODE * node, UINTPTR spec_id);
+static bool qo_rejects_null_by_comparison (PT_NODE * expr, UINTPTR spec_id);
+static bool qo_rewrite_null_suppliers_before (PT_NODE * spec, PT_NODE * on_spec);
 static PT_NODE *qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_get_next_oid_pred (PT_NODE * pred);
 
@@ -2698,7 +2710,8 @@ end:
  *       that references the primary key. There must be no references to the table to be removed
  *       other than join predicates. This is because the relationship between a primary key and a foreign key
  *       replaces a data filter of a join. If a table with a primary key is removed, a predicate for IS NOT NULL
- *       may be added, as it cannot filter on NULL.
+ *       may be added, as it cannot filter on NULL. The table is kept when the removal would change what a term
+ *       of its join chain filters (see qo_is_reducible_in_join_chain ()).
  *
  *    e.g. drop if exists child, parent;
  *         create table parent (c1 int primary key, c2 int);
@@ -2716,6 +2729,7 @@ static void
 qo_reduce_joined_tbls_ref_by_fk (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   QO_REDUCE_REFERENCE_INFO reduce_reference_info;
+  RESET_LOCATION_INFO locate_info;
   PT_NODE *curr_pk_spec = NULL, *prev_pk_spec = NULL, *next_pk_spec = NULL;
   PT_NODE *curr_fk_spec = NULL;
   bool has_reduce = false;
@@ -2777,7 +2791,8 @@ qo_reduce_joined_tbls_ref_by_fk (PARSER_CONTEXT * parser, PT_NODE * query)
 
 	      reduce_reference_info.fk_spec = curr_fk_spec;
 
-	      if (qo_check_fks_ref_pk_in_child_spec (parser, query, &reduce_reference_info))
+	      if (qo_check_fks_ref_pk_in_child_spec (parser, query, &reduce_reference_info)
+		  && qo_is_reducible_in_join_chain (query, &reduce_reference_info, prev_pk_spec))
 		{
 		  break;
 		}
@@ -2816,6 +2831,17 @@ qo_reduce_joined_tbls_ref_by_fk (PARSER_CONTEXT * parser, PT_NODE * query)
 	  assert (reduce_reference_info.parent_pred_point_list == NULL);
 	  assert (reduce_reference_info.append_not_null_pred_list == NULL);
 
+	  /* no ON follows for the rest of the ON: it goes to WHERE now, as the next spec may be removed later */
+	  if (PT_SPEC_JOIN_TYPE (curr_pk_spec) != PT_JOIN_NONE && next_pk_spec != NULL
+	      && (PT_SPEC_JOIN_TYPE (next_pk_spec) == PT_JOIN_NONE
+		  || PT_SPEC_JOIN_TYPE (next_pk_spec) == PT_JOIN_CROSS))
+	    {
+	      locate_info.start = curr_pk_spec->info.spec.location;
+	      locate_info.end = 0;
+	      (void) parser_walk_tree (parser, query->info.query.q.select.where, qo_modify_location, &locate_info, NULL,
+				       NULL);
+	    }
+
 	  if (prev_pk_spec != NULL)
 	    {
 	      prev_pk_spec->next = next_pk_spec;
@@ -2831,6 +2857,11 @@ qo_reduce_joined_tbls_ref_by_fk (PARSER_CONTEXT * parser, PT_NODE * query)
 	  /* reset location */
 	  qo_reset_spec_location (parser, next_pk_spec, query);
 
+	  /* the plan must still be invalidated by a change to the removed class */
+	  query->info.query.q.select.fk_reduced_classes =
+	    parser_append_node (curr_pk_spec->info.spec.flat_entity_list,
+				query->info.query.q.select.fk_reduced_classes);
+	  curr_pk_spec->info.spec.flat_entity_list = NULL;
 	  parser_free_node (parser, curr_pk_spec);
 	  curr_pk_spec = next_pk_spec;
 
@@ -2929,6 +2960,7 @@ qo_is_exclude_spec (PT_NODE * exclude_spec_point_list, PT_NODE * spec)
  *         4. No primary key.
  *         5. No foreign key referencing the primary key.
  *         6. Non-join predicates exist.
+ *         7. The primary key index is shared in a class hierarchy.
  */
 static bool
 qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
@@ -2936,6 +2968,7 @@ qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 {
   PT_NODE *curr_pk_spec = NULL;
   MOP curr_pk_mop = NULL;
+  SM_CLASS *curr_pk_class = NULL;
   SM_CLASS_CONSTRAINT *curr_pk_cons = NULL;
   PT_NODE *join_pred_point_list = NULL;
   PT_NODE *parent_pred_point_list = NULL;
@@ -2996,7 +3029,12 @@ qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
       goto exit_on_fail_with_exclude;
     }
 
-  for (curr_pk_cons = sm_class_constraints (curr_pk_mop); curr_pk_cons != NULL; curr_pk_cons = curr_pk_cons->next)
+  if (au_fetch_class (curr_pk_mop, &curr_pk_class, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+    {
+      goto exit_on_fail_with_exclude;
+    }
+
+  for (curr_pk_cons = curr_pk_class->constraints; curr_pk_cons != NULL; curr_pk_cons = curr_pk_cons->next)
     {
       if (curr_pk_cons->type == SM_CONSTRAINT_PRIMARY_KEY)
 	{
@@ -3008,6 +3046,13 @@ qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
   if (curr_pk_cons == NULL || curr_pk_cons->fk_info == NULL)
     {
       /* No primary key or no foreign key referencing the primary key. */
+      goto exit_on_fail_with_exclude;
+    }
+
+  /* the foreign key check accepts a key of any class sharing the index, but the scan reads this class only */
+  if (curr_pk_cons->attributes[0]->class_mop != curr_pk_mop
+      || (curr_pk_class->users != NULL && curr_pk_class->partition == NULL))
+    {
       goto exit_on_fail_with_exclude;
     }
 
@@ -3324,6 +3369,12 @@ qo_check_fks_ref_pk_in_child_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 	}
       else
 	{
+	  if (reduce_reference_info->append_not_null_pred_list != NULL)
+	    {
+	      parser_free_tree (parser, reduce_reference_info->append_not_null_pred_list);
+	      reduce_reference_info->append_not_null_pred_list = NULL;
+	    }
+
 	  if (er_has_error ())
 	    {
 	      goto exit_on_fail;
@@ -3570,7 +3621,8 @@ exit_on_fail:
  *   query(in): query to check
  *   reduce_reference_info(in/out): Information needed to check
  *
- * Note: Checks if there is a predicate on the child equal to the non-join predicate of the parent.
+ * Note: Checks if there is a predicate on the child equal to the non-join predicate of the parent, either where it
+ *       filters rows or in the same ON as the predicate of the parent.
  */
 static bool
 qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
@@ -3714,15 +3766,18 @@ qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * qu
 
 	  child_pred_attr_str = child_pred_attr->info.name.original;
 
-	  if (intl_identifier_casecmp (fk_cons_attr->header.name, child_pred_attr_str) == 0)
+	  if (intl_identifier_casecmp (fk_cons_attr->header.name, child_pred_attr_str) == 0
+	      && (curr_child_pred->info.expr.location == curr_parent_pred->info.expr.location
+		  || qo_is_filter_location (query, curr_child_pred->info.expr.location)))
 	    {
 	      unsigned int save_custom;
 
 	      save_custom = parser->custom_print;	/* save */
 	      parser->custom_print |= PT_CONVERT_RANGE;
 
-	      parent_pred_const_str = parser_print_tree (parser, parent_pred_const);
-	      child_pred_const_str = parser_print_tree (parser, child_pred_const);
+	      /* the child term made from the parent term by qo_reduce_equality_terms () may get parentheses */
+	      parent_pred_const_str = qo_print_without_paren (parser, parent_pred_const);
+	      child_pred_const_str = qo_print_without_paren (parser, child_pred_const);
 
 	      parser->custom_print = save_custom;	/* restore */
 
@@ -3733,7 +3788,7 @@ qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * qu
 	    }
 	}
 
-      if (child_pred_point_list == NULL)
+      if (curr_child_pred_point == NULL)
 	{
 	  /* not found */
 	  goto exit_on_fail_with_cleanup;
@@ -3942,8 +3997,10 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
     {
       for (curr_pred = query->info.query.q.select.where; curr_pred != NULL; curr_pred = curr_pred->next)
 	{
+	  /* one in an ON does not filter the rows an outer join NULL-fills or keeps, nor does one in an OR */
 	  if (PT_NODE_IS_EXPR (curr_pred) && PT_EXPR_OP (curr_pred) == PT_IS_NOT_NULL
-	      && PT_NODE_IS_NAME (PT_EXPR_ARG1 (curr_pred)))
+	      && PT_NODE_IS_NAME (PT_EXPR_ARG1 (curr_pred)) && curr_pred->info.expr.location == 0
+	      && curr_pred->or_next == NULL)
 	    {
 	      curr_pred_arg = PT_EXPR_ARG1 (curr_pred);
 	      curr_append_pred_arg = PT_EXPR_ARG1 (curr_append_pred);
@@ -3990,6 +4047,276 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 }
 
 /*
+ * qo_get_right_outer_join_after () - get the first RIGHT OUTER JOIN behind the spec in its join chain
+ *   return: the RIGHT OUTER JOIN spec, or NULL
+ *   spec(in): spec to check
+ *
+ * Note: the chain ends at a comma or a CROSS JOIN, as in mq_is_outer_join_spec ()
+ */
+static PT_NODE *
+qo_get_right_outer_join_after (PT_NODE * spec)
+{
+  PT_NODE *ns;
+
+  for (ns = spec->next; ns && ns->info.spec.join_type != PT_JOIN_NONE && ns->info.spec.join_type != PT_JOIN_CROSS;
+       ns = ns->next)
+    {
+      if (ns->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	{
+	  return ns;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * qo_get_spec_at_location () - get the spec whose ON has the location
+ *   return: the spec, or NULL
+ *   query(in): query to check
+ *   location(in): location of a term
+ */
+static PT_NODE *
+qo_get_spec_at_location (PT_NODE * query, int location)
+{
+  PT_NODE *spec;
+
+  for (spec = query->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      if (spec->info.spec.location == location)
+	{
+	  return spec;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * qo_is_filter_location () - does a term at the location drop the rows it is false for, as one in WHERE does?
+ *   return: bool
+ *   query(in): query to check
+ *   location(in): location of the term
+ *
+ * Note: true for WHERE and the ON of an INNER or SEMI JOIN, unless a RIGHT OUTER JOIN NULL-fills the tables later.
+ */
+static bool
+qo_is_filter_location (PT_NODE * query, int location)
+{
+  PT_NODE *spec;
+
+  spec = qo_get_spec_at_location (query, location);
+  if (spec == NULL)
+    {
+      return false;
+    }
+
+  switch (spec->info.spec.join_type)
+    {
+    case PT_JOIN_NONE:
+    case PT_JOIN_INNER:
+    case PT_JOIN_NATURAL:
+    case PT_JOIN_SEMI:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * qo_is_in_point_list () - is the node pointed to by one in the list?
+ *   return: bool
+ *   point_list(in): pointers to nodes
+ *   node(in): node to find
+ */
+static bool
+qo_is_in_point_list (PT_NODE * point_list, PT_NODE * node)
+{
+  PT_NODE *point, *pointed;
+
+  for (point = point_list; point != NULL; point = point->next)
+    {
+      pointed = point;
+      CAST_POINTER_TO_NODE (pointed);
+
+      if (pointed == node)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_has_term_at () - is there a WHERE term with the location other than the ones to skip?
+ *   return: bool
+ *   where(in): WHERE terms
+ *   skip_point_list(in): pointers to the terms to skip
+ *   skip_point_list2(in): pointers to more terms to skip
+ *   location(in): location the terms are compared with
+ */
+static bool
+qo_has_term_at (PT_NODE * where, PT_NODE * skip_point_list, PT_NODE * skip_point_list2, int location)
+{
+  PT_NODE *term;
+  int term_location;
+
+  for (term = where; term != NULL; term = term->next)
+    {
+      switch (term->node_type)
+	{
+	case PT_EXPR:
+	  term_location = term->info.expr.location;
+	  break;
+	case PT_VALUE:
+	  term_location = term->info.value.location;
+	  break;
+	case PT_NAME:
+	  term_location = term->info.name.location;
+	  break;
+	default:
+	  continue;
+	}
+
+      if (term_location == location && !qo_is_in_point_list (skip_point_list, term)
+	  && !qo_is_in_point_list (skip_point_list2, term))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_is_reducible_in_join_chain () - can the primary key table be removed without changing what the terms of its join
+ *      chain do?
+ *   return: bool
+ *   query(in): query to check
+ *   reduce_reference_info(in): the tables and the terms checked for the removal
+ *   prev_pk_spec(in): the spec in front of the primary key table in FROM, or NULL if it is the first one
+ *
+ * Note: the join terms and the rest of the ON of the primary key table must stay filters; a RIGHT OUTER JOIN after
+ *   either table also must not get a term moved past it or lose one that rejected the rows it NULL-fills.
+ */
+static bool
+qo_is_reducible_in_join_chain (PT_NODE * query, QO_REDUCE_REFERENCE_INFO * reduce_reference_info,
+			       PT_NODE * prev_pk_spec)
+{
+  PT_NODE *pk_spec, *pk_right_spec, *fk_right_spec, *next_spec, *on_spec;
+  PT_NODE *join_pred_point_list, *parent_pred_point_list, *join_pred_point, *join_pred;
+  PT_NODE *where;
+  bool has_not_null_pred, has_right;
+  int location;
+
+  pk_spec = reduce_reference_info->pk_spec;
+  join_pred_point_list = reduce_reference_info->join_pred_point_list;
+  parent_pred_point_list = reduce_reference_info->parent_pred_point_list;
+  has_not_null_pred = (reduce_reference_info->append_not_null_pred_list != NULL);
+  where = query->info.query.q.select.where;
+
+  pk_right_spec = qo_get_right_outer_join_after (pk_spec);
+  fk_right_spec = qo_get_right_outer_join_after (reduce_reference_info->fk_spec);
+  has_right = (pk_right_spec != NULL || fk_right_spec != NULL);
+
+  /* the child term matched for a parent term filters nothing on the rows the RIGHT OUTER JOIN NULL-fills */
+  if (has_right && parent_pred_point_list != NULL)
+    {
+      return false;
+    }
+
+  /* the IS NOT NULL put in place of the join goes to WHERE */
+  if (pk_right_spec != NULL && has_not_null_pred)
+    {
+      return false;
+    }
+
+  for (join_pred_point = join_pred_point_list; join_pred_point != NULL; join_pred_point = join_pred_point->next)
+    {
+      join_pred = join_pred_point;
+      CAST_POINTER_TO_NODE (join_pred);
+
+      location = join_pred->info.expr.location;
+
+      if (!has_right)
+	{
+	  /* the ON of an outer or ANTI JOIN matches rows rather than dropping them */
+	  if (!qo_is_filter_location (query, location))
+	    {
+	      return false;
+	    }
+
+	  continue;
+	}
+
+      /* a join term after the RIGHT OUTER JOIN rejected the rows it NULL-fills */
+      if (pk_right_spec != NULL && location > pk_right_spec->info.spec.location)
+	{
+	  return false;
+	}
+
+      if (fk_right_spec != NULL && location > fk_right_spec->info.spec.location && !has_not_null_pred)
+	{
+	  return false;
+	}
+
+      on_spec = qo_get_spec_at_location (query, location);
+      if (on_spec == NULL
+	  || (on_spec->info.spec.join_type != PT_JOIN_INNER && on_spec->info.spec.join_type != PT_JOIN_NATURAL
+	      && on_spec->info.spec.join_type != PT_JOIN_RIGHT_OUTER))
+	{
+	  return false;
+	}
+    }
+
+  next_spec = pk_spec->next;
+
+  if (PT_SPEC_JOIN_TYPE (pk_spec) == PT_JOIN_NONE)
+    {
+      /* the next spec takes the place of the primary key table: it joins the chain in front or its ON becomes WHERE */
+      if (has_right
+	  && (prev_pk_spec != NULL
+	      || (next_spec->info.spec.join_type != PT_JOIN_INNER && next_spec->info.spec.join_type != PT_JOIN_NATURAL)
+	      || qo_has_term_at (where, join_pred_point_list, parent_pred_point_list, next_spec->info.spec.location)))
+	{
+	  return false;
+	}
+    }
+  else if (qo_has_term_at (where, join_pred_point_list, parent_pred_point_list, pk_spec->info.spec.location))
+    {
+      /* the rest of the ON of the primary key table moves to the ON of the next spec */
+      if (next_spec == NULL)
+	{
+	  return false;
+	}
+
+      switch (next_spec->info.spec.join_type)
+	{
+	case PT_JOIN_INNER:
+	case PT_JOIN_NATURAL:
+	case PT_JOIN_RIGHT_OUTER:
+	  break;
+
+	case PT_JOIN_NONE:
+	case PT_JOIN_CROSS:
+	case PT_JOIN_SEMI:
+	  /* a SEMI JOIN ON drops rows, and before a comma or a CROSS JOIN the caller moves the rest to WHERE */
+	  if (has_right)
+	    {
+	      return false;
+	    }
+	  break;
+
+	default:
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
  * qo_is_semi_join_on_after () - is the location that of the ON of a SEMI JOIN after the spec, with no RIGHT OUTER
  *      JOIN connected behind that SEMI JOIN? That ON drops the outer rows it rejects as a WHERE term does, while an
  *      ANTI JOIN keeps them.  A RIGHT OUTER JOIN behind the SEMI JOIN NULL-fills the spec after that ON ran: the
@@ -4031,6 +4358,132 @@ qo_is_semi_join_on_after (PT_NODE * spec, int location)
 }
 
 /*
+ * qo_get_right_join_on_after () - get the RIGHT OUTER JOIN behind the spec in its join chain whose ON has the location
+ *   return: the RIGHT OUTER JOIN spec, or NULL
+ *   spec(in): the outer joined spec
+ *   location(in): location of a WHERE term
+ *
+ * Note: the chain ends at a comma or a CROSS JOIN, as in mq_is_outer_join_spec ()
+ */
+static PT_NODE *
+qo_get_right_join_on_after (PT_NODE * spec, int location)
+{
+  PT_NODE *ns;
+
+  if (location <= 0)
+    {
+      return NULL;
+    }
+
+  for (ns = spec->next; ns && ns->info.spec.join_type != PT_JOIN_NONE && ns->info.spec.join_type != PT_JOIN_CROSS;
+       ns = ns->next)
+    {
+      if (ns->info.spec.location == location)
+	{
+	  return (ns->info.spec.join_type == PT_JOIN_RIGHT_OUTER) ? ns : NULL;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * qo_is_spec_operand () - is the node a column of the spec, under CASTs only?
+ *   return: bool
+ *   node(in): operand of a comparison
+ *   spec_id(in): id of the spec
+ */
+static bool
+qo_is_spec_operand (PT_NODE * node, UINTPTR spec_id)
+{
+  while (node != NULL && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
+    {
+      node = node->info.expr.arg1;
+    }
+
+  return node != NULL && node->node_type == PT_NAME && node->info.name.spec_id == spec_id;
+}
+
+/*
+ * qo_rejects_null_by_comparison () - is the term a comparison that has a column of the spec as a direct operand, so
+ *      that it can never be TRUE when the spec is NULL-filled?
+ *   return: bool
+ *   expr(in): a term with no OR
+ *   spec_id(in): id of the spec
+ *
+ * Note: a narrower test than qo_check_nullable_expr_with_spec (), which misses functions that are TRUE on NULL
+ */
+static bool
+qo_rejects_null_by_comparison (PT_NODE * expr, UINTPTR spec_id)
+{
+  PT_NODE *arg1 = expr->info.expr.arg1;
+  PT_NODE *arg2 = expr->info.expr.arg2;
+
+  switch (expr->info.expr.op)
+    {
+    case PT_EQ:
+    case PT_NE:
+    case PT_LT:
+    case PT_LE:
+    case PT_GT:
+    case PT_GE:
+    case PT_LIKE:
+      return qo_is_spec_operand (arg1, spec_id) || qo_is_spec_operand (arg2, spec_id);
+
+    case PT_BETWEEN:
+      if (qo_is_spec_operand (arg1, spec_id))
+	{
+	  return true;
+	}
+      return (arg2 != NULL && arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_BETWEEN_AND
+	      && (qo_is_spec_operand (arg2->info.expr.arg1, spec_id)
+		  || qo_is_spec_operand (arg2->info.expr.arg2, spec_id)));
+
+    case PT_RANGE:
+    case PT_IS_IN:
+    case PT_IS_NOT_NULL:
+      return qo_is_spec_operand (arg1, spec_id);
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * qo_rewrite_null_suppliers_before () - rewrite the outer joins that NULL-fill the spec before the RIGHT OUTER JOIN to
+ *      inner joins
+ *   return: whether a join was rewritten
+ *   spec(in): the outer joined spec
+ *   on_spec(in): the RIGHT OUTER JOIN behind the spec whose ON rejects the NULL of the spec
+ *
+ * Note: the rows the spec NULL-fills before on_spec never pass its ON, and on_spec itself stays outer.  The ON terms
+ *      of the rewritten joins keep their location: as WHERE terms they would drop the rows on_spec preserves
+ */
+static bool
+qo_rewrite_null_suppliers_before (PT_NODE * spec, PT_NODE * on_spec)
+{
+  PT_NODE *ns;
+  bool rewritten = false;
+
+  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
+    {
+      spec->info.spec.join_type = PT_JOIN_INNER;
+      rewritten = true;
+    }
+
+  for (ns = spec->next; ns != on_spec; ns = ns->next)
+    {
+      if (ns->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	{
+	  ns->info.spec.join_type = PT_JOIN_INNER;
+	  rewritten = true;
+	}
+    }
+
+  return rewritten;
+}
+
+/*
  * qo_rewrite_outerjoin () - Rewrite outer join to inner join
  *   return: PT_NODE *
  *   parser(in):
@@ -4043,7 +4496,7 @@ qo_is_semi_join_on_after (PT_NODE * spec, int location)
 static PT_NODE *
 qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *spec, *expr, *ns, *save_next;
+  PT_NODE *spec, *expr, *ns, *save_next, *on_spec;
   SPEC_ID_INFO info, info_spec;
   RESET_LOCATION_INFO locate_info;
   bool rewrite_again, is_outer_joined;
@@ -4078,8 +4531,11 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	      /* search where list */
 	      for (expr = node->info.query.q.select.where; expr; expr = expr->next)
 		{
+		  on_spec =
+		    (expr->node_type == PT_EXPR) ? qo_get_right_join_on_after (spec, expr->info.expr.location) : NULL;
 		  if (expr->node_type == PT_EXPR
-		      && (expr->info.expr.location == 0 || qo_is_semi_join_on_after (spec, expr->info.expr.location))
+		      && (expr->info.expr.location == 0 || on_spec != NULL
+			  || qo_is_semi_join_on_after (spec, expr->info.expr.location))
 		      && expr->info.expr.op != PT_IS_NULL && expr->or_next == NULL && expr->info.expr.op != PT_AND
 		      && expr->info.expr.op != PT_OR)
 		    {
@@ -4099,6 +4555,17 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 		      if (info_spec.appears && !info.nullable
 			  && qo_expr_rejects_null (parser, expr, spec->info.spec.id, NULL))
 			{
+			  if (on_spec != NULL)
+			    {
+			      if (qo_rejects_null_by_comparison (expr, spec->info.spec.id)
+				  && qo_rewrite_null_suppliers_before (spec, on_spec))
+				{
+				  rewrite_again = true;
+				  break;
+				}
+			      continue;
+			    }
+
 			  rewrite_again = true;
 			  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
 			    {
