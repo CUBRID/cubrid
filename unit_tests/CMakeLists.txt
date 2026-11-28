@@ -47,6 +47,7 @@ option (UNIT_TEST_STREAM_SESSION "Unit testing: byte-stream transport consumer r
 option (UNIT_TEST_RADIX_SORT "Unit testing: radix run sorter")
 option (UNIT_TEST_SCOPE_EXIT "Unit testing: scope_exit guard")
 option (UNIT_TEST_BTREE_SORT_MERGE "Unit testing: merge run sorter")
+option (UNIT_TEST_WORKER_POOL_ELASTIC "Unit testing: elastic worker pool capacity policy")
 
 message("  unit_tests/...")
 
@@ -152,6 +153,11 @@ if (UNIT_TESTS OR UNIT_TEST_BTREE_SORT_MERGE)
   message("    btree_sort_merge")
   add_subdirectory(btree_sort_merge)
 endif(UNIT_TESTS OR UNIT_TEST_BTREE_SORT_MERGE)
+
+if (UNIT_TESTS OR UNIT_TEST_WORKER_POOL_ELASTIC)
+  message("    worker_pool_elastic")
+  add_subdirectory(worker_pool_elastic)
+endif(UNIT_TESTS OR UNIT_TEST_WORKER_POOL_ELASTIC)
 
 #[[
 TODO compilation fails
