@@ -11606,7 +11606,8 @@ pgbuf_remove_private_from_aout_list (const int lru_idx)
 /*
  * pgbuf_bcb_flush_with_wal () - write a buffer page to disk.
  *
- * return                    : error code
+ * return                    : error code. on error, the bcb is locked, no longer flushing, dirty again if it was dirty
+ *                             and the threads waiting for the flush are woken up.
  * thread_p (in)             : thread entry
  * bufptr (in)               : bcb
  * is_page_flush_thread (in) : true if caller is page flush thread. false otherwise.
@@ -11630,6 +11631,10 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   FILEIO_WRITE_MODE write_mode;
   bool is_temp = pgbuf_is_temporary_volume (bufptr->vpid.volid);
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+  /* stays NULL until the first copy that sees a non-NULL oldest_unflush_lsa; that is the oldest change not yet on
+   * disk, and it is what an error path has to give back to the bcb. */
+  LSA_SET_NULL (&oldest_unflush_lsa);
 
   PGBUF_BCB_CHECK_OWN (bufptr);
 
@@ -11664,8 +11669,9 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
    * caller should already have bcb locked. we don't do checks of opportunity or correctness here (that's up to the
    * caller).
    *
-   * we copy the page and save oldest_unflush_lsa and then we try to write the page to disk. if writing fails, we
-   * "revert" changes (restore dirty flag and oldest_unflush_lsa).
+   * we copy the page and save oldest_unflush_lsa and then we try to write the page to disk. if anything fails after the
+   * bcb is marked as flushing (encrypting the page, getting a double write slot or writing), we "revert" changes in
+   * error_locked (clear flushing, restore dirty flag and oldest_unflush_lsa, wake up threads waiting for flush).
    *
    * if successful, we choose one of the paths:
    * 1. send the page to post-flush to process it and assign it directly (if this is page flush thread and victimization
@@ -11693,7 +11699,7 @@ start_copy_page:
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error;
+	  goto error_locked;
 	}
     }
   else
@@ -11705,7 +11711,7 @@ start_copy_page:
       error = dwb_set_data_on_next_slot (thread_p, iopage, false, false, &dwb_slot);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto error_locked;
 	}
       if (dwb_slot != NULL)
 	{
@@ -11716,7 +11722,11 @@ start_copy_page:
 
 copy_unflushed_lsa:
   LSA_COPY (&lsa, &(bufptr->iopage_buffer->iopage.prv.lsa));
-  LSA_COPY (&oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
+  if (LSA_ISNULL (&oldest_unflush_lsa))
+    {
+      /* keep the value of an earlier try: a retry must not lose the oldest change that is still not on disk. */
+      LSA_COPY (&oldest_unflush_lsa, &bufptr->oldest_unflush_lsa);
+    }
   LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
 
   PGBUF_BCB_UNLOCK (bufptr);
@@ -11786,19 +11796,10 @@ copy_unflushed_lsa:
 
   if (error != NO_ERROR)
     {
+      error = ER_FAILED;
       PGBUF_BCB_LOCK (bufptr);
       *is_bcb_locked = true;
-      pgbuf_bcb_mark_was_not_flushed (thread_p, bufptr, was_dirty);
-      LSA_COPY (&bufptr->oldest_unflush_lsa, &oldest_unflush_lsa);
-
-#if defined (SERVER_MODE)
-      if (bufptr->next_wait_thrd != NULL)
-	{
-	  pgbuf_wake_flush_waiters (thread_p, bufptr);
-	}
-#endif
-
-      return ER_FAILED;
+      goto error_locked;
     }
 
   assert (get_latch (&bufptr->atomic_latch) != PGBUF_LATCH_FLUSH);
@@ -11836,6 +11837,28 @@ copy_unflushed_lsa:
     }
 
   return NO_ERROR;
+
+error_locked:
+  /* the page was not flushed. clear flushing and give back the dirty flag and oldest_unflush_lsa. the async flush
+   * request cleared by pgbuf_bcb_mark_is_flushing is not restored; the page is dirty again, so it is flushed later. */
+  assert (*is_bcb_locked);
+  PGBUF_BCB_CHECK_OWN (bufptr);
+  assert (error != NO_ERROR);
+
+  pgbuf_bcb_mark_was_not_flushed (thread_p, bufptr, was_dirty);
+  if (!LSA_ISNULL (&oldest_unflush_lsa))
+    {
+      LSA_COPY (&bufptr->oldest_unflush_lsa, &oldest_unflush_lsa);
+    }
+
+#if defined (SERVER_MODE)
+  if (bufptr->next_wait_thrd != NULL)
+    {
+      pgbuf_wake_flush_waiters (thread_p, bufptr);
+    }
+#endif
+
+  return error;
 }
 
 /*
