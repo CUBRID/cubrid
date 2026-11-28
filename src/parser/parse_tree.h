@@ -3024,6 +3024,9 @@ struct pt_select_info
 							 * that join only (CBRD-28089) */
 #define PT_SELECT_INFO_HQ_ITERATION       0x080000	/* being planned as the scan a hierarchical query runs once a
 							 * parent row */
+#define PT_SELECT_INFO_GBY_ORDER_FREE     0x100000	/* the order of the GROUP BY's groups cannot reach the
+							 * result: the query of a set predicate (IN, EXISTS, ...)
+							 * (CBRD-28181) */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
