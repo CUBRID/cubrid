@@ -1,58 +1,46 @@
 # src/optimizer/ — Cost-Based Query Planning
 
-Client-side (`#if !defined(SERVER_MODE)`).
+Builds client-side only (`CS_MODE`/`SA_MODE`; `optimizer.h` has `#error Does not belong to server module`), **except** `histogram/`. See "Build-Mode Boundaries" in [src/AGENTS.md](../AGENTS.md#build-mode-boundaries).
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `query_planner.c` | Core planner: generates QO_PLAN tree from QO_ENV |
-| `query_graph.c` | Query graph construction (nodes = tables, edges = joins) |
-| `plan_generation.c` | Plan enumeration and cost-based selection |
-| `query_bitset.c` | Bitset operations for plan enumeration |
+| `query_graph.c` | `qo_optimize_query ()` entry; query graph (nodes, terms, segments); `qo_get_class_info ()` loads statistics |
+| `query_planner.c` | Plan search (`qo_planner_search ()`, `qo_search_planner ()`, `qo_search_partition_join ()`), all `qo_*cost*` functions, index scan and join plan generation |
+| `plan_generation.c` | `QO_PLAN` → XASL (`qo_to_xasl ()`, called from `src/parser/xasl_generation.c`) |
+| `query_bitset.c` | Bitsets used by the planner |
+| `optimizer.h` | `QO_ENV`, `QO_PLAN`, `QO_NODE`, `QO_TERM`, `QO_INFO` |
 
-## Subdirectory
+## Subdirectories
 
-| Dir | Purpose |
-|-----|---------|
-| `rewriter/` | Query rewriting transformations (before optimization) |
+| Dir | Purpose | Builds in |
+|-----|---------|-----------|
+| `rewriter/` | Query rewrites before planning | `CS_MODE`, `SA_MODE` |
+| `histogram/` | Column histograms: build, read, sample | `histogram_builder.cpp`, `histogram_reader.cpp`: all three modes. `histogram_sampler_sr.cpp`: `SERVER_MODE`, `SA_MODE`. `*_cl.cpp`: `CS_MODE`, `SA_MODE` |
+
+Code in `histogram/` that `libcubrid` links must not use optimizer or parser headers (`optimizer.h` raises `#error` in `SERVER_MODE`). Check the owning `CMakeLists.txt` lists before you add an include.
 
 ## Where to Look
 
 | Task | File |
 |------|------|
-| Fix join ordering | `query_planner.c`, `plan_generation.c` |
-| Fix cost estimation | `plan_generation.c` |
-| Fix query graph | `query_graph.c` |
-| Fix query rewriting | `rewriter/` |
-| Fix index selection | `query_planner.c` — index scan cost vs sequential scan |
+| Join order, plan search | `query_planner.c` |
+| Cost estimation, index vs. sequential scan | `query_planner.c` (`qo_*cost*`) |
+| Query graph, statistics lookup | `query_graph.c` |
+| Plan → XASL | `plan_generation.c` |
+| Query rewriting | `rewriter/` |
+| Histograms | `histogram/` |
 
 ## Pipeline Position
 
 ```
-parser/ (PT_NODE tree) → optimizer/ (QO_PLAN tree) → parser/xasl_generation.c (XASL_NODE)
+parser/view_transform.c → mq_rewrite () (rewriter/) → PT_NODE
+  → parser/xasl_generation.c → qo_optimize_query () (query_graph.c) → query_planner.c (QO_PLAN)
+  → qo_to_xasl () (plan_generation.c) → XASL_NODE
 ```
-
-## Key Types
-
-| Type | Purpose |
-|------|---------|
-| `QO_ENV` | Optimization environment — tables, predicates, statistics |
-| `QO_PLAN` | Physical plan node — scan, join, sort operators |
-| `QO_NODE` | Table/class reference in query graph |
-| `QO_TERM` | Predicate term (join condition or filter) |
-| `QO_INFO` | Cost/cardinality statistics |
-
-## Conventions
-
-- Functions prefixed `qo_` (query optimizer)
-- Plan enumeration: bottom-up dynamic programming over join orderings
-- Cost model considers: index selectivity, page I/O, sort cost
-- Statistics from catalog: `qo_get_class_info()` fetches table/index stats
 
 ## Gotchas
 
-- Optimizer runs **client-side** — statistics fetched from server, planning done locally
-- Small module but high complexity — plan enumeration is exponential in join count
-- Cost model accuracy depends on up-to-date statistics — stale stats = bad plans
-- `query_planner.c` handles both simple queries and complex multi-way joins
+- Statistics come from the server through the catalog. Planning runs on the client, so stale statistics give bad plans.
+- Plan search cost grows quickly with the number of joined tables.

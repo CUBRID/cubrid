@@ -32,7 +32,7 @@ the heap class-representation cache; see [system_catalog.c](../system_catalog.c)
 Important entry points:
 
 - `catalog_initialize()`, `catalog_finalize()`
-- `catalog_create()`, `catalog_destroy()`
+- `catalog_create()`
 - `catalog_add_representation()`, `catalog_get_representation()`, `catalog_drop_old_representations()`
 - `catalog_add_class_info()`, `catalog_get_class_info()`, `catalog_update_class_info()`
 - `catalog_insert()`, `catalog_update()`, `catalog_delete()`

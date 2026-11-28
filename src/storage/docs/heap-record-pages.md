@@ -18,6 +18,9 @@ changing heap scans, record insert/update/delete, MVCC visibility, class represe
 - `OID` identifies a record by `volid`, `pageid`, and slot.
 - Heap records are stored on slotted pages. Slot `0` is header/reserved in several page formats.
 - Large records may be represented by overflow records. Heap-level wrappers are named `heap_ovf_*()`.
+- Variable-length column values may live out of row in the heap's OOS file (`FILE_OOS`). The record keeps an inline
+  stub per value (`OR_VAR_BIT_OOS`) and the record flag `OR_RECORD_FLAG_HAS_OOS`. For OOS entry points, see the
+  OOS rows in [src/storage/AGENTS.md](../AGENTS.md#where-to-look).
 - MVCC heap records carry insert/delete MVCC metadata and may require previous-version lookup from log.
 
 ## Important Entry Points

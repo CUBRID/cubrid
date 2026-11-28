@@ -3,11 +3,12 @@
 Mostly server/standalone storage code. A small client subset is also compiled into `cubridcs`: `byte_order.c`,
 `es.c`, `es_common.c`, `es_posix.c`, `file_io.c`, `oid.c`, `statistics_cl.c`, `storage_common.c`, and `tde.c`
 (plus `es_owfs.c` on UNIX builds). Core managers such as B-tree, heap, page buffer, disk/file manager, slotted
-pages, overflow files, catalog, and server statistics are `SERVER_MODE` / `SA_MODE` only.
+pages, overflow files, OOS, catalog, and server statistics are `SERVER_MODE` / `SA_MODE` only.
 
-For project-wide style, error handling, memory rules, build commands, and CI policy, follow the effective checkout
-instructions and [src/AGENTS.md](../AGENTS.md), including any local overrides. This file adds storage-specific
-navigation and safety rules.
+For project-wide style, error handling, and memory rules, follow [the root AGENTS.md](../../AGENTS.md) and
+[src/AGENTS.md](../AGENTS.md); for build commands and CI policy, read [docs/build.md](../../docs/build.md) and
+[docs/pull-requests.md](../../docs/pull-requests.md). This file adds storage-specific navigation and safety
+rules.
 
 ## Reference Docs
 
@@ -36,6 +37,8 @@ navigation and safety rules.
 | `external_sort.c/h` | General external sorting for query and other callers |
 | `system_catalog.c/h`, `catalog_class.c/h`, `statistics*.c/h`, `compactdb_sr.c` | Catalog persistence, optimizer statistics, compaction |
 | `es*.c/h`, `es_list.h` | External storage URI API and POSIX/OWFS backends |
+| `oos_file.cpp/hpp`, `heap_oos.cpp/hpp`, `heap_oos_value_ref.cpp/hpp`, `heap_pending_record.cpp/hpp`, `oos_util.cpp/hpp` | Out-of-row overflow storage (OOS): variable-length column values kept outside the heap record in the heap's `FILE_OOS` file, with their own recovery indexes (`RVOOS_*`) and vacuum path |
+| `oos_log.hpp` | OOS diagnostic logging (`oos_log` namespace); not WAL |
 
 ## Where To Look
 
@@ -54,6 +57,10 @@ navigation and safety rules.
 | Bulk index build | `btree_load.c`, `btree_sort.c`, `btree_sort_merge.cpp`, `btree_sort_radix.cpp` |
 | Catalog/statistics inconsistency | `system_catalog.c`, `catalog_class.c`, `statistics_sr.c`, `statistics_cl.c` |
 | External storage / LOB path issue | `es.c`, `es_posix.c`, `es_owfs.c`, `src/object/lob_locator.cpp` |
+| OOS file, chunk insert/read/delete, OOS recovery | `oos_file.cpp`: `oos_create_file()`, `oos_insert()`, `oos_read()`, `oos_delete()`, `oos_rv_*()` |
+| Heap record with OOS values | `heap_oos.cpp`: `heap_oos_finalize_record()`, `heap_oos_delete_unreferenced()`; `heap_oos_value_ref.cpp`, `heap_pending_record.cpp` |
+| OOS reclamation by vacuum | `src/query/vacuum_oos.cpp`: `vacuum_heap_oos_log_reclaim_intent()`, `vacuum_oos_reclaim_notified_chains()` |
+| OOS unit tests | `unit_tests/oos/`; read [unit_tests/oos/AGENTS.md](../../unit_tests/oos/AGENTS.md) first |
 
 ## Core Model
 
@@ -87,11 +94,10 @@ See [page fix examples and durability rules](docs/buffer-io-durability.md#page-f
 - Respect latch ordering. Parent/ancestor pages are generally fixed before child pages; heap/overflow ordered fixes carry
   group/rank state through `PGBUF_WATCHER`.
 - When changing on-disk descriptors or page layouts, check disk compatibility, recovery records, TDE flags, and
-  check/dump code in the same subsystem.
-- There is no `src/storage/CMakeLists.txt`; source ownership is in `cubrid/CMakeLists.txt`, `sa/CMakeLists.txt`, and
-  `cs/CMakeLists.txt`.
-- Storage sources, including `.c` files, compile as C++17 through the target CMake source properties. For throwing STL
-  operations, catch exceptions at the call site and immediately translate them into CUBRID's C-style error handling.
+  check/dump code in the same subsystem. A heap record-format, insert, update, delete, or vacuum change must also
+  cover the OOS path.
+- Storage tightens the exception rule in [src/AGENTS.md](../AGENTS.md): catch exceptions from throwing STL operations
+  at the call site and translate them there into an `er_set (...)` and an error-code return.
 
 ## Gotchas
 

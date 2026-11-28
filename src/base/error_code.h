@@ -25,7 +25,6 @@
  * When an entry is added here please ensure that the msg/<locale>/cubrid.msg
  * files are updated with matching error strings. See message_catalog.c for
  * details.
- * The error codes must also be added to compat/dbi_compat.h
  * ER_LAST_ERROR must also be updated.
  * In case of common,  
  * cci repository source (src/cci/base_error_code.h) must be updated,

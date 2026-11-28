@@ -1823,10 +1823,10 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * 1. user input
    * 2. start_val
    * 3. 1
-   * 4. -e36
+   * 4. negative_e38 (DB_SERIAL_MIN)
    * min_val_msgid is the proper message id. it's for error message generation
    * when min_val violates some invariants.
-   * if min_val is 1 or -e36, min_val_msgid is set to 0 (default value) because
+   * if min_val is 1 or negative_e38, min_val_msgid is set to 0 (default value) because
    *  constants can't be the reason which violate invariants.
    * if min_val is from user input, min_val_msgid is set to
    * MSGCAT_SEMANTIC_SERIAL_MIN_VAL_INVALID.

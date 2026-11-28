@@ -35,6 +35,7 @@ See `file_alloc()` and `file_init_page_type()` in [file_manager.c](../file_manag
 - `FILE_EXTENDIBLE_HASH`, `FILE_EXTENDIBLE_HASH_DIRECTORY`
 - `FILE_CATALOG`, `FILE_DROPPED_FILES`, `FILE_VACUUM_DATA`
 - `FILE_QUERY_AREA`, `FILE_TEMP`
+- `FILE_OOS` (out-of-row overflow storage of a heap)
 
 If you add or reinterpret a file type, audit allocation, recovery, checkdb, dump, TDE, and disk compatibility.
 
@@ -74,6 +75,8 @@ These paths are implemented in [file_manager.c](../file_manager.c). File lifetim
 Logical file descriptors are packed into `FILE_DESCRIPTORS`, currently sized by `FILE_DESCRIPTORS_SIZE`.
 
 - Heap files store class OID and `HFID`.
+- Overflow heap files (`heap_overflow`) and OOS files (`heap_oos`, `FILE_OOS_DES`) store the owning heap's `HFID` and
+  class OID.
 - B-tree files store class OID and attribute/index identity.
 - Overflow B-tree key files store owning `BTID` and class OID.
 - Vacuum data files store the first VPID.

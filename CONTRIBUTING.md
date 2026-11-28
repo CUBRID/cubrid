@@ -31,6 +31,8 @@ There are many ways to contribute, from submitting a bug report and a feature re
 
   You are kindly requested to keep your work mergeable. 
 
+  Before you open a pull request, read [Pull Requests and CI](docs/pull-requests.md) for the PR title format, license headers, static checks, and regression CI.
+
 You can also refer to
 
   * [Forking a repository](https://help.github.com/articles/fork-a-repo).

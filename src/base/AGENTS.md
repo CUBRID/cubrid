@@ -2,7 +2,7 @@
 
 Foundational layer used by every other CUBRID engine module. Provides memory management, error handling, lock-free data structures, platform abstraction, internationalization, serialization, performance monitoring, and general utilities.
 
-For engine-wide coding style, memory/exception handling, and error-code conventions, see [src/AGENTS.md](../AGENTS.md) (and [the root AGENTS.md](../../AGENTS.md) for repo-wide build and CI rules).
+For engine-wide coding style, memory/exception handling, and error-code conventions, see [src/AGENTS.md](../AGENTS.md) (and [the root AGENTS.md](../../AGENTS.md) for repo-wide rules and task guides).
 
 ## Subsystems
 
@@ -38,7 +38,7 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 
 | File | Description |
 |------|-------------|
-| `error_code.h` | All error codes as `#define` negative integers (see [src/AGENTS.md](../AGENTS.md) for the error-code update procedure) |
+| `error_code.h` | All error codes as `#define` negative integers (see [Adding a New Error Code](#adding-a-new-error-code)) |
 | `error_manager.c/h` | `er_set()`, error stack, error logging, severity levels, `ASSERT_ERROR()` macros |
 | `error_context.hpp/cpp` | C++ per-thread error context (`cuberr::context`) with stackable error levels |
 
@@ -109,7 +109,7 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 
 | File | Description |
 |------|-------------|
-| `system_parameter.c/h` | **Largest file in base.** ~400 `PRM_ID_*` parameters, reads `cubrid.conf` |
+| `system_parameter.c/h` | **Largest file in base.** `PRM_ID_*` parameters, reads `cubrid.conf` |
 | `databases_file.c/h` | `databases.txt` parser and database registry |
 | `environment_variable.c/h` | `$CUBRID` path resolution and directory helpers |
 | `release_string.c/h` | Version info, disk/network/log compatibility checks |
@@ -144,7 +144,7 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 | `xml_parser.c/h` | XML parser wrapper around expat (used for LDML locale, timezone data) |
 | `util_func.c/h` | General utilities: hashing, filepath comparison, signal handling, string splitting |
 | `hide_password.cpp`, `hide_password.h` | Password hiding in SQL strings for logging |
-| `xserver_interface.h` | Server-mode-only function declarations (boot, locator, log, heap, btree, query) |
+| `xserver_interface.h` | `x*` server function declarations (boot, locator, log, heap, btree, query) for `SERVER_MODE` and `SA_MODE` |
 | `server_interface.h` | Server interface constants |
 
 ## Key Architecture Patterns
@@ -166,19 +166,33 @@ For engine-wide coding style, memory/exception handling, and error-code conventi
 
 | Task | Primary File(s) |
 |------|-----------------|
-| Add error code | `error_code.h` (see [src/AGENTS.md](../AGENTS.md) for the error-code update procedure) |
+| Add error code | `error_code.h` (see [Adding a New Error Code](#adding-a-new-error-code)) |
 | Fix memory leak | `memory_alloc.c`, `resource_tracker.hpp` |
 | Fix lock-free structure | `lockfree_hashmap.hpp` (modern), `lock_free.c` (legacy) |
 | Add system parameter | `system_parameter.c/h` — add `PRM_ID_*`, update `prm_Def`, `PRM_LAST_ID` |
 | Fix charset/collation | `intl_support.c`, `language_support.c`, `uca_support.c` |
 | Fix timezone | `tz_support.c` |
-| Add perf counter | `perf_monitor.c` (legacy) or `perf.hpp` (modern) |
+| Add perf counter | `cubrid statdump` shows only `PSTAT_*` counters: add the ID to `PERF_STAT_ID` in `perf_monitor.h` and the entry at the same position in `pstat_Metadata[]` (`perf_monitor.c`); a non-complex entry goes before the first complex (`PSTAT_METADATA_INIT_COMPLEX`) entry. A `cubperf` (`perf.hpp`) statset reaches statdump only when `perfmon_server_calc_stats ()` copies it into a complex `PSTAT_*` entry, as `perfmon_peek_thread_daemon_stats ()` does for `PSTAT_THREAD_DAEMON_STATS`. For a new statset, add a `PSTAT_METADATA_INIT_COMPLEX` entry with its `f_dump_in_file`, `f_dump_in_buffer`, and `f_load` functions, and add the copy in the `SERVER_MODE` block of `perfmon_server_calc_stats ()`. |
+
+## Adding a New Error Code
+
+The procedure for adding an engine error code and its message.
+Read this before you add an `ER_*` code.
+
+`ER_LAST_ERROR` is a sentinel one below the newest code, and `er_set ()` rejects any code at or below it (`src/base/error_manager.c`).
+
+1. In `src/base/error_code.h`, define the new code with the current `ER_LAST_ERROR` value, then set `ER_LAST_ERROR` one lower. Add codes only there: `src/compat/dbi_compat.h` includes `error_code.h` and defines no `ER_*` macros.
+2. In both `msg/en_US.utf8/cubrid.msg` and `msg/ko_KR.utf8/cubrid.msg`, under `$set 5 MSGCAT_SET_ERROR`, the new message takes positive ID `-ER_CODE`, which is the ID of the current `Last Error` line (ko_KR: `마지막 에러`); move that line to ID `-ER_LAST_ERROR`.
+3. Check the text at runtime: the build compiles the catalogs with `gencat`, and the engine reads them from `$CUBRID/msg`, so install an assert-enabled build into a scratch `$CUBRID` (see [docs/build.md](../../docs/build.md#scratch-install)), raise the error once, and confirm that the message is yours, not `No error message available.`.
+4. If a client-facing error must also be exposed in CCI, open a separate PR in `CUBRID/cubrid-cci` for `src/cci/base_error_code.h`; do not modify files inside `cubrid-cci/` in an engine PR. The submodule bump PR normally comes from `.github/workflows/submodule-bump-receiver.yml`; check for an open bump PR before you bump the submodule by hand.
+
+How engine interfaces report errors (`er_set`, negative codes, no escaping C++ exceptions) is in [src/AGENTS.md](../AGENTS.md#resource-memory-and-error-handling).
 
 ## Conventions (base/-specific)
 
 ### Error Handling
 - `er_set()` always needs `ARG_FILE_LINE` as 2nd arg — macro expands to `__FILE__, __LINE__`
-- Severity ordering: `ER_FATAL_ERROR_SEVERITY` > `ER_ERROR_SEVERITY` > `ER_SYNTAX_ERROR_SEVERITY` > `ER_WARNING_SEVERITY` > `ER_NOTIFICATION_SEVERITY`
+- Severity enum (`er_severity` in `error_manager.h`): a lower value is more severe, from `ER_FATAL_ERROR_SEVERITY` (0) through `ER_ERROR_SEVERITY`, `ER_SYNTAX_ERROR_SEVERITY`, `ER_WARNING_SEVERITY` to `ER_NOTIFICATION_SEVERITY`. Test "error or worse" with `severity <= ER_ERROR_SEVERITY`
 - Check with `ASSERT_ERROR()` or `ASSERT_ERROR_AND_SET(error_code)` after operations that should set errors
 
 ### Lock-Free Rules

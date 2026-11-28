@@ -1,14 +1,14 @@
 # src/ — CUBRID Engine Source
 
-Follow [the root AGENTS.md](../AGENTS.md) for repository-wide build, CI, and reporting rules. Consult the target module's `AGENTS.md` (and `src/storage/docs/` when working in `src/storage/`) before changing subsystem behavior.
+Follow [the root AGENTS.md](../AGENTS.md) for repository-wide rules, hazards, task guides (build, PRs, CI), and reporting. Consult the target module's `AGENTS.md` (and `src/storage/docs/` when working in `src/storage/`) before changing subsystem behavior.
 
-**Compilation language**: most `.c` sources in engine targets compile as C++17 (`-std=c++17` in `CMakeLists.txt`) via per-directory `set_source_files_properties(... PROPERTIES LANGUAGE CXX)` in CMake (a few exceptions such as `cm_broker_jni.c` and `gencat.c` compile as C). Note that `c_to_cpp.sh` only renames `.c` files to `.cpp` with `git mv`; always check every owning target `CMakeLists.txt` for actual language settings.
+**Compilation language**: most `.c` sources in engine targets compile as C++17 (`-std=c++17` in `CMakeLists.txt`) via per-directory `set_source_files_properties(... PROPERTIES LANGUAGE CXX)` in CMake (a few exceptions such as `cm_broker_jni.c` and `gencat.c` compile as C); always check every owning target `CMakeLists.txt` for actual language settings. `c_to_cpp.sh <path>` only runs `git mv` from `.c` to `.cpp` for every `.c` file under `<path>` (under the current directory when the argument is missing), so pass a single file.
 
 ## Build-Mode Boundaries
 
 Engine sources compile into three primary modes controlled by preprocessor definitions:
 
-- `SERVER_MODE` — server shared library (`cubrid/CMakeLists.txt` → `libcubrid`) and server executable (`util/CMakeLists.txt` → `cub_server`).
+- `SERVER_MODE` — server shared library (`cubrid/CMakeLists.txt` → `libcubrid`). The server executable `cub_server` (`util/CMakeLists.txt`) compiles only `src/executables/server.c` and links `libcubrid`, so server sources are never added there.
 - `SA_MODE` — standalone library (`sa/CMakeLists.txt` → `libcubridsa`) combining client and server in-process.
 - `CS_MODE` — client-server library (`cs/CMakeLists.txt` → `libcubridcs`) and client utilities (e.g., `util/CMakeLists.txt`).
 
@@ -18,6 +18,8 @@ Never infer mode membership from directory name alone; verify both the owning `C
 - `src/query/`, `src/storage/`, and `src/transaction/` are primarily `SERVER_MODE`/`SA_MODE`, yet each contributes a client subset to `cs/CMakeLists.txt` (e.g., `query_cl.c`, `xasl_to_stream.c`, `string_opfunc.c`; `es.c`, `file_io.c`, `oid.c`, `statistics_cl.c`, `tde.c`; `boot_cl.c`, `transaction_cl.c`, `locator_cl.c`, `log_comm.c`).
 - `src/compat/` builds broadly in `SA_MODE`/`CS_MODE` and as a reduced subset in `SERVER_MODE`; `src/connection/` uses `_sr`/`_cl` files plus shared sources.
 - Keep `#error Belongs to server module` and similar mode guards intact when refactoring headers.
+
+Before finalizing engine C/C++ changes, verify both `release` (the only `-Werror` mode; asserts compiled out) and one assert-enabled mode (`debug` or `optdebug`); see [docs/build.md](../docs/build.md#build-modes).
 
 ## CMake Source Registration
 
@@ -31,7 +33,8 @@ When adding a new source file under `src/`:
 1. Search top-level `CMakeLists.txt` files for sibling files in the same module to identify every target that must compile it.
 2. Add the file (and tracked headers where listed) to each owning target's `CMakeLists.txt`, ensuring `PROPERTIES LANGUAGE CXX` is set in every owning directory for C++-compiled `.c` files.
 3. If the file is listed in `cubrid/CMakeLists.txt`, satisfy the `memory_wrapper.hpp` include check below.
-4. Build every affected target (`libcubrid`/`cub_server`, `libcubridsa`, `libcubridcs`, utilities, broker, or unit tests).
+4. If its extension is one the license check covers, give it an accepted Apache 2.0 license header ([docs/pull-requests.md](../docs/pull-requests.md#pr-title-license-headers-and-cla)). A third-party file keeps its own license: add its repository-relative path to `.github/workflows/license_headers/license_check_ignore_files.txt`, or the `license` job fails.
+5. Build every affected target (`libcubrid`/`cub_server`, `libcubridsa`, `libcubridcs`, utilities, broker, or unit tests).
 
 ## Resource, Memory, and Error Handling
 
@@ -47,11 +50,12 @@ When adding a new source file under `src/`:
   - Engine interfaces use negative error codes in `src/base/error_code.h` (`NO_ERROR = 0`) and report errors with `er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CODE, ...)`. Do not let C++ exceptions escape across C-style engine interfaces.
   - Prefer `.cpp` files for new STL-heavy code. Whenever calling throwing STL operations (in `.cpp` or C++-compiled `.c`), catch exceptions at or before the C-interface boundary and translate them via `er_set (...)` and an error-code return (see `src/storage/heap_file.c`, `src/optimizer/histogram/histogram_sampler_sr.cpp`, and `src/query/string_regex_std.cpp`).
   - The error context is per thread (`cuberr::context`): an `er_set` on a worker thread is not visible to the thread answering the client. In parallel query workers (`src/query/parallel/`), propagate errors explicitly via `parallel_query::err_messages_with_lock::move_top_error_message_to_this ()` (`src/query/parallel/px_interrupt.hpp`), and swap them into the requester's context after `wait_workers ()`.
-- **Adding a new error code**: update `src/base/error_code.h` (definition and `ER_LAST_ERROR`) and both `msg/en_US.utf8/cubrid.msg` and `msg/ko_KR.utf8/cubrid.msg` under `$set 5 MSGCAT_SET_ERROR` using positive message ID `-ER_CODE` (`src/compat/dbi_compat.h` already includes `error_code.h` and defines no `ER_*` macros). If a client-facing error must also be exposed in CCI, open a separate PR in `CUBRID/cubrid-cci` for `src/cci/base_error_code.h` and bump the submodule separately—do not modify files inside `cubrid-cci/` in an engine PR.
+- **Adding a new error code**: before you add an `ER_*` code, read [Adding a New Error Code](base/AGENTS.md#adding-a-new-error-code) in `src/base/AGENTS.md`.
+- **`ER_QPROC_INVALID_XASLNODE`** makes the client drop its `xasl_id` and recompile (`src/compat/db_vdb.c`); do not raise it for unrelated "cannot happen" checks.
 
 ## Formatting, Includes, and Static Checks
 
-- **Formatters** (`.github/workflows/codestyle.sh`): `.c`/`.h`/`.i` use GNU `indent -l120 -lc120` (CI pins GNU `indent` 2.2.11—2.2.12+ produces different output—and runs `codestyle.sh` across each entire modified file; check `indent --version` locally to avoid unrelated diffs); `.cpp`/`.hpp`/`.ipp` use `astyle` (GNU style, 2-space indent, 120-char line limit).
+- **Formatters** (`.github/workflows/codestyle.sh`): `.c`/`.h`/`.i` use GNU `indent -l120 -lc120` (CI pins GNU `indent` 2.2.11—2.2.12+ produces different output—and runs `codestyle.sh` across each entire modified file; check `indent --version` locally to avoid unrelated diffs); `.cpp`/`.hpp`/`.ipp` use `astyle` (GNU style, 2-space indent, 120-char line limit). `.github/workflows/codestyle.sh <file>` formats one file in place.
 - **Protecting C++ syntax in `.c`/`.h` files**: GNU `indent` misformats C++ syntax (`try`/`catch`, templates, lambdas). Wrap C++-only blocks inside legacy `.c`/`.h` files with:
 
   ```c
@@ -65,16 +69,14 @@ When adding a new source file under `src/`:
   - Place `#include "memory_wrapper.hpp"` as the last `^#include` line (including conditional includes inside `#if` blocks), with exact comment `// XXX: SHOULD BE THE LAST INCLUDE HEADER` (no trailing space) on the immediately preceding line.
   - **Checked exception**: `src/debugging/strict_warnings_on.hpp` and `src/debugging/strict_warnings_off.hpp` may follow `memory_wrapper.hpp`.
   - Keep `memory_wrapper.hpp` out of header files (`.h`/`.hpp`); use `src/base/memory_cwrapper.h` in headers when allocation wrappers are needed.
-- **Conventions & static analysis**: in new `.c` files, include `"config.h"` first and use `#ifndef _FILENAME_H_` / `_FILENAME_HPP_` header guards matching neighboring files (do not retrofit untouched legacy files); avoid inline `cppcheck` suppressions without justification in the PR.
+- **Third-party allocator**: leave `src/heaplayers/lea_heap.c` untouched unless the task requires it (`src/heaplayers/` is excluded from `cppcheck` in `.github/workflows/check.yml`).
+- **Conventions & static analysis**: new `.c` files include `"config.h"` first; new headers use the guard style of their neighboring headers (`#ifndef _FILENAME_H_` / `_FILENAME_HPP_`, or `#pragma once`). Do not retrofit untouched legacy files. Avoid inline `cppcheck` suppressions without justification in the PR.
 
 ## Cross-Module Impact Checks
 
-- **XASL changes**: check all four pipeline stages together — generation (`src/parser/xasl_generation.c`, `src/parser/xasl_regu_alloc.cpp`, `src/optimizer/plan_generation.c`), serialization (`src/query/xasl_to_stream.c`), deserialization (`src/query/stream_to_xasl.c`, `src/xasl/xasl_unpack_info.hpp`, `src/xasl/xasl_unpack_info.cpp`), and execution/evaluation (`src/query/query_executor.c`, `src/query/scan_manager.c`, `src/query/fetch.c`, `src/query/expr_compile.c`, `src/query/query_evaluator.c`, `src/query/query_dump.c`) — along with shared node definitions in `src/xasl/` and `src/query/xasl.h`. See [src/xasl/AGENTS.md](xasl/AGENTS.md), [src/parser/AGENTS.md](parser/AGENTS.md), [src/optimizer/AGENTS.md](optimizer/AGENTS.md), and [src/query/AGENTS.md](query/AGENTS.md).
-  - Stream layout is also an on-disk format: filter-index predicates (`pred_stream`) and function-index expressions (`expr_stream`) are stored in the catalog and read back with `stx_map_stream_to_filter_pred ()` / `stx_map_stream_to_func_pred ()`.
-  - XASL clones are reused across executions and sessions: `xcache_retire_clone ()` relies on `qexec_clear_xasl ()` to reset a clone, and parallel scan workers take clones from the same pool. Reset any per-execution state added to a node there.
-  - `ER_QPROC_INVALID_XASLNODE` makes the client drop its `xasl_id` and recompile (`src/compat/db_vdb.c`); do not reuse it for unrelated "cannot happen" checks.
-- **Storage & transaction changes**: verify page latches vs. transaction locks, latch ordering, WAL/LSAs, crash redo/undo recovery, MVCC visibility, and vacuum (`src/query/vacuum.c`, `src/query/vacuum_oos.cpp`) together. See [src/storage/AGENTS.md](storage/AGENTS.md) and [src/transaction/AGENTS.md](transaction/AGENTS.md).
-  - Log and disk formats: when adding a recovery record, append to `LOG_RCVINDEX` at the end of the enum and update `RV_LAST_LOGID` (`src/transaction/recovery.h`), insert the matching positional entry in `RV_fun[]` (`src/transaction/recovery.c`; ordering is asserted only in `!NDEBUG` builds via `rv_check_rvfuns ()`), and update `RCV_IS_*` classification macros if applicable. Never bump `disk_compatibility_level` (`src/base/release_string.c`) in a feature PR—it is a release-level version bumped once per incompatible release with release/upgrade coordination; instead, verify compatibility and flag breaking on-disk changes to release owners.
+- **XASL changes**: before you change an XASL node or its serialization, read [XASL Changes](xasl/AGENTS.md#xasl-changes) in `src/xasl/AGENTS.md`; it lists the four pipeline stages and their files.
+- **Storage & transaction changes**: verify page latches vs. transaction locks, latch ordering, WAL/LSAs, crash redo/undo recovery, MVCC visibility, and vacuum (`src/query/vacuum.c`, `src/query/vacuum_oos.cpp`) together. See [src/storage/AGENTS.md](storage/AGENTS.md) and [src/transaction/AGENTS.md](transaction/AGENTS.md). Never bump `disk_compatibility_level` (`src/base/release_string.c`) in a feature PR; it is bumped once per incompatible release. Verify compatibility and flag breaking on-disk changes to release owners.
+  - **Adding a recovery index**: before you add a recovery index (`LOG_RCVINDEX`, `RV_fun[]`), read [Adding a Recovery Index](transaction/AGENTS.md#adding-a-recovery-index) in `src/transaction/AGENTS.md`.
 - **Key coupling points** (workflow checklist, not an exhaustive include graph):
   - `src/base/` and `src/compat/` (`DB_VALUE`) underpin most targets.
   - `src/parser/` ↔ `src/optimizer/`: bidirectional compile/rewrite/planning; note `src/optimizer/histogram/` also builds in `SERVER_MODE`.
