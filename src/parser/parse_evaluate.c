@@ -1173,7 +1173,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	  /* evaluate operands */
 	  if (!arg1 && op == PT_UNIX_TIMESTAMP)
 	    {
-	      pr_clone_value (&parser->sys_datetime, &opd1);
+	      /* the statement clock as an epoch; a DATETIME operand would be read in the session time zone */
+	      pr_clone_value (&parser->sys_epochtime, &opd1);
 	    }
 	  else
 	    {
