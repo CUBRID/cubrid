@@ -1279,7 +1279,9 @@ css_check_master_socket_input (int *count, fd_set * fd_var)
 		      if (auto_Restart_server)
 			{
 			  /* *INDENT-OFF* */
-			  master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_SERVER, -1, "", "", temp->name);
+			  /* with the pid of the exited server, to ignore a duplicate request for the same exit */
+			  master_Server_monitor->produce_job (server_monitor::job_type::REVIVE_SERVER,
+							      temp->pid > 0 ? temp->pid : -1, "", "", temp->name);
 			  /* *INDENT-ON* */
 			}
 #endif

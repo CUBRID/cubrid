@@ -35,6 +35,7 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
+#include <chrono>
 #include <string>
 
 namespace cubconn::master
@@ -85,6 +86,15 @@ namespace cubconn::master
       std::string m_server_name;
       int m_master_port;
 
+      /* true once this server has been registered to master. a failure before that is a startup failure */
+      bool m_registered_once;
+      /* registration failed while starting. run () returns false */
+      bool m_start_failed;
+      /* the earliest time to try to re-establish the connection with master */
+      std::chrono::steady_clock::time_point m_next_reestablish;
+      /* the handshake fails if master sends nothing until this time */
+      std::chrono::steady_clock::time_point m_handshake_deadline;
+
       /* dispatch */
       connection::pool *m_connection_pool;
 
@@ -97,6 +107,10 @@ namespace cubconn::master
 
       /* epoll */
       inline bool update_epoll_events (context *ctx);
+
+      /* unix domain socket */
+      inline void close_unixsocket () noexcept;
+      inline bool wait_for_master_on_unixsocket (context *ctx) noexcept;
 
       /* context */
       inline context *make_context ();
@@ -160,6 +174,7 @@ namespace cubconn::master
       /* --------------------------------------------------------------------------- */
       inline bool dispose_master_connection () noexcept;
       inline bool try_to_reestablish_with_master () noexcept;
+      inline int get_wait_timeout () const noexcept;
 
       /* --------------------------------------------------------------------------- */
       /* main handler								     */

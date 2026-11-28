@@ -896,6 +896,9 @@ css_tcp_setup_server_datagram (const char *pathname, SOCKET * sockfd)
   if (bind (*sockfd, (struct sockaddr *) &serv_addr, servlen) < 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_DATAGRAM_BIND, 0);
+      /* no caller closes the socket on failure. release it here, or every retry leaks one */
+      close (*sockfd);
+      *sockfd = INVALID_SOCKET;
       return false;
     }
 
@@ -910,6 +913,8 @@ css_tcp_setup_server_datagram (const char *pathname, SOCKET * sockfd)
   if (listen (*sockfd, 5) != 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_ACCEPT_ERROR, 0);
+      close (*sockfd);
+      *sockfd = INVALID_SOCKET;
       return false;
     }
 

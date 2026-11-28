@@ -46,6 +46,9 @@
 #include <sys/epoll.h>
 #include <netinet/tcp.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <algorithm>
+#include <chrono>
 #include <string>
 #include <type_traits>
 
@@ -65,6 +68,15 @@
 
 namespace cubconn::master
 {
+  /* the minimum interval between attempts to re-establish the connection with master */
+  static constexpr std::chrono::milliseconds REESTABLISH_INTERVAL { 5 * 1000 };
+  /* the longest wait in the event loop */
+  static constexpr int EVENT_WAIT_TIMEOUT_MSEC = 5 * 1000;
+  /* how long to wait for master to connect to the unix domain socket of this server */
+  static constexpr std::chrono::milliseconds UNIXSOCKET_ACCEPT_TIMEOUT { 30 * 1000 };
+  /* how long the handshake (until switched to the unix domain socket) waits while master sends nothing */
+  static constexpr std::chrono::milliseconds HANDSHAKE_TIMEOUT { 60 * 1000 };
+
   static bool
   is_valid_early_client_type (int client_type)
   {
@@ -79,7 +91,13 @@ namespace cubconn::master
     m_stop (false),
     m_eventfd_context (nullptr),
     m_entry (nullptr),
+    m_unixsocket (INVALID_SOCKET),
     m_master_state (master_state::CLOSED),
+    m_master_port (0),
+    m_registered_once (false),
+    m_start_failed (false),
+    m_next_reestablish (std::chrono::steady_clock::time_point::min ()),
+    m_handshake_deadline (std::chrono::steady_clock::time_point::max ()),
     m_connection_pool (nullptr)
   {
     context *ctx;
@@ -129,6 +147,8 @@ namespace cubconn::master
 
   connector::~connector ()
   {
+    this->close_unixsocket ();
+
     if (m_eventfd_context != nullptr)
       {
 	(void) m_events.remove_descriptor (m_eventfd);
@@ -196,6 +216,10 @@ namespace cubconn::master
   {
     m_master_port = port;
     m_server_name = server_name;
+
+    /* a failure below reports its own error. do not let an error left from the server boot hide it. */
+    er_clear ();
+
     if (!this->connect (port))
       {
 	er_log_conn (__FILE__, __LINE__, "master::connector->run: connect failed");
@@ -205,6 +229,7 @@ namespace cubconn::master
     if (!this->prepare_handshake (server_name))
       {
 	er_log_conn (__FILE__, __LINE__, "master::connector->run: prepare_handshake failed");
+	(void) this->dispose_master_connection ();
 	return false;
       }
 
@@ -296,6 +321,96 @@ namespace cubconn::master
       {
 	er_log_conn (__FILE__, __LINE__, "master::connector->update_epoll_events: m_events->modify_descriptor failed: %s",
 		     strerror (errno));
+	return false;
+      }
+
+    return true;
+  }
+
+  inline void connector::close_unixsocket () noexcept
+  {
+    /* callers report the cause of a failure with errno after this. do not let close/unlink overwrite it. */
+    int saved_errno = errno;
+
+    if (!IS_INVALID_SOCKET (m_unixsocket))
+      {
+	::close (m_unixsocket);
+	m_unixsocket = INVALID_SOCKET;
+      }
+
+    if (!m_unixpath.empty ())
+      {
+	(void) ::unlink (m_unixpath.c_str ());
+	m_unixpath.clear ();
+      }
+
+    errno = saved_errno;
+  }
+
+  inline bool connector::wait_for_master_on_unixsocket (context *ctx) noexcept
+  {
+    std::chrono::steady_clock::time_point deadline;
+    std::chrono::milliseconds::rep remain;
+    struct pollfd pfd[2];
+    int rc;
+
+    /* accept () blocks. do not wait forever if master went away before it connects to the socket. */
+    pfd[0].fd = m_unixsocket;
+    pfd[0].events = POLLIN;
+    pfd[0].revents = 0;
+    /* master connects to the socket before closing this connection. a hang-up alone means master gave up. */
+    pfd[1].fd = ctx->m_conn->fd;
+    pfd[1].events = POLLRDHUP;
+    pfd[1].revents = 0;
+
+    /* a signal must not restart the whole wait */
+    deadline = std::min (std::chrono::steady_clock::now () + UNIXSOCKET_ACCEPT_TIMEOUT, m_handshake_deadline);
+    while (true)
+      {
+	remain = std::chrono::ceil<std::chrono::milliseconds> (deadline - std::chrono::steady_clock::now ()).count ();
+	if (remain <= 0)
+	  {
+	    rc = 0;
+	    break;
+	  }
+
+	rc = ::poll (pfd, 2, static_cast<int> (remain));
+	if (rc < 0 && errno == EINTR)
+	  {
+	    continue;
+	  }
+	break;
+      }
+
+    if (rc >= 0 && ! (pfd[0].revents & POLLIN))
+      {
+	/* timed out, or the master connection was closed or broken. master connects to the socket before it
+	 * closes the connection, and once connected, it registers this server. poll may have checked the socket
+	 * just before master connected, so check it once more rather than closing the connection under master. */
+	pfd[0].revents = 0;
+	if (::poll (pfd, 1, 0) > 0 && (pfd[0].revents & POLLIN))
+	  {
+	    return true;
+	  }
+
+	if (rc == 0)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		    "Master server did not connect to the unix domain socket of this server in time",
+		    m_unixpath.c_str ());
+	  }
+	else
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		    "Master server closed the connection before connecting to the unix domain socket of this server",
+		    m_unixpath.c_str ());
+	  }
+	return false;
+      }
+
+    if (rc < 0)
+      {
+	er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_DATAGRAM_ACCEPT, 0);
 	return false;
       }
 
@@ -437,6 +552,7 @@ namespace cubconn::master
 	return false;
       }
     m_master_state = master_state::WAIT_RESPONSE;
+    m_handshake_deadline = std::chrono::steady_clock::now () + HANDSHAKE_TIMEOUT;
 
     return true;
   }
@@ -447,6 +563,9 @@ namespace cubconn::master
     css_conn_entry *conn;
 
     conn = ctx->m_conn;
+    /* defensive: every failure path already closes it, but never overwrite an open socket */
+    this->close_unixsocket ();
+
     /* send the pathname for the datagram */
     /* be sure to open the datagram first.  */
     m_unixpath = filesys::temp_directory_path ();
@@ -456,6 +575,8 @@ namespace cubconn::master
     /* setup unix domain socket and get the path */
     if (!css_tcp_setup_server_datagram (m_unixpath.c_str (), &m_unixsocket))
       {
+	/* the socket has been closed. remove the socket file if bind succeeded */
+	this->close_unixsocket ();
 	er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1);
 	return false;
       }
@@ -475,6 +596,7 @@ namespace cubconn::master
     if (!this->update_epoll_events (ctx))
       {
 	er_log_conn (__FILE__, __LINE__, "master::connector->execute: update_epoll_events failed: %s", strerror (errno));
+	this->close_unixsocket ();
 	return false;
       }
     return true;
@@ -704,33 +826,49 @@ namespace cubconn::master
     int datagram_fd;
 
     /* wait to be reqeusted to connect from master */
+    if (!this->wait_for_master_on_unixsocket (ctx))
+      {
+	er_log_conn (__FILE__, __LINE__, "master::connector->switch_to_unix_socket: master did not connect: %s",
+		     strerror (errno));
+	this->close_unixsocket ();
+	return false;
+      }
+
     if (!css_tcp_listen_server_datagram (m_unixsocket, &datagram_fd))
       {
 	er_log_conn (__FILE__, __LINE__, "master::connector->switch_to_unix_socket: css_tcp_listen_server_datagram failed: %s",
 		     strerror (errno));
 
-	(void) ::unlink (m_unixpath.c_str ());
-	::close (m_unixsocket);
+	this->close_unixsocket ();
 	er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1);
 	return false;
       }
+
+    /* only connected file descriptor is needed */
+    this->close_unixsocket ();
 
     /* remove original */
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
 	er_log_conn (__FILE__, __LINE__, "master::connector->switch_to_unix_socket: m_events->remove_descriptor failed: %s",
 		     strerror (errno));
+	::close (datagram_fd);
 	return false;
       }
 
-    /* only connected file descriptor is needed */
-    (void) ::unlink (m_unixpath.c_str ());
+    /* release the original first. only one connection entry is reserved for master,
+     * so making the new one first fails while the clients use up the others. */
     css_prepare_shutdown_conn (ctx->m_conn);
     css_free_conn (ctx->m_conn);
-    ::close (m_unixsocket);
 
     /* new connection */
     ctx->m_conn = css_make_conn (datagram_fd);
+    if (ctx->m_conn == nullptr)
+      {
+	er_log_conn (__FILE__, __LINE__, "master::connector->switch_to_unix_socket: css_make_conn failed");
+	::close (datagram_fd);
+	return false;
+      }
 
     /* make new socket non-blocking */
     assert (!this->m_events.is_nonblocking (datagram_fd));
@@ -844,6 +982,8 @@ namespace cubconn::master
 
 	if (!this->prepare_reply_refuse_connection (new_ctx, SERVER_INACCESSIBLE_IP))
 	  {
+	    /* the fd received from master is not registered anywhere. close it here. */
+	    css_shutdown_socket (new_fd);
 	    delete new_ctx->m_conn;
 	    delete new_ctx;
 
@@ -866,6 +1006,8 @@ namespace cubconn::master
 
 	    if (!this->prepare_reply_refuse_connection (new_ctx, SERVER_CLIENTS_EXCEEDED))
 	      {
+		/* the fd received from master is not registered anywhere. close it here. */
+		css_shutdown_socket (new_fd);
 		delete new_ctx->m_conn;
 		delete new_ctx;
 
@@ -895,6 +1037,8 @@ namespace cubconn::master
 
 	if (!this->prepare_reply_refuse_connection (new_ctx, SERVER_CLIENTS_EXCEEDED))
 	  {
+	    /* the fd received from master is not registered anywhere. close it here. */
+	    css_shutdown_socket (new_fd);
 	    delete new_ctx->m_conn;
 	    delete new_ctx;
 
@@ -1080,7 +1224,11 @@ namespace cubconn::master
       {
       case state::RecvInHandshake:
 	status = this->handshake_from_master (ctx);
-	NEXT_STATE (ctx, SwitchToUnixSocket);
+	if (status == result::Ok)
+	  {
+	    /* otherwise, wait for the rest of the response or fail below */
+	    NEXT_STATE (ctx, SwitchToUnixSocket);
+	  }
 	break;
 
       case state::RecvRequestType:
@@ -1219,6 +1367,7 @@ namespace cubconn::master
 	  }
 	else
 	  {
+	    m_registered_once = true;
 	    NEXT_STATE (ctx, RecvRequestType);
 	  }
 	break;
@@ -1236,6 +1385,9 @@ namespace cubconn::master
 	return true;
 
       case state::SendHBToMaster:
+	/* in HA mode, registered once the heartbeat registration has been sent.
+	 * (master may not send any request to a server on a slave node for a long time.) */
+	m_registered_once = true;
 	NEXT_STATE (ctx, RecvRequestType);
 	break;
 
@@ -1257,15 +1409,17 @@ namespace cubconn::master
 
   inline bool connector::dispose_master_connection () noexcept
   {
-    if (m_master_state == master_state::WAIT_RESPONSE || m_master_state == master_state::ESTABLISHED)
+    if ((m_master_state == master_state::WAIT_RESPONSE || m_master_state == master_state::ESTABLISHED)
+	&& m_context.m_conn)
       {
-	/* remove the fd which is reset by peer */
+	/* remove the fd which is reset by peer.
+	 * it may not be registered if a failure happened while switching to the unix domain socket.
+	 * go on in that case: the connection is released below anyway, or it could never be re-established. */
 	if (!m_events.remove_descriptor (m_context.m_conn->fd))
 	  {
 	    er_log_conn (__FILE__, __LINE__,
 			 "master::connector->dispose_master_connection: m_events->remove_descriptor failed: %s",
 			 strerror (errno));
-	    return false;
 	  }
       }
 
@@ -1276,6 +1430,8 @@ namespace cubconn::master
 	m_context.m_conn = nullptr;
       }
 
+    this->close_unixsocket ();
+
     m_context.reset ();
     m_master_state = master_state::CLOSED;
 
@@ -1285,6 +1441,9 @@ namespace cubconn::master
   inline bool connector::try_to_reestablish_with_master () noexcept
   {
     fprintf (stderr, "try to re-establish the connection with master...\n");
+
+    /* whatever the result, do not try again before the interval passes */
+    m_next_reestablish = std::chrono::steady_clock::now () + REESTABLISH_INTERVAL;
 
     if (!this->dispose_master_connection ())
       {
@@ -1312,10 +1471,65 @@ namespace cubconn::master
     return true;
   }
 
+  inline int connector::get_wait_timeout () const noexcept
+  {
+    std::chrono::steady_clock::time_point now, due;
+    std::chrono::milliseconds::rep remain;
+
+    switch (m_master_state)
+      {
+      case master_state::CLOSED:
+	/* wake up when the next attempt to re-establish is due */
+	due = m_next_reestablish;
+	break;
+
+      case master_state::WAIT_RESPONSE:
+	/* wake up when the handshake times out */
+	due = m_handshake_deadline;
+	break;
+
+      default:
+	return EVENT_WAIT_TIMEOUT_MSEC;
+      }
+
+    now = std::chrono::steady_clock::now ();
+    if (now >= due)
+      {
+	return 0;
+      }
+
+    /* round up so as not to wake up just before it is due */
+    remain = std::chrono::ceil<std::chrono::milliseconds> (due - now).count ();
+    if (remain > EVENT_WAIT_TIMEOUT_MSEC)
+      {
+	return EVENT_WAIT_TIMEOUT_MSEC;
+      }
+
+    return static_cast<int> (remain);
+  }
+
   inline bool connector::disconnect (context *ctx) noexcept
   {
-    if (ctx->m_conn->fd == m_context.m_conn->fd)
+    /* compare the context itself. m_context.m_conn is null while the master connection is closed. */
+    if (ctx == &m_context)
       {
+	if (!m_registered_once)
+	  {
+	    /* failed to register to master while starting (e.g. the unix domain socket cannot be bound,
+	     * or the same server name exists). the cause usually remains, so do not retry. fail the startup. */
+	    er_log_conn (__FILE__, __LINE__, "master::connector->disconnect: registration failed at startup");
+	    if (er_errid () == NO_ERROR)
+	      {
+		/* the failure did not report its cause (e.g. master closed the connection during the handshake) */
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+			"The connection with master server was closed or failed before this server was registered", "");
+	      }
+	    m_start_failed = true;
+	    m_stop = true;
+	    (void) this->dispose_master_connection ();
+	    return true;
+	  }
+
 	if (!HA_DISABLED ())
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
@@ -1323,8 +1537,10 @@ namespace cubconn::master
 	    m_stop = true;
 	    return true;
 	  }
-	/* WAIT RESPONSE or ESTABLISHED */
-	this->try_to_reestablish_with_master ();
+
+	/* WAIT RESPONSE or ESTABLISHED.
+	 * close the connection only. execute () re-establishes it at the interval of REESTABLISH_INTERVAL. */
+	(void) this->dispose_master_connection ();
 
 	return true;
       }
@@ -1340,7 +1556,7 @@ namespace cubconn::master
 
     while (!m_stop)
       {
-	nfds = m_events.wait (events.data (), events.size (), 5 * 1000 /* timeout for re-establish */);
+	nfds = m_events.wait (events.data (), events.size (), this->get_wait_timeout ());
 	if (nfds < 0)
 	  {
 	    if (errno == EINTR)
@@ -1352,7 +1568,8 @@ namespace cubconn::master
 	    continue;
 	  }
 
-	if (__builtin_expect (m_master_state == master_state::CLOSED, 0))
+	if (__builtin_expect (m_master_state == master_state::CLOSED, 0)
+	    && std::chrono::steady_clock::now () >= m_next_reestablish)
 	  {
 	    /* re-establish the connection with master if it died */
 	    this->try_to_reestablish_with_master ();
@@ -1363,10 +1580,23 @@ namespace cubconn::master
 	    assert (events[i].data.ptr);
 
 	    ctx = reinterpret_cast<context *> (events[i].data.ptr);
+	    if (ctx == &m_context && m_master_state == master_state::WAIT_RESPONSE
+		&& ctx->m_state == state::RecvInHandshake && (events[i].events & EPOLLIN))
+	      {
+		/* master is sending the response, which is read below.
+		 * the deadline is for a master that sends nothing */
+		m_handshake_deadline = std::chrono::steady_clock::now () + HANDSHAKE_TIMEOUT;
+	      }
 	    /* handle hangup/error first to avoid writes on dead sockets */
 	    if (events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR) && ctx->m_conn->fd != m_eventfd)
 	      {
 		er_log_conn (__FILE__, __LINE__, "master::connector->execute: master connection closed: %s", strerror (errno));
+		if (ctx == &m_context && (events[i].events & EPOLLIN) && ctx->m_state == state::RecvInHandshake)
+		  {
+		    /* master may send the reason (e.g. the same server name exists) and close at once.
+		     * read it so that the reason is reported. */
+		    (void) this->handle_master_reception (ctx);
+		  }
 		if (!this->disconnect (ctx))
 		  {
 		    return false;
@@ -1378,7 +1608,7 @@ namespace cubconn::master
 		if (ctx->m_conn->fd == m_eventfd)
 		  {
 		    /* finalize */
-		    return true;
+		    return !m_start_failed;
 		  }
 		if (ctx->has_data_to_send ())
 		  {
@@ -1407,7 +1637,28 @@ namespace cubconn::master
 		  }
 	      }
 	  }
+
+	/* checked after the events so that a response which has already arrived (e.g. after this process was
+	 * suspended for a while) is handled rather than discarded */
+	if (__builtin_expect (m_master_state == master_state::WAIT_RESPONSE, 0)
+	    && std::chrono::steady_clock::now () >= m_handshake_deadline)
+	  {
+	    /* master accepted the connection but sends nothing to complete the handshake */
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		    "Master server accepted the connection but did not answer the registration in time", "");
+	    if (!this->disconnect (&m_context))
+	      {
+		return false;
+	      }
+	  }
       }
+
+    if (m_start_failed)
+      {
+	er_log_conn (__FILE__, __LINE__, "master::connector->execute: failed to start");
+	return false;
+      }
+
     return true;
   }
 }
