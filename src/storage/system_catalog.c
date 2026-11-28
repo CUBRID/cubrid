@@ -395,9 +395,15 @@ static int catalog_file_map_is_empty (THREAD_ENTRY * thread_p, PAGE_PTR * page, 
 static int catalog_file_map_page_dump (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args);
 static int catalog_file_map_overflow_count (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args);
 
+/*
+ * The catalog_put_* writers below zero the whole fixed-size slot before they write its fields. The bytes that no field
+ * covers (alignment gaps, unused and reserved space) otherwise keep whatever the buffer held before, and they reach the
+ * catalog page and the log (RVCT_INSERT, RVCT_UPDATE) as they are. Catalog pages are not encrypted by TDE.
+ */
 static void
 catalog_put_page_header (char *rec_p, CATALOG_PAGE_HEADER * header_p)
 {
+  memset (rec_p, 0, CATALOG_PAGE_HEADER_SIZE);
   CATALOG_PUT_PGHEADER_OVFL_PGID_PAGEID (rec_p, header_p->overflow_page_id.pageid);
   CATALOG_PUT_PGHEADER_OVFL_PGID_VOLID (rec_p, header_p->overflow_page_id.volid);
   CATALOG_PUT_PGHEADER_DIR_COUNT (rec_p, header_p->dir_count);
@@ -422,6 +428,7 @@ catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p)
 static void
 catalog_put_disk_representation (char *rec_p, DISK_REPR * disk_repr_p)
 {
+  memset (rec_p, 0, CATALOG_DISK_REPR_SIZE);
   OR_PUT_INT (rec_p + CATALOG_DISK_REPR_ID_OFF, disk_repr_p->id);
   OR_PUT_INT (rec_p + CATALOG_DISK_REPR_N_FIXED_OFF, disk_repr_p->n_fixed);
   OR_PUT_INT (rec_p + CATALOG_DISK_REPR_FIXED_LENGTH_OFF, disk_repr_p->fixed_length);
@@ -473,6 +480,7 @@ catalog_get_btree_statistics (BTREE_STATS * stat_p, char *rec_p)
 static void
 catalog_put_disk_attribute (char *rec_p, DISK_ATTR * attr_p)
 {
+  memset (rec_p, 0, CATALOG_DISK_ATTR_SIZE);
   OR_PUT_INT (rec_p + CATALOG_DISK_ATTR_ID_OFF, attr_p->id);
   OR_PUT_INT (rec_p + CATALOG_DISK_ATTR_LOCATION_OFF, attr_p->location);
   OR_PUT_INT (rec_p + CATALOG_DISK_ATTR_TYPE_OFF, attr_p->type);
@@ -489,6 +497,7 @@ catalog_put_btree_statistics (char *rec_p, BTREE_STATS * stat_p)
 {
   int i;
 
+  memset (rec_p, 0, CATALOG_BT_STATS_SIZE);
   OR_PUT_BTID (rec_p + CATALOG_BT_STATS_BTID_OFF, &stat_p->btid);
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_LEAFS_OFF, stat_p->leafs);
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_PAGES_OFF, stat_p->pages);
@@ -531,6 +540,7 @@ catalog_put_class_info_to_record (char *rec_p, CLS_INFO * class_info_p)
 {
   assert (!OID_ISNULL (&(class_info_p->ci_rep_dir)));
 
+  memset (rec_p, 0, CATALOG_CLS_INFO_SIZE);
   OR_PUT_HFID (rec_p + CATALOG_CLS_INFO_HFID_OFF, &class_info_p->ci_hfid);
 
   OR_PUT_INT (rec_p + CATALOG_CLS_INFO_TOT_PAGES_OFF, class_info_p->ci_tot_pages);
@@ -550,9 +560,12 @@ catalog_get_repr_item_from_record (CATALOG_REPR_ITEM * item_p, char *rec_p)
   item_p->slot_id = OR_GET_SHORT (rec_p + CATALOG_REPR_ITEM_SLOTID_OFF);
 }
 
+/* The directory count (CATALOG_REPR_ITEM_COUNT_OFF) lies in the slot of the first item, so this clears it as well.
+ * Every caller writes the count after it writes the items. */
 static void
 catalog_put_repr_item_to_record (char *rec_p, CATALOG_REPR_ITEM * item_p)
 {
+  memset (rec_p, 0, CATALOG_REPR_ITEM_SIZE);
   OR_PUT_INT (rec_p + CATALOG_REPR_ITEM_PAGEID_PAGEID_OFF, item_p->page_id.pageid);
   OR_PUT_SHORT (rec_p + CATALOG_REPR_ITEM_PAGEID_VOLID_OFF, item_p->page_id.volid);
   OR_PUT_SHORT (rec_p + CATALOG_REPR_ITEM_REPRID_OFF, item_p->repr_id);
@@ -621,6 +634,9 @@ catalog_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
   bool is_overflow_page = *(bool *) args;
 
   aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
+
+  /* RVCT_NEWPAGE logs the structure itself, padding included */
+  memset (&page_header, 0, sizeof (page_header));
 
   pgbuf_set_page_ptype (thread_p, page, PAGE_CATALOG);
   spage_initialize (thread_p, page, ANCHORED_DONT_REUSE_SLOTS, MAX_ALIGNMENT, SAFEGUARD_RVSPACE);
@@ -2139,6 +2155,8 @@ catalog_put_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
     {
       record.length = CATALOG_REPR_ITEM_SIZE * 2;
       catalog_put_repr_item_to_record (record.data, repr_item_p);
+      /* the second item stays unused until another representation is added */
+      memset (record.data + CATALOG_REPR_ITEM_SIZE, 0, CATALOG_REPR_ITEM_SIZE);
 
       /* save #repr */
       OR_PUT_BYTE (record.data + CATALOG_REPR_ITEM_COUNT_OFF, 1);
@@ -3117,7 +3135,6 @@ catalog_add_class_info (THREAD_ENTRY * thread_p, OID * class_id_p, CLS_INFO * cl
   /* copy the given representation into a slotted page record */
   record.length = CATALOG_CLS_INFO_SIZE;
   catalog_put_class_info_to_record (record.data, class_info_p);
-  memset ((char *) record.data + (CATALOG_CLS_INFO_SIZE - CATALOG_CLS_INFO_RESERVED), 0, CATALOG_CLS_INFO_RESERVED);
 
   success = spage_insert (thread_p, page_p, &record, &repr_item.slot_id);
   if (success != SP_SUCCESS)
@@ -3269,7 +3286,6 @@ catalog_update_class_info (THREAD_ENTRY * thread_p, OID * class_id_p, CLS_INFO *
     }
 
   catalog_put_class_info_to_record (record.data, class_info_p);
-  memset ((char *) record.data + (CATALOG_CLS_INFO_SIZE - CATALOG_CLS_INFO_RESERVED), 0, CATALOG_CLS_INFO_RESERVED);
 
   if (spage_update (thread_p, page_p, repr_item.slot_id, &record) != SP_SUCCESS)
     {
