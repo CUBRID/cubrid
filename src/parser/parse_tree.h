@@ -43,6 +43,7 @@
 #include "system_parameter.h"
 #include "hide_password.h"
 #include "misctype_def.h"
+#include "eval_prop_def.h"
 
 // forward definitions
 struct trace_json_t;
@@ -305,6 +306,22 @@ struct trace_json_t;
 
 #define PT_IS_FUNCTION(n) \
         ( (n) && ((n)->node_type == PT_FUNCTION) )
+
+/* An expression DEFAULT, Expression-Derived Literal or residual: its normalized source text is stored and
+ * stands for the DEFAULT.  (n) is a PT_DATA_DEFAULT node. */
+#define PT_HAS_DEFAULT_EXPR(n) \
+        ( (n) && ((n)->node_type == PT_DATA_DEFAULT) && ((n)->info.data_default.expr_text != NULL) )
+
+/* a PT_DATA_DEFAULT node carrying a residual DEFAULT expression: classified
+ * STABLE or VOLATILE by pt_check_data_default.  A STABLE residual is
+ * evaluated once per statement, a VOLATILE one once per row. */
+#define PT_IS_RESIDUAL_DEFAULT(n) \
+        ( (n) && ((n)->node_type == PT_DATA_DEFAULT) && \
+          PT_VOLATILITY_IS_RESIDUAL ((n)->info.data_default.expr_volatility) )
+
+#define PT_IS_VOLATILE_RESIDUAL_DEFAULT(n) \
+        ( PT_IS_RESIDUAL_DEFAULT (n) && \
+          PT_VOLATILITY_IS_VOLATILE_RESIDUAL ((n)->info.data_default.expr_volatility) )
 
 #define PT_IS_MULTI_COL_TERM(n) \
 	( (n) && \
@@ -1452,6 +1469,8 @@ typedef enum
   PT_TABLE_OPTION_DONT_REUSE_OID
 } PT_TABLE_OPTION_TYPE;
 
+/* The codes are stored in the catalog, in the tree of a DEFAULT expression. Keep the order: add a new code right
+ * before PT_LAST_OPCODE, and do not remove or move an existing one. */
 typedef enum
 {
   PT_AND = 400, PT_OR, PT_NOT,
@@ -1489,7 +1508,7 @@ typedef enum
   PT_SYS_TIME, PT_SYS_TIMESTAMP, PT_CURRENT_TIMESTAMP, PT_SYS_DATETIME,
   PT_CURRENT_DATETIME, PT_CURRENT_TIME, PT_CURRENT_DATE, PT_UTC_TIME,
   PT_UTC_DATE, PT_TO_TIME, PT_TO_TIMESTAMP, PT_TO_DATETIME,
-  PT_CURRENT_VALUE, PT_CURRENT_VALUE_BY_OID, PT_NEXT_VALUE,
+  PT_CURRENT_VALUE, PT_NEXT_VALUE,
   PT_INST_NUM, PT_ROWNUM, PT_ORDERBY_NUM,
   PT_CONNECT_BY_ISCYCLE, PT_CONNECT_BY_ISLEAF, PT_LEVEL,
   PT_SYS_CONNECT_BY_PATH,
@@ -1620,6 +1639,7 @@ typedef enum
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
   PT_COLLECTION_TO_STRING,
+  PT_CURRENT_VALUE_BY_OID,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -2216,7 +2236,16 @@ struct pt_data_default_info
 {
   PT_NODE *default_value;	/* PT_VALUE (list) */
   PT_MISC_TYPE shared;		/* will PT_SHARED or PT_DEFAULT */
-  DB_DEFAULT_EXPR_TYPE default_expr_type;	/* if it is a pseudocolumn, do not evaluate expr */
+  char *expr_text;		/* normalized source text of an expression DEFAULT (Expression-Derived Literal or
+				 * residual); NULL otherwise */
+  PT_VOLATILITY expr_volatility;	/* effective volatility of a DEFAULT expression on the new path:
+					 * IMMUTABLE for an Expression-Derived Literal, STABLE or VOLATILE for a
+					 * residual expression that survives folding; UNSET otherwise */
+  PT_TYPE_ENUM expr_type;	/* type of a column DEFAULT expression before folding, what the DDL checks against
+				 * the column (a folded NULL carries no type); PT_TYPE_NONE otherwise */
+  bool is_session_variable;	/* the DEFAULT is a session variable, replaced with its value: the DDL leaves the
+				 * value to the schema manager, which fits it to the column as by CAST, as earlier
+				 * versions did */
 };
 
 /* Info for the AUTO_INCREMENT node */
@@ -2500,6 +2529,11 @@ struct pt_expr_info
   PT_TYPE_ENUM recursive_type;	/* common type for recursive expression arguments (like PT_GREATEST, PT_LEAST,...) */
   int coll_modifier;		/* collation modifier = collation + 1 */
   int pred_order;		/* for view-merge or predicate-push. pred is ordered by pred_order in qo_discover_edges */
+  /* the fields above keep their offsets: some code reads them through this member on nodes of other types */
+  PT_VOLATILITY expr_volatility;	/* volatility of the overload matched for the node's argument types, stamped
+					 * by type checking or restored from a Compact DEFAULT Tree; the node's own
+					 * value, not its operands' (pt_get_expr_tree_volatility combines them) */
+  int expr_si_requirement;	/* SI requirement of that overload (bitmask of PT_SI_REQUIREMENT bits) */
 };
 
 /* FILE PATH INFO */
@@ -2533,6 +2567,10 @@ struct pt_function_info
     bool ignore_nulls;		/* determines whether the calculation eliminate or includes null values */
     bool is_analytic;		/* is analytic clause */
   } analytic;
+  /* the fields above keep their offsets: some code reads them through this member on nodes of other types */
+  PT_VOLATILITY expr_volatility;	/* volatility of the signature matched for the node's argument types (see
+					 * PT_EXPR_INFO.expr_volatility) */
+  int expr_si_requirement;	/* SI requirement of that signature (bitmask of PT_SI_REQUIREMENT bits) */
 };
 
 /* Info for Get Optimization Level statement */
@@ -3985,6 +4023,11 @@ struct parser_node
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
+    unsigned is_restored_default:1;	/* root of a DEFAULT tree copy grafted into a statement: type checking
+					 * keeps the types it was restored with */
+    unsigned is_sp_default_arg:1;	/* an argument a stored procedure call left out, from its parameter's DEFAULT */
+    unsigned is_own_default:1;	/* an INSERT value that is the DEFAULT of its own column (the DEFAULT keyword, or
+				 * DEFAULT (c) in the place of c): all of them share the DEFAULT slot of the column */
     unsigned is_dblink_odku_value:1;	/* a remote INSERT ... SELECT ODKU value bound from the source row, and its copy
 					 * at the end of the source select list */
     unsigned bind_watch_candidate:1;	/* the plan carries BIND_WATCH_CANDIDATE: this statement passed
@@ -4199,6 +4242,13 @@ struct parser_context
   double drand;			/* floating-point random value used by drand() */
   UINT64 uuidv7_last_ms;	/* last used millisecond timestamp for local UUIDv7 generation */
   UINT8 uuidv7_seq;		/* local UUIDv7 sequence within the same millisecond */
+  struct pt_cdt_registry_entry *cdt_registry;	/* CDT registry: rehydrated Compact DEFAULT Trees, one per
+						 * attribute per parser (pt_cdt_registry_tree); a parser_alloc'd
+						 * list released with the parser, NULL until used */
+  struct pt_rand_state **rand_states;	/* while set, each seeded RAND/DRAND/RANDOM/DRANDOM call keeps its
+					 * generator in this list (pt_evaluate_seeded_rand); NULL otherwise */
+  struct pt_rand_state **default_rand_states;	/* while set, a DEFAULT grafted into an expression is evaluated
+						 * with this list as rand_states; NULL otherwise */
 
   COMPILE_CONTEXT context;
   struct xasl_node *parent_proc_xasl;
@@ -4272,6 +4322,8 @@ struct parser_context
     unsigned is_generating_merge_xasl:1;	/* set while pt_to_merge_xasl () runs: the queries it plans, the USING source
 						 * included, execute under a system operation, so serially */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
+    unsigned print_client_values:1;	/* the XASL cache key being printed must carry the client values the
+					 * statement compiles (pt_op_reads_client_value) */
     unsigned print_host_var_source:1;	/* CBRD-27583: a plan dump or trace print: a derived host variable
 					 * position prints as the user position it is derived from */
     unsigned host_var_derive_later:1;	/* CBRD-27583: this later translation runs at every execution, cache hit or

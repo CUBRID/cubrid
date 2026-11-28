@@ -85,6 +85,8 @@ struct val_descr
   long lrand;
   double drand;
   XASL_STATE *xasl_state;	/* XASL_STATE pointer */
+  bool evaluating_default = false;	/* a DEFAULT is being evaluated (qexec_eval_default_expr): a clock it reads is
+					 * the statement clock */
 };				/* Value Descriptor */
 
 // XASL_STATE

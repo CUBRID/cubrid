@@ -493,4 +493,5 @@ arith_result_type (const arith_list_node *arith)
     }
   return DB_TYPE_NULL;
 }
+
 #endif /* _REGU_VAR_HPP_ */

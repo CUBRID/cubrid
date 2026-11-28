@@ -46,6 +46,7 @@
 #include "db.h"
 #include "release_string.h"
 #include "execute_schema.h"
+#include "network_interface_cl.h"
 #if defined(WINDOWS)
 #include "misc_string.h"
 #endif
@@ -79,8 +80,8 @@ static int smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAIN
 					   char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
 					   SM_FUNCTION_INFO * function_index, const char *comment,
 					   SM_INDEX_STATUS index_status);
-static int smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value,
-						 DB_DEFAULT_EXPR * default_expr);
+static void smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value);
+static int smt_class_has_rows (MOP class_mop);
 static int smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constraint_name,
 					      SM_ATTRIBUTE_FLAG constraint);
 static int smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_ATTRIBUTE ** atts,
@@ -1333,16 +1334,19 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
   error = smt_find_attribute (template_, name, class_attribute, &att);
   if (error == NO_ERROR)
     {
-      if ((att->type->id == DB_TYPE_BLOB || att->type->id == DB_TYPE_CLOB) && proposed_value
-	  && !DB_IS_NULL (proposed_value))
+      if ((att->type->id == DB_TYPE_BLOB || att->type->id == DB_TYPE_CLOB)
+	  && ((proposed_value && !DB_IS_NULL (proposed_value))
+	      || (default_expr != NULL && DB_HAS_DEFAULT_EXPR (default_expr))))
 	{
+	  /* an expression DEFAULT too: a VOLATILE one comes without a value */
 	  ERROR1 (error, ER_SM_DEFAULT_NOT_ALLOWED, att->type->name);
 	  return error;
 	}
-      else if (proposed_value && DB_IS_NULL (proposed_value)
-	       && (default_expr == NULL || default_expr->default_expr_type == DB_DEFAULT_NONE)
-	       && (att->flags & SM_ATTFLAG_PRIMARY_KEY))
+      else if (proposed_value && DB_IS_NULL (proposed_value) && (att->flags & SM_ATTFLAG_PRIMARY_KEY)
+	       && (default_expr == NULL || !DB_HAS_DEFAULT_EXPR (default_expr)))
 	{
+	  /* the DDL-time value of an expression DEFAULT is a snapshot, not the DEFAULT: the DDL layer leaves its
+	   * NULL to the rows, which are checked when each supplies its own value */
 	  ERROR1 (error, ER_CANNOT_HAVE_PK_DEFAULT_NULL, name);
 	  return error;
 	}
@@ -1380,13 +1384,10 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	    {
 	      pr_clear_value (&att->default_value.value);
 	      pr_clone_value (value, &att->default_value.value);
-	      if (default_expr == NULL)
+	      classobj_clear_default_expr (&att->default_value.default_expr);
+	      if (default_expr != NULL)
 		{
-		  classobj_initialize_default_expr (&att->default_value.default_expr);
-		}
-	      else
-		{
-		  classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
+		  error = classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
 		}
 
 	      /* if there wasn't an previous original value, take this one. This can only happen for new templates OR
@@ -1394,9 +1395,25 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	       * default value to the attribute. This should be handled by using candidates in the template and storing
 	       * an extra bit field in the candidate structure. See the comment above sm_attribute for more information
 	       * about "original_value". */
-	      if (att->flags & SM_ATTFLAG_NEW)
+	      if (error == NO_ERROR && (att->flags & SM_ATTFLAG_NEW))
 		{
-		  error = smt_set_attribute_orig_default_value (att, value, default_expr);
+		  /* only rows older than the attribute read the original value: the DDL-time value of a residual
+		   * DEFAULT is kept there only when the attribute is added to a class that has rows */
+		  int has_rows = 1;
+
+		  if (default_expr != NULL && DB_IS_RESIDUAL_DEFAULT_EXPR (default_expr))
+		    {
+		      has_rows = (template_->op != NULL) ? smt_class_has_rows (template_->op) : 0;
+		      if (has_rows < 0)
+			{
+			  ASSERT_ERROR_AND_SET (error);
+			}
+		    }
+
+		  if (has_rows > 0)
+		    {
+		      smt_set_attribute_orig_default_value (att, value);
+		    }
 		}
 	    }
 	}
@@ -1418,7 +1435,6 @@ end:
  *   return: void
  *   att(in/out): attribute
  *   new_orig_value(in): original value to set
- *   default_expr(in): default expression
  *
  *  Note : This function modifies the initial default value of the attribute.
  *	   The initial default value is the default value assigned when adding
@@ -1427,24 +1443,59 @@ end:
  *	   unchanged (until attribute is dropped).
  *	   The (current) default value is stored as att->value; the initial
  *	   default value is stored as att->original_value.
+ *	   The default expression is not touched: callers set it on the
+ *	   attribute right before calling here.
  */
 
-static int
-smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value, DB_DEFAULT_EXPR * default_expr)
+static void
+smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value)
 {
   assert (att != NULL);
   assert (new_orig_value != NULL);
 
   pr_clear_value (&att->default_value.original_value);
   pr_clone_value (new_orig_value, &att->default_value.original_value);
+}
 
-  if (default_expr == NULL)
+/*
+ * smt_class_has_rows() - Whether the class or any of its subclasses (partitions included) has a visible row.
+ *   return: 1 if it has, 0 if not, an error code on failure
+ *   class_mop(in): class
+ */
+static int
+smt_class_has_rows (MOP class_mop)
+{
+  SM_CLASS *class_ = NULL;
+  DB_OBJLIST *sub;
+  HFID *hfid;
+  int has_rows;
+
+  has_rows = au_fetch_class_force (class_mop, &class_, AU_FETCH_READ);
+  if (has_rows != NO_ERROR)
     {
-      classobj_initialize_default_expr (&att->default_value.default_expr);
-      return NO_ERROR;
+      return has_rows;
     }
 
-  return classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
+  hfid = sm_ch_heap ((MOBJ) class_);
+  if (!HFID_IS_NULL (hfid))
+    {
+      has_rows = heap_has_instance (hfid, WS_OID (class_mop), 1);
+      if (has_rows != 0)
+	{
+	  return has_rows;
+	}
+    }
+
+  for (sub = class_->users; sub != NULL; sub = sub->next)
+    {
+      has_rows = smt_class_has_rows (sub->op);
+      if (has_rows != 0)
+	{
+	  return has_rows;
+	}
+    }
+
+  return 0;
 }
 
 /*
@@ -4678,6 +4729,8 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
   DB_VALUE default_value;
   DB_DEFAULT_EXPR default_expr;
   TP_DOMAIN_STATUS status;
+  bool was_residual;
+  int has_rows;
 
   *found_att = NULL;
   error = smt_change_attribute (def, name, new_name, new_domain_string, new_domain, name_space, change_first,
@@ -4693,34 +4746,45 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
       return error;
     }
 
+  was_residual = DB_IS_RESIDUAL_DEFAULT_EXPR (&(*found_att)->default_value.default_expr);
+
   /* 
      The default value's domain should be checked even though the new default is not specified
    */
   db_make_null (&default_value);
-  if (new_default_value == NULL && new_default_expr->default_expr_type == DB_DEFAULT_NONE)
+  classobj_initialize_default_expr (&default_expr);
+  if (new_default_value == NULL && !DB_HAS_DEFAULT_EXPR (new_default_expr))
     {
       pr_clone_value (&(*found_att)->default_value.value, &default_value);
-      default_expr = (*found_att)->default_value.default_expr;
 
       if (!DB_IS_NULL (&default_value))
 	{
 	  new_default_value = &default_value;
 	}
 
-      if (default_expr.default_expr_type != DB_DEFAULT_NONE)
+      /* no new DEFAULT clause: an expression DEFAULT keeps its text and streams (the value alone would
+       * freeze a residual to its DDL-time snapshot) */
+      if (DB_HAS_DEFAULT_EXPR (&(*found_att)->default_value.default_expr))
 	{
+	  error = classobj_copy_default_expr (&default_expr, &(*found_att)->default_value.default_expr);
+	  if (error != NO_ERROR)
+	    {
+	      db_value_clear (&default_value);
+	      return error;
+	    }
 	  new_default_expr = &default_expr;
 	}
     }
 
   is_class_attr = (name_space == ID_CLASS_ATTRIBUTE);
-  if (new_default_value != NULL || (new_default_expr != NULL && new_default_expr->default_expr_type != DB_DEFAULT_NONE))
+  if (new_default_value != NULL || (new_default_expr != NULL && DB_HAS_DEFAULT_EXPR (new_default_expr)))
     {
       assert (((*found_att)->flags & SM_ATTFLAG_NEW) == 0);
       error = smt_set_attribute_default (def, ((new_name != NULL) ? new_name : name), is_class_attr, new_default_value,
 					 new_default_expr);
 
       db_value_clear (&default_value);
+      classobj_clear_default_expr (&default_expr);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4763,12 +4827,29 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
       return error;
     }
 
+  if (was_residual)
+    {
+      /* the original value of a residual DEFAULT is its DDL-time value, read only by rows older than the
+       * attribute: with no rows left there is nothing to convert */
+      has_rows = (def->op != NULL) ? smt_class_has_rows (def->op) : 0;
+      if (has_rows < 0)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      if (has_rows == 0)
+	{
+	  pr_clear_value (orig_value);
+	  return NO_ERROR;
+	}
+    }
+
   /* cast the value to new one : explicit cast */
   new_orig_value = pr_make_ext_value ();
   error = db_value_coerce (orig_value, new_orig_value, (*found_att)->domain);
   if (error == NO_ERROR)
     {
-      smt_set_attribute_orig_default_value (*found_att, new_orig_value, new_default_expr);
+      smt_set_attribute_orig_default_value (*found_att, new_orig_value);
     }
   else
     {

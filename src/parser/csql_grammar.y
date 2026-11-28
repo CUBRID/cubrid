@@ -16002,7 +16002,8 @@ reserved_func
 
 			if (node_unit)
 			  {
-			    node_unit->info.expr.qualifier = $8;
+			    /* the unit is the value of an INTEGER constant */
+			    node_unit->info.value.data_value.i = $8;
 			    node_unit->type_enum = PT_TYPE_INTEGER;
 			  }
 
@@ -16031,7 +16032,8 @@ reserved_func
 
 			if (node_unit)
 			  {
-			    node_unit->info.expr.qualifier = $8;
+			    /* the unit is the value of an INTEGER constant */
+			    node_unit->info.value.data_value.i = $8;
 			    node_unit->type_enum = PT_TYPE_INTEGER;
 			  }
 
@@ -22975,16 +22977,10 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
 	  parser_cannot_cache = true;
 	}
 
-      if (OP == PT_SYS_TIME || OP == PT_CURRENT_TIME || OP == PT_SYS_DATE
-	  || OP == PT_CURRENT_DATE || OP == PT_SYS_DATETIME
-	  || OP == PT_CURRENT_DATETIME || OP == PT_SYS_TIMESTAMP
-	  || OP == PT_CURRENT_TIMESTAMP || OP == PT_UTC_TIME
-	  || OP == PT_UTC_DATE || OP == PT_UNIX_TIMESTAMP
-	  || OP == PT_TZ_OFFSET || OP == PT_UTC_TIMESTAMP
-	  || OP == PT_UUID)
+      /* the arguments are not evaluated yet, so the conservative answer is taken: UUID(4) needs no clock but
+       * its version is only known at evaluation */
+      if (pt_op_reads_statement_clock (OP, NULL) || OP == PT_UUID)
 	{
-	  /* UUID(4) does not need si_datetime. 
-	   * but we cant evaluate argument now, so UUID(4) has unnecessary overhead */
 	  parser_si_datetime = true;
 	  parser_cannot_cache = true;
 	}

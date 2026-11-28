@@ -180,6 +180,8 @@ static SM_QUERY_SPEC *disk_to_query_spec (OR_BUF * buf);
 static int attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att);
 static inline void attribute_to_disk_lwriter (void *buf, void *att);
 static int attribute_size (SM_ATTRIBUTE * att);
+static void tf_attribute_restore_stream_prop (SM_ATTRIBUTE * att, const char *prop_name, const char **stream,
+					      int *stream_size);
 static void disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att);
 static int resolution_to_disk (OR_BUF * buf, SM_RESOLUTION * res);
 static inline void resolution_to_disk_lwriter (void *buf, void *res);
@@ -3053,6 +3055,50 @@ attribute_size (SM_ATTRIBUTE * att)
 
 
 /*
+ * tf_attribute_restore_stream_prop - Restores a sized binary stream stored
+ * as an attribute property into a workspace copy.  No-op when the property
+ * is absent or empty.
+ *    return: void
+ *    att(in/out): attribute structure carrying the property list
+ *    prop_name(in): property name
+ *    stream(out): workspace copy of the stream
+ *    stream_size(out): its size in bytes
+ */
+static void
+tf_attribute_restore_stream_prop (SM_ATTRIBUTE * att, const char *prop_name, const char **stream, int *stream_size)
+{
+  DB_VALUE value;
+
+  if (classobj_get_prop (att->properties, prop_name, &value) <= 0)
+    {
+      return;
+    }
+
+  const char *src = db_get_string (&value);
+  int src_size = db_get_string_size (&value);
+
+  if (src != NULL && src_size > 0)
+    {
+      char *stream_copy = (char *) db_ws_alloc (src_size);
+
+      if (stream_copy == NULL)
+	{
+	  /* db_ws_alloc does not er_set on every path (utility threads use a
+	   * bare malloc); set the error here so the post-load consistency
+	   * check in tf_disk_to_class fails the load with it */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) src_size);
+	}
+      else
+	{
+	  memcpy (stream_copy, src, src_size);
+	  *stream = stream_copy;
+	  *stream_size = src_size;
+	}
+    }
+  pr_clear_value (&value);
+}
+
+/*
  * disk_to_attribute - Reads the disk representation of an attribute and
  * fills in the supplied attribute structure.
  *    return: void
@@ -3161,66 +3207,28 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 	      att->on_update_default_expr = (DB_DEFAULT_EXPR_TYPE) db_get_int (&value);
 	    }
 
-	  if (classobj_get_prop (att->properties, "default_expr", &value) > 0)
+	  /* the original text of an expression DEFAULT */
+	  if (classobj_get_prop (att->properties, "default_expr_literal", &value) > 0)
 	    {
-	      /* We have two cases: simple and complex expressions. */
-	      if (DB_VALUE_TYPE (&value) == DB_TYPE_SEQUENCE)
+	      const char *edl_text = db_get_string (&value);
+
+	      if (edl_text != NULL)
 		{
-		  DB_SEQ *def_expr_seq;
-		  DB_VALUE def_expr_op, def_expr_type, def_expr_format;
-		  const char *def_expr_format_str;
-
-		  assert (set_size (db_get_set (&value)) == 3);
-
-		  def_expr_seq = db_get_set (&value);
-
-		  /* get default expression operator (op of expr) */
-		  if (set_get_element_nocopy (def_expr_seq, 0, &def_expr_op) != NO_ERROR)
+		  att->default_value.default_expr.default_expr_text = ws_copy_string (edl_text);
+		  if (att->default_value.default_expr.default_expr_text == NULL)
 		    {
-		      assert (false);
-		    }
-		  assert (DB_VALUE_TYPE (&def_expr_op) == DB_TYPE_INTEGER
-			  && db_get_int (&def_expr_op) == (int) T_TO_CHAR);
-		  att->default_value.default_expr.default_expr_op = db_get_int (&def_expr_op);
-
-		  /* get default expression type (arg1 of expr) */
-		  if (set_get_element_nocopy (def_expr_seq, 1, &def_expr_type) != NO_ERROR)
-		    {
-		      assert (false);
-		    }
-		  assert (DB_VALUE_TYPE (&def_expr_type) == DB_TYPE_INTEGER);
-		  att->default_value.default_expr.default_expr_type =
-		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr_type);
-
-		  /* get default expression format (arg2 of expr) */
-		  if (set_get_element_nocopy (def_expr_seq, 2, &def_expr_format) != NO_ERROR)
-		    {
-		      assert (false);
-		    }
-
-#if !defined (NDEBUG)
-		  {
-		    DB_TYPE db_value_type_local = db_value_type (&def_expr_format);
-		    assert (db_value_type_local == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type_local));
-		  }
-#endif
-		  if (!db_value_is_null (&def_expr_format))
-		    {
-		      def_expr_format_str = db_get_string (&def_expr_format);
-		      att->default_value.default_expr.default_expr_format = ws_copy_string (def_expr_format_str);
-		      if (att->default_value.default_expr.default_expr_format == NULL)
-			{
-			  assert (er_errid () != NO_ERROR);
-			}
+		      /* see tf_attribute_restore_stream_prop: the post-load
+		       * consistency check fails the load with this error */
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (edl_text) + 1);
 		    }
 		}
-	      else
-		{
-		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&value);
-		}
-
 	      pr_clear_value (&value);
 	    }
+
+	  /* residual DEFAULT: restore the Compact DEFAULT Tree */
+	  tf_attribute_restore_stream_prop (att, "default_expr_tree",
+					    &att->default_value.default_expr.default_expr_tree_stream,
+					    &att->default_value.default_expr.default_expr_tree_stream_size);
 	}
 
       /* variable attribute 6: comment */
@@ -4451,6 +4459,70 @@ disk_to_root (OR_BUF * buf)
 
 
 /*
+ * tf_attribute_lost_default_expr_prop - Checks whether an attribute carries
+ * a stored-DEFAULT property whose workspace restore is missing.
+ *    return: true when the property holds data but restored is NULL
+ *    att(in): attribute
+ *    prop_name(in): property name
+ *    restored(in): the in-memory pointer the property restores into
+ */
+static bool
+tf_attribute_lost_default_expr_prop (SM_ATTRIBUTE * att, const char *prop_name, const void *restored)
+{
+  DB_VALUE value;
+  bool lost = false;
+
+  if (restored != NULL || att->properties == NULL)
+    {
+      return false;
+    }
+
+  if (classobj_get_prop (att->properties, prop_name, &value) > 0)
+    {
+      lost = (db_get_string (&value) != NULL && db_get_string_size (&value) > 0);
+      pr_clear_value (&value);
+    }
+
+  return lost;
+}
+
+/*
+ * tf_class_lost_default_expr_props - Checks whether any attribute of a
+ * freshly loaded class lost a stored-DEFAULT form to an allocation failure
+ * in disk_to_attribute.
+ *    return: true when some stored form could not be restored
+ *    class(in): loaded class structure
+ */
+static bool
+tf_class_lost_default_expr_props (SM_CLASS * class_)
+{
+  SM_ATTRIBUTE *lists[3];
+  SM_ATTRIBUTE *att;
+  DB_DEFAULT_EXPR *default_expr;
+  int i;
+
+  lists[0] = class_->attributes;
+  lists[1] = class_->shared;
+  lists[2] = class_->class_attributes;
+
+  for (i = 0; i < 3; i++)
+    {
+      for (att = lists[i]; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+	{
+	  default_expr = &att->default_value.default_expr;
+
+	  if (tf_attribute_lost_default_expr_prop (att, "default_expr_literal", default_expr->default_expr_text)
+	      || tf_attribute_lost_default_expr_prop (att, "default_expr_tree", default_expr->default_expr_tree_stream))
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * tf_disk_to_class - transforming the disk representation of a class.
  *    return: class structure
  *    oid(in):
@@ -4520,6 +4592,19 @@ tf_disk_to_class (OID * oid, RECDES * record)
        * make sure to clear the class that was being created,
        * an appropriate error will have been set
        */
+      classobj_free_class ((SM_CLASS *) class_);
+      class_ = NULL;
+    }
+
+  if (class_ != NULL && !oid_is_root (oid) && tf_class_lost_default_expr_props ((SM_CLASS *) class_))
+    {
+      /* a stored-DEFAULT property could not be restored into the workspace
+       * (allocation failure in disk_to_attribute).  Continuing would
+       * silently freeze the DEFAULT to its stored snapshot, and the next
+       * flush would drop the property for good, so fail the load instead --
+       * mirroring the server-side policy in or_get_current_representation.
+       * The error was set at the point of failure. */
+      assert (er_errid () != NO_ERROR);
       classobj_free_class ((SM_CLASS *) class_);
       class_ = NULL;
     }
@@ -4714,6 +4799,56 @@ get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration, int expected)
 
 
 /*
+ * tf_attribute_put_stream_prop - Stores a sized binary stream under an
+ * attribute property (a sized VARCHAR value, or drops the property when the
+ * stream is absent.
+ *  returns: error code or NO_ERROR
+ *  attr(in/out): attribute
+ *  prop_name(in): property name
+ *  stream(in): stream bytes (NULL drops the property)
+ *  stream_size(in): its size in bytes
+ */
+static int
+tf_attribute_put_stream_prop (SM_ATTRIBUTE * attr, const char *prop_name, const char *stream, int stream_size)
+{
+  DB_VALUE value;
+  int error;
+
+  if (stream == NULL || stream_size <= 0)
+    {
+      if (attr->properties != NULL)
+	{
+	  /* make sure property is unset for existing attributes */
+	  classobj_drop_prop (attr->properties, prop_name);
+	}
+      return NO_ERROR;
+    }
+
+  if (attr->properties == NULL)
+    {
+      attr->properties = classobj_make_prop ();
+      if (attr->properties == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_SEQ));
+	  return er_errid ();
+	}
+    }
+
+  /* a VARCHAR value, NOT CHAR: db_make_char rejects a length above
+   * DB_MAX_CHAR_PRECISION (2048) with a warning and leaves the value NULL,
+   * which would persist a NULL property and silently freeze the DEFAULT.
+   * Serialized streams routinely exceed 2048 bytes. */
+  error = db_make_varchar (&value, DB_MAX_VARCHAR_PRECISION, stream, stream_size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  classobj_put_prop (attr->properties, prop_name, &value);
+
+  return NO_ERROR;
+}
+
+/*
  * tf_attribute_default_expr_to_property - transfer default_expr flag to a
  *                                         disk stored property
  *  returns: error code or NO_ERROR
@@ -4735,77 +4870,45 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
   for (attr = attr_list; attr; attr = (SM_ATTRIBUTE *) attr->header.next)
     {
       default_expr = &attr->default_value.default_expr;
-      if (default_expr->default_expr_type != DB_DEFAULT_NONE)
+
+      /* a column DEFAULT is no longer stored in the legacy "default_expr" property (drop a stale one) */
+      if (attr->properties != NULL)
 	{
-	  /* attr has default expression as default value */
+	  classobj_drop_prop (attr->properties, "default_expr");
+	}
+
+      /* Expression-Derived Literal: persist the original expression text under a
+       * dedicated property, alongside the folded literal value (stored as an
+       * ordinary default value). */
+      if (default_expr->default_expr_text != NULL)
+	{
 	  if (attr->properties == NULL)
 	    {
-	      /* allocate new property sequence */
 	      attr->properties = classobj_make_prop ();
-
 	      if (attr->properties == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (DB_SEQ));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_SEQ));
 		  return er_errid ();
 		}
 	    }
 
-	  if (default_expr->default_expr_op != NULL_DEFAULT_EXPRESSION_OPERATOR)
-	    {
-	      DB_SEQ *default_expr_sequence = NULL;
-	      DB_VALUE value;
-
-	      default_expr_sequence = set_create_sequence (3);
-	      if (default_expr_sequence == NULL)
-		{
-		  if (attr->properties)
-		    {
-		      classobj_free_prop (attr->properties);
-		      attr->properties = NULL;
-		    }
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (DB_SEQ));
-		  return er_errid ();
-		}
-
-	      /* currently, only T_TO_CHAR operator is allowed  */
-	      assert (default_expr->default_expr_op == T_TO_CHAR);
-	      db_make_int (&value, (int) T_TO_CHAR);
-	      set_put_element (default_expr_sequence, 0, &value);
-
-	      /* default expression type */
-	      db_make_int (&value, default_expr->default_expr_type);
-	      set_put_element (default_expr_sequence, 1, &value);
-
-	      /* default expression format */
-	      if (default_expr->default_expr_format)
-		{
-		  db_make_string (&value, default_expr->default_expr_format);
-		}
-	      else
-		{
-		  db_make_null (&value);
-		}
-
-	      set_put_element (default_expr_sequence, 2, &value);
-
-	      /* create and put sequence */
-	      db_make_sequence (&default_expr_value, default_expr_sequence);
-	      default_expr_sequence = NULL;
-	      classobj_put_prop (attr->properties, "default_expr", &default_expr_value);
-	      pr_clear_value (&default_expr_value);
-
-	    }
-	  else
-	    {
-	      /* add default_expr property to sequence */
-	      db_make_int (&default_expr_value, default_expr->default_expr_type);
-	      classobj_put_prop (attr->properties, "default_expr", &default_expr_value);
-	    }
+	  db_make_string (&default_expr_value, default_expr->default_expr_text);
+	  classobj_put_prop (attr->properties, "default_expr_literal", &default_expr_value);
 	}
       else if (attr->properties != NULL)
 	{
 	  /* make sure property is unset for existing attributes */
-	  classobj_drop_prop (attr->properties, "default_expr");
+	  classobj_drop_prop (attr->properties, "default_expr_literal");
+	}
+
+      /* residual DEFAULT: persist the Compact DEFAULT Tree, stored like a function-index expr_stream: a sized
+       * string value */
+      int rc;
+      rc = tf_attribute_put_stream_prop (attr, "default_expr_tree", default_expr->default_expr_tree_stream,
+					 default_expr->default_expr_tree_stream_size);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
 	}
 
       DB_DEFAULT_EXPR_TYPE update_default = attr->on_update_default_expr;
@@ -4817,7 +4920,7 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 
 	      if (attr->properties == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (DB_SEQ));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_SEQ));
 		  return er_errid ();
 		}
 	    }

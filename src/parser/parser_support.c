@@ -686,12 +686,19 @@ pt_is_analytic_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 bool
 pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
-  FUNC_CODE function_type;
+  return node->node_type == PT_FUNCTION && pt_is_expr_wrapped_fcode (node->info.function.function_type);
+}
 
-  if (node->node_type == PT_FUNCTION)
-    {
-      function_type = node->info.function.function_type;
-      if (function_type == F_INSERT_SUBSTRING
+/*
+ * pt_is_expr_wrapped_fcode () - whether a function is one the grammar wraps in an expression, which the client can
+ *	evaluate
+ *   return: true if so
+ *   function_type(in): function code
+ */
+bool
+pt_is_expr_wrapped_fcode (FUNC_CODE function_type)
+{
+  return (function_type == F_INSERT_SUBSTRING
 	  || function_type == F_ELT
 	  || function_type == F_JSON_ARRAY
 	  || function_type == F_JSON_ARRAY_APPEND || function_type == F_JSON_ARRAY_INSERT
@@ -712,13 +719,7 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  || function_type == F_JSON_SET
 	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID
 	  || function_type == F_REGEXP_COUNT || function_type == F_REGEXP_INSTR || function_type == F_REGEXP_LIKE
-	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR)
-	{
-	  return true;
-	}
-    }
-
-  return false;
+	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR);
 }
 
 /*
@@ -2220,7 +2221,7 @@ pt_check_level_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool * has_greater
     case PT_RANGE:
     case PT_EQ_SOME:
     case PT_IS_IN:
-      if (arg1->info.expr.op == PT_LEVEL)
+      if (PT_IS_EXPR_NODE (arg1) && arg1->info.expr.op == PT_LEVEL)
 	{
 	  *has_lesser = true;
 	  *has_greater = true;
@@ -11738,258 +11739,961 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
   return node;
 }
 
-static DB_DEFAULT_EXPR_TYPE
-parse_default_expr_type (const char *str, const int str_size, int *next_len)
+/* Compact DEFAULT Tree: a minimal VALUE/OP expression IR persisted for a
+ * residual DEFAULT expression, rehydratable into a PT_NODE without re-parsing:
+ * re-parsing the stored source text would re-run name resolution and semantic
+ * typing under whatever session the class happens to load in, while this
+ * stream restores the already type-checked tree (resolved result domains
+ * included) deterministically.
+ * Stream layout (all multi-byte fields via OR_BUF):
+ *   version(byte = PT_CDT_VERSION)  volatility(int)  si_requirement(int)  node
+ *   node := VALUE_TAG(int)  db_value(or_put_value, domain included)
+ *         | OP_TAG(int)     op(int)  qualifier(int)  continued_case(int)  volatility(int)  si_requirement(int)
+ *                          result domain  arity(int)  node*arity
+ *         | FUNC_TAG(int)   fcode(int)  qualifier(int = 0)  continued_case(int = 0)  volatility(int)
+ *                          si_requirement(int)  result domain  arity(int)  node*arity
+ * A PT_FUNCTION_HOLDER wrapper is transparent: its held PT_FUNCTION is stored.
+ * The volatility and si_requirement at the head are those of the whole tree, for a reader that needs only them
+ * (pt_compact_default_tree_properties).  Those of a node are the ones of the overload type checking matched for it
+ * (not combined with its operands'): a rehydrated tree is not type-checked again, and the code alone does not tell
+ * RAND () from RAND (seed).
+ * continued_case is an unparse hint of PT_EXPR (CONCAT/CONCAT_WS/FIELD and the
+ * CASE/DECODE/COALESCE/LEAST/GREATEST chains); without it a rehydrated residual
+ * prints in a different form than the original expression.
+ */
+#define PT_CDT_VERSION 1
+#define PT_CDT_TAG_VALUE 1	/* PT_VALUE */
+#define PT_CDT_TAG_OP 2		/* PT_EXPR (PT_OP_TYPE) */
+#define PT_CDT_TAG_FUNC 3	/* PT_FUNCTION_HOLDER (FUNC_CODE) */
+
+/*
+ * pt_cdt_canonical_domain () - canonicalize a result domain before packing
+ *   return: the canonical (cached) domain
+ *   domain(in): result domain of an OP/FUNC node
+ *
+ * A floating precision (-1) on a varying type and the type's maximum
+ * precision are the same domain, but or_put_domain encodes them differently
+ * (or_get_domain always restores the maximum-precision built-in).  Pack the
+ * read-back canonical form so serialize(rehydrate(stream)) is byte-identical.
+ */
+static TP_DOMAIN *
+pt_cdt_canonical_domain (TP_DOMAIN * domain)
 {
-  if (str_size < 4)
+  int max_precision;
+
+  if (domain == NULL || domain->precision != TP_FLOATING_PRECISION_VALUE)
     {
-      *next_len = 0;
-      return DB_DEFAULT_NONE;
+      return domain;
     }
 
-  switch (str[0])
+  switch (TP_DOMAIN_TYPE (domain))
     {
-    case 'S':
-      if (str_size >= 13 && strncmp (str, "SYS_TIMESTAMP", 13) == 0)
-	{
-	  *next_len = 13;
-	  return DB_DEFAULT_SYSTIMESTAMP;
-	}
-      if (str_size >= 12 && strncmp (str, "SYS_DATETIME", 12) == 0)
-	{
-	  *next_len = 12;
-	  return DB_DEFAULT_SYSDATETIME;
-	}
-      if (str_size >= 10 && strncmp (str, "SYS_GUID()", 10) == 0)
-	{
-	  *next_len = 10;
-	  return DB_DEFAULT_SYSGUID;
-	}
-      if (str_size >= 8)
-	{
-	  if (strncmp (str, "SYS_DATE", 8) == 0)
-	    {
-	      *next_len = 8;
-	      return DB_DEFAULT_SYSDATE;
-	    }
-	  if (strncmp (str, "SYS_TIME", 8) == 0)
-	    {
-	      *next_len = 8;
-	      return DB_DEFAULT_SYSTIME;
-	    }
-	}
+    case DB_TYPE_VARCHAR:
+      max_precision = DB_MAX_VARCHAR_PRECISION;
       break;
-
-    case 'C':
-      if (str_size >= 17 && strncmp (str, "CURRENT_TIMESTAMP", 17) == 0)
-	{
-	  *next_len = 17;
-	  return DB_DEFAULT_CURRENTTIMESTAMP;
-	}
-      if (str_size >= 16 && strncmp (str, "CURRENT_DATETIME", 16) == 0)
-	{
-	  *next_len = 16;
-	  return DB_DEFAULT_CURRENTDATETIME;
-	}
-      if (str_size >= 12)
-	{
-	  if (strncmp (str, "CURRENT_DATE", 12) == 0)
-	    {
-	      *next_len = 12;
-	      return DB_DEFAULT_CURRENTDATE;
-	    }
-	  if (strncmp (str, "CURRENT_TIME", 12) == 0)
-	    {
-	      *next_len = 12;
-	      return DB_DEFAULT_CURRENTTIME;
-	    }
-	  if (strncmp (str, "CURRENT_USER", 12) == 0)
-	    {
-	      *next_len = 12;
-	      return DB_DEFAULT_CURR_USER;
-	    }
-	}
+    case DB_TYPE_VARBIT:
+      max_precision = DB_MAX_VARBIT_PRECISION;
       break;
-
-    case 'U':
-      if (str_size >= 16 && strncmp (str, "UNIX_TIMESTAMP()", 16) == 0)
-	{
-	  *next_len = 16;
-	  return DB_DEFAULT_UNIX_TIMESTAMP;
-	}
-      if (str_size >= 7 && strncmp (str, "UUID(4)", 7) == 0)
-	{
-	  *next_len = 7;
-	  return DB_DEFAULT_UUIDV4;
-	}
-      if (str_size >= 7 && strncmp (str, "UUID(7)", 7) == 0)
-	{
-	  *next_len = 7;
-	  return DB_DEFAULT_UUIDV7;
-	}
-      if (str_size >= 6 && strncmp (str, "USER()", 6) == 0)
-	{
-	  *next_len = 6;
-	  return DB_DEFAULT_USER;
-	}
-      if (str_size >= 4 && strncmp (str, "USER", 4) == 0)
-	{
-	  *next_len = 4;
-	  return DB_DEFAULT_CURR_USER;
-	}
-      break;
+    default:
+      return domain;
     }
 
-  *next_len = 0;
-  return DB_DEFAULT_NONE;
+  TP_DOMAIN *canonical = tp_domain_copy (domain, false);
+
+  if (canonical == NULL)
+    {
+      return domain;
+    }
+  canonical->precision = max_precision;
+
+  return tp_domain_cache (canonical);
 }
 
 /*
- * pt_get_default_expression_from_string () - get default value from string
- * return : error code or NO_ERROR
+ * pt_cdt_put_node_header () - emit the uniform OP/FUNC node header: tag,
+ *	code, qualifier, continued_case, volatility, si_requirement, canonical result domain, 32-bit alignment
+ *   return: NO_ERROR or error code
  *
- * parser (in)		  : parser context
- * str (in) : default expression string
- * str_size (in) : default expression string size
- * default_expr (out)	  : default expression
+ * On overflow this returns ER_TF_BUFFER_OVERFLOW before anything is written 
+ * past the buffer, which lets pt_cdt_serialize retry with a larger buffer.
  */
-void
-pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size,
-				       DB_DEFAULT_EXPR * default_expr)
+static int
+pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, int tag, int code, int qualifier,
+			int continued_case, PT_VOLATILITY volatility, int si_requirement)
 {
-  assert (parser != NULL && default_expr != NULL);
-  assert (str != NULL && str_size > 0);
+  TP_DOMAIN *domain;
+  int rc;
 
-  classobj_initialize_default_expr (default_expr);
-
-  std::string expr_str (str, str_size);
-
-  int curr_idx = 0;
-  int curr_len = str_size;
-
-  const int to_char_size = sizeof ("TO_CHAR(") - 1;
-  if (str_size > to_char_size && strncmp (str, "TO_CHAR(", to_char_size) == 0)
+  domain = pt_cdt_canonical_domain (pt_xasl_node_to_domain (parser, node));
+  if (domain == NULL)
     {
-      curr_idx += to_char_size;
-      curr_len -= to_char_size;
-      default_expr->default_expr_op = T_TO_CHAR;
+      /* an admissible node is type-checked; without a result domain the tree
+       * cannot be serialized faithfully (or_put_domain cannot take NULL) */
+      return ER_FAILED;
     }
 
-  int parsed_len;
-  default_expr->default_expr_type = parse_default_expr_type (&str[curr_idx], curr_len, &parsed_len);
-  curr_idx += parsed_len;
-  curr_len -= parsed_len;
+  /* everything written below plus the arity int the caller writes right
+   * after this header */
+  int header_ints_size = 6 * OR_INT_SIZE;	/* tag, code, qualifier, continued_case, volatility, si_requirement */
+  int aligned_domain_size = DB_ALIGN (or_packed_domain_size (domain, 0), INT_ALIGNMENT);
+  int arity_size = OR_INT_SIZE;
 
-  if (default_expr->default_expr_op == T_TO_CHAR)
+  if (buf->ptr + header_ints_size + aligned_domain_size + arity_size > buf->endptr)
     {
-      // find next '\''
-      const char *formatted_string = strchr (&str[curr_idx], '\'') + 1;
+      return ER_TF_BUFFER_OVERFLOW;
+    }
 
-      // get remaining length before the last '\''
-      int remaining_len = strchr (formatted_string, '\'') - formatted_string;
+  or_put_int (buf, tag);
+  or_put_int (buf, code);
+  or_put_int (buf, qualifier);
+  or_put_int (buf, continued_case);
+  or_put_int (buf, (int) volatility);
+  or_put_int (buf, si_requirement);
+  rc = or_put_domain (buf, domain, 0, 0);
+  if (rc == NO_ERROR)
+    {
+      rc = or_put_align32 (buf);
+    }
+  return rc;
+}
 
-      default_expr->default_expr_format = strndup (formatted_string, remaining_len);
+static int
+pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
+{
+  int rc = NO_ERROR;
+  int arity, i;
+  PT_NODE *args[3] = { NULL, NULL, NULL };
+  PT_NODE *arg;
+
+  if (node == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_VALUE:
+      {
+	DB_VALUE *db_value = pt_value_to_db (parser, node);
+
+	if (db_value == NULL)
+	  {
+	    return ER_FAILED;
+	  }
+
+	/* pre-check the space: see pt_cdt_put_node_header.  or_packed_value_size
+	 * is the exact pair of or_put_value and already includes the trailing
+	 * pad up to a 4-byte boundary. */
+	int tag_size = OR_INT_SIZE;
+	int packed_value_size = or_packed_value_size (db_value, 1, 1, 0);
+
+	if (buf->ptr + tag_size + packed_value_size > buf->endptr)
+	  {
+	    return ER_TF_BUFFER_OVERFLOW;
+	  }
+
+	or_put_int (buf, PT_CDT_TAG_VALUE);
+	rc = or_put_value (buf, db_value, 1, 1, 0);
+	if (rc == NO_ERROR)
+	  {
+	    or_put_align32 (buf);
+	  }
+	return rc;
+      }
+
+    case PT_EXPR:
+      if (node->info.expr.op == PT_FUNCTION_HOLDER)
+	{
+	  /* transparent wrapper of a PT_FUNCTION */
+	  return pt_cdt_put_node (parser, buf, node->info.expr.arg1);
+	}
+
+      /* continued_case is an unparse hint (e.g. whether CONCAT prints as a function call); preserve it so a
+       * rehydrated residual prints like the original expression */
+      rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_OP, (int) node->info.expr.op,
+				   (int) node->info.expr.qualifier, (int) node->info.expr.continued_case,
+				   node->info.expr.expr_volatility, node->info.expr.expr_si_requirement);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+
+      args[0] = node->info.expr.arg1;
+      args[1] = node->info.expr.arg2;
+      args[2] = node->info.expr.arg3;
+      arity = (args[0] != NULL) + (args[1] != NULL) + (args[2] != NULL);
+
+      /* operand positions must form a prefix so they restore positionally */
+      if ((args[1] != NULL && args[0] == NULL) || (args[2] != NULL && args[1] == NULL))
+	{
+	  return ER_FAILED;
+	}
+
+      or_put_int (buf, arity);
+      for (i = 0; i < arity && rc == NO_ERROR; i++)
+	{
+	  rc = pt_cdt_put_node (parser, buf, args[i]);
+	}
+      return rc;
+
+    case PT_FUNCTION:
+      rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_FUNC, (int) node->info.function.function_type, 0, 0,
+				   node->info.function.expr_volatility, node->info.function.expr_si_requirement);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+
+      arity = pt_length_of_list (node->info.function.arg_list);
+      or_put_int (buf, arity);
+      for (arg = node->info.function.arg_list; arg != NULL && rc == NO_ERROR; arg = arg->next)
+	{
+	  rc = pt_cdt_put_node (parser, buf, arg);
+	}
+      return rc;
+
+    default:
+      /* admissibility leaves only VALUE/OP nodes in a DEFAULT expression */
+      return ER_FAILED;
     }
 }
 
-PT_NODE *
-pt_make_default_value_tree_from_default_expr (PARSER_CONTEXT * parser, const DB_DEFAULT_EXPR * default_expr)
+static int
+pt_cdt_serialize (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *stream_size)
 {
-  PT_NODE *default_value = NULL;
+  size_t buf_size = 4096;
+  const size_t max_size = 1024 * 1024;
+  char *data = NULL;
+  OR_BUF buf;
+  int rc;
+  PT_VOLATILITY volatility;
+  PT_NODE *unclassified_node = NULL;
 
-  assert (default_expr != NULL);
-  assert (default_expr->default_expr_type != DB_DEFAULT_NONE);
+  assert (parser != NULL && expr != NULL && stream != NULL && stream_size != NULL);
 
-  default_value = pt_make_expression_default_expr (parser, NULL, default_expr->default_expr_type);
-  if (default_value == NULL)
+  *stream = NULL;
+  *stream_size = 0;
+
+  volatility = pt_get_expr_tree_volatility (expr, &unclassified_node);
+  if (!PT_VOLATILITY_IS_RESIDUAL (volatility))
+    {
+      /* only a residual DEFAULT is stored as a tree */
+      assert (false);
+      return ER_FAILED;
+    }
+
+  /* the stream is small by design; grow geometrically on overflow */
+  for (; buf_size <= max_size; buf_size *= 2)
+    {
+      data = (char *) malloc (buf_size);
+      if (data == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buf_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      or_init (&buf, data, buf_size);
+      rc = or_put_byte (&buf, PT_CDT_VERSION);
+      if (rc == NO_ERROR)
+	{
+	  rc = or_put_align32 (&buf);
+	}
+      if (rc == NO_ERROR)
+	{
+	  rc = or_put_int (&buf, (int) volatility);
+	}
+      if (rc == NO_ERROR)
+	{
+	  rc = or_put_int (&buf, pt_get_expr_tree_si_requirement (expr));
+	}
+      if (rc == NO_ERROR)
+	{
+	  rc = pt_cdt_put_node (parser, &buf, expr);
+	}
+
+      if (rc == NO_ERROR)
+	{
+	  /* the over-allocation is not worth reclaiming: the caller frees the
+	   * stream as soon as it is copied into a catalog property */
+	  *stream = data;
+	  *stream_size = CAST_BUFLEN (buf.ptr - buf.buffer);
+	  return NO_ERROR;
+	}
+
+      free_and_init (data);
+      if (rc != ER_TF_BUFFER_OVERFLOW)
+	{
+	  return rc;
+	}
+    }
+
+  return ER_TF_BUFFER_OVERFLOW;
+}
+
+/*
+ * pt_compact_default_tree_to_stream () - serializes a residual DEFAULT
+ *	expression into its Compact DEFAULT Tree stream
+ *   return: NO_ERROR or error code
+ *   parser(in): parser context
+ *   expr(in): the residual DEFAULT expression
+ *   stream(out): malloc'ed stream (caller frees)
+ *   stream_size(out): stream size in bytes
+ */
+int
+pt_compact_default_tree_to_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *stream_size)
+{
+  int error = pt_cdt_serialize (parser, expr, stream, stream_size);
+
+#if !defined (NDEBUG)
+  if (error == NO_ERROR)
+    {
+      /* format invariant: rehydrating and re-serializing must reproduce the
+       * identical stream */
+      PT_NODE *rehydrated = pt_compact_default_tree_from_stream (parser, *stream, *stream_size);
+      char *verify_stream = NULL;
+      int verify_size = 0;
+      int rc;
+
+      assert (rehydrated != NULL);
+      if (rehydrated != NULL)
+	{
+	  rc = pt_cdt_serialize (parser, rehydrated, &verify_stream, &verify_size);
+	  assert (rc == NO_ERROR && verify_size == *stream_size && memcmp (verify_stream, *stream, verify_size) == 0);
+	  free_and_init (verify_stream);
+	  parser_free_tree (parser, rehydrated);
+	}
+    }
+#endif
+
+  return error;
+}
+
+static PT_NODE *
+pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
+{
+  int rc = NO_ERROR;
+  int tag, code, qualifier, continued_case = 0, volatility = PT_VOLATILITY_UNSET, si_requirement = PT_SI_NONE;
+  int arity, i;
+  int is_null = 0;
+  TP_DOMAIN *domain = NULL;
+  PT_NODE *node = NULL;
+  PT_NODE *args[3] = { NULL, NULL, NULL };
+  PT_NODE *arg_list = NULL;
+
+  tag = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
     {
       return NULL;
     }
 
-  if (default_expr->default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+  if (tag == PT_CDT_TAG_VALUE)
     {
-      return default_value;
+      DB_VALUE db_value;
+
+      db_make_null (&db_value);
+      if (or_get_value (buf, &db_value, NULL, -1, true) != NO_ERROR)
+	{
+	  return NULL;
+	}
+      if (or_get_align32 (buf) != NO_ERROR)
+	{
+	  pr_clear_value (&db_value);
+	  return NULL;
+	}
+      node = pt_dbval_to_value (parser, &db_value);
+      pr_clear_value (&db_value);
+      return node;
     }
 
-  if (default_expr->default_expr_op == T_TO_CHAR)
+  if (tag != PT_CDT_TAG_OP && tag != PT_CDT_TAG_FUNC)
     {
-      PT_NODE *arg1, *arg2, *arg3;
-      bool has_user_format = (default_expr->default_expr_format != NULL);
-      const char *lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-      int flag = 0;
+      return NULL;
+    }
 
-      arg1 = default_value;
-      arg2 = pt_make_string_value (parser, default_expr->default_expr_format);
-      if (arg2 == NULL)
+  code = or_get_int (buf, &rc);
+  if (rc == NO_ERROR)
+    {
+      qualifier = or_get_int (buf, &rc);
+    }
+  if (rc == NO_ERROR)
+    {
+      continued_case = or_get_int (buf, &rc);
+    }
+  if (rc == NO_ERROR)
+    {
+      volatility = or_get_int (buf, &rc);
+    }
+  if (rc == NO_ERROR)
+    {
+      si_requirement = or_get_int (buf, &rc);
+    }
+  if (rc != NO_ERROR || volatility < PT_VOLATILITY_UNSET || volatility > PT_VOLATILITY_VOLATILE)
+    {
+      return NULL;
+    }
+
+  domain = or_get_domain (buf, NULL, &is_null);
+  if (!is_null && domain == NULL)
+    {
+      return NULL;
+    }
+  if (or_get_align32 (buf) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  /* a code outside its enumeration is a damaged stream, or one written by a build whose enumeration differs */
+  if ((tag == PT_CDT_TAG_OP && (code < PT_AND || code >= PT_LAST_OPCODE))
+      || (tag == PT_CDT_TAG_FUNC && (code < PT_MIN || code >= PT_LAST_FUNC_CODE)))
+    {
+      return NULL;
+    }
+
+  arity = or_get_int (buf, &rc);
+  if (rc != NO_ERROR || arity < 0 || (tag == PT_CDT_TAG_OP && arity > 3))
+    {
+      return NULL;
+    }
+
+  if (tag == PT_CDT_TAG_OP)
+    {
+      for (i = 0; i < arity; i++)
 	{
-	  parser_free_tree (parser, default_value);
-	  return NULL;
+	  args[i] = pt_cdt_get_node (parser, buf);
+	  if (args[i] == NULL)
+	    {
+	      goto fail;
+	    }
 	}
 
-      arg3 = parser_new_node (parser, PT_VALUE);
-      if (arg3 == NULL)
+      node = parser_new_node (parser, PT_EXPR);
+      if (node == NULL)
 	{
-	  parser_free_tree (parser, default_value);
-	  parser_free_tree (parser, arg2);
-	  return NULL;
+	  goto fail;
+	}
+      node->info.expr.op = (PT_OP_TYPE) code;
+      node->info.expr.qualifier = (PT_MISC_TYPE) qualifier;
+      node->info.expr.continued_case = (short) continued_case;
+      node->info.expr.expr_volatility = (PT_VOLATILITY) volatility;
+      node->info.expr.expr_si_requirement = si_requirement;
+      node->info.expr.arg1 = args[0];
+      node->info.expr.arg2 = args[1];
+      node->info.expr.arg3 = args[2];
+    }
+  else
+    {
+      PT_NODE *arg;
+
+      for (i = 0; i < arity; i++)
+	{
+	  arg = pt_cdt_get_node (parser, buf);
+	  if (arg == NULL)
+	    {
+	      goto fail;
+	    }
+	  arg_list = parser_append_node (arg, arg_list);
 	}
 
-      arg3->type_enum = PT_TYPE_INTEGER;
-      lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-      arg3->info.value.data_value.i = (long) flag;
-
-      default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
-      if (default_value == NULL)
+      node = parser_new_node (parser, PT_FUNCTION);
+      if (node == NULL)
 	{
-	  parser_free_tree (parser, arg1);
-	  parser_free_tree (parser, arg2);
-	  parser_free_tree (parser, arg3);
-	  return NULL;
+	  goto fail;
+	}
+      node->info.function.function_type = (FUNC_CODE) code;
+      node->info.function.expr_volatility = (PT_VOLATILITY) volatility;
+      node->info.function.expr_si_requirement = si_requirement;
+      node->info.function.arg_list = arg_list;
+    }
+
+  if (domain != NULL)
+    {
+      node->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
+      node->data_type = pt_domain_to_data_type (parser, domain);
+
+      /* PT_CAST keeps its target type in cast_type, which is not serialized on its own; for a cast the
+       * result domain IS the target, so restore cast_type from it (type checking rejects a cast_type-less
+       * PT_CAST: "'cast' operator is not defined on ...") */
+      if (node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
+	{
+	  node->info.expr.cast_type = pt_domain_to_data_type (parser, domain);
 	}
     }
 
-  return default_value;
+  /* a rehydrated residual is Stable by construction (the Immutable parts were folded at DDL time);
+   * generic constant folding must not freeze it when the rehydrated tree is grafted into a statement
+   * (Default Reference), so its evaluation stays at execution time */
+  node->flag.do_not_fold = 1;
+
+  if (tag == PT_CDT_TAG_FUNC)
+    {
+      /* the parser never leaves a PT_FUNCTION bare: a function call is held by a PT_FUNCTION_HOLDER expression,
+       * which evaluation and printing expect.  The stream stores the function without it, so put it back. */
+      PT_NODE *holder = pt_expression_1 (parser, PT_FUNCTION_HOLDER, node);
+
+      if (holder == NULL)
+	{
+	  goto fail;
+	}
+      holder->type_enum = node->type_enum;
+      holder->data_type = parser_copy_tree (parser, node->data_type);
+      holder->flag.do_not_fold = 1;
+      node = holder;
+    }
+
+  return node;
+
+fail:
+  /* nothing registers a tree that failed to restore, so give back the values of what it has restored */
+  if (node != NULL)
+    {
+      parser_free_tree (parser, node);
+    }
+  else
+    {
+      for (i = 0; i < 3; i++)
+	{
+	  parser_free_tree (parser, args[i]);
+	}
+      parser_free_tree (parser, arg_list);
+    }
+  return NULL;
 }
 
 /*
- * pt_get_default_value_from_attrnode () - get default value from data default node
- * return : error code or NO_ERROR
- *
- * parser (in)		  : parser context
- * data_default_node (in) : attribute node
- * default_expr (out)	  : default expression
+ * pt_cdt_get_head () - reads the head of a Compact DEFAULT Tree stream, leaving the buffer at the root node
+ *   return: NO_ERROR, or ER_FAILED for a stream this build does not read (no error is set)
+ *   buf(in/out): buffer at the start of the stream
+ *   volatility(out): volatility of the whole tree
+ *   si_requirement(out): SI requirement of the whole tree
  */
-void
-pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
-						  DB_DEFAULT_EXPR * default_expr)
+static int
+pt_cdt_get_head (OR_BUF * buf, PT_VOLATILITY * volatility, int *si_requirement)
 {
-  PT_NODE *pt_default_expr = NULL;
-  DB_VALUE *db_value_default_expr_format = NULL;
-  assert (parser != NULL && default_expr != NULL);
+  int rc = NO_ERROR;
+  int version, vol = PT_VOLATILITY_UNSET, si = PT_SI_NONE;
 
-  classobj_initialize_default_expr (default_expr);
-  if (data_default_node != NULL)
+  version = or_get_byte (buf, &rc);
+  if (rc != NO_ERROR || version != PT_CDT_VERSION || or_get_align32 (buf) != NO_ERROR)
     {
-      assert (data_default_node->node_type == PT_DATA_DEFAULT);
-      default_expr->default_expr_type = data_default_node->info.data_default.default_expr_type;
+      return ER_FAILED;
+    }
 
-      pt_default_expr = data_default_node->info.data_default.default_value;
-      if (pt_default_expr && pt_default_expr->node_type == PT_EXPR)
+  vol = or_get_int (buf, &rc);
+  if (rc == NO_ERROR)
+    {
+      si = or_get_int (buf, &rc);
+    }
+  /* only a residual DEFAULT is stored as a tree */
+  if (rc != NO_ERROR || (vol != PT_VOLATILITY_STABLE && vol != PT_VOLATILITY_VOLATILE)
+      || (si & ~PT_SI_SYS_DATETIME) != 0)
+    {
+      return ER_FAILED;
+    }
+
+  *volatility = (PT_VOLATILITY) vol;
+  *si_requirement = si;
+  return NO_ERROR;
+}
+
+/*
+ * pt_compact_default_tree_properties () - the evaluation properties of a whole residual DEFAULT, read from the
+ *	head of its Compact DEFAULT Tree stream without rehydrating the tree
+ *   return: NO_ERROR, or ER_FAILED for a stream this build does not read (no error is set)
+ *   stream(in): serialized Compact DEFAULT Tree
+ *   stream_size(in): stream size in bytes
+ *   volatility(out): STABLE or VOLATILE; may be NULL
+ *   si_requirement(out): PT_SI_REQUIREMENT bits; may be NULL
+ */
+int
+pt_compact_default_tree_properties (const char *stream, int stream_size, PT_VOLATILITY * volatility,
+				    int *si_requirement)
+{
+  OR_BUF buf;
+  PT_VOLATILITY head_volatility;
+  int head_si_requirement;
+
+  assert (stream != NULL && stream_size > 0);
+
+  or_init (&buf, CONST_CAST (char *, stream), stream_size);
+  if (pt_cdt_get_head (&buf, &head_volatility, &head_si_requirement) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (volatility != NULL)
+    {
+      *volatility = head_volatility;
+    }
+  if (si_requirement != NULL)
+    {
+      *si_requirement = head_si_requirement;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * pt_compact_default_tree_from_stream () - rehydrates a Compact DEFAULT Tree
+ *	stream into a PT_NODE expression (types set from the stored domains)
+ *   return: the rehydrated expression or NULL on failure
+ *   parser(in): parser context
+ *   stream(in): serialized Compact DEFAULT Tree
+ *   stream_size(in): stream size in bytes
+ */
+PT_NODE *
+pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream, int stream_size)
+{
+  OR_BUF buf;
+  PT_NODE *tree;
+  PT_VOLATILITY volatility;
+  int si_requirement;
+
+  assert (parser != NULL && stream != NULL && stream_size > 0);
+
+  or_init (&buf, CONST_CAST (char *, stream), stream_size);
+
+  if (pt_cdt_get_head (&buf, &volatility, &si_requirement) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  tree = pt_cdt_get_node (parser, &buf);
+#if !defined (NDEBUG)
+  if (tree != NULL)
+    {
+      PT_NODE *unclassified_node = NULL;
+
+      /* the head is what the nodes combine to */
+      assert (volatility == pt_get_expr_tree_volatility (tree, &unclassified_node));
+      assert (si_requirement == pt_get_expr_tree_si_requirement (tree));
+    }
+#endif
+  return tree;
+}
+
+/*
+ * CDT registry: the Compact DEFAULT Trees a parser has rehydrated, one per attribute.
+ *
+ * Each attribute's stream is decoded once per parser (once per compile, once per
+ * prepare) and the same tree is handed to every reader in the statement: the Default
+ * References, the DEFAULT slots and the Local Evaluation CDT_EVAL_SET.
+ * Entries, stream copies and tree nodes are parser memory and go with the parser.
+ * Only the DB_VALUEs inside the PT_VALUE nodes need a walk, pt_cdt_registry_free.
+ *
+ * Callers treat a tree as shared and read-only: walk it, evaluate it, or take a
+ * parser_copy_tree of their own. Never mutate or free it.
+ *
+ * An entry is keyed on (class, id) and validated against a parser-owned copy of the
+ * stream bytes: the attribute's own buffer belongs to the workspace and can be freed,
+ * and its address reused, while a prepared statement's parser lives on. A re-fetched
+ * attribute with a new stream gets a new entry prepended in front of the stale one,
+ * so the lookup finds the newest tree, a pass still holding the old one stays valid,
+ * and the free walk reaches both.
+ */
+struct pt_cdt_registry_entry
+{
+  struct pt_cdt_registry_entry *next;
+  MOP class_mop;		/* att->class_mop */
+  int att_id;			/* att->id */
+  const char *stream;		/* parser-owned copy of the stream the tree was decoded from (content check) */
+  int stream_size;
+  PT_NODE *tree;		/* the shared rehydrated tree */
+  PT_VOLATILITY volatility;	/* volatility of tree, from the head of the stream */
+};
+
+/*
+ * pt_cdt_registry_tree () - the rehydrated Compact DEFAULT Tree of a residual
+ *	DEFAULT attribute, decoded once per parser and shared afterwards (see the
+ *	registry note above).  The caller must not mutate or free the returned tree.
+ *   return: shared tree, or NULL. An attribute with no residual DEFAULT leaves the error
+ *	state untouched (the probe answer); any other NULL leaves an error set.
+ *   parser(in): parser context owning the registry and the tree
+ *   att(in): attribute
+ *   volatility(out): effective volatility of the tree; may be NULL
+ */
+PT_NODE *
+pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLATILITY * volatility)
+{
+  struct pt_cdt_registry_entry *entry;
+  const DB_DEFAULT_EXPR *default_expr;
+  PT_NODE *tree;
+  PT_VOLATILITY head_volatility = PT_VOLATILITY_UNSET;
+  char *stream_copy;
+
+  assert (parser != NULL && att != NULL);
+
+  default_expr = &att->default_value.default_expr;
+  if (!DB_IS_RESIDUAL_DEFAULT_EXPR (default_expr))
+    {
+      return NULL;
+    }
+
+  for (entry = parser->cdt_registry; entry != NULL; entry = entry->next)
+    {
+      if (entry->class_mop == att->class_mop && entry->att_id == att->id)
 	{
-	  if (pt_default_expr->info.expr.op == PT_TO_CHAR)
-	    {
-	      default_expr->default_expr_op = T_TO_CHAR;
-	      assert (pt_default_expr->info.expr.arg2 != NULL
-		      && pt_default_expr->info.expr.arg2->node_type == PT_VALUE);
-
-	      if (PT_IS_CHAR_STRING_TYPE (pt_default_expr->info.expr.arg2->type_enum))
-		{
-		  db_value_default_expr_format = pt_value_to_db (parser, pt_default_expr->info.expr.arg2);
-		  default_expr->default_expr_format = db_get_string (db_value_default_expr_format);
-		}
-	    }
+	  /* the newest entry of this attribute: the list is prepended to, so the lookup stops at it */
+	  break;
 	}
     }
+
+  if (entry != NULL && entry->stream_size == default_expr->default_expr_tree_stream_size
+      && memcmp (entry->stream, default_expr->default_expr_tree_stream, entry->stream_size) == 0)
+    {
+      if (volatility != NULL)
+	{
+	  *volatility = entry->volatility;
+	}
+      return entry->tree;
+    }
+
+  tree = pt_compact_default_tree_from_stream (parser, default_expr->default_expr_tree_stream,
+					      default_expr->default_expr_tree_stream_size);
+  if (tree == NULL)
+    {
+      /* a stored stream this build cannot restore, unless an allocation under the reader failed, whose own
+       * report stands. The failure is never registered: the next reader of the same attribute decodes again
+       * and diagnoses again. */
+      if (er_errid () != ER_OUT_OF_VIRTUAL_MEMORY)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_DEFAULT_EXPR_STREAM, 1, att->header.name);
+	}
+      return NULL;
+    }
+
+  /* the copy of the stream this tree was decoded from, in parser memory (see the registry note) */
+  stream_copy = (char *) parser_alloc (parser, default_expr->default_expr_tree_stream_size);
+  if (stream_copy == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) default_expr->default_expr_tree_stream_size);
+      parser_free_tree (parser, tree);
+      return NULL;
+    }
+  memcpy (stream_copy, default_expr->default_expr_tree_stream, default_expr->default_expr_tree_stream_size);
+
+  /* a new entry even when one was found: the entry found carries a stream this attribute no longer has
+   * (an ALTER), and its tree may still be held by a pass of this statement, so it is shadowed by the entry
+   * prepended here rather than overwritten (see the registry note) */
+  entry = (struct pt_cdt_registry_entry *) parser_alloc (parser, sizeof (*entry));
+  if (entry == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
+      parser_free_tree (parser, tree);
+      return NULL;
+    }
+  entry->class_mop = att->class_mop;
+  entry->att_id = att->id;
+  entry->stream = stream_copy;
+  entry->stream_size = default_expr->default_expr_tree_stream_size;
+  entry->tree = tree;
+  (void) pt_compact_default_tree_properties (default_expr->default_expr_tree_stream,
+					     default_expr->default_expr_tree_stream_size, &head_volatility, NULL);
+  entry->volatility = head_volatility;
+  entry->next = parser->cdt_registry;
+  parser->cdt_registry = entry;
+
+  if (volatility != NULL)
+    {
+      *volatility = entry->volatility;
+    }
+  return tree;
+}
+
+/*
+ * pt_cdt_registry_tree_copy () - a private copy of the registry tree of a residual DEFAULT (pt_cdt_registry_tree)
+ *	for a caller that folds or releases it; a failure the registry reported is carried into the parser's
+ *	error channel.  The copy is marked is_restored_default, so the statement it is grafted into does not
+ *	type check it again in its own session.
+ *   return: the copy, or NULL on error
+ *   parser(in): parser context
+ *   att(in): attribute with a residual DEFAULT
+ *   err_node(in): node the error is reported on; may be NULL
+ *   volatility(out): effective volatility of the tree; may be NULL
+ */
+PT_NODE *
+pt_cdt_registry_tree_copy (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * err_node,
+			   PT_VOLATILITY * volatility)
+{
+  PT_NODE *shared, *copy;
+
+  shared = pt_cdt_registry_tree (parser, att, volatility);
+  if (shared == NULL)
+    {
+      /* the registry diagnosed the failure where it happened */
+      assert (er_errid () != NO_ERROR);
+      if (!pt_has_error (parser) && er_errid () != NO_ERROR)
+	{
+	  PT_ERRORc (parser, err_node, er_msg ());
+	}
+      return NULL;
+    }
+
+  copy = parser_copy_tree (parser, shared);
+  if (copy == NULL)
+    {
+      PT_ERRORm (parser, err_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+  copy->flag.is_restored_default = 1;
+  return copy;
+}
+
+/*
+ * pt_cdt_registry_free () - parser_free_tree every registry tree, giving back the DB_VALUEs
+ *	inside its PT_VALUE nodes (see the registry note).  Called by parser_free_parser before
+ *	the node and string blocks are released.
+ *   return: void
+ *   parser(in/out): parser context owning the registry
+ */
+void
+pt_cdt_registry_free (PARSER_CONTEXT * parser)
+{
+  struct pt_cdt_registry_entry *entry;
+
+  assert (parser != NULL);
+
+  for (entry = parser->cdt_registry; entry != NULL; entry = entry->next)
+    {
+      if (entry->tree != NULL)
+	{
+	  parser_free_tree (parser, entry->tree);
+	  entry->tree = NULL;
+	}
+    }
+  parser->cdt_registry = NULL;
+}
+
+/*
+ * pt_omits_client_default () - whether an INSERT into a class leaves out a column whose residual DEFAULT compiles
+ *	a client value (pt_expr_tree_reads_client_value) into its DEFAULT slot
+ *   return: true if so
+ *   parser(in): parser context
+ *   class_obj(in): the class inserted into
+ *   attrs(in): the columns the INSERT lists
+ */
+static bool
+pt_omits_client_default (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * attrs)
+{
+  SM_CLASS *smclass = NULL;
+  SM_ATTRIBUTE *att;
+  PT_NODE *attr, *tree;
+
+  if (class_obj == NULL || au_fetch_class_force (class_obj, &smclass, AU_FETCH_READ) != NO_ERROR)
+    {
+      /* the statement has resolved this class already; let the XASL generation report the failure */
+      return false;
+    }
+
+  for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (!DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr))
+	{
+	  continue;
+	}
+
+      /* the columns left out are those pt_find_omitted_default_expr gives the slots */
+      for (attr = attrs; attr != NULL; attr = attr->next)
+	{
+	  if (!pt_str_compare (pt_get_name (attr), att->header.name, CASE_INSENSITIVE))
+	    {
+	      break;
+	    }
+	}
+      if (attr != NULL)
+	{
+	  continue;
+	}
+
+      tree = pt_cdt_registry_tree (parser, att, NULL);
+      if (tree == NULL)
+	{
+	  /* a failure here is reported when the XASL is generated */
+	  return true;
+	}
+      if (pt_expr_tree_reads_client_value (parser, tree))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * pt_find_omitted_client_default () - parser_walk_tree callback of pt_omitted_defaults_read_client
+ */
+static PT_NODE *
+pt_find_omitted_client_default (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+  PT_NODE *spec = NULL, *attrs = NULL;
+
+  if (node->node_type == PT_INSERT)
+    {
+      spec = node->info.insert.spec;
+      attrs = node->info.insert.attr_list;
+    }
+  else if (node->node_type == PT_MERGE && node->info.merge.insert.value_clauses != NULL)
+    {
+      spec = node->info.merge.into;
+      attrs = node->info.merge.insert.attr_list;
+    }
+
+  if (spec != NULL && spec->info.spec.flat_entity_list != NULL
+      && pt_omits_client_default (parser, spec->info.spec.flat_entity_list->info.name.db_object, attrs))
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_omitted_defaults_read_client () - whether an INSERT or MERGE of a statement, a nested one included, leaves
+ *	out a column whose residual DEFAULT compiles a client value: its DEFAULT slot holds that value, which the
+ *	statement text does not show, so the XASL cache key must carry it
+ *   return: true if so
+ *   parser(in): parser context
+ *   statement(in): the statement, after its views are translated
+ */
+bool
+pt_omitted_defaults_read_client (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  bool found = false;
+
+  (void) parser_walk_tree (parser, statement, pt_find_omitted_client_default, &found, NULL, NULL);
+  return found;
+}
+
+/*
+ * pt_own_default_tree () - the residual DEFAULT tree an INSERT value grafted as the DEFAULT of its own column
+ *	(is_own_default): the DEFAULT keyword, or DEFAULT (c) in the place of c
+ *   return: the tree, or NULL if the value is not such a DEFAULT or its DEFAULT is a constant
+ *   value(in): an INSERT value
+ *
+ * The DEFAULT reference and the coercion of the INSERT value may wrap the tree in casts for the column, and only
+ * the outermost node of the reference is marked is_own_default.  The tree itself may be a cast the DEFAULT holds.
+ */
+PT_NODE *
+pt_own_default_tree (PT_NODE * value)
+{
+  PT_NODE *tree;
+  bool is_own_default = false;
+
+  for (tree = value; tree != NULL; tree = tree->info.expr.arg1)
+    {
+      is_own_default = is_own_default || tree->flag.is_own_default;
+      if (tree->flag.is_restored_default)
+	{
+	  return is_own_default ? tree : NULL;
+	}
+      if (tree->node_type != PT_EXPR || tree->info.expr.op != PT_CAST)
+	{
+	  return NULL;
+	}
+    }
+
+  return NULL;
 }
 
 /*
@@ -15079,6 +15783,15 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
   return;
 }
 
+/*
+ * pt_make_data_default_expr_node () - the PT_DATA_DEFAULT node of a column DEFAULT
+ *   return: new node, or NULL on allocation failure
+ *   parser(in): parser context
+ *   expr(in): the DEFAULT value expression
+ *
+ * The legacy pseudo-column enum is not used: every expression, the legacy whitelist
+ * included, is classified by volatility and stored through the Stored DEFAULT Forms.
+ */
 extern PT_NODE *
 pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 {
@@ -15086,122 +15799,8 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 
   if (node)
     {
-      PT_NODE *def;
-
       node->info.data_default.default_value = expr;
       node->info.data_default.shared = PT_DEFAULT;
-
-      def = node->info.data_default.default_value;
-      if (def && def->node_type == PT_EXPR)
-	{
-	  if (def->info.expr.op == PT_TO_CHAR)
-	    {
-	      if (def->info.expr.arg3)
-		{
-		  bool has_user_lang = false;
-		  bool dummy;
-
-		  assert (def->info.expr.arg3->node_type == PT_VALUE);
-		  (void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy,
-						     &has_user_lang);
-		  if (has_user_lang)
-		    {
-		      PT_ERROR (parser, def->info.expr.arg3, "do not allow lang format in default to_char");
-		    }
-		}
-
-	      if (def->info.expr.arg1 && def->info.expr.arg1->node_type == PT_EXPR)
-		{
-		  def = def->info.expr.arg1;
-		}
-	    }
-
-	  switch (def->info.expr.op)
-	    {
-	    case PT_SYS_TIME:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
-	      break;
-	    case PT_SYS_DATE:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
-	      break;
-	    case PT_SYS_DATETIME:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
-	      break;
-	    case PT_SYS_TIMESTAMP:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
-	      break;
-	    case PT_CURRENT_TIME:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
-	      break;
-	    case PT_CURRENT_DATE:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
-	      break;
-	    case PT_CURRENT_DATETIME:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
-	      break;
-	    case PT_CURRENT_TIMESTAMP:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
-	      break;
-	    case PT_USER:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_USER;
-	      break;
-	    case PT_CURRENT_USER:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
-	      break;
-	    case PT_UNIX_TIMESTAMP:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
-	      break;
-	    case PT_SYS_GUID:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSGUID;
-	      break;
-	    case PT_UUID:
-	      {
-		PT_NODE *uuid_arg = def->info.expr.arg1;
-
-		if (uuid_arg == NULL)
-		  {
-		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
-		  }
-		else if (uuid_arg->node_type == PT_VALUE && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum))
-		  {
-		    if (pt_coerce_value (parser, uuid_arg, uuid_arg, PT_TYPE_INTEGER, NULL) == NO_ERROR)
-		      {
-			if (uuid_arg->info.value.data_value.i == 0 || uuid_arg->info.value.data_value.i == 4)
-			  {
-			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
-			  }
-			else if (uuid_arg->info.value.data_value.i == 7)
-			  {
-			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV7;
-			  }
-			else
-			  {
-			    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-			    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
-			  }
-		      }
-		    else
-		      {
-			node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-			PT_ERROR (parser, node, "UUID argument coercion error");
-		      }
-		  }
-		else
-		  {
-		    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-		    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
-		  }
-	      }
-	      break;
-	    default:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-	      break;
-	    }
-	}
-      else
-	{
-	  node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-	}
     }
 
   return node;

@@ -1556,7 +1556,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1423 A restore of database %1$s did not finish. Run restoredb again: the database cannot be used until a restore of it ends without an error. If the restore fails again with the same backup, use another backup or restore up to an earlier time (-d).
 
-1424 Last Error
+1424 The stored DEFAULT expression of "%1$s" cannot be restored.
+
+1425 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1952,7 +1954,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 224 KEYLIMIT can not be used in INDEX NONE clause.
 225 Session variable not allowed in this context.
 226 Index hint conflict between '%1$s' and '%2$s'.
-227 '%1$s' function can not be used in DEFAULT clause.
+227 '%1$s' can not be used in DEFAULT clause.
 228 Updating derived tables is not allowed.
 229 Updating class attributes and instance attributes not allowed in the same statement.
 230 Updating virtual class hierarchies is not allowed.
@@ -2058,7 +2060,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 328 Only trailing default parameter is allowed: invalid at '%1$s'.
 329 Grant option is not allowed for %1$s.
 
-330 String representation of a default value of a Stored procedure/function parameter may not exceed %1$d characters.
+330 String representation of a default value may not exceed %1$d characters.
 331 A host expression in a Static SQL must be a variable or record field: '%1$s'.
 332 Stored Procedures can be invoked only through CALL statements.
 333 CALL statements invoking a Stored Procedure may not have an INTO clause.
@@ -2076,6 +2078,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
 346 Argument %1$d of %2$s must be a bind variable (? or :name) because it is passed to an %3$s parameter.
+347 Invalid DEFAULT clause: a bare expression is only allowed for legacy default functions; wrap the expression in parentheses, e.g. DEFAULT (...).
 
 
 

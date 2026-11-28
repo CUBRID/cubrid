@@ -55,6 +55,8 @@ namespace cubpl
     // Only used in runtime
     int   *arg_default_value_size;
     char **arg_default_value;
+    int   *arg_default_expr_size; // 0 unless the default is an expression evaluated at each call
+    char **arg_default_expr;      // its Compact DEFAULT Tree
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -64,7 +66,7 @@ namespace cubpl
     pl_arg (int num_args);
     ~pl_arg () override;
 
-    void set_arg_size (int num_args);
+    int set_arg_size (int num_args);
     void clear ();
   };
 

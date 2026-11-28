@@ -47,9 +47,15 @@ namespace cubpl
   {}
 
   pl_arg::pl_arg (int num_args)
-    : arg_size {num_args}
+    : arg_size {0}
+    , arg_mode {nullptr}
+    , arg_type {nullptr}
+    , arg_default_value_size {nullptr}
+    , arg_default_value {nullptr}
+    , arg_default_expr_size {nullptr}
+    , arg_default_expr {nullptr}
   {
-    set_arg_size (num_args);
+    (void) set_arg_size (num_args);
   }
 
   pl_arg::~pl_arg ()
@@ -80,6 +86,16 @@ namespace cubpl
 	  }
 	CHECK_NULL_AND_FREE (owner, arg_default_value_size);
 	CHECK_NULL_AND_FREE (owner, arg_default_value);
+	if (arg_default_expr)
+	  {
+	    for (int i = 0; i < arg_size; i++)
+	      {
+		CHECK_NULL_AND_FREE (owner, arg_default_expr[i]);
+	      }
+	  }
+	CHECK_NULL_AND_FREE (owner, arg_default_expr_size);
+	CHECK_NULL_AND_FREE (owner, arg_default_expr);
+	arg_size = 0;
       }
   }
 
@@ -98,12 +114,27 @@ namespace cubpl
   void
   pl_arg::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_int (arg_size);
+    int num_args;
+    deserializator.unpack_int (num_args);
+
+    // the arrays of the previous size are released before arg_size changes
+    if (set_arg_size (num_args) != NO_ERROR)
+      {
+	// left without arguments: read past the two arrays, so that the fields after them are read where they are
+	for (int a = 0; a < 2; a++)
+	  {
+	    int cnt = 0, skipped;
+	    deserializator.unpack_int (cnt);
+	    for (int i = 0; i < cnt; i++)
+	      {
+		deserializator.unpack_int (skipped);
+	      }
+	  }
+	return;
+      }
 
     if (arg_size > 0)
       {
-	set_arg_size (arg_size);
-
 	int cnt;
 	deserializator.unpack_int_array (arg_mode, cnt);
 	assert (arg_size == cnt);
@@ -125,39 +156,51 @@ namespace cubpl
     return size;
   }
 
-  void
+  /*
+   * set_arg_size () - make the arrays of num_args arguments, zeroed: all of them or, when one cannot be allocated,
+   *   none (arg_size 0), so that clear () never reads an array it did not initialize
+   *   return: NO_ERROR, or the allocation's error
+   */
+  int
   pl_arg::set_arg_size (int num_args)
   {
     clear ();
-    if (num_args > 0)
+    if (num_args <= 0)
       {
-	arg_size = num_args;
-
-	arg_mode = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
-	arg_type = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
-	arg_default_value_size = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
-	arg_default_value = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
-
-	if (arg_mode && arg_type && arg_default_value_size && arg_default_value)
-	  {
-	    memset (arg_mode, 0x00, (num_args * sizeof (int)));
-	    memset (arg_type, 0x00, (num_args * sizeof (int)));
-	    memset (arg_default_value_size, 0x00, (num_args * sizeof (int)));
-	    memset (arg_default_value, 0x00, (num_args * sizeof (char *)));
-	  }
-	else
-	  {
-	    assert_release (false);
-	  }
+	return NO_ERROR;
       }
-    else
+
+    arg_mode = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
+    arg_type = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
+    arg_default_value_size = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
+    arg_default_value = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
+    arg_default_expr_size = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
+    arg_default_expr = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
+
+    if (arg_mode == nullptr || arg_type == nullptr || arg_default_value_size == nullptr
+	|| arg_default_value == nullptr || arg_default_expr_size == nullptr || arg_default_expr == nullptr)
       {
-	arg_size = 0;
-	arg_mode = nullptr;
-	arg_type = nullptr;
-	arg_default_value_size = nullptr;
-	arg_default_value = nullptr;
+	CHECK_NULL_AND_FREE (NULL, arg_mode);
+	CHECK_NULL_AND_FREE (NULL, arg_type);
+	CHECK_NULL_AND_FREE (NULL, arg_default_value_size);
+	CHECK_NULL_AND_FREE (NULL, arg_default_value);
+	CHECK_NULL_AND_FREE (NULL, arg_default_expr_size);
+	CHECK_NULL_AND_FREE (NULL, arg_default_expr);
+	if (er_errid () == NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) num_args * sizeof (char *));
+	  }
+	return er_errid ();
       }
+
+    memset (arg_mode, 0x00, (num_args * sizeof (int)));
+    memset (arg_type, 0x00, (num_args * sizeof (int)));
+    memset (arg_default_value_size, 0x00, (num_args * sizeof (int)));
+    memset (arg_default_value, 0x00, (num_args * sizeof (char *)));
+    memset (arg_default_expr_size, 0x00, (num_args * sizeof (int)));
+    memset (arg_default_expr, 0x00, (num_args * sizeof (char *)));
+    arg_size = num_args;
+    return NO_ERROR;
   }
 
   pl_signature::pl_signature ()

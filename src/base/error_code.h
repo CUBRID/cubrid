@@ -1830,7 +1830,9 @@
 
 #define ER_LOG_RESTORE_INCOMPLETE                   -1423
 
-#define ER_LAST_ERROR                               -1424
+#define ER_SM_INVALID_DEFAULT_EXPR_STREAM           -1424
+
+#define ER_LAST_ERROR                               -1425
 
 /*
  * CAUTION!

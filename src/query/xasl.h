@@ -29,6 +29,7 @@
 
 #include "access_json_table.hpp"
 #include "access_spec.hpp"
+#include "eval_prop_def.h"
 #include "memory_hash.h"
 
 #include "query_hash_join.h"
@@ -463,6 +464,18 @@ struct update_proc_node
   int remote_num_set_binds;	/* placeholders in remote_set_text; that many aptrs supply values, in chain order */
 };
 
+/* a residual (STABLE or VOLATILE) column DEFAULT compiled with the INSERT that fills it */
+typedef struct insert_default_slot INSERT_DEFAULT_SLOT;
+struct insert_default_slot
+{
+  int att_index;		/* place of the attribute in att_id: below num_default_expr for an attribute left
+				 * out, from num_default_expr on for a listed one */
+  PT_VOLATILITY volatility;	/* STABLE: evaluated once per statement, VOLATILE: once per row */
+  REGU_VARIABLE *expr;		/* the DEFAULT expression */
+  DB_VALUE *value;		/* a listed attribute: the value its own DEFAULT gives, which each VALUES row
+				 * filling the attribute with it reads; NULL for an attribute left out */
+};
+
 typedef struct insert_proc_node INSERT_PROC_NODE;
 struct insert_proc_node
 {
@@ -471,6 +484,9 @@ struct insert_proc_node
   int num_vals;			/* total number of attrs involved */
   int num_default_expr;		/* total number of attrs which require a default value to be inserted */
   int *att_id;			/* ID's of attributes (array) */
+  int num_default_slots;	/* number of default_slots */
+  INSERT_DEFAULT_SLOT *default_slots;	/* residual DEFAULTs of the attributes left out, then of the listed
+					 * attributes VALUES fills with their own DEFAULT, in att_id order */
   DB_VALUE **vals;		/* values (array) */
   PRED_EXPR *cons_pred;		/* constraint predicate */
   ODKU_INFO *odku;		/* ON DUPLICATE KEY UPDATE assignments */
@@ -493,13 +509,10 @@ struct insert_proc_node
   int remote_odku_val_start;	/* position in the source row of the first value bound for a NULL remote_odku_exprs */
   int remote_num_odku_bound;	/* number of NULL remote_odku_exprs, as the plan counted them */
   TP_DOMAIN **att_domains;	/* CBRD-27583: the domain of each attribute, in att_id order */
-  int *default_types;		/* CBRD-27583: the DB_TYPE each of the first num_default_expr attributes' default
-				 * is made in before its cast into the attribute's domain (pt_default_value_type) */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   DB_TYPE *value_types;		/* CBRD-27583: the type each value comes in - per row of values and
 				 * attribute, a single row for a SELECT - chosen at unpack */
   TP_VALUE_CONVERTER *convs;	/* CBRD-27583: each value_types entry into its attribute's domain */
-  TP_VALUE_CONVERTER *default_convs;	/* CBRD-27583: each default_types entry into its attribute's domain */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

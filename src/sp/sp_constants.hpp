@@ -77,7 +77,8 @@ enum index_sp_attr
     MAP_LIST_ITEM(MODE) \
     MAP_LIST_ITEM(DEFAULT_VALUE) \
     MAP_LIST_ITEM(IS_OPTIONAL) \
-    MAP_LIST_ITEM(COMMENT)
+    MAP_LIST_ITEM(COMMENT) \
+    MAP_LIST_ITEM(DEFAULT_EXPR)
 
 #define SP_ARG_ATTR_SP_OF                   "sp_of"
 #define SP_ARG_ATTR_INDEX_OF                "index_of"
@@ -88,6 +89,7 @@ enum index_sp_attr
 #define SP_ARG_ATTR_DEFAULT_VALUE           "default_value"
 #define SP_ARG_ATTR_IS_OPTIONAL             "is_optional"
 #define SP_ARG_ATTR_COMMENT                 "comment"
+#define SP_ARG_ATTR_DEFAULT_EXPR            "default_expr"
 
 enum index_sp_arg_attr
 {

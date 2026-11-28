@@ -4722,12 +4722,25 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_int_array (insert_info->default_types, insert_info->num_default_expr);
-  if (offset == ER_FAILED)
+  ptr = or_pack_int (ptr, insert_info->num_default_slots);
+
+  for (i = 0; i < insert_info->num_default_slots; i++)
     {
-      return NULL;
+      ptr = or_pack_int (ptr, insert_info->default_slots[i].att_index);
+      ptr = or_pack_int (ptr, (int) insert_info->default_slots[i].volatility);
+      offset = xts_save_regu_variable (insert_info->default_slots[i].expr);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+      offset = xts_save_db_value (insert_info->default_slots[i].value);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
     }
-  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }
@@ -6371,6 +6384,8 @@ xts_process_sp_type (char *ptr, const SP_TYPE * sp)
     }
   ptr = or_pack_int (ptr, offset);
 
+  ptr = or_pack_int (ptr, sp->num_default_args);
+
   return ptr;
 }
 
@@ -7223,7 +7238,8 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + OR_INT_SIZE	/* remote_num_odku_bound */
 	   + (insert_info->remote_num_odku * 2 * PTR_SIZE)	/* remote_odku_cols + remote_odku_exprs */
 	   + PTR_SIZE		/* att_domains */
-	   + PTR_SIZE);		/* default_types */
+	   + OR_INT_SIZE	/* num_default_slots */
+	   + (insert_info->num_default_slots * (OR_INT_SIZE + OR_INT_SIZE + PTR_SIZE + PTR_SIZE)));	/* default_slots */
 
   return size;
 }
@@ -8851,7 +8867,8 @@ xts_sizeof_sp_type (const SP_TYPE * sp)
 
   size += (PTR_SIZE		/* value */
 	   + PTR_SIZE		/* sig */
-	   + PTR_SIZE);		/* args */
+	   + PTR_SIZE		/* args */
+	   + OR_INT_SIZE);	/* num_default_args */
 
   return size;
 }

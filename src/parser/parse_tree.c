@@ -1174,6 +1174,20 @@ parser_create_parser (void)
   parser_init_func_vectors ();
 #endif /* !SERVER_MODE */
 
+#if !defined (SERVER_MODE) && !defined (NDEBUG)
+  {
+    /* a debug build checks once that no operator or function is classified inconsistently */
+    static bool eval_prop_checked = false;
+
+    if (!eval_prop_checked)
+      {
+	eval_prop_checked = true;
+	assert (pt_eval_prop_self_check_ops () == 0);
+	assert (pt_eval_prop_self_check_funcs () == 0);
+      }
+  }
+#endif /* !SERVER_MODE && !NDEBUG */
+
 #if defined(SERVER_MODE)
   rv = pthread_mutex_lock (&parser_id_lock);
 #endif /* SERVER_MODE */
@@ -1244,6 +1258,9 @@ parser_free_parser (PARSER_CONTEXT * parser)
 
   /* free remote dblink cols */
   pt_free_dblink_remote_cols (parser);
+
+  /* give back the DB_VALUEs held by the rehydrated CDTs; the registry itself is parser memory */
+  pt_cdt_registry_free (parser);
 
   /* free string blocks */
   pt_free_string_blocks (parser);

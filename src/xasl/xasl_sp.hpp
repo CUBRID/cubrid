@@ -38,6 +38,7 @@ namespace cubxasl
     cubpl::pl_signature *sig;
     regu_variable_list_node *args;
     DB_VALUE *value; // return value
+    int num_default_args = 0; // the last args: the defaults of the parameters a call left out
   };
 };
 

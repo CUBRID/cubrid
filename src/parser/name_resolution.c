@@ -193,6 +193,11 @@ static PT_NODE *pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * const node);
+static bool pt_default_arg_names_own_attr (const PT_NODE * arg, const PT_NODE * attr, const PT_NODE * spec);
+static PT_NODE *pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * name);
+static bool pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr, PT_NODE * stmt);
+static bool pt_class_defaults_read_statement_clock (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * stmt);
+static PT_NODE *pt_find_insert_default_clock (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static PT_NODE *pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE * name, PT_BIND_NAMES_ARG * bind_arg,
@@ -1916,6 +1921,162 @@ pt_set_fill_default_in_path_expression (PT_NODE * node)
 }
 
 /*
+ * pt_residual_default_needs_si_datetime () - whether an attribute's residual
+ *	DEFAULT expression reads the statement clock, i.e. whether the Local
+ *	Evaluation path must synchronize SI_SYS_DATETIME before evaluating it
+ *   return: true if server time synchronization is needed
+ *   parser(in):
+ *   attr(in): attribute carrying a Compact DEFAULT Tree stream
+ *   stmt(in): the INSERT/MERGE being resolved, for error reporting
+ */
+static bool
+pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr, PT_NODE * stmt)
+{
+  const DB_DEFAULT_EXPR *default_expr = &attr->default_value.default_expr;
+  int si_requirement = PT_SI_NONE;
+
+  /* the head of the stream tells; the tree is rehydrated only by a reader that evaluates or compiles it */
+  if (pt_compact_default_tree_properties (default_expr->default_expr_tree_stream,
+					  default_expr->default_expr_tree_stream_size, NULL,
+					  &si_requirement) != NO_ERROR)
+    {
+      /* a stream this build does not read.  This probe is the statement's first reader of it, so it reports it;
+       * synchronize conservatively for the statement that is about to fail anyway. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_DEFAULT_EXPR_STREAM, 1, attr->header.name);
+      if (!pt_has_error (parser))
+	{
+	  PT_ERRORc (parser, stmt, er_msg ());
+	}
+      return true;
+    }
+
+  return (si_requirement & PT_SI_SYS_DATETIME) != 0;
+}
+
+/*
+ * pt_class_defaults_read_statement_clock () - whether a residual DEFAULT of a class reads the statement clock
+ *   return: true if server time synchronization is needed
+ *   parser(in):
+ *   class_obj(in): the class an INSERT or MERGE fills
+ *   stmt(in): that INSERT or MERGE, for error reporting
+ */
+static bool
+pt_class_defaults_read_statement_clock (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * stmt)
+{
+  SM_CLASS *smclass = NULL;
+  SM_ATTRIBUTE *attr;
+
+  if (class_obj == NULL)
+    {
+      return false;
+    }
+
+  au_fetch_class_force (class_obj, &smclass, AU_FETCH_READ);
+  if (smclass == NULL)
+    {
+      return false;
+    }
+
+  for (attr = smclass->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
+    {
+      if (DB_IS_RESIDUAL_DEFAULT_EXPR (&attr->default_value.default_expr)
+	  && pt_residual_default_needs_si_datetime (parser, attr, stmt))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * pt_find_insert_default_clock () - parser_walk_tree pre-function of pt_mark_translated_default_clock
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): bool, set when an INSERT or MERGE fills a class whose residual DEFAULT reads the clock
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_find_insert_default_clock (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *reads_clock = (bool *) arg;
+  PT_NODE *spec = NULL;
+
+  if (node->node_type == PT_INSERT)
+    {
+      spec = node->info.insert.spec;
+    }
+  else if (node->node_type == PT_MERGE)
+    {
+      spec = node->info.merge.into;
+    }
+
+  if (spec != NULL && spec->node_type == PT_SPEC && spec->info.spec.entity_name != NULL
+      && spec->info.spec.entity_name->node_type == PT_NAME
+      && pt_class_defaults_read_statement_clock (parser, spec->info.spec.entity_name->info.name.db_object, node))
+    {
+      *reads_clock = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * pt_mark_translated_default_clock () - mark an INSERT or MERGE for the statement clock when a class it fills
+ *	after view translation has a residual DEFAULT that reads the clock.  Name resolution saw only the view.
+ *   return: none
+ *   parser(in):
+ *   statement(in/out): the translated statement
+ */
+void
+pt_mark_translated_default_clock (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  bool reads_clock = false;
+
+  if (statement == NULL || statement->flag.si_datetime
+      || (statement->node_type != PT_INSERT && statement->node_type != PT_MERGE))
+    {
+      return;
+    }
+
+  (void) parser_walk_tree (parser, statement, pt_find_insert_default_clock, &reads_clock, NULL, NULL);
+  if (reads_clock)
+    {
+      statement->flag.si_datetime = 1;
+    }
+}
+
+/*
+ * pt_default_arg_names_own_attr () - whether the argument of DEFAULT (arg) in the place of attr names attr
+ *	itself: c, or t.c where t is the range variable of the target
+ *   return: true if it does
+ *   arg(in): the argument of DEFAULT
+ *   attr(in): the attribute of the place
+ *   spec(in): the target of the INSERT or MERGE
+ */
+static bool
+pt_default_arg_names_own_attr (const PT_NODE * arg, const PT_NODE * attr, const PT_NODE * spec)
+{
+  const PT_NODE *range_var = spec->info.spec.range_var;
+
+  if (arg->node_type == PT_DOT_)
+    {
+      if (arg->info.dot.arg1 == NULL || arg->info.dot.arg1->node_type != PT_NAME || range_var == NULL
+	  || pt_user_specified_name_compare (arg->info.dot.arg1->info.name.original,
+					     range_var->info.name.original) != 0)
+	{
+	  return false;
+	}
+      arg = arg->info.dot.arg2;
+    }
+
+  return (arg != NULL && arg->node_type == PT_NAME && arg->info.name.original != NULL
+	  && pt_str_compare (arg->info.name.original, attr->info.name.original, CASE_INSENSITIVE) == 0);
+}
+
+/*
  * fill_in_insert_default_function_arguments () - Fills in the argument of the
  *                                                DEFAULT function when used
  *                                                for INSERT, MERGE INSERT
@@ -1932,8 +2093,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
   PT_NODE *crt_attr = NULL;
   PT_NODE *crt_value = NULL;
   PT_NODE *crt_list = NULL;
-  SM_CLASS *smclass = NULL;
-  SM_ATTRIBUTE *attr = NULL;
+  PT_NODE *spec = NULL;
   PT_NODE *cls_name = NULL;
   PT_NODE *values_list = NULL;
   PT_NODE *attrs_list = NULL;
@@ -1944,16 +2104,17 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
    * client-side evaluation path uses the cached default value. */
   if (node->node_type == PT_INSERT)
     {
-      cls_name = node->info.insert.spec->info.spec.entity_name;
+      spec = node->info.insert.spec;
       values_list = node->info.insert.value_clauses;
       attrs_list = node->info.insert.attr_list;
     }
   else
     {
-      cls_name = node->info.merge.into->info.spec.entity_name;
+      spec = node->info.merge.into;
       values_list = node->info.merge.insert.value_clauses;
       attrs_list = node->info.merge.insert.attr_list;
     }
+  cls_name = spec->info.spec.entity_name;
 
   if (cls_name == NULL)
     {
@@ -1961,20 +2122,13 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
       return;
     }
 
-  au_fetch_class_force (cls_name->info.name.db_object, &smclass, AU_FETCH_READ);
-  if (smclass)
+  /* a residual DEFAULT expression referencing the statement clock needs the server time synchronized before the
+   * Local Evaluation path evaluates it */
+  if (pt_class_defaults_read_statement_clock (parser, cls_name->info.name.db_object, node))
     {
-      for (attr = smclass->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
-	{
-	  if (DB_IS_DEFAULT_DATETIME_EXPR (attr->default_value.default_expr.default_expr_type)
-	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (attr->default_value.default_expr.default_expr_type))
-	    {
-	      node->flag.si_datetime = true;
-	      db_make_null (&parser->sys_datetime);
-	      db_make_null (&parser->sys_epochtime);
-	      break;
-	    }
-	}
+      node->flag.si_datetime = true;
+      db_make_null (&parser->sys_datetime);
+      db_make_null (&parser->sys_epochtime);
     }
 
   for (crt_list = values_list; crt_list != NULL; crt_list = crt_list->next)
@@ -2013,6 +2167,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 
 	      crt_value->info.expr.op = PT_DEFAULTF;
 	      crt_value->info.expr.arg1 = parser_copy_tree (parser, crt_attr);
+	      crt_value->flag.is_own_default = 1;
 
 	      if (crt_value->info.expr.arg1 == NULL)
 		{
@@ -2056,6 +2211,11 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 		}
 	      if (crt_value->info.expr.arg1 != NULL)
 		{
+		  /* DEFAULT (c) or DEFAULT (t.c) in the place of c is the DEFAULT of its own column too */
+		  if (pt_default_arg_names_own_attr (crt_value->info.expr.arg1, crt_attr, spec))
+		    {
+		      crt_value->flag.is_own_default = 1;
+		    }
 		  continue;
 		}
 	      crt_arg = parser_copy_tree (parser, crt_attr);
@@ -2065,6 +2225,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 		  return;
 		}
 	      crt_value->info.expr.arg1 = crt_arg;
+	      crt_value->flag.is_own_default = 1;
 	      pt_set_fill_default_in_path_expression (crt_arg);
 	    }
 	}
@@ -3988,6 +4149,42 @@ pt_bind_values_to_hostvars (PARSER_CONTEXT * parser, PT_NODE * node)
 }				/* pt_bind_values_to_hostvars */
 
 /*
+ * pt_make_attribute_default_value_node () - Builds the PT_NODE a Default
+ *	Reference (the DEFAULT keyword used as a value) resolves to for one
+ *	attribute: the rehydrated Compact DEFAULT Tree for a residual DEFAULT
+ *	expression, or a PT_VALUE of the stored value for a plain literal or
+ *	Expression-Derived Literal.
+ *
+ * return      : default value node or NULL on error
+ * parser (in) : parser context
+ * att (in)    : resolved attribute
+ * name (in)   : the PT_NAME being resolved, for error reporting
+ */
+static PT_NODE *
+pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * name)
+{
+  const DB_DEFAULT_EXPR *default_expr = &att->default_value.default_expr;
+  PT_NODE *node;
+
+  if (DB_IS_RESIDUAL_DEFAULT_EXPR (default_expr))
+    {
+      /* residual DEFAULT expression: the reference evaluates at execution time, so it gets the rehydrated
+       * tree (its nodes carry do_not_fold, keeping generic constant folding from freezing it).  The CDT
+       * registry decodes the stream once per attribute and shares the tree; every reference takes its own
+       * copy, because the DEFAULTF fold and the release of the reference node both assume ownership. */
+      return pt_cdt_registry_tree_copy (parser, att, name, NULL);
+    }
+
+  /* a plain literal or Expression-Derived Literal rebuilds from its stored value */
+  node = pt_dbval_to_value (parser, &att->default_value.value);
+  if (node != NULL && TP_DOMAIN_TYPE (att->domain) == DB_TYPE_ENUMERATION)
+    {
+      node->data_type = pt_domain_to_data_type (parser, att->domain);
+    }
+  return node;
+}
+
+/*
  * pt_resolve_default_value () - Fills PT_NAME node with default value
  *
  * return      : error code
@@ -4032,30 +4229,16 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
       return ER_FAILED;
     }
 
-  if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+  name->info.name.default_value = pt_make_attribute_default_value_node (parser, att, name);
+  if (name->info.name.default_value == NULL)
     {
-      /* if the default value is an expression, make a node for it */
-      name->info.name.default_value =
-	pt_make_default_value_tree_from_default_expr (parser, &att->default_value.default_expr);
-      if (name->info.name.default_value == NULL)
+      /* a rehydration failure reports its own cause; allocation failure is the
+       * remaining undiagnosed one */
+      if (!pt_has_error (parser))
 	{
 	  PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	  return ER_FAILED;
 	}
-    }
-  else
-    {
-      /* just set the default value */
-      name->info.name.default_value = pt_dbval_to_value (parser, &att->default_value.value);
-      if (name->info.name.default_value == NULL)
-	{
-	  PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	  return ER_FAILED;
-	}
-      if (TP_DOMAIN_TYPE (att->domain) == DB_TYPE_ENUMERATION)
-	{
-	  name->info.name.default_value->data_type = pt_domain_to_data_type (parser, att->domain);
-	}
+      return ER_FAILED;
     }
 
   PT_NAME_INFO_SET_FLAG (name, PT_NAME_INFO_FILL_DEFAULT);
@@ -4151,30 +4334,14 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 	      /* default value was already set */
 	      return 1;
 	    }
-	  if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+	  attr->info.name.default_value = pt_make_attribute_default_value_node (parser, att, attr);
+	  if (attr->info.name.default_value == NULL)
 	    {
-	      /* if the default value is an expression, make a node for it */
-	      attr->info.name.default_value =
-		pt_make_default_value_tree_from_default_expr (parser, &att->default_value.default_expr);
-	      if (attr->info.name.default_value == NULL)
+	      if (!pt_has_error (parser))
 		{
 		  PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  return 0;
 		}
-	    }
-	  else
-	    {
-	      /* just set the default value */
-	      attr->info.name.default_value = pt_dbval_to_value (parser, &att->default_value.value);
-	      if (attr->info.name.default_value == NULL)
-		{
-		  PT_INTERNAL_ERROR (parser, "resolution");
-		  return 0;
-		}
-	      if (TP_DOMAIN_TYPE (att->domain) == DB_TYPE_ENUMERATION)
-		{
-		  attr->info.name.default_value->data_type = pt_domain_to_data_type (parser, att->domain);
-		}
+	      return 0;
 	    }
 	}
 
@@ -8480,8 +8647,7 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       const char *name = db_attr->header.name;
 
-      if (db_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
-	  && DB_IS_NULL (&db_attr->default_value.value))
+      if (!SM_DEFAULT_SUPPLIES_VALUE (&db_attr->default_value))
 	{
 	  continue;
 	}
@@ -11625,6 +11791,62 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
 
     default:
       return (PT_OP_TYPE) 0;
+    }
+}
+
+/*
+ * pt_default_expr_type_from_op () - the inverse of pt_op_type_from_default_expr_type: the legacy DEFAULT
+ *	pseudo-column an operator denotes.  UUID maps to DB_DEFAULT_UUIDV4; its version argument decides
+ *	DB_DEFAULT_UUIDV7 at the caller.
+ *   return: a DB_DEFAULT_EXPR_TYPE, or DB_DEFAULT_NONE
+ *   op(in): the operator
+ */
+DB_DEFAULT_EXPR_TYPE
+pt_default_expr_type_from_op (PT_OP_TYPE op)
+{
+  switch (op)
+    {
+    case PT_SYS_TIME:
+      return DB_DEFAULT_SYSTIME;
+
+    case PT_SYS_DATE:
+      return DB_DEFAULT_SYSDATE;
+
+    case PT_SYS_DATETIME:
+      return DB_DEFAULT_SYSDATETIME;
+
+    case PT_SYS_TIMESTAMP:
+      return DB_DEFAULT_SYSTIMESTAMP;
+
+    case PT_UNIX_TIMESTAMP:
+      return DB_DEFAULT_UNIX_TIMESTAMP;
+
+    case PT_USER:
+      return DB_DEFAULT_USER;
+
+    case PT_CURRENT_USER:
+      return DB_DEFAULT_CURR_USER;
+
+    case PT_CURRENT_DATETIME:
+      return DB_DEFAULT_CURRENTDATETIME;
+
+    case PT_CURRENT_TIMESTAMP:
+      return DB_DEFAULT_CURRENTTIMESTAMP;
+
+    case PT_CURRENT_TIME:
+      return DB_DEFAULT_CURRENTTIME;
+
+    case PT_CURRENT_DATE:
+      return DB_DEFAULT_CURRENTDATE;
+
+    case PT_SYS_GUID:
+      return DB_DEFAULT_SYSGUID;
+
+    case PT_UUID:
+      return DB_DEFAULT_UUIDV4;
+
+    default:
+      return DB_DEFAULT_NONE;
     }
 }
 

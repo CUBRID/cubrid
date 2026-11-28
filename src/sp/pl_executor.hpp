@@ -79,7 +79,7 @@ namespace cubpl
 
       // args
       int fetch_args_peek (regu_variable_list_node *val_list_p, VAL_DESCR *val_desc_p, OID *obj_oid_p,
-			   QFILE_TUPLE_RECORD *tplrec); // QUERY
+			   QFILE_TUPLE_RECORD *tplrec, int num_default_args); // QUERY
       int fetch_args_peek (std::vector <std::reference_wrapper <DB_VALUE>> args); // CALL
 
       // execute

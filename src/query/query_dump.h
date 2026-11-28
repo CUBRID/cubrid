@@ -42,7 +42,6 @@ extern void qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent);
  * to every section header, e.g. " [px worker]" when a parallel worker's clone is listed */
 extern void qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const char *tag);
 #endif /* SERVER_MODE || SA_MODE */
-extern const char *qdump_operator_type_string (OPERATOR_TYPE optype);
 extern const char *qdump_arith_operator_string (OPERATOR_TYPE opcode);
 extern const char *qdump_arith_opcode_name (OPERATOR_TYPE opcode);
 extern const char *qdump_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);

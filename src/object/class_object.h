@@ -401,6 +401,12 @@ struct sm_default_value
   DB_DEFAULT_EXPR default_expr;	/* default expression */
 };
 
+/* Whether a DEFAULT gives a row that omits the column a value of its own: a stored value does, and so does a
+ * residual expression, which is evaluated when the row is populated even if its DDL-time snapshot is NULL.
+ * (dv) is an SM_DEFAULT_VALUE pointer. */
+#define SM_DEFAULT_SUPPLIES_VALUE(dv) \
+  ( !DB_IS_NULL (&(dv)->value) || DB_IS_RESIDUAL_DEFAULT_EXPR (&(dv)->default_expr) )
+
 typedef struct sm_attribute SM_ATTRIBUTE;
 
 /*
@@ -1133,6 +1139,7 @@ extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char *
 				       const SM_FUNCTION_INFO * func_index_info);
 extern void classobj_initialize_attributes (SM_ATTRIBUTE * attributes);
 extern int classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src);
+extern void classobj_clear_default_expr (DB_DEFAULT_EXPR * default_expr);
 extern void classobj_initialize_methods (SM_METHOD * methods);
 extern SM_PARTITION *classobj_make_partition_info (void);
 extern void classobj_free_partition_info (SM_PARTITION * partition_info);

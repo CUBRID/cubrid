@@ -585,35 +585,18 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	}
 
       if (!DB_IS_NULL (&attribute.default_value.value)
-	  || attribute.default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+	  || DB_HAS_DEFAULT_EXPR (&attribute.default_value.default_expr))
 	{
-	  const char *default_expr_type_str;
-
 	  m_buf (" DEFAULT ");
 
-	  if (attribute.default_value.default_expr.default_expr_op == T_TO_CHAR)
+	  if (DB_HAS_DEFAULT_EXPR (&attribute.default_value.default_expr))
 	    {
-	      m_buf ("TO_CHAR(");
-	    }
-
-	  default_expr_type_str = db_default_expression_string (attribute.default_value.default_expr.default_expr_type);
-	  if (default_expr_type_str != NULL)
-	    {
-	      m_buf ("%s", default_expr_type_str);
+	      /* an expression DEFAULT: its original text, already in the parenthesized normal form, e.g. "(1+1)" */
+	      m_buf ("%s", attribute.default_value.default_expr.default_expr_text);
 	    }
 	  else
 	    {
-	      assert (attribute.default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR);
 	      printer.describe_value (&attribute.default_value.value);
-	    }
-
-	  if (attribute.default_value.default_expr.default_expr_op == T_TO_CHAR)
-	    {
-	      if (attribute.default_value.default_expr.default_expr_format)
-		{
-		  m_buf (", \'%s\'", attribute.default_value.default_expr.default_expr_format);
-		}
-	      m_buf (")");
 	    }
 	}
 
