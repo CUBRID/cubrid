@@ -89,6 +89,8 @@ jobs:
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           repositories: ${{ matrix.tc-repo }}
           owner: ${{ env.OWNER }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Mask token
         env:
@@ -104,10 +106,38 @@ jobs:
           TC_REPO: ${{ matrix.tc-repo }}
           OWNER: ${{ env.OWNER }}
           ENGINE_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          EVENT_ACTION: ${{ github.event.action }}
         shell: bash
         run: |
           set -euo pipefail
           BRANCH_NAME="tc/pr-${PR_NUMBER}"
+
+          # TC Branch Finalize deleted the branch when this PR closed, but its closed TC PR still holds the change.
+          if [ "${EVENT_ACTION}" = reopened ]; then
+            LAST=$(gh pr list --repo "${OWNER}/${TC_REPO}" --head "${BRANCH_NAME}" --state all \
+                     --json number,state,headRefOid,baseRefName,isCrossRepository \
+                     --jq '[.[] | select(.isCrossRepository | not)] | max_by(.number) // empty
+                           | select(.state == "CLOSED") | "\(.number) \(.headRefOid) \(.baseRefName)"')
+            if [ -n "${LAST}" ]; then
+              read -r TC_PR TC_SHA TC_PR_BASE <<< "${LAST}"
+              if ! REF_ERR=$(gh api "repos/${OWNER}/${TC_REPO}/git/ref/heads/${BRANCH_NAME}" --silent 2>&1); then
+                if [[ "${REF_ERR}" != *"HTTP 404"* ]]; then
+                  echo "::error::Failed to check branch '${BRANCH_NAME}' in ${TC_REPO}: ${REF_ERR}"
+                  exit 1
+                fi
+                gh api "repos/${OWNER}/${TC_REPO}/git/refs" --method POST \
+                  --field ref="refs/heads/${BRANCH_NAME}" --field sha="${TC_SHA}" --silent
+              fi
+              if gh pr reopen "${TC_PR}" --repo "${OWNER}/${TC_REPO}"; then
+                echo "::notice::Reopened TC PR #${TC_PR} on '${BRANCH_NAME}' at ${TC_SHA}"
+              else
+                # The engine base can be missing in the TC repo, so the new TC PR takes the closed one's base.
+                echo "::warning::Could not reopen TC PR #${TC_PR} in ${TC_REPO}. A new TC PR opens on '${BRANCH_NAME}' against '${TC_PR_BASE}' instead."
+                echo "tc_base_ref=${TC_PR_BASE}" >> "${GITHUB_OUTPUT}"
+                exit 0
+              fi
+            fi
+          fi
 
           if gh api "repos/${OWNER}/${TC_REPO}/git/refs/heads/${BRANCH_NAME}" > /dev/null 2>&1; then
             echo "::notice::Branch '${BRANCH_NAME}' already exists in ${TC_REPO}. Skipping branch creation."
@@ -203,7 +233,9 @@ jobs:
         with:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          repositories: cubrid-testcases,cubrid-testcases-private-ex
           owner: ${{ env.OWNER }}
+          permission-pull-requests: read
 
       - name: Post or Update PR Comment
         env:
@@ -293,6 +325,8 @@ jobs:
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           repositories: ${{ matrix.tc-repo }}
           owner: ${{ env.OWNER }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Revert TC and Create Branch
         id: revert-tc-commit
@@ -411,7 +445,9 @@ jobs:
         with:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          repositories: cubrid-testcases,cubrid-testcases-private-ex
           owner: ${{ env.OWNER }}
+          permission-pull-requests: read
 
       - name: Post or Update PR Comment
         env:
