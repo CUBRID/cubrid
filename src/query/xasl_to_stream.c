@@ -4546,6 +4546,13 @@ xts_process_remote_dml_sink (char *ptr, const REMOTE_DML_SINK * sink)
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_string (sink->remote_key_cast_type);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   offset = xts_save_string (sink->remote_using_index);
   if (offset == ER_FAILED)
     {
@@ -7165,6 +7172,7 @@ xts_sizeof_remote_dml_sink (void)
 	  + PTR_SIZE		/* table_name */
 	  + PTR_SIZE		/* remote_key_col */
 	  + PTR_SIZE		/* remote_op */
+	  + PTR_SIZE		/* remote_key_cast_type */
 	  + PTR_SIZE);		/* remote_using_index */
 }
 

@@ -783,16 +783,18 @@ extern "C"
   extern const char *pt_get_name_without_current_user_name (const char *name);
 
   extern void pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt);
+  extern const char *pt_dblink_dml_stmt_name (const PT_NODE * node, bool lower);
   extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern void pt_gather_dblink_cols_in_dml (PARSER_CONTEXT * parser, PT_NODE * stmt);
+  extern void pt_gather_dblink_cols_in_dml_target (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * spec);
 
   extern int pt_resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec);
 
   extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
   extern int pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name);
-  extern bool pt_dblink_odku_value_is_bound (PT_NODE * value);
-  extern bool pt_dblink_dml_is_remote_only_expr (PT_NODE * expr);
+  extern PT_DBLINK_VALUE_CLASS pt_dblink_dml_classify_value (PT_NODE * value, PT_NODE * target, PT_NODE * source);
+  extern bool pt_dblink_type_is_unreadable (PT_TYPE_ENUM type);
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }

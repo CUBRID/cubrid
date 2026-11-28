@@ -799,6 +799,10 @@ struct trace_json_t;
 #define PT_SPEC_IS_ENTITY(spec_) \
   ((spec_)->info.spec.entity_name != NULL)
 
+/* PT_DBLINK_TABLE_DML node of a remote DML that sends values to a sink, not its text */
+#define PT_DBLINK_DML_IS_SINK(dml_) \
+  ((dml_) != NULL && (dml_)->node_type == PT_DBLINK_TABLE_DML && (dml_)->info.dblink_table.qstr == NULL)
+
 #define PT_IS_FALSE_WHERE_VALUE(node) \
  (((node) != NULL && (node)->node_type == PT_VALUE \
   && ((node)->type_enum == PT_TYPE_NULL \
@@ -3651,6 +3655,10 @@ typedef struct pt_dblink_info
    * name outside "SELECT *" is described: a remote accepting it proves nothing (Oracle's UID). */
   bool uncertain_name_seen;
 
+  /* The INSERT of a remote DML sink wrote no column list. Name resolution fills the list with the
+   * target's columns, and the remote statement still goes out without one. */
+  bool dml_no_col_list;
+
   void *remote_col_list;	/* remote table's column list */
 
   /* Correlated equality push-down (single equality: count == 1).
@@ -4384,6 +4392,14 @@ enum cdc_ddl_object_type
   CDC_USER
 };
 typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
+
+/* how a remote DML sink sends a value of the statement */
+typedef enum pt_dblink_value_class
+{
+  PT_DBLINK_VALUE_REJECT = 0,
+  PT_DBLINK_VALUE_REMOTE_TEXT,	/* a literal, a target column, and + - * / and unary - over those */
+  PT_DBLINK_VALUE_LOCAL_BIND	/* a value computed here: a bare subquery, a column of the source */
+} PT_DBLINK_VALUE_CLASS;
 
 /* Which remote DML value-push sink (if any) a statement is routed to. A statement is exactly one of
  * INSERT/DELETE/UPDATE, so these are mutually exclusive by construction -- unlike the bool pair this

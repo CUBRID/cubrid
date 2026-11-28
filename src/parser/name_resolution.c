@@ -5236,38 +5236,28 @@ pt_dblink_get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
     }
 }
 
-static bool
-pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node, const S_REMOTE_COL_ATTR * attr)
+/* the local type of a remote column */
+static PT_TYPE_ENUM
+pt_dblink_remote_col_type (const S_REMOTE_COL_ATTR * attr)
 {
-  PT_NODE *dt = NULL;
-  bool need_precision = true;
-
-  attr_def_node->data_type = NULL;
-
   if (attr->type_idx > PT_TYPE_NONE)
     {
       /* this is the case of loaddb */
-      attr_def_node->type_enum = (PT_TYPE_ENUM) attr->type_idx;
-    }
-  else
-    {
-      /* it needs to convert ext type to CCI_U_TYPE */
-      attr_def_node->type_enum = pt_type[pt_dblink_get_basic_utype (attr->type_idx)];
+      return (PT_TYPE_ENUM) attr->type_idx;
     }
 
-  switch (attr_def_node->type_enum)
+  /* it needs to convert ext type to CCI_U_TYPE */
+  return pt_type[pt_dblink_get_basic_utype (attr->type_idx)];
+}
+
+/* A remote column of this type cannot be read through DBLink.
+ * The scan has no conversion for its values.
+ * A remote DML sink refuses a key column of these types too (pt_dblink_dml_check_sink). */
+bool
+pt_dblink_type_is_unreadable (PT_TYPE_ENUM type)
+{
+  switch (type)
     {
-    case PT_TYPE_JSON:
-      break;
-
-    case PT_TYPE_VARCHAR:
-    case PT_TYPE_CHAR:
-    case PT_TYPE_BIT:
-    case PT_TYPE_VARBIT:
-    case PT_TYPE_NUMERIC:
-    case PT_TYPE_MONETARY:
-      break;
-
     case PT_TYPE_BLOB:
     case PT_TYPE_CLOB:
     case PT_TYPE_OBJECT:
@@ -5275,13 +5265,55 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
     case PT_TYPE_SEQUENCE:
-      PT_ERRORmf (parser, attr_def_node, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (attr_def_node->type_enum));
-      return false;
-
+      return true;
     default:
+      return false;
+    }
+}
+
+/* keep_unreadable is for a remote DML target. Its columns are taken only to resolve and check the
+ * statement, and are never read through the spec. So a column of a type DBLink cannot read keeps
+ * its type, but not the element domain an ENUM or a set column has. The sink still refuses a bound
+ * value of a type it cannot bind. */
+static bool
+pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node, const S_REMOTE_COL_ATTR * attr,
+			       bool keep_unreadable)
+{
+  PT_NODE *dt = NULL;
+  bool need_precision = true;
+
+  attr_def_node->data_type = NULL;
+  attr_def_node->type_enum = pt_dblink_remote_col_type (attr);
+
+  if (pt_dblink_type_is_unreadable (attr_def_node->type_enum))
+    {
+      if (!keep_unreadable)
+	{
+	  PT_ERRORmf (parser, attr_def_node, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (attr_def_node->type_enum));
+	  return false;
+	}
       need_precision = false;
-      break;
+    }
+  else
+    {
+      switch (attr_def_node->type_enum)
+	{
+	case PT_TYPE_JSON:
+	  break;
+
+	case PT_TYPE_VARCHAR:
+	case PT_TYPE_CHAR:
+	case PT_TYPE_BIT:
+	case PT_TYPE_VARBIT:
+	case PT_TYPE_NUMERIC:
+	case PT_TYPE_MONETARY:
+	  break;
+
+	default:
+	  need_precision = false;
+	  break;
+	}
     }
 
   if (need_precision)
@@ -5331,7 +5363,7 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 }
 
 static PT_NODE *
-pt_mk_attr_def_node (PARSER_CONTEXT * parser, PT_NODE * name_node, S_REMOTE_TBL_COLS * rmt_cols)
+pt_mk_attr_def_node (PARSER_CONTEXT * parser, PT_NODE * name_node, S_REMOTE_TBL_COLS * rmt_cols, bool keep_unreadable)
 {
   PT_NODE *def_node;
 
@@ -5351,7 +5383,7 @@ pt_mk_attr_def_node (PARSER_CONTEXT * parser, PT_NODE * name_node, S_REMOTE_TBL_
     }
 
   int idx = rmt_cols->find_col (name_node->info.name.original);
-  if (idx >= 0 && pt_dblink_table_fill_attr_def (parser, def_node, rmt_cols->get_attr (idx)))
+  if (idx >= 0 && pt_dblink_table_fill_attr_def (parser, def_node, rmt_cols->get_attr (idx), keep_unreadable))
     {
       return def_node;
     }
@@ -5498,6 +5530,9 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   PT_NODE *attr_def_node = NULL;
   PT_NODE *id_node;
   PT_NODE *tmp;
+  /* The target of a remote DML sink keeps a column of a type DBLink cannot read. The target keeps
+   * its PT_DBLINK_TABLE_DML node in the derived shape (pt_dblink_dml_target_as_derived ()). */
+  bool is_dml_target = PT_DBLINK_DML_IS_SINK (class_spec->remote_server_name);
 
   PARSER_VARCHAR *var_buf = 0;
 
@@ -5591,7 +5626,7 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 	}
 
       id_node->info.name.original = "c";
-      if ((dblink_table->cols = pt_mk_attr_def_node (parser, id_node, NULL)) == NULL)
+      if ((dblink_table->cols = pt_mk_attr_def_node (parser, id_node, NULL, false)) == NULL)
 	{
 	  error = ER_DBLINK;
 	}
@@ -5618,7 +5653,7 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 	    }
 
 	  id_node->info.name.original = pt_append_string (parser, NULL, rmt_cols->get_name (i));
-	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols)) == NULL)
+	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols, is_dml_target)) == NULL)
 	    {
 	      error = ER_DBLINK;
 	      goto error_exit;
@@ -5637,7 +5672,7 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 	  id_node = extra->next;
 	  extra->next = NULL;
 
-	  if ((tmp = pt_mk_attr_def_node (parser, extra, rmt_cols)) == NULL)
+	  if ((tmp = pt_mk_attr_def_node (parser, extra, rmt_cols, is_dml_target)) == NULL)
 	    {
 	      error = ER_DBLINK;
 	      goto error_exit;
@@ -5653,7 +5688,7 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 	  dblink_table->sel_list = id_node->next;
 	  id_node->next = NULL;
 
-	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols)) == NULL)
+	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols, is_dml_target)) == NULL)
 	    {
 	      error = ER_DBLINK;
 	      goto error_exit;
@@ -6467,12 +6502,24 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
   /* If so, name resolves to scope's flat list of entities */
   if (exposed_spec)
     {
+      /* A trigger action is compiled before the DBLink gate judges it, so a remote spec of the
+       * action is still in the entity shape. It has no columns and binds nothing. Its name alone
+       * stays as written, as its column names do. A sink target is resolved again when the action
+       * runs, in the derived shape. */
+      if (col_name && exposed_spec->info.spec.remote_server_name != NULL && PT_SPEC_IS_ENTITY (exposed_spec))
+	{
+	  return in_node;
+	}
+
       /* the exposed name of a derived table or a CTE may not be used alone, ie, "select e from (select a from c) e"
        * is disallowed. */
       if (col_name && (PT_SPEC_IS_DERIVED (exposed_spec) || PT_SPEC_IS_CTE (exposed_spec))
 	  && exposed_spec->info.spec.range_var != in_node)
 	{
-	  if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_FOR_UPDATE))
+	  /* The target of a remote sink has the derived shape, to take its columns. A DELETE names
+	   * it alone. */
+	  if (PT_NAME_INFO_IS_FLAGED (in_node, PT_NAME_FOR_UPDATE)
+	      || PT_DBLINK_DML_IS_SINK (exposed_spec->info.spec.remote_server_name))
 	    {
 	      in_node->info.name.spec_id = exposed_spec->info.spec.id;
 	      return in_node;
@@ -13696,6 +13743,120 @@ pt_gather_dblink_cols_in_dml (PARSER_CONTEXT * parser, PT_NODE * stmt)
     }
 
   (void) parser_walk_tree (parser, stmt, pt_gather_dblink_cols_in_dml_pre, stmt, NULL, NULL);
+}
+
+/* pt_get_column_name_pre () outside the nested query blocks. A sink refuses a subquery that reads
+ * its target, so a name in a nested block is never the target's. */
+static PT_NODE *
+pt_dml_target_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  return pt_get_column_name_pre (parser, node, arg, continue_walk);
+}
+
+/* An assignment's left side or the INSERT column list names this column. So it is the target's. */
+static void
+pt_gather_dml_target_col (PARSER_CONTEXT * parser, S_LINK_COLUMNS * lkcol, PT_NODE * node)
+{
+  if (node->node_type == PT_NAME && node->type_enum != PT_TYPE_STAR)
+    {
+      check_for_already_exists (parser, lkcol, node->info.name.resolved, node->info.name.original);
+    }
+  else if (node->node_type == PT_DOT_ && node->info.dot.arg1->node_type == PT_NAME
+	   && node->info.dot.arg2->node_type == PT_NAME)
+    {
+      check_for_already_exists (parser, lkcol, node->info.dot.arg1->info.name.original,
+				node->info.dot.arg2->info.name.original);
+    }
+}
+
+/* the columns an assignment list names on the target, on both sides */
+static void
+pt_gather_dml_target_assigns (PARSER_CONTEXT * parser, S_LINK_COLUMNS * lkcol, PT_NODE * assigns)
+{
+  PT_NODE *assign, *lhs;
+
+  for (assign = assigns; assign != NULL; assign = assign->next)
+    {
+      if (!PT_IS_ASSIGN_NODE (assign))
+	{
+	  continue;
+	}
+      for (lhs = assign->info.expr.arg1; lhs != NULL; lhs = lhs->next)
+	{
+	  pt_gather_dml_target_col (parser, lkcol, lhs);
+	}
+      pt_walk_col_refs (parser, assign->info.expr.arg2, pt_dml_target_column_name_pre, lkcol);
+    }
+}
+
+/*
+ * pt_gather_dblink_cols_in_dml_target () - add the columns a remote DML sink names on its target
+ *   to the target's remote select list
+ *   return:
+ *   parser(in): parser context
+ *   stmt(in): the PT_INSERT, the PT_DELETE or the PT_UPDATE
+ *   spec(in/out): its target, just given the derived dblink table shape
+ *
+ * Note: The shape starts the list with a star, which describes the visible columns only. A column
+ *   the statement names besides is described too, so an invisible one is found by its name. A name
+ *   that is no column of the target is dropped from the list (pt_check_column_list), and name
+ *   resolution reports it.
+ */
+void
+pt_gather_dblink_cols_in_dml_target (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * spec)
+{
+  PT_NODE *table, *attr;
+  S_LINK_COLUMNS lkcol;
+
+  if (spec == NULL || spec->info.spec.derived_table_type != PT_DERIVED_DBLINK_TABLE
+      || spec->info.spec.derived_table == NULL || spec->info.spec.derived_table->node_type != PT_DBLINK_TABLE
+      || spec->info.spec.range_var == NULL)
+    {
+      return;
+    }
+  table = spec->info.spec.derived_table;
+
+  memset (&lkcol, 0x00, sizeof (lkcol));
+  lkcol.col_list = table->info.dblink_table.sel_list;
+  lkcol.tbl_name_node = spec->info.spec.range_var;
+
+  switch (stmt->node_type)
+    {
+    case PT_INSERT:
+      /* ON DUPLICATE KEY UPDATE resolves against the target and the tables of the source SELECT.
+       * So a bare name there may be the source's. */
+      lkcol.multi_source = true;
+      for (attr = stmt->info.insert.attr_list; attr != NULL; attr = attr->next)
+	{
+	  pt_gather_dml_target_col (parser, &lkcol, attr);
+	}
+      pt_gather_dml_target_assigns (parser, &lkcol, stmt->info.insert.odku_assignments);
+      break;
+
+    case PT_UPDATE:
+      pt_gather_dml_target_assigns (parser, &lkcol, stmt->info.update.assignment);
+      pt_walk_col_refs (parser, stmt->info.update.search_cond, pt_dml_target_column_name_pre, &lkcol);
+      break;
+
+    case PT_DELETE:
+      pt_walk_col_refs (parser, stmt->info.delete_.search_cond, pt_dml_target_column_name_pre, &lkcol);
+      break;
+
+    default:
+      return;
+    }
+
+  table->info.dblink_table.sel_list = lkcol.col_list;
+  table->info.dblink_table.needs_describe |= lkcol.needs_describe;
+  table->info.dblink_table.uncertain_name_seen |= lkcol.uncertain_name_seen;
 }
 
 int

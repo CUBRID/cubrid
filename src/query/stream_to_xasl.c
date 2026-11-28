@@ -4695,6 +4695,7 @@ stx_restore_remote_dml_sink (THREAD_ENTRY * thread_p, char *ptr, REMOTE_DML_SINK
   sink->table_name = stx_restore_string (thread_p, ptr);
   sink->remote_key_col = stx_restore_string (thread_p, ptr);
   sink->remote_op = stx_restore_string (thread_p, ptr);
+  sink->remote_key_cast_type = stx_restore_string (thread_p, ptr);
   sink->remote_using_index = stx_restore_string (thread_p, ptr);
 
   return ptr;
