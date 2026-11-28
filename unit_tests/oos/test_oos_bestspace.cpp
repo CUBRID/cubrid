@@ -54,6 +54,8 @@ OOS_FINDSPACE bridge_oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, c
     OOS_BESTSPACE *bestspace, int *idx_badspace,
     int needed_space, VPID *out_vpid,
     PAGE_PTR *out_pgptr);
+void bridge_oos_debug_counters_reset ();
+oos_debug_counters bridge_oos_debug_counters_get ();
 
 
 
@@ -480,8 +482,8 @@ TEST (OosBestspaceTest, BestspaceFindBestPageBasic)
 // ===========================================================================
 // TEST: BestspaceFindBestPageConsecutiveCalls
 //
-// Call bridge_oos_find_best_page twice with small record sizes.
-// Both calls should return the same page (there's plenty of room).
+// A small insert publishes its page once it releases the latch, so a following lookup with
+// a small record size returns that same page (there's plenty of room).
 // ===========================================================================
 TEST (OosBestspaceTest, BestspaceFindBestPageConsecutiveCalls)
 {
@@ -490,10 +492,6 @@ TEST (OosBestspaceTest, BestspaceFindBestPageConsecutiveCalls)
 
   err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
-
-  VPID vpid1{NULL_PAGEID, NULL_VOLID};
-  auto page1 = bridge_oos_find_best_page (thread_p, oos_vfid, 100, vpid1);
-  ASSERT_NE (page1, nullptr);
 
   // Insert something small so the page is tracked
   RECDES rec{};
@@ -505,8 +503,16 @@ TEST (OosBestspaceTest, BestspaceFindBestPageConsecutiveCalls)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  // Release page1 before second find
+  VPID vpid1{NULL_PAGEID, NULL_VOLID};
+  auto page1 = bridge_oos_find_best_page (thread_p, oos_vfid, 100, vpid1);
+  ASSERT_NE (page1, nullptr);
+  ASSERT_EQ (vpid1.pageid, oid.pageid);
+  ASSERT_EQ (vpid1.volid, oid.volid);
+
+  // A caller that took the page publishes its space after releasing it.
+  const int freespace = spage_max_space_for_new_record (thread_p, page1.get ());
   page1.reset ();
+  ASSERT_NE (bridge_oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid1, freespace), nullptr);
 
   VPID vpid2{NULL_PAGEID, NULL_VOLID};
   auto page2 = bridge_oos_find_best_page (thread_p, oos_vfid, 100, vpid2);
@@ -515,9 +521,159 @@ TEST (OosBestspaceTest, BestspaceFindBestPageConsecutiveCalls)
   // Same page should be returned since there's plenty of room
   ASSERT_EQ (vpid1.pageid, vpid2.pageid);
   ASSERT_EQ (vpid1.volid, vpid2.volid);
+  page2.reset ();
 
   err = oos_remove_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
+}
+
+
+// ===========================================================================
+// TEST: BestspaceNewPageNotAdvertisedWhileLatched (CBRD-28378)
+//
+// A page the lookup allocates is still empty and WRITE latched. Publishing it then sent every
+// concurrent inserter into a conditional fix that failed, and each failure left the page buffer
+// frame out of every LRU list. The new page must stay unpublished until its inserter has filled
+// and released it, and the insert must then publish the space it left.
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceNewPageNotAdvertisedWhileLatched)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  VPID new_vpid{NULL_PAGEID, NULL_VOLID};
+  auto page_ptr = bridge_oos_find_best_page (thread_p, oos_vfid, 100, new_vpid);
+  ASSERT_NE (page_ptr, nullptr);
+  ASSERT_EQ (spage_number_of_records (page_ptr.get ()), 0) << "an empty file must hand out a new page";
+  EXPECT_EQ (oos_test_bestspace_hint_freespace (new_vpid), -1)
+      << "a new page was advertised while its inserter still holds the WRITE latch";
+  page_ptr.reset ();
+  EXPECT_EQ (oos_test_bestspace_hint_freespace (new_vpid), -1) << "the lookup itself must not publish a page";
+
+  // An insert into a new page publishes what is left of it, after the latch is released.
+  VFID insert_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, insert_vfid), NO_ERROR);
+  RECDES rec{};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes ("published after unfix", rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_rec (&rec, recdes_free_data_area);
+  OID oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, insert_vfid, rec, oid), NO_ERROR);
+
+  const VPID insert_vpid = { oid.pageid, oid.volid };
+  PAGE_PTR insert_page = pgbuf_fix (thread_p, &insert_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  ASSERT_NE (insert_page, nullptr);
+  const int expected_free = spage_max_space_for_new_record (thread_p, insert_page);
+  pgbuf_unfix_and_init (thread_p, insert_page);
+  EXPECT_EQ (oos_test_bestspace_hint_freespace (insert_vpid), expected_free);
+
+  ASSERT_EQ (oos_remove_file (thread_p, insert_vfid), NO_ERROR);
+  ASSERT_EQ (oos_remove_file (thread_p, oos_vfid), NO_ERROR);
+}
+
+
+// ===========================================================================
+// TEST: BestspaceReusedPageHintWithdrawnWhileLatched (CBRD-28378)
+//
+// A lookup that takes a hinted page withdraws the hint until the inserter releases the page,
+// so other inserters do not aim conditional fixes at a page that is being filled.
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceReusedPageHintWithdrawnWhileLatched)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  RECDES rec{};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes ("first value on the page", rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_rec (&rec, recdes_free_data_area);
+  OID first_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, first_oid), NO_ERROR);
+  const VPID page_vpid = { first_oid.pageid, first_oid.volid };
+  ASSERT_GT (oos_test_bestspace_hint_freespace (page_vpid), 100);
+
+  VPID found_vpid{NULL_PAGEID, NULL_VOLID};
+  auto page_ptr = bridge_oos_find_best_page (thread_p, oos_vfid, 100, found_vpid);
+  ASSERT_NE (page_ptr, nullptr);
+  ASSERT_TRUE (VPID_EQ (&found_vpid, &page_vpid)) << "the hinted page must be reused";
+  EXPECT_EQ (oos_test_bestspace_hint_freespace (page_vpid), -1)
+      << "the hint of a page an inserter holds must be withdrawn";
+
+  // Like an insert, publish the page again only after releasing it.
+  const int freespace = spage_max_space_for_new_record (thread_p, page_ptr.get ());
+  page_ptr.reset ();
+  ASSERT_NE (bridge_oos_stats_add_bestspace (thread_p, &oos_vfid, &found_vpid, freespace), nullptr);
+
+  // The next insert reuses the page through a lookup of its own and publishes it again.
+  OID second_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, second_oid), NO_ERROR);
+  EXPECT_EQ (second_oid.pageid, first_oid.pageid);
+  EXPECT_EQ (second_oid.volid, first_oid.volid);
+  EXPECT_GT (oos_test_bestspace_hint_freespace (page_vpid), 0);
+
+  ASSERT_EQ (oos_remove_file (thread_p, oos_vfid), NO_ERROR);
+}
+
+
+// ===========================================================================
+// TEST: BestspaceBusyHintTriedOncePerLookup (CBRD-28378)
+//
+// The hash lookup used to re-read the file's first hint after every failed conditional fix,
+// so one page latched by another thread drew up to BEST_PAGE_SEARCH_MAX_COUNT fix attempts per
+// lookup and hid every other hint of the file. A busy hint must be tried once, kept for later
+// lookups, and passed over in favor of the next hinted page.
+// ===========================================================================
+TEST (OosBestspaceTest, BestspaceBusyHintTriedOncePerLookup)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  // Two pages with free space, each holding one value.
+  RECDES rec{};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes ("busy or free", rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_rec (&rec, recdes_free_data_area);
+  OID oids[2] = { OID_INITIALIZER, OID_INITIALIZER };
+  for (OID &oid : oids)
+    {
+      ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid), NO_ERROR);
+      // Hide this page so the next insert allocates another one.
+      VPID vpid = { oid.pageid, oid.volid };
+      ASSERT_EQ (bridge_oos_stats_del_bestspace_by_vpid (thread_p, &vpid), NO_ERROR);
+    }
+  VPID vpids[2] = { { oids[0].pageid, oids[0].volid }, { oids[1].pageid, oids[1].volid } };
+  ASSERT_FALSE (VPID_EQ (&vpids[0], &vpids[1]));
+
+  // Each page is the busy one once, so one of the rounds makes the hash yield the busy page first.
+  unsigned long long busy_attempts = 0;
+  for (int busy = 0; busy < 2; busy++)
+    {
+      const VPID &busy_vpid = vpids[busy];
+      const VPID &free_vpid = vpids[1 - busy];
+      // A successful lookup withdraws the hint of the page it takes, so publish both pages again.
+      for (VPID &vpid : vpids)
+	{
+	  ASSERT_NE (bridge_oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid, DB_PAGESIZE / 2), nullptr);
+	}
+      oos_test_bestspace_set_busy_page (&busy_vpid);
+      bridge_oos_debug_counters_reset ();
+
+      VPID found_vpid{NULL_PAGEID, NULL_VOLID};
+      PAGE_PTR found_page = NULL;
+      OOS_FINDSPACE result = bridge_oos_stats_find_page_in_bestspace (thread_p, &oos_vfid, NULL, NULL, 100,
+			     &found_vpid, &found_page);
+      oos_test_bestspace_set_busy_page (NULL);
+
+      ASSERT_EQ (result, OOS_FINDSPACE_FOUND) << "a busy hint hid the free hinted page (busy=" << busy << ")";
+      ASSERT_NE (found_page, nullptr);
+      pgbuf_unfix_and_init (thread_p, found_page);
+      EXPECT_TRUE (VPID_EQ (&found_vpid, &free_vpid));
+      const unsigned long long round_busy_attempts = bridge_oos_debug_counters_get ().bestspace_busy_candidates;
+      EXPECT_LE (round_busy_attempts, 1ULL) << "one lookup retried the busy page";
+      busy_attempts += round_busy_attempts;
+      EXPECT_EQ (oos_test_bestspace_hint_freespace (busy_vpid), DB_PAGESIZE / 2)
+	  << "the busy page's hint must stay for later lookups";
+    }
+  EXPECT_GE (busy_attempts, 1ULL) << "no round reached the busy page before the free one";
+
+  ASSERT_EQ (oos_remove_file (thread_p, oos_vfid), NO_ERROR);
 }
 
 

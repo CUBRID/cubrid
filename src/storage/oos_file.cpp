@@ -137,6 +137,8 @@ static constexpr int OOS_ALIGNMENT = MAX_ALIGNMENT;
 #define OOS_DROP_FREE_SPACE ((int)(DB_PAGESIZE * 0.3))
 #define OOS_BESTSPACE_SYNC_THRESHOLD (0.1f)
 #define BEST_PAGE_SEARCH_MAX_COUNT 100
+/* Busy hash candidates one lookup remembers and passes over; a lookup that meets more stops using the hash. */
+#define OOS_BESTSPACE_MAX_BUSY_SKIPS 16
 
 // ****************************************************************************
 // OOS Bestspace — cache data structures
@@ -183,7 +185,8 @@ static thread_local std::vector<VPID> *oos_Emptied_page_sink = NULL;
   OP (read_many_grouped_head_pages) \
   OP (read_values_per_fixed_page) \
   OP (reclaim_growth_examined_pages) \
-  OP (reclaim_growth_laps)
+  OP (reclaim_growth_laps) \
+  OP (bestspace_busy_candidates)
 
 struct oos_debug_atomic_counters
 {
@@ -198,6 +201,9 @@ static std::atomic<bool> oos_Test_throw_bad_alloc_on_next_oid_publication { fals
 static std::atomic<int> oos_Test_reclaim_waiters { 0 };
 static std::atomic<bool> oos_Test_fail_next_reclaim_write_fix_armed { false };
 static std::atomic<bool> oos_Test_fail_next_reclaim_read_fix_armed { false };
+/* A page every bestspace lookup sees as latched by another thread, until disarmed. */
+static std::atomic<bool> oos_Test_bestspace_busy_armed { false };
+static VPID oos_Test_bestspace_busy_vpid = VPID_INITIALIZER;
 /* Chunk deletes the reclaimer still performs before it fails with ER_GENERIC_ERROR; -1 when disarmed. */
 static std::atomic<int> oos_Test_fail_reclaim_after_chunk_deletes { -1 };
 /* Files the synthetic-owner oos_create_file overload created and oos_remove_file has not removed. */
@@ -599,6 +605,12 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
   int best_array_index = -1;
   int notfound_cnt = 0;
   VPID hdr_vpid;
+  /* Hash candidates this lookup found latched by another thread. Their hints stay in the hash, because the
+   * holder is not necessarily an inserter that publishes the page again, but this lookup passes over them:
+   * re-picking the first hint of the file after every failed conditional fix made each concurrent inserter
+   * retry one busy page up to BEST_PAGE_SEARCH_MAX_COUNT times (CBRD-28378). */
+  VPID busy_vpids[OOS_BESTSPACE_MAX_BUSY_SKIPS];
+  int num_busy = 0;
 
   *out_pgptr = NULL;
   VPID_SET_NULL (out_vpid);
@@ -615,14 +627,18 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
       VPID_SET_NULL (&candidate_vpid);
 
       /* Phase A: Search global hash table */
-      if (oos_Bestspace != NULL)
+      if (oos_Bestspace != NULL && num_busy < OOS_BESTSPACE_MAX_BUSY_SKIPS)
 	{
 	  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
 
+	  /* Walks the file's hints in hash order. A removed entry restores the cursor to the entry before it,
+	   * so the next mht_get2 call returns the entry after the removed one. */
+	  void *cursor = NULL;
 	  while (notfound_cnt < BEST_PAGE_SEARCH_MAX_COUNT)
 	    {
+	      void *prev_cursor = cursor;
 	      OOS_STATS_ENTRY *ent;
-	      ent = (OOS_STATS_ENTRY *) mht_get2 (oos_Bestspace->vfid_ht, vfid, NULL);
+	      ent = (OOS_STATS_ENTRY *) mht_get2 (oos_Bestspace->vfid_ht, vfid, &cursor);
 	      if (ent == NULL)
 		{
 		  break;
@@ -637,8 +653,24 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 		      (void) mht_rem (oos_Bestspace->vpid_ht, &ent->best.vpid, NULL, NULL);
 		      (void) oos_stats_entry_free (thread_p, ent, NULL);
 		      oos_Bestspace->num_stats_entries--;
+		      cursor = prev_cursor;
 		      continue;
 		    }
+
+		  bool is_busy = false;
+		  for (int i = 0; i < num_busy; i++)
+		    {
+		      if (VPID_EQ (&busy_vpids[i], &ent->best.vpid))
+			{
+			  is_busy = true;
+			  break;
+			}
+		    }
+		  if (is_busy)
+		    {
+		      continue;
+		    }
+
 		  candidate_vpid = ent->best.vpid;
 		  found_in_hash = true;
 		  break;
@@ -649,6 +681,7 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	      (void) mht_rem (oos_Bestspace->vpid_ht, &ent->best.vpid, NULL, NULL);
 	      (void) oos_stats_entry_free (thread_p, ent, NULL);
 	      oos_Bestspace->num_stats_entries--;
+	      cursor = prev_cursor;
 	      notfound_cnt++;
 	    }
 
@@ -682,8 +715,20 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 
       /* Phase C: Try to fix the candidate page with conditional latch. Hints can outlive the
        * page (reclaim deallocates), hence OLD_PAGE_MAYBE_DEALLOCATED. */
-      *out_pgptr = pgbuf_fix (thread_p, &candidate_vpid, OLD_PAGE_MAYBE_DEALLOCATED,
-			      PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+      if (oos_Test_bestspace_busy_armed.load (std::memory_order_acquire)
+	  && VPID_EQ (&candidate_vpid, &oos_Test_bestspace_busy_vpid))
+	{
+	  /* A page latched by another thread: no fix, no error. */
+	  er_clear ();
+	  *out_pgptr = NULL;
+	}
+      else
+#endif
+	{
+	  *out_pgptr = pgbuf_fix (thread_p, &candidate_vpid, OLD_PAGE_MAYBE_DEALLOCATED,
+				  PGBUF_LATCH_WRITE, PGBUF_CONDITIONAL_LATCH);
+	}
       if (*out_pgptr == NULL)
 	{
 	  int err = er_errid ();
@@ -707,6 +752,13 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	      oos_trace ("conditional latch failed for vpid={vol=%d,page=%d}, er_errid=%d — skipping",
 			 candidate_vpid.volid, candidate_vpid.pageid, err);
 	      er_clear ();
+	    }
+	  OOS_COUNTER_INC (bestspace_busy_candidates);
+	  if (found_in_hash)
+	    {
+	      /* Phase A stops using the hash once this array is full. */
+	      assert (num_busy < OOS_BESTSPACE_MAX_BUSY_SKIPS);
+	      busy_vpids[num_busy++] = candidate_vpid;
 	    }
 	  notfound_cnt++;
 	  continue;
@@ -748,10 +800,18 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	  *out_vpid = candidate_vpid;
 	  found = OOS_FINDSPACE_FOUND;
 
-	  /* Update cache with actual freespace */
+	  /* Claim the page: withdraw its hint while this thread fills it under the WRITE latch. A hint to a
+	   * latched page only sends concurrent inserters into failed conditional fixes (CBRD-28378). The caller
+	   * publishes the page's remaining free space to the hash after it releases the latch. A best[] entry
+	   * is withdrawn too; the caller of this function holds the header page WRITE latch that guards it. */
 	  if (found_in_hash)
 	    {
-	      (void) oos_stats_add_bestspace (thread_p, vfid, &candidate_vpid, actual_free);
+	      (void) oos_stats_del_bestspace_by_vpid (thread_p, &candidate_vpid);
+	    }
+	  else if (best_array_index >= 0 && best_array_index < OOS_NUM_BEST_SPACESTATS)
+	    {
+	      VPID_SET_NULL (&bestspace[best_array_index].vpid);
+	      bestspace[best_array_index].freespace = 0;
 	    }
 	}
       else
@@ -1087,18 +1147,16 @@ oos_stats_update_internal (THREAD_ENTRY *thread_p, OOS_HDR_STATS *oos_hdr,
     }
 }
 
+/* Publishes the free space a delete left on page_vpid. The caller measures freespace under the page latch and calls
+ * this after releasing it, so no hint names a page the deleter still holds (CBRD-28378). */
 static void
-oos_stats_update (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const VFID *vfid)
+oos_stats_update (THREAD_ENTRY *thread_p, const VFID *vfid, const VPID &page_vpid_in, int freespace)
 {
-  int freespace;
-
-  freespace = spage_get_free_space_without_saving (thread_p, pgptr);
+  VPID page_vpid = page_vpid_in;
 
   if (freespace > 0)
     {
       /* Space was freed — update global cache */
-      VPID page_vpid;
-      pgbuf_get_vpid (pgptr, &page_vpid);
       (void) oos_stats_add_bestspace (thread_p, vfid, &page_vpid, freespace);
     }
 
@@ -1123,8 +1181,6 @@ oos_stats_update (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const VFID *vfid)
       OOS_HDR_STATS *oos_hdr = oos_get_header_stats_ptr (thread_p, hdr_page);
       if (oos_hdr != NULL)
 	{
-	  VPID page_vpid;
-	  pgbuf_get_vpid (pgptr, &page_vpid);
 	  oos_stats_update_internal (thread_p, oos_hdr, &page_vpid, freespace);
 
 	  oos_hdr_page_set_dirty_unlogged (thread_p, hdr_page);
@@ -2290,7 +2346,10 @@ oos_insert_single_page_batch (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
       oos_reclaim_drop_emptied (oos_vfid, vpid);
     }
 
+  /* Publish the remaining space only after the latch is released; see oos_find_best_page. */
   int freespace_after = spage_max_space_for_new_record (thread_p, page_ptr);
+  auto_page_ptr.reset ();
+  page_ptr = NULL;
   (void) oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid, freespace_after);
 
   OOS_COUNTER_INC (single_page_batch_count);
@@ -2642,8 +2701,11 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer
     }
 
   /* Update bestspace cache after insert — use spage_max_space_for_new_record
-   * for consistency with the lookup check in oos_stats_find_page_in_bestspace */
+   * for consistency with the lookup check in oos_stats_find_page_in_bestspace.
+   * Publish only after the latch is released; see oos_find_best_page. */
   int freespace_after = spage_max_space_for_new_record (thread_p, page_ptr);
+  auto_page_ptr.reset ();
+  page_ptr = NULL;
   (void) oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid, freespace_after);
 
   return NO_ERROR;
@@ -3174,6 +3236,16 @@ oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 }
 
 
+/*
+ * oos_find_best_page () - Return a WRITE-latched page of the OOS file with rec_length bytes free, reusing a
+ *   hinted page or allocating a new one.
+ *
+ *   The returned page is never advertised: a reused page's hint (hash or header best[]) is withdrawn and a new
+ *   page is not published. The caller publishes the space left after its insert with oos_stats_add_bestspace
+ *   AFTER it releases the latch, so no hint names a page an inserter holds (CBRD-28378). Deletes publish after
+ *   their unfix too. A hint is advisory: one published after the unfix can be older than a concurrent change
+ *   of the page, or be dropped when the hash is full, and every lookup re-checks the page under its latch.
+ */
 static const auto_unfix_page_ptr
 oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid)
 {
@@ -3298,17 +3370,10 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
   /* No existing page found — allocate new */
   pgbuf_unfix_and_init_after_check (thread_p, hdr_page);
 
-  auto new_page = oos_alloc_page_with_reclaim (thread_p, oos_vfid, vpid);
-
-  /* Update bestspace cache with the new page — use spage_max_space_for_new_record
-   * for consistency with the lookup check in oos_stats_find_page_in_bestspace */
-  if (new_page != nullptr)
-    {
-      int free_space = spage_max_space_for_new_record (thread_p, new_page.get());
-      (void) oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid, free_space);
-    }
-
-  return new_page;
+  /* The new page is not published here. It is still WRITE latched and its whole free space is about to be
+   * taken, so a hint would only send concurrent inserters into conditional fixes that fail. The caller
+   * publishes the space left after its insert once it releases the latch (CBRD-28378). */
+  return oos_alloc_page_with_reclaim (thread_p, oos_vfid, vpid);
 }
 
 
@@ -3681,8 +3746,8 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
 	}
       pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
 
-      /* Update bestspace cache — page now has more free space after delete */
-      oos_stats_update (thread_p, page_ptr, &oos_vfid);
+      /* The page now has more free space; measured here, published below after the unfix. */
+      const int freespace_after_delete = spage_get_free_space_without_saving (thread_p, page_ptr);
 
       /* Report the page only when this delete emptied it: no reclaim can deallocate anything else,
        * and a page empties at most once per delete, so this also keeps the list free of
@@ -3708,6 +3773,10 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
 	}
 
       oos_debug ("deleted chunk %zu at oid={vol=%d,page=%d,slot=%d}", i, OID_AS_ARGS (&chunk.head_oid));
+
+      /* Update bestspace hints only after the latch is released; see oos_find_best_page. */
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      oos_stats_update (thread_p, &oos_vfid, chunk_vpid, freespace_after_delete);
     }
 
   /* last_probe is the head's: the loop ends with it. A concurrent reclaimer of the same chain may have
@@ -4946,6 +5015,33 @@ void
 oos_test_fail_next_reclaim_read_fix ()
 {
   oos_Test_fail_next_reclaim_read_fix_armed.store (true, std::memory_order_relaxed);
+}
+
+void
+oos_test_bestspace_set_busy_page (const VPID *vpid)
+{
+  /* Arm and disarm from one thread while no lookup runs: the VPID itself is not atomic. */
+  oos_Test_bestspace_busy_armed.store (false, std::memory_order_release);
+  if (vpid == NULL)
+    {
+      VPID_SET_NULL (&oos_Test_bestspace_busy_vpid);
+      return;
+    }
+  oos_Test_bestspace_busy_vpid = *vpid;
+  oos_Test_bestspace_busy_armed.store (true, std::memory_order_release);
+}
+
+int
+oos_test_bestspace_hint_freespace (const VPID &vpid)
+{
+  assert (oos_Bestspace != NULL);
+
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  const OOS_STATS_ENTRY *ent = (const OOS_STATS_ENTRY *) mht_get (oos_Bestspace->vpid_ht, &vpid);
+  const int freespace = ent == NULL ? -1 : ent->best.freespace;
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+
+  return freespace;
 }
 
 void

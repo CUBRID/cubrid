@@ -316,6 +316,7 @@ struct oos_debug_counters
   unsigned long long read_values_per_fixed_page;
   unsigned long long reclaim_growth_examined_pages;
   unsigned long long reclaim_growth_laps;
+  unsigned long long bestspace_busy_candidates;
 };
 
 /* One-shot publication failure seams used by focused SERVER_MODE tests. */
@@ -332,6 +333,10 @@ extern int oos_test_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_
 extern int oos_test_reclaim_waiter_count ();
 extern void oos_test_fail_next_reclaim_write_fix ();
 extern void oos_test_fail_next_reclaim_read_fix ();
+/* Makes every bestspace lookup see vpid as latched by another thread; NULL disarms. */
+extern void oos_test_bestspace_set_busy_page (const VPID *vpid);
+/* The free space the bestspace hash records for vpid, or -1 when it holds no hint for the page. */
+extern int oos_test_bestspace_hint_freespace (const VPID &vpid);
 /* Sets how many pages a file's emptied-page set holds before it marks the file unknown; 0 restores
  * the default. */
 extern void oos_test_reclaim_set_emptied_limit (std::size_t limit);
