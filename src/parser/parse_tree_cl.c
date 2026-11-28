@@ -13881,6 +13881,7 @@ pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.insert.odku_assignments, arg);
   PT_APPLY_WALK (parser, p->info.insert.odku_non_null_attrs, arg);
   PT_APPLY_WALK (parser, p->info.insert.non_null_attrs, arg);
+  PT_APPLY_WALK (parser, p->info.insert.default_values, arg);
   return p;
 }
 
@@ -13909,6 +13910,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1, *r2;
   PT_NODE *crt_list = NULL;
+  PT_NODE *named_last = NULL, *defaulted = NULL, *entity;
   bool is_first_list = true, multiple_values_insert = false;
   PT_PRINT_BUFFER print_buf = PT_PRINT_BUFFER_INITIALIZER;
 
@@ -13918,6 +13920,24 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       parser->custom_print & ~PT_PRINT_ALIAS;
+    }
+
+  if (p->info.insert.default_values != NULL && (parser->custom_print & PT_PRINT_HOST_VAR_COUNT) == 0)
+    {
+      /* a text parsed again (the action of a trigger, or a PL/CSQL static SQL) is printed before view translation:
+       * naming only the attributes the statement named, parsing it gives the DEFAULTs of the view again */
+      entity = p->info.insert.spec != NULL ? p->info.insert.spec->info.spec.entity_name : NULL;
+      if (entity != NULL && entity->node_type == PT_NAME && entity->info.name.db_object != NULL
+	  && db_is_vclass (entity->info.name.db_object) > 0)
+	{
+	  named_last = pt_get_node_from_list (p->info.insert.attr_list, pt_length_of_list (p->info.insert.attr_list)
+					      - pt_length_of_list (p->info.insert.default_values) - 1);
+	  if (named_last != NULL)
+	    {
+	      defaulted = named_last->next;
+	      named_last->next = NULL;
+	    }
+	}
     }
 
   r1 = pt_print_bytes (parser, p->info.insert.spec);
@@ -14006,6 +14026,10 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       b = pt_append_nulstring (parser, b, " ");
     }
+  if (named_last != NULL)
+    {
+      named_last->next = defaulted;
+    }
 
   for (crt_list = p->info.insert.value_clauses, is_first_list = true,
        multiple_values_insert = (crt_list != NULL && crt_list->next != NULL);
@@ -14070,6 +14094,17 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
       /* an append failed; going on would start a new PARSER_VARCHAR
        * and print the statement without what came before */
       return NULL;
+    }
+
+  if (p->info.insert.default_values != NULL && named_last == NULL)
+    {
+      /* translated (the cache key text, or a message): the plan holds the DEFAULTs of the view the statement was
+       * written on, which no other part of the translated statement shows; a comment, as the text is shown with the
+       * plan */
+      r1 = pt_print_bytes_l (parser, p->info.insert.default_values);
+      b = pt_append_nulstring (parser, b, " /* view defaults (");
+      b = pt_append_varchar (parser, b, r1);
+      b = pt_append_nulstring (parser, b, ") */");
     }
 
   if (p->info.insert.into_var)

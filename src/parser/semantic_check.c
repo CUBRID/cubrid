@@ -13472,6 +13472,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	{
 	  /* the text of a static SQL is taken before type checking and view translation transform the tree */
 	  pt_collect_static_sql_edits (parser, node);
+	  pt_keep_static_sql_tree (parser, node);
 	}
 
       if (!pt_has_error (parser))
@@ -16210,6 +16211,11 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
     }
 
   a_cnt = pt_length_of_list (attr_list);
+  if (stmt->node_type == PT_INSERT)
+    {
+      /* the last attributes that take the DEFAULTs of a view have no column in the source */
+      a_cnt -= pt_length_of_list (stmt->info.insert.default_values);
+    }
 
   for (crt_list = value_clauses; crt_list != NULL; crt_list = crt_list->next)
     {

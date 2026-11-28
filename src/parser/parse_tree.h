@@ -2609,6 +2609,8 @@ struct pt_insert_info
   PT_NODE *insert_mode;		/* insert execution mode */
   PT_NODE *non_null_attrs;	/* attributes with not null constraint */
   PT_NODE *odku_non_null_attrs;	/* attributes with not null constraint in odku assignments */
+  PT_NODE *default_values;	/* INSERT ... SELECT on a view: the DEFAULTs of the view for the last attributes of
+				 * attr_list, which the statement leaves out; the source does not select them */
   int has_uniques;		/* class has unique constraints */
   SERVER_INSERT_ALLOWED server_allowed;	/* is insert allowed on server */
   unsigned execute_with_commit_allowed:1;	/* true, if execute with commit allowed. */
@@ -4219,6 +4221,7 @@ struct parser_context
   int static_sql_edit_status;	/* 0: not collected, 1: collected, -1: can not be expressed as text edits */
   PT_STATIC_SQL_HOST_VAR *static_sql_host_vars;	/* each PL/CSQL variable replaced with a host variable */
   PT_STATIC_SQL_STAR *static_sql_stars;	/* column lists implied in the text */
+  char *static_sql_untranslated_text;	/* the statement printed before view translation, if the compiled tree can not be */
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;

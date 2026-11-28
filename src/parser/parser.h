@@ -273,8 +273,6 @@ extern "C"
   extern int pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query, PT_TYPE_ENUM new_type, int p,
 					       int s, PT_NODE * data_type, bool force_wrap);
 
-  extern PT_NODE *pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * attrs);
-
   extern PT_NODE *pt_bind_type_from_dbval (PARSER_CONTEXT *, PT_NODE *, DB_VALUE *);
 
   extern PT_NODE *pt_cnf (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -590,6 +588,7 @@ extern "C"
   extern bool pt_is_orderby_for_upper_bound (PT_NODE * orderby_for);
   extern bool pt_has_orderby_for_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern void pt_keep_static_sql_tree (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern void pt_record_static_sql_star (PARSER_CONTEXT * parser, PT_STATIC_SQL_STAR_KIND kind, int pos,
 					 PT_NODE * columns, bool qualify);
   extern bool pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node);

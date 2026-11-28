@@ -16146,3 +16146,32 @@ pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->static_sql_edit_count = list.count;
   parser->static_sql_edit_status = 1;
 }
+
+/*
+ * pt_keep_static_sql_tree () - keep what the rewritten query of a PL/CSQL static SQL needs from the statement right
+ *				after name resolution
+ *   return: none
+ *   parser(in):
+ *   statement(in): the statement right after name resolution
+ *
+ * Note: an INSERT given the DEFAULTs of a view is printed before view translation: the compiled tree names the base
+ *	 class, and the DEFAULTs of the view, evaluated after the rows of the source, can not be written in its text.
+ */
+void
+pt_keep_static_sql_tree (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  unsigned int save_custom;
+
+  if (statement == NULL)
+    {
+      return;
+    }
+
+  if (statement->node_type == PT_INSERT && statement->info.insert.default_values != NULL)
+    {
+      save_custom = parser->custom_print;
+      parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_ALIAS;
+      parser->static_sql_untranslated_text = parser_print_tree (parser, statement);
+      parser->custom_print = save_custom;
+    }
+}
