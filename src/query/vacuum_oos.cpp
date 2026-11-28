@@ -43,43 +43,6 @@
 #include "memory_wrapper.hpp"
 
 /*
- * vacuum_oos_reclaim_empty_pages () - Reclaim the pages a batch of OOS reclaims emptied (fast path).
- *   Only ER_INTERRUPTED is propagated; other failures are absorbed (the pages stay allocated,
- *   in the file's emptied-page set for the next growth).
- *
- * return                 : NO_ERROR or ER_INTERRUPTED.
- * thread_p (in)          : Thread entry.
- * oos_vfid (in)          : OOS file the pages belong to.
- * emptied_pages (in/out) : Pages the reclaims emptied; cleared on return.
- *
- * Call it after unfixing the heap page: page deallocation takes the OOS file header latch.
- */
-int
-vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
-				VACUUM_OOS_EMPTIED_PAGES *emptied_pages)
-{
-  assert (oos_vfid != NULL && !VFID_ISNULL (oos_vfid));
-  assert (emptied_pages != NULL);
-
-  int error_code = oos_reclaim_empty_pages (thread_p, *oos_vfid, *emptied_pages);
-  emptied_pages->clear ();
-
-  if (error_code == ER_INTERRUPTED)
-    {
-      return error_code;
-    }
-  if (error_code != NO_ERROR)
-    {
-      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
-			     "Could not reclaim empty OOS pages of file %d|%d (error %d); "
-			     "leaving them for a later cycle.",
-			     VFID_AS_ARGS (oos_vfid), error_code);
-      er_clear ();
-    }
-  return NO_ERROR;
-}
-
-/*
  * vacuum_oos_find_vfid_for_heap_record () - Look up the heap's OOS file the first time it is needed, waiting for
  *   the heap header latch.
  *   return            : Error code. A failed lookup (header latch timeout or read error) is returned, never skipped:
@@ -157,8 +120,7 @@ vacuum_oos_report_missing_oos_file (const HFID *hfid, const RECDES *record, PGSL
  *
  *   PRECONDITION: the caller has an open sysop that also removes the heap record. Its commit runs the
  *   reclaim; its abort discards the intent along with the heap change, so no chunk delete is ever undone
- *   (ADR-0008, CBRD-27781). The only caller, vacuum_heap_record, commits that sysop through
- *   vacuum_oos_sysop_commit_collecting_emptied_pages.
+ *   (ADR-0008, CBRD-27781).
  *
  * return	  : Error code.
  * thread_p (in)  : Thread entry.
@@ -200,22 +162,7 @@ vacuum_heap_oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFID *oos_vfid
 }
 
 /*
- * vacuum_oos_sysop_commit_collecting_emptied_pages () - Commit vacuum's sysop and collect the OOS pages its
- *   reclaim postpones emptied, for the fast path after the heap page is unfixed.
- *
- * thread_p (in)	  : Thread entry.
- * emptied_pages (in/out) : The pages are appended, each once.
- */
-void
-vacuum_oos_sysop_commit_collecting_emptied_pages (THREAD_ENTRY *thread_p, VACUUM_OOS_EMPTIED_PAGES *emptied_pages)
-{
-  oos_emptied_page_sink sink (*emptied_pages);
-  log_sysop_commit (thread_p);
-}
-
-/*
- * vacuum_oos_reclaim_notified_chains () - Reclaim the chains one RVOOS_NOTIFY_VACUUM record names, then
- *   return the pages it emptied to the file manager.
+ * vacuum_oos_reclaim_notified_chains () - Reclaim the chains one RVOOS_NOTIFY_VACUUM record names.
  *
  * return	       : NO_ERROR; ER_INTERRUPTED on shutdown (the block is processed again after restart); or, on a
  *			 vacuum worker, ER_VACUUM_OOS_LOOKUP_DEFERRED when the heap header lookup for the OOS file failed
@@ -236,12 +183,8 @@ int
 vacuum_oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *undo_data, int undo_data_size,
 				    VACUUM_OOS_DEFERRED_HEAPS *deferred_heaps)
 {
-  VFID oos_vfid = VFID_INITIALIZER;
   HFID heap_hfid = HFID_INITIALIZER;
-  VACUUM_OOS_EMPTIED_PAGES emptied_pages;
-  int error_code =
-	  oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size, &oos_vfid, &heap_hfid, &emptied_pages,
-				       deferred_heaps);
+  int error_code = oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size, &heap_hfid, deferred_heaps);
   if (error_code != NO_ERROR)
     {
       if (error_code != ER_INTERRUPTED && vacuum_is_thread_vacuum_worker (thread_p))
@@ -263,11 +206,6 @@ vacuum_oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *undo_dat
 		}
 	    }
 	}
-      return error_code;
     }
-  if (emptied_pages.empty ())
-    {
-      return NO_ERROR;
-    }
-  return vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &emptied_pages);
+  return error_code;
 }

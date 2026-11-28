@@ -432,11 +432,11 @@ TEST (OosDeleteTest, OosDeleteSlotBecomesUnknown)
 
 
 // ===========================================================================
-// Emptied-page candidate list (CBRD-26786 refinement, CBRD-26950 ticket 01)
+// Emptied-page set (ADR-0010)
 //
-// oos_delete reports a page to the optional candidate list only when the
-// delete left that page with zero records. Pages that still hold other
-// chunks are never reported, and no page is reported twice.
+// oos_delete adds a page to the file's emptied-page set only when the delete
+// left that page with zero records. Pages that still hold other chunks are
+// never added, and no page is added twice.
 // ===========================================================================
 
 // helper: collect the distinct VPIDs a chain occupies, walking the chunk headers
@@ -471,21 +471,8 @@ collect_chain_vpids (const OID &head_oid)
   return vpids;
 }
 
-static int
-count_vpid (const std::vector<VPID> &vpids, const VPID &vpid)
-{
-  int n = 0;
-  for (const VPID &v : vpids)
-    {
-      if (VPID_EQ (&v, &vpid))
-	{
-	  n++;
-	}
-    }
-  return n;
-}
 
-TEST (OosDeleteTest, EmptiedListSkipsPageThatStillHoldsRecords)
+TEST (OosDeleteTest, EmptiedSetSkipsPageThatStillHoldsRecords)
 {
   VFID oos_vfid;
   ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
@@ -501,18 +488,15 @@ TEST (OosDeleteTest, EmptiedListSkipsPageThatStillHoldsRecords)
   ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_b, oid_b), NO_ERROR);
   ASSERT_EQ (oid_a.pageid, oid_b.pageid);	// both small records land on one page
 
-  std::vector<VPID> emptied;
-  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid_a, &emptied), NO_ERROR);
-  EXPECT_TRUE (emptied.empty ()) << "a page that still holds chunk b must not be a reclaim candidate";
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid_a), NO_ERROR);
+  EXPECT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 0U) << "a page that still holds chunk b must not be added";
 
-  // deleting the last record now empties the page: reported exactly once
-  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid_b, &emptied), NO_ERROR);
-  const VPID page = {oid_b.pageid, oid_b.volid};
-  EXPECT_EQ (emptied.size (), 1U);
-  EXPECT_EQ (count_vpid (emptied, page), 1);
+  // deleting the last record now empties the page: added exactly once
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid_b), NO_ERROR);
+  EXPECT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 1U);
 }
 
-TEST (OosDeleteTest, EmptiedListReportsEachPageOfMultiPageChainOnce)
+TEST (OosDeleteTest, EmptiedSetTakesEachPageOfMultiPageChainOnce)
 {
   VFID oos_vfid;
   ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
@@ -530,28 +514,20 @@ TEST (OosDeleteTest, EmptiedListReportsEachPageOfMultiPageChainOnce)
   const std::vector<VPID> chain_vpids = collect_chain_vpids (head_oid);
   ASSERT_GE (chain_vpids.size (), 2U);
 
-  std::vector<VPID> emptied;
-  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, head_oid, &emptied), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, head_oid), NO_ERROR);
 
-  // every page the chain occupied alone is now empty and reported once; nothing else is reported
-  for (const VPID &vpid : emptied)
-    {
-      EXPECT_EQ (count_vpid (emptied, vpid), 1) << "page " << vpid.volid << "|" << vpid.pageid << " reported twice";
-      EXPECT_EQ (count_vpid (chain_vpids, vpid), 1) << "page " << vpid.volid << "|" << vpid.pageid
-	  << " was not part of the chain";
-    }
+  // every page the chain occupied alone is now empty and in the set once
+  std::size_t n_empty = 0;
   for (const VPID &vpid : chain_vpids)
     {
-      int free_space = test_oos_utils::get_free_space_of_oid_page (thread_p, OID{vpid.pageid, 0, vpid.volid});
-      ASSERT_GE (free_space, 0);
-      // a page whose only records were this chain's chunks must be reported
       VPID v = vpid;
       PAGE_PTR page_ptr = pgbuf_fix (thread_p, &v, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       ASSERT_NE (page_ptr, nullptr);
-      const int n_records = spage_number_of_records (page_ptr);
+      n_empty += spage_number_of_records (page_ptr) == 0 ? 1 : 0;
       pgbuf_unfix (thread_p, page_ptr);
-      EXPECT_EQ (count_vpid (emptied, vpid), n_records == 0 ? 1 : 0);
     }
+  EXPECT_EQ (n_empty, chain_vpids.size ()) << "each chunk of this chain fills its own page";
+  EXPECT_EQ (oos_test_reclaim_emptied_count (oos_vfid), n_empty);
 }
 
 
