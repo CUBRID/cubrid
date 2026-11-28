@@ -7452,12 +7452,76 @@ pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
   return collated != NULL ? collated : parse_tree;
 }
 
+/*
+ * pt_share_producer_pos () - CBRD-27351: the column of the list a member of a share group reads, its producer's
+ *   result, that holds column pos of the member: found by its name, the producer computing the columns of all the
+ *   members in its own order (mq_share_make_producer ()); pos for another spec
+ */
+static int
+pt_share_producer_pos (PARSER_CONTEXT * parser, const PT_NODE * spec, int pos)
+{
+  const PT_NODE *attr, *col;
+  int i;
+
+  if (spec == NULL || spec->node_type != PT_SPEC || spec->info.spec.share_group == NULL
+      || spec->info.spec.share_group->producer == NULL || pos < 0)
+    {
+      return pos;
+    }
+  for (attr = spec->info.spec.as_attr_list, i = 0; attr != NULL && i < pos; attr = attr->next, i++)
+    {
+      ;
+    }
+  if (attr != NULL && attr->node_type != PT_NAME)
+    {
+      /* the constant of a member that reads no column of the view, as COUNT (*): it reads the rows of any column */
+      return 0;
+    }
+  if (attr != NULL)
+    {
+      for (col = spec->info.spec.share_group->producer_attrs, i = 0; col != NULL; col = col->next, i++)
+	{
+	  if (col->node_type == PT_NAME
+	      && pt_str_compare (col->info.name.original, attr->info.name.original, CASE_INSENSITIVE) == 0)
+	    {
+	      return i;
+	    }
+	}
+    }
+  /* the producer computes every column a member reads */
+  assert (false);
+  PT_INTERNAL_ERROR (parser, "share group column");
+  return pos;
+}
+
+/*
+ * pt_share_producer_positions () - CBRD-27351: the positions a member of a share group reads become the columns of
+ *   its producer's result that hold them (pt_share_producer_pos ()), in their order there, in which a list scan
+ *   fetches them (fetch_peek_dbval_pos ()); the value list slots they fill stay the member's own
+ */
+static void
+pt_share_producer_positions (PARSER_CONTEXT * parser, const PT_NODE * spec, REGU_VARIABLE_LIST * positions)
+{
+  if (spec == NULL || spec->info.spec.share_group == NULL || spec->info.spec.share_group->producer == NULL)
+    {
+      return;
+    }
+  for (REGU_VARIABLE_LIST position = *positions; position != NULL; position = position->next)
+    {
+      assert (position->value.type == TYPE_POSITION);
+      position->value.value.pos_descr.pos_no =
+	pt_share_producer_pos (parser, spec, position->value.value.pos_descr.pos_no);
+    }
+  pt_sort_pos_regu_list_by_pos_no (positions);
+}
+
 /* CBRD-27583: the domain of a regu reading column pos of the list a derived table's or a CTE's spec reads */
 static TP_DOMAIN *
 pt_list_reader_domain (PARSER_CONTEXT * parser, const PT_NODE * spec, int pos, const PT_NODE * attr)
 {
   return pt_reader_domain (pt_xasl_node_to_domain (parser, attr),
-			   domain_list_column_of (pt_spec_list_producer (spec), pos));
+			   domain_list_column_of (pt_spec_list_producer (spec),
+						  pt_share_producer_pos (parser, spec, pos)));
 }
 
 /* CBRD-27583: the slot of values that holds value, NULL for none */
@@ -17665,6 +17729,9 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
    * which describes a type and index into a list file. */
   regu_attributes_pred = pt_to_position_regu_variable_list (parser, pred_attrs, tbl_info->value_list, pred_offsets);
   regu_attributes_rest = pt_to_position_regu_variable_list (parser, rest_attrs, tbl_info->value_list, rest_offsets);
+  /* CBRD-27351: a member of a share group reads its producer's result, which holds the columns in its own order */
+  pt_share_producer_positions (parser, spec, &regu_attributes_pred);
+  pt_share_producer_positions (parser, spec, &regu_attributes_rest);
   pt_set_list_position_domains (regu_attributes_pred, tbl_info->value_list, subquery_proc, NULL);
   pt_set_list_position_domains (regu_attributes_rest, tbl_info->value_list, subquery_proc, NULL);
 
@@ -18341,6 +18408,19 @@ pt_set_dptr (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl, UINTPTR 
  *   select_node(in):
  *   xasl(in):
  */
+static XASL_NODE *
+pt_find_shared_view_cte (XASL_NODE * list, const XASL_NODE * shared)
+{
+  for (; list != NULL; list = list->next)
+    {
+      if (list->type == CTE_PROC && list->proc.cte.non_recursive_part == shared)
+	{
+	  return list;
+	}
+    }
+  return NULL;
+}
+
 static void
 pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl)
 {
@@ -18348,6 +18428,37 @@ pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl)
     {
       xasl->aptr_list =
 	pt_remove_xasl (pt_append_xasl (xasl->aptr_list, pt_to_uncorr_subquery_list (parser, select_node)), xasl);
+
+      /* CBRD-27351: the result of a share group runs as a CTE of the statement, before anything that reads it */
+      XASL_NODE **insert_at = &xasl->aptr_list;
+      for (PT_SHARE_GROUP * group = PT_IS_QUERY (select_node) ? select_node->info.query.share_groups : NULL;
+	   group != NULL; group = group->next)
+	{
+	  XASL_NODE *shared = group->producer != NULL ? (XASL_NODE *) group->producer->info.query.xasl : NULL;
+	  XASL_NODE *cte;
+
+	  if (shared == NULL || pt_find_shared_view_cte (xasl->aptr_list, shared) != NULL)
+	    {
+	      /* no producer, as for a member left alone in a copy of the statement (pt_make_share_producers ()), or a
+	       * second call for the block, as of an analytic function */
+	      continue;
+	    }
+	  assert (shared->next == NULL);
+	  cte = regu_xasl_node_alloc (CTE_PROC);
+	  if (cte == NULL)
+	    {
+	      PT_ERRORm (parser, select_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return;
+	    }
+	  cte->proc.cte.non_recursive_part = shared;
+	  cte->proc.cte.recursive_part = NULL;
+	  cte->projected_size = shared->projected_size;
+	  cte->cardinality = shared->cardinality;
+	  XASL_SET_FLAG (cte, XASL_ZERO_CORR_LEVEL);
+	  cte->next = *insert_at;
+	  *insert_at = cte;
+	  insert_at = &cte->next;
+	}
     }
 }
 
@@ -18583,6 +18694,12 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
     case PT_INTERSECTION:
       info->level--;
       xasl = (XASL_NODE *) node->info.query.xasl;
+
+      if (node->info.query.flag.shared_view_body)
+	{
+	  /* CBRD-27351: the statement runs the result of a share group first (pt_set_aptr ()) */
+	  break;
+	}
 
       /* subquery or cached subquery */
       if (xasl && pt_is_subquery (node))
@@ -29356,6 +29473,186 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
   return NO_ERROR;
 }
 
+/* CBRD-27351: the members of a share group in the tree whose XASL is generated, in the order of the tree */
+typedef struct pt_share_members PT_SHARE_MEMBERS;
+struct pt_share_members
+{
+  PT_SHARE_GROUP *group;
+  PT_NODE **specs;
+  int n_specs;
+  int max_specs;
+  PT_SHARE_MEMBERS *next;
+};
+
+typedef struct pt_share_members_info PT_SHARE_MEMBERS_INFO;
+struct pt_share_members_info
+{
+  PT_SHARE_MEMBERS *groups;	/* the groups of the statement, in the order of its share_groups */
+  bool failed;
+};
+
+/*
+ * pt_collect_share_members_pre () - CBRD-27351: add a member of a share group of the statement to its group
+ */
+static PT_NODE *
+pt_collect_share_members_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_SHARE_MEMBERS_INFO *info = (PT_SHARE_MEMBERS_INFO *) arg;
+  PT_SHARE_MEMBERS *members;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type != PT_SPEC || node->info.spec.share_group == NULL)
+    {
+      return node;
+    }
+  /* a member keeps its derived table, which the group's producer stands for */
+  assert (node->info.spec.derived_table != NULL && node->info.spec.derived_table->info.query.flag.shared_view_body);
+
+  for (members = info->groups; members != NULL && members->group != node->info.spec.share_group;
+       members = members->next)
+    {
+      ;
+    }
+  if (members == NULL)
+    {
+      /* a group of no statement being generated: the reference reads its own derived table */
+      assert (false);
+      node->info.spec.share_group = NULL;
+      node->info.spec.derived_table->info.query.flag.shared_view_body = 0;
+      return node;
+    }
+  if (members->n_specs == members->max_specs)
+    {
+      PT_NODE **grown;
+
+      members->max_specs = (members->max_specs == 0) ? 4 : members->max_specs * 2;
+      grown = (PT_NODE **) parser_alloc (parser, members->max_specs * (int) sizeof (PT_NODE *));
+      if (grown == NULL)
+	{
+	  info->failed = true;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+      if (members->n_specs > 0)
+	{
+	  memcpy (grown, members->specs, members->n_specs * sizeof (PT_NODE *));
+	}
+      members->specs = grown;
+    }
+  members->specs[members->n_specs++] = node;
+  return node;
+}
+
+/*
+ * pt_make_share_producers () - CBRD-27351: make the producer of each share group of statement, and its XASL, before
+ *   anything that reads it is generated: from the members in the tree being generated, which may have lost some of
+ *   the members the groups were made with, as a copy of the statement executed with its host variables bound whose
+ *   set operation folded (db_execute_and_keep_statement_local ()); a member left alone is no member any more, and
+ *   reads its own derived table as on develop
+ *   parser(in):
+ *   statement(in): the query whose XASL is generated
+ */
+static void
+pt_make_share_producers (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_SHARE_MEMBERS_INFO info = { NULL, false };
+  PT_SHARE_MEMBERS **tail = &info.groups;
+  PT_NODE *next;
+
+  if (!PT_IS_QUERY (statement) || statement->info.query.share_groups == NULL)
+    {
+      return;
+    }
+  for (PT_SHARE_GROUP * group = statement->info.query.share_groups; group != NULL; group = group->next)
+    {
+      PT_SHARE_MEMBERS *members = (PT_SHARE_MEMBERS *) parser_alloc (parser, sizeof (PT_SHARE_MEMBERS));
+
+      if (members == NULL)
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return;
+	}
+      /* no producer is left from another generation (pt_free_share_producers ()) */
+      assert (group->producer == NULL && group->producer_attrs == NULL);
+      members->group = group;
+      members->specs = NULL;
+      members->n_specs = 0;
+      members->max_specs = 0;
+      members->next = NULL;
+      *tail = members;
+      tail = &members->next;
+    }
+
+  next = statement->next;
+  statement->next = NULL;
+  (void) parser_walk_tree (parser, statement, pt_collect_share_members_pre, &info, NULL, NULL);
+  statement->next = next;
+  if (info.failed)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return;
+    }
+
+  for (PT_SHARE_MEMBERS * members = info.groups; members != NULL && !pt_has_error (parser); members = members->next)
+    {
+      PT_SHARE_GROUP *group = members->group;
+      PT_NODE *producer, *attrs;
+
+      if (members->n_specs < 2)
+	{
+	  for (int i = 0; i < members->n_specs; i++)
+	    {
+	      members->specs[i]->info.spec.share_group = NULL;
+	      members->specs[i]->info.spec.derived_table->info.query.flag.shared_view_body = 0;
+	    }
+	  continue;
+	}
+
+      producer = mq_share_make_producer (parser, members->specs, members->n_specs, &attrs);
+      if (producer == NULL)
+	{
+	  assert (pt_has_error (parser));
+	  return;
+	}
+      /* freed after the generation even if it fails (pt_free_share_producers ()) */
+      group->producer = producer;
+      group->producer_attrs = attrs;
+      group->producer =
+	parser_walk_tree (parser, producer, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
+      if (!pt_has_error (parser) && (group->producer == NULL || group->producer->info.query.xasl == NULL))
+	{
+	  PT_INTERNAL_ERROR (parser, "share group producer");
+	}
+    }
+}
+
+/*
+ * pt_free_share_producers () - CBRD-27351: free the producers of the share groups of statement once its XASL is
+ *   generated: the XASL keeps copies of the values it reads from them, as from a statement it is generated from and
+ *   that is freed before the XASL is packed (pt_to_update_xasl ())
+ */
+static void
+pt_free_share_producers (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  if (statement == NULL || !PT_IS_QUERY (statement))
+    {
+      return;
+    }
+  for (PT_SHARE_GROUP * group = statement->info.query.share_groups; group != NULL; group = group->next)
+    {
+      if (group->producer != NULL)
+	{
+	  parser_free_tree (parser, group->producer);
+	  group->producer = NULL;
+	}
+      if (group->producer_attrs != NULL)
+	{
+	  parser_free_tree (parser, group->producer_attrs);
+	  group->producer_attrs = NULL;
+	}
+    }
+}
+
 /*
  * pt_generate_ctes_and_derived_tables () - CBRD-27583: the XASL of the subqueries of a SELECT's FROM list, made
  *   before its select list, whose correlated subqueries read their columns' domains, after the CTEs
@@ -29381,7 +29678,22 @@ pt_generate_ctes_and_derived_tables (PARSER_CONTEXT * parser, PT_NODE * query)
     }
   for (PT_NODE * spec = query->info.query.q.select.from; spec != NULL && !pt_has_error (parser); spec = spec->next)
     {
-      if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY && spec->info.spec.derived_table != NULL)
+      if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY && spec->info.spec.derived_table != NULL
+	  && spec->info.spec.share_group != NULL)
+	{
+	  /* CBRD-27351: a member of a share group reads the result of its group's producer, made first
+	   * (pt_make_share_producers ()); its own derived table is not generated */
+	  const PT_NODE *producer = spec->info.spec.share_group->producer;
+
+	  if (producer == NULL || producer->info.query.xasl == NULL)
+	    {
+	      assert (false);
+	      PT_INTERNAL_ERROR (parser, "share group producer");
+	      return;
+	    }
+	  spec->info.spec.derived_table->info.query.xasl = producer->info.query.xasl;
+	}
+      else if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY && spec->info.spec.derived_table != NULL)
 	{
 	  spec->info.spec.derived_table =
 	    parser_walk_tree (parser, spec->info.spec.derived_table, parser_generate_xasl_pre, NULL,
@@ -29758,8 +30070,16 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 	  /* a nested call keeps the readers of the statement it is called from */
 	  PT_CTE_NULL_READER *save_cte_null_readers = pt_Cte_null_readers;
 	  pt_Cte_null_readers = NULL;
-	  node =
-	    parser_walk_tree (parser, node, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
+	  /* CBRD-27351: the producers of the share groups, made before anything that reads them */
+	  PT_NODE *statement = node;
+	  pt_make_share_producers (parser, statement);
+	  if (!pt_has_error (parser))
+	    {
+	      node =
+		parser_walk_tree (parser, node, parser_generate_xasl_pre, NULL, parser_generate_xasl_post,
+				  &xasl_Supp_info);
+	    }
+	  pt_free_share_producers (parser, statement);
 	  pt_Cte_null_readers = save_cte_null_readers;
 
 	  /* close file handle for query plan if this function open it */

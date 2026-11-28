@@ -102,4 +102,6 @@ extern int mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statem
 extern PT_NODE *mq_has_click_counter (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 extern void mq_dblink_clear_corr_keys (PARSER_CONTEXT * parser, PT_DBLINK_INFO * dinfo);
+
+extern PT_NODE *mq_share_make_producer (PARSER_CONTEXT * parser, PT_NODE ** members, int n_members, PT_NODE ** attrs);
 #endif /* _VIEW_TRANSFORM_H_ */

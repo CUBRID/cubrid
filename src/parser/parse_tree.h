@@ -1741,6 +1741,7 @@ typedef struct pt_histogram_info PT_HISTOGRAM_INFO;
 typedef struct pt_create_user_info PT_CREATE_USER_INFO;
 typedef struct pt_create_trigger_info PT_CREATE_TRIGGER_INFO;
 typedef struct pt_cte_info PT_CTE_INFO;
+typedef struct pt_share_group PT_SHARE_GROUP;
 typedef struct pt_serial_info PT_SERIAL_INFO;
 typedef struct pt_data_default_info PT_DATA_DEFAULT_INFO;
 typedef struct pt_auto_increment_info PT_AUTO_INCREMENT_INFO;
@@ -2375,6 +2376,20 @@ struct pt_spec_info
   DB_AUTH auth_bypass_mask;	/* flag to bypass normal authorization : used only by SHOW statements currently */
   PT_SPEC_FLAG flag;		/* flag wich marks this spec for DELETE or UPDATE operations */
   int num_parallel_threads;	/* number of parallel threads for this spec */
+  DB_OBJECT *share_view;	/* CBRD-27351: the view this derived table was expanded from, NULL for none */
+  PT_SHARE_GROUP *share_group;	/* CBRD-27351: the group of a view reference that reads one result of the view with
+				 * the other references of the group, NULL for none */
+};
+
+/* CBRD-27351: the references to one view whose derived tables are the same query but for the columns they read,
+ * which read one result of it */
+struct pt_share_group
+{
+  DB_OBJECT *view;		/* the view */
+  PT_SHARE_GROUP *next;		/* the next group of the statement */
+  PT_NODE *producer;		/* while the XASL of the statement is generated: the query that makes the result the
+				 * members read, made from their derived tables (pt_make_share_producers ()) */
+  PT_NODE *producer_attrs;	/* while the XASL of the statement is generated: the names of the producer's columns */
 };
 
 /* Info for an EVALUATE object */
@@ -3077,6 +3092,7 @@ struct pt_query_info
     unsigned folded_distinct:1;	/* a SELECT DISTINCT from a derived table of the operand a set operation
 				 * without ALL folded to (pt_fold_union_as_derived ()): where only the set of
 				 * its rows counts, the operand takes its place (pt_fold_union_unwrap ()) */
+    unsigned shared_view_body:1;	/* CBRD-27351: the derived table of a member of a share group */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
@@ -3089,6 +3105,7 @@ struct pt_query_info
   PT_HINT_ENUM hint;		/* hint flag */
   bool is_order_dependent;	/* true if query is order dependent */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
+  PT_SHARE_GROUP *share_groups;	/* CBRD-27351: the share groups whose result this statement makes first */
   union
   {
     PT_SELECT_INFO select;

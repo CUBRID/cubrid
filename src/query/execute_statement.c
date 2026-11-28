@@ -8787,6 +8787,8 @@ static bool update_check_having_meta_attr (PARSER_CONTEXT * parser, PT_NODE * as
 static int update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_started);
 static XASL_NODE *statement_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
 static int do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement);
+static int do_append_share_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement,
+				PT_SHARE_GROUP * groups);
 static int is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs, int *has_uniques,
 				     int *const server_allowed, const PT_NODE * statement);
 static int delete_object_tuple (DB_OBJECT * obj);
@@ -16343,6 +16345,125 @@ do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp,
   return NO_ERROR;
 }
 
+/* CBRD-27351: the share groups of a query, written after its hash text */
+typedef struct do_share_key_info DO_SHARE_KEY_INFO;
+struct do_share_key_info
+{
+  PT_SHARE_GROUP *groups;	/* the groups of the query (its share_groups) */
+  char **members;		/* per group, in the order of groups: the position and role of each member */
+  int n_specs;			/* specs visited so far */
+  bool failed;
+};
+
+/*
+ * do_collect_share_key () - add a member of a share group to the key of its group: its position among the specs of
+ *   the query
+ */
+static PT_NODE *
+do_collect_share_key (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  DO_SHARE_KEY_INFO *info = (DO_SHARE_KEY_INFO *) arg;
+  PT_SHARE_GROUP *group;
+  char buf[32];
+  int i = 0;
+
+  if (node->node_type != PT_SPEC)
+    {
+      return node;
+    }
+  info->n_specs++;
+  if (node->info.spec.share_group == NULL)
+    {
+      return node;
+    }
+
+  for (group = info->groups; group != NULL && group != node->info.spec.share_group; group = group->next)
+    {
+      i++;
+    }
+  if (group == NULL)
+    {
+      return node;
+    }
+  snprintf (buf, sizeof (buf), "%s%d", (info->members[i] != NULL) ? "," : "", info->n_specs);
+  info->members[i] = pt_append_string (parser, info->members[i], buf);
+  if (info->members[i] == NULL)
+    {
+      info->failed = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * do_append_share_key () - CBRD-27351: write the share groups of a query after its hash text, as the bind-value
+ *   variant key is: a query sharing a view result and one that does not may print alike, the views expanded and
+ *   their constants turned into host variables, and must not use each other's plan
+ * return : error code
+ *   groups(in): the share groups of statement (its share_groups)
+ */
+static int
+do_append_share_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement, PT_SHARE_GROUP * groups)
+{
+  DO_SHARE_KEY_INFO info = { NULL, NULL, 0, false };
+  PT_SHARE_GROUP *group;
+  char *text;
+  int n_groups = 0, i;
+
+  if (!PT_IS_QUERY (statement) || contextp->sql_hash_text == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  info.groups = groups;
+  if (info.groups == NULL)
+    {
+      /* no share group: the hash text is as without sharing */
+      return NO_ERROR;
+    }
+
+  for (group = info.groups; group != NULL; group = group->next)
+    {
+      n_groups++;
+    }
+  info.members = (char **) parser_alloc (parser, (int) (n_groups * sizeof (char *)));
+  if (info.members == NULL)
+    {
+      int err;
+
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  for (i = 0; i < n_groups; i++)
+    {
+      info.members[i] = NULL;
+    }
+  (void) parser_walk_tree (parser, statement, do_collect_share_key, &info, NULL, NULL);
+
+  /* append to a copy: the hash text is the statement's alias_print; each group as "view:members" */
+  text = info.failed ? NULL : pt_append_string (parser, NULL, contextp->sql_hash_text);
+  text = (text != NULL) ? pt_append_string (parser, text, " [share") : NULL;
+  for (group = info.groups, i = 0; group != NULL && text != NULL; group = group->next, i++)
+    {
+      const char *name = sm_get_ch_name (group->view);
+
+      text = pt_append_string (parser, text, " ");
+      text = (text != NULL) ? pt_append_string (parser, text, (name != NULL) ? name : "?") : NULL;
+      text = (text != NULL) ? pt_append_string (parser, text, ":") : NULL;
+      text = (text != NULL && info.members[i] != NULL) ? pt_append_string (parser, text, info.members[i]) : text;
+    }
+  text = (text != NULL) ? pt_append_string (parser, text, "]") : NULL;
+  if (text == NULL)
+    {
+      int err;
+
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  contextp->sql_hash_text = text;
+  return NO_ERROR;
+}
+
 /*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
  *                       plan generation, and creating XASL as the result
@@ -16404,6 +16525,12 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   contextp->sql_hash_text = (char *) statement->alias_print;
   err = do_append_bind_variant_key (parser, contextp, statement);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  err = do_append_share_key (parser, contextp, statement,
+			     PT_IS_QUERY (statement) ? statement->info.query.share_groups : NULL);
   if (err != NO_ERROR)
     {
       return err;

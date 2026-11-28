@@ -94,6 +94,8 @@ struct xasl_state
   VAL_DESCR vd;			/* Value Descriptor */
   QUERY_ID query_id;		/* Query associated with XASL */
   int qp_xasl_line;		/* Error line */
+  xasl_node *xasl;		/* the root of the XASL tree run under this state, whose CTEs a parallel scan's workers
+				 * read (parallel_scan::pre_execution_info::capture_cte_lists ()) */
 };
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,
