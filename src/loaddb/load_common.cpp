@@ -378,7 +378,13 @@ namespace cubload
 
 	char lower_case_string[DB_MAX_IDENTIFIER_LENGTH] = { 0 };
 
-	assert (intl_identifier_lower_string_size (class_name.c_str ()) <= DB_MAX_IDENTIFIER_LENGTH);
+	// The lower case of a name can be longer than the name itself, so check the size it takes in the buffer.
+	if (intl_identifier_lower_string_size (class_name.c_str ()) >= DB_MAX_IDENTIFIER_LENGTH)
+	  {
+	    file.close ();
+	    ignore_classes.clear ();
+	    return ER_FAILED;
+	  }
 
 	// Make the string to be lower case and take into consideration all types of characters.
 	intl_identifier_lower (class_name.c_str (), lower_case_string);

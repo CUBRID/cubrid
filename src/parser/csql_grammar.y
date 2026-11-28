@@ -25547,7 +25547,7 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str)
   if (str_size >= check_base_size)
     {
       int lower_length = intl_identifier_lower_string_size (str);
-      if (lower_length > DB_MAX_IDENTIFIER_LENGTH)
+      if (lower_length >= DB_MAX_IDENTIFIER_LENGTH)
 	{
 	  PT_ERRORf4 (this_parser, p,
 		      "Identifier name \"%s\" is too long. Maximum length is %d.\n"
