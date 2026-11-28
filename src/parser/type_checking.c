@@ -8553,7 +8553,9 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 
       is_subquery = node->info.query.is_subquery;
 
-      if (sc_info->donot_fold == false
+      /* a SELECT of the statement itself stays a query even in parentheses: folded into a value, it would leave the
+       * statement nothing to execute (db_mark_set_operations_stay_queries (), CBRD-28385) */
+      if (sc_info->donot_fold == false && !node->info.query.flag.stays_query
 	  && (is_subquery == PT_IS_SUBQUERY || is_subquery == PT_IS_UNION_SUBQUERY
 	      || is_subquery == PT_IS_CTE_NON_REC_SUBQUERY || is_subquery == PT_IS_CTE_REC_SUBQUERY)
 	  && pt_false_where (parser, node))
