@@ -1,0 +1,2 @@
+#!/bin/sh
+exec "@THIRDPARTY_CCACHE@" "@THIRDPARTY_COMPILER@" "$@"

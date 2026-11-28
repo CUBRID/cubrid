@@ -140,6 +140,7 @@ cscope.files
 /.envrc
 
 ## popular build directories
+/.thirdparty/
 Debug/
 Release/
 build_x86_64_debug/
