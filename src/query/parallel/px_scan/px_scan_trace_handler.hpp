@@ -47,6 +47,7 @@ namespace parallel_scan
 
     /* index scan only */
     UINT64 read_keys;
+    UINT64 read_ahead_pages;
     UINT64 qualified_keys;
     UINT64 key_qualified_rows;
     UINT64 data_qualified_rows;
@@ -130,7 +131,7 @@ namespace parallel_scan
       void set_last_partition_stats (SCAN_STATS *partition_stats);
     private:
       std::vector<child_stats> m_stats;
-      child_stats m_stats_last;
+      child_stats m_stats_last = {};
       RESULT_TYPE m_result_type;
       SCAN_TYPE m_scan_type;
       bool m_is_initialized;
