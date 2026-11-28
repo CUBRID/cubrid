@@ -3577,6 +3577,7 @@ struct pt_with_clause_info
 {
   int recursive;
   PT_NODE *cte_definition_list;	/* PT_CTE (list) */
+  bool cannot_cache;		/* a CTE cannot be cached (e.g. it calls RAND ()): neither can the query having it */
 };
 
 /* pt_insert_value_info - Parse tree node info used to replace nodes in insert value list after being evaluated. */
@@ -4288,6 +4289,9 @@ struct parser_context
     unsigned view_has_sp_call:1;	/* the current mq_translate () expanded a view that calls a stored procedure,
 					 * and mq_translate () sets has_sp_call and cannot_prepare on the statement at
 					 * its end; while a view cache is built, has_sp_call on the view's root */
+    unsigned view_cannot_cache:1;	/* the current mq_translate () expanded a view or inlined a CTE whose result
+					 * cannot be cached (e.g. it calls RAND ()), and mq_translate () marks the queries
+					 * including it at its end; while a view cache is built, the view's root */
     unsigned regu_has_sp_call:1;	/* a stored procedure regu variable was generated since
 					 * db_compile_statement_local () cleared it, so pt_add_read_class_oids () adds
 					 * the classes the statement reads to its XASL header. A parser compiled
