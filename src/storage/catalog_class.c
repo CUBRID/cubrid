@@ -5444,7 +5444,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
 
 	      lang_str = db_get_string (&heap_value->dbvalue);
 	      lang_str_len = (lang_str != NULL) ? strlen (lang_str) : 0;
-	      lang_str_len = MIN (lang_str_len, sizeof (curr_coll->coll_name));
+	      lang_str_len = MIN (lang_str_len, sizeof (curr_coll->coll_name) - 1);
 
 	      strncpy (curr_coll->coll_name, lang_str, lang_str_len);
 	      curr_coll->coll_name[lang_str_len] = '\0';
@@ -5466,6 +5466,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
 	      str_len = (checksum_str != NULL) ? strlen (checksum_str) : 0;
 
 	      assert (str_len == 32);
+	      str_len = MIN (str_len, sizeof (curr_coll->checksum) - 1);
 
 	      strncpy (curr_coll->checksum, checksum_str, str_len);
 	      curr_coll->checksum[str_len] = '\0';
