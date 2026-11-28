@@ -23,7 +23,6 @@
 #ident "$Id$"
 
 #include <assert.h>
-#include <math.h>
 
 #include "double_write_buffer.hpp"
 
@@ -41,6 +40,7 @@
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "porting_inline.hpp"
+#include "bit.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -1219,7 +1219,8 @@ dwb_create_internal (THREAD_ENTRY *thread_p, const char *dwb_volume_name, UINT64
   dwb_Global.num_blocks = num_blocks;
   dwb_Global.num_pages = num_pages;
   dwb_Global.num_block_pages = num_block_pages;
-  dwb_Global.log2_num_block_pages = (unsigned int) (log ((float) num_block_pages) / log ((float) 2));
+  /* num_block_pages is a power of 2. A float logarithm truncates log2 (8192) to 12. */
+  dwb_Global.log2_num_block_pages = (unsigned int) bit32_count_trailing_zeros (num_block_pages);
   dwb_Global.blocks_flush_counter = 0;
   dwb_Global.next_block_to_flush = 0;
   pthread_mutex_init (&dwb_Global.mutex, NULL);
