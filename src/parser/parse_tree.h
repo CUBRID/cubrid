@@ -1686,7 +1686,9 @@ typedef enum
   PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED = 0x80000,	/* a DML target left to the force-phase reevaluation; locked
 							 * at select as FOR UPDATE where the executor does not
 							 * reevaluate */
-  PT_SPEC_FLAG_BITMAP_HEAP_SCAN = 0x100000	/* the spec's index scan reads its heap rows through a bitmap */
+  PT_SPEC_FLAG_BITMAP_HEAP_SCAN = 0x100000,	/* the spec's index scan reads its heap rows through a bitmap */
+  PT_SPEC_FLAG_UNNESTED_SUBQUERY = 0x200000	/* derived SEMI/ANTI spec unnested from a [NOT] EXISTS / [NOT] IN subquery
+						 * over several tables.  Its XASL is made once the query keeps it */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2485,6 +2487,8 @@ struct pt_expr_info
 						 * the BIGINT maximum (REGU_VARIABLE_LIMIT_SUM) */
 #define PT_EXPR_INFO_FILTER_TERM 1073741824	/* 0x40000000, an AND or OR on the AND/OR spine of a search condition
 						 * (WHERE, ON, HAVING, ...), where UNKNOWN rejects the row as FALSE does */
+#define PT_EXPR_INFO_UNNESTED_IN 2147483648	/* 0x80000000, the 'lhs = select-list item' equality an unnested [NOT] IN
+						 * subquery is joined on */
   int flag;			/* flags */
 /* the largest OR factor pt_cnf_where () keeps whole and qo_extract_or_restrictions () derives from */
 #define PT_CNF_KEEP_MAX_DISJUNCTS 8

@@ -314,7 +314,6 @@ static void qo_join_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *, void (
 static void qo_follow_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *, void (*)(QO_PLAN *, void *), void *);
 
 static void qo_plan_compute_cost (QO_PLAN *);
-static void qo_plan_compute_subquery_cost (PT_NODE *, double *, double *);
 static bool qo_term_is_evaluated_before (QO_TERM * term1, QO_TERM * term2);
 static double qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx);
 static void qo_sscan_cost (QO_PLAN *);
@@ -1849,7 +1848,7 @@ qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx)
  *   subq_cpu_cost(in):
  *   subq_io_cost(in):
  */
-static void
+void
 qo_plan_compute_subquery_cost (PT_NODE * subquery, double *subq_cpu_cost, double *subq_io_cost)
 {
   QO_SUMMARY *summary;
