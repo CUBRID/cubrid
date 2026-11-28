@@ -1108,6 +1108,10 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
    */
   assert (WS_ISDIRTY (serial_object) == false);
 
+  /* before the row takes its new name: a write-back replicates at once, ahead of this DDL, keyed by the name this
+   * transaction sees, and the standby has only the committed one */
+  (void) serial_decache (ws_oid (serial_object));
+
   ws_decache (serial_object);
   /* no need to get last version for serial - actually, the purpose is AU_FETCH_WRITE, so fetch type is not relevant;
    * the last version will be locked and it will be considered visibile only if delid is not set */

@@ -505,6 +505,10 @@ static int pt_add_read_class_oids (PARSER_CONTEXT * parser, PT_NODE * statement,
 static int pt_move_subinsert_class_oids (XASL_NODE * xasl);
 static int pt_add_click_counter_class_oids (XASL_NODE * top_xasl, XASL_NODE * xasl);
 static int pt_add_for_update_class_oids (XASL_NODE * xasl, PT_NODE * select);
+static bool pt_orderby_has_group_keys (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static bool pt_gby_output_reads_order (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static PT_NODE *pt_find_gby_order_read_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_mark_gby_order_free_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, OID ** oid_listp,
 					   int **lock_listp, int **tcard_listp, int *nump, int *sizep,
@@ -2407,6 +2411,7 @@ pt_factor_dnf_is_unsafe (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	case PT_DRAND:
 	case PT_DRANDOM:
 	case PT_SYS_GUID:
+	case PT_UUID:
 	case PT_CURRENT_VALUE:
 	case PT_CURRENT_VALUE_BY_OID:
 	case PT_NEXT_VALUE:
@@ -21481,6 +21486,25 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 				   (void *) &buildlist->g_hash_eligible, NULL, NULL);
 	}
 
+      /* where the order of the groups cannot reach the result (CBRD-28181): what else reads it is checked when they
+       * are made (qexec_gby_order_reaches_result ()) */
+      buildlist->g_order_free = 0;
+      if (pt_gby_output_reads_order (parser, select_node))
+	{
+	  buildlist->g_order_free = XASL_G_ORDER_KEPT;
+	}
+      else
+	{
+	  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_GBY_ORDER_FREE))
+	    {
+	      buildlist->g_order_free |= XASL_G_ORDER_FREE_SET;
+	    }
+	  if (pt_orderby_has_group_keys (parser, select_node))
+	    {
+	      buildlist->g_order_free |= XASL_G_ORDER_FREE_ORDERBY;
+	    }
+	}
+
       /* this one will be altered further on and it's the actual output of the initial scan; will contain group key and
        * aggregate expressions */
       xasl->outptr_list = pt_to_outlist (parser, group_out_list, NULL, UNBOX_AS_VALUE);
@@ -29502,6 +29526,141 @@ pt_generate_ctes_and_derived_tables (PARSER_CONTEXT * parser, PT_NODE * query)
 }
 
 /*
+ * pt_mark_gby_order_free_pre () - mark the query of a set predicate: the order of its GROUP BY's groups cannot reach
+ *				   the result (CBRD-28181, XASL_G_ORDER_FREE_SET)
+ *   return: node
+ */
+static PT_NODE *
+pt_mark_gby_order_free_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *query = NULL;
+
+  if (node->node_type != PT_EXPR)
+    {
+      return node;
+    }
+  switch (node->info.expr.op)
+    {
+    case PT_IS_IN:
+    case PT_IS_NOT_IN:
+    case PT_EQ_SOME:
+    case PT_NE_ALL:
+      query = node->info.expr.arg2;
+      break;
+    case PT_EXISTS:
+      query = node->info.expr.arg1;
+      break;
+    default:
+      break;
+    }
+  if (query != NULL && query->node_type == PT_SELECT && query->info.query.q.select.group_by != NULL)
+    {
+      PT_SELECT_INFO_SET_FLAG (query, PT_SELECT_INFO_GBY_ORDER_FREE);
+    }
+  return node;
+}
+
+/*
+ * pt_gby_output_reads_order () - is an output expression of a GROUP BY block evaluated in the order the groups come
+ *				  out, so that their order stays in its values even where the rows are ordered again or
+ *				  only their set is read (CBRD-28181, XASL_G_ORDER_KEPT)?
+ *   return: true when the select list or the HAVING has one
+ */
+static bool
+pt_gby_output_reads_order (PARSER_CONTEXT * parser, PT_NODE * select_node)
+{
+  bool found = false;
+
+  (void) parser_walk_tree (parser, select_node->info.query.q.select.list, pt_find_gby_order_read_pre, (void *) &found,
+			   NULL, NULL);
+  if (!found)
+    {
+      (void) parser_walk_tree (parser, select_node->info.query.q.select.having, pt_find_gby_order_read_pre,
+			       (void *) &found, NULL, NULL);
+    }
+  return found;
+}
+
+/*
+ * pt_find_gby_order_read_pre () - find an expression whose values depend on the order it is evaluated in: a serial, a
+ *				   stored routine or method, a variable assignment, a random number (CBRD-28181,
+ *				   XASL_G_ORDER_KEPT)
+ *   return: node
+ *   arg(in/out): bool, set when one is found
+ */
+static PT_NODE *
+pt_find_gby_order_read_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (node->node_type == PT_METHOD_CALL
+      || (node->node_type == PT_EXPR
+	  && (PT_IS_SERIAL (node->info.expr.op) || node->info.expr.op == PT_DEFINE_VARIABLE
+	      || PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (node))))
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_orderby_has_group_keys () - does the ORDER BY of a GROUP BY block have every key of the GROUP BY?
+ *   return: true when the ORDER BY orders the groups whole (CBRD-28181, XASL_G_ORDER_FREE_ORDERBY)
+ *
+ * A key is had when an ORDER BY item names the select list position the key is at, and the item there is the key: a
+ * CAST of it takes the key's position too (pt_check_compatible_node_for_orderby ()), but may narrow it (CAST of a
+ * DOUBLE key to INT), when groups the ORDER BY ties keep the order the group sort gave them.
+ */
+static bool
+pt_orderby_has_group_keys (PARSER_CONTEXT * parser, PT_NODE * select_node)
+{
+  PT_NODE *group, *order, *item;
+  QFILE_TUPLE_VALUE_POSITION pos;
+  int i;
+
+  if (select_node->info.query.order_by == NULL || select_node->info.query.q.select.group_by == NULL
+      || select_node->info.query.q.select.group_by->flag.with_rollup)
+    {
+      return false;
+    }
+  for (group = select_node->info.query.q.select.group_by; group != NULL; group = group->next)
+    {
+      /* a constant key is not looked up (pt_to_pos_descr () takes a value for a position number) */
+      if (group->node_type != PT_SORT_SPEC || group->info.sort_spec.expr == NULL
+	  || group->info.sort_spec.expr->node_type == PT_VALUE)
+	{
+	  return false;
+	}
+      pt_to_pos_descr (parser, &pos, group->info.sort_spec.expr, select_node, NULL, false);
+      if (pos.pos_no <= 0)
+	{
+	  return false;
+	}
+      for (item = select_node->info.query.q.select.list, i = 1; item != NULL && i < pos.pos_no; item = item->next, i++)
+	{
+	  ;
+	}
+      if (item == NULL || (item->node_type == PT_EXPR && item->info.expr.op == PT_CAST))
+	{
+	  return false;
+	}
+      for (order = select_node->info.query.order_by; order != NULL; order = order->next)
+	{
+	  if (order->node_type == PT_SORT_SPEC && order->info.sort_spec.pos_descr.pos_no == pos.pos_no)
+	    {
+	      break;
+	    }
+	}
+      if (order == NULL)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
  * parser_generate_xasl_pre () - builds xasl for query nodes,
  *                     and remembers uncorrelated queries
  *   return:
@@ -29681,6 +29840,10 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 
   node = parser_walk_tree (parser, node, pt_flush_class_and_null_xasl, NULL, pt_set_is_system_generated_stmt,
 			   &is_system_generated_stmt);
+  if (node != NULL)
+    {
+      node = parser_walk_tree (parser, node, pt_mark_gby_order_free_pre, NULL, NULL, NULL);
+    }
 
   /* During the above parser_walk_tree the request to get a driver may cause a deadlock. We give up the following steps
    * and propagate the error messages */
