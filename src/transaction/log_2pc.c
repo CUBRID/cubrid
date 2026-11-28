@@ -1467,6 +1467,9 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   int tran_index;
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
+#if !defined (NDEBUG)
+  LOG_LSA stats_lsa;
+#endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -1566,6 +1569,18 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
       /* Now proceed as participant of the distributed transaction */
     }
 
+  /* The commit applies the unique statistics the transaction collected in memory. Restart reads them back from this
+   * record to commit an in-doubt transaction. It finds the record as the one before the prepare record in the
+   * transaction's chain (prev_tranlsa), so the transaction must log nothing between the two; the lock release below
+   * logs nothing. Logging before the release keeps the shared locks when it fails. */
+  if (logtb_tran_log_unique_stats_for_2pc (thread_p, tdes) != NO_ERROR)
+    {
+      return TRAN_UNACTIVE_UNKNOWN;
+    }
+#if !defined (NDEBUG)
+  stats_lsa = tdes->tail_lsa;
+#endif
+
   lock_unlock_all_shared_get_all_exclusive (thread_p, &acq_locks);
 
   /*
@@ -1606,6 +1621,10 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   /* Dead field, but the header is malloc'd: unassigned means indeterminate bytes in the log. */
   prepared->num_page_locks = 0;
 
+#if !defined (NDEBUG)
+  /* the prepare record must follow the statistics record in the transaction's chain */
+  assert (LSA_EQ (&tdes->tail_lsa, &stats_lsa));
+#endif
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   if (acq_locks.locks != NULL)

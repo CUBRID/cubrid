@@ -210,8 +210,9 @@ typedef enum
   RVOOS_UPDATE_DROP_POSTPONE = 143,	/* logical postpone: append RVOOS_NOTIFY_VACUUM once an UPDATE commits */
   RVREPL_OOS_REUSE = 144,	/* OOS replication marker: the UPDATE reused this column's chain */
   RVHF_SERIAL_DDL_UPDATE_UNDO = 145,
+  RVBT_2PC_UNIQUE_STATS = 146,	/* redo-only, pageless: unique statistics of a transaction about to prepare (2PC) */
 
-  RV_LAST_LOGID = RVHF_SERIAL_DDL_UPDATE_UNDO,
+  RV_LAST_LOGID = RVBT_2PC_UNIQUE_STATS,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;

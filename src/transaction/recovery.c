@@ -938,6 +938,12 @@ struct rvfun RV_fun[] = {
    serial_rv_undo_ddl_update,
    NULL,
    log_rv_dump_hexa,
+   NULL},
+  {RVBT_2PC_UNIQUE_STATS,
+   "RVBT_2PC_UNIQUE_STATS",
+   NULL,
+   log_rv_outside_noop_redo,
+   NULL,
    NULL}
 };
 

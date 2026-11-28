@@ -116,6 +116,10 @@ static int log_recovery_get_redo_parallel_count ();
 
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
 static void log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p);
+static void log_recovery_2pc_restore_unique_stats (THREAD_ENTRY * thread_p);
+static int log_recovery_2pc_restore_tran_unique_stats (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+static int log_recovery_2pc_read_redo_data (THREAD_ENTRY * thread_p, log_reader & reader, LOG_RCVINDEX rcvindex,
+					    LOG_ZIP * zip, bool * found);
 static void log_recovery_2pc_restore_prev_versions (THREAD_ENTRY * thread_p);
 static void log_recovery_2pc_restore_tran_prev_versions (THREAD_ENTRY * thread_p, const LOG_TDES * tdes,
 							 LOG_PAGE * log_page);
@@ -3520,6 +3524,183 @@ log_recovery_2pc_restore_tran_prev_versions (THREAD_ENTRY * thread_p, const LOG_
 }
 
 /*
+ * log_recovery_2pc_restore_unique_stats - give the in-doubt transactions back the unique statistics they collected
+ *
+ * Note: The statistics live only in memory, and the commit of an in-doubt transaction applies them to the indexes.
+ *       Its prepare logged them in the record just before the prepare record (logtb_tran_log_unique_stats_for_2pc).
+ *       A prepare logged without that record (older version) leaves the statistics empty, as before, and so do a
+ *       malformed record and a failure to allocate or build the statistics. A log page that cannot be read and a
+ *       failure to copy or unzip the data of the record stop the restart, as everywhere else in recovery.
+ */
+static void
+log_recovery_2pc_restore_unique_stats (THREAD_ENTRY * thread_p)
+{
+  int i;
+
+  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      LOG_TDES *tdes = LOG_FIND_TDES (i);
+
+      if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->state == TRAN_UNACTIVE_2PC_PREPARE)
+	{
+	  if (log_recovery_2pc_restore_tran_unique_stats (thread_p, tdes) != NO_ERROR)
+	    {
+	      /* The error is in the error log (a malformed record or a failed allocation; a failure to read the log is
+	       * fatal before it gets here). Go on with empty statistics for this transaction, as an older version does:
+	       * its commit then leaves the unique statistics of its indexes off by its changes, but the restart
+	       * completes. */
+	      er_log_debug (ARG_FILE_LINE, "log_recovery_2pc_restore_unique_stats: trid = %d, gtrid = %d goes on with"
+			    " empty unique statistics\n", tdes->trid, tdes->gtrid);
+	      logtb_rv_2pc_clear_unique_stats (thread_p, tdes);
+	      er_clear ();
+	    }
+	}
+    }
+}
+
+/*
+ * log_recovery_2pc_read_redo_data - read the data of a redo log record of the given recovery index
+ *
+ * return: error code
+ *
+ *   reader(in/out): positioned at the start of the record (its header)
+ *   rcvindex(in): recovery index wanted
+ *   zip(in/out): the data, when found
+ *   found(out): whether the record has the recovery index; the data of other records is not read
+ */
+static int
+log_recovery_2pc_read_redo_data (THREAD_ENTRY * thread_p, log_reader & reader, LOG_RCVINDEX rcvindex, LOG_ZIP * zip,
+				 bool * found)
+{
+  bool is_zip = false;
+
+  *found = false;
+
+  reader.add_align (sizeof (LOG_RECORD_HEADER));
+  reader.advance_when_does_not_fit (sizeof (LOG_REC_REDO));
+  // *INDENT-OFF*
+  const LOG_REC_REDO redo = reader.reinterpret_copy_and_add_align<LOG_REC_REDO> ();
+  // *INDENT-ON*
+
+  if (redo.data.rcvindex != rcvindex)
+    {
+      return NO_ERROR;
+    }
+  *found = true;
+  return log_rv_get_unzip_log_data (thread_p, redo.length, reader, zip, is_zip);
+}
+
+/*
+ * log_recovery_2pc_restore_tran_unique_stats - restore the unique statistics of one in-doubt transaction
+ *
+ * return: error code
+ *
+ * Note: The records after the prepare belong to a commit that was interrupted by the crash and that the coordinator
+ *       will resume. Redo applied each RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT among them already, so the resumed commit
+ *       must not add the statistics of those indexes again.
+ */
+static int
+log_recovery_2pc_restore_tran_unique_stats (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  // *INDENT-OFF*
+  log_reader reader (LOG_CS_FORCE_USE);
+  // *INDENT-ON*
+  LOG_RECORD_HEADER rec_header;
+  LOG_LSA lsa, prepare_lsa = LSA_INITIALIZER;
+  LOG_ZIP *zip;
+  BTID btid;
+  bool found;
+  int error_code = NO_ERROR;
+
+  for (lsa = tdes->tail_lsa; !LSA_ISNULL (&lsa); lsa = rec_header.prev_tranlsa)
+    {
+      if (reader.set_lsa_and_fetch_page (lsa) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      // *INDENT-OFF*
+      rec_header = *reader.reinterpret_cptr<LOG_RECORD_HEADER> ();
+      // *INDENT-ON*
+      if (rec_header.type == LOG_2PC_PREPARE)
+	{
+	  prepare_lsa = lsa;
+	  break;
+	}
+    }
+  if (LSA_ISNULL (&prepare_lsa) || LSA_ISNULL (&rec_header.prev_tranlsa))
+    {
+      return NO_ERROR;
+    }
+
+  zip = log_zip_alloc (IO_PAGESIZE);
+  if (zip == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* the record before the prepare */
+  if (reader.set_lsa_and_fetch_page (rec_header.prev_tranlsa) != NO_ERROR)
+    {
+      error_code = ER_FAILED;
+      goto end;
+    }
+  // *INDENT-OFF*
+  rec_header = *reader.reinterpret_cptr<LOG_RECORD_HEADER> ();
+  // *INDENT-ON*
+  if (rec_header.type != LOG_REDO_DATA)
+    {
+      goto end;
+    }
+  error_code = log_recovery_2pc_read_redo_data (thread_p, reader, RVBT_2PC_UNIQUE_STATS, zip, &found);
+  if (error_code != NO_ERROR || !found)
+    {
+      goto end;
+    }
+  error_code = logtb_rv_2pc_restore_unique_stats (thread_p, tdes, zip->log_data, zip->data_length);
+  if (error_code != NO_ERROR)
+    {
+      goto end;
+    }
+
+  for (lsa = tdes->tail_lsa; LSA_GT (&lsa, &prepare_lsa); lsa = rec_header.prev_tranlsa)
+    {
+      if (reader.set_lsa_and_fetch_page (lsa) != NO_ERROR)
+	{
+	  error_code = ER_FAILED;
+	  goto end;
+	}
+      // *INDENT-OFF*
+      rec_header = *reader.reinterpret_cptr<LOG_RECORD_HEADER> ();
+      // *INDENT-ON*
+      if (rec_header.type != LOG_REDO_DATA)
+	{
+	  continue;
+	}
+      error_code = log_recovery_2pc_read_redo_data (thread_p, reader, RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT, zip, &found);
+      if (error_code != NO_ERROR)
+	{
+	  goto end;
+	}
+      if (found)
+	{
+	  if (zip->data_length < OR_BTID_ALIGNED_SIZE)
+	    {
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      error_code = ER_GENERIC_ERROR;
+	      goto end;
+	    }
+	  OR_GET_BTID (zip->log_data, &btid);
+	  logtb_rv_2pc_skip_applied_unique_stats (thread_p, tdes, &btid);
+	}
+    }
+
+end:
+  log_zip_free (zip);
+  return error_code;
+}
+
+/*
  * log_recovery_refuse_no_logging_index_replay () - fail-stop a media recovery replay that reaches a record left
  *   by a no-logging index build (loaddb).  Its index pages were never WAL-logged, so replaying past it
  *   cannot reconstruct them.  A replay in which the index would survive always dispatches either the
@@ -4313,6 +4494,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
    * skip the self-lock wait. */
   log_recovery_2pc_reactivate_mvccids (thread_p);
   log_recovery_2pc_restore_prev_versions (thread_p);
+  log_recovery_2pc_restore_unique_stats (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "REDO");
 
