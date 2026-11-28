@@ -2248,7 +2248,8 @@ qo_add_inner_dummy_join_term (QO_ENV * env, QO_NODE * head_node, QO_NODE * tail_
  *   Step 2: go on only when on_node comes after a node its ON clause reads.
  *   Step 3: collect dependent_set, the nodes the ON clause of on_node reads and, for a right outer join, the join
  *           expression to its left.
- *   Step 4: add dummy join terms until dependent_set is connected without going through on_node.
+ *   Step 4: add dummy join terms until dependent_set is connected without going through on_node, unless on_node is
+ *           an inner join node.
  */
 static void
 qo_add_connected_dummy_join_terms (QO_ENV * env)
@@ -2316,6 +2317,22 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 	    {
 	      continue;
 	    }
+
+	  /* The planner can join an inner join node before the other nodes its ON clause reads, so a path through on_node
+	   * counts. The ON clause filters like a WHERE clause, and its condition on such a node is checked when the node
+	   * is joined.
+	   *
+	   * e.g. select count(*)
+	   *        from ta
+	   *             cross join tb
+	   *             left outer join tc on tc.ca = tb.ca
+	   *             inner join td on td.ca = tc.ca and td.cb = ta.cb;
+	   *
+	   *      td reads ta and tc, and its join edges connect them, so tb -> tc -> td -> ta needs no term.
+	   *      A term between ta and tb would add the cartesian product of ta and tb as a join order.
+	   *
+	   * Step 1 of the next on_node adds on_node to visitable_set all the same. */
+	  bitset_add (&visitable_set, on_node_idx);
 	}
 
       /* Step 3: collect dependent_set, the nodes the ON clause of on_node reads and, for a right outer join, the join
@@ -2398,7 +2415,8 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 	    }
 	}
 
-      /* Step 4: add dummy join terms until dependent_set is connected without going through on_node.
+      /* Step 4: add dummy join terms until dependent_set is connected without going through on_node, unless on_node
+       * is an inner join node.
        *
        * first_idx = the lowest node in dependent_set.
        *
@@ -2443,7 +2461,7 @@ qo_add_connected_dummy_join_terms (QO_ENV * env)
 	  qo_get_joined_nodes (env, &visitable_set, node_idx, &target_set);
 
 	  /* unconnected_idx = min { i : i >= unconnected_idx, i not in connected_set }.
-	   * on_node_idx never enters connected_set, so the scan halts there at the latest. */
+	   * node_idx is not in connected_set, so the scan halts there at the latest. */
 	  while (BITSET_MEMBER (connected_set, unconnected_idx))
 	    {
 	      unconnected_idx++;
