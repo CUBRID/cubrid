@@ -185,6 +185,8 @@ struct mvcc_snapshot
   bool valid;			/* true, if the snapshot is valid */
   unsigned int build_serial;	/* counts the builds of this transaction's snapshot: what was read under one build
 				 * (a heap scan's page bitmap) is told from what a later build must read again */
+  bool pinned;			/* shared by several transactions of a client (see xlogtb_export_mvcc_snapshot ()):
+				 * kept until the transaction ends, whatever the isolation level */
 
   // *INDENT-OFF*
   mvcc_snapshot ();

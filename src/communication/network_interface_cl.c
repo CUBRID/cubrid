@@ -425,14 +425,14 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock, i
 int
 locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oidp,
 		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea,
-		   int request_pages, int nparallel_process, int nparallel_process_idx)
+		   int request_pages, int nparallel_process, int nparallel_process_idx, int read_ahead_sectors)
 {
 #if defined(CS_MODE)
   int req_error;
   char *ptr;
   int return_value = ER_FAILED;
   int client_endian = (int) get_endian_type ();
-  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 8) + (OR_OID_SIZE * 2)) a_request;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 9) + (OR_OID_SIZE * 2)) a_request;
   char *request;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 5) + OR_OID_SIZE) a_reply;
   char *reply;
@@ -450,6 +450,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   ptr = or_pack_int (ptr, request_pages);
   ptr = or_pack_int (ptr, nparallel_process);
   ptr = or_pack_int (ptr, nparallel_process_idx);
+  ptr = or_pack_int (ptr, read_ahead_sectors);
   ptr = or_pack_int (ptr, client_endian);
   *fetch_copyarea = NULL;
 
@@ -492,7 +493,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   success =
     xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
-			fetch_copyarea, request_pages);
+			fetch_copyarea, request_pages, nparallel_process >= 1, read_ahead_sectors);
 
   if (nparallel_process > 1)
     {
@@ -10991,6 +10992,91 @@ log_get_mvcc_snapshot (void)
   THREAD_ENTRY *thread_p = enter_server ();
 
   err = xlogtb_get_mvcc_snapshot (thread_p);
+
+  exit_server (*thread_p);
+
+  return err;
+#endif /* CS_MODE */
+}
+
+/*
+ * log_export_mvcc_snapshot () - pin the snapshot of the transaction for the other connections of this client
+ *
+ * return : error code
+ * tran_index (out) : the transaction, for log_import_mvcc_snapshot ()
+ * trid (out) : its id
+ */
+int
+log_export_mvcc_snapshot (int *tran_index, int *trid)
+{
+#if defined(CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int err;
+
+  err = net_client_request (NET_SERVER_LOG_EXPORT_MVCC_SNAPSHOT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+			    0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  ptr = or_unpack_int (reply, &err);
+  ptr = or_unpack_int (ptr, tran_index);
+  (void) or_unpack_int (ptr, trid);
+
+  return err;
+#else /* !CS_MODE */
+  int err;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  err = xlogtb_export_mvcc_snapshot (thread_p, tran_index, trid);
+
+  exit_server (*thread_p);
+
+  return err;
+#endif /* CS_MODE */
+}
+
+/*
+ * log_import_mvcc_snapshot () - take over the snapshot another connection of this client exported
+ *
+ * return : error code
+ * tran_index (in) : from log_export_mvcc_snapshot ()
+ * trid (in) : likewise
+ */
+int
+log_import_mvcc_snapshot (int tran_index, int trid)
+{
+#if defined(CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int err;
+
+  ptr = or_pack_int (request, tran_index);
+  (void) or_pack_int (ptr, trid);
+
+  err = net_client_request (NET_SERVER_LOG_IMPORT_MVCC_SNAPSHOT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  (void) or_unpack_int (reply, &err);
+
+  return err;
+#else /* !CS_MODE */
+  int err;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  err = xlogtb_import_mvcc_snapshot (thread_p, tran_index, trid);
 
   exit_server (*thread_p);
 

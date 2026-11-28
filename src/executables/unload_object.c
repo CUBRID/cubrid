@@ -205,8 +205,8 @@ static volatile bool extractor_thread_proc_terminate = false;
 static int max_fetched_copyarea_list = 1;
 #if !defined(WINDOWS)
 static S_WAITING_INFO wi_unload_class;
-static S_WAITING_INFO wi_w_blk_getQ;
-S_WAITING_INFO wi_write_file;
+static S_WAITING_INFO wi_w_blk_getQ[UNLOAD_MAX_OUTPUT_FILES];
+S_WAITING_INFO wi_write_file[UNLOAD_MAX_OUTPUT_FILES];
 #endif
 #define INVALID_THREAD_ID  ((pthread_t) (-1))
 
@@ -430,6 +430,16 @@ static bool open_object_file (extract_context & ctxt, const char *output_dirname
 static bool init_thread_param (const char *output_dirname, int nthreads);
 static void quit_thread_param ();
 static void print_monitoring_info (const char *class_name, int nthreads);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+static int unload_fetchers_start (int nfetchers);
+static void unload_fetchers_stop (void);
+static void unload_fetchers_run (LC_FETCH_VERSION_TYPE fetch_type);
+#endif
+
+/* the fetchers of --fetcher-count that run; 0 when the main client fetches */
+static int unload_Nfetchers = 0;
+/* the object files of --output-files to open */
+static int unload_Noutput_files = 1;
 
 /*
  * get_estimated_objs - get the estimated number of object reside in file heap
@@ -807,6 +817,21 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
     }
 
   obj_out = &(g_thr_param[0].text_output);
+
+  /* the object files of --output-files are written by writer threads, which run with the extractor threads */
+  unload_Noutput_files = 1;
+  if (g_output_files > 1)
+    {
+      if (nthreads > 0)
+	{
+	  unload_Noutput_files = MIN (g_output_files, UNLOAD_MAX_OUTPUT_FILES);
+	}
+      else
+	{
+	  fprintf (stderr, "\n'--%s' needs '--%s' of 1 or more; one object file is written.\n", UNLOAD_OUTPUT_FILES_L,
+		   UNLOAD_THREAD_COUNT_L);
+	}
+    }
 
   if (!datafile_per_class)
     {
@@ -1198,7 +1223,10 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
   error_occurred = false;
   if (!datafile_per_class)
     {
+      /* the class ids, which every object file needs */
+      g_write_all_files = true;
       error = text_print_request_flush (&(g_thr_param[0].text_output), true);
+      g_write_all_files = false;
       if (error != NO_ERROR)
 	{
 	  status = 1;
@@ -1208,6 +1236,35 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
   else
     {
       assert (g_thr_param[0].text_output.head_ptr == NULL || g_thr_param[0].text_output.head_ptr->count <= 0);
+    }
+
+  /* the fetchers of --fetcher-count hand the rows to the extractor threads, so they need some */
+  if (g_fetcher_count > 1)
+    {
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      if (nthreads > 0)
+	{
+	  unload_Nfetchers = unload_fetchers_start (g_fetcher_count);
+	  if (unload_Nfetchers < 0)
+	    {
+	      unload_Nfetchers = 0;
+	      status = 1;
+	      goto end;
+	    }
+	}
+      else
+	{
+	  fprintf (stderr, "\n'--%s' needs '--%s' of 1 or more; one fetcher is used.\n", UNLOAD_FETCHER_COUNT_L,
+		   UNLOAD_THREAD_COUNT_L);
+	}
+#elif defined(CS_MODE)
+      /* the client library without MULTI_CONN_TO_A_SERVER (libcubridcs): Windows, or an install without libcubridcs_mc */
+      fprintf (stderr, "\n'--%s' needs the client library for multiple connections; one fetcher is used.\n",
+	       UNLOAD_FETCHER_COUNT_L);
+#else
+      fprintf (stderr, "\n'--%s' is valid only with '--%s'; one fetcher is used.\n", UNLOAD_FETCHER_COUNT_L,
+	       UNLOAD_CS_MODE_L);
+#endif
     }
 
   do
@@ -1322,6 +1379,10 @@ end:
   /*
    * Cleanup
    */
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  unload_fetchers_stop ();
+  unload_Nfetchers = 0;
+#endif
   free_and_init (unload_class_table);
   quit_thread_param ();
   extractobjects_cleanup ();
@@ -1538,10 +1599,22 @@ unload_extractor_thread (void *param)
 }
 
 
-int
-unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
+/*
+ * unload_fetch_part () - fetch the rows of one part of the class g_uci names and hand them over
+ *    return: NO_ERROR, or an error code
+ *    fetch_type(in): the version fetched
+ *    nparts(in), part(in): the server reads the heap sectors whose id modulo nparts is part
+ *    read_ahead_sectors(in): the upper bound of the server's read-ahead distance
+ *    wi_fetch(in/out): the time spent in the fetch requests
+ *
+ * Note: without extractor threads (g_multi_thread_mode false) the rows are printed here; otherwise the copy areas go
+ *	 to the list the extractor threads read.  Several fetchers may run it at once, one part each.
+ */
+static int
+unload_fetch_part (LC_FETCH_VERSION_TYPE fetch_type, int nparts, int part, int read_ahead_sectors,
+		   S_WAITING_INFO * wi_fetch)
 {
-  int i, error = NO_ERROR;
+  int error = NO_ERROR;
   int nobjects = 0;
   int nfetched = -1;
   OID last_oid;
@@ -1562,11 +1635,12 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
 
   while ((nobjects != nfetched) && (error_occurred == false))
     {
-      TIMER_BEGIN ((g_sampling_records >= 0), &(g_uci->wi_fetch));
+      TIMER_BEGIN ((g_sampling_records >= 0), wi_fetch);
+      /* a split of 1 for a single fetcher too: the split count tells the server that unloaddb fetches, and it then
+       * reads the heap in file order (xlocator_fetch_all ()) */
       error = locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area,
-				 g_request_pages, g_parallel_process_cnt,
-				 (g_parallel_process_idx - 1) /* to zero base */ );
-      TIMER_END ((g_sampling_records >= 0), &(g_uci->wi_fetch));
+				 g_request_pages, nparts, part, read_ahead_sectors);
+      TIMER_END ((g_sampling_records >= 0), wi_fetch);
       if (error == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
@@ -1627,36 +1701,321 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
   return error;
 }
 
+/* the parts of the --process split this process reads, as (count, index); (1, 0) without the split */
+#define UNLOAD_PROCESS_PARTS() ((g_parallel_process_cnt > 1) ? g_parallel_process_cnt : 1)
+#define UNLOAD_PROCESS_PART() ((g_parallel_process_cnt > 1) ? (g_parallel_process_idx - 1) /* to zero base */ : 0)
+
+/*
+ * unload_fetcher () - fetch the rows of the class g_uci names with the main client: the part of this process
+ */
+static int
+unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
+{
+#if defined(WINDOWS)
+  S_WAITING_INFO *wi_fetch = NULL;
+#else
+  S_WAITING_INFO *wi_fetch = &(g_uci->wi_fetch);
+#endif
+
+  return unload_fetch_part (fetch_type, UNLOAD_PROCESS_PARTS (), UNLOAD_PROCESS_PART (), g_read_ahead_sectors,
+			    wi_fetch);
+}
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+/*
+ * The fetchers of --fetcher-count: each thread holds a sub-client (db_restart_sub ()), so each has its own connection,
+ * server worker and transaction, and reads its own part of every class: the part of this process (--process) is split
+ * again by the fetchers.  The threads live through the whole unload; the main thread hands them one class at a time.
+ * All read one snapshot: the main client exports its own, pinned for the whole unload, and each sub-client takes it
+ * over before it fetches anything (log_import_mvcc_snapshot ()). The processes of --process still have their own.
+ */
+typedef struct unload_fetcher_slot UNLOAD_FETCHER_SLOT;
+struct unload_fetcher_slot
+{
+  int idx;
+  pthread_t tid;
+  int error;			/* the error of db_restart_sub () */
+  int import_error;		/* the error of log_import_mvcc_snapshot () */
+  S_WAITING_INFO wi_fetch;
+};
+
+static struct
+{
+  pthread_mutex_t mtx;
+  pthread_cond_t cond;
+  int nfetchers;		/* 0 when the pool is not running */
+  int nstarted;			/* the fetchers that are done with db_restart_sub () */
+  unsigned int job;		/* counts the classes handed over */
+  int nbusy;			/* the fetchers still reading the class of job */
+  bool quit;
+  LC_FETCH_VERSION_TYPE fetch_type;
+  int read_ahead_sectors;	/* the upper bound for each fetcher */
+  int snapshot_tran_index;	/* the snapshot of the main client, see log_export_mvcc_snapshot () */
+  int snapshot_trid;		/* transaction id */
+  UNLOAD_FETCHER_SLOT *slots;
+} unload_Fetchers;
+
+static THREAD_RET_T THREAD_CALLING_CONVENTION
+unload_fetcher_thread (void *param)
+{
+  UNLOAD_FETCHER_SLOT *slot = (UNLOAD_FETCHER_SLOT *) param;
+  unsigned int job = 0;
+  int error;
+
+  error = db_restart_sub (slot->idx);
+  if (error == NO_ERROR)
+    {
+      /* before anything is fetched: a sub-client reads the snapshot of the main client only */
+      slot->import_error =
+	log_import_mvcc_snapshot (unload_Fetchers.snapshot_tran_index, unload_Fetchers.snapshot_trid);
+    }
+
+  pthread_mutex_lock (&unload_Fetchers.mtx);
+  slot->error = error;
+  if (slot->import_error != NO_ERROR)
+    {
+      error = slot->import_error;
+    }
+  unload_Fetchers.nstarted++;
+  pthread_cond_broadcast (&unload_Fetchers.cond);
+  while (error == NO_ERROR)
+    {
+      while (!unload_Fetchers.quit && unload_Fetchers.job == job)
+	{
+	  pthread_cond_wait (&unload_Fetchers.cond, &unload_Fetchers.mtx);
+	}
+      if (unload_Fetchers.quit)
+	{
+	  break;
+	}
+      job = unload_Fetchers.job;
+      pthread_mutex_unlock (&unload_Fetchers.mtx);
+
+      (void) unload_fetch_part (unload_Fetchers.fetch_type, UNLOAD_PROCESS_PARTS () * unload_Fetchers.nfetchers,
+				UNLOAD_PROCESS_PART () * unload_Fetchers.nfetchers + slot->idx,
+				unload_Fetchers.read_ahead_sectors, &slot->wi_fetch);
+
+      pthread_mutex_lock (&unload_Fetchers.mtx);
+      if (--unload_Fetchers.nbusy == 0)
+	{
+	  pthread_cond_broadcast (&unload_Fetchers.cond);
+	}
+    }
+  pthread_mutex_unlock (&unload_Fetchers.mtx);
+
+  /* also after a failed db_restart_sub (): it releases what is left */
+  (void) db_shutdown_sub ();
+
+  pthread_exit ((THREAD_RET_T) 0);
+}
+
+/*
+ * unload_fetchers_stop () - let the fetcher threads end their sub-clients and exit
+ */
+static void
+unload_fetchers_stop (void)
+{
+  int i;
+
+  if (unload_Fetchers.slots == NULL)
+    {
+      return;
+    }
+
+  pthread_mutex_lock (&unload_Fetchers.mtx);
+  unload_Fetchers.quit = true;
+  pthread_cond_broadcast (&unload_Fetchers.cond);
+  pthread_mutex_unlock (&unload_Fetchers.mtx);
+
+  for (i = 0; i < unload_Fetchers.nfetchers; i++)
+    {
+      if (unload_Fetchers.slots[i].tid != INVALID_THREAD_ID)
+	{
+	  pthread_join (unload_Fetchers.slots[i].tid, NULL);
+	}
+    }
+
+  pthread_cond_destroy (&unload_Fetchers.cond);
+  pthread_mutex_destroy (&unload_Fetchers.mtx);
+  free_and_init (unload_Fetchers.slots);
+  unload_Fetchers.nfetchers = 0;
+}
+
+/*
+ * unload_fetchers_start () - start the fetcher threads of --fetcher-count and wait for their sub-clients
+ *    return: the fetchers running; 0 when the rows are fetched by the main client (one fetcher); -1 on an error
+ *    nfetchers(in): --fetcher-count
+ *
+ * Note: the snapshot of the main client is exported first, so the main client reads it too when a sub-client cannot
+ *	 start and the others are stopped. But when a sub-client cannot take the snapshot over, the unload fails rather
+ *	 than read with one of its own.
+ */
+static int
+unload_fetchers_start (int nfetchers)
+{
+  int i, error = NO_ERROR, import_error = NO_ERROR;
+
+  memset (&unload_Fetchers, 0, sizeof (unload_Fetchers));
+  if (nfetchers <= 1)
+    {
+      return 0;
+    }
+
+  unload_Fetchers.slots = (UNLOAD_FETCHER_SLOT *) calloc (nfetchers, sizeof (UNLOAD_FETCHER_SLOT));
+  if (unload_Fetchers.slots == NULL)
+    {
+      return 0;
+    }
+  pthread_mutex_init (&unload_Fetchers.mtx, NULL);
+  pthread_cond_init (&unload_Fetchers.cond, NULL);
+  unload_Fetchers.nfetchers = nfetchers;
+
+  /* --read-ahead-sectors bounds the read-ahead of the whole unload: the fetchers share it */
+  unload_Fetchers.read_ahead_sectors =
+    (g_read_ahead_sectors == 0) ? 0 : MAX (MIN (g_read_ahead_sectors, 2), g_read_ahead_sectors / nfetchers);
+
+  error = log_export_mvcc_snapshot (&unload_Fetchers.snapshot_tran_index, &unload_Fetchers.snapshot_trid);
+  if (error != NO_ERROR)
+    {
+      fprintf (stderr, "\nThe snapshot of the unload could not be shared with the fetchers of '--%s' (error %d).\n",
+	       UNLOAD_FETCHER_COUNT_L, error);
+      pthread_cond_destroy (&unload_Fetchers.cond);
+      pthread_mutex_destroy (&unload_Fetchers.mtx);
+      free_and_init (unload_Fetchers.slots);
+      unload_Fetchers.nfetchers = 0;
+      return -1;
+    }
+
+  for (i = 0; i < nfetchers; i++)
+    {
+      unload_Fetchers.slots[i].idx = i;
+      unload_Fetchers.slots[i].tid = INVALID_THREAD_ID;
+    }
+  for (i = 0; i < nfetchers; i++)
+    {
+      if (pthread_create (&unload_Fetchers.slots[i].tid, NULL, unload_fetcher_thread, &unload_Fetchers.slots[i]) != 0)
+	{
+	  unload_Fetchers.slots[i].tid = INVALID_THREAD_ID;
+	  error = ER_FAILED;
+	  break;
+	}
+    }
+
+  pthread_mutex_lock (&unload_Fetchers.mtx);
+  while (unload_Fetchers.nstarted < i)
+    {
+      pthread_cond_wait (&unload_Fetchers.cond, &unload_Fetchers.mtx);
+    }
+  for (i = 0; i < nfetchers && error == NO_ERROR; i++)
+    {
+      error = unload_Fetchers.slots[i].error;
+    }
+  for (i = 0; i < nfetchers && import_error == NO_ERROR; i++)
+    {
+      import_error = unload_Fetchers.slots[i].import_error;
+    }
+  pthread_mutex_unlock (&unload_Fetchers.mtx);
+
+  if (import_error != NO_ERROR)
+    {
+      fprintf (stderr, "\nThe fetchers of '--%s' could not take over the snapshot of the unload (error %d).\n",
+	       UNLOAD_FETCHER_COUNT_L, import_error);
+      unload_fetchers_stop ();
+      return -1;
+    }
+
+  if (error != NO_ERROR)
+    {
+      fprintf (stderr, "\nThe fetchers of '--%s' could not connect to the server (error %d); one fetcher is used.\n",
+	       UNLOAD_FETCHER_COUNT_L, error);
+      unload_fetchers_stop ();
+      return 0;
+    }
+  return nfetchers;
+}
+
+/*
+ * unload_fetchers_run () - let the fetcher threads read the class g_uci names, and wait until they are done
+ *    fetch_type(in): the version fetched
+ *
+ * Note: the fetch time reported is that of the slowest fetcher; the count is that of all.
+ */
+static void
+unload_fetchers_run (LC_FETCH_VERSION_TYPE fetch_type)
+{
+  int i;
+
+  pthread_mutex_lock (&unload_Fetchers.mtx);
+  for (i = 0; i < unload_Fetchers.nfetchers; i++)
+    {
+      TIMER_CLEAR (&unload_Fetchers.slots[i].wi_fetch);
+    }
+  unload_Fetchers.fetch_type = fetch_type;
+  unload_Fetchers.nbusy = unload_Fetchers.nfetchers;
+  unload_Fetchers.job++;
+  pthread_cond_broadcast (&unload_Fetchers.cond);
+  while (unload_Fetchers.nbusy > 0)
+    {
+      pthread_cond_wait (&unload_Fetchers.cond, &unload_Fetchers.mtx);
+    }
+  pthread_mutex_unlock (&unload_Fetchers.mtx);
+
+#if !defined(WINDOWS)
+  for (i = 0; i < unload_Fetchers.nfetchers; i++)
+    {
+      const S_WAITING_INFO *wi = &unload_Fetchers.slots[i].wi_fetch;
+      S_WAITING_INFO *sum = &g_uci->wi_fetch;
+
+      if (wi->ts_wait_sum.tv_sec > sum->ts_wait_sum.tv_sec
+	  || (wi->ts_wait_sum.tv_sec == sum->ts_wait_sum.tv_sec && wi->ts_wait_sum.tv_nsec > sum->ts_wait_sum.tv_nsec))
+	{
+	  sum->ts_wait_sum = wi->ts_wait_sum;
+	}
+      sum->cnt += wi->cnt;
+    }
+#endif
+}
+#endif /* CS_MODE && MULTI_CONN_TO_A_SERVER */
+
+/*
+ * unload_writer_thread - write the rows the extractor threads queue to one object file
+ *    param(in): the object file, as an index into g_fd_handles
+ */
 static THREAD_RET_T THREAD_CALLING_CONVENTION
 unload_writer_thread (void *param)
 {
-  pthread_t tid = pthread_self ();
+  int file_idx = (int) (intptr_t) param;
   int thr_ret = NO_ERROR;
   int ret;
+  cuberr::context * er_context_p;
+
+  /* er_set () of what the thread calls needs an error context of the thread, as in unload_extractor_thread () */
+  er_context_p = new cuberr::context ();
+  er_context_p->register_thread_local ();
 
   while (writer_thread_proc_terminate == false)
     {
-      ret = flushing_write_blk_queue ();
+      ret = flushing_write_blk_queue (file_idx);
       if (ret < 0)
 	{
 	  thr_ret = ER_IO_WRITE;
 	  break;
 	}
 
-      TIMER_BEGIN ((g_sampling_records >= 0), &wi_w_blk_getQ);
+      TIMER_BEGIN ((g_sampling_records >= 0), &wi_w_blk_getQ[file_idx]);
       usleep (100);
 #if !defined(WINDOWS)
       if (ret == 0)
 	{
-	  wi_w_blk_getQ.cnt--;
+	  wi_w_blk_getQ[file_idx].cnt--;
 	}
 #endif
-      TIMER_END ((g_sampling_records >= 0), &wi_w_blk_getQ);
+      TIMER_END ((g_sampling_records >= 0), &wi_w_blk_getQ[file_idx]);
     }
 
   if (thr_ret == NO_ERROR)
     {
-      ret = flushing_write_blk_queue ();
+      ret = flushing_write_blk_queue (file_idx);
       if (ret < 0)
 	{
 	  thr_ret = ER_IO_WRITE;
@@ -1667,6 +2026,10 @@ unload_writer_thread (void *param)
     {
       error_occurred = true;
     }
+
+  er_context_p->deregister_thread_local ();
+  delete er_context_p;
+  er_context_p = NULL;
 
 #if defined(WINDOWS)
   pthread_exit ((THREAD_RET_T) thr_ret);
@@ -1847,7 +2210,9 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
   bool enabled_alarm = false;
   LC_FETCH_VERSION_TYPE fetch_type = latest_image_flag ? LC_FETCH_CURRENT_VERSION : LC_FETCH_MVCC_VERSION;
   UNLD_CLASS_PARAM unld_cls_info;
-  pthread_t writer_tid;
+  pthread_t writer_tids[UNLOAD_MAX_OUTPUT_FILES];
+  int nwriters = 0;
+  int nfiles;
   void *retval = NULL;
   class copyarea_list c_cparea_lst_class;
 
@@ -1892,8 +2257,11 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
       goto exit_on_error;
     }
 
-  TIMER_CLEAR (&wi_w_blk_getQ);
-  TIMER_CLEAR (&wi_write_file);
+  for (i = 0; i < UNLOAD_MAX_OUTPUT_FILES; i++)
+    {
+      TIMER_CLEAR (&wi_w_blk_getQ[i]);
+      TIMER_CLEAR (&wi_write_file[i]);
+    }
   TIMER_CLEAR (&wi_unload_class);
   TIMER_BEGIN ((g_sampling_records >= 0), &wi_unload_class);
 
@@ -1996,6 +2364,27 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
       goto exit_on_error;
     }
 
+  /*
+   * The object files the class goes to. Each of them gets the header of the class, so that each can be loaded alone.
+   * A class other classes refer to, or one with shared or class attributes, whose values can refer to objects, stays
+   * in the first file: loaddb finds the objects a reference names only among the rows of the same run, and makes an
+   * empty object for one it does not find.
+   */
+  nfiles = g_noutput_files;
+  if (referenced_class || class_ptr->shared != NULL || class_ptr->class_attributes != NULL)
+    {
+      nfiles = 1;
+    }
+
+  /* written now, as a class without a heap has nothing more */
+  g_write_all_files = (nfiles > 1);
+  error = text_print_request_flush (&(g_thr_param[0].text_output), true);
+  g_write_all_files = false;
+  if (error != NO_ERROR)
+    {
+      goto exit_on_end;
+    }
+
   /* Find the heap where the instances are stored */
   hfid = sm_ch_heap ((MOBJ) class_ptr);
   if (hfid->vfid.fileid == NULL_FILEID)
@@ -2036,7 +2425,10 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 
   error_occurred = false;
   assert (g_multi_thread_mode == false);
+  /* the format line, to the same files as the header */
+  g_write_all_files = (nfiles > 1);
   error = text_print_request_flush (&(g_thr_param[0].text_output), true);
+  g_write_all_files = false;
   if (error != NO_ERROR)
     {
       goto exit_on_end;
@@ -2101,15 +2493,29 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 	    }
 	}
 
-      if (pthread_create (&writer_tid, NULL, unload_writer_thread, NULL) != 0)
+      /* a writer thread for each object file of the class */
+      nwriters = nfiles;
+      for (i = 0; i < nwriters; i++)
 	{
-	  perror ("pthread_create()\n");
-	  _exit (1);
+	  if (pthread_create (&writer_tids[i], NULL, unload_writer_thread, (void *) (intptr_t) i) != 0)
+	    {
+	      perror ("pthread_create()\n");
+	      _exit (1);
+	    }
 	}
     }
 
   YIELD_THREAD ();
-  unload_fetcher (fetch_type);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  if (unload_Nfetchers > 1 && g_multi_thread_mode)
+    {
+      unload_fetchers_run (fetch_type);
+    }
+  else
+#endif
+    {
+      unload_fetcher (fetch_type);
+    }
 
   if (!g_multi_thread_mode)
     {
@@ -2138,7 +2544,10 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 	}
 
       writer_thread_proc_terminate = true;
-      pthread_join (writer_tid, &retval);
+      for (i = 0; i < nwriters; i++)
+	{
+	  pthread_join (writer_tids[i], &retval);
+	}
 
       g_multi_thread_mode = false;
 
@@ -2146,18 +2555,18 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
       pthread_mutex_destroy (&unld_cls_info.mtx);
     }
 
-  if (data_format != OBJECT_FORMAT_TEXT)
+  if (data_format != OBJECT_FORMAT_TEXT && error == NO_ERROR && !error_occurred)
     {
-      /* end of records marker followed by the new line which closes the section */
+      /* end of records marker followed by the new line which closes the section, unless the section failed */
       const BIN_REC_SIZE_TYPE end_of_records = BIN_END_OF_RECORDS;
       char section_end[sizeof (end_of_records) + 1];
 
       memcpy (section_end, &end_of_records, sizeof (end_of_records));
       section_end[sizeof (end_of_records)] = '\n';
 
-      if (write (g_fd_handle, section_end, sizeof (section_end)) != (ssize_t) sizeof (section_end))
+      for (i = 0; i < nfiles; i++)
 	{
-	  if (error == NO_ERROR)
+	  if (write_object_file_bytes (i, section_end, (int) sizeof (section_end)) != NO_ERROR && error == NO_ERROR)
 	    {
 	      error = ER_IO_WRITE;
 	    }
@@ -2911,20 +3320,34 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
 static void
 close_object_file ()
 {
+  int i;
 
-  if (g_fd_handle != INVALID_FILE_NO)
+  for (i = 0; i < UNLOAD_MAX_OUTPUT_FILES; i++)
     {
-      close (g_fd_handle);
-      g_fd_handle = INVALID_FILE_NO;
+      if (g_fd_handles[i] != INVALID_FILE_NO)
+	{
+	  close (g_fd_handles[i]);
+	  g_fd_handles[i] = INVALID_FILE_NO;
+	}
     }
+  g_noutput_files = 0;
 }
 
+/*
+ * open_object_file - open the object files of the unload, or of a class with --datafile-per-class
+ *    return: true if all are open
+ *    output_dirname(in): the directory
+ *    class_name(in): the class, with --datafile-per-class; NULL otherwise
+ *
+ * Note: with --output-files=K the files are <name>, <name>_2, ... <name>_K, each to be loaded alone.
+ */
 static bool
 open_object_file (extract_context & ctxt, const char *output_dirname, const char *class_name)
 {
   char out_fname[PATH_MAX];
   char tmp_name[DB_MAX_IDENTIFIER_LENGTH * 2];
   char *name_ptr = (char *) class_name;
+  int i;
 
 #if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
   if (g_parallel_process_cnt > 1)
@@ -2935,21 +3358,35 @@ open_object_file (extract_context & ctxt, const char *output_dirname, const char
     }
 #endif
 
-  out_fname[0] = '\0';
-  if (class_name && *class_name)
+  for (i = 0; i < unload_Noutput_files; i++)
     {
-      snprintf (out_fname, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix, name_ptr, OBJECT_SUFFIX);
-    }
-  else
-    {
-      snprintf (out_fname, PATH_MAX - 1, "%s/%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX);
-    }
+      char file_no[16] = { '\0' };
 
-  g_fd_handle = open (out_fname, O_WRONLY | O_CREAT | O_TRUNC, CREAT_OBJECT_FILE_PERM);
-  if (g_fd_handle == INVALID_FILE_NO)
-    {
-      fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
-      return false;
+      if (i > 0)
+	{
+	  snprintf (file_no, sizeof (file_no), "_%d", i + 1);
+	}
+
+      out_fname[0] = '\0';
+      if (class_name && *class_name)
+	{
+	  snprintf (out_fname, PATH_MAX - 1, "%s/%s_%s%s%s", output_dirname, ctxt.output_prefix, name_ptr,
+		    OBJECT_SUFFIX, file_no);
+	}
+      else
+	{
+	  snprintf (out_fname, PATH_MAX - 1, "%s/%s%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX, file_no);
+	}
+
+      snprintf (g_fd_names[i], sizeof (g_fd_names[i]), "%s", out_fname);
+      g_fd_handles[i] = open (out_fname, O_WRONLY | O_CREAT | O_TRUNC, CREAT_OBJECT_FILE_PERM);
+      if (g_fd_handles[i] == INVALID_FILE_NO)
+	{
+	  fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+	  close_object_file ();
+	  return false;
+	}
+      g_noutput_files = i + 1;
     }
 
   return true;
@@ -3118,8 +3555,17 @@ print_monitoring_info (const char *class_name, int nthreads)
 	   g_uci->wi_fetch.ts_wait_sum.tv_sec + ((double) g_uci->wi_fetch.ts_wait_sum.tv_nsec / NANO_PREC_VAL),
 	   g_uci->wi_fetch.cnt);
 
-  fprintf (fp, ALIGN_SPACE_FMT "Write  : %12.6f sec\n", "",
-	   wi_write_file.ts_wait_sum.tv_sec + ((double) wi_write_file.ts_wait_sum.tv_nsec / NANO_PREC_VAL));
+  /* the slowest writer */
+  {
+    double write_sec = 0;
+
+    for (int k = 0; k < UNLOAD_MAX_OUTPUT_FILES; k++)
+      {
+	write_sec = MAX (write_sec, wi_write_file[k].ts_wait_sum.tv_sec
+			 + ((double) wi_write_file[k].ts_wait_sum.tv_nsec / NANO_PREC_VAL));
+      }
+    fprintf (fp, ALIGN_SPACE_FMT "Write  : %12.6f sec\n", "", write_sec);
+  }
 
   if (nthreads <= 0)
     {
@@ -3164,8 +3610,8 @@ print_monitoring_info (const char *class_name, int nthreads)
 	   (int64_t) (winfo.cnt / nthreads));
 
   fprintf (fp, ALIGN_SPACE_FMT "Get Q  : %12.6f sec, count= %" PRId64 "\n", "",
-	   (wi_w_blk_getQ.ts_wait_sum.tv_sec + ((double) wi_w_blk_getQ.ts_wait_sum.tv_nsec / NANO_PREC_VAL)),
-	   (int64_t) (wi_w_blk_getQ.cnt));
+	   (wi_w_blk_getQ[0].ts_wait_sum.tv_sec + ((double) wi_w_blk_getQ[0].ts_wait_sum.tv_nsec / NANO_PREC_VAL)),
+	   (int64_t) (wi_w_blk_getQ[0].cnt));
 
   memset (&winfo, 0x00, sizeof (S_WAITING_INFO));
   for (int i = 0; i < nthreads; i++)

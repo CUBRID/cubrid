@@ -9332,6 +9332,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
 /*
  * pgbuf_read_ahead () - tell the OS which pages the caller is going to fix soon
+ *   return: the pages handed to the OS; 0 when the buffer holds them all
  *   vpids(in): pages of permanent volumes; consecutive pages in ascending order are handed over as one range
  *   count(in): number of pages
  *

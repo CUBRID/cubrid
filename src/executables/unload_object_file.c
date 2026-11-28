@@ -68,7 +68,20 @@
 
 volatile bool error_occurred = false;
 int g_io_buffer_size = 4096;
-int g_fd_handle = INVALID_FILE_NO;
+/* the object files open; rows of the extractor threads go to the file of the writer thread that takes them, and what
+ * the main thread writes in between goes to the first one, or to all of them while g_write_all_files is set (the
+ * headers every file needs to be loaded alone) */
+int g_fd_handles[UNLOAD_MAX_OUTPUT_FILES] = {
+  INVALID_FILE_NO, INVALID_FILE_NO, INVALID_FILE_NO, INVALID_FILE_NO, INVALID_FILE_NO, INVALID_FILE_NO,
+  INVALID_FILE_NO, INVALID_FILE_NO, INVALID_FILE_NO, INVALID_FILE_NO, INVALID_FILE_NO, INVALID_FILE_NO,
+  INVALID_FILE_NO, INVALID_FILE_NO, INVALID_FILE_NO, INVALID_FILE_NO
+};
+
+/* the names of the object files, for the message of a failed write */
+char g_fd_names[UNLOAD_MAX_OUTPUT_FILES][PATH_MAX];
+
+int g_noutput_files = 0;
+bool g_write_all_files = false;
 bool g_multi_thread_mode = false;
 UNLD_THR_PARAM *g_thr_param = NULL;
 int g_sampling_records = -1;
@@ -82,11 +95,11 @@ static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 static int binary_print_bit (TEXT_OUTPUT * tout, const u_char * bits, int bit_length, DB_TYPE type);
 static int binary_print_tz (TEXT_OUTPUT * tout, DB_VALUE * value, DB_TYPE type);
 
-static int write_object_file (TEXT_BUFFER_BLK * head);
+static int write_object_file (TEXT_BUFFER_BLK * head, int file_idx);
 static int binary_compress_output (TEXT_BUFFER_BLK * head, TEXT_BUFFER_BLK ** compressed);
 
 #if !defined(WINDOWS)
-extern S_WAITING_INFO wi_write_file;
+extern S_WAITING_INFO wi_write_file[UNLOAD_MAX_OUTPUT_FILES];
 #endif
 class text_buffer_mgr
 {
@@ -367,8 +380,16 @@ get_text_output_mem (TEXT_OUTPUT * tout, int alloc_sz)
   return NO_ERROR;
 }
 
+/*
+ * flushing_write_blk_queue - write what the queue holds to one object file
+ *    return: 1 if something was written, 0 if the queue was empty, -1 on a write error
+ *    file_idx(in): the object file of the writer thread
+ *
+ * Note: several writer threads may empty the queue at once, each into its own file; a queued list of blocks holds
+ *	 whole rows, so each file gets whole rows.
+ */
 int
-flushing_write_blk_queue ()
+flushing_write_blk_queue (int file_idx)
 {
   TEXT_BUFFER_BLK *head;
 
@@ -380,7 +401,7 @@ flushing_write_blk_queue ()
 
   while (head)
     {
-      if (write_object_file (head) != NO_ERROR)
+      if (write_object_file (head, file_idx) != NO_ERROR)
 	{
 	  return -1;
 	}
@@ -1687,12 +1708,12 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
    */
   bool compress = (g_data_format == OBJECT_FORMAT_BINARY_COMPRESSED);
 
-  if (!g_multi_thread_mode && g_fd_handle != INVALID_FILE_NO && !compress)
+  if (!g_multi_thread_mode && g_fd_handles[0] != INVALID_FILE_NO && !compress)
     {
       tout->head_ptr = NULL;
       tout->tail_ptr = NULL;
       tout->record_cnt = 0;
-      return write_object_file (head);
+      return write_object_file (head, g_write_all_files ? -1 : 0);
     }
 
   int flag = 0;
@@ -1715,9 +1736,11 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 	      return error;
 	    }
 
-	  if (!g_multi_thread_mode && g_fd_handle != INVALID_FILE_NO)
+	  if (!g_multi_thread_mode && g_fd_handles[0] != INVALID_FILE_NO)
 	    {
-	      return write_object_file (head);
+	      /* what goes to every object file is the headers, which are text */
+	      assert (!g_write_all_files);
+	      return write_object_file (head, 0);
 	    }
 	}
 
@@ -1759,38 +1782,72 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
   return NO_ERROR;
 }
 
+/*
+ * write_object_file - write a list of blocks to an object file and give the blocks back
+ *    return: NO_ERROR, or ER_IO_WRITE
+ *    head(in): the blocks
+ *    file_idx(in): the object file; -1 writes to every object file
+ */
 static int
-write_object_file (TEXT_BUFFER_BLK * head)
+write_object_file (TEXT_BUFFER_BLK * head, int file_idx)
 {
   TEXT_BUFFER_BLK *tp;
   int error = NO_ERROR;
-  int _errno;
+  int first = (file_idx < 0) ? 0 : file_idx;
+  int last = (file_idx < 0) ? g_noutput_files - 1 : file_idx;
+  int i;
 
-  TIMER_BEGIN ((g_sampling_records >= 0), &wi_write_file);
-  for (tp = head; tp && tp->count > 0; tp = head)
+  TIMER_BEGIN ((g_sampling_records >= 0), &wi_write_file[first]);
+  /* every block is given back, also after a failed write; nothing more is written then */
+  for (tp = head; tp != NULL; tp = head)
     {
       head = tp->next;
-      /* write to disk */
-      if (error == NO_ERROR)
+      for (i = first; i <= last && error == NO_ERROR && tp->count > 0; i++)
 	{
-	  if (tp->count != write (g_fd_handle, tp->buffer, tp->count))
-	    {
-#if defined(WINDOWS)
-	      _errno = _doserrno;
-#else
-	      _errno = errno;
-#endif
-	      // TODDO: EAGAIN, EINTR ?
-	      assert (_errno == EINTR || _errno == EBADF);
-	      error = ER_IO_WRITE;
-	    }
+	  error = write_object_file_bytes (i, tp->buffer, tp->count);
 	}
 
       c_text_buf_mgr.release_text_buffer (tp);
     }
-  TIMER_END ((g_sampling_records >= 0), &wi_write_file);
+  TIMER_END ((g_sampling_records >= 0), &wi_write_file[first]);
 
   return error;
+}
+
+/*
+ * write_object_file_bytes - write bytes to an object file
+ *    return: NO_ERROR, or ER_IO_WRITE after telling which file and why
+ *    file_idx(in): the object file
+ *    buf(in): the bytes
+ *    len(in): how many
+ *
+ * Note: a write can take part of the bytes, and one a signal breaks off is tried again. It runs in the writer threads
+ *       as well as in the main thread.
+ */
+int
+write_object_file_bytes (int file_idx, const char *buf, int len)
+{
+  while (len > 0)
+    {
+      int nbytes = (int) write (g_fd_handles[file_idx], buf, len);
+
+      if (nbytes < 0)
+	{
+	  if (errno == EINTR)
+	    {
+	      continue;
+	    }
+
+	  fprintf (stderr, "\n%s: %s.\n", g_fd_names[file_idx], strerror (errno));
+	  fflush (stderr);
+	  return ER_IO_WRITE;
+	}
+
+      buf += nbytes;
+      len -= nbytes;
+    }
+
+  return NO_ERROR;
 }
 
 #if !defined(WINDOWS)

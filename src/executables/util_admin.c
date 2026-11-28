@@ -582,6 +582,9 @@ static UTIL_ARG_MAP ua_Unload_Option_Map[] = {
   {UNLOAD_SAMPLING_TEST_S, {ARG_INTEGER}, {(void *) (-1)}},
   {UNLOAD_ENHANCED_ESTIMATES_S, {ARG_BOOLEAN}, {0}},
   {UNLOAD_DATA_FORMAT_S, {ARG_INTEGER}, {0}},
+  {UNLOAD_READ_AHEAD_SECTORS_S, {ARG_INTEGER}, {(void *) (-1)}},
+  {UNLOAD_FETCHER_COUNT_S, {ARG_INTEGER}, {(void *) 1}},
+  {UNLOAD_OUTPUT_FILES_S, {ARG_INTEGER}, {(void *) 1}},
   {0, {0}, {0}}
 };
 
@@ -615,6 +618,9 @@ static GETOPT_LONG ua_Unload_Option[] = {
   {UNLOAD_SAMPLING_TEST_L, 1, 0, UNLOAD_SAMPLING_TEST_S},
   {UNLOAD_ENHANCED_ESTIMATES_L, 0, 0, UNLOAD_ENHANCED_ESTIMATES_S},
   {UNLOAD_DATA_FORMAT_L, 1, 0, UNLOAD_DATA_FORMAT_S},
+  {UNLOAD_READ_AHEAD_SECTORS_L, 1, 0, UNLOAD_READ_AHEAD_SECTORS_S},
+  {UNLOAD_FETCHER_COUNT_L, 1, 0, UNLOAD_FETCHER_COUNT_S},
+  {UNLOAD_OUTPUT_FILES_L, 1, 0, UNLOAD_OUTPUT_FILES_S},
   {0, 0, 0, 0}
 };
 
@@ -1041,6 +1047,7 @@ static UTIL_MAP ua_Utility_Map[] = {
 };
 
 static const char *util_get_library_name (int utility_index);
+static const char *util_get_cs_library_name (int utility_index);
 static int util_get_function_name (const char **function_name, const char *utility_name);
 static int util_get_utility_index (int *utility_index, const char *utility_name);
 static void print_admin_usage (const char *argv0);
@@ -1148,6 +1155,13 @@ main (int argc, char *argv[])
 
   library_name = util_get_library_name (utility_index);
   status = utility_load_library (&library_handle, library_name);
+#if defined(LIB_UTIL_CS_MC_NAME)
+  if (status != NO_ERROR && strcmp (library_name, LIB_UTIL_CS_MC_NAME) == 0)
+    {
+      /* an install without libcubridcs_mc: run with one connection, the utility tells what it cannot do */
+      status = utility_load_library (&library_handle, LIB_UTIL_CS_NAME);
+    }
+#endif
   if (status == NO_ERROR)
     {
       const char *symbol_name;
@@ -1188,6 +1202,38 @@ error_exit:
 }
 
 /*
+ * The utilities that open sub-clients (db_restart_sub ()) in CS mode. They load libcubridcs_mc, the client library
+ * built with MULTI_CONN_TO_A_SERVER, where it is built (see cs/CMakeLists.txt); the other utilities load libcubridcs,
+ * which does not pay for the thread local variables of that build. Add a utility here when it starts to use
+ * sub-clients, e.g. APPLYLOGDB.
+ */
+static const int ua_Sub_client_utilities[] = { UNLOADDB };
+
+/*
+ * util_get_cs_library_name - the client library of a utility run in CS mode
+ *
+ * return: LIB_UTIL_CS_MC_NAME for a utility of ua_Sub_client_utilities where that library is built,
+ *         LIB_UTIL_CS_NAME otherwise
+ */
+static const char *
+util_get_cs_library_name (int utility_index)
+{
+#if defined(LIB_UTIL_CS_MC_NAME)
+  size_t i;
+
+  for (i = 0; i < sizeof (ua_Sub_client_utilities) / sizeof (ua_Sub_client_utilities[0]); i++)
+    {
+      if (ua_Sub_client_utilities[i] == utility_index)
+	{
+	  return LIB_UTIL_CS_MC_NAME;
+	}
+    }
+#endif
+
+  return LIB_UTIL_CS_NAME;
+}
+
+/*
  * get_lib_util_name - check executable utility mode
  *
  * return:
@@ -1205,7 +1251,7 @@ util_get_library_name (int utility_index)
     case SA_ONLY:
       return LIB_UTIL_SA_NAME;
     case CS_ONLY:
-      return LIB_UTIL_CS_NAME;
+      return util_get_cs_library_name (utility_index);
     case SA_CS:
       {
 	int i;
@@ -1214,11 +1260,11 @@ util_get_library_name (int utility_index)
 	    int key = arg_map[i].arg_ch;
 	    if (key == 'C' && arg_map[i].arg_value.p != NULL)
 	      {
-		return LIB_UTIL_CS_NAME;
+		return util_get_cs_library_name (utility_index);
 	      }
 	    if (key == HIDDEN_CS_MODE_S && arg_map[i].arg_value.p != NULL)
 	      {
-		return LIB_UTIL_CS_NAME;
+		return util_get_cs_library_name (utility_index);
 	      }
 	    if (key == 'S' && arg_map[i].arg_value.p != NULL)
 	      {
@@ -1233,7 +1279,7 @@ util_get_library_name (int utility_index)
     }
   else
     {
-      return LIB_UTIL_CS_NAME;
+      return util_get_cs_library_name (utility_index);
     }
 }
 

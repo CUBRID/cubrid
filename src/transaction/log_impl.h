@@ -510,6 +510,8 @@ struct log_tdes
   int num_unique_btrees;	/* # of unique btrees contained in unique_stat_info array */
   int max_unique_btrees;	/* size of unique_stat_info array */
   multi_index_unique_stats m_multiupd_stats;
+  struct heap_file_order_cache *file_order_cache;	/* the heap sectors unloaddb walks in file order, kept between
+							 * its fetch calls (xlocator_fetch_all ()) */
 #if defined(_AIX)
   sig_atomic_t interrupt;
 #else				/* _AIX */
@@ -1218,6 +1220,8 @@ extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);
 extern int logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p);
 extern int logtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p);
 extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
+extern int xlogtb_export_mvcc_snapshot (THREAD_ENTRY * thread_p, int *tran_index, int *trid);
+extern int xlogtb_import_mvcc_snapshot (THREAD_ENTRY * thread_p, int src_tran_index, int src_trid);
 
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);

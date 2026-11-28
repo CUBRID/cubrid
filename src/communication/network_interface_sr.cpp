@@ -958,7 +958,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   char *content_ptr;
   int content_size;
   int num_objs = 0;
-  int nparallel_process, nparallel_process_idx, request_pages;
+  int nparallel_process, nparallel_process_idx, request_pages, read_ahead_sectors;
   NET_ENDIAN server_endian = get_endian_type ();
   int client_endian;
   int encode_endian = 1;
@@ -973,6 +973,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   ptr = or_unpack_int (ptr, &request_pages);
   ptr = or_unpack_int (ptr, &nparallel_process);
   ptr = or_unpack_int (ptr, &nparallel_process_idx);
+  ptr = or_unpack_int (ptr, &read_ahead_sectors);
   ptr = or_unpack_int (ptr, &client_endian);
 
   if ((NET_ENDIAN) client_endian == server_endian && server_endian != NET_ENDIAN_UNKNOWN)
@@ -996,7 +997,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   copy_area = NULL;
   success =
 	  xlocator_fetch_all (thread_p, &hfid, &lock, (LC_FETCH_VERSION_TYPE) fetch_version_type, &class_oid, &nobjects,
-			      &nfetched, &last_oid, &copy_area, request_pages);
+			      &nfetched, &last_oid, &copy_area, request_pages, nparallel_process >= 1, read_ahead_sectors);
 
   if (nparallel_process > 1)
     {
@@ -11466,6 +11467,62 @@ slogtb_get_mvcc_snapshot (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
     {
       (void) return_error_to_client (thread_p, rid);
     }
+
+  css_send_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * slogtb_export_mvcc_snapshot () - pin the snapshot of the transaction for the other connections of the client
+ *
+ * reply: [int error][int tran_index][int trid]
+ */
+void
+slogtb_export_mvcc_snapshot (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int tran_index = NULL_TRAN_INDEX;
+  int trid = NULL_TRANID;
+  int err;
+
+  err = xlogtb_export_mvcc_snapshot (thread_p, &tran_index, &trid);
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, err);
+  ptr = or_pack_int (ptr, tran_index);
+  (void) or_pack_int (ptr, trid);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * slogtb_import_mvcc_snapshot () - take over the snapshot another connection of the client exported
+ *
+ * request: [int tran_index][int trid], reply: [int error]
+ */
+void
+slogtb_import_mvcc_snapshot (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  int tran_index, trid;
+  int err;
+
+  ptr = or_unpack_int (request, &tran_index);
+  (void) or_unpack_int (ptr, &trid);
+
+  err = xlogtb_import_mvcc_snapshot (thread_p, tran_index, trid);
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  (void) or_pack_int (reply, err);
 
   css_send_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply));
 }

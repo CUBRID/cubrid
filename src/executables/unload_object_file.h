@@ -51,6 +51,12 @@ class print_output;
 
 
 #if defined(WINDOWS)
+/* no timers: only so that a timer can be passed around */
+typedef struct _waiting_info
+{
+  int unused;
+} S_WAITING_INFO;
+
 #define TIMER_CLEAR(pwi)
 #define TIMER_BEGIN(flag, pwi)
 #define TIMER_END(flag, pwi)
@@ -115,7 +121,8 @@ typedef struct _unloaddb_thread_param
 
 extern bool init_queue_n_list_for_object_file (int q_size, int blk_size);
 
-extern int flushing_write_blk_queue ();
+extern int flushing_write_blk_queue (int file_idx);
+extern int write_object_file_bytes (int file_idx, const char *buf, int len);
 
 extern int desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value);
 extern int desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value);
@@ -130,7 +137,12 @@ extern int text_print_request_flush (TEXT_OUTPUT * tout, bool force);
 extern volatile bool error_occurred;
 extern int g_sampling_records;
 extern int g_io_buffer_size;
-extern int g_fd_handle;
+/* the object files of --output-files: a writer thread each, numbered from 0 */
+#define UNLOAD_MAX_OUTPUT_FILES (16)
+extern int g_fd_handles[UNLOAD_MAX_OUTPUT_FILES];
+extern char g_fd_names[UNLOAD_MAX_OUTPUT_FILES][PATH_MAX];
+extern int g_noutput_files;
+extern bool g_write_all_files;
 extern bool g_multi_thread_mode;
 extern UNLD_THR_PARAM *g_thr_param;
 

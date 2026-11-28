@@ -104,8 +104,16 @@ typedef enum ds_search_direction DS_SEARCH_DIRECTION;
 static int tz_Initialized = 0;
 static TZ_REGION tz_Region_system;
 #if !defined(SERVER_MODE)
-/* session timezone region of the client; per connection (thread-local) for multiple connections */
-static CUB_THREAD_LOCAL TZ_REGION tz_Region_session;
+/*
+ * session timezone region of the client: that of the process (the main client), which every thread reads unless it
+ * holds a sub-client with its own (multiple connections). A thread that holds no connection, such as an extractor
+ * thread of unloaddb, so reads that of the main client.
+ */
+static TZ_REGION tz_Region_session;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+static CUB_THREAD_LOCAL TZ_REGION tz_Region_sub_client_session;
+static CUB_THREAD_LOCAL bool tz_Region_sub_client_session_is_set = false;
+#endif
 #endif
 
 /*
@@ -785,6 +793,13 @@ tz_get_session_tz_region (TZ_REGION * tz_region)
   TZ_REGION *session_tz_region;
 
 #if defined(CS_MODE)
+#if defined(MULTI_CONN_TO_A_SERVER)
+  if (tz_Region_sub_client_session_is_set)
+    {
+      *tz_region = tz_Region_sub_client_session;
+      return;
+    }
+#endif
   session_tz_region = tz_get_client_tz_region_session ();
   *tz_region = *session_tz_region;
 #else /* SERVER or SA_MODE */
@@ -4793,12 +4808,40 @@ tz_set_tz_region_system (const TZ_REGION * tz_region)
  * tz_get_client_tz_region_session() - get a reference to the global tz_Region_session variable
  *
  * Returns: reference to the tz_Region_session variable
+ *
+ * Note: it is the session timezone of the process (the main client). A sub-client sets its own with
+ *	 tz_get_sub_client_tz_region_session ().
  */
 #if !defined(SERVER_MODE)
 TZ_REGION *
 tz_get_client_tz_region_session (void)
 {
   return &tz_Region_session;
+}
+#endif
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+/*
+ * tz_get_sub_client_tz_region_session() - get a reference to the session timezone region of the sub-client of this
+ *					   thread, to set it
+ *
+ * Returns: reference to the region of this thread, which this thread reads from now on instead of that of the process
+ */
+TZ_REGION *
+tz_get_sub_client_tz_region_session (void)
+{
+  tz_Region_sub_client_session_is_set = true;
+  return &tz_Region_sub_client_session;
+}
+
+/*
+ * tz_reset_sub_client_tz_region_session() - let this thread read the session timezone of the process again, as its
+ *					     sub-client ends
+ */
+void
+tz_reset_sub_client_tz_region_session (void)
+{
+  tz_Region_sub_client_session_is_set = false;
 }
 #endif
 

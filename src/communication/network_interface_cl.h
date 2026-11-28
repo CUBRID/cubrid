@@ -99,7 +99,8 @@ extern int locator_get_class (OID * class_oid, int class_chn, const OID * oid, L
 			      LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type,
 			      OID * class_oidp, int *nobjects, int *nfetched, OID * last_oidp,
-			      LC_COPYAREA ** fetch_copyarea, int request_pages, int nsplit_process, int nselection_key);
+			      LC_COPYAREA ** fetch_copyarea, int request_pages, int nsplit_process, int nselection_key,
+			      int read_ahead_sectors);
 extern int locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, int class_chn, int need_fetching,
 			       int prefetch, LC_COPYAREA ** fetch_copyarea, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
@@ -384,6 +385,8 @@ extern int csession_drop_session_variables (DB_VALUE * variables, const int coun
 
 extern int cvacuum (void);
 extern int log_get_mvcc_snapshot (void);
+extern int log_export_mvcc_snapshot (int *tran_index, int *trid);
+extern int log_import_mvcc_snapshot (int tran_index, int trid);
 extern int tran_lock_rep_read (LOCK lock_rr_tran);
 
 extern int chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info, const OID * class_oidp);

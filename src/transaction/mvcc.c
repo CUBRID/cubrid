@@ -664,6 +664,7 @@ mvcc_snapshot::mvcc_snapshot ()
   , snapshot_fnc (NULL)
   , valid (false)
   , build_serial (0)
+  , pinned (false)
 {
 }
 
@@ -677,6 +678,7 @@ mvcc_snapshot::reset ()
   m_active_mvccs.reset ();
 
   valid = false;
+  pinned = false;
 }
 
 void
