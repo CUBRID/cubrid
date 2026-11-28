@@ -1170,8 +1170,7 @@ static int pgbuf_unlock_page (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_
 			      int need_hash_mutex);
 static PGBUF_BCB *pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid);
 static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again,
-					   bool already_locked);
+					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again);
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
 static int pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
@@ -2418,7 +2417,7 @@ try_again:
     }
   else
     {
-      bufptr = pgbuf_claim_bcb_for_fix (thread_p, vpid, fetch_mode, hash_anchor, &perf, &retry, false);
+      bufptr = pgbuf_claim_bcb_for_fix (thread_p, vpid, fetch_mode, hash_anchor, &perf, &retry);
       if (bufptr == NULL)
 	{
 	  if (retry)
@@ -2715,16 +2714,15 @@ fast_path:
 }
 
 /*
- * pgbuf_simple_fix () - Copy a portion of a page to the given area
- *   return: area or NULL
+ * pgbuf_simple_fix () - Fix a temporary file page without a latch, only if it is already in the buffer
+ *   return: page pointer, or NULL if the page is not in the buffer, its BCB is about to be victimized, or the BCB
+ *           mutex trylock fails (ER_CSS_PTHREAD_MUTEX_TRYLOCK is set)
  *   vpid(in): Complete Page identifier
  *
  * Note:
  *       Fetch accounting and fix-time measurement are intentionally omitted for performance.
- *       On a buffer miss, pgbuf_claim_bcb_for_fix() still increments ioreads without a matching fetch.
- *       Workloads that use this path heavily, such as large ORDER BY queries whose sort keys are a subset of the
- *       selected columns, can report Data_page_buffer_hit_ratio below the actual hit ratio, even 0.00.
- *       TODO: Review how to resolve this fetch/ioread accounting asymmetry.
+ *       This function never reads a page into the buffer. On a miss it releases the hash mutex and returns NULL,
+ *       so it neither creates nor removes the page lock (the hash anchor waiting record) of pgbuf_lock_page ().
  *
  *       WARNING:
  *       This is only for reading temporary file.
@@ -2733,86 +2731,38 @@ fast_path:
  *       Cannot be mixed with general FIX(LATCH).
  */
 PAGE_PTR
-pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix)
+pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid)
 {
   PGBUF_BUFFER_HASH *hash_anchor;
   PGBUF_BCB *bufptr;
   PAGE_PTR pgptr;
-  bool retry;
-  int th_lru_idx;
 
   assert (pgbuf_is_temporary_volume (vpid->volid));
 
-retry:
   /* Is this a resident page ? */
   hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)]);
   bufptr = pgbuf_search_hash_chain (thread_p, hash_anchor, vpid);
 
   if (bufptr == NULL)
     {
-      if (!need_fix || er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
-	{
-	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
-	  return NULL;
-	}
-
-      if (pgbuf_lock_page (thread_p, hash_anchor, vpid) != PGBUF_LOCK_HOLDER)
-	{
-	  /* retry */
-	  goto retry;
-	}
-      bufptr = pgbuf_claim_bcb_for_fix (thread_p, vpid, OLD_PAGE, hash_anchor, NULL, &retry, true);
-      if (bufptr == NULL)
-	{
-	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
-	  return NULL;
-	}
-      pgbuf_insert_into_hash_chain (thread_p, hash_anchor, bufptr);
-      (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, false);
-
-      add_fcnt (&bufptr->atomic_latch, 1);
-      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
-
-      /* add lru list. */
-      if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
-	{
-	  th_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
-	  pgbuf_lru_add_new_bcb_to_top (thread_p, bufptr, th_lru_idx);
-	}
-      else
-	{
-	  pgbuf_lru_add_new_bcb_to_middle (thread_p, bufptr, pgbuf_get_shared_lru_index_for_add ());
-	}
-      PGBUF_BCB_UNLOCK (bufptr);
+      /* the caller is holding only hash_anchor->hash_mutex. */
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+      return NULL;
     }
-  else
+
+  if (pgbuf_bcb_is_direct_victim (bufptr))
     {
-      if (need_fix)
-	{
-	  /* we need to notify the thread that is waiting for this bcb to victimize that it cannot use it. */
-	  if (pgbuf_bcb_is_direct_victim (bufptr))
-	    {
-	      pgbuf_bcb_update_flags (thread_p, bufptr, PGBUF_BCB_INVALIDATE_DIRECT_VICTIM_FLAG,
-				      PGBUF_BCB_VICTIM_DIRECT_FLAG);
-	    }
-	}
-      else
-	{
-	  if (pgbuf_bcb_is_direct_victim (bufptr))
-	    {
-	      /* This BCB will be soon victimized and removed from the hash table. so it is considered not found. */
-	      PGBUF_BCB_UNLOCK (bufptr);
-	      return NULL;
-	    }
-	}
-
-      /* the caller is holding only bufptr->mutex. */
-      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
-
-      add_fcnt (&bufptr->atomic_latch, 1);
-      /* release mutex */
+      /* This BCB will be soon victimized and removed from the hash table. so it is considered not found. */
       PGBUF_BCB_UNLOCK (bufptr);
+      return NULL;
     }
+
+  /* the caller is holding only bufptr->mutex. */
+  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+
+  add_fcnt (&bufptr->atomic_latch, 1);
+  /* release mutex */
+  PGBUF_BCB_UNLOCK (bufptr);
 
   return pgptr;
 }
@@ -9099,7 +9049,7 @@ end:
  */
 static PGBUF_BCB *
 pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
-			 PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again, bool already_locked)
+			 PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again)
 {
   PGBUF_BCB *bufptr = NULL;
   PAGE_PTR pgptr = NULL;
@@ -9124,7 +9074,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
   /* In this case, the caller is holding only hash_anchor->hash_mutex. The hash_anchor->hash_mutex is to be
    * released in pgbuf_lock_page (). */
-  if (!already_locked && pgbuf_lock_page (thread_p, hash_anchor, vpid) != PGBUF_LOCK_HOLDER)
+  if (pgbuf_lock_page (thread_p, hash_anchor, vpid) != PGBUF_LOCK_HOLDER)
     {
       if (perf)
 	{

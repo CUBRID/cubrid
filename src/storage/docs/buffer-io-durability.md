@@ -72,8 +72,10 @@ Rules:
   fixing.
 - `pgbuf_ordered_fix*()` can unfix and refix pages already held. Check `page_was_unfixed`, re-read contents, and
   revalidate decisions and peeked records. On failure, check each watcher's page pointer before using it.
-- `pgbuf_simple_fix()` is a special latchless read path for temporary-volume pages. It cannot run with writers or
-  mix with ordinary latch-based fixing. See its restrictions in [page_buffer.c](../page_buffer.c).
+- `pgbuf_simple_fix()` is a special latchless fix for temporary-volume pages, used when a temporary file is destroyed
+  to find and drop its pages that are still in the buffer. It only fixes a page that is already in the buffer and
+  returns NULL otherwise; it never reads a page in. It cannot run with writers or mix with ordinary latch-based
+  fixing. See its restrictions in [page_buffer.c](../page_buffer.c).
 
 ## Dirty Pages, WAL, And Page LSA
 
