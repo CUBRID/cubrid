@@ -2119,7 +2119,7 @@ logwr_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TD
 
 #if defined(SERVER_MODE)
 static int logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p, LOG_PAGEID fpageid,
-					int mode, bool copy_from_first_phy_page);
+					int mode, LOGWR_MODE orig_mode, bool copy_from_first_phy_page);
 static bool logwr_unregister_writer_entry (LOGWR_ENTRY * wr_entry, int status);
 static int logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used_size, int *status,
 				 LOGWR_ENTRY * entry, bool copy_from_file);
@@ -2138,15 +2138,18 @@ static void logwr_update_last_sent_eof_lsa (LOGWR_ENTRY * entry);
  *   id(in):
  *   fpageid(in):
  *   mode(in):
+ *   orig_mode(in): the strongest mode the client has requested
  *
- * Note:
+ * Note: an ASYNC LWT that missed a flush while sending is set to DELAY instead of WAIT.
  */
 static int
 logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p, LOG_PAGEID fpageid, int mode,
-			     bool copy_from_first_phy_page)
+			     LOGWR_MODE orig_mode, bool copy_from_first_phy_page)
 {
   LOGWR_ENTRY *entry;
   int rv;
+  bool continue_checking = true;
+  LOG_LSA eof_lsa;
   LOGWR_INFO *writer_info = log_Gl.writer_info;
 
   *wr_entry_p = NULL;
@@ -2193,8 +2196,29 @@ logwr_register_writer_entry (LOGWR_ENTRY ** wr_entry_p, THREAD_ENTRY * thread_p,
       entry->copy_from_first_phy_page = copy_from_first_phy_page;
       if (entry->status != LOGWR_STATUS_DELAY)
 	{
-	  entry->status = LOGWR_STATUS_WAIT;
-	  entry->start_copy_time = 0;
+	  /* hdr.eof_lsa moves only in a flush, so if it is past what this LWT has sent, a flush ran while this LWT
+	   * was sending and did not wake it up: read that log now instead of waiting for the next flush, which may
+	   * not come soon. Registering after the flush has moved hdr.eof_lsa but before it wakes up the LWTs is
+	   * also fine: the flush does not wait for a DELAY entry, and the DELAY waits on LOG_CS until the caller of
+	   * the flush releases it, then sends at least the log of that flush.
+	   * Only for an ASYNC client: a DELAY of a non-ASYNC client holds LOG_CS until the reply.
+	   * Not after an interrupt: entry->eof_lsa then caps what is sent, so the LWT would DELAY forever.
+	   * Not when interrupted (tdes->interrupt): only the WAIT path checks it. A shutdown stops the LWT only
+	   * while it waits, which sets entry->eof_lsa (covered above). */
+	  eof_lsa = log_Gl.hdr.eof_lsa.load ();
+	  if (orig_mode == LOGWR_MODE_ASYNC && LSA_ISNULL (&entry->eof_lsa) && !LSA_ISNULL (&entry->last_sent_eof_lsa)
+	      && LSA_LT (&entry->last_sent_eof_lsa, &eof_lsa)
+	      && !logtb_is_interrupted (thread_p, false, &continue_checking))
+	    {
+	      logwr_er_log ("logwr_register_writer_entry, missed flush: last_sent_eof_lsa(%lld|%d) < "
+			    "eof_lsa(%lld|%d)\n", LSA_AS_ARGS (&entry->last_sent_eof_lsa), LSA_AS_ARGS (&eof_lsa));
+	      entry->status = LOGWR_STATUS_DELAY;
+	    }
+	  else
+	    {
+	      entry->status = LOGWR_STATUS_WAIT;
+	      entry->start_copy_time = 0;
+	    }
 	}
     }
 
@@ -2647,7 +2671,8 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 
       /* Register the writer at the list and wait until LFT start to work */
       rv = pthread_mutex_lock (&writer_info->flush_start_mutex);
-      error_code = logwr_register_writer_entry (&entry, thread_p, first_pageid, mode, copy_from_first_phy_page);
+      error_code = logwr_register_writer_entry (&entry, thread_p, first_pageid, mode, orig_mode,
+						copy_from_first_phy_page);
       if (error_code != NO_ERROR)
 	{
 	  pthread_mutex_unlock (&writer_info->flush_start_mutex);
