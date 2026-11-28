@@ -14892,6 +14892,9 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	      /* for each tuple in subquery result do */
 	      while (cursor_next_tuple (&cursor_id) == DB_CURSOR_SUCCESS)
 		{
+		  /* the template of the previous tuple has copied its values and is freed */
+		  pr_clear_value_array (vals, degree);
+
 		  /* get current tuple of subquery result */
 		  if (cursor_get_tuple_value_list (&cursor_id, degree, vals) != NO_ERROR)
 		    {

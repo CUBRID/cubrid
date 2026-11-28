@@ -947,6 +947,7 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
 	      db_auth = DB_AUTH_NONE;
 	      break;
 	    }
+	  db_value_clear (&auth_type_value);
 	}
 
       assert (grantee_mop != NULL && object_of_mop != NULL && db_auth != DB_AUTH_NONE);
@@ -1181,6 +1182,7 @@ au_user_revoke_all_privileges (MOP user_mop)
 	      db_auth = DB_AUTH_NONE;
 	      break;
 	    }
+	  db_value_clear (&auth_type_value);
 	}
 
       assert (grantee_mop != NULL && obj_type != DB_OBJECT_UNKNOWN && obj_mop != NULL && db_auth != DB_AUTH_NONE);
@@ -1740,6 +1742,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
 	      goto exit;
 	      break;
 	    }
+	  db_value_clear (&auth_type_value);
 	}
 
       if (db_query_get_tuple_value (result, 5, &is_grantable_value) == NO_ERROR)

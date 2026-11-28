@@ -3832,6 +3832,8 @@ csql_display_trace (void)
 
 end:
 
+  db_value_clear (&trace);
+
   if (result != NULL)
     {
       db_query_end (result);

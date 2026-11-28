@@ -5218,6 +5218,8 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		  goto end_create;
 		}
 
+	      /* the template holds a copy of the partition info of the class (classobj_make_template ()) */
+	      classobj_free_partition_info (newpci->temp->partition);
 	      newpci->temp->partition =
 		pt_node_to_partition_info (parser, parts, NULL, class_name, newpci->pname, NULL);
 	      if (newpci->temp->partition == NULL)
@@ -8644,8 +8646,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
 	}
     }
 
-  return error;
-
+  /* smt_add_attribute_w_dflt () keeps a clone of default_value */
 error_exit:
   db_value_clear (&default_value);
   return error;

@@ -299,6 +299,7 @@ extern DB_VALUE *pr_make_value (void);
 extern DB_VALUE *pr_copy_value (DB_VALUE * var);
 extern int pr_clone_value (const DB_VALUE * src, DB_VALUE * dest);
 extern int pr_clear_value (DB_VALUE * var);
+extern void pr_clear_value_array (DB_VALUE * values, int count);
 /* *INDENT-OFF* */
 void pr_clear_value_vector (std::vector<DB_VALUE> &value_vector);
 /* *INDENT-ON* */

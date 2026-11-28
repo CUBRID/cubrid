@@ -18837,6 +18837,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 {
   PT_TYPE_ENUM type1, type2 = PT_TYPE_NONE, type3 = PT_TYPE_NONE, result_type;
   PT_NODE *opd1 = NULL, *opd2 = NULL, *opd3 = NULL, *result = NULL;
+  PT_NODE *host_var_opd1 = NULL, *host_var_opd2 = NULL, *host_var_opd3 = NULL;
   DB_VALUE dummy, dbval_res, *arg1, *arg2, *arg3;
   PT_OP_TYPE op;
   PT_NODE *expr_next;
@@ -19182,6 +19183,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	{
 	  opd1 = pt_dbval_to_value (parser, arg1);
 	  result->info.expr.arg1 = (op == PT_LIKE_ESCAPE) ? opd1 : result->info.expr.arg1;
+	  host_var_opd1 = (op == PT_LIKE_ESCAPE) ? NULL : opd1;
 	}
     }
 
@@ -19219,6 +19221,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	{
 	  opd2 = pt_dbval_to_value (parser, arg2);
 	  result->info.expr.arg2 = (op == PT_LIKE) ? opd2 : result->info.expr.arg2;
+	  host_var_opd2 = (op == PT_LIKE) ? NULL : opd2;
 	}
     }
 
@@ -19462,6 +19465,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       if (!DB_IS_NULL (arg3))
 	{
 	  opd3 = pt_dbval_to_value (parser, arg3);
+	  host_var_opd3 = opd3;
 	}
     }
 
@@ -19851,6 +19855,11 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 end:
   pr_clear_value (&dbval_res);
   parser->flag.set_host_var = save_set_host_var;
+
+  /* the values made above for host variables that the tree did not take */
+  parser_free_tree (parser, host_var_opd1);
+  parser_free_tree (parser, host_var_opd2);
+  parser_free_tree (parser, host_var_opd3);
 
   if (has_error)
     {

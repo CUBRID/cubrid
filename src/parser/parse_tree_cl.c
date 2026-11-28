@@ -1014,6 +1014,18 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
       new_node->info.delete_.bind_variant_key = NULL;
     }
 
+  /* the select list of a set operation is not walked, so the copy takes its own copy of it instead of sharing it.
+   * free_node_in_tree_pre () frees it with the set operation */
+  if (PT_IS_UNION (new_node) || PT_IS_INTERSECTION (new_node) || PT_IS_DIFFERENCE (new_node))
+    {
+      new_node->info.query.q.union_.select_list = NULL;
+      if (old_node->info.query.q.union_.select_list != NULL)
+	{
+	  new_node->info.query.q.union_.select_list =
+	    parser_copy_tree_list (parser, old_node->info.query.q.union_.select_list);
+	}
+    }
+
   /* clone XASL_ID; aliasing old_node's would double-free in parser_free_node_resources () */
   new_node->xasl_id = NULL;
   if (old_node->xasl_id != NULL)
@@ -1737,6 +1749,12 @@ free_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
     {
       /* do must not free original node; cut-off link to original node */
       node->info.pointer.node = NULL;
+    }
+  else if (PT_IS_UNION (node) || PT_IS_INTERSECTION (node) || PT_IS_DIFFERENCE (node))
+    {
+      /* the select list a set operation keeps (pt_get_select_list ()) is not walked */
+      parser_free_tree (parser, node->info.query.q.union_.select_list);
+      node->info.query.q.union_.select_list = NULL;
     }
   return node;
 }
@@ -6169,6 +6187,8 @@ pt_apply_alter (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
     case PT_REMOVE_PARTITION:
       break;
     case PT_ADD_PARTITION:
+      /* info is the MAXVALUE of the last partition, set by pt_check_alter_partition () */
+      PT_APPLY_WALK (parser, p->info.alter.alter_clause.partition.info, arg);
       PT_APPLY_WALK (parser, p->info.alter.alter_clause.partition.parts, arg);
       break;
     case PT_ADD_HASHPARTITION:
