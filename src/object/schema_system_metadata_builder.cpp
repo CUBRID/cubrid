@@ -31,6 +31,29 @@
 namespace cubschema
 {
   static int
+  assign_signature_domains (SM_TEMPLATE *tmpl, const attribute &attr, const bool is_class_method)
+  {
+    const std::vector<std::string> &domains = attr.signature_domains;
+
+    for (size_t i = 0; i < domains.size (); i++)
+      {
+	if (domains[i].empty ())
+	  {
+	    continue;
+	  }
+
+	int error_code = smt_assign_argument_domain (tmpl, attr.name.data (), is_class_method, NULL, (int) i,
+			 domains[i].data (), (DB_DOMAIN *) 0);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+      }
+
+    return NO_ERROR;
+  }
+
+  static int
   add_attributes (SM_TEMPLATE *tmpl, const std::vector <attribute> &attributes)
   {
     int error_code = NO_ERROR;
@@ -63,6 +86,18 @@ namespace cubschema
 	    break;
 	  case attribute_kind::CLASS_METHOD:
 	    error_code = smt_add_class_method (tmpl, name, type);
+	    if (error_code == NO_ERROR)
+	      {
+		error_code = assign_signature_domains (tmpl, attr, true);
+	      }
+	    break;
+	  case attribute_kind::METHOD:
+	    assert (tmpl->class_type == SM_CLASS_CT);
+	    error_code = smt_add_method (tmpl, name, type);
+	    if (error_code == NO_ERROR)
+	      {
+		error_code = assign_signature_domains (tmpl, attr, false);
+	      }
 	    break;
 	  default:
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -146,41 +181,10 @@ namespace cubschema
   }
 
   static int
-  build_class (const MOP class_mop, const system_metadata_definition &def)
+  add_constraints (const MOP class_mop, const std::vector <constraint> &constraints)
   {
     int error_code = NO_ERROR;
 
-    if (class_mop == nullptr)
-      {
-	// should not happen
-	assert (false);
-	return ER_FAILED;
-      }
-
-    // define
-    SM_TEMPLATE *tmpl = smt_edit_class_mop (class_mop, AU_ALTER);
-    if (tmpl == nullptr)
-      {
-	ASSERT_ERROR_AND_SET (error_code);
-	return error_code;
-      }
-
-    error_code = add_attributes (tmpl, def.attributes);
-    if (error_code != NO_ERROR)
-      {
-	smt_quit (tmpl);
-	return error_code;
-      }
-
-    error_code = sm_update_class (tmpl, NULL);
-    if (error_code != NO_ERROR)
-      {
-	assert (false);
-	smt_quit (tmpl);
-	return error_code;
-      }
-
-    const std::vector <constraint> &constraints = def.constraints;
     for (const auto &c: constraints)
       {
 	DB_CONSTRAINT_TYPE type = c.type;
@@ -215,10 +219,98 @@ namespace cubschema
 	  }
       }
 
+    return NO_ERROR;
+  }
+
+  static int
+  create_heap (const MOP class_mop)
+  {
     if (locator_has_heap (class_mop) == NULL)
       {
 	assert (er_errid () != NO_ERROR);
 	return er_errid ();
+      }
+
+    return NO_ERROR;
+  }
+
+  /*
+   * defines the columns, methods and constraints of a class and creates its heap, without authorization.
+   * heap_first decides whether the heap is created before or after the constraints: it decides where the heap and
+   * the index files are allocated, and so the OIDs of the rows inserted later.
+   */
+  static int
+  define_class (const MOP class_mop, const system_metadata_definition &def, const bool heap_first)
+  {
+    int error_code = NO_ERROR;
+
+    if (class_mop == nullptr)
+      {
+	// should not happen
+	assert (false);
+	return ER_FAILED;
+      }
+
+    // define
+    SM_TEMPLATE *tmpl = smt_edit_class_mop (class_mop, AU_ALTER);
+    if (tmpl == nullptr)
+      {
+	ASSERT_ERROR_AND_SET (error_code);
+	return error_code;
+      }
+
+    error_code = add_attributes (tmpl, def.attributes);
+    if (error_code != NO_ERROR)
+      {
+	smt_quit (tmpl);
+	return error_code;
+      }
+
+    error_code = sm_update_class (tmpl, NULL);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	smt_quit (tmpl);
+	return error_code;
+      }
+
+    if (heap_first)
+      {
+	error_code = create_heap (class_mop);
+	if (error_code == NO_ERROR)
+	  {
+	    error_code = add_constraints (class_mop, def.constraints);
+	  }
+      }
+    else
+      {
+	error_code = add_constraints (class_mop, def.constraints);
+	if (error_code == NO_ERROR)
+	  {
+	    error_code = create_heap (class_mop);
+	  }
+      }
+
+    return error_code;
+  }
+
+  /*
+   * the authorization classes have always had their heap created before their constraints (_db_user and its unique
+   * index on name), so that a new database keeps the same OIDs for the users (DBA, PUBLIC, ...)
+   */
+  static int
+  define_class_heap_first (const MOP class_mop, const system_metadata_definition &def)
+  {
+    return define_class (class_mop, def, true);
+  }
+
+  static int
+  build_class (const MOP class_mop, const system_metadata_definition &def)
+  {
+    int error_code = define_class (class_mop, def, false);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
       }
 
     error_code = apply_authorization (class_mop, def.auth);
@@ -280,12 +372,20 @@ namespace cubschema
     return apply_authorization (class_mop, def.auth);
   }
 
+  /*
+   * created_mops, when given, gets the class created for each definition (nullptr for the ones not created yet),
+   * also on error
+   */
   static int
   install_definitions (const std::vector<system_metadata_definition> &defs,
-		       int (*build) (const MOP, const system_metadata_definition &))
+		       int (*build) (const MOP, const system_metadata_definition &),
+		       std::vector<MOP> *created_mops = nullptr)
   {
-    std::vector<MOP> class_mops (defs.size (), nullptr);
     int error_code = NO_ERROR;
+    std::vector<MOP> own_mops;
+    std::vector<MOP> &class_mops = (created_mops != nullptr) ? *created_mops : own_mops;
+
+    class_mops.assign (defs.size (), nullptr);
 
     /* create every class before defining any: a definition may refer to a class defined after it */
     for (size_t i = 0; i < defs.size (); i++)
@@ -315,6 +415,13 @@ namespace cubschema
   system_metadata_builder::install_classes (const std::vector<system_metadata_definition> &defs)
   {
     return install_definitions (defs, build_class);
+  }
+
+  int
+  system_metadata_builder::define_classes (const std::vector<system_metadata_definition> &defs,
+      std::vector<MOP> &class_mops)
+  {
+    return install_definitions (defs, define_class_heap_first, &class_mops);
   }
 
   int
