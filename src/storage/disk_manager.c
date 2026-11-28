@@ -6457,6 +6457,140 @@ end:
 }
 
 /*
+ * disk_read_volume_file_type () - tell from its header what kind of CUBRID volume a file is
+ *
+ * return : NO_ERROR, or ER_IO_MOUNT_FAIL (notified) if the file cannot be checked safely: it is not a regular file
+ *          with a single link, it cannot be opened or read, or another process holds a lock on it
+ * thread_p(in) : thread entry
+ * vol_label_p(in) : volume label
+ * db_creation(in) : creation time of this database
+ * is_permanent(out) : true if the file is a permanent volume (a mounted volume of this database, or a file whose
+ *                     header is a permanent volume header of any database)
+ * is_own_temporary(out) : true if the header is a temporary volume header whose database creation time is
+ *                         db_creation, that is, a temporary volume formatted by this database
+ *
+ * Note: Both outputs are false for a file without a volume header: a file that is not a CUBRID volume, a header that
+ *       is too short or not written yet. A volume is formatted first and its header is written after, and the
+ *       format of a permanent volume takes no file lock, so a file without a header may be a permanent volume of
+ *       another database that is being formatted right now. The caller must not take such a file as a leftover of
+ *       this database without other evidence.
+ *       The volume does not need to be mounted; the header of a file that is not a mounted volume is read from the
+ *       file. A mounted volume is not opened again, and neither is a file reached by a symbolic link or a file with
+ *       another hard link: closing a second descriptor of a file releases every lock this process holds on it (e.g.
+ *       the lock on the active log).
+ */
+int
+disk_read_volume_file_type (THREAD_ENTRY * thread_p, const char *vol_label_p, INT64 db_creation, bool * is_permanent,
+			    bool * is_own_temporary)
+{
+  char data_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *data;
+  DISK_VOLUME_HEADER *vhdr;
+  int vol_fd;
+  VOLID volid;
+  off_t read_size;
+  size_t page_reserver_area;
+  struct stat link_stat;
+  struct stat stat_buffer;
+  struct stat mounted_stat;
+  int open_flags = O_RDONLY;
+
+  assert (vol_label_p != NULL && is_permanent != NULL && is_own_temporary != NULL);
+
+  *is_permanent = false;
+  *is_own_temporary = false;
+
+  if (lstat (vol_label_p, &link_stat) != 0)
+    {
+      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+      return ER_IO_MOUNT_FAIL;
+    }
+  if (!S_ISREG (link_stat.st_mode) || link_stat.st_nlink != 1)
+    {
+      /* a symbolic link, a file with other hard links, or not a regular file: it may be a file this process holds */
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+      return ER_IO_MOUNT_FAIL;
+    }
+
+  for (volid = 0; volid < disk_Cache->nvols_perm; volid++)
+    {
+      vol_fd = fileio_get_volume_descriptor (volid);
+      if (vol_fd != NULL_VOLDES && fstat (vol_fd, &mounted_stat) == 0 && mounted_stat.st_dev == link_stat.st_dev
+	  && mounted_stat.st_ino == link_stat.st_ino)
+	{
+	  *is_permanent = true;
+	  return NO_ERROR;
+	}
+    }
+
+  data = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
+  page_reserver_area = offsetof (FILEIO_PAGE, page);
+  vhdr = (DISK_VOLUME_HEADER *) (data + page_reserver_area);
+
+#if defined (O_NOFOLLOW)
+  open_flags |= O_NOFOLLOW;
+#endif /* O_NOFOLLOW */
+  vol_fd = fileio_open (vol_label_p, open_flags, 0);
+  if (vol_fd == NULL_VOLDES)
+    {
+      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+      return ER_IO_MOUNT_FAIL;
+    }
+  if (fstat (vol_fd, &stat_buffer) != 0 || stat_buffer.st_dev != link_stat.st_dev
+      || stat_buffer.st_ino != link_stat.st_ino)
+    {
+      /* the file was replaced after lstat */
+      fileio_close (vol_fd);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+      return ER_IO_MOUNT_FAIL;
+    }
+
+#if !defined (WINDOWS)
+  {
+    /* A file another process locks (e.g. a log or a key file of another database) is not one to remove. */
+    struct flock lock;
+
+    lock.l_type = F_WRLCK;
+    lock.l_whence = SEEK_SET;
+    lock.l_start = 0;
+    lock.l_len = 0;
+    if (fcntl (vol_fd, F_GETLK, &lock) != 0 || lock.l_type != F_UNLCK)
+      {
+	fileio_close (vol_fd);
+	er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+	return ER_IO_MOUNT_FAIL;
+      }
+  }
+#endif /* !WINDOWS */
+
+  read_size = page_reserver_area + offsetof (DISK_VOLUME_HEADER, db_creation) + sizeof (vhdr->db_creation);
+  if (stat_buffer.st_size >= read_size)
+    {
+      if (fileio_read (thread_p, vol_fd, data, 0, read_size) == NULL)
+	{
+	  /* a read error is not a missing header; the type is unknown */
+	  fileio_close (vol_fd);
+	  er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+	  return ER_IO_MOUNT_FAIL;
+	}
+      if (strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) == 0)
+	{
+	  if (vhdr->type == DB_PERMANENT_VOLTYPE)
+	    {
+	      *is_permanent = true;
+	    }
+	  else if (vhdr->type == DB_TEMPORARY_VOLTYPE && vhdr->db_creation == db_creation)
+	    {
+	      *is_own_temporary = true;
+	    }
+	}
+    }
+
+  fileio_close (vol_fd);
+
+  return NO_ERROR;
+}
+
+/*
  * disk_compatible_type_and_purpose () - is volume purpose compatible to volume type?
  *
  * return       : true if compatible, false otherwise
