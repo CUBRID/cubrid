@@ -90,6 +90,7 @@ static PT_NODE *pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 static PT_NODE *pt_set_trigger_obj_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static DB_CLASS_MODIFICATION_STATUS pt_check_class_chn (MOP clsmop, int *chn);
 
 /*
  * pt_spec_to_oid_attr () - Generate an oid attribute from a resolved spec.
@@ -649,7 +650,7 @@ pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	    {
 	      continue;
 	    }
-	  is_class = db_is_class (clsmop);
+	  is_class = db_is_any_class (clsmop);
 	  if (is_class < 0)
 	    {
 	      PT_ERRORc (parser, class_, er_msg ());
@@ -666,6 +667,16 @@ pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	    }
 
 	  class_->info.name.db_object_chn = locator_get_cache_coherency_number (clsmop);
+
+	  if (class_->info.name.virt_object != NULL)
+	    {
+	      if (locator_flush_class (class_->info.name.virt_object) != NO_ERROR)
+		{
+		  PT_ERRORc (parser, class_, er_msg ());
+		}
+
+	      class_->info.name.virt_object_chn = locator_get_cache_coherency_number (class_->info.name.virt_object);
+	    }
 	}
     }
 
@@ -704,8 +715,6 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
   DB_CLASS_MODIFICATION_STATUS *status = (DB_CLASS_MODIFICATION_STATUS *) arg;
   PT_NODE *class_;
   MOP clsmop = NULL;
-  SM_CLASS *sm_class = NULL;
-  int error = NO_ERROR;
 
   if (*status != DB_CLASS_NOT_MODIFIED)
     {
@@ -725,47 +734,14 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 	      continue;
 	    }
 
-	  if (clsmop->decached)
+	  *status = pt_check_class_chn (clsmop, &class_->info.name.db_object_chn);
+	  if (*status == DB_CLASS_NOT_MODIFIED && class_->info.name.virt_object != NULL)
 	    {
-	      /* the class might be aborted. */
-	      *status = DB_CLASS_MODIFIED;
+	      *status = pt_check_class_chn (class_->info.name.virt_object, &class_->info.name.virt_object_chn);
 	    }
-	  else
-	    {
-	      error = au_fetch_class_force (clsmop, &sm_class, AU_FETCH_READ);
-	      if (error != NO_ERROR)
-		{
-		  if (error == ER_HEAP_UNKNOWN_OBJECT)
-		    {
-		      /* the class might be dropped. */
-		      *status = DB_CLASS_MODIFIED;
-		    }
-		  else
-		    {
-		      *status = DB_CLASS_ERROR;
-		    }
-		}
-	    }
+
 	  if (*status != DB_CLASS_NOT_MODIFIED)
 	    {
-	      /* don't revisit leaves */
-	      *continue_walk = PT_STOP_WALK;
-	      break;
-	    }
-
-	  if (sm_get_class_type (sm_class) != SM_CLASS_CT)
-	    {
-	      continue;
-	    }
-
-	  if (class_->info.name.db_object_chn == NULL_CHN)
-	    {
-	      class_->info.name.db_object_chn = locator_get_cache_coherency_number (clsmop);
-	    }
-	  else if (class_->info.name.db_object_chn != locator_get_cache_coherency_number (clsmop))
-	    {
-	      *status = DB_CLASS_MODIFIED;
-
 	      /* don't revisit leaves */
 	      *continue_walk = PT_STOP_WALK;
 	      break;
@@ -774,6 +750,41 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
     }
 
   return node;
+}
+
+/*
+ * pt_check_class_chn () - check whether a class or a view has changed since its CHN was recorded
+ *   return: DB_CLASS_NOT_MODIFIED, DB_CLASS_MODIFIED or DB_CLASS_ERROR
+ *   clsmop(in):
+ *   chn(in/out): the recorded CHN; recorded here if it is NULL_CHN
+ */
+static DB_CLASS_MODIFICATION_STATUS
+pt_check_class_chn (MOP clsmop, int *chn)
+{
+  SM_CLASS *sm_class = NULL;
+  int error = NO_ERROR;
+  int current_chn;
+
+  if (clsmop->decached)
+    {
+      /* the class might be aborted. */
+      return DB_CLASS_MODIFIED;
+    }
+
+  error = au_fetch_class_force (clsmop, &sm_class, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      /* the class might be dropped. */
+      return (error == ER_HEAP_UNKNOWN_OBJECT) ? DB_CLASS_MODIFIED : DB_CLASS_ERROR;
+    }
+
+  current_chn = locator_get_cache_coherency_number (clsmop);
+  if (*chn == NULL_CHN)
+    {
+      *chn = current_chn;
+    }
+
+  return (*chn == current_chn) ? DB_CLASS_NOT_MODIFIED : DB_CLASS_MODIFIED;
 }
 
 /*
