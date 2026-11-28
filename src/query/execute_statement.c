@@ -397,7 +397,6 @@ auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALU
     {
       goto end;
     }
-  FLOAT_TO_FIXED_NUMERIC (&range_val);
 
   /* ABS (cached_num * inc_val) <= range_val */
   db_make_int (&cached_num_int_val, cached_num);
@@ -421,7 +420,6 @@ auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALU
     {
       goto end;
     }
-  FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
   error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
   if (error != NO_ERROR)
@@ -1109,6 +1107,10 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
    * then refetch it from server again.
    */
   assert (WS_ISDIRTY (serial_object) == false);
+
+  /* before the row takes its new name: a write-back replicates at once, ahead of this DDL, keyed by the name this
+   * transaction sees, and the standby has only the committed one */
+  (void) serial_decache (ws_oid (serial_object));
 
   ws_decache (serial_object);
   /* no need to get last version for serial - actually, the purpose is AU_FETCH_WRITE, so fetch type is not relevant;
@@ -2075,7 +2077,6 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
-      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
@@ -3122,7 +3123,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
-      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)

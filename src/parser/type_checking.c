@@ -195,6 +195,8 @@ typedef enum collation_result
 static PT_TYPE_ENUM pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1, PT_TYPE_ENUM * arg2,
 					  PT_TYPE_ENUM * arg3, const TP_DOMAIN * expected_domain);
 static bool pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def);
+static bool pt_is_null_or_cast_of_null (const PT_NODE * node);
+static bool pt_is_null_fold_operand (const PT_NODE * expr, const PT_NODE * opd);
 static bool does_op_specially_treat_null_arg (PT_OP_TYPE op);
 static int pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** expr);
 static PT_TYPE_ENUM pt_expr_get_return_type (PT_NODE * expr, const EXPRESSION_SIGNATURE sig);
@@ -237,6 +239,8 @@ static void pt_remove_exists_limit (PARSER_CONTEXT * parser, PT_NODE * node);
 static bool pt_query_has_intersect_or_difference (PT_NODE * node);
 static void pt_record_host_var_bind_domain (PARSER_CONTEXT * parser, const PT_NODE * hv_node);
 static void pt_preset_hostvar_domain (PARSER_CONTEXT * parser, PT_NODE * hv_node, bool record_bind_domain);
+static int pt_coerce_auto_param_as_literal (PARSER_CONTEXT * parser, PT_NODE * hv_node, PT_TYPE_ENUM desired_type,
+					    PT_NODE * data_type);
 static bool pt_is_able_to_determine_return_type (const PT_OP_TYPE op);
 static PT_NODE *pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_opt_type (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -6157,6 +6161,75 @@ pt_is_range_or_comp (PT_OP_TYPE op)
     }
 }
 
+/*
+ * pt_is_null_or_cast_of_null () - is the node NULL, or a CAST (NULL AS type) that is kept unfolded as a typed NULL
+ *   return: true if so
+ *   node(in): expression argument
+ *
+ *   Note: arithmetic on a typed NULL (CAST (NULL AS INT) + 1) is NULL too. It stays unfolded for its type, as the
+ *	   arithmetic on an untyped NULL used to fold into NULL. A string '+' is left out, as it concatenates and
+ *	   oracle_style_empty_string takes NULL for an empty string there.
+ */
+static bool
+pt_is_null_or_cast_of_null (const PT_NODE * node)
+{
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  if (node->type_enum == PT_TYPE_NULL)
+    {
+      return true;
+    }
+
+  if (node->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  switch (node->info.expr.op)
+    {
+    case PT_CAST:
+      return pt_is_null_or_cast_of_null (node->info.expr.arg1);
+
+    case PT_UNARY_MINUS:
+    case PT_PLUS:
+    case PT_MINUS:
+    case PT_TIMES:
+    case PT_DIVIDE:
+    case PT_MOD:
+      if (!PT_IS_NUMERIC_TYPE (node->type_enum) && !PT_IS_DATE_TIME_TYPE (node->type_enum))
+	{
+	  return false;
+	}
+      return (pt_is_null_or_cast_of_null (node->info.expr.arg1) || pt_is_null_or_cast_of_null (node->info.expr.arg2));
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * pt_is_null_fold_operand () - is the operand NULL for constant folding
+ *   return: true if so
+ *   expr(in): expression being folded
+ *   opd(in): operand of expr
+ *
+ *   Note: a CAST (NULL AS type) operand is kept unfolded only to keep its type. A predicate has no use for the type, so
+ *	   there it is NULL like any other, and the predicate still folds.
+ */
+static bool
+pt_is_null_fold_operand (const PT_NODE * expr, const PT_NODE * opd)
+{
+  if (opd->type_enum == PT_TYPE_NA || opd->type_enum == PT_TYPE_NULL)
+    {
+      return true;
+    }
+
+  return expr->type_enum == PT_TYPE_LOGICAL && pt_is_null_or_cast_of_null (opd);
+}
+
 static bool
 does_op_specially_treat_null_arg (PT_OP_TYPE op)
 {
@@ -6264,8 +6337,8 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       return NO_ERROR;
     }
 
-  /* UUID does not accept a NULL version argument */
-  if (op == PT_UUID && arg1 != NULL && arg1_type == PT_TYPE_NULL)
+  /* UUID does not accept a NULL version argument, typed (CAST (NULL AS type)) or not */
+  if (op == PT_UUID && pt_is_null_or_cast_of_null (arg1))
     {
       PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
       return ER_FAILED;
@@ -8425,6 +8498,10 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 		      d = tp_domain_cache (d);
 		      SET_EXPECTED_DOMAIN (v, d);
 		      pt_preset_hostvar (parser, v);
+		      if (pt_coerce_auto_param_as_literal (parser, v, attr->type_enum, attr->data_type) != NO_ERROR)
+			{
+			  return node;
+			}
 		    }
 		}
 	    }
@@ -9298,6 +9375,86 @@ pt_preset_hostvar_domain (PARSER_CONTEXT * parser, PT_NODE * hv_node, bool recor
     {
       pt_record_host_var_bind_domain (parser, hv_node);
     }
+}
+
+/*
+ * pt_coerce_auto_param_as_literal () - coerce the value of an auto-parameter as its literal would be coerced
+ *   return: NO_ERROR or error code
+ *   parser(in):
+ *   hv_node(in): host variable whose data type was just set to the desired type
+ *   desired_type(in):
+ *   data_type(in):
+ *
+ *   An auto-parameter already holds its value, so its data type and its value must change together.
+ *   The type check runs again for each statement, also on an XASL cache hit, so every value of the plan is cast here.
+ */
+static int
+pt_coerce_auto_param_as_literal (PARSER_CONTEXT * parser, PT_NODE * hv_node, PT_TYPE_ENUM desired_type,
+				 PT_NODE * data_type)
+{
+  const int index = hv_node->info.host_var.index;
+  DB_VALUE *hv_value;
+  DB_VALUE *coerced;
+  PT_NODE *literal;
+  int error;
+
+  if (index < parser->host_var_count || index >= parser->host_var_count + parser->auto_param_count
+      || pt_is_derived_host_var (parser, index) || hv_node->info.host_var.pads_to != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  if (hv_node->data_type == NULL)
+    {
+      /* no data type was set, so the plan takes the domain of the value as it is */
+      return NO_ERROR;
+    }
+
+  hv_value = &parser->host_variables[index];
+  if (DB_IS_NULL (hv_value))
+    {
+      return NO_ERROR;
+    }
+
+  literal = pt_dbval_to_value (parser, hv_value);
+  if (literal == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "coerce auto parameter");
+	}
+      return ER_FAILED;
+    }
+  literal->line_number = hv_node->line_number;
+  literal->column_number = hv_node->column_number;
+
+  error = pt_coerce_value_explicit (parser, literal, literal, desired_type, data_type);
+  if (error == NO_ERROR)
+    {
+      coerced = pt_value_to_db (parser, literal);
+      if (coerced == NULL)
+	{
+	  error = ER_FAILED;
+	}
+      else
+	{
+	  DB_VALUE tmp;
+
+	  error = pr_clone_value (coerced, &tmp);
+	  if (error == NO_ERROR)
+	    {
+	      pr_clear_value (hv_value);
+	      *hv_value = tmp;
+	    }
+	}
+    }
+
+  parser_free_tree (parser, literal);
+  if (error != NO_ERROR && !pt_has_error (parser))
+    {
+      PT_INTERNAL_ERROR (parser, "coerce auto parameter");
+    }
+  return error;
 }
 
 /*
@@ -10731,6 +10888,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  d = tp_domain_cache (d);
 	  SET_EXPECTED_DOMAIN (arg2, d);
 	  pt_preset_hostvar (parser, arg2);
+	  if (pt_coerce_auto_param_as_literal (parser, arg2, arg1_type, arg1->data_type) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       if (PT_IS_VALUE_NODE (arg2))
 	{
@@ -13955,9 +14116,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	case DB_TYPE_NUMERIC:
 	  {
+	    int precision = 0, scale = 0, digits = 0;
 	    bool is_float_numeric = false;
-	    int precision = 0, scale = 0;
-	    db_get_numeric_precision_and_scale (arg1, &precision, &scale, &is_float_numeric);
+	    db_get_numeric_precision_and_scale (arg1, &precision, &scale, &digits, &is_float_numeric);
 
 	    bool is_value_negative = !arg1->domain.numeric_info.is_value_negative;
 	    if (is_value_negative && numeric_db_value_is_zero (arg1))
@@ -13967,7 +14128,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    db_make_numeric (result, db_get_numeric (arg1), precision, scale, DB_NUMERIC_BUF_SIZE, is_value_negative,
-			     is_float_numeric);
+			     digits, is_float_numeric);
 	  }
 	  break;
 
@@ -17984,7 +18145,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  break;
 
 	case PT_NULLSAFE_EQ:
-	  if ((o1 && o1->node_type != PT_VALUE) || (o2 && o2->node_type != PT_VALUE))
+	  /* an operand that is not a value is NULL here (arg is a dummy NULL), which is right only for a typed NULL */
+	  if ((o1 && o1->node_type != PT_VALUE && !pt_is_null_or_cast_of_null (o1))
+	      || (o2 && o2->node_type != PT_VALUE && !pt_is_null_or_cast_of_null (o2)))
 	    {
 	      return 0;
 	    }
@@ -19501,7 +19664,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  goto end;
 	}
     }
-  else if (opd1 && (opd1->type_enum == PT_TYPE_NA || opd1->type_enum == PT_TYPE_NULL) && pt_is_range_expression (op)
+  else if (opd1 && pt_is_null_fold_operand (expr, opd1) && pt_is_range_expression (op)
 	   && opd2 && PT_IS_QUERY_NODE_TYPE (opd2->node_type))
     {
       /* NULL <quantified comparison> (subquery) depends on the subquery result: when the subquery returns no row it
@@ -19512,18 +19675,20 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	   && ((opd1->node_type == PT_VALUE
 		&& (op != PT_CAST || PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_SHOULD_FOLD))
 		&& (!opd2 || opd2->node_type == PT_VALUE) && (!opd3 || opd3->node_type == PT_VALUE))
-	       || ((opd1->type_enum == PT_TYPE_NA || opd1->type_enum == PT_TYPE_NULL)
+	       || (pt_is_null_fold_operand (expr, opd1)
 		   && op != PT_CASE && op != PT_TO_CHAR && op != PT_TO_NUMBER && op != PT_TO_DATE && op != PT_TO_TIME
 		   && op != PT_TO_TIMESTAMP && op != PT_TO_DATETIME && op != PT_NULLIF && op != PT_COALESCE
 		   && op != PT_NVL && op != PT_NVL2 && op != PT_DECODE && op != PT_IFNULL && op != PT_TO_DATETIME_TZ
-		   && op != PT_TO_TIMESTAMP_TZ)
-	       || (opd2 && (opd2->type_enum == PT_TYPE_NA || opd2->type_enum == PT_TYPE_NULL)
+		   && op != PT_TO_TIMESTAMP_TZ
+		   /* CAST (NULL AS type) is kept as a typed NULL, the same as a CAST of any other value */
+		   && (op != PT_CAST || PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_SHOULD_FOLD)))
+	       || (opd2 && pt_is_null_fold_operand (expr, opd2)
 		   && op != PT_CASE && op != PT_TO_CHAR && op != PT_TO_NUMBER && op != PT_TO_DATE && op != PT_TO_TIME
 		   && op != PT_TO_TIMESTAMP && op != PT_TO_DATETIME && op != PT_BETWEEN && op != PT_NOT_BETWEEN
 		   && op != PT_SYS_CONNECT_BY_PATH && op != PT_NULLIF && op != PT_COALESCE && op != PT_NVL
 		   && op != PT_NVL2 && op != PT_DECODE && op != PT_IFNULL && op != PT_IF
 		   && (op != PT_RANGE || !opd2->or_next) && op != PT_TO_DATETIME_TZ && op != PT_TO_TIMESTAMP_TZ)
-	       || (opd3 && (opd3->type_enum == PT_TYPE_NA || opd3->type_enum == PT_TYPE_NULL)
+	       || (opd3 && pt_is_null_fold_operand (expr, opd3)
 		   && op != PT_BETWEEN && op != PT_NOT_BETWEEN && op != PT_NVL2 && op != PT_IF)
 	       || (opd2 && opd3 && op == PT_IF && (opd2->type_enum == PT_TYPE_NA || opd2->type_enum == PT_TYPE_NULL)
 		   && (opd3->type_enum == PT_TYPE_NA || opd3->type_enum == PT_TYPE_NULL))
@@ -24936,6 +25101,11 @@ pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node)
     {
       parser_free_node (parser, hv_node->data_type);
       hv_node->data_type = pt_domain_to_data_type (parser, dom);
+      if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (dom)))
+	{
+	  /* a collection data type lists only its elements, the collection type is the node's */
+	  hv_node->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
+	}
     }
 }
 
