@@ -490,6 +490,7 @@ struct css_conn_entry
    * written only under rmutex (css_set_auth_proof (), css_consume_auth_proof ()). */
   char auth_user[DB_MAX_USER_LENGTH + 1];
   bool auth_verified;
+  bool auth_dba_group;		/* the account proved is DBA or a member of the DBA group */
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;
   SYNC_RMUTEX rmutex;		/* connection mutex */

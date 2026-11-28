@@ -847,6 +847,16 @@ authenticate_context::disable_passwords (void)
 }
 
 /*
+ * enable_passwords - check passwords again after disable_passwords ()
+ *    return: none
+ */
+void
+authenticate_context::enable_passwords (void)
+{
+  ignore_passwords = 0;
+}
+
+/*
  * au_check_user - This is used to check for a currently valid user for some
  *                 operations that are not strictly based on
  *                 any particular class.

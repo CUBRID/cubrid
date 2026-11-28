@@ -209,6 +209,7 @@ static void boot_check_db_at_num_shutdowns (bool force_nshutdowns);
 
 #if defined(SERVER_MODE)
 static void boot_shutdown_server_at_exit (void);
+static int boot_check_client_admission (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_credential);
 #endif /* SERVER_MODE */
 
 static INTL_CODESET boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, const char *log_path,
@@ -3186,6 +3187,86 @@ xboot_get_server_session_key (void)
   return boot_Server_session_key;
 }
 
+#if defined(SERVER_MODE)
+/*
+ * boot_check_client_admission () - may this connection register as the user it declares?
+ *   return: NO_ERROR, or the error the registration is refused with
+ *   client_credential(in): the client's credential, its user already upper-cased
+ *
+ * Note: the client type is the client's own word. A client type that is not
+ *   defined is refused. Any client goes in with the declared user's password
+ *   proven, except a log replicator; an admin client that writes on a standby
+ *   also needs the user to be DBA or in the DBA group. Without that, only an
+ *   admin or log replicator client goes in, and only from this host or from an
+ *   HA node.
+ */
+static int
+boot_check_client_admission (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_credential)
+{
+  CSS_CONN_ENTRY *conn = thread_p->conn_entry;
+  int client_type = client_credential->client_type;
+  bool proven, proven_dba_group;
+  bool writes_on_standby = BOOT_ADMIN_CLIENT_TYPE (client_type) && BOOT_WRITE_ON_STANDY_CLIENT_TYPE (client_type);
+
+  if (!BOOT_IS_DEFINED_CLIENT_TYPE (client_type))
+    {
+      /* a value no client sends: refused as a wrong password is, so as to tell nothing more */
+      er_log_debug (ARG_FILE_LINE, "boot_check_client_admission: undefined client type %d\n", client_type);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_PASSWORD, 0);
+      return ER_AU_INVALID_PASSWORD;
+    }
+
+  proven = css_consume_auth_proof (conn, client_credential->get_db_user (), &proven_dba_group);
+
+  /* any client type but admin and log replicator: the proof alone decides */
+  if (!BOOT_PROOF_EXEMPT_CLIENT_TYPE (client_type))
+    {
+      if (proven)
+	{
+	  return NO_ERROR;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_PASSWORD, 0);
+      return ER_AU_INVALID_PASSWORD;
+    }
+
+  /* an admin client with the proof goes in from anywhere */
+  if (BOOT_ADMIN_CLIENT_TYPE (client_type) && proven && (!writes_on_standby || proven_dba_group))
+    {
+      return NO_ERROR;
+    }
+
+  /* from this host or an HA node, an admin or log replicator client goes in without the proof */
+  if (conn != NULL && (css_peer_is_this_host (conn->fd) || css_is_ha_node_address (conn->fd)))
+    {
+      return NO_ERROR;
+    }
+
+  if (BOOT_LOG_REPLICATOR_TYPE (client_type))
+    {
+      /* a log replicator is let in only from this host or an HA node; a password does not stand in for that */
+      unsigned char ip[4];
+      char ip_str[16] = "unknown";
+
+      if (conn != NULL && css_get_peer_ipv4 (conn->fd, ip) == NO_ERROR)
+	{
+	  snprintf (ip_str, sizeof (ip_str), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INACCESSIBLE_IP, 1, ip_str);
+      return ER_INACCESSIBLE_IP;
+    }
+
+  if (proven)
+    {
+      /* the password is right, but lifting the standby's read-only state is for the DBA group alone */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "write on standby");
+      return ER_AU_DBA_ONLY;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_PASSWORD, 0);
+  return ER_AU_INVALID_PASSWORD;
+}
+#endif /* SERVER_MODE */
+
 /*
  * xboot_register_client () - register a client
  *
@@ -3296,11 +3377,10 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 
 #if defined (SERVER_MODE)
   /* the declared user is trusted only once this connection proved its
-   * password, so check it before a transaction index is given out */
-  if (BOOT_PASSWORD_PROOF_CLIENT_TYPE (client_credential->client_type)
-      && !css_consume_auth_proof (thread_p->conn_entry, client_credential->get_db_user ()))
+   * password, or comes from where it may go without, so check it before a
+   * transaction index is given out */
+  if (boot_check_client_admission (thread_p, client_credential) != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_PASSWORD, 0);
       *tran_state = TRAN_UNACTIVE_UNKNOWN;
       client_credential->db_user = db_user_save;
       return NULL_TRAN_INDEX;

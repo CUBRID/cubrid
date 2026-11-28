@@ -811,13 +811,63 @@ css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
 }
 
 /*
- * css_hostname_to_ip()
+ * css_peer_is_this_host() - does the peer of a socket sit on this host?
+ *   return: true for a loopback peer, or a peer whose address is the socket's
+ *           own address
+ *   sockfd(in): a connected socket
+ *
+ * Note: a peer from another address of this host is not taken, as it would be
+ *   by cub_master's css_peer_is_local_host (). Only a client on this host that
+ *   binds a source address of its own before it connects comes from one, which
+ *   a CUBRID client does not do: a connection to an address of this host gets
+ *   that same address as its source.
+ */
+bool
+css_peer_is_this_host (SOCKET sockfd)
+{
+  struct sockaddr_in peer, self;
+  int peer_len = sizeof (peer), self_len = sizeof (self);
+
+  if (getpeername (sockfd, (struct sockaddr *) &peer, &peer_len) != 0 || peer.sin_family != AF_INET
+      || getsockname (sockfd, (struct sockaddr *) &self, &self_len) != 0 || self.sin_family != AF_INET)
+    {
+      return false;
+    }
+
+  /* only the peer's address tells where it is: a peer on another host can reach this host's loopback
+   * address too, as through DNAT to 127.0.0.1 */
+  return ((ntohl (peer.sin_addr.s_addr) >> 24) == 127 || peer.sin_addr.s_addr == self.sin_addr.s_addr);
+}
+
+/*
+ * css_get_peer_ipv4() - the IPv4 address of the peer of a socket
+ *   return: NO_ERROR, or ER_FAILED when the peer is not an IPv4 address
+ *   sockfd(in): a connected socket
+ *   ip_addr(out): the peer address, in network byte order
+ */
+int
+css_get_peer_ipv4 (SOCKET sockfd, unsigned char *ip_addr)
+{
+  struct sockaddr_in peer;
+  int peer_len = sizeof (peer);
+
+  if (getpeername (sockfd, (struct sockaddr *) &peer, &peer_len) != 0 || peer.sin_family != AF_INET)
+    {
+      return ER_FAILED;
+    }
+  memcpy (ip_addr, &peer.sin_addr, sizeof (peer.sin_addr));
+  return NO_ERROR;
+}
+
+/*
+ * css_hostname_to_ip_internal()
  *   return:
  *   host(in):
  *   ip_addr(out):
+ *   set_error(in): whether a host that is not found sets the error
  */
-int
-css_hostname_to_ip (const char *host, unsigned char *ip_addr)
+static int
+css_hostname_to_ip_internal (const char *host, unsigned char *ip_addr, bool set_error)
 {
   unsigned int in_addr;
   int err = NO_ERROR;
@@ -845,7 +895,10 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       hp = gethostbyname_uhost (host);
       if (hp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 2, host, HOSTS_FILE);
+	  if (set_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_WINSOCK_HOSTNAME, 2, host, HOSTS_FILE);
+	    }
 	  err = ER_CSS_WINSOCK_HOSTNAME;
 	}
       else
@@ -859,4 +912,29 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 #endif /* not SERVER_MODE */
 
   return err;
+}
+
+/*
+ * css_hostname_to_ip()
+ *   return:
+ *   host(in):
+ *   ip_addr(out):
+ */
+int
+css_hostname_to_ip (const char *host, unsigned char *ip_addr)
+{
+  return css_hostname_to_ip_internal (host, ip_addr, true);
+}
+
+/*
+ * css_hostname_to_ip_quiet() - css_hostname_to_ip () that leaves no error behind
+ *   when the host is not found, for a caller to whom that is no error
+ *   return: NO_ERROR, or an error code
+ *   host(in):
+ *   ip_addr(out):
+ */
+int
+css_hostname_to_ip_quiet (const char *host, unsigned char *ip_addr)
+{
+  return css_hostname_to_ip_internal (host, ip_addr, false);
 }

@@ -222,25 +222,60 @@ util_parse_argument (UTIL_MAP * util_map, int argc, char **argv)
   return status;
 }
 
+/* the options whose value is a password, hidden from the process list */
+typedef struct util_password_option UTIL_PASSWORD_OPTION;
+struct util_password_option
+{
+  int utility;
+  int option;
+};
+
+static const UTIL_PASSWORD_OPTION util_Password_options[] = {
+  {KILLTRAN, KILLTRAN_DBA_PASSWORD_S},
+#if defined(TRANLIST_PASSWORD_S)
+  {TRANLIST, TRANLIST_PASSWORD_S},
+#endif
+  {TDE, TDE_DBA_PASSWORD_S},
+  {LOADDB, LOAD_PASSWORD_S},
+  {UNLOADDB, UNLOAD_PASSWORD_S},
+  {FLASHBACK, FLASHBACK_DBA_PASSWORD_S},
+  {BACKUPDB, BACKUP_DBA_PASSWORD_S},
+  {ADDVOLDB, ADDVOL_DBA_PASSWORD_S},
+  {CHECKDB, CHECK_DBA_PASSWORD_S},
+  {SPACEDB, SPACE_DBA_PASSWORD_S},
+  {ACLDB, ACLDB_DBA_PASSWORD_S},
+  {LOCKDB, LOCK_DBA_PASSWORD_S},
+  {TRANLIST, TRANLIST_DBA_PASSWORD_S},
+  {PLANDUMP, PLANDUMP_DBA_PASSWORD_S},
+  {PARAMDUMP, PARAMDUMP_DBA_PASSWORD_S},
+  {STATDUMP, STATDUMP_DBA_PASSWORD_S},
+  {CHANGEMODE, CHANGEMODE_DBA_PASSWORD_S},
+  {APPLYINFO, APPLYINFO_DBA_PASSWORD_S},
+  {VACUUMDB, VACUUM_DBA_PASSWORD_S},
+  {MEMMON, MEMMON_DBA_PASSWORD_S},
+  {CLEANFILEDB, CLEANFILEDB_DBA_PASSWORD_S},
+  {CHECKSUMDB, CHECKSUM_DBA_PASSWORD_S},
+  {COMPACTDB, COMPACT_DBA_PASSWORD_S}
+};
+
 /*
- * util_is_password_argument -
+ * util_is_password_argument - is the value of this option of this utility a password?
  *
- * return:
- *
- * NOTE:
+ * return: true if so
+ *   index(in): the utility
+ *   value(in): the option
  */
 static bool
 util_is_password_argument (int index, int value)
 {
-  if ((index == KILLTRAN && value == KILLTRAN_DBA_PASSWORD_S)
-#if defined(TRANLIST_PASSWORD_S)
-      || (index == TRANLIST && value == TRANLIST_PASSWORD_S)
-#endif
-      || (index == TDE && value == TDE_DBA_PASSWORD_S)
-      || (index == LOADDB && value == LOAD_PASSWORD_S) || (index == UNLOADDB && value == UNLOAD_PASSWORD_S)
-      || (index == FLASHBACK && value == FLASHBACK_DBA_PASSWORD_S))
+  size_t i;
+
+  for (i = 0; i < sizeof (util_Password_options) / sizeof (util_Password_options[0]); i++)
     {
-      return true;
+      if (util_Password_options[i].utility == index && util_Password_options[i].option == value)
+	{
+	  return true;
+	}
     }
 
   return false;

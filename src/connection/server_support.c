@@ -1946,6 +1946,78 @@ css_check_accessibility (SOCKET new_fd)
   return err_code;
 }
 
+/*
+ * css_ip_in_ha_list () - is ip_addr the address of one of the hosts in an HA list?
+ *   return: true if so
+ *   list(in): an ha_node_list or ha_replica_list value, group@host1:host2:...
+ *   ip_addr(in): an IPv4 address in network byte order
+ */
+static bool
+css_ip_in_ha_list (const char *list, const unsigned char *ip_addr)
+{
+  char hosts[LINE_MAX];
+  char *host, *save = NULL;
+  const char *at;
+  unsigned char node_ip[4];
+
+  /* hosts are split as cub_master splits them */
+  at = (list != NULL) ? strchr (list, '@') : NULL;
+  if (at == NULL)
+    {
+      return false;
+    }
+  strncpy_bufsize (hosts, at + 1);
+  for (host = strtok_r (hosts, " ,:", &save); host != NULL; host = strtok_r (NULL, " ,:", &save))
+    {
+      /* a node that does not resolve is simply not this peer, which is no error to log */
+      if (css_hostname_to_ip_quiet (host, node_ip) != NO_ERROR)
+	{
+	  continue;
+	}
+      if (memcmp (ip_addr, node_ip, sizeof (node_ip)) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * css_is_ha_node_address () - does a connection come from one of the HA nodes?
+ *   return: true when HA is on and the peer's address is that of a host in
+ *           ha_node_list or ha_replica_list
+ *   fd(in): the client connection socket
+ *
+ * Note: the lists are read as sysprm_read_ha_node_lists () has them now, not
+ *   taken from what cub_master applied: the server loads them once at startup,
+ *   while cubrid heartbeat reload lets the nodes take a node added to or
+ *   removed from the files later. When they cannot be read, no peer is taken
+ *   for a node: the lists loaded at startup may still have a node removed
+ *   since. The hosts are resolved on each call, as cub_master's
+ *   hb_check_request_eligibility () does, so that a node whose address
+ *   changed is followed at once.
+ */
+bool
+css_is_ha_node_address (SOCKET fd)
+{
+  char node_list[LINE_MAX], replica_list[LINE_MAX];
+  unsigned char peer_ip[4];
+
+  if (HA_DISABLED () || css_get_peer_ipv4 (fd, peer_ip) != NO_ERROR)
+    {
+      return false;
+    }
+
+  if (sysprm_read_ha_node_lists (boot_db_name (), node_list, sizeof (node_list), replica_list, sizeof (replica_list))
+      != NO_ERROR)
+    {
+      return false;
+    }
+
+  return css_ip_in_ha_list (node_list, peer_ip) || css_ip_in_ha_list (replica_list, peer_ip);
+}
+
 int
 css_set_accessible_ip_info (void)
 {

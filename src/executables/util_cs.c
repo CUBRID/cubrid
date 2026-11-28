@@ -166,6 +166,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   struct stat st_buf;
   char real_pathbuf[PATH_MAX];
   char verbose_file_realpath[PATH_MAX];
+  const char *dba_password = NULL;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -193,6 +194,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   sleep_msecs = utility_get_option_int_value (arg_map, BACKUP_SLEEP_MSECS_S);
   sa_mode = utility_get_option_bool_value (arg_map, BACKUP_SA_MODE_S);
   separate_keys = utility_get_option_bool_value (arg_map, BACKUP_SEPARATE_KEYS_S);
+  dba_password = utility_get_option_string_value (arg_map, BACKUP_DBA_PASSWORD_S, 0);
 
   /* Range checking of input */
   if (backup_level < 0 || backup_level >= FILEIO_BACKUP_UNDEFINED_LEVEL)
@@ -281,11 +283,7 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("DBA", NULL);
-
-  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+  if (util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -391,6 +389,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   char real_volext_path_buf[PATH_MAX];
   bool sa_mode;
   DBDEF_VOL_EXT_INFO ext_info;
+  const char *dba_password = NULL;
 
   ext_info.overwrite = false;
   ext_info.max_npages = 0;
@@ -447,6 +446,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
 	}
     }
   ext_info.comments = utility_get_option_string_value (arg_map, ADDVOL_COMMENT_S, 0);
+  dba_password = utility_get_option_string_value (arg_map, ADDVOL_DBA_PASSWORD_S, 0);
   volext_string_purpose = utility_get_option_string_value (arg_map, ADDVOL_PURPOSE_S, 0);
   if (volext_string_purpose == NULL)
     {
@@ -540,10 +540,7 @@ addvoldb (UTIL_FUNCTION_ARG * arg)
   /* tuning system parameters */
   sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
 
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("DBA", NULL);
-  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
+  if (util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) == NO_ERROR)
     {
       if (volext_size == 0)
 	{
@@ -711,6 +708,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
   OID *oids = NULL;
   BTID index_btid;
   dynamic_array *darray = NULL;
+  const char *dba_password = NULL;
 
   if (utility_get_option_string_table_size (arg_map) < 1)
     {
@@ -782,6 +780,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 
   fname = utility_get_option_string_value (arg_map, CHECK_INPUT_FILE_S, 0);
   index_name = utility_get_option_string_value (arg_map, CHECK_INDEXNAME_S, 0);
+  dba_password = utility_get_option_string_value (arg_map, CHECK_DBA_PASSWORD_S, 0);
   num_tables = utility_get_option_string_table_size (arg_map);
   num_tables -= 1;
 
@@ -842,10 +841,7 @@ checkdb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("DBA", NULL);
-  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
+  if (util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) == NO_ERROR)
     {
       if (num_tables > 0)
 	{
@@ -955,6 +951,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   const char *file_type_strings[] = {
     "INDEX", "HEAP", "SYSTEM", "TEMP", "-"
   };
+  const char *dba_password = NULL;
 
   /* todo: there is a lot of work to do here */
 
@@ -973,6 +970,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   size_unit = utility_get_option_string_value (arg_map, SPACE_SIZE_UNIT_S, 0);
   summarize = utility_get_option_bool_value (arg_map, SPACE_SUMMARIZE_S);
   purpose = utility_get_option_bool_value (arg_map, SPACE_PURPOSE_S);
+  dba_password = utility_get_option_string_value (arg_map, SPACE_DBA_PASSWORD_S, 0);
 
   size_unit_type = SPACEDB_SIZE_UNIT_HUMAN_READABLE;
 
@@ -1029,11 +1027,7 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   sysprm_set_force (PRM_ID_PB_NBUFFERS, "1024");
 
   /* should have little copyright herald message ? */
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("DBA", NULL);
-
-  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+  if (util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (ER_WARNING_SEVERITY));
       goto error_exit;
@@ -1220,6 +1214,7 @@ acldb (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   bool reload;
   int ret_code = EXIT_SUCCESS;
+  const char *dba_password = NULL;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -1227,6 +1222,7 @@ acldb (UTIL_FUNCTION_ARG * arg)
     }
 
   reload = utility_get_option_bool_value (arg_map, ACLDB_RELOAD_S);
+  dba_password = utility_get_option_string_value (arg_map, ACLDB_DBA_PASSWORD_S, 0);
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
@@ -1244,11 +1240,7 @@ acldb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("DBA", NULL);
-
-  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+  if (util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));
       goto error_exit;
@@ -1296,6 +1288,7 @@ lockdb (UTIL_FUNCTION_ARG * arg)
   const char *output_file = NULL;
   FILE *outfp = NULL;
   int is_contention;
+  const char *dba_password = NULL;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -1309,6 +1302,7 @@ lockdb (UTIL_FUNCTION_ARG * arg)
     }
 
   is_contention = utility_get_option_bool_value (arg_map, LOCK_DISPLAY_CONTENTION_S);
+  dba_password = utility_get_option_string_value (arg_map, LOCK_DBA_PASSWORD_S, 0);
   output_file = utility_get_option_string_value (arg_map, LOCK_OUTPUT_FILE_S, 0);
   if (output_file == NULL)
     {
@@ -1335,11 +1329,7 @@ lockdb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("DBA", NULL);
-
-  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+  if (util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -1776,6 +1766,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   int error;
   bool is_summary, include_query_info, full_sqltext = false;
   TRANDUMP_LEVEL dump_level = TRANDUMP_FULL_INFO;
+  const char *dba_password = NULL;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -1796,6 +1787,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   tranlist_Sort_column = utility_get_option_int_value (arg_map, TRANLIST_SORT_KEY_S);
   tranlist_Sort_desc = utility_get_option_bool_value (arg_map, TRANLIST_REVERSE_S);
   full_sqltext = utility_get_option_bool_value (arg_map, TRANLIST_FULL_SQL_S);
+  dba_password = utility_get_option_string_value (arg_map, TRANLIST_DBA_PASSWORD_S, 0);
 
 #if defined(NEED_PRIVILEGE_PASSWORD)
   if (username == NULL)
@@ -1865,9 +1857,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 #else
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  if (db_login ("DBA", NULL) || db_restart (arg->command_name, TRUE, database_name))
+  if (util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
       goto error_exit;
@@ -2017,59 +2007,69 @@ killtran (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  /* disable password, if don't use kill option */
   if (isbatch == 0)
     {
+      /* -p goes only with a kill option. Without one, killtran only lists the transactions and connects as the
+       * other admin utilities do: the server's host and the HA nodes need no password, and from elsewhere the
+       * password is asked for on a terminal, or with none the error comes at once */
       if (dba_password != NULL)
 	{
 	  goto print_killtran_usage;
 	}
-      AU_DISABLE_PASSWORDS ();
-    }
-
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-
-  if (db_login ("DBA", dba_password) != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      goto error_exit;
-    }
-
-  /* first try to restart with the password given (possibly none) */
-  error = db_restart (arg->command_name, TRUE, database_name);
-  if (error)
-    {
-      if ((error == ER_AU_REJECT_LOGIN && use_console_password) && (dba_password == NULL || strlen (dba_password) == 0))
+      error = util_restart_as_dba (arg->command_name, database_name, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
+      if (error != NO_ERROR)
 	{
-	  /*
-	   * prompt for a valid password and try again, need a reusable
-	   * password prompter so we can use getpass() on platforms that
-	   * support it.
-	   */
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+    }
+  else
+    {
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
-	  /* get password interactively if interactive mode */
-	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
-					     KILLTRAN_MSG_DBA_PASSWORD));
-	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+      if (db_login ("DBA", dba_password) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+
+      /* first try to restart with the password given (possibly none) */
+      error = db_restart (arg->command_name, TRUE, database_name);
+      if (error)
+	{
+	  if ((error == ER_AU_REJECT_LOGIN && use_console_password)
+	      && (dba_password == NULL || strlen (dba_password) == 0))
 	    {
-	      passbuf = (char *) NULL;
+	      /*
+	       * prompt for a valid password and try again, need a reusable
+	       * password prompter so we can use getpass() on platforms that
+	       * support it.
+	       */
+
+	      /* get password interactively if interactive mode */
+	      passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN,
+						 KILLTRAN_MSG_DBA_PASSWORD));
+	      if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+		{
+		  passbuf = (char *) NULL;
+		}
+	      dba_password = passbuf;
+	      if (db_login ("DBA", dba_password) != NO_ERROR)
+		{
+		  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+		  goto error_exit;
+		}
+	      else
+		{
+		  error = db_restart (arg->command_name, TRUE, database_name);
+		}
 	    }
-	  dba_password = passbuf;
-	  if (db_login ("DBA", dba_password) != NO_ERROR)
+
+	  if (error)
 	    {
 	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	      goto error_exit;
 	    }
-	  else
-	    {
-	      error = db_restart (arg->command_name, TRUE, database_name);
-	    }
-	}
-
-      if (error)
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  goto error_exit;
 	}
     }
 
@@ -2205,6 +2205,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
   bool drop_flag = false;
   bool drop_clone_flag = false;
   FILE *outfp = NULL;
+  const char *dba_password = NULL;
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
@@ -2216,6 +2217,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
   output_file = utility_get_option_string_value (arg_map, PLANDUMP_OUTPUT_FILE_S, 0);
   sha1 = utility_get_option_string_value (arg_map, PLANDUMP_SHA1_S, 0);
   drop_clone_flag = utility_get_option_bool_value (arg_map, PLANDUMP_DROP_CLONE_S);
+  dba_password = utility_get_option_string_value (arg_map, PLANDUMP_DBA_PASSWORD_S, 0);
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2253,11 +2255,7 @@ plandump (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("DBA", NULL);
-
-  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+  if (util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -2336,6 +2334,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   const char *hexa_string;
   FILE *outfp = NULL;
   unsigned int added_in_flags, out_flags, dump_flags;
+  const char *dba_password = NULL;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2352,6 +2351,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
   both_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_BOTH_S);
   ha_only_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_HA_ONLY_S);
   exclude_ha_flag = utility_get_option_bool_value (arg_map, PARAMDUMP_EXCLUDE_HA_S);
+  dba_password = utility_get_option_string_value (arg_map, PARAMDUMP_DBA_PASSWORD_S, 0);
 
   /* --dump-flag is hidden option intended for developers or technical supoort */
   hexa_string = utility_get_option_string_value (arg_map, PARAMDUMP_DUMP_FLAG_S, 0);
@@ -2414,11 +2414,7 @@ paramdump (UTIL_FUNCTION_ARG * arg)
     }
 
   /* should have little copyright herald message ? */
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("DBA", NULL);
-
-  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+  if (util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -2519,6 +2515,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
   bool cumulative;
   const char *substr;
   FILE *outfp = NULL;
+  const char *dba_password = NULL;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2539,6 +2536,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
     }
   cumulative = utility_get_option_bool_value (arg_map, STATDUMP_CUMULATIVE_S);
   substr = utility_get_option_string_value (arg_map, STATDUMP_SUBSTR_S, 0);
+  dba_password = utility_get_option_string_value (arg_map, STATDUMP_DBA_PASSWORD_S, 0);
 
   if (interval == 0)
     {
@@ -2570,11 +2568,7 @@ statdump (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* should have little copyright herald message ? */
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("DBA", NULL);
-
-  if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+  if (util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -2688,6 +2682,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
   HA_SERVER_STATE ha_state = HA_SERVER_STATE_NA;
   bool force;
   int timeout;
+  const char *dba_password = NULL;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2703,6 +2698,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
   mode_name = utility_get_option_string_value (arg_map, CHANGEMODE_MODE_S, 0);
   force = utility_get_option_bool_value (arg_map, CHANGEMODE_FORCE_S);
   timeout = utility_get_option_int_value (arg_map, CHANGEMODE_TIMEOUT_S);
+  dba_password = utility_get_option_string_value (arg_map, CHANGEMODE_DBA_PASSWORD_S, 0);
 
   if (timeout == -1)
     {
@@ -2741,14 +2737,7 @@ changemode (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  if (db_login ("DBA", NULL) != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      goto error_exit;
-    }
-  error = db_restart (arg->command_name, TRUE, database_name);
+  error = util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY);
   if (error != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
@@ -3671,6 +3660,10 @@ spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit
 #undef UNIT_STR
 }
 
+/* the server refused the login: a wrong or missing password, or an account that may not log in */
+#define APPLYINFO_LOGIN_REFUSED(error) \
+  ((error) == ER_AU_REJECT_LOGIN || (error) == ER_AU_INVALID_PASSWORD || (error) == ER_AU_LOGIN_DISABLED)
+
 /*
  * applyinfo() - ApplyInfo main routine
  *   return: EXIT_SUCCESS/EXIT_FAILURE
@@ -3706,6 +3699,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   LOG_LSA copied_append_lsa, copied_eof_lsa;
   LOG_LSA initial_copied_append_lsa, initial_applied_final_lsa;
   time_t start_time, cur_time;
+  const char *dba_password = NULL;
 
   start_time = time (NULL);
 
@@ -3763,6 +3757,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   check_replica_info = (HA_GET_MODE () == HA_MODE_REPLICA);
   pageid = utility_get_option_bigint_value (arg_map, APPLYINFO_PAGE_S);
   verbose = utility_get_option_bool_value (arg_map, APPLYINFO_VERBOSE_S);
+  dba_password = utility_get_option_string_value (arg_map, APPLYINFO_DBA_PASSWORD_S, 0);
 
   interval = utility_get_option_int_value (arg_map, APPLYINFO_INTERVAL_S);
 
@@ -3814,16 +3809,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      goto check_applied_info_end;
 	    }
 
-	  AU_DISABLE_PASSWORDS ();
-	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-
-	  error = db_login ("DBA", NULL);
-	  if (error != NO_ERROR)
-	    {
-	      goto check_applied_info_end;
-	    }
-
-	  error = db_restart (arg->command_name, TRUE, local_database_name);
+	  error =
+	    util_restart_as_dba (arg->command_name, local_database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY);
 	  if (error != NO_ERROR)
 	    {
 	      goto check_applied_info_end;
@@ -3850,6 +3837,10 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  if (APPLYINFO_LOGIN_REFUSED (error))
+	    {
+	      goto login_refused;
+	    }
 	  check_applied_info_temp = false;
 	  error = NO_ERROR;
 	}
@@ -3885,15 +3876,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      goto check_master_info_end;
 	    }
 
-	  AU_DISABLE_PASSWORDS ();
-	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-
-	  if (db_login ("DBA", NULL) != NO_ERROR)
-	    {
-	      goto check_master_info_end;
-	    }
-
-	  error = db_restart (arg->command_name, TRUE, master_database_name);
+	  error =
+	    util_restart_as_dba (arg->command_name, master_database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY);
 	  if (error != NO_ERROR)
 	    {
 	      goto check_master_info_end;
@@ -3911,6 +3895,10 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  if (APPLYINFO_LOGIN_REFUSED (error))
+	    {
+	      goto login_refused;
+	    }
 	  check_master_info_temp = false;
 	  error = NO_ERROR;
 	}
@@ -3965,6 +3953,14 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   while (interval > 0 && !is_Sigint_caught);
 
   return EXIT_SUCCESS;
+
+login_refused:
+  /* unlike a server that is down, a refused login fails the run, so that a script sees it */
+  if (BOOT_IS_CLIENT_RESTARTED ())
+    {
+      (void) db_shutdown ();
+    }
+  return EXIT_FAILURE;
 
 print_applyinfo_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO, APPLYINFO_MSG_USAGE),
@@ -4158,6 +4154,10 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
   const char *database_name, *output_file = NULL;
   bool dump_flag;
   FILE *outfp = NULL;
+  const char *dba_password = NULL;
+#if defined(SA_MODE)
+  int client_type;
+#endif
 
   if (utility_get_option_string_table_size (arg_map) < 1)
     {
@@ -4176,6 +4176,7 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
     }
 
   dump_flag = utility_get_option_bool_value (arg_map, VACUUM_DUMP_S);
+  dba_password = utility_get_option_string_value (arg_map, VACUUM_DBA_PASSWORD_S, 0);
 
   if (dump_flag)
     {
@@ -4202,18 +4203,16 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  AU_DISABLE_PASSWORDS ();
   if (dump_flag)
     {
-      db_set_client_type (DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL);
+      client_type = DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL;
     }
   else
     {
       sysprm_set_force (PRM_ID_DISABLE_VACUUM, "no");
-      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+      client_type = DB_CLIENT_TYPE_ADMIN_UTILITY;
     }
-  db_login ("DBA", NULL);
-  if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
+  if (util_restart_as_dba (arg->command_name, database_name, dba_password, client_type) == NO_ERROR)
     {
       (void) db_set_isolation (TRAN_READ_COMMITTED);
 
@@ -4260,11 +4259,8 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
       snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
       er_init (er_msg_file, ER_NEVER_EXIT);
 
-      AU_DISABLE_PASSWORDS ();
-      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-      db_login ("DBA", NULL);
-
-      if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+      if (util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) !=
+	  NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  goto error_exit;
@@ -5108,9 +5104,11 @@ memmon (UTIL_FUNCTION_ARG * arg)
   FILE *outfile_fp = NULL;
   int error_code = NO_ERROR;
   MMON_SERVER_INFO server_info;
+  const char *dba_password = NULL;
 
   outfile_name = utility_get_option_string_value (arg_map, MEMMON_OUTPUT_S, 0);
   disable_force = utility_get_option_bool_value (arg_map, MEMMON_DISABLE_FORCE_S);
+  dba_password = utility_get_option_string_value (arg_map, MEMMON_DBA_PASSWORD_S, 0);
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
@@ -5151,11 +5149,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("DBA", NULL);
-
-  if (db_restart (arg->command_name, TRUE, database_name))
+  if (util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
       goto error_exit;
@@ -5258,6 +5252,7 @@ cleanfiledb (UTIL_FUNCTION_ARG * arg)
   FILE *outfp = NULL;
   bool is_dump_file_list;
   bool is_clean_invalid_file;
+  const char *dba_password = NULL;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (db_name == NULL)
@@ -5284,6 +5279,7 @@ cleanfiledb (UTIL_FUNCTION_ARG * arg)
 
   is_dump_file_list = utility_get_option_bool_value (arg_map, CLEANFILEDB_DUMP_FILE_LIST_S);
   is_clean_invalid_file = utility_get_option_bool_value (arg_map, CLEANFILEDB_CLEAN_INVALID_FILE_S);
+  dba_password = utility_get_option_string_value (arg_map, CLEANFILEDB_DBA_PASSWORD_S, 0);
 #if !defined(NDEBUG)
   /*
    * INFO: Hidden option for debugging.
@@ -5302,13 +5298,7 @@ cleanfiledb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  AU_DISABLE_PASSWORDS ();
-
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-
-  db_login ("DBA", NULL);
-
-  if (db_restart (arg->command_name, TRUE, db_name) != NO_ERROR)
+  if (util_restart_as_dba (arg->command_name, db_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
