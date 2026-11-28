@@ -322,7 +322,7 @@ static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
 static bool refuse_stream_opened_mid_request (void);
-static bool refuse_stream_client_cannot_carry (T_BROKER_VERSION client_version);
+static bool refuse_stream_client_cannot_carry (T_BROKER_VERSION client_version, char flag);
 static void ux_stream_give_up_after_error (void);
 static void ux_stream_log_open (int stream_kind);
 static bool call_value_survives_commit (const T_SRV_HANDLE * srv_handle, char stmt_type);
@@ -1655,6 +1655,18 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       srv_handle->is_prepared = TRUE;
     }
 
+  /* A shard CAS serves one shard, and a COPY stream carries no shard key --
+   * the rows have nowhere to be routed. The proxy refuses only the chunks
+   * (fn_stream_send_data), by which time the statement has opened a session
+   * and a transaction on one backend and the client has begun sending.
+   * Refuse it here, where the statement type is already known. */
+  if (cas_shard_flag == ON && stmt_type == CUBRID_STMT_COPY)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, "a SHARD broker");
+      err_code = ERROR_INFO_SET (ER_COPY_NOT_SUPPORTED, DBMS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+
 prepare_result_set:
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
@@ -2057,7 +2069,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       goto execute_error;
     }
 
-  if (refuse_stream_client_cannot_carry (client_version))
+  if (refuse_stream_client_cannot_carry (client_version, flag))
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       db_query_end (result);
@@ -2463,7 +2475,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	}
 
       if ((db_statement_count (session) > 1 && refuse_stream_opened_mid_request ())
-	  || refuse_stream_client_cannot_carry (req_info->client_version))
+	  || refuse_stream_client_cannot_carry (req_info->client_version, flag))
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto execute_all_error;
@@ -12210,24 +12222,26 @@ ux_stream_status_to_restore (void)
 }
 
 /*
- * refuse_stream_client_cannot_carry () - Give up a stream a statement opened for a client that cannot drive it
+ * refuse_stream_client_cannot_carry () - Give up a stream a statement opened for a client that does not drive it
  *
- * The bytes travel in requests 45-51: a driver older than PROTOCOL_V13 has none, and a SHARD proxy passes none to its
- * CAS. Left open, the stream would refuse every later statement of the connection (ux_stream_admits_request).
+ * The bytes travel in requests 45-51, and only an execute with CCI_EXEC_STREAM promises to send them: a driver older
+ * than PROTOCOL_V13 has no such requests, a SHARD proxy passes none to its CAS, and an execute without the flag may
+ * come from code that runs whatever SQL it is given and has no data to send. Left open, the stream would refuse every
+ * later statement of the connection (ux_stream_admits_request).
  */
 static bool
-refuse_stream_client_cannot_carry (T_BROKER_VERSION client_version)
+refuse_stream_client_cannot_carry (T_BROKER_VERSION client_version, char flag)
 {
   if (!stream_from_is_open ()
-      || (cas_shard_flag != ON && DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13)))
+      || (cas_shard_flag != ON && DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13)
+	  && (flag & CCI_EXEC_STREAM)))
     {
       return false;
     }
 
   (void) stream_from_abort ();
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_SUPPORTED, 1,
-	  cas_shard_flag == ON ? "a statement that opens a stream cannot run through a SHARD broker"
-	  : "a statement that opens a stream needs a PROTOCOL_V13 driver");
+	  cas_shard_flag == ON ? "a SHARD broker cannot carry a stream" : "the execute did not request the stream");
   return true;
 }
 

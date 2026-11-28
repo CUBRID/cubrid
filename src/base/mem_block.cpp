@@ -24,18 +24,41 @@
 
 #include <functional>
 #include <cstring>
+#include <new>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace cubmem
 {
+  /* In the server, operator new is the no-throw one of memory_wrapper.hpp and returns NULL when it fails; elsewhere it
+   * throws. Either way the caller gets the size, and a block never records a size it does not have. */
+  static char *
+  new_chars (size_t size)
+  {
+    char *ptr = NULL;
+
+    try
+      {
+	ptr = new char[size];
+      }
+    catch (const std::bad_alloc &)
+      {
+	ptr = NULL;
+      }
+    if (ptr == NULL)
+      {
+	throw bad_block_alloc (size);
+      }
+    return ptr;
+  }
+
   void
   standard_alloc (block &b, size_t size)
   {
     if (b.ptr == NULL || b.dim == 0)
       {
-	b.ptr = new char[size];
+	b.ptr = new_chars (size);
 	b.dim = size;
       }
     else if (size <= b.dim)
@@ -44,7 +67,7 @@ namespace cubmem
       }
     else
       {
-	char *new_ptr = new char[size];
+	char *new_ptr = new_chars (size);
 	std::memcpy (new_ptr, b.ptr, b.dim);
 
 	delete[] b.ptr;
@@ -69,7 +92,7 @@ namespace cubmem
   {
     if (b.ptr == NULL || b.dim == 0)
       {
-	b.ptr = new char[size];
+	b.ptr = new_chars (size);
 	b.dim = size;
       }
     else if (size <= b.dim)
@@ -83,7 +106,7 @@ namespace cubmem
 	for (new_size = b.dim; new_size < size; new_size *= 2)
 	  ;
 
-	char *new_ptr = new char[new_size];
+	char *new_ptr = new_chars (new_size);
 	std::memcpy (new_ptr, b.ptr, b.dim);
 
 	delete[] b.ptr;

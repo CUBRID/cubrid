@@ -432,6 +432,7 @@ fetch_opcode_caches (OPERATOR_TYPE opcode)
     case T_UUID:
     case T_EXEC_STATS:
     case T_TRACE_STATS:
+    case T_COPY_REJECTED_ROWS:
     case T_SLEEP:
     case T_PRIOR:
     case T_QPRIOR:

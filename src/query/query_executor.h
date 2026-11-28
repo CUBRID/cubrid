@@ -109,6 +109,12 @@ extern int qexec_clear_pred_context (THREAD_ENTRY * thread_p, pred_expr_with_con
 				     bool dealloc_dbvalues);
 extern int qexec_clear_func_pred (THREAD_ENTRY * thread_p, func_pred * pred_filter);
 extern int qexec_clear_partition_expression (THREAD_ENTRY * thread_p, regu_variable_node * expr);
+
+/* the default an attribute takes, an expression's before the cast into the attribute's domain */
+extern int qexec_eval_statement_default (THREAD_ENTRY * thread_p, struct or_attribute *attr,
+					 const DB_DATETIME * sys_datetime, DB_VALUE * out_val);
+extern int qexec_eval_row_default_expr (struct or_attribute *attr, const DB_DATETIME * sys_datetime,
+					DB_TIMESTAMP sys_epochtime, struct UUID_STATE *uuid_state, DB_VALUE * out_val);
 extern int qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final);
 extern qfile_list_id *qexec_get_xasl_list_id (xasl_node * xasl);
 /* merge join primitives shared with the parallel merge (px_merge_join) */

@@ -78,6 +78,9 @@
 #define CCI_EXEC_THREAD			0x10
 #define CCI_EXEC_NOT_USED		0x20	/* not currently used */
 #define CCI_EXEC_RETURN_GENERATED_KEYS	0x40
+/* the client sends the data the statement takes, such as COPY ... FROM STDIN; a stream the statement opens without it
+ * is given up (refuse_stream_client_cannot_carry ()) */
+#define CCI_EXEC_STREAM			((char) 0x80)
 
 #define CCI_FETCH_SENSITIVE		1
 

@@ -873,6 +873,7 @@ typedef enum
   T_CONV_TZ,
   T_COLLECTION_TO_STRING,
   T_CURRENT_VALUE_BY_OID,
+  T_COPY_REJECTED_ROWS,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 /************************************************************************/

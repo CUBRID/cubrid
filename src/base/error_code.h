@@ -1572,10 +1572,10 @@
 #define ER_STREAM_NOT_OPEN                          -1218
 #define ER_STREAM_NOT_SUPPORTED                     -1219
 #define ER_STREAM_INVALID_USE                       -1220
-#define ER_STREAM_RESERVED_6                        -1221
-#define ER_STREAM_RESERVED_7                        -1222
-#define ER_STREAM_RESERVED_8                        -1223
-#define ER_STREAM_RESERVED_9                        -1224
+#define ER_COPY_NOT_SUPPORTED                       -1221
+#define ER_COPY_BINARY_FORMAT_ERROR                 -1222
+#define ER_COPY_CSV_FORMAT_ERROR                    -1223
+#define ER_COPY_INVALID_OPTION                      -1224
 #define ER_STREAM_RESERVED_10                       -1225
 #define ER_STREAM_RESERVED_11                       -1226
 #define ER_STREAM_RESERVED_12                       -1227
