@@ -5039,38 +5039,57 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
       break;
     case CCI_U_TYPE_NUMERIC:
       {
-	char *value, *p;
-	int val_size;
+	char *value, *p, *input;
+	int val_size, input_len;
 	int precision, scale;
 	char tmp[BUFSIZ];
 
 	net_arg_get_str (&value, &val_size, net_value);
-	if (value != NULL)
+	if (val_size >= (int) sizeof (tmp))
 	  {
-	    strcpy (tmp, value);
-	  }
-	tmp[val_size] = '\0';
-	ut_trim (tmp);
-	precision = strlen (tmp);
-	p = strchr (tmp, '.');
-	if (p == NULL)
-	  {
-	    scale = 0;
+	    /* longer than any NUMERIC string, so it is parsed into a float NUMERIC without a copy into tmp */
+	    input = value;
+	    input_len = (int) strnlen (value, val_size);
+	    precision = DB_DEFAULT_NUMERIC_PRECISION;
+	    scale = DB_DEFAULT_NUMERIC_SCALE;
 	  }
 	else
 	  {
-	    scale = strlen (p + 1);
-	    precision--;
-	  }
-	if (tmp[0] == '-')
-	  {
-	    precision--;
+	    if (value != NULL)
+	      {
+		memcpy (tmp, value, val_size);
+	      }
+	    tmp[val_size] = '\0';
+	    ut_trim (tmp);
+	    precision = strlen (tmp);
+	    p = strchr (tmp, '.');
+	    if (p == NULL)
+	      {
+		scale = 0;
+	      }
+	    else
+	      {
+		scale = strlen (p + 1);
+		precision--;
+	      }
+	    if (tmp[0] == '-')
+	      {
+		precision--;
+	      }
+	    if (precision > DB_MAX_FIXED_NUMERIC_PRECISION)
+	      {
+		/* more digits than a fixed NUMERIC holds, so db_value_put parses it as a literal into a float NUMERIC */
+		precision = DB_DEFAULT_NUMERIC_PRECISION;
+		scale = DB_DEFAULT_NUMERIC_SCALE;
+	      }
+	    input = tmp;
+	    input_len = strlen (tmp);
 	  }
 
 	err_code = db_value_domain_init (&db_val, DB_TYPE_NUMERIC, precision, scale);
 	if (err_code == 0)
 	  {
-	    err_code = db_value_put (&db_val, DB_TYPE_C_CHAR, tmp, strlen (tmp));
+	    err_code = db_value_put (&db_val, DB_TYPE_C_CHAR, input, input_len);
 	  }
       }
       coercion_flag = FALSE;
