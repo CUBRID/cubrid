@@ -138,6 +138,7 @@ STATIC_INLINE int stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, i
     bool *can_end_transaction) __attribute__ ((ALWAYS_INLINE));
 
 static bool need_to_abort_tran (THREAD_ENTRY *thread_p, int *errid);
+static TRAN_STATE return_error_to_client_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool aborted);
 static int server_capabilities (void);
 static int check_client_capabilities (THREAD_ENTRY *thread_p, int client_cap, int rel_compare,
 				      REL_COMPATIBILITY *compatibility, const char *client_host);
@@ -202,7 +203,8 @@ stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool ret
   if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
     {
       /* Likely the commit failed.. somehow */
-      (void) return_error_to_client (thread_p, rid);
+      (void) return_error_to_client_internal (thread_p, rid, state == TRAN_UNACTIVE_ABORTED
+					      || state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);
     }
 
   *should_conn_reset = xtran_should_connection_reset (thread_p, has_updated);
@@ -375,9 +377,11 @@ need_to_abort_tran (THREAD_ENTRY *thread_p, int *errid)
    *  below block means ER_LK_UNILATERALLY_ABORTED occurs but another error
    *  set after that.
    *  So, re-set that error to rollback in client side.
+   *  An abort left to a section opener or to a PL callback's caller (logtb_is_abort_deferred ()) is done here too.
    */
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  if (tdes != NULL && tdes->tran_abort_reason != TRAN_NORMAL && flag_abort == false)
+  if (tdes != NULL && flag_abort == false
+      && (tdes->tran_abort_reason != TRAN_NORMAL || logtb_is_abort_deferred (tdes->tran_index)))
     {
       flag_abort = true;
 
@@ -400,6 +404,21 @@ need_to_abort_tran (THREAD_ENTRY *thread_p, int *errid)
 TRAN_STATE
 return_error_to_client (THREAD_ENTRY *thread_p, unsigned int rid)
 {
+  return return_error_to_client_internal (thread_p, rid, false);
+}
+
+/*
+ * return_error_to_client_internal - return_error_to_client (), or only the error for a request that has aborted the
+ *				     transaction itself
+ *
+ * return: state of operation
+ *
+ *   rid(in):
+ *   aborted(in): the request ended the transaction as an abort: one more would end the next transaction
+ */
+static TRAN_STATE
+return_error_to_client_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool aborted)
+{
   LOG_TDES *tdes;
   int errid;
   bool flag_abort = false;
@@ -421,7 +440,7 @@ return_error_to_client (THREAD_ENTRY *thread_p, unsigned int rid)
     {
       tran_state = tdes->state;
     }
-  flag_abort = need_to_abort_tran (thread_p, &errid);
+  flag_abort = need_to_abort_tran (thread_p, &errid) && !aborted;
 
   /* check some errors which require special actions */
   /*
@@ -4309,7 +4328,8 @@ stran_server_2pc_prepare (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
   if (state != TRAN_UNACTIVE_2PC_PREPARE && state != TRAN_UNACTIVE_COMMITTED)
     {
       /* the prepare failed. */
-      (void) return_error_to_client (thread_p, rid);
+      (void) return_error_to_client_internal (thread_p, rid, state == TRAN_UNACTIVE_ABORTED
+					      || state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);
     }
 
   (void) or_pack_int (reply, state);
@@ -4440,7 +4460,8 @@ stran_server_2pc_prepare_global_tran (THREAD_ENTRY *thread_p, unsigned int rid, 
   if (state != TRAN_UNACTIVE_2PC_PREPARE && state != TRAN_UNACTIVE_COMMITTED)
     {
       /* Likely the prepare failed.. somehow */
-      (void) return_error_to_client (thread_p, rid);
+      (void) return_error_to_client_internal (thread_p, rid, state == TRAN_UNACTIVE_ABORTED
+					      || state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);
     }
 
   (void) or_pack_int (reply, state);
@@ -6118,7 +6139,7 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int error = NO_ERROR;
   COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0, false, false, false, SHA1_HASH_INITIALIZER };
-  XASL_STREAM stream = { NULL, NULL, NULL, 0 };
+  XASL_STREAM stream = { NULL, NULL, NULL, 0, NULL };
   bool was_recompile_xasl = false;
   bool force_recompile = false;
   char *buffer = NULL;
@@ -12393,8 +12414,10 @@ spl_call (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_EXECUTE_ERROR, 1, err_msg.c_str ());
 	}
-      packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
       (void) return_error_to_client (thread_p, rid);
+      /* packed after the reply has decided the abort: a transaction it aborted (need_to_abort_tran ()) is reported as
+       * ER_LK_UNILATERALLY_ABORTED, which pl_call () keeps, so the client ends the transaction too */
+      packer.set_buffer_and_pack_all (eb, er_errid (), err_msg);
     }
 
   char *reply_data = eb.get_ptr ();
@@ -14135,8 +14158,15 @@ splcsql_transfer_file (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
   unpacker.unpack_all (compile_request);
 
   cubmem::extensible_block ext_blk;
-  cubpl::compile_handler compile_handler;
-  error = compile_handler.compile (compile_request, ext_blk);
+  {
+    cubpl::compile_handler compile_handler;
+    error = compile_handler.compile (compile_request, ext_blk);
+  }
+  if (error == ER_LK_UNILATERALLY_ABORTED)
+    {
+      /* the deferred abort the compile failed on: done here, its stack popped, and its error sent as by any request */
+      (void) return_error_to_client (thread_p, rid);
+    }
 
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);

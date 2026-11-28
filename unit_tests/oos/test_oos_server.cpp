@@ -282,7 +282,7 @@ build_oos_replication_recdes (const std::string &payload, RECDES &recdes)
 
   recdes.type = REC_HOME;
   recdes.length = total_size;
-  const OOS_RECORD_HEADER header { (int) payload.size (), 0, OID_INITIALIZER };
+  const OOS_RECORD_HEADER header { (int) payload.size (), 0, OID_INITIALIZER, NULL_LSA, NULL_LSA };
   std::memcpy (recdes.data, &header, OOS_RECORD_HEADER_SIZE);
   std::memcpy (recdes.data + OOS_RECORD_HEADER_SIZE, payload.data (), payload.size ());
   return NO_ERROR;
@@ -593,7 +593,7 @@ TEST (OosServerTest, OosInsertManyValidationFailureDoesNotClaimPublicationStart)
 
   OID output_oid = OID_INITIALIZER;
   VFID invalid_vfid = VFID_INITIALIZER;
-  oos_insert_request invalid_request = { oos_buffer (nullptr, 0), &output_oid };
+  oos_insert_request invalid_request = { oos_buffer (nullptr, 0), &output_oid, nullptr };
   EXPECT_EQ (oos_insert_many (thread_p, invalid_vfid,
 			      cubbase::span<oos_insert_request> (&invalid_request, 1)), ER_GENERIC_ERROR);
   assert_oos_insert_publication_state (stale_oid, stale_lsa);
@@ -1203,7 +1203,7 @@ build_insert_requests (std::vector<std::string> &payloads, std::vector<OID> &oid
   for (std::size_t i = 0; i < payloads.size (); i++)
     {
       OID_SET_NULL (&oids[i]);
-      oos_insert_request request = { oos_buffer (payloads[i].data (), payloads[i].size ()), &oids[i] };
+      oos_insert_request request = { oos_buffer (payloads[i].data (), payloads[i].size ()), &oids[i], nullptr };
       requests.push_back (request);
     }
 }

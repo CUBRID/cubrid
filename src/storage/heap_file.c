@@ -6739,21 +6739,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	   * during the scan of the heap. This can happen in transaction isolation
 	   * levels that release the locks of the class when the class is read.
 	   */
-#if defined(SERVER_MODE)
-	  THREAD_ENTRY *main_thread_p = NULL;
-	  if (thread_p->m_px_orig_thread_entry != NULL)
-	    {
-	      main_thread_p = thread_get_main_thread (thread_p);
-	      pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
-	    }
-#endif
 	  granted = lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK);
-#if defined(SERVER_MODE)
-	  if (main_thread_p != NULL)
-	    {
-	      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
-	    }
-#endif
 	  if (granted != LK_GRANTED)
 	    {
 	      goto exit_on_error;
@@ -7288,21 +7274,7 @@ heap_scancache_switch_class (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
   if (!lock_held)
     {
       int granted;
-#if defined(SERVER_MODE)
-      THREAD_ENTRY *main_thread_p = NULL;
-      if (thread_p->m_px_orig_thread_entry != NULL)
-	{
-	  main_thread_p = thread_get_main_thread (thread_p);
-	  pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
-	}
-#endif
       granted = lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK);
-#if defined(SERVER_MODE)
-      if (main_thread_p != NULL)
-	{
-	  pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
-	}
-#endif
       if (granted != LK_GRANTED)
 	{
 	  ASSERT_ERROR ();
@@ -24095,7 +24067,7 @@ static int
 heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 				    PGBUF_WATCHER * home_hint_p)
 {
-  int slot_count, slot_id, lk_result;
+  int slot_count, slot_id, lk_result = LK_GRANTED;
   LOCK lock;
   int error_code = NO_ERROR;
 
@@ -24105,6 +24077,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
   assert (context->recdes_p != NULL);
   assert (context->recdes_p->type != REC_NEWHOME);
 
+retry:
   if (home_hint_p == NULL)
     {
       bool hint_valid = false;
@@ -24336,17 +24309,42 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	  /* successfully locked! */
 	  return NO_ERROR;
 	}
+      else if (lk_result == LK_NOTGRANTED_DUE_TIMEOUT && slot_id == slot_count
+	       && context->home_page_watcher_p != home_hint_p)
+	{
+	  /* No other transaction holds a new slot: a thread of ours in the lock manager sleeps for a lock
+	   * (lock_group::enter ()). Wait for it with the page unfixed, then look for a slot again; the slot may be
+	   * gone by then, so the lock taken to wait is not kept. */
+	  pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+	  if (lock_object (thread_p, &context->res_oid, &context->class_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      OID_SET_NULL (&context->res_oid);
+	      return error_code;
+	    }
+	  lock_unlock_object_donot_move_to_non2pl (thread_p, &context->res_oid, &context->class_oid, lock);
+	  goto retry;
+	}
+      else if (lk_result == LK_NOTGRANTED_DUE_TIMEOUT && slot_id == slot_count)
+	{
+	  /* the same on the caller's hint page, which it keeps fixed to fill and log as a whole: fail as timed out */
+	  lock_group_set_error_for_own_wait (thread_p, &context->res_oid, lock);
+	  break;
+	}
       else if (lk_result != LK_NOTGRANTED_DUE_TIMEOUT)
 	{
 #if !defined(NDEBUG)
 	  if (lk_result == LK_NOTGRANTED_DUE_ABORTED)
 	    {
 	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-	      assert (tdes->tran_abort_reason == TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION);
+	      /* or the lock_group entrance found the transaction aborting */
+	      assert (tdes->tran_abort_reason == TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION
+		      || er_errid () == ER_LK_UNILATERALLY_ABORTED);
 	    }
 	  else
 	    {
-	      assert (false);	/* unknown locking error */
+	      /* only the lock_group entrance fails a conditional request so: the transaction is interrupted */
+	      assert (er_errid () == ER_INTERRUPTED);
 	    }
 #endif
 	  break;		/* go to error case */
@@ -24363,7 +24361,8 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
     {
       context->home_page_watcher_p = NULL;
     }
-  assert (false);
+  assert (lk_result == LK_NOTGRANTED_DUE_ABORTED || lk_result == LK_NOTGRANTED_DUE_ERROR
+	  || (lk_result == LK_NOTGRANTED_DUE_TIMEOUT && er_errid () == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG));
   return ER_FAILED;
 }
 
