@@ -796,6 +796,55 @@ thread_prepare_resumption (cubthread::entry *thread_p, cubthread::entry::status 
 }
 
 /*
+ * thread_is_resumed_status () - is the status one a waker gives after deciding for the waiting thread (the resource
+ *                               was handed over, or for some waits the thread was told to retry)
+ *   return: true for *_RESUMED, false for *_SUSPENDED, NONE, INTERRUPT and SHUTDOWN
+ *   status(in):
+ */
+static bool
+thread_is_resumed_status (thread_resume_suspend_status status)
+{
+  switch (status)
+    {
+    case THREAD_PGBUF_RESUMED:
+    case THREAD_JOB_QUEUE_RESUMED:
+    case THREAD_CSECT_READER_RESUMED:
+    case THREAD_CSECT_WRITER_RESUMED:
+    case THREAD_CSECT_PROMOTER_RESUMED:
+    case THREAD_CSS_QUEUE_RESUMED:
+    case THREAD_HEAP_CLSREPR_RESUMED:
+    case THREAD_LOCK_RESUMED:
+    case THREAD_LOGWR_RESUMED:
+    case THREAD_ALLOC_BCB_RESUMED:
+    case THREAD_DWB_QUEUE_RESUMED:
+    case THREAD_CONCURRENCY_SLOT_RESUMED:
+      return true;
+
+    case THREAD_RESUME_NONE:
+    case THREAD_RESUME_DUE_TO_INTERRUPT:
+    case THREAD_RESUME_DUE_TO_SHUTDOWN:
+    case THREAD_PGBUF_SUSPENDED:
+    case THREAD_JOB_QUEUE_SUSPENDED:
+    case THREAD_CSECT_READER_SUSPENDED:
+    case THREAD_CSECT_WRITER_SUSPENDED:
+    case THREAD_CSECT_PROMOTER_SUSPENDED:
+    case THREAD_CSS_QUEUE_SUSPENDED:
+    case THREAD_HEAP_CLSREPR_SUSPENDED:
+    case THREAD_LOCK_SUSPENDED:
+    case THREAD_LOGWR_SUSPENDED:
+    case THREAD_ALLOC_BCB_SUSPENDED:
+    case THREAD_DWB_QUEUE_SUSPENDED:
+    case THREAD_SLEEP_FUNC_SUSPENDED:
+    case THREAD_CONCURRENCY_SLOT_SUSPENDED:
+      return false;
+    }
+
+  /* not a valid status; with no default label, -Wswitch reports a status missing from the cases above */
+  assert (false);
+  return false;
+}
+
+/*
  * thread_wakeup_internal () -
  *   return:
  *   thread_p(in/out):
@@ -807,6 +856,21 @@ thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status
   if (had_mutex == false)
     {
       thread_lock_entry (thread_p);
+    }
+
+  if ((resume_reason == THREAD_RESUME_DUE_TO_INTERRUPT || resume_reason == THREAD_RESUME_DUE_TO_SHUTDOWN)
+      && thread_is_resumed_status (thread_p->resume_status))
+    {
+      /* The status may hold a decision a waker made for the thread (a resource handed over, or a retry) that the
+       * thread has not read yet. Overwriting it would make the thread believe it got nothing and leave the resource
+       * without an owner. The interrupt is not lost: the sender also records it in the transaction table (and sends
+       * it again, see thread_wakeup ()), and the thread sees it at its next interrupt check or its next wait. No code
+       * sends SHUTDOWN now; it is a stop reason like INTERRUPT and kept the same. */
+      if (had_mutex == false)
+	{
+	  thread_unlock_entry (thread_p);
+	}
+      return;
     }
 
   pthread_cond_signal (&thread_p->wakeup_cond);
@@ -854,6 +918,12 @@ thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
  *   return:
  *   thread_p(in/out):
  *   resume_reason:
+ *
+ *   Note: an INTERRUPT or SHUTDOWN does not replace a *_RESUMED status the thread has not read yet (see
+ *         thread_wakeup_internal). A sender of INTERRUPT must therefore also record it in the transaction table
+ *         (logtb_set_tran_index_interrupt). A sender that may find such a status must also send it again until the
+ *         thread acts on it, as css_stop_non_log_writer () and lock_suspend () do; a sender that wakes only a
+ *         *_SUSPENDED thread (net_server_wakeup_workers ()) sends once.
  */
 void
 thread_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason)
@@ -873,6 +943,12 @@ thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resum
  *   return:
  *   thread_p(in/out):
  *   resume_reason:
+ *
+ *   Note: an INTERRUPT or SHUTDOWN does not replace a *_RESUMED status the thread has not read yet (see
+ *         thread_wakeup_internal). A sender of INTERRUPT must therefore also record it in the transaction table
+ *         (logtb_set_tran_index_interrupt). A sender that may find such a status must also send it again until the
+ *         thread acts on it, as css_stop_non_log_writer () and lock_suspend () do; a sender that wakes only a
+ *         *_SUSPENDED thread (net_server_wakeup_workers ()) sends once.
  */
 void
 thread_wakeup_already_had_mutex (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason)
