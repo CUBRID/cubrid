@@ -6558,6 +6558,20 @@ update_histogram_for_all_classes (int with_fullscan, int random_seed, MOP * skip
 	  error = er_errid ();
 	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1,
 				     lmops->num, class_start_msec, run_start_msec, error);
+	  if (WS_IS_DELETED (class_mop))
+	    {
+	      /* another transaction dropped the class after the list was taken and before its turn: it has no
+	       * statistics left to update, so it is skipped as a NO HISTOGRAM class is, instead of failing the run
+	       * with the error of the lookup of its name (CBRD-28234). Any other failure stops the run as before. A
+	       * class of the skip list counts as excluded, or the warning below would call it not a top-level class. */
+	      er_clear ();
+	      error = NO_ERROR;
+	      if (excluded)
+		{
+		  n_excluded++;
+		}
+	      continue;
+	    }
 	  AU_RESTORE (save);
 	  locator_free_list_mops (lmops);
 	  return error;
