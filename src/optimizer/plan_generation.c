@@ -3043,12 +3043,13 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    PT_NODE *seg_nlist, *pt_expr;
 	    int left_nlen, rght_nlen, seg_nlen;
 	    int *seg_pos_list;
-	    BITSET plan_segs, temp_segs, left_exprs, rght_exprs;
+	    BITSET plan_segs, temp_segs, left_exprs, rght_exprs, expr_segs;
 
 	    bitset_init (&plan_segs, env);
 	    bitset_init (&temp_segs, env);
 	    bitset_init (&left_exprs, env);
 	    bitset_init (&rght_exprs, env);
+	    bitset_init (&expr_segs, env);
 
 	    /* init */
 	    left_nlist = rght_nlist = left_list = NULL;
@@ -3097,6 +3098,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 			/* append to the expr list */
 			left_elist = parser_append_node (pt_point (parser, left), left_elist);
 			bitset_add (&left_exprs, i);
+			qo_expr_segs (env, left, &expr_segs);
 		      }
 		    else
 		      {
@@ -3108,6 +3110,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 			/* append to the expr list */
 			rght_elist = parser_append_node (pt_point (parser, rght), rght_elist);
 			bitset_add (&rght_exprs, i);
+			qo_expr_segs (env, rght, &expr_segs);
 		      }
 		    else
 		      {
@@ -3130,6 +3133,9 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    /* make expr, name list */
 	    left_list = parser_append_node (left_nlist, left_elist);
 	    left_xasl = make_buildlist_proc (env, left_list, xasl->parallelism);
+	    bitset_union (&expr_segs, &plan_segs);
+	    bitset_assign (&((outer->info)->projected_segs), &temp_segs);
+	    bitset_intersect (&((outer->info)->projected_segs), &expr_segs);
 	    left_xasl = gen_outer (env, outer, &EMPTY_SET, NULL, NULL, left_xasl, NULL);
 	    bitset_assign (&((outer->info)->projected_segs), &temp_segs);	/* restore */
 
@@ -3143,6 +3149,8 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    /* make expr, name list */
 	    rght_list = parser_append_node (rght_nlist, rght_elist);
 	    rght_xasl = make_buildlist_proc (env, rght_list, xasl->parallelism);
+	    bitset_assign (&((inner->info)->projected_segs), &temp_segs);
+	    bitset_intersect (&((inner->info)->projected_segs), &expr_segs);
 	    rght_xasl = gen_outer (env, inner, &EMPTY_SET, NULL, NULL, rght_xasl, NULL);
 	    bitset_assign (&((inner->info)->projected_segs), &temp_segs);	/* restore */
 
@@ -3168,6 +3176,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		bitset_delset (&temp_segs);
 		bitset_delset (&left_exprs);
 		bitset_delset (&rght_exprs);
+		bitset_delset (&expr_segs);
 		break;
 	      }
 
@@ -3237,6 +3246,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		    bitset_delset (&temp_segs);
 		    bitset_delset (&left_exprs);
 		    bitset_delset (&rght_exprs);
+		    bitset_delset (&expr_segs);
 		    break;
 		  }
 
@@ -3306,6 +3316,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		    bitset_delset (&temp_segs);
 		    bitset_delset (&left_exprs);
 		    bitset_delset (&rght_exprs);
+		    bitset_delset (&expr_segs);
 		    break;
 		  }
 	      }
@@ -3340,6 +3351,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    bitset_delset (&temp_segs);
 	    bitset_delset (&left_exprs);
 	    bitset_delset (&rght_exprs);
+	    bitset_delset (&expr_segs);
 
 	  }
 
