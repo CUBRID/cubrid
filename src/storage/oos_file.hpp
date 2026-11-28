@@ -83,15 +83,16 @@ extern int oos_log_update_drop_intent (THREAD_ENTRY *thread_p, const HFID &heap_
 				       const std::vector<oos_chain_ref> &refs);
 /* Vacuum's consumer of one RVOOS_NOTIFY_VACUUM record. emptied_vpids receives the pages the deletes
  * emptied. The notify record names its OOS file; it is returned through oos_vfid_out. Returns NO_ERROR,
- * ER_INTERRUPTED (shutdown), or the error of a failed heap header lookup for the OOS file, whose heap is
- * returned through heap_hfid_out (the caller leaves the block for a later run); any other failure stops the
- * server, so restart processes the block again. A notification that needs the OOS file of a heap in
- * deferred_heaps (may be NULL) is left alone: NO_ERROR, nothing reclaimed, because the caller already left the
- * block for a later run. notify_data is copied before the first page fix, so it may point into the caller's
- * log page. */
+ * ER_INTERRUPTED (shutdown), the error of a failed heap header lookup for the OOS file, whose heap is
+ * returned through heap_hfid_out (the caller leaves the block for a later run), or, with defer_transient,
+ * ER_VACUUM_OOS_RECLAIM_DEFERRED for a wait that timed out or a failed allocation in the reclaim (the caller
+ * leaves the block for a later run, which finishes the chains); any other failure stops the server, so
+ * restart processes the block again. A notification that needs the OOS file of a heap in deferred_heaps (may be
+ * NULL) is left alone: NO_ERROR, nothing reclaimed, because the caller already left the block for a later run.
+ * notify_data is copied before the first page fix, so it may point into the caller's log page. */
 extern int oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, int notify_length,
 					VFID *oos_vfid_out, HFID *heap_hfid_out, std::vector<VPID> *emptied_vpids,
-					const std::vector<VFID> *deferred_heaps);
+					const std::vector<VFID> *deferred_heaps, bool defer_transient);
 
 /* While one is in scope on a thread, the reclaim postpones that run on that thread report the pages
  * they empty to it instead of discarding them. Vacuum opens one around the sysop commit of a REMOVE,
@@ -337,15 +338,17 @@ extern void oos_test_fail_next_reclaim_read_fix ();
 extern void oos_test_reclaim_set_emptied_limit (std::size_t limit);
 extern std::size_t oos_test_reclaim_emptied_count (const VFID &oos_vfid);
 /* Reclaim intents (ADR-0008): the payload RVOOS_RECLAIM_POSTPONE and RVOOS_NOTIFY_VACUUM carry; a one-shot
- * failure of the reclaimer after it performed n_deletes more chunk deletes (0 fails before the next one,
- * -1 disarms); and a hook that replaces the server stop of the fail-stop policy, so a test can observe it
- * (NULL restores the stop). */
+ * failure of the reclaimer after it performed n_deletes more chunk deletes (0 fails before the next one, -1
+ * disarms), with ER_GENERIC_ERROR or with error, which is ER_GENERIC_ERROR, ER_CSS_PTHREAD_COND_TIMEDOUT or
+ * ER_LK_UNILATERALLY_ABORTED; and a hook that replaces the server stop of the fail-stop policy, so a test can
+ * observe it (NULL restores the stop). */
 extern std::vector<char> oos_test_make_reclaim_intent_payload (const VFID &oos_vfid,
     const std::vector<oos_chain_ref> &refs);
 /* The RVOOS_NOTIFY_VACUUM payload of an UPDATE that did not resolve the OOS file: vacuum looks it up from heap_hfid. */
 extern std::vector<char> oos_test_make_update_drop_notify_payload (const HFID &heap_hfid,
     const std::vector<oos_chain_ref> &refs);
 extern void oos_test_fail_reclaim_after_chunk_deletes (int n_deletes);
+extern void oos_test_fail_reclaim_after_chunk_deletes (int n_deletes, int error);
 extern void oos_test_set_reclaim_fail_stop_hook (void (*hook) (int error));
 /* Stops the process with std::_Exit (exit_code) right after the n-th following UPDATE drop postpone appended its
  * RVOOS_NOTIFY_VACUUM, with the log flushed up to it: a crash in the middle of a commit's postpones (0 disarms). */

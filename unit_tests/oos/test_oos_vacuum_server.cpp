@@ -1037,6 +1037,45 @@ TEST_F (OosVacuumHeapSeamServer, NotifyConsumerLeavesAMalformedChainAndReclaimsT
 }
 
 // ============================================================================
+// TC-V11e: UPDATE notification consumer — only a vacuum worker runs its log block again, so on any other thread a
+// wait that timed out in the reclaim still stops the server; the rerun then finishes the chain (CBRD-28377)
+// ============================================================================
+TEST_F (OosVacuumHeapSeamServer, NotifyConsumerOutsideAVacuumWorkerStillStopsOnATimedOutWait)
+{
+  OID chain_oid;
+  RECDES chain_rec {};
+  insert_chunk_and_record ("chain whose reclaim waits too long", chain_oid, chain_rec);
+  test_oos_utils::auto_freed_recdes_ptr d1 (&chain_rec, recdes_free_data_area);
+  oos_chain_ref chain = {chain_oid, NULL_LSA};
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, chain_oid, &chain.identity_stamp), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_FALSE (vacuum_is_thread_vacuum_worker (thread_p));
+
+  std::vector<char> notify = oos_test_make_update_drop_notify_payload (hfid, {chain});
+  ASSERT_FALSE (notify.empty ());
+  g_notify_fail_stops = 0;
+  g_notify_fail_stop_error = NO_ERROR;
+  oos_test_set_reclaim_fail_stop_hook (record_notify_fail_stop);
+  oos_test_fail_reclaim_after_chunk_deletes (0, ER_CSS_PTHREAD_COND_TIMEDOUT);
+  er_clear ();
+  const int error_code = vacuum_oos_reclaim_notified_chains (thread_p, notify.data (), (int) notify.size ());
+  oos_test_fail_reclaim_after_chunk_deletes (-1);
+  er_clear ();
+
+  EXPECT_EQ (g_notify_fail_stops, 1) << "without a later run of the block a timed-out wait must stop the server";
+  EXPECT_EQ (g_notify_fail_stop_error, ER_CSS_PTHREAD_COND_TIMEDOUT);
+  EXPECT_NE (error_code, ER_VACUUM_OOS_RECLAIM_DEFERRED) << "only a vacuum worker may leave the block for later";
+  EXPECT_TRUE (chunk_is_present (chain_oid)) << "the failed reclaim deleted the chain";
+
+  /* The run after the restart. */
+  EXPECT_EQ (vacuum_oos_reclaim_notified_chains (thread_p, notify.data (), (int) notify.size ()), NO_ERROR);
+  oos_test_set_reclaim_fail_stop_hook (NULL);
+  EXPECT_EQ (g_notify_fail_stops, 1);
+  EXPECT_FALSE (chunk_is_present (chain_oid)) << "the rerun did not reclaim the chain";
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+}
+
+// ============================================================================
 // TC-V11d: an UPDATE's drop runs at a system operation commit only under that operation's own subtransaction
 // MVCCID, as SELECT INCR does in instant lock mode; the commit publishes it (CBRD-27781)
 // ============================================================================

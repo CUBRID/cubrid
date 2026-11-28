@@ -116,6 +116,13 @@ typedef enum
   /* HEAP MANAGER */
   FI_TEST_HEAP_PREV_VERSION_WALK_HOLD = 900000,	/* hold a version walk under a non-transaction snapshot */
 
+  /* OOS */
+  FI_TEST_OOS_RECLAIM_HEAD_FIX_TIMEOUT = 1000000,	/* the OOS reclaimer's fix of a chain head for its delete fails as
+							 * a wait for a free buffer that timed out, on every fix while
+							 * the code is listed and for every caller: vacuum's
+							 * notification consumer defers its block, and a reclaim
+							 * postpone stops the server */
+
   /* etc .... */
 
 } FI_TEST_CODE;

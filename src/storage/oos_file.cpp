@@ -198,8 +198,9 @@ static std::atomic<bool> oos_Test_throw_bad_alloc_on_next_oid_publication { fals
 static std::atomic<int> oos_Test_reclaim_waiters { 0 };
 static std::atomic<bool> oos_Test_fail_next_reclaim_write_fix_armed { false };
 static std::atomic<bool> oos_Test_fail_next_reclaim_read_fix_armed { false };
-/* Chunk deletes the reclaimer still performs before it fails with ER_GENERIC_ERROR; -1 when disarmed. */
+/* Chunk deletes the reclaimer still performs before it fails with oos_Test_fail_reclaim_error; -1 when disarmed. */
 static std::atomic<int> oos_Test_fail_reclaim_after_chunk_deletes { -1 };
+static std::atomic<int> oos_Test_fail_reclaim_error { ER_GENERIC_ERROR };
 /* Files the synthetic-owner oos_create_file overload created and oos_remove_file has not removed. */
 static std::vector<VFID> oos_Test_created_files;
 static std::mutex oos_Test_created_files_mutex;
@@ -3641,6 +3642,16 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
       OOS_RECORD_HEADER header;
       oos_chunk_probe probe = OOS_CHUNK_PAGE_GONE;
 
+      if (i == 0)
+	{
+	  /* The head is fixed last, so the failure leaves the head and nothing else: the linked prefix a rerun
+	   * finishes. */
+	  error = FI_TEST (thread_p, FI_TEST_OOS_RECLAIM_HEAD_FIX_TIMEOUT, FI_INIT_STATE);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
       error = oos_fix_expected_chunk (thread_p, chunk, PGBUF_LATCH_WRITE, page_ptr, header, probe);
       if (error != NO_ERROR)
 	{
@@ -3658,11 +3669,22 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
       });
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
-      if (oos_Test_fail_reclaim_after_chunk_deletes.load (std::memory_order_relaxed) == 0)
+      if (oos_Test_fail_reclaim_after_chunk_deletes.load (std::memory_order_acquire) == 0)
 	{
 	  oos_Test_fail_reclaim_after_chunk_deletes.store (-1, std::memory_order_relaxed);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_GENERIC_ERROR;
+	  const int injected = oos_Test_fail_reclaim_error.load (std::memory_order_relaxed);
+	  if (injected == ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      /* The error pgbuf_timed_sleep leaves when a page latch wait times out. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4, 0, "", "", 0);
+	    }
+	  else
+	    {
+	      /* Messages without arguments only: er_set reads one argument per format specification. */
+	      assert (injected == ER_GENERIC_ERROR || injected == ER_CSS_PTHREAD_COND_TIMEDOUT);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, injected, 0);
+	    }
+	  return injected;
 	}
       if (oos_Test_fail_reclaim_after_chunk_deletes.load (std::memory_order_relaxed) > 0)
 	{
@@ -3796,7 +3818,8 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *       committed the decision that the chain is dead (ADR-0008): a reclaim postpone, or vacuum's
  *       RVOOS_NOTIFY_VACUUM consumer. An error leaves the linked prefix that a rerun finishes; the
  *       postpone callers stop the server rather than report the reclaim as done (fail-stop), so
- *       restart recovery reruns their durable postpone. A malformed chain is the exception: it is
+ *       restart recovery reruns their durable postpone. The notification consumer leaves a wait that
+ *       timed out to a later run of its log block instead (CBRD-28377). A malformed chain is the exception: it is
  *       rejected before anything is modified, so a rerun fails the same way, and the callers leave
  *       it (oos_reclaim_skip_if_permanent).
  *
@@ -4097,6 +4120,37 @@ oos_reclaim_skip_if_permanent (int error, const VFID &oos_vfid, const oos_chain_
   return true;
 }
 
+/* Returns true for an error that a later run of the same reclaim can get past: a wait for a page latch or for a free
+ * page buffer that timed out, or a failed allocation. The reclaimer meets these only in its page fixes and in the
+ * private copies it makes, never between logging a chunk delete and making it, so the chunks it deleted are gone for
+ * good and the rest form the linked prefix that a rerun finishes (ADR-0008 decision 3). Any other error stays a
+ * fail-stop: it may be persistent, or come after a delete was logged. */
+static bool
+oos_reclaim_error_is_transient (int error)
+{
+  switch (error)
+    {
+    case ER_CSS_PTHREAD_COND_TIMEDOUT:	/* no page buffer freed within the page latch timeout (pgbuf_allocate_bcb) */
+    case ER_PB_ALL_BUFFERS_DIRTY:	/* no page buffer found, and no other error set */
+    case ER_PAGE_LATCH_TIMEDOUT:	/* page latch wait timed out (pgbuf_timed_sleep) */
+    case ER_LK_PAGE_TIMEOUT:
+    case ER_LK_UNILATERALLY_ABORTED:
+    case ER_OUT_OF_VIRTUAL_MEMORY:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/* Leaves a notification's reclaim for the caller's later run of the log block (oos_reclaim_notified_chains). */
+static int
+oos_reclaim_defer_notification (int error, const oos_reclaim_intent_header &header)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_OOS_RECLAIM_DEFERRED, 5, VFID_AS_ARGS (&header.heap_hfid.vfid),
+	  VFID_AS_ARGS (&header.oos_vfid), error);
+  return ER_VACUUM_OOS_RECLAIM_DEFERRED;
+}
+
 /*
  * oos_rv_reclaim_on_postpone () - run a committed reclaim intent (RVOOS_RECLAIM_POSTPONE)
  *
@@ -4107,7 +4161,8 @@ oos_reclaim_skip_if_permanent (int error, const VFID &oos_vfid, const oos_chain_
  * Runs after the deciding unit committed, at runtime or as a rerun by restart recovery. The reclaimer
  * converges on rerun, so a rerun of a finished or partly finished reclaim is safe. A malformed chain is left
  * and reported, and the others are reclaimed (oos_reclaim_skip_if_permanent). Any other error does not
- * return: it stops the server before the postpone is marked done (oos_reclaim_fail_stop).
+ * return: it stops the server before the postpone is marked done (oos_reclaim_fail_stop). That includes a wait
+ * that timed out: unlike vacuum's notification consumer, a postpone has no later run to leave it to (CBRD-28377).
  */
 int
 oos_rv_reclaim_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
@@ -4270,33 +4325,37 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 /*
  * oos_reclaim_notified_chains () - vacuum's consumer of one RVOOS_NOTIFY_VACUUM record
  *
- *   return: NO_ERROR; ER_INTERRUPTED (shutdown), which leaves the block to be processed again; or the error of
+ *   return: NO_ERROR; ER_INTERRUPTED (shutdown), which leaves the block to be processed again; the error of
  *	     a failed heap header lookup for the OOS file (a latch timeout or a read error), which the caller
- *	     turns into a later run of the block, as vacuum does for a heap record (CBRD-27933). A malformed
- *	     notification or chain, and a heap without an OOS file, are reported and skipped, because a rerun
- *	     fails the same way (oos_reclaim_skip_if_permanent). Any other reclaim failure stops the server
- *	     (fail-stop), so the block is processed again after restart
+ *	     turns into a later run of the block, as vacuum does for a heap record (CBRD-27933); or, when
+ *	     defer_transient is set, ER_VACUUM_OOS_RECLAIM_DEFERRED for a wait that timed out or a failed
+ *	     allocation in the reclaim (oos_reclaim_error_is_transient), which the caller also turns into a later
+ *	     run of the block (CBRD-28377). A malformed notification or chain, and a heap without an OOS file, are
+ *	     reported and skipped, because a rerun fails the same way (oos_reclaim_skip_if_permanent). Any other
+ *	     reclaim failure stops the server (fail-stop), so the block is processed again after restart
  *   thread_p(in): vacuum worker
  *   notify_data(in): undo data of the record
  *   notify_length(in): its length
  *   oos_vfid_out(out): OOS file the chains belong to
  *   heap_hfid_out(out): heap file the notification names (for the caller's report of a failed lookup)
  *   emptied_vpids(out): pages the deletes emptied
- *   deferred_heaps(in): heaps whose OOS file lookup already failed in the caller's run of the block; may be NULL.
- *			 A notification that needs one of them is left for the next run without waiting again.
+ *   deferred_heaps(in): heaps whose OOS file lookup or reclaim already failed in the caller's run of the block; may
+ *			 be NULL. A notification that needs one of them is left for the next run without waiting again.
+ *   defer_transient(in): the caller runs the block again when this call fails, as a vacuum worker does. Without
+ *			  it a timed-out wait in the reclaim stops the server too.
  *
  * Vacuum reaches the record only once its MVCCID precedes every active snapshot, so no reader can still
  * reach the chains through the old version. A block retry or a rerun notification finds reclaimed
- * chains gone and skips them.
+ * chains gone and skips them, and finishes a chain that a failed run left partly reclaimed.
  *
  * notify_data is read only by the unpack, into private copies, before the first page fix. The caller may
  * pass a pointer into its log page, which the page fixes below can rotate out, and an allocation failure of
- * the copy fail-stops with the rest of the consumer.
+ * the copy is handled as one in the reclaim.
  */
 int
 oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, int notify_length, VFID *oos_vfid_out,
 			     HFID *heap_hfid_out, std::vector<VPID> *emptied_vpids,
-			     const std::vector<VFID> *deferred_heaps)
+			     const std::vector<VFID> *deferred_heaps, bool defer_transient)
 {
   oos_reclaim_intent_header header {};
   std::vector<oos_chain_ref> refs;
@@ -4306,6 +4365,13 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
       if (oos_reclaim_skip_if_permanent (error, header.oos_vfid, oos_chain_ref {oid_Null_oid, NULL_LSA}))
 	{
 	  return NO_ERROR;
+	}
+      if (defer_transient && oos_reclaim_error_is_transient (error))
+	{
+	  /* The notification names no file the caller can trust yet; *heap_hfid_out stays unset. */
+	  HFID_SET_NULL (&header.heap_hfid);
+	  VFID_SET_NULL (&header.oos_vfid);
+	  return oos_reclaim_defer_notification (error, header);
 	}
       oos_reclaim_fail_stop (thread_p, error, header.oos_vfid, oos_chain_ref {oid_Null_oid, NULL_LSA});
       return error;
@@ -4373,6 +4439,12 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
       if (error != NO_ERROR && oos_reclaim_skip_if_permanent (error, header.oos_vfid, ref))
 	{
 	  continue;
+	}
+      if (error != NO_ERROR && defer_transient && oos_reclaim_error_is_transient (error))
+	{
+	  /* The block is not marked done, so the notification stays; its next run finishes this chain and
+	   * reclaims the ones after it (CBRD-28377). */
+	  return oos_reclaim_defer_notification (error, header);
 	}
       if (error != NO_ERROR)
 	{
@@ -4998,7 +5070,15 @@ oos_test_make_update_drop_notify_payload (const HFID &heap_hfid, const std::vect
 void
 oos_test_fail_reclaim_after_chunk_deletes (int n_deletes)
 {
-  oos_Test_fail_reclaim_after_chunk_deletes.store (n_deletes, std::memory_order_relaxed);
+  oos_test_fail_reclaim_after_chunk_deletes (n_deletes, ER_GENERIC_ERROR);
+}
+
+void
+oos_test_fail_reclaim_after_chunk_deletes (int n_deletes, int error)
+{
+  oos_Test_fail_reclaim_error.store (error, std::memory_order_relaxed);
+  /* Publishes the error to the vacuum worker that consumes the counter. */
+  oos_Test_fail_reclaim_after_chunk_deletes.store (n_deletes, std::memory_order_release);
 }
 
 void

@@ -771,6 +771,7 @@ static void vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p);
 #define VACUUM_VERIFY_VACUUM_DATA(thread_p)
 #endif /* NDEBUG */
 static void vacuum_check_shutdown_interruption (const THREAD_ENTRY * thread_p, int error_code);
+static bool vacuum_is_oos_deferral (int error_code);
 
 /* *INDENT-OFF* */
 void
@@ -3581,6 +3582,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   bool was_interrupted = false;
   bool is_file_dropped = false;
   bool oos_deferred = false;
+  int oos_deferral_code = NO_ERROR;	/* the first OOS deferral of the block */
   VACUUM_OOS_DEFERRED_HEAPS oos_deferred_heaps;
 
   PERF_UTIME_TRACKER perf_tracker;
@@ -3876,12 +3878,14 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	   * UPDATE's MVCCID precedes every active snapshot, so no reader can still reach them through the old
 	   * version. */
 	  error_code = vacuum_oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size, &oos_deferred_heaps);
-	  if (error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED)
+	  if (vacuum_is_oos_deferral (error_code))
 	    {
-	      /* Keep the first deferral and finish the rest of the block, as vacuum_heap does. The end of the block
-	       * leaves it for a later run, which reclaims the deferred chains. */
+	      /* The OOS file lookup failed, or a wait timed out in the reclaim (CBRD-28377). Keep the first deferral
+	       * and finish the rest of the block, as vacuum_heap does. The end of the block leaves it for a later run,
+	       * which reclaims the deferred chains. */
 	      if (!oos_deferred)
 		{
+		  oos_deferral_code = error_code;
 		  er_stack_push ();
 		  oos_deferred = true;
 		}
@@ -3939,8 +3943,10 @@ end:
     {
       if (error_code == NO_ERROR)
 	{
+	  /* The first deferral's error is back. */
 	  er_stack_pop ();
-	  error_code = ER_VACUUM_OOS_LOOKUP_DEFERRED;
+	  error_code = oos_deferral_code;
+	  assert (er_errid () == oos_deferral_code);
 	}
       else
 	{
@@ -4098,23 +4104,23 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
     }
   else
     {
-      /* Shutdown, allocation failures and deferred OOS lookups leave the block available for a later retry. */
+      /* Shutdown, allocation failures and deferred OOS lookups and reclaims leave the block available for a later
+       * retry. */
       int error_level =
 #if defined (SERVER_MODE)
 	thread_p->shutdown ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
 
 #if !defined (NDEBUG)
       /* Other reasons for abandoning a worker job remain unexpected. */
-      assert (thread_p->shutdown || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY
-	      || er_errid () == ER_VACUUM_OOS_LOOKUP_DEFERRED);
+      assert (thread_p->shutdown || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY || vacuum_is_oos_deferral (er_errid ()));
       assert (vacuum_Data.shutdown_sequence.is_shutdown_requested () || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY
-	      || er_errid () == ER_VACUUM_OOS_LOOKUP_DEFERRED);
+	      || vacuum_is_oos_deferral (er_errid ()));
 #endif /* !NDEBUG */
 
 #else /* !SERVER_MODE */
 	er_errid () == ER_INTERRUPTED ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
       assert (er_errid () == ER_INTERRUPTED || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY
-	      || er_errid () == ER_VACUUM_OOS_LOOKUP_DEFERRED);
+	      || vacuum_is_oos_deferral (er_errid ()));
 #endif /* !SERVER_MODE */
 
       /* Vacuum will have to be re-run */
@@ -8427,7 +8433,19 @@ vacuum_check_shutdown_interruption (const THREAD_ENTRY * thread_p, int error_cod
   // 2. or server is shutting down
   // 3. or the block is left for a later run
   assert (!vacuum_is_thread_vacuum_worker (thread_p) || (thread_p->shutdown && error_code == ER_INTERRUPTED)
-	  || error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED);
+	  || vacuum_is_oos_deferral (error_code));
+}
+
+//
+// vacuum_is_oos_deferral () - is the error one that leaves a log block for a later run because of its OOS work?
+//
+// return          : true for a failed OOS file lookup (CBRD-27933) or a timed-out wait in an OOS reclaim (CBRD-28377)
+// error_code (in) : error code
+//
+static bool
+vacuum_is_oos_deferral (int error_code)
+{
+  return error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED || error_code == ER_VACUUM_OOS_RECLAIM_DEFERRED;
 }
 
 //

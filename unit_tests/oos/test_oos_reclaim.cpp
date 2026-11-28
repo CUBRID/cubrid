@@ -336,6 +336,39 @@ TEST_F (OosReclaimTest, FailedReclaimOfACommittedIntentFailStopsInsteadOfReporti
     }
 }
 
+/* A committed intent runs as a postpone, which has no later run to be left to, so a wait that timed out stops the
+ * server there too. Only vacuum's notification consumer leaves it to a later run of its log block (CBRD-28377). */
+TEST_F (OosReclaimTest, TimedOutWaitInTheReclaimOfACommittedIntentStillFailStops)
+{
+  std::vector<oos_chain_ref> chunks;
+  insert_chain (oos_vfid, 3, chunks);
+  const OID owner = OID_INITIALIZER;
+
+  oos_test_set_reclaim_fail_stop_hook (record_fail_stop);
+  oos_test_fail_reclaim_after_chunk_deletes (1, ER_CSS_PTHREAD_COND_TIMEDOUT);
+
+  log_sysop_start (thread_p);
+  ASSERT_EQ (oos_log_reclaim_intent (thread_p, oos_vfid, owner, 0, "unit test", {chunks[0]}), NO_ERROR);
+  log_sysop_commit (thread_p);
+
+  EXPECT_EQ (g_fail_stops, 1) << "a timed-out wait in a committed intent's reclaim must stop the server";
+  EXPECT_EQ (g_fail_stop_error, ER_CSS_PTHREAD_COND_TIMEDOUT);
+  er_clear ();
+
+  /* What the stopped server leaves for restart recovery: a linked prefix from an intact head. */
+  EXPECT_TRUE (chunk_is_present (chunks[0]));
+  EXPECT_TRUE (chunk_is_present (chunks[1]));
+  EXPECT_FALSE (chunk_is_present (chunks[2]));
+
+  /* The rerun restart recovery performs finishes the linked prefix. */
+  oos_test_set_reclaim_fail_stop_hook (NULL);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], NULL, NULL), NO_ERROR);
+  for (std::size_t i = 0; i < chunks.size (); i++)
+    {
+      EXPECT_FALSE (chunk_is_present (chunks[i])) << "chunk " << i;
+    }
+}
+
 /* log_do_postpone, the path a transaction takes when its postpones overflow the postpone cache (and the one
  * restart recovery takes), skipped a postpone whose LSA is the last parent of a system operation that started
  * right after it. An UPDATE that drops a chain followed by an OOS page allocation, as in a bulk UPDATE, lost its
