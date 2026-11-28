@@ -251,6 +251,16 @@ parse_user_define_line (char *line_buffer, FILE * output_file)
     {
       /* A second word must be an user's name. */
       token = strtok_r (NULL, delim, &save_ptr);
+
+      /* with the complexity policy on, a user cannot be created without a password, which this file cannot give */
+      if (token != NULL && prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY))
+	{
+	  int error = au_check_password_policy (token, NULL);
+
+	  fprintf (output_file, "%s\n", db_error_string (3));
+	  return error;
+	}
+
       if (token == NULL || (user = au_add_user (token, &exists)) == NULL)
 	{
 	  fprintf (output_file,

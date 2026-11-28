@@ -1235,15 +1235,12 @@ cm_ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
   new_db_user_name = nv_get_val (req, "username");
   new_db_user_pass = nv_get_val (req, "userpass");
 
-  dbuser = db_add_user (new_db_user_name, &exists);
-  if ((dbuser == NULL) || exists)
-    {
-      goto error_return;
-    }
-
   if (uStringEqual (new_db_user_pass, "__NULL__"))
     new_db_user_pass = "";
-  if (db_set_password (dbuser, NULL, new_db_user_pass) < 0)
+
+  /* create the user with its password at once: enable_complexity_policy refuses db_add_user () */
+  dbuser = db_add_user_with_password (new_db_user_name, new_db_user_pass, &exists);
+  if ((dbuser == NULL) || exists)
     {
       goto error_return;
     }

@@ -73,6 +73,7 @@
 #include "method_callback.hpp"
 #include "sp_context_rules.hpp"
 #include "filesys_temp.hpp"
+#include "transaction_cl.h"
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
@@ -80,6 +81,8 @@ void (*prev_sigfpe_handler) (int) = SIG_DFL;
 #else
 #include "wintcp.h"
 #endif /* !WINDOWS */
+
+#define UNIQUE_SAVEPOINT_ADD_USER_WITH_PASSWORD "aDDuSERwITHpASSWORD"
 
 /* host status for marking abnormal host status */
 typedef struct db_host_status DB_HOST_STATUS;
@@ -2112,6 +2115,8 @@ db_find_user_to_drop (const char *name, DB_OBJECT ** user)
  * name(in)   : user name
  * exists(out): pointer to flag, set if user already exists
  *
+ * Note: it creates a user without a password, so it is refused while enable_complexity_policy is on;
+ *       use db_add_user_with_password () then.
  */
 DB_OBJECT *
 db_add_user (const char *name, int *exists)
@@ -2122,9 +2127,74 @@ db_add_user (const char *name, int *exists)
   CHECK_1ARG_NULL (name);
   CHECK_MODIFICATION_NULL ();
 
+  if (prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY))
+    {
+      (void) au_check_password_policy (name, NULL);
+      return NULL;
+    }
+
   retval = au_add_user (name, exists);
 
   return (retval);
+}
+
+/*
+ * db_add_user_with_password() - This will add a new user with its password.
+ *       Only the DBA can add users. If the user already exists, its object
+ *       pointer will be returned, the exists flag will be set to non-zero
+ *       and its password is not changed. The exists pointer can be NULL if
+ *       the caller isn't interested in this value.
+ *
+ * return     : new user object, or NULL with the error set
+ * name(in)   : user name
+ * password(in): plain text password; NULL or "" gives no password, which
+ *               enable_complexity_policy refuses
+ * exists(out): pointer to flag, set if user already exists
+ *
+ * Note: a password that is refused leaves no user behind.
+ */
+DB_OBJECT *
+db_add_user_with_password (const char *name, const char *password, int *exists)
+{
+  DB_OBJECT *user;
+  int user_exists = 0;
+  int error;
+
+  CHECK_CONNECT_NULL ();
+  CHECK_1ARG_NULL (name);
+  CHECK_MODIFICATION_NULL ();
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_ADD_USER_WITH_PASSWORD);
+  if (error != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  user = au_add_user (name, &user_exists);
+  if (exists != NULL)
+    {
+      *exists = user_exists;
+    }
+  if (user == NULL || user_exists)
+    {
+      return user;
+    }
+
+  /* with the policy off, no password is set as CREATE USER does without a PASSWORD clause */
+  if (password != NULL || prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY))
+    {
+      error = au_set_password_encrypt (user, password);
+      if (error != NO_ERROR)
+	{
+	  if (!ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+	    {
+	      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_USER_WITH_PASSWORD);
+	    }
+	  return NULL;
+	}
+    }
+
+  return user;
 }
 
 /*

@@ -2442,8 +2442,12 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
   set_savepoint = true;
 
+  /* the password is optional, but enable_complexity_policy refuses a user without one */
+  node = statement->info.create_user.password;
+  password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
+
   exists = 0;
-  user = db_add_user (user_name, &exists);
+  user = db_add_user_with_password (user_name, password, &exists);
   if (user == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -2457,19 +2461,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       goto end;
     }
 
-  /* Now treats optional password, login capability, group, member and comment of the created user */
-
-  /* password */
-  node = statement->info.create_user.password;
-  password = (node && IS_STRING (node)) ? GET_STRING (node) : NULL;
-  if (password != NULL)
-    {
-      error = au_set_password_encrypt (user, password);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
+  /* Now treats optional login capability, group, member and comment of the created user */
 
   /* login capability */
   login_capability = statement->info.create_user.login_capability;

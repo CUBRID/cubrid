@@ -211,6 +211,7 @@ extern "C"
   extern DB_OBJECT *db_find_user (const char *name);
   extern int db_find_user_to_drop (const char *name, DB_OBJECT ** user);
   extern DB_OBJECT *db_add_user (const char *name, int *exists);
+  extern DB_OBJECT *db_add_user_with_password (const char *name, const char *password, int *exists);
   extern int db_drop_user (DB_OBJECT * user);
   extern int db_add_member (DB_OBJECT * user, DB_OBJECT * member);
   extern int db_drop_member (DB_OBJECT * user, DB_OBJECT * member);

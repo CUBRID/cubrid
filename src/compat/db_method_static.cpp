@@ -27,6 +27,7 @@
 #include "dbtype_def.h"
 
 #include "authenticate.h" /* au_ */
+#include "authenticate_password.hpp" /* au_check_password_policy */
 #include "network_interface_cl.h" /* clogin_user */
 #include "schema_manager.h" /* sm_issystem */
 #include "execute_schema.h"
@@ -176,9 +177,12 @@ void db_install_static_methods ()
 static void
 au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE *password)
 {
-  int error;
+  int error = NO_ERROR;
   int exists;
   MOP user;
+  bool has_password = false;
+  bool empty_password;
+  bool check_policy;
   const char *tmp = NULL;
 
   if (name != NULL && DB_IS_STRING (name) && !DB_IS_NULL (name) && ((tmp = db_get_string (name)) != NULL))
@@ -190,15 +194,35 @@ au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE
 	  db_make_error (returnval, error);
 	  return;
 	}
+
+      has_password = (password != NULL && DB_IS_STRING (password) && !DB_IS_NULL (password)
+		      && (tmp = db_get_string (password)));
+      empty_password = (!has_password || tmp[0] == '\0');
+
+      /*
+       * With the complexity policy on, a user is not created without a password. loaddb is let through: the schema
+       * file of unloaddb creates every user by add_user () with '' and then sets its encoded password, if any.
+       */
+      check_policy = (prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY)
+		      && (!empty_password || !db_client_type_is_loaddb ()));
+
       /*
        * although au_set_password_encrypt will check this, check it out here before
        * we bother creating the user object
        */
-      if (password != NULL && DB_IS_STRING (password) && !DB_IS_NULL (password) && (tmp = db_get_string (password))
-	  && strlen (tmp) > AU_MAX_PASSWORD_CHARS)
+      if (has_password && strlen (tmp) > AU_MAX_PASSWORD_CHARS)
 	{
 	  error = ER_AU_PASSWORD_OVERFLOW;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  db_make_error (returnval, error);
+	}
+      /*
+       * check the complexity policy before creating the user object too: a method call is not rolled back as a
+       * statement, so a user created here and refused its password later would stay without a password
+       */
+      else if (check_policy
+	       && (error = au_check_password_policy (db_get_string (name), empty_password ? NULL : tmp)) != NO_ERROR)
+	{
 	  db_make_error (returnval, error);
 	}
       else
@@ -217,9 +241,10 @@ au_add_user_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *name, DB_VALUE
 	    }
 	  else
 	    {
-	      if (password != NULL && DB_IS_STRING (password) && !DB_IS_NULL (password))
+	      /* with the policy on, an empty password let through for loaddb is not set: it would be refused */
+	      if (has_password && (!empty_password || !prm_get_bool_value (PRM_ID_ENABLE_COMPLEXITY_POLICY)))
 		{
-		  error = au_set_password_encrypt (user, db_get_string (password));
+		  error = au_set_password_encrypt (user, tmp);
 		  if (error != NO_ERROR)
 		    {
 		      db_make_error (returnval, error);
