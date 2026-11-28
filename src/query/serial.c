@@ -1716,7 +1716,13 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   addr.offset = serial_oidp->slotid;
   addr.pgptr = pgptr;
 
-  assert (spage_is_updatable (thread_p, addr.pgptr, serial_oidp->slotid, (int) new_recdesc.get_size ()));
+  /* Check the space before logging, as heap_update_home () does. Nothing undoes a redo-only record, so one that is
+   * logged for a row the page cannot hold stops restart recovery, which fails to apply it as spage_update fails here. */
+  if (!spage_is_updatable (thread_p, addr.pgptr, serial_oidp->slotid, (int) new_recdesc.get_size ()))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_UPDATE_SERIAL, 0);
+      goto exit_on_error;
+    }
 
   log_append_redo_recdes (thread_p, RVHF_UPDATE, &addr, &new_recdesc.get_recdes ());
 
