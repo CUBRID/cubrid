@@ -1149,6 +1149,15 @@ pt_walk_private (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg)
 
   assert (node != NULL);
 
+  /* PT_STOP_WALK ends the walk: a node after it is not entered. Any other mode set at an earlier node was for that
+   * node only, so this one is entered in PT_CONTINUE_WALK (CBRD-28372: a PT_LIST_WALK set at a subquery used to skip
+   * the subtrees of the siblings after it, and the pre function kept being called on the nodes after a stop). */
+  if (walk->continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+  walk->continue_walk = PT_CONTINUE_WALK;
+
   if (walk->pre_function)
     {
       node = (*walk->pre_function) (parser, node, walk->pre_argument, &(walk->continue_walk));
@@ -1160,8 +1169,9 @@ pt_walk_private (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg)
 
   if (walk->continue_walk != PT_STOP_WALK)
     {
-      /* walking leaves may write over this. */
+      /* the mode the pre function set for this node; its children and lists are entered in PT_CONTINUE_WALK */
       save_continue = walk->continue_walk;
+      walk->continue_walk = PT_CONTINUE_WALK;
 
       /* visit sub-trees */
       if (save_continue == PT_CONTINUE_WALK || save_continue == PT_LEAF_WALK)
@@ -1199,17 +1209,18 @@ pt_walk_private (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg)
 	{
 	  PT_APPLY_WALK (parser, node->next, walk);
 	}
-
-      if (walk->continue_walk != PT_STOP_WALK)
-	{
-	  walk->continue_walk = save_continue;
-	}
     }
 
-  /* and visit this node again */
+  /* and visit this node again; the post function may end the walk, or go on with it after a stop */
   if (walk->post_function)
     {
       node = (*walk->post_function) (parser, node, walk->post_argument, &(walk->continue_walk));
+    }
+
+  if (walk->continue_walk != PT_STOP_WALK)
+    {
+      /* a mode set at this node does not reach the nodes after it */
+      walk->continue_walk = PT_CONTINUE_WALK;
     }
 
   return node;
@@ -1241,7 +1252,7 @@ parser_walk_leaves (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTI
   walk_argument.post_function = post_function;
   walk_argument.post_argument = post_argument;
 
-  for (walk = node; walk; walk = walk->or_next)
+  for (walk = node; walk && walk_argument.continue_walk != PT_STOP_WALK; walk = walk->or_next)
     {
       node_type = walk->node_type;
 

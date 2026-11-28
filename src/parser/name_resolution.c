@@ -13475,8 +13475,7 @@ pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 static PT_NODE *
 pt_dml_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  /* continue_walk is shared across the walk: reset it so the PT_LIST_WALK set on one
-   * node does not leak to its siblings */
+  /* every node is entered in PT_CONTINUE_WALK (parser_walk_tree ()); the mode is set below for this node only */
   *continue_walk = PT_CONTINUE_WALK;
 
   if (node->node_type == PT_SPEC)
