@@ -11353,6 +11353,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	else
 	  {
 	    list_id = ACCESS_SPEC_LIST_ID (curr_spec);
+	    assert (!ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_SHARED_VIEW_READER)
+		    || (ACCESS_SPEC_XASL_NODE (curr_spec) != NULL
+			&& ACCESS_SPEC_XASL_NODE (curr_spec)->status == XASL_SUCCESS));
 	  }
 
 #if SERVER_MODE && !WINDOWS

@@ -959,9 +959,10 @@ typedef enum
   ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5,	/* used with min/max aggregate. */
   ACCESS_SPEC_FLAG_PRUNE_PER_ROW = 0x1 << 6,	/* a partitioned NL inner walked per outer row prunes its partitions
 						 * by the outer row's join values (CBRD-27866) */
-  ACCESS_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED = 0x1 << 7	/* a DML target left to the force-phase reevaluation.
+  ACCESS_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED = 0x1 << 7,	/* a DML target left to the force-phase reevaluation.
 								 * Locked at select, as FOR UPDATE, where it does not
 								 * run: see qexec_spec_is_for_update (). */
+  ACCESS_SPEC_FLAG_SHARED_VIEW_READER = 0x1 << 8	/* reads the result of its share group's producer (CBRD-27351) */
 } ACCESS_SPEC_FLAG;
 
 #define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)

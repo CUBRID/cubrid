@@ -17695,6 +17695,10 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
 
   if (access && subquery_proc && (regu_attributes_pred || regu_attributes_rest || !spec->info.spec.as_attr_list))
     {
+      if (spec->info.spec.share_group != NULL && spec->info.spec.share_group->producer != NULL)
+	{
+	  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_SHARED_VIEW_READER);
+	}
       if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN))
 	{
 	  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
