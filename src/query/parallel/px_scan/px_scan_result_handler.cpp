@@ -664,7 +664,11 @@ namespace parallel_scan
 	      }
 	    else if (qfile_connect_list (thread_p, tmp_merged_list, list_id) != NO_ERROR)
 	      {
+		/* a page fix fails once another job interrupted the transaction: the list is not chained, and lists is
+		 * cleared below, so nothing else would destroy it -- its count stays on the main thread (CBRD-28416) */
 		error = ER_FAILED;
+		qfile_destroy_list (thread_p, list_id);
+		QFILE_FREE_AND_INIT_LIST_ID (list_id);
 	      }
 	  }
 	else
@@ -685,7 +689,10 @@ namespace parallel_scan
 	      }
 	    if (qfile_connect_list (thread_p, dest, tmp_merged_list) != NO_ERROR)
 	      {
+		/* not chained to dest: the merged list and the lists chained to it have no other owner */
 		error = ER_FAILED;
+		qfile_destroy_list (thread_p, tmp_merged_list);
+		QFILE_FREE_AND_INIT_LIST_ID (tmp_merged_list);
 	      }
 	  }
 	else
