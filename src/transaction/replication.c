@@ -211,21 +211,11 @@ repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc)
  *
  *   inst_oid(in): OID of the instance
  *
- * NOTE:For update operation, the server does "Heap stuff" after "Index Stuff".
- *     In order to reduce the cost of replication log, we generates a
- *     replication log at the point of indexing  processing step.
- *     (During index processing, the primary key value is fetched ..)
- *     After Heap operation, we have to set the target LSA into the
- *     replication log.
- *
- *     For update case, this function is called by locator_update_force().
- *     In the case of insert/delete cases, when the replication log info. is
- *     generated, the server already has the target transaction log(HEAP_INSERT
- *     or HEAP_DELETE).
- *     But, for the udpate case, the server doesn't has the target log when
- *     it generates the replication log. So, the server has to find out the
- *     location of replication record and match with the target transaction
- *     log after heap_update(). This is done by locator_update_force().
+ * NOTE: The replication record of an updated row is logged while its indexes are updated
+ *	 (locator_update_index ()), where the primary key value is at hand, with a null target LSA. The heap update
+ *	 keeps the LSA of its log record in tdes->repl_update_lsa, and locator_update_force () calls this function to
+ *	 copy it into the record when the whole update has succeeded. An update that fails after logging the record
+ *	 drops it instead (repl_cancel_unfilled_update ()).
  */
 int
 repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
@@ -467,8 +457,8 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
       break;
     case RVREPL_DATA_UPDATE:
       /*
-       * for the update case, this function is called before the heap
-       * file update, so we don't need to LSA for update log here.
+       * for the update case, the target LSA is not known yet; it is filled
+       * when the whole update has succeeded (see repl_add_update_lsa ()).
        */
       LSA_SET_NULL (&repl_rec->lsa);
       break;
@@ -843,6 +833,69 @@ repl_log_abort_after_lsa (LOG_TDES * tdes, LOG_LSA * start_lsa)
 #endif
 
   return NO_ERROR;
+}
+
+/*
+ * repl_get_record_count - the number of the replication records of the current transaction
+ *
+ * return: the number, or -1 when the transaction is not found
+ *
+ * NOTE: An update takes it on entry to know the records it logs (see repl_cancel_unfilled_update ()).
+ */
+int
+repl_get_record_count (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  return tdes != NULL ? tdes->cur_repl_record : -1;
+}
+
+/*
+ * repl_cancel_unfilled_update - drop the update records that a failed update logged without their target LSA
+ *
+ * return: nothing
+ *
+ *   from(in): the number of the replication records when the failed update began (repl_get_record_count ())
+ *
+ * NOTE: locator_update_index () logs the record of an updated row with a null target LSA, which
+ *	 locator_update_force () fills (repl_add_update_lsa ()) only when the whole update succeeds. When the update
+ *	 fails after the record is logged, e.g. on its foreign key check, the record keeps the null LSA and the commit
+ *	 writes it: a replica cannot find the row it updates (CBRD-28251). Rolling back the statement does not drop
+ *	 it either, since repl_log_abort_after_lsa () drops the records by their LSA. So the failed update drops its
+ *	 own unfilled records here, and the OOS items that belong to them. A record that has its LSA, such as one of a
+ *	 cascaded foreign key action that succeeded, is left to the rollback.
+ */
+void
+repl_cancel_unfilled_update (THREAD_ENTRY * thread_p, int from)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  LOG_REPL_RECORD *repl_rec_arr;
+  int i;
+
+  if (tdes == NULL || from < 0)
+    {
+      return;
+    }
+
+  repl_rec_arr = tdes->repl_records;
+  for (i = from; i < tdes->cur_repl_record; i++)
+    {
+      if ((repl_rec_arr[i].rcvindex == RVREPL_DATA_UPDATE || repl_rec_arr[i].rcvindex == RVREPL_DATA_UPDATE_START
+	   || repl_rec_arr[i].rcvindex == RVREPL_DATA_UPDATE_END) && LSA_ISNULL (&repl_rec_arr[i].lsa))
+	{
+	  repl_rec_arr[i].must_flush = LOG_REPL_DONT_NEED_FLUSH;
+	  repl_oos_items_follow_row (tdes, i);
+	}
+    }
+
+  /* the OOS items of a row the failed update did not log */
+  for (i = tdes->cur_repl_record - 1; i >= from && repl_is_oos_item (repl_rec_arr[i].rcvindex); i--)
+    {
+      repl_rec_arr[i].must_flush = LOG_REPL_DONT_NEED_FLUSH;
+    }
+#if !defined (NDEBUG)
+  repl_assert_oos_items_follow_row (tdes, from, true);
+#endif
 }
 
 /*

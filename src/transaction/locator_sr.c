@@ -7401,6 +7401,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   bool no_data_new_address = false;
   REPL_INFO repl_info;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+  int repl_record_count = -1;
 
   OID superclass_oid;
 
@@ -7419,6 +7420,13 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   repl_info.repl_info_type = repl_info_type;
   repl_info.need_replication = true;
   repl_info.info = NULL;
+
+  /* the replication records this update logs follow; if it fails, an update record still without its target LSA
+   * and the OOS items that follow it are dropped (see the error label), the rest is rolled back with the statement */
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+    {
+      repl_record_count = repl_get_record_count (thread_p);
+    }
 
   if (OID_IS_ROOTOID (class_oid))
     {
@@ -8098,6 +8106,14 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   *force_count = 1;
 
 error:
+
+  if (*force_count != 1 && repl_record_count >= 0)
+    {
+      /* The record of the updated row is logged before the foreign key check and gets its target LSA only above, on
+       * success. A failed update must not leave it to be written at commit without the LSA. Every exit after the record
+       * is logged comes through this label. */
+      repl_cancel_unfilled_update (thread_p, repl_record_count);
+    }
 
   if (old_classname != NULL && old_classname != classname)
     {
