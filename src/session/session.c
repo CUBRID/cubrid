@@ -28,6 +28,7 @@
 #if !defined(WINDOWS)
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <new>
 #endif /* !WINDDOWS */
 
 #include "system.h"
@@ -3827,6 +3828,24 @@ session_get_stream_handles (THREAD_ENTRY * thread_p, bool create, stream_handle_
   return error_code;
 }
 
+#if defined (SA_MODE)
+/*
+ * session_sa_stream_handles () - The download handles of SA, which has one client and no connection
+ *
+ *   One table for the process, so a transaction end purges it without a session lookup that could set an error
+ *   inside the commit. It is built in static storage, so its first use, often a commit, allocates nothing; it is
+ *   never destroyed, as it may hold handles at exit.
+ */
+stream_handle_table *
+session_sa_stream_handles (void)
+{
+  alignas (stream_handle_table) static char storage[sizeof (stream_handle_table)];
+  static stream_handle_table *table = new (storage) stream_handle_table ();
+
+  return table;
+}
+#endif /* SA_MODE */
+
 /*
  * session_end_tran_streams () - End the stream session and the download handles of an ending transaction
  *   tran_index(in): the transaction that ends
@@ -3868,7 +3887,9 @@ session_end_tran_streams (THREAD_ENTRY * thread_p, int tran_index)
     {
       handles->end_tran (thread_p, tran_index, session_stream_holder_is_victim);
     }
-#endif /* SERVER_MODE */
+#elif defined (SA_MODE)
+  session_sa_stream_handles ()->end_tran (thread_p, tran_index);
+#endif /* SA_MODE */
 }
 
 bool

@@ -85,9 +85,14 @@ stream_kind_client_register (int kind, const stream_kind_client_desc & desc)
 int
 stream_kind_client_check_driver_open (int kind)
 {
-  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || !stream_client_kind_table ()[kind].driver_openable)
+  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || !stream_client_kind_registered ()[kind])
     {
-      return stream_client_refuse ("stream kind cannot be opened by a driver");
+      return stream_client_refuse ("unknown stream kind, which cannot be opened by a driver");
+    }
+
+  if (!stream_client_kind_table ()[kind].driver_openable)
+    {
+      return stream_client_refuse ("stream kind is opened by its SQL statement and cannot be opened by a driver");
     }
 
   return NO_ERROR;
