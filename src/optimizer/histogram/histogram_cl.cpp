@@ -3274,6 +3274,48 @@ histogram_stmt_has_having_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *stateme
   return ctx.found;
 }
 
+static PT_NODE *
+user_hv_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+{
+  hv_pred_ctx *ctx = (hv_pred_ctx *) arg;
+
+  if (histogram_is_user_host_var (parser, node))
+    {
+      ctx->found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+static PT_NODE *
+limit_hv_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+{
+  hv_pred_ctx *ctx = (hv_pred_ctx *) arg;
+
+  if (PT_IS_QUERY (node))
+    {
+      (void) parser_walk_tree (parser, node->info.query.limit, user_hv_walk, ctx, NULL, NULL);
+      if (!ctx->found && PT_IS_SELECT (node))
+	{
+	  (void) parser_walk_tree (parser, node->info.query.orderby_for, user_hv_walk, ctx, NULL, NULL);
+	}
+      if (ctx->found)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+  return node;
+}
+
+bool
+histogram_stmt_has_limit_hv (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+  hv_pred_ctx ctx;
+  ctx.found = false;
+  (void) parser_walk_tree (parser, statement, limit_hv_walk, &ctx, NULL, NULL);
+  return ctx.found;
+}
+
 bool
 histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement)
 {

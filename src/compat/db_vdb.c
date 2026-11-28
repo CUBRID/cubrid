@@ -307,10 +307,13 @@ db_bind_watch_verdict (PARSER_CONTEXT * parser, PT_NODE * statement)
   replan = histogram_bind_watch_check (parser, statement, ws, hinted ? BIND_WATCH_HINT_BAND : BIND_WATCH_BAND, &usable);
   if (!usable)
     {
-      if (statement->flag.hv_pred_plan_unpeeked && histogram_stmt_has_having_hv_predicate (parser, statement))
+      if (statement->flag.hv_pred_plan_unpeeked
+	  && (histogram_stmt_has_having_hv_predicate (parser, statement)
+	      || histogram_stmt_has_limit_hv (parser, statement)))
 	{
 	  /* the plan was chosen with unbound markers on HAVING aggregates the planner prices with a value
-	   * but the fingerprint cannot watch -- COUNT (*) > ? or SUM (x) > ? (CBRD-27811): price them
+	   * but the fingerprint cannot watch -- COUNT (*) > ? or SUM (x) > ? (CBRD-27811) -- or with the
+	   * guessed rows of a LIMIT or ORDERBY_NUM () bound it saw no value of (CBRD-28454): price them
 	   * once with the first values */
 	  return BIND_WATCH_REPLAN;
 	}

@@ -6221,6 +6221,8 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   bitset_init (&(env->fake_terms), env);
   bitset_init (&QO_ENV_SORT_LIMIT_NODES (env), env);
   db_make_null (&QO_ENV_LIMIT_VALUE (env));
+  env->limit_guessed = false;
+  env->limit_guess_priced = false;
 
   assert (query->node_type == PT_SELECT);
   if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_COLS_SCHEMA)
