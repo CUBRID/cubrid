@@ -43,6 +43,7 @@ public class CUBRIDServerSideConstants {
             PREPARE_QUERY_INFO = 0x04,
             PREPARE_HOLDABLE = 0x08,
             PREPARE_XASL_CACHE_PINNED = 0x10,
+            PREPARE_IN_ONLY_BIND = 0x20, // EXECUTE IMMEDIATE binds IN only
             PREPARE_CALL = 0x40;
 
     /* execute flags */

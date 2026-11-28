@@ -129,7 +129,7 @@ extern "C"
 #define SQLX_CMD_UNKNOWN CUBRID_STMT_UNKNOWN
 
   enum OPEN_BUFFER_FLAGS
-  { PARSER_FOR_PLCSQL_STATIC_SQL = 0x1 };
+  { PARSER_FOR_PLCSQL_STATIC_SQL = 0x1, PARSER_FOR_IN_ONLY_BIND = 0x2 };
 
   extern int g_open_buffer_control_flags;
 

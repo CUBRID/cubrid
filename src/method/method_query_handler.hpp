@@ -47,6 +47,7 @@ namespace cubmethod
     PREPARE_QUERY_INFO = 0x04,
     PREPARE_HOLDABLE = 0x08,
     PREPARE_XASL_CACHE_PINNED = 0x10,
+    PREPARE_IN_ONLY_BIND = 0x20, /* custom for method_callback, EXECUTE IMMEDIATE binds IN only */
     PREPARE_CALL = 0x40,
     PREPARE_STATIC_SQL = 0x80 /* custom for method_callback, used by PL/CSQL compiler */
   };
@@ -98,6 +99,7 @@ namespace cubmethod
       int get_statement_type () const;
       bool is_execute_prepare () const;
       std::string get_user_name () const;
+      bool is_in_only_bind () const;
 
       uint64_t get_query_id () const;
 

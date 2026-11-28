@@ -57,7 +57,7 @@ extern "C"
   { DB_NO_OIDS, DB_ROW_OIDS, DB_COLUMN_OIDS };
 
   enum OPEN_BUFFER_FLAGS
-  { PARSER_FOR_PLCSQL_STATIC_SQL = 0x1 };
+  { PARSER_FOR_PLCSQL_STATIC_SQL = 0x1, PARSER_FOR_IN_ONLY_BIND = 0x2 };
 
   extern int g_open_buffer_control_flags;
 
