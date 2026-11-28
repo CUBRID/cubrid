@@ -1556,7 +1556,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1423 A restore of database %1$s did not finish. Run restoredb again: the database cannot be used until a restore of it ends without an error. If the restore fails again with the same backup, use another backup or restore up to an earlier time (-d).
 
-1424 Last Error
+1424 This backup and log chain contains a no-logging index build (loaddb) and cannot be replayed past that point; restore from a backup taken after loaddb, or use a partial restore up to a time before it. The restore of database %1$s stopped before it changed the database (barrier record LSA = %2$s).
+
+1425 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
