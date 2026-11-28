@@ -18801,7 +18801,7 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
  *   node(in): the node scanned by the index
  *   ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
  *   any(in): true to ask whether the index key order covers the sort list of at least one analytic function, in a
- *	      join and on a class hierarchy too: XASL generation may then skip a sort on the key order of the scan
+ *	      join too: XASL generation may then skip a sort on the key order of the scan
  *
  * Note: XASL generation evaluates analytic functions in sort groups and may merge the sort lists of compatible
  *   functions into one (pt_metadomains_compatible () compares PARTITION BY keys as sets), so a function that the
@@ -18826,13 +18826,12 @@ qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY
    * hierarchical query in between. A partitioned class or a class hierarchy is scanned one class at a time, which
    * does not keep the index order across the classes. */
   if (tree->info.query.q.select.group_by != NULL || tree->info.query.q.select.connect_by != NULL
-      || pt_has_aggregate (parser, tree) || !pt_has_analytic (parser, tree))
+      || pt_has_aggregate (parser, tree) || !pt_has_analytic (parser, tree) || QO_NODE_IS_CLASS_HIERARCHY (node))
     {
       return false;
     }
 
-  if (!any && (env->nnodes != 1 || QO_NODE_IS_CLASS_HIERARCHY (node) || qo_is_prefix_index (index_entryp)
-	       || !qo_index_holds_all_rows (env, ni_entryp)))
+  if (!any && (env->nnodes != 1 || qo_is_prefix_index (index_entryp) || !qo_index_holds_all_rows (env, ni_entryp)))
     {
       return false;
     }

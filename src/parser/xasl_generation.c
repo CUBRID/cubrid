@@ -36176,6 +36176,9 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
   QO_ENV *env = NULL;
   QO_INDEX_ENTRY *index_entry;
   QO_SEGMENT *seg;
+  QO_PLAN *inner;
+  QO_NODE *inner_node;
+  BITSET_ITERATOR iter;
   PT_NODE *attr, *node;
   int i, seg_idx, covered_count = 0;
   bool is_desc, is_desc_index;
@@ -36184,6 +36187,11 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
     {
     case QO_PLANTYPE_SCAN:
       if (!(qo_is_iscan (qo_plan) || qo_is_iscan_from_analytic (qo_plan)) || (env = (qo_plan->info)->env) == NULL)
+	{
+	  return 0;
+	}
+      /* a partitioned class or a class hierarchy is scanned one class at a time: the key order starts over at each */
+      if (QO_NODE_IS_CLASS_HIERARCHY (qo_plan->plan_un.scan.node))
 	{
 	  return 0;
 	}
@@ -36209,6 +36217,16 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
       if (!QO_IS_NL_JOIN (qo_plan))
 	{
 	  return 0;
+	}
+      /* an inner scanned one class at a time runs the outer scan again for each class */
+      inner = qo_plan->plan_un.join.inner;
+      for (i = bitset_iterate (&(inner->info->nodes), &iter); i != -1; i = bitset_next_member (&iter))
+	{
+	  inner_node = QO_ENV_NODE (inner->info->env, i);
+	  if (QO_NODE_IS_CLASS_HIERARCHY (inner_node) && !qo_nl_inner_partitions_walk_per_row (inner_node))
+	    {
+	      return 0;
+	    }
 	}
       return pt_count_analytic_covered_sort_list (parser, qo_plan->plan_un.join.outer, eval, info);
 
