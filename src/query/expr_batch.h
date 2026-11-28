@@ -268,12 +268,14 @@ extern int expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN 
  * version the page does not hold (EXPR_BATCH_WHY_OFF_PAGE).  Counting the pages, the plan gives up on the scan
  * when the row path keeps taking them for the plan's own declines: expr_batch_plan_gave_up () is true from then on,
  * and the scan's remaining pages go to the row path without a batch try. */
-#define EXPR_BATCH_WHY_OFF_PAGE "a record whose visible version is not on the page (relocated, overflow, or in the log)"
+#define EXPR_BATCH_WHY_OFF_PAGE "visible version off the page"
 extern void expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback, bool off_page);
 extern bool expr_batch_plan_gave_up (const EXPR_BATCH_PLAN * plan);
 /* why the last chunk went to the row path, or NULL */
 extern const char *expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan);
 extern void expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent);
+/* the plan's shape for the trace's plan section (SCAN_BATCH_SHAPE, scan_manager.h) */
+extern void expr_batch_plan_shape (const EXPR_BATCH_PLAN * plan, struct scan_batch_shape *shape);
 
 /* A plan kept between two opens of the same scan (SCAN_BATCH_KEEP, scan_manager.h).  reset: the chunk's per-scan
  * state (its lines stay); reset_scan: the plan's per-scan state -- the trace's page counts, the give-up, the last
