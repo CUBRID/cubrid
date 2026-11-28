@@ -430,6 +430,8 @@ struct indx_scan_id
   int ahead_limit;		/* OIDs a read-ahead window holds at most */
   bool ahead_single;		/* the scan's XASL may stop at its first row (EXISTS, an inst_num () condition): the
 				 * windows start after the first lookup */
+  bool min_max_only_desc_pass;	/* a pass of a min/max only scan that reads the MIN/MAX aggregates' column descending:
+				 * it takes MAX from its first row, so it reads the key ranges from the last */
   int nl_slice_cnt;		/* OIDs of the next outer row, read from the index when a batched nested-loop join
 				 * collected the row; -1: none, the scan reads the index */
   OID *nl_slice;		/* ... and where they are */
@@ -496,6 +498,7 @@ struct parallel_index_scan_id
   int ahead_distance;		/* mirror of INDX_SCAN_ID::ahead_distance */
   int ahead_limit;		/* mirror of INDX_SCAN_ID::ahead_limit */
   bool ahead_single;		/* mirror of INDX_SCAN_ID::ahead_single */
+  bool min_max_only_desc_pass;	/* mirror of INDX_SCAN_ID::min_max_only_desc_pass */
   int nl_slice_cnt;		/* mirror of INDX_SCAN_ID::nl_slice_cnt */
   OID *nl_slice;		/* mirror of INDX_SCAN_ID::nl_slice */
   int nl_slice_ahead;		/* mirror of INDX_SCAN_ID::nl_slice_ahead */

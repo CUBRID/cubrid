@@ -12022,6 +12022,12 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	    s_id->s.isid.ahead_single = (xasl != NULL && (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN)
 							  || xasl->instnum_pred != NULL));
 
+	    /* the MIN/MAX aggregates take MAX from the first row of a pass that reads their column descending
+	     * (qdata_evaluate_aggregate_list ()); qexec_intprt_fnc () flips this together with use_desc_index */
+	    s_id->s.isid.min_max_only_desc_pass = (ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN)
+						   && ((curr_spec->indexptr->use_desc_index != 0)
+						       != xasl->proc.buildvalue.agg_list->flag.part_key_descending));
+
 #if SERVER_MODE && !WINDOWS
 	    error_code = scan_open_parallel_index_scan (thread_p, s_id, vd, curr_spec,
 							&ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
@@ -16064,6 +16070,9 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 
 	      spec->indexptr->btid = btid;
 
+	      /* the planner gives no min/max only scan to a partitioned class, which QO_NODE_IS_CLASS_HIERARCHY ()
+	       * counts as a class hierarchy; the open below would leave min_max_only_desc_pass false */
+	      assert (!ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
 	      error =
 		scan_open_index_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,
 				      spec->s_id.upddel_target_scan, spec->s_id.click_counter_scan,
@@ -17934,6 +17943,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 						{
 						  xasl->curr_spec->indexptr->use_desc_index =
 						    !xasl->curr_spec->indexptr->use_desc_index;
+						  xasl->curr_spec->s_id.s.isid.min_max_only_desc_pass =
+						    !xasl->curr_spec->s_id.s.isid.min_max_only_desc_pass;
 						}
 					      xasl->curr_spec->s_id.scan_stats.min_max_only_scan = true;
 					      return S_SUCCESS;
@@ -17943,7 +17954,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 					      need_restore_index_scan_direction = true;
 					      xasl->curr_spec->indexptr->use_desc_index =
 						!xasl->curr_spec->indexptr->use_desc_index;
-
+					      xasl->curr_spec->s_id.s.isid.min_max_only_desc_pass =
+						!xasl->curr_spec->s_id.s.isid.min_max_only_desc_pass;
 
 					      BTREE_SCAN *bts = &xasl->curr_spec->s_id.s.isid.bt_scan;
 					      bts_reset_scan (thread_p, bts);
