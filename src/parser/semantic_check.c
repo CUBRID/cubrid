@@ -19726,6 +19726,8 @@ pt_fold_union_unwrap (PARSER_CONTEXT * parser, PT_NODE * query)
       operand = mq_bump_correlation_level (parser, operand, -1, operand->info.query.correlation_level);
     }
 
+  /* the operand takes the place of the SELECT, and is a subquery as the SELECT was (pt_fold_union ()) */
+  operand->info.query.is_subquery = query->info.query.is_subquery;
   operand->line_number = query->line_number;
   operand->column_number = query->column_number;
   operand->next = query->next;
@@ -19775,6 +19777,8 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       /* the set operation returns no row, as a subquery with a false WHERE folded by pt_to_false_subquery () does:
        * EXISTS over it is false and NOT IN over it is true */
       new_node->info.value.is_false_where = true;
+      /* the value prints as null even if the column of a view spec takes another type (pt_check_create_view ()) */
+      (void) pt_value_to_db (parser, new_node);
     }
   else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
     {
@@ -19875,10 +19879,14 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 	  new_node = active;
 	}
 
-      /* the node takes the place of the set operation, and whether it stays a query with it */
+      /* the node takes the place of the set operation, and whether it stays a query with it. It is a subquery, an
+       * operand or a CTE as the set operation was, not an operand of it any more: a subquery left marked as an operand
+       * is printed without its parentheses (pt_select_prints_paren ()), and a view spec printed so cannot be parsed
+       * again */
       if (PT_IS_QUERY_NODE_TYPE (new_node->node_type))
 	{
 	  new_node->info.query.flag.stays_query = union_node->info.query.flag.stays_query;
+	  new_node->info.query.is_subquery = union_node->info.query.is_subquery;
 	}
 
       /* free union node */
