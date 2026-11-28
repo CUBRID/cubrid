@@ -56,6 +56,7 @@
 #include "extendible_hash.h"
 #include "locator_sr.h"
 #include "xserver_interface.h"
+#include "file_io_backup.h"
 #include "utility.h"
 #include "util_func.h"
 #include "transform.h"

@@ -78,6 +78,7 @@
 #include "page_buffer.h"
 #include "double_write_buffer.hpp"
 #include "file_io.h"
+#include "file_io_backup.h"
 #include "disk_manager.h"
 #include "error_manager.h"
 #include "xserver_interface.h"
