@@ -13371,7 +13371,7 @@ qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * 
     }
 
   /* as in the function vector of qexec_execute_mainblock_internal (): a scan is run by its own entry, and is handed
-   * the entry of the scan after it (qexec_execute_scan_outer () replaces the entry of a scan it settles) */
+   * the entry of the scan after it (qexec_execute_scan_outer_body () replaces the entry of a scan it settles) */
   return (*ptr[0]) (thread_p, xasl, xasl_state, NULL, ptr + 1);
 }
 
@@ -13593,12 +13593,11 @@ qexec_nl_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * outer, XASL_NODE * inne
 	}
     }
   batch->on = true;
-  /* what the plan already tells of scan_index_nl_batch_ok (): a covering index and a list of keys or ranges are
-   * never read ahead (an index skip scan changes its range type as it runs, and is asked row by row) */
+  /* what the plan already tells of scan_index_nl_batch_ok (): a covering index, an index skip scan and a list of
+   * keys or ranges are never read ahead (the range type of an index skip scan changes as it runs, and is not read) */
   batch->pass = (spec->next == NULL && spec->indexptr != NULL
-		 && (spec->indexptr->coverage != 0
-		     || (spec->indexptr->use_iss == 0 && spec->indexptr->range_type != R_KEY
-			 && spec->indexptr->range_type != R_RANGE)));
+		 && (spec->indexptr->coverage != 0 || spec->indexptr->use_iss != 0
+		     || (spec->indexptr->range_type != R_KEY && spec->indexptr->range_type != R_RANGE)));
 }
 
 /*
@@ -13999,6 +13998,7 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
   QEXEC_NL_BATCH_ROW *row;
   DB_VALUE *val;
   bool scan_ok;
+  bool join_null;
   bool memo_has;
   bool closed = false;
   int error = NO_ERROR;
@@ -14019,9 +14019,10 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
     {
       return S_DOESNT_EXIST;
     }
-  memo_has = (scan_ok && xasl->memoize_storage != NULL && !xasl->memoize_storage->is_disabled ()
+  join_null = (scan_ok && s_id->join_dbval != NULL && DB_IS_NULL (s_id->join_dbval));
+  memo_has = (scan_ok && !join_null && xasl->memoize_storage != NULL && !xasl->memoize_storage->is_disabled ()
 	      && xasl->memoize_storage->has_key ());
-  if (batch->n_rows == 0 && ((s_id->join_dbval != NULL && DB_IS_NULL (s_id->join_dbval)) || memo_has))
+  if (batch->n_rows == 0 && (join_null || memo_has))
     {
       /* the row has no lookup to name (a null join value, a key memoize answers) and no held row to wait behind:
        * it is not held. As many of them in a row as a first batch holds are a batch that named no page */
@@ -14088,7 +14089,7 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
 
   /* its OIDs. Not for a key memoize holds or will hold when an earlier row of the batch is joined (the row path
    * replays it), nor for a join value the scan knows to be null (the row path answers without a search) */
-  if (scan_ok && !(s_id->join_dbval != NULL && DB_IS_NULL (s_id->join_dbval))
+  if (scan_ok && !join_null
       && !(xasl->memoize_storage != NULL && !xasl->memoize_storage->is_disabled ()
 	   && (memo_has || qexec_nl_batch_seen (batch, (unsigned int) xasl->memoize_storage->key_hash ()))))
     {
