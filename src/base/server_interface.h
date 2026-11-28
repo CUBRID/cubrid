@@ -60,6 +60,8 @@ enum
 #define COMPACTDB_UNPROCESSED_CLASS -3
 
 #define COMPACTDB_REPR_DELETED -2
+/* a class whose old representations compactdb keeps, as a call left an object of it unconverted; not a repr id */
+#define COMPACTDB_REPR_KEEP -3
 
 enum
 { GENERATE_SERIAL = 0, GENERATE_AUTO_INCREMENT = 1 };

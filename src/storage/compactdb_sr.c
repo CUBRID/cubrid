@@ -189,7 +189,7 @@ process_set (THREAD_ENTRY * thread_p, DB_SET * set)
  * process_object - process an object
  *    return: 1 - object has changed
  *	      0 - object has not changed
- *	     -1 - object failed
+ *	     -1 or an error code - object failed
  *    upd_scancache(in):
  *    attr_info(in):
  *    oid(in): the oid of the object to process
@@ -449,7 +449,7 @@ process_class (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, int max_sp
 			    {
 			      lock_unlock_object (thread_p, &obj->oid, class_oid, oid_lock, true);
 
-			      if (object_processed == -1)
+			      if (object_processed < 0)
 				{
 				  (*failed_objects)++;
 				}
@@ -516,7 +516,10 @@ end:
   *    modified_objects(out): count modified objects for each class
   *    big_objects(out): count big objects for each class
   *    initial_last_repr_id(in, out): the list of initial last class
-  * representation
+  * representation; COMPACTDB_REPR_KEEP for a class that an earlier call left with an object it did not convert
+  *
+  * Note: a class may take several calls, and each call counts its objects from zero. The old representations are
+  *   dropped only when no call of the class failed an object or skipped a big object, which still needs them.
   */
 int
 boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes, int space_to_process,
@@ -624,7 +627,9 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes, int s
 	  break;
 	}
 
-      if (delete_old_repr && OID_ISNULL (last_processed_oid) && failed_objects[i] == 0
+      /* initial_last_repr_id[i] is COMPACTDB_REPR_KEEP, never a representation id, after an earlier call of the class
+       * failed or skipped an object */
+      if (delete_old_repr && OID_ISNULL (last_processed_oid) && failed_objects[i] == 0 && big_objects[i] == 0
 	  && heap_get_class_repr_id (thread_p, class_oids + i) == initial_last_repr_id[i])
 	{
 	  lock_ret =
@@ -651,6 +656,13 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes, int s
 
 	      break;
 	    }
+	}
+
+      if (!OID_ISNULL (last_processed_oid) && (failed_objects[i] > 0 || big_objects[i] > 0))
+	{
+	  /* the class goes on in the next call, which counts from zero: an object that this call did not convert still
+	   * needs the old representations */
+	  initial_last_repr_id[i] = COMPACTDB_REPR_KEEP;
 	}
 
       if (space_to_process == 0)
