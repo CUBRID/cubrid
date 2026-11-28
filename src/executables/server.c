@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "background_process.hpp"
 
 #include <stdio.h>
 #include <string.h>
@@ -275,6 +276,14 @@ abort_handler (int signo, siginfo_t * siginfo, void *dummyp)
 int
 main (int argc, char **argv)
 {
+#if !defined(WINDOWS)
+  /* Reserve closed standard descriptors before any logging opens a file. */
+  if (background_process_prepare_stdio () != 0)
+    {
+      return EXIT_FAILURE;
+    }
+#endif
+
   char *binary_name;
   int ret_val = 0;
 

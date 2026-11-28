@@ -22,6 +22,8 @@
 
 #ident "$Id$"
 
+#include "config.h"
+#include "background_process.hpp"
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -113,6 +115,14 @@ utility_csql_print (int message_num, ...)
 int
 main (int argc, char *argv[])
 {
+#if !defined(WINDOWS)
+  /* Reserve closed standard descriptors before any logging opens a file. */
+  if (background_process_prepare_stdio () != 0)
+    {
+      return EXIT_FAILURE;
+    }
+#endif
+
   char option_string[64];
   int error = 0;
   CSQL_ARGUMENT csql_arg;

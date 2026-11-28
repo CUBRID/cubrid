@@ -88,7 +88,10 @@ extern void ut_get_as_pid_name (char *pid_name, char *br_name, int as_index, int
 extern int ut_time_string (char *buf, struct timeval *log_time);
 extern char *ut_get_ipv4_string (char *ip_str, int len, const unsigned char *ip_addr);
 extern float ut_get_avg_from_array (int array[], int size);
-extern bool ut_is_appl_server_ready (int pid, char *ready_flag);
+/* *INDENT-OFF* */
+extern bool ut_is_appl_server_ready (int pid, char *ready_flag,
+                                     void (*wait_output) (void *, int) = NULL, void *owner = NULL);
+/* *INDENT-ON* */
 extern void ut_get_broker_port_name (char *port_name, char *broker_name, int len);
 extern void ut_get_proxy_port_name (char *port_name, char *broker_name, int proxy_id, int len);
 extern void ut_get_as_port_name (char *port_name, char *broker_name, int as_id, int len);
