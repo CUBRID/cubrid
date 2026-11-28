@@ -714,6 +714,9 @@ static int vacuum_compare_heap_object (const void *a, const void *b);
 static int vacuum_collect_heap_objects (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, OID * oid, VFID * vfid);
 static void vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfid);
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
+static void vacuum_heap_hold_error (int error_code, int *held_error);
+static bool vacuum_heap_skip_failed_page (THREAD_ENTRY * thread_p, int error_code, int *held_error);
+static int vacuum_heap_pop_held_error (int error_code, int held_error);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_prepare_oos_vfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool * pages_released);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
@@ -1562,7 +1565,7 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
   HFID hfid = HFID_INITIALIZER;
   bool reusable = false;
   int object_count = 0;
-  bool deferred = false;
+  int held_error = NO_ERROR;
 
   if (worker->n_heap_objects == 0)
     {
@@ -1600,17 +1603,9 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, &reusable, was_interrupted);
       if (error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED)
 	{
-	  /* The first deferral decides the block. Every page of this heap would wait for its header again, so a later
-	   * run of the block retries the whole heap. */
-	  if (!deferred)
-	    {
-	      er_stack_push ();
-	      deferred = true;
-	    }
-	  else
-	    {
-	      er_clear ();
-	    }
+	  /* A deferral leaves the block for a later run. Every page of this heap would wait for its header again, so
+	   * the later run retries the whole heap. */
+	  vacuum_heap_hold_error (error_code, &held_error);
 	  error_code = NO_ERROR;
 	  for (page_ptr = obj_ptr;
 	       page_ptr < worker->heap_objects + worker->n_heap_objects && VFID_EQ (&page_ptr->vfid, &vfid); page_ptr++)
@@ -1631,35 +1626,90 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Vacuum heap page %d|%d, error_code=%d.",
 			       page_ptr->oid.volid, page_ptr->oid.pageid, error_code);
 
-#if defined (NDEBUG)
-	  if (!thread_p->shutdown)
+	  if (!vacuum_heap_skip_failed_page (thread_p, error_code, &held_error))
 	    {
-	      // unexpected case
-	      // debug crashes; but can release do about it? just try to clean as much as possible
-	      er_clear ();
-	      error_code = NO_ERROR;
-	      continue;
+	      break;
 	    }
-#endif // not DEBUG
-
-	  break;
+	  error_code = NO_ERROR;
 	}
       /* Advance to next page. */
       page_ptr = obj_ptr;
     }
 
-  if (deferred)
+  return vacuum_heap_pop_held_error (error_code, held_error);
+}
+
+/*
+ * vacuum_heap_hold_error () - Keep the error of a page that vacuum_heap leaves for a later run of the block.
+ *
+ * return	       : Void.
+ * error_code (in)     : Error of the page.
+ * held_error (in/out) : First held error of the block. It stays on the error stack until vacuum_heap_pop_held_error;
+ *			 later errors are cleared.
+ */
+static void
+vacuum_heap_hold_error (int error_code, int *held_error)
+{
+  if (*held_error == NO_ERROR)
     {
-      if (error_code == NO_ERROR)
-	{
-	  er_stack_pop ();
-	  error_code = ER_VACUUM_OOS_LOOKUP_DEFERRED;
-	}
-      else
-	{
-	  er_stack_pop_and_keep_error ();
-	}
+      er_stack_push ();
+      *held_error = error_code;
     }
+  else
+    {
+      er_clear ();
+    }
+}
+
+/*
+ * vacuum_heap_skip_failed_page () - Decide whether vacuum_heap skips a failed page and goes on with the block. The
+ *				    first failed page of the block holds its error (vacuum_heap_hold_error).
+ *
+ * return	       : True to skip the page, false to stop vacuuming the block.
+ * thread_p (in)       : Thread entry.
+ * error_code (in)     : Error of the failed page.
+ * held_error (in/out) : First held error of the block (see vacuum_heap_hold_error).
+ */
+static bool
+vacuum_heap_skip_failed_page (THREAD_ENTRY * thread_p, int error_code, int *held_error)
+{
+#if defined (NDEBUG)
+  /* Retrying the page would repeat a lasting error. The held error leaves the block unfinished, so the skipped page
+   * is vacuumed again when the block runs again. Debug stops earlier, in vacuum_check_shutdown_interruption.
+   * A stop request is not skipped: shutdown for a vacuum worker, ER_INTERRUPTED (interrupt or query timeout) for
+   * SA mode, where vacuum runs with interrupt checks on. */
+  if (!thread_p->shutdown && error_code != ER_INTERRUPTED)
+    {
+      vacuum_heap_hold_error (error_code, held_error);
+      return true;
+    }
+#endif /* NDEBUG */
+
+  return false;
+}
+
+/*
+ * vacuum_heap_pop_held_error () - Pop the error pushed by vacuum_heap_hold_error.
+ *
+ * return	   : The error that stopped the block if any, otherwise the first held error.
+ * error_code (in) : Error that stopped the block, or NO_ERROR.
+ * held_error (in) : First held error of the block, or NO_ERROR.
+ */
+static int
+vacuum_heap_pop_held_error (int error_code, int held_error)
+{
+  if (held_error == NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (error_code == NO_ERROR)
+    {
+      er_stack_pop ();
+      return held_error;
+    }
+
+  er_stack_pop_and_keep_error ();
   return error_code;
 }
 
@@ -1682,6 +1732,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   VACUUM_HEAP_HELPER helper;	/* Vacuum heap helper. */
   HEAP_PAGE_VACUUM_STATUS page_vacuum_status;	/* Current page vacuum status. */
   int error_code = NO_ERROR;	/* Error code. */
+  int record_error = NO_ERROR;	/* First error of a record left unvacuumed while the page goes on. */
   int obj_index = 0;		/* Index used to iterate the object array. */
 
   VACUUM_OOS_EMPTIED_PAGES oos_emptied_pages;
@@ -1792,6 +1843,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  ASSERT_ERROR ();
 	  vacuum_check_shutdown_interruption (thread_p, error_code);
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "%s", "Failed to get hfid.");
+	  pgbuf_unfix_and_init (thread_p, helper.home_page);
 	  return error_code;
 	}
       /* we need to also output to avoid checking again for other objects */
@@ -1887,6 +1939,13 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 		}
 	      else
 		{
+		  /* The page goes on with the next record. Keep the error so the block stays unfinished and this record
+		   * is vacuumed again; the next record would otherwise overwrite it. */
+		  if (record_error == NO_ERROR)
+		    {
+		      record_error = error_code;
+		    }
+		  error_code = NO_ERROR;
 		  continue;
 		}
 	    }
@@ -2025,6 +2084,13 @@ end:
 	{
 	  vacuum_check_shutdown_interruption (thread_p, error_code);
 	}
+    }
+
+  /* Return a kept record error only after the reclaim: the records vacuumed before it are not vacuumed again, so
+   * their emptied OOS pages are not collected again. */
+  if (error_code == NO_ERROR)
+    {
+      error_code = record_error;
     }
 
   return error_code;
@@ -4098,7 +4164,8 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
     }
   else
     {
-      /* Shutdown, allocation failures and deferred OOS lookups leave the block available for a later retry. */
+      /* Shutdown, allocation failures, deferred OOS lookups and, in release builds, failed heap pages leave the block
+       * available for a later retry. */
       int error_level =
 #if defined (SERVER_MODE)
 	thread_p->shutdown ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
@@ -8425,7 +8492,7 @@ vacuum_check_shutdown_interruption (const THREAD_ENTRY * thread_p, int error_cod
   // interrupted is accepted if:
   // 1. this is an active worker thread
   // 2. or server is shutting down
-  // 3. or the block is left for a later run
+  // 3. or an OOS lookup is deferred (ER_VACUUM_OOS_LOOKUP_DEFERRED)
   assert (!vacuum_is_thread_vacuum_worker (thread_p) || (thread_p->shutdown && error_code == ER_INTERRUPTED)
 	  || error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED);
 }

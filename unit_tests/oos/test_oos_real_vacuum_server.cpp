@@ -1599,6 +1599,60 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
       EXPECT_TRUE (row_removed (obs.type_after)) << "vacuum never removed the deleted row";
       EXPECT_TRUE (obs.oos_reclaimed) << "vacuum never reclaimed the deleted row's OOS value";
     }
+
+    /* Deletes the row on its own page and the unrelated row in one log block, then holds the row's home page, not the
+     * header, past the page latch timeout (CBRD-27979). The unrelated heap comes after this one, so vacuum reaches
+     * its row during the hold only if it skips the page whose fix timed out. Returns the hold time at which the
+     * unrelated row went, or -1. */
+    long long observe_delete_with_home_page_held (OID &heap_oid, unrelated_row &other, bool &vacuum_queued)
+    {
+      vacuum_queued = false;
+      /* Two deletes fit in a log block that they start. */
+      if (!fill_log_past (current_log_blockid ())
+	  || heap_delete_mvcc (hfid, class_oid, scan_cache, heap_oid) != NO_ERROR
+	  || heap_delete_mvcc (other.hfid, class_oid, other.scan_cache, other.oid) != NO_ERROR)
+	{
+	  return -1;
+	}
+      const VACUUM_LOG_BLOCKID block = current_log_blockid ();
+      commit_current_tran ();
+
+      VPID home_vpid = { heap_oid.pageid, heap_oid.volid };
+      PGBUF_WATCHER home_watcher;
+      PGBUF_INIT_WATCHER (&home_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hfid);
+      if (pgbuf_ordered_fix (thread_p, &home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &home_watcher) != NO_ERROR)
+	{
+	  return -1;
+	}
+      vacuum_queued = fill_log_past (block + 1);
+      if (vacuum_queued)
+	{
+	  flush_log ();
+	  vacuum_queued = wait_for_vacuum ([&home_watcher] { return pgbuf_has_any_waiters (home_watcher.pgptr); }, 60);
+	}
+      const auto hold_start = std::chrono::steady_clock::now ();
+      long long held_ms = 0;
+      long long removed_ms = -1;
+      while (vacuum_queued && held_ms < 60 * 1000)
+	{
+	  if (row_removed (slot_record_type (other.oid)))
+	    {
+	      removed_ms = held_ms;
+	      break;
+	    }
+	  std::this_thread::sleep_for (std::chrono::milliseconds (100));
+	  held_ms = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::steady_clock::now ()
+		    - hold_start).count ();
+	}
+      printf ("[CBRD-27979] home page held: latch timeout %d ms, vacuum queued %d, unrelated row removed after %lld ms"
+	      " (-1: not during the hold), held row slot type %d\n", latch_timeout_msecs, (int) vacuum_queued,
+	      removed_ms, slot_record_type (heap_oid));
+      fflush (stdout);
+      er_clear ();
+      pgbuf_ordered_unfix (thread_p, &home_watcher);
+      commit_current_tran ();
+      return removed_ms;
+    }
 };
 
 TEST_F (OosRealVacuumHeaderHeld, HomeRowOosReclaimedAfterHeaderLookupFailure)
@@ -1698,6 +1752,37 @@ TEST_F (OosRealVacuumHeaderHeld, UnrelatedRowInSameBlockVacuumedWhileHeaderLooku
   EXPECT_GE (other.removed_during_hold_ms, 0)
       << "vacuum left the rest of the log block while the OOS lookup of another heap kept failing";
   EXPECT_TRUE (other.removed_after_release);
+}
+
+// A heap page whose fix times out leaves the rest of its log block to vacuum, and the next run of the block vacuums
+// the page (CBRD-27979). The test holds the deleted row's home page, so the heap header and the OOS lookup are free.
+// With one vacuum worker, a worker that retried the page in place or gave up the block at the failure would not reach
+// the unrelated heap, which comes after this one, until the page is free. Debug builds stop at a page latch timeout.
+TEST_F (OosRealVacuumHeaderHeld, UnrelatedRowInSameBlockVacuumedWhileHomePageFixTimesOut)
+{
+#if !defined (NDEBUG)
+  GTEST_SKIP () << "a debug build stops at the page latch timeout";
+#endif
+  unrelated_row other;
+  other.same_block = true;
+  OID heap_oid = OID_INITIALIZER, oos_oid = OID_INITIALIZER;
+  prepare_unrelated_row (other, heap_oid, oos_oid);
+  ASSERT_FALSE (HasFatalFailure ());
+
+  bool vacuum_queued = false;
+  const long long removed_ms = observe_delete_with_home_page_held (heap_oid, other, vacuum_queued);
+  const bool held_row_vacuumed = wait_for_vacuum ([this, &heap_oid, &oos_oid]
+  {
+    return row_removed (slot_record_type (heap_oid)) && oos_unreadable (oos_oid);
+  }, 30);
+  printf ("[CBRD-27979] home page released: slot type %d, oos reclaimed %d\n", slot_record_type (heap_oid),
+	  (int) oos_unreadable (oos_oid));
+  drop_unrelated_row (other);
+
+  ASSERT_TRUE (vacuum_queued) << "vacuum never queued on the held home page";
+  EXPECT_GE (removed_ms, latch_timeout_msecs / 2)
+      << "vacuum did not reach the unrelated row of the same log block while the home page fix timed out";
+  EXPECT_TRUE (held_row_vacuumed) << "a later run of the block did not vacuum the skipped page";
 }
 
 // Every page of a heap repeats the OOS file lookup. While it fails, a run of the log block must look up that heap

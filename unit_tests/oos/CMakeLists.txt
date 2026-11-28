@@ -396,7 +396,8 @@ string(CONCAT oos_real_vacuum_latch_timeout_filter
   "OosRealVacuumHeaderHeld.HomeRowOosReclaimedAfterHeaderLookupFailure:"
   "OosRealVacuumHeaderHeld.RelocatedRowOosReclaimedAfterHeaderLookupFailure:"
   "OosRealVacuumHeaderHeld.UnrelatedHeapVacuumedWhileHeaderLookupKeepsFailing:"
-  "OosRealVacuumHeaderHeld.UnrelatedRowInSameBlockVacuumedWhileHeaderLookupKeepsFailing"
+  "OosRealVacuumHeaderHeld.UnrelatedRowInSameBlockVacuumedWhileHeaderLookupKeepsFailing:"
+  "OosRealVacuumHeaderHeld.UnrelatedRowInSameBlockVacuumedWhileHomePageFixTimesOut"
 )
 add_test(NAME test_oos_real_vacuum_latch_timeout
   COMMAND test_oos_real_vacuum_server "--gtest_filter=${oos_real_vacuum_latch_timeout_filter}"
