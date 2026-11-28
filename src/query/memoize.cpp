@@ -483,6 +483,47 @@ namespace memoize
     return true;
   }
 
+  /* The outer value an inner's index scan looks up first, when a null one makes the scan return no row before it
+   * reads the index or evaluates anything else: the one value of an equality on a one-column key, or the first
+   * column's value of a multi-column key (scan_regu_key_to_index_key (), scan_dbvals_to_midxkey ()). nullptr for
+   * any other inner: the inner of an outer join returns its null row, an index skip scan may look up a null first
+   * column, a list of keys evaluates them all, and a value that is computed (a subquery's, an expression's) is not
+   * known before the scan starts. */
+  static DB_VALUE *
+  null_ends_scan (xasl_node *xasl)
+  {
+    ACCESS_SPEC_TYPE *spec = xasl->spec_list;
+    regu_variable_node *regu;
+
+    if (spec == nullptr || spec->next != nullptr || spec->type != TARGET_CLASS || spec->access != ACCESS_METHOD_INDEX
+	|| (spec->single_fetch != QPROC_NO_SINGLE_INNER && spec->single_fetch != QPROC_SINGLE_INNER)
+	|| spec->indexptr == nullptr || spec->indexptr->use_iss != 0 || spec->indexptr->key_info.key_cnt != 1)
+      {
+	return nullptr;
+      }
+
+    regu = spec->indexptr->key_info.key_ranges[0].key1;
+    if (regu == nullptr)
+      {
+	return nullptr;
+      }
+    if (regu->type == TYPE_FUNC && regu->value.funcp->ftype == F_MIDXKEY)
+      {
+	if (regu->value.funcp->operand == nullptr)
+	  {
+	    return nullptr;
+	  }
+	regu = &regu->value.funcp->operand->value;
+      }
+    else if (spec->indexptr->range_type != R_KEY)
+      {
+	/* a range evaluates its other bound before it finds the null one */
+	return nullptr;
+      }
+
+    return (regu->type == TYPE_CONSTANT && regu->xasl == nullptr) ? regu->value.dbvalptr : nullptr;
+  }
+
   storage *storage::new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl, bool match_only)
   {
     VAL_LIST *val_list = xasl->val_list;
@@ -519,6 +560,7 @@ namespace memoize
       }
     storage_p = placement_new (storage_p, thread_p, max_storage_size, key_cnt, value_cnt, val_list, match_only);
     storage_p->init (key_ptr_src, key_domains);
+    storage_p->m_null_ends = null_ends_scan (xasl);
 
     return storage_p;
   }
@@ -548,6 +590,8 @@ namespace memoize
     , has_range (false)
     , key_changed (false)
     , current_key_joined (false)
+    , m_null_ends (nullptr)
+    , m_null_ended (false)
   {
     m_current_value_list.reserve (value_cnt);
     m_elapsed_time = {0, 0};
@@ -607,6 +651,22 @@ namespace memoize
 
   result_code storage::get ()
   {
+    if (key_changed && m_null_ends != nullptr && !disabled && DB_IS_NULL (m_null_ends))
+      {
+	if (m_null_ended)
+	  {
+	    /* the scan would find no row and read nothing: what the key the first such row stored answers, with no
+	     * key built or looked up. m_last_key stays the key before this one; nothing reads it until the next key,
+	     * since no row is put for this one. */
+	    key_changed = false;
+	    has_range = false;
+	    hit++;
+	    return result_code::ENDED;
+	  }
+	/* the first such row is looked up, scanned and stored as any key is */
+	m_null_ended = true;
+      }
+
     HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
     scope_exit restore_heap_id ([heap_id, this]()
     {
@@ -694,6 +754,11 @@ namespace memoize
     if (disabled)
       {
 	return false;
+      }
+    if (m_null_ended && DB_IS_NULL (m_null_ends))
+      {
+	/* get () answers this key with no row */
+	return true;
       }
 
     HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);

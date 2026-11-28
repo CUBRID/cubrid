@@ -166,6 +166,11 @@ namespace memoize
       bool has_range;
       bool key_changed;
       bool current_key_joined;
+      /* the outer value the inner's index scan looks up first, when the scan finds no row for a null one without
+       * reading the index or anything else (null_ends_scan ()); nullptr for any other inner */
+      DB_VALUE *m_null_ends;
+      /* a row with that value null went through get (): its key is stored with no row, or the storage was full */
+      bool m_null_ended;
       TSC_TICKS m_start_tick;
   };
 }

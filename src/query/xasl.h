@@ -1487,6 +1487,9 @@ struct xasl_node
   int query_in_progress;	/* flag which tells if the query is currently executing.  Used by
 				 * qmgr_clear_trans_wakeup() to determine how much of the xasl tree to clean up. */
   int next_scan_on;		/* next scan is initiated ? */
+  int nl_state;			/* a scan of a batched nested-loop join: its entry goes to the row path without
+				 * looking at its batch, and the outer rows left to go that way (QEXEC_NL_ROW_PATH_*,
+				 * run time) */
   int next_scan_block_on;	/* next scan block is initiated ? */
   int max_iterations;		/* Number of maximum iterations (used during run-time for recursive CTE) */
   // *INDENT-OFF*
