@@ -5,7 +5,8 @@ SELECT {
  'localtimestamp', 'minute_millisecond', 'minute_second', 'mod', 'rollup',
  'second_millisecond', 'truncate', 'xor', 'year_month', 'blob', 'clob',
  -- R4.0
- 'mediumint', 'tinyint', 'keylimit'
+ 'mediumint', 'tinyint'
+ -- 'keylimit' was removed from the keywords in CBRD-27946
 } AS "new_reversed_keywords_since_R30"
 INTO :reserved 
 FROM db_root;
